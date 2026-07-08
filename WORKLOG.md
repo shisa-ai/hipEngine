@@ -147283,3 +147283,21 @@ python3 scripts/gguf_mtp_bench.py \
   1:20260519-1`, Mesa/RADV `26.1.2`, Vulkan tools `1.4.350.1`, shaderc
   `2026.2`, glslang `1:1.4.350.0`, and a successful Strix Halo RyzenAdj
   privileged table.
+
+## 2026-07-08 - gfx1151 retained system-info snapshot
+
+- Generated retained supplemental environment artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-system-info.json`.
+- Command:
+  `python3 benchmarks/micro/system_info.py --include-privileged --timeout-s 8 --max-output-chars 30000 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-system-info.json`.
+- Result: artifact records clean repo commit `e5a3a419`, kernel
+  `linux-cachyos 7.0.12-1`, `linux-firmware 1:20260519-1`, `amd-ucode
+  1:20260519-1`, Mesa/RADV `26.1.2`, Vulkan instance `1.4.350`, `hipcc` HIP
+  `7.13.60980-c76140fa27`, TheRock ROCm packages `7.13.0a20260411`, AMD clang
+  `23.0.0git`, VBIOS `113-STRXLGEN-001`, Strix Halo RyzenAdj `v0.19.0` /
+  SMU BIOS interface `25` / PM table `64020c`, and full raw command outputs for
+  replication.
+- Updated `docs/HIP-vs-VULKAN.md` retained-results index with the replication
+  snapshot path and the key system/toolchain/power metadata. `jq empty
+  benchmarks/micro/results/gfx1151/strix-halo/*.json` now passes for all `95`
+  local JSON artifacts.

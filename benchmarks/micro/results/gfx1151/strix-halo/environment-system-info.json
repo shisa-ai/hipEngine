@@ -1,0 +1,813 @@
+{
+  "collected_at_unix": 1783482776.6238408,
+  "collector": {
+    "argv": [
+      "benchmarks/micro/system_info.py",
+      "--include-privileged",
+      "--timeout-s",
+      "8",
+      "--max-output-chars",
+      "30000",
+      "--pretty",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-system-info.json"
+    ],
+    "include_device_probes": true,
+    "include_privileged": true,
+    "max_output_chars": 30000,
+    "path": "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/collect_env.py",
+    "timeout_s": 8.0
+  },
+  "commands": {
+    "amd_smi_metric": {
+      "args": [
+        "amd-smi",
+        "metric"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amd-smi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "GPU: 0\n    USAGE: N/A\n    POWER:\n        SOCKET_POWER: N/A\n        GFX_VOLTAGE: N/A\n        SOC_VOLTAGE: N/A\n        MEM_VOLTAGE: N/A\n        THROTTLE_STATUS: N/A\n        POWER_MANAGEMENT: N/A\n        UBB_POWER: N/A\n    CLOCK: N/A\n    TEMPERATURE:\n        EDGE: 49 \u00b0C\n        HOTSPOT: N/A\n        MEM: N/A\n    PCIE:\n        WIDTH: N/A\n        SPEED: N/A\n        BANDWIDTH: N/A\n        REPLAY_COUNT: N/A\n        L0_TO_RECOVERY_COUNT: N/A\n        REPLAY_ROLL_OVER_COUNT: N/A\n        NAK_SENT_COUNT: N/A\n        NAK_RECEIVED_COUNT: N/A\n        CURRENT_BANDWIDTH_SENT: N/A\n        CURRENT_BANDWIDTH_RECEIVED: N/A\n        MAX_PACKET_SIZE: N/A\n        LC_PERF_OTHER_END_RECOVERY: N/A\n    ECC:\n        TOTAL_CORRECTABLE_COUNT: 0\n        TOTAL_UNCORRECTABLE_COUNT: 0\n        TOTAL_DEFERRED_COUNT: 0\n        CACHE_CORRECTABLE_COUNT: N/A\n        CACHE_UNCORRECTABLE_COUNT: N/A\n    ECC_BLOCKS: N/A\n    FAN:\n        SPEED: N/A\n        MAX: N/A\n        RPM: N/A\n        USAGE: N/A\n    VOLTAGE_CURVE:\n        POINT_0_FREQUENCY: N/A\n        POINT_0_VOLTAGE: N/A\n        POINT_1_FREQUENCY: N/A\n        POINT_1_VOLTAGE: N/A\n        POINT_2_FREQUENCY: N/A\n        POINT_2_VOLTAGE: N/A\n    OVERDRIVE: N/A\n    MEM_OVERDRIVE: N/A\n    PERF_LEVEL: AMDSMI_DEV_PERF_LEVEL_AUTO\n    XGMI_ERR: N/A\n    VOLTAGE:\n        VDDBOARD: N/A\n    ENERGY: N/A\n    MEM_USAGE:\n        TOTAL_VRAM: 512 MB\n        USED_VRAM: 147 MB\n        FREE_VRAM: 365 MB\n        TOTAL_VISIBLE_VRAM: 512 MB\n        USED_VISIBLE_VRAM: 147 MB\n        FREE_VISIBLE_VRAM: 365 MB\n        TOTAL_GTT: 122880 MB\n        USED_GTT: 17 MB\n        FREE_GTT: 122863 MB\n    THROTTLE:\n        ACCUMULATION_COUNTER: N/A\n        PROCHOT_ACCUMULATED: N/A\n        PPT_ACCUMULATED: N/A\n        SOCKET_THERMAL_ACCUMULATED: N/A\n        VR_THERMAL_ACCUMULATED: N/A\n        HBM_THERMAL_ACCUMULATED: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_ACCUMULATED: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_POWER_ACCUMULATED: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_THERMAL_ACCUMULATED: N/A\n        TOTAL_GFX_CLK_BELOW_HOST_LIMIT_ACCUMULATED: N/A\n        LOW_UTILIZATION_ACCUMULATED: N/A\n        PROCHOT_VIOLATION_STATUS: N/A\n        PPT_VIOLATION_STATUS: N/A\n        SOCKET_THERMAL_VIOLATION_STATUS: N/A\n        VR_THERMAL_VIOLATION_STATUS: N/A\n        HBM_THERMAL_VIOLATION_STATUS: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_VIOLATION_STATUS: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_POWER_VIOLATION_STATUS: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_THERMAL_VIOLATION_STATUS: N/A\n        TOTAL_GFX_CLK_BELOW_HOST_LIMIT_VIOLATION_STATUS: N/A\n        LOW_UTILIZATION_VIOLATION_STATUS: N/A\n        PROCHOT_VIOLATION_ACTIVITY: N/A\n        PPT_VIOLATION_ACTIVITY: N/A\n        SOCKET_THERMAL_VIOLATION_ACTIVITY: N/A\n        VR_THERMAL_VIOLATION_ACTIVITY: N/A\n        HBM_THERMAL_VIOLATION_ACTIVITY: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_VIOLATION_ACTIVITY: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_POWER_VIOLATION_ACTIVITY: N/A\n        GFX_CLK_BELOW_HOST_LIMIT_THERMAL_VIOLATION_ACTIVITY: N/A\n        TOTAL_GFX_CLK_BELOW_HOST_LIMIT_VIOLATION_ACTIVITY: N/A\n        LOW_UTILIZATION_VIOLATION_ACTIVITY: N/A\n\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "amd_smi_static": {
+      "args": [
+        "amd-smi",
+        "static",
+        "-a"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amd-smi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "GPU: 0\n    ASIC:\n        MARKET_NAME: Radeon 8060S Graphics\n        VENDOR_ID: 0x1002\n        VENDOR_NAME: Advanced Micro Devices Inc. [AMD/ATI]\n        SUBVENDOR_ID: 0xf111\n        DEVICE_ID: 0x1586\n        SUBSYSTEM_ID: 0x000a\n        REV_ID: 0xc1\n        ASIC_SERIAL: N/A\n        OAM_ID: N/A\n        NUM_COMPUTE_UNITS: 40\n        TARGET_GRAPHICS_VERSION: gfx1151\n        FLAGS: 25\n\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "amdclang_version": {
+      "args": [
+        "amdclang++",
+        "--version"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "amdgpu_firmware_debugfs": {
+      "args": [
+        "bash",
+        "-lc",
+        "for f in /sys/kernel/debug/dri/*/amdgpu_firmware_info; do printf '### %s\\n' \"$f\"; cat \"$f\"; done"
+      ],
+      "available": true,
+      "path": "/usr/bin/bash",
+      "returncode": 1,
+      "stderr": "cat: '/sys/kernel/debug/dri/*/amdgpu_firmware_info': Permission denied\n",
+      "stderr_truncated": false,
+      "stdout": "### /sys/kernel/debug/dri/*/amdgpu_firmware_info\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "amdgpu_module_state": {
+      "args": [
+        "bash",
+        "-lc",
+        "for f in /sys/module/amdgpu/initstate /sys/module/amdgpu/refcnt /sys/module/amdgpu/srcversion; do printf '### %s\\n' \"$f\"; cat \"$f\" 2>&1; done"
+      ],
+      "available": true,
+      "path": "/usr/bin/bash",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "### /sys/module/amdgpu/initstate\nlive\n### /sys/module/amdgpu/refcnt\n0\n### /sys/module/amdgpu/srcversion\nEAC712DB16D947D29D2EFDA\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "amdgpu_parameters": {
+      "args": [
+        "bash",
+        "-lc",
+        "for f in /sys/module/amdgpu/parameters/*; do printf '%s=' \"${f##*/}\"; cat \"$f\"; done 2>/dev/null | sort"
+      ],
+      "available": true,
+      "path": "/usr/bin/bash",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "abmlevel=-1\nagp=-1\naspm=-1\nasync_gfx_ring=1\naudio=-1\nbacklight=-1\nbad_page_threshold=-1\nbapm=-1\ncg_mask=18446744073709551615\ncik_support=1\ncompute_multipipe=-1\ncwsr_enable=1\ndamageclips=-1\ndc=-1\ndcdebugmask=0\ndcfeaturemask=2\ndebug_evictions=N\ndebug_mask=0\ndeep_color=0\ndisable_cu=(null)\ndiscovery=-1\ndisp_priority=0\ndpm=-1\nemu_mode=0\nenforce_isolation=-1\nexp_hw_support=0\nforce_asic_type=-1\nforcelongtraining=0\nfreesync_video=0\nfw_load_type=-1\ngartsize=gpu_recovery=-1\ngttsize=halt_if_hws_hang=0\nhdmi_hpd_debounce_delay_ms=0\nhw_i2c=0\nhws_gws_support=N\nhws_max_conc_proc=-1\nignore_min_pcap=ip_block_mask=4294967295\nlbpw=-1\nlockup_timeout=\nmax_num_of_queues_per_device=4096\nmcbp=-1\nmes=0\nmes_kiq=0\nmes_log_enable=0\nmodeset=-1\nmoverate=msi=-1\nmtype_local=0\nno_queue_eviction_on_vm_fault=0\nno_system_mem_limit=N\nnoretry=-1\nnum_kcq=-1\npcie_gen2=-1\npcie_gen_cap=0\npcie_lane_cap=0\npg_mask=4294967295\nppfeaturemask=0xfff7bfff\nqueue_preemption_timeout_ms=9000\nras_enable=-1\nras_mask=4294967295\nrebar=-1\nreset_method=-1\nrunpm=-1\nsched_hw_submission=2\nsched_jobs=32\nsched_policy=0\nsdma_phase_quantum=32\nseamless=-1\nsend_sigterm=0\nsg_display=-1\nsi_support=1\nsmu_memory_pool_size=0\nsmu_pptable_id=-1\nsvm_default_granularity=9\ntimeout_fatal_disable=N\ntimeout_period=0\ntmz=-1\numsch_mm=0\numsch_mm_fwlog=0\nuni_mes=1\nuse_xgmi_p2p=1\nuser_partt_mode=4294967294\nuser_queue=-1\nvcnfw_log=0\nvirtual_display=(null)\nvis_vramlimit=0\nvisualconfirm=0\nvm_block_size=-1\nvm_fault_stop=0\nvm_fragment_size=-1\nvm_size=-1\nvm_update_mode=-1\nvramlimit=wbrf=-1\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "clang_version": {
+      "args": [
+        "clang",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/clang",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "clang version 22.1.6\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/bin\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "conda_rocm_packages": {
+      "args": [
+        "bash",
+        "-lc",
+        "conda list 2>/dev/null | grep -Ei 'rocm|hip|llvm|therock|vulkan|shader|mesa|clang|torch|triton' || true"
+      ],
+      "available": true,
+      "path": "/usr/bin/bash",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "# packages in environment at /home/lhl/miniforge3/envs/therock:\nrocm                            7.13.0a20260411                        pypi_0                pypi\nrocm-sdk-core                   7.13.0a20260411                        pypi_0                pypi\nrocm-sdk-devel                  7.13.0a20260411                        pypi_0                pypi\nrocm-sdk-libraries-gfx1151      7.13.0a20260411                        pypi_0                pypi\ntorch                           2.12.0a0+rocm7.13.0a20260411           pypi_0                pypi\ntorchaudio                      2.11.0a0+rocm7.13.0a20260411           pypi_0                pypi\ntorchvision                     0.27.0a0+rocm7.13.0a20260411           pypi_0                pypi\ntriton                          3.7.0+git18f89f64.rocm7.13.0a20260411  pypi_0                pypi\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "dmesg_amdgpu_firmware": {
+      "args": [
+        "bash",
+        "-lc",
+        "dmesg | grep -Ei 'amdgpu|firmware|ucode|gfx|smu' | tail -200"
+      ],
+      "available": true,
+      "path": "/usr/bin/bash",
+      "returncode": 0,
+      "stderr": "dmesg: read kernel buffer failed: Operation not permitted\n",
+      "stderr_truncated": false,
+      "stdout": "",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "git_version": {
+      "args": [
+        "git",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/git",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "git version 2.54.0\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "glslc_version": {
+      "args": [
+        "glslc",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/glslc",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "2026.2\n1:1.4.350.0\n1:1.4.350.0\n\nTarget: SPIR-V 1.0\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "hipcc_version": {
+      "args": [
+        "hipcc",
+        "--version"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/hipcc",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "inxi_system": {
+      "args": [
+        "inxi",
+        "-c",
+        "0",
+        "-C",
+        "-G",
+        "-S",
+        "-M",
+        "-xx",
+        "--filter"
+      ],
+      "available": true,
+      "path": "/usr/bin/inxi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "System:\n  Kernel: 7.0.12-1-cachyos arch: x86_64 bits: 64 compiler: clang v: 22.1.6\n  Console: N/A Distro: CachyOS base: Arch Linux\nMachine:\n  Type: Mini-pc System: Framework product: Desktop (AMD Ryzen AI Max 300 Series) v: A6\n    serial: <superuser required>\n  Mobo: Framework model: FRANMFCP06 v: A6 serial: <superuser required> part-nu: FRANMFCP06\n    Firmware: UEFI vendor: INSYDE v: 03.04 date: 11/19/2025\nCPU:\n  Info: 16-core model: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S bits: 64 type: MT MCP arch: Zen 5\n    rev: 0 cache: L1: 1.2 MiB L2: 16 MiB L3: 64 MiB\n  Speed (MHz): avg: 2020 min/max: 625/5188 boost: enabled cores: 1: 2020 2: 2020 3: 2020 4: 2020\n    5: 2020 6: 2020 7: 2020 8: 2020 9: 2020 10: 2020 11: 2020 12: 2020 13: 2020 14: 2020 15: 2020\n    16: 2020 17: 2020 18: 2020 19: 2020 20: 2020 21: 2020 22: 2020 23: 2020 24: 2020 25: 2020\n    26: 2020 27: 2020 28: 2020 29: 2020 30: 2020 31: 2020 32: 2020 bogomips: 191632\n  Flags-basic: avx avx2 ht lm nx pae sse sse2 sse3 sse4_1 sse4_2 sse4a ssse3 svm\nGraphics:\n  Device-1: Advanced Micro Devices [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S 8060S\n    Graphics] vendor: Framework driver: amdgpu v: kernel pcie: speed: 16 GT/s lanes: 16 ports:\n    active: none empty: DP-1, DP-2, DP-3, DP-4, DP-5, DP-6, DP-7, DP-8, HDMI-A-1, Writeback-1\n    bus-ID: c1:00.0 chip-ID: 1002:1586 temp: 48.0 C\n  Display: unspecified server: N/A driver: N/A tty: 80x40\n  API: EGL v: 1.5 platforms: device: 0 drv: radeonsi device: 1 drv: swrast gbm: drv: radeonsi\n    surfaceless: drv: radeonsi inactive: wayland,x11\n  API: OpenGL v: 4.6 vendor: mesa v: 26.1.2-arch2.1 note: console (EGL sourced) renderer: AMD\n    Radeon 8060S Graphics (radeonsi strix_halo ACO DRM 3.64 7.0.12-1-cachyos), llvmpipe (LLVM\n    22.1.6 256 bits)\n  API: Vulkan v: 1.4.350 surfaces: N/A device: 0 type: integrated-gpu driver: mesa radv\n    device-ID: 1002:1586\n  Info: Tools: api: eglinfo, glxinfo, vulkaninfo gpu: amd-smi,amdgpu_top x11: xprop\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "llvm_objdump_version": {
+      "args": [
+        "llvm-objdump",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/llvm-objdump",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "LLVM (http://llvm.org/):\n  LLVM version 22.1.6\n  Optimized build.\n\n\n  Registered Targets:\n    aarch64     - AArch64 (little endian)\n    aarch64_32  - AArch64 (little endian ILP32)\n    aarch64_be  - AArch64 (big endian)\n    amdgcn      - AMD GCN GPUs\n    arm         - ARM\n    arm64       - ARM64 (little endian)\n    arm64_32    - ARM64 (little endian ILP32)\n    armeb       - ARM (big endian)\n    avr         - Atmel AVR Microcontroller\n    bpf         - BPF (host endian)\n    bpfeb       - BPF (big endian)\n    bpfel       - BPF (little endian)\n    hexagon     - Hexagon\n    lanai       - Lanai\n    loongarch32 - 32-bit LoongArch\n    loongarch64 - 64-bit LoongArch\n    mips        - MIPS (32-bit big endian)\n    mips64      - MIPS (64-bit big endian)\n    mips64el    - MIPS (64-bit little endian)\n    mipsel      - MIPS (32-bit little endian)\n    msp430      - MSP430 [experimental]\n    nvptx       - NVIDIA PTX 32-bit\n    nvptx64     - NVIDIA PTX 64-bit\n    ppc32       - PowerPC 32\n    ppc32le     - PowerPC 32 LE\n    ppc64       - PowerPC 64\n    ppc64le     - PowerPC 64 LE\n    r600        - AMD GPUs HD2XXX-HD6XXX\n    riscv32     - 32-bit RISC-V\n    riscv32be   - 32-bit big endian RISC-V\n    riscv64     - 64-bit RISC-V\n    riscv64be   - 64-bit big endian RISC-V\n    sparc       - Sparc\n    sparcel     - Sparc LE\n    sparcv9     - Sparc V9\n    spirv       - SPIR-V Logical\n    spirv32     - SPIR-V 32-bit\n    spirv64     - SPIR-V 64-bit\n    systemz     - SystemZ\n    thumb       - Thumb\n    thumbeb     - Thumb (big endian)\n    ve          - VE\n    wasm32      - WebAssembly 32-bit\n    wasm64      - WebAssembly 64-bit\n    x86         - 32-bit X86: Pentium-Pro and above\n    x86-64      - 64-bit X86: EM64T and AMD64\n    xcore       - XCore\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "llvm_readobj_version": {
+      "args": [
+        "llvm-readobj",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/llvm-readobj",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "LLVM (http://llvm.org/):\n  LLVM version 22.1.6\n  Optimized build.\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "lsmod": {
+      "args": [
+        "lsmod"
+      ],
+      "available": true,
+      "path": "/usr/bin/lsmod",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "Module                  Size  Used by\noverlay               241664  0\ntcp_diag               20480  0\ninet_diag              20480  1 tcp_diag\nxt_connmark            12288  4\nxt_MASQUERADE          16384  2\nxt_mark                12288  2\nnft_chain_nat          12288  2\nnf_nat                 65536  2 nft_chain_nat,xt_MASQUERADE\ntun                    73728  2\njoydev                 28672  0\nrfkill                 45056  1\nmousedev               28672  0\nsnd_ctl_led            24576  0\nuinput                 28672  2\nvfat                   24576  1\nfat                   110592  1 vfat\namd_atl                65536  1\nintel_rapl_msr         20480  0\nintel_rapl_common      53248  1 intel_rapl_msr\nsnd_hda_codec_alc269   159744  1\nsnd_hda_codec_realtek_lib    73728  1 snd_hda_codec_alc269\nsnd_hda_scodec_component    20480  1 snd_hda_codec_alc269\nsnd_hda_codec_generic   126976  2 snd_hda_codec_realtek_lib,snd_hda_codec_alc269\nsnd_hda_codec_atihdmi    20480  1\nsnd_hda_codec_hdmi     61440  1 snd_hda_codec_atihdmi\nucsi_acpi              12288  0\nsnd_hda_intel          69632  0\ntypec_ucsi             86016  1 ucsi_acpi\nroles                  16384  1 typec_ucsi\nsnd_hda_codec         233472  6 snd_hda_codec_generic,snd_hda_codec_hdmi,snd_hda_intel,snd_hda_codec_realtek_lib,snd_hda_codec_alc269,snd_hda_codec_atihdmi\ntypec                 131072  1 typec_ucsi\nsnd_hda_core          163840  7 snd_hda_codec_generic,snd_hda_codec_hdmi,snd_hda_intel,snd_hda_codec,snd_hda_codec_realtek_lib,snd_hda_codec_alc269,snd_hda_codec_atihdmi\nleds_cros_ec           12288  0\ngpio_cros_ec           12288  0\ncros_ec_debugfs        20480  0\ncros_ec_hwmon          20480  0\ncros_ec_sysfs          16384  0\nled_class_multicolor    16384  1 leds_cros_ec\ncros_ec_chardev        16384  0\nsnd_intel_dspcfg       49152  1 snd_hda_intel\nsnd_intel_sdw_acpi     16384  1 snd_intel_dspcfg\nkvm_amd               253952  0\nsnd_hwdep              24576  1 snd_hda_codec\ncros_ec_dev            20480  0\nsnd_pcm               229376  4 snd_hda_codec_hdmi,snd_hda_intel,snd_hda_codec,snd_hda_core\namd_pmf                86016  0\nkvm                  1540096  1 kvm_amd\nsnd_timer              57344  1 snd_pcm\namdtee                 32768  0\nspd5118                16384  0\nr8169                 176128  0\nsnd                   159744  10 snd_ctl_led,snd_hda_codec_generic,snd_hda_codec_hdmi,snd_hwdep,snd_hda_intel,snd_hda_codec,snd_timer,snd_hda_codec_realtek_lib,snd_hda_codec_alc269,snd_pcm\nccp                   233472  2 kvm_amd,amdtee\nsoundcore              16384  2 snd_ctl_led,snd\nrealtek                65536  1\nirqbypass              16384  1 kvm\nmdio_devres            12288  1 r8169\namd_sfh                61440  1 amd_pmf\ncros_ec_lpcs           28672  0\nghash_clmulni_intel    12288  0\nlibphy                196608  3 r8169,mdio_devres,realtek\nuas                    36864  0\nplatform_profile       20480  1 amd_pmf\ncros_ec                20480  1 cros_ec_lpcs\ni2c_piix4              36864  0\naesni_intel           106496  0\nthunderbolt           614400  1 typec\nusb_storage            94208  1 uas\namdxdna               200704  0\ntee                    61440  2 amd_pmf,amdtee\nmdio_bus               65536  3 r8169,libphy,realtek\namd_pmc                61440  0\ni2c_smbus              20480  1 i2c_piix4\ncros_ec_proto          69632  9 leds_cros_ec,cros_ec_lpcs,cros_ec,gpio_cros_ec,cros_ec_dev,cros_ec_debugfs,cros_ec_hwmon,cros_ec_sysfs,cros_ec_chardev\nrapl                   20480  0\nwmi_bmof               12288  0\npcspkr                 12288  0\nk10temp                12288  0\nmac_hid                12288  0\nip6t_REJECT            12288  1\nnf_reject_ipv6         20480  1 ip6t_REJECT\nxt_hl                  12288  22\nip6t_rt                16384  3\nipt_REJECT             12288  1\nnf_reject_ipv4         16384  1 ipt_REJECT\nxt_LOG                 16384  10\nnf_log_syslog          28672  10\nnft_limit              16384  13\nxt_limit               12288  0\nxt_addrtype            12288  4\nxt_tcpudp              20480  60\nxt_conntrack           12288  20\nnf_conntrack          212992  4 xt_conntrack,nf_nat,xt_connmark,xt_MASQUERADE\nnf_defrag_ipv6         24576  1 nf_conntrack\nnf_defrag_ipv4         12288  1 nf_conntrack\nnft_compat             20480  129\nx_tables               65536  13 xt_conntrack,nft_compat,xt_LOG,xt_tcpudp,xt_addrtype,ip6t_rt,ipt_REJECT,xt_connmark,xt_limit,xt_hl,xt_MASQUERADE,ip6t_REJECT,xt_mark\nnf_tables             417792  726 nft_compat,nft_chain_nat,nft_limit\nnfnetlink              20480  2 nft_compat,nf_tables\ndm_mod                233472  0\npkcs8_key_parser       12288  0\nntsync                 20480  0\ncrypto_user            12288  0\nzram                   77824  1\n842_decompress         16384  1 zram\n842_compress           24576  1 zram\nlz4hc_compress         24576  1 zram\nlz4_compress           24576  1 zram\namdgpu              17850368  0\ndrm_panel_backlight_quirks    12288  1 amdgpu\ndrm_buddy              32768  1 amdgpu\ndrm_suballoc_helper    20480  1 amdgpu\ni2c_algo_bit           20480  1 amdgpu\ndrm_exec               12288  1 amdgpu\ngpu_sched              73728  2 amdxdna,amdgpu\namdxcp                 12288  1 amdgpu\ndrm_ttm_helper         20480  1 amdgpu\nttm                   131072  2 amdgpu,drm_ttm_helper\ndrm_display_helper    294912  1 amdgpu\ncec                   106496  2 drm_display_helper,amdgpu\nvideo                  81920  1 amdgpu\nnvme                   77824  2\nnvme_core             282624  3 nvme\nnvme_keyring           20480  1 nvme_core\nnvme_auth              32768  1 nvme_core\nhkdf                   12288  1 nvme_auth\nwmi                    40960  2 video,wmi_bmof\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "lspci": {
+      "args": [
+        "lspci",
+        "-nn"
+      ],
+      "available": true,
+      "path": "/usr/bin/lspci",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Root Complex [1022:1507] (rev 02)\n00:00.2 IOMMU [0806]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo IOMMU [1022:1508] (rev 02)\n00:01.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:01.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)\n00:01.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)\n00:02.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:02.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)\n00:02.5 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)\n00:03.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:08.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:08.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:08.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:08.3 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:14.0 SMBus [0c05]: Advanced Micro Devices, Inc. [AMD] FCH SMBus Controller [1022:790b] (rev 71)\n00:14.3 ISA bridge [0601]: Advanced Micro Devices, Inc. [AMD] FCH LPC Bridge [1022:790e] (rev 51)\n00:18.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 0 [1022:12b8]\n00:18.1 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 1 [1022:12b9]\n00:18.2 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 2 [1022:12ba]\n00:18.3 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 3 [1022:12bb]\n00:18.4 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 4 [1022:12bc]\n00:18.5 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 5 [1022:12bd]\n00:18.6 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 6 [1022:12be]\n00:18.7 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 7 [1022:12bf]\nbf:00.0 Ethernet controller [0200]: Realtek Semiconductor Co., Ltd. RTL8126 5GbE Controller [10ec:8126] (rev 01)\nc0:00.0 Non-Volatile memory controller [0108]: MAXIO Technology (Hangzhou) Ltd. NVMe SSD Controller MAP1202 (DRAM-less) [1e4b:1202] (rev 01)\nc1:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics] [1002:1586] (rev c1)\nc1:00.1 Audio device [0403]: Advanced Micro Devices, Inc. [AMD/ATI] Radeon High Definition Audio Controller [1002:1640]\nc1:00.2 Encryption controller [1080]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo CCP/ASP [1022:17e0]\nc1:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1587]\nc1:00.6 Audio device [0403]: Advanced Micro Devices, Inc. [AMD] Ryzen HD Audio Controller [1022:15e3]\nc2:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe Dummy Function [1022:150d]\nc2:00.1 Signal processing controller [1180]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo Neural Processing Unit [1022:17f0] (rev 11)\nc3:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1588]\nc3:00.3 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1589]\nc3:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:158b]\nc3:00.5 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158d]\nc3:00.6 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158e]\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "modinfo_amdgpu": {
+      "args": [
+        "modinfo",
+        "amdgpu"
+      ],
+      "available": true,
+      "path": "/usr/bin/modinfo",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "filename:       /lib/modules/7.0.12-1-cachyos/kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko.zst\nauthor:         AMD linux driver team\ndescription:    AMD GPU\nlicense:        GPL and additional rights\nfirmware:       amdgpu/vega10_gpu_info.bin\nfirmware:       amdgpu/vega12_gpu_info.bin\nfirmware:       amdgpu/raven_gpu_info.bin\nfirmware:       amdgpu/picasso_gpu_info.bin\nfirmware:       amdgpu/raven2_gpu_info.bin\nfirmware:       amdgpu/arcturus_gpu_info.bin\nfirmware:       amdgpu/navi12_gpu_info.bin\nfirmware:       amdgpu/cyan_skillfish_gpu_info.bin\nimport_ns:      DMA_BUF\nfirmware:       amdgpu/ip_discovery.bin\nfirmware:       amdgpu/vega10_ip_discovery.bin\nfirmware:       amdgpu/vega12_ip_discovery.bin\nfirmware:       amdgpu/vega20_ip_discovery.bin\nfirmware:       amdgpu/raven_ip_discovery.bin\nfirmware:       amdgpu/raven2_ip_discovery.bin\nfirmware:       amdgpu/picasso_ip_discovery.bin\nfirmware:       amdgpu/arcturus_ip_discovery.bin\nfirmware:       amdgpu/aldebaran_ip_discovery.bin\nfirmware:       amdgpu/bonaire_pfp.bin\nfirmware:       amdgpu/bonaire_me.bin\nfirmware:       amdgpu/bonaire_ce.bin\nfirmware:       amdgpu/bonaire_rlc.bin\nfirmware:       amdgpu/bonaire_mec.bin\nfirmware:       amdgpu/hawaii_pfp.bin\nfirmware:       amdgpu/hawaii_me.bin\nfirmware:       amdgpu/hawaii_ce.bin\nfirmware:       amdgpu/hawaii_rlc.bin\nfirmware:       amdgpu/hawaii_mec.bin\nfirmware:       amdgpu/kaveri_pfp.bin\nfirmware:       amdgpu/kaveri_me.bin\nfirmware:       amdgpu/kaveri_ce.bin\nfirmware:       amdgpu/kaveri_rlc.bin\nfirmware:       amdgpu/kaveri_mec.bin\nfirmware:       amdgpu/kaveri_mec2.bin\nfirmware:       amdgpu/kabini_pfp.bin\nfirmware:       amdgpu/kabini_me.bin\nfirmware:       amdgpu/kabini_ce.bin\nfirmware:       amdgpu/kabini_rlc.bin\nfirmware:       amdgpu/kabini_mec.bin\nfirmware:       amdgpu/mullins_pfp.bin\nfirmware:       amdgpu/mullins_me.bin\nfirmware:       amdgpu/mullins_ce.bin\nfirmware:       amdgpu/mullins_rlc.bin\nfirmware:       amdgpu/mullins_mec.bin\nfirmware:       amdgpu/bonaire_sdma.bin\nfirmware:       amdgpu/bonaire_sdma1.bin\nfirmware:       amdgpu/hawaii_sdma.bin\nfirmware:       amdgpu/hawaii_sdma1.bin\nfirmware:       amdgpu/kaveri_sdma.bin\nfirmware:       amdgpu/kaveri_sdma1.bin\nfirmware:       amdgpu/kabini_sdma.bin\nfirmware:       amdgpu/kabini_sdma1.bin\nfirmware:       amdgpu/mullins_sdma.bin\nfirmware:       amdgpu/mullins_sdma1.bin\nfirmware:       amdgpu/tahiti_mc.bin\nfirmware:       amdgpu/pitcairn_mc.bin\nfirmware:       amdgpu/verde_mc.bin\nfirmware:       amdgpu/oland_mc.bin\nfirmware:       amdgpu/hainan_mc.bin\nfirmware:       amdgpu/si58_mc.bin\nfirmware:       amdgpu/tahiti_pfp.bin\nfirmware:       amdgpu/tahiti_me.bin\nfirmware:       amdgpu/tahiti_ce.bin\nfirmware:       amdgpu/tahiti_rlc.bin\nfirmware:       amdgpu/pitcairn_pfp.bin\nfirmware:       amdgpu/pitcairn_me.bin\nfirmware:       amdgpu/pitcairn_ce.bin\nfirmware:       amdgpu/pitcairn_rlc.bin\nfirmware:       amdgpu/verde_pfp.bin\nfirmware:       amdgpu/verde_me.bin\nfirmware:       amdgpu/verde_ce.bin\nfirmware:       amdgpu/verde_rlc.bin\nfirmware:       amdgpu/oland_pfp.bin\nfirmware:       amdgpu/oland_me.bin\nfirmware:       amdgpu/oland_ce.bin\nfirmware:       amdgpu/oland_rlc.bin\nfirmware:       amdgpu/hainan_pfp.bin\nfirmware:       amdgpu/hainan_me.bin\nfirmware:       amdgpu/hainan_ce.bin\nfirmware:       amdgpu/hainan_rlc.bin\nfirmware:       amdgpu/bonaire_mc.bin\nfirmware:       amdgpu/hawaii_mc.bin\nfirmware:       amdgpu/topaz_mc.bin\nfirmware:       amdgpu/tonga_mc.bin\nfirmware:       amdgpu/polaris11_mc.bin\nfirmware:       amdgpu/polaris10_mc.bin\nfirmware:       amdgpu/polaris12_mc.bin\nfirmware:       amdgpu/polaris12_32_mc.bin\nfirmware:       amdgpu/polaris11_k_mc.bin\nfirmware:       amdgpu/polaris10_k_mc.bin\nfirmware:       amdgpu/polaris12_k_mc.bin\nfirmware:       amdgpu/vega10_sos.bin\nfirmware:       amdgpu/vega10_asd.bin\nfirmware:       amdgpu/vega10_cap.bin\nfirmware:       amdgpu/vega12_sos.bin\nfirmware:       amdgpu/vega12_asd.bin\nfirmware:       amdgpu/raven_asd.bin\nfirmware:       amdgpu/picasso_asd.bin\nfirmware:       amdgpu/raven2_asd.bin\nfirmware:       amdgpu/picasso_ta.bin\nfirmware:       amdgpu/raven2_ta.bin\nfirmware:       amdgpu/raven_ta.bin\nfirmware:       amdgpu/vega20_sos.bin\nfirmware:       amdgpu/vega20_asd.bin\nfirmware:       amdgpu/vega20_ta.bin\nfirmware:       amdgpu/navi10_sos.bin\nfirmware:       amdgpu/navi10_asd.bin\nfirmware:       amdgpu/navi10_ta.bin\nfirmware:       amdgpu/navi14_sos.bin\nfirmware:       amdgpu/navi14_asd.bin\nfirmware:       amdgpu/navi14_ta.bin\nfirmware:       amdgpu/navi12_sos.bin\nfirmware:       amdgpu/navi12_asd.bin\nfirmware:       amdgpu/navi12_ta.bin\nfirmware:       amdgpu/navi12_cap.bin\nfirmware:       amdgpu/arcturus_sos.bin\nfirmware:       amdgpu/arcturus_asd.bin\nfirmware:       amdgpu/arcturus_ta.bin\nfirmware:       amdgpu/sienna_cichlid_sos.bin\nfirmware:       amdgpu/sienna_cichlid_ta.bin\nfirmware:       amdgpu/sienna_cichlid_cap.bin\nfirmware:       amdgpu/navy_flounder_sos.bin\nfirmware:       amdgpu/navy_flounder_ta.bin\nfirmware:       amdgpu/vangogh_asd.bin\nfirmware:       amdgpu/vangogh_toc.bin\nfirmware:       amdgpu/dimgrey_cavefish_sos.bin\nfirmware:       amdgpu/dimgrey_cavefish_ta.bin\nfirmware:       amdgpu/beige_goby_sos.bin\nfirmware:       amdgpu/beige_goby_ta.bin\nfirmware:       amdgpu/renoir_asd.bin\nfirmware:       amdgpu/renoir_ta.bin\nfirmware:       amdgpu/green_sardine_asd.bin\nfirmware:       amdgpu/green_sardine_ta.bin\nfirmware:       amdgpu/aldebaran_sos.bin\nfirmware:       amdgpu/aldebaran_ta.bin\nfirmware:       amdgpu/aldebaran_cap.bin\nfirmware:       amdgpu/yellow_carp_toc.bin\nfirmware:       amdgpu/yellow_carp_ta.bin\nfirmware:       amdgpu/psp_13_0_5_toc.bin\nfirmware:       amdgpu/psp_13_0_5_ta.bin\nfirmware:       amdgpu/psp_13_0_8_toc.bin\nfirmware:       amdgpu/psp_13_0_8_ta.bin\nfirmware:       amdgpu/psp_13_0_0_sos.bin\nfirmware:       amdgpu/psp_13_0_0_sos_kicker.bin\nfirmware:       amdgpu/psp_13_0_0_ta.bin\nfirmware:       amdgpu/psp_13_0_0_ta_kicker.bin\nfirmware:       amdgpu/psp_13_0_7_sos.bin\nfirmware:       amdgpu/psp_13_0_7_ta.bin\nfirmware:       amdgpu/psp_13_0_10_sos.bin\nfirmware:       amdgpu/psp_13_0_10_ta.bin\nfirmware:       amdgpu/psp_13_0_11_toc.bin\nfirmware:       amdgpu/psp_13_0_11_ta.bin\nfirmware:       amdgpu/psp_13_0_6_sos.bin\nfirmware:       amdgpu/psp_13_0_6_ta.bin\nfirmware:       amdgpu/psp_13_0_12_sos.bin\nfirmware:       amdgpu/psp_13_0_12_ta.bin\nfirmware:       amdgpu/psp_13_0_14_sos.bin\nfirmware:       amdgpu/psp_13_0_14_ta.bin\nfirmware:       amdgpu/psp_13_0_15_sos.bin\nfirmware:       amdgpu/psp_13_0_15_ta.bin\nfirmware:       amdgpu/psp_14_0_0_toc.bin\nfirmware:       amdgpu/psp_14_0_0_ta.bin\nfirmware:       amdgpu/psp_14_0_1_toc.bin\nfirmware:       amdgpu/psp_14_0_1_ta.bin\nfirmware:       amdgpu/psp_14_0_4_toc.bin\nfirmware:       amdgpu/psp_14_0_4_ta.bin\nfirmware:       amdgpu/psp_13_0_4_toc.bin\nfirmware:       amdgpu/psp_13_0_4_ta.bin\nfirmware:       amdgpu/psp_14_0_2_sos.bin\nfirmware:       amdgpu/psp_14_0_2_ta.bin\nfirmware:       amdgpu/psp_14_0_3_sos.bin\nfirmware:       amdgpu/psp_14_0_3_sos_kicker.bin\nfirmware:       amdgpu/psp_14_0_3_ta.bin\nfirmware:       amdgpu/psp_14_0_3_ta_kicker.bin\nfirmware:       amdgpu/psp_14_0_5_toc.bin\nfirmware:       amdgpu/psp_14_0_5_ta.bin\nfirmware:       amdgpu/psp_15_0_0_toc.bin\nfirmware:       amdgpu/psp_15_0_0_ta.bin\nfirmware:       amdgpu/psp_15_0_8_toc.bin\nfirmware:       amdgpu/carrizo_ce.bin\nfirmware:       amdgpu/carrizo_pfp.bin\nfirmware:       amdgpu/carrizo_me.bin\nfirmware:       amdgpu/carrizo_mec.bin\nfirmware:       amdgpu/carrizo_mec2.bin\nfirmware:       amdgpu/carrizo_rlc.bin\nfirmware:       amdgpu/stoney_ce.bin\nfirmware:       amdgpu/stoney_pfp.bin\nfirmware:       amdgpu/stoney_me.bin\nfirmware:       amdgpu/stoney_mec.bin\nfirmware:       amdgpu/stoney_rlc.bin\nfirmware:       amdgpu/tonga_ce.bin\nfirmware:       amdgpu/tonga_pfp.bin\nfirmware:       amdgpu/tonga_me.bin\nfirmware:       amdgpu/tonga_mec.bin\nfirmware:       amdgpu/tonga_mec2.bin\nfirmware:       amdgpu/tonga_rlc.bin\nfirmware:       amdgpu/topaz_ce.bin\nfirmware:       amdgpu/topaz_pfp.bin\nfirmware:       amdgpu/topaz_me.bin\nfirmware:       amdgpu/topaz_mec.bin\nfirmware:       amdgpu/topaz_rlc.bin\nfirmware:       amdgpu/fiji_ce.bin\nfirmware:       amdgpu/fiji_pfp.bin\nfirmware:       amdgpu/fiji_me.bin\nfirmware:       amdgpu/fiji_mec.bin\nfirmware:       amdgpu/fiji_mec2.bin\nfirmware:       amdgpu/fiji_rlc.bin\nfirmware:       amdgpu/polaris10_ce.bin\nfirmware:       amdgpu/polaris10_ce_2.bin\nfirmware:       amdgpu/polaris10_pfp.bin\nfirmware:       amdgpu/polaris10_pfp_2.bin\nfirmware:       amdgpu/polaris10_me.bin\nfirmware:       amdgpu/polaris10_me_2.bin\nfirmware:       amdgpu/polaris10_mec.bin\nfirmware:       amdgpu/polaris10_mec_2.bin\nfirmware:       amdgpu/polaris10_mec2.bin\nfirmware:       amdgpu/polaris10_mec2_2.bin\nfirmware:       amdgpu/polaris10_rlc.bin\nfirmware:       amdgpu/polaris11_ce.bin\nfirmware:       amdgpu/polaris11_ce_2.bin\nfirmware:       amdgpu/polaris11_pfp.bin\nfirmware:       amdgpu/polaris11_pfp_2.bin\nfirmware:       amdgpu/polaris11_me.bin\nfirmware:       amdgpu/polaris11_me_2.bin\nfirmware:       amdgpu/polaris11_mec.bin\nfirmware:       amdgpu/polaris11_mec_2.bin\nfirmware:       amdgpu/polaris11_mec2.bin\nfirmware:       amdgpu/polaris11_mec2_2.bin\nfirmware:       amdgpu/polaris11_rlc.bin\nfirmware:       amdgpu/polaris12_ce.bin\nfirmware:       amdgpu/polaris12_ce_2.bin\nfirmware:       amdgpu/polaris12_pfp.bin\nfirmware:       amdgpu/polaris12_pfp_2.bin\nfirmware:       amdgpu/polaris12_me.bin\nfirmware:       amdgpu/polaris12_me_2.bin\nfirmware:       amdgpu/polaris12_mec.bin\nfirmware:       amdgpu/polaris12_mec_2.bin\nfirmware:       amdgpu/polaris12_mec2.bin\nfirmware:       amdgpu/polaris12_mec2_2.bin\nfirmware:       amdgpu/polaris12_rlc.bin\nfirmware:       amdgpu/vegam_ce.bin\nfirmware:       amdgpu/vegam_pfp.bin\nfirmware:       amdgpu/vegam_me.bin\nfirmware:       amdgpu/vegam_mec.bin\nfirmware:       amdgpu/vegam_mec2.bin\nfirmware:       amdgpu/vegam_rlc.bin\nfirmware:       amdgpu/vega10_ce.bin\nfirmware:       amdgpu/vega10_pfp.bin\nfirmware:       amdgpu/vega10_me.bin\nfirmware:       amdgpu/vega10_mec.bin\nfirmware:       amdgpu/vega10_mec2.bin\nfirmware:       amdgpu/vega10_rlc.bin\nfirmware:       amdgpu/vega12_ce.bin\nfirmware:       amdgpu/vega12_pfp.bin\nfirmware:       amdgpu/vega12_me.bin\nfirmware:       amdgpu/vega12_mec.bin\nfirmware:       amdgpu/vega12_mec2.bin\nfirmware:       amdgpu/vega12_rlc.bin\nfirmware:       amdgpu/vega20_ce.bin\nfirmware:       amdgpu/vega20_pfp.bin\nfirmware:       amdgpu/vega20_me.bin\nfirmware:       amdgpu/vega20_mec.bin\nfirmware:       amdgpu/vega20_mec2.bin\nfirmware:       amdgpu/vega20_rlc.bin\nfirmware:       amdgpu/raven_ce.bin\nfirmware:       amdgpu/raven_pfp.bin\nfirmware:       amdgpu/raven_me.bin\nfirmware:       amdgpu/raven_mec.bin\nfirmware:       amdgpu/raven_mec2.bin\nfirmware:       amdgpu/raven_rlc.bin\nfirmware:       amdgpu/picasso_ce.bin\nfirmware:       amdgpu/picasso_pfp.bin\nfirmware:       amdgpu/picasso_me.bin\nfirmware:       amdgpu/picasso_mec.bin\nfirmware:       amdgpu/picasso_mec2.bin\nfirmware:       amdgpu/picasso_rlc.bin\nfirmware:       amdgpu/picasso_rlc_am4.bin\nfirmware:       amdgpu/raven2_ce.bin\nfirmware:       amdgpu/raven2_pfp.bin\nfirmware:       amdgpu/raven2_me.bin\nfirmware:       amdgpu/raven2_mec.bin\nfirmware:       amdgpu/raven2_mec2.bin\nfirmware:       amdgpu/raven2_rlc.bin\nfirmware:       amdgpu/raven_kicker_rlc.bin\nfirmware:       amdgpu/arcturus_mec.bin\nfirmware:       amdgpu/arcturus_rlc.bin\nfirmware:       amdgpu/renoir_ce.bin\nfirmware:       amdgpu/renoir_pfp.bin\nfirmware:       amdgpu/renoir_me.bin\nfirmware:       amdgpu/renoir_mec.bin\nfirmware:       amdgpu/renoir_rlc.bin\nfirmware:       amdgpu/green_sardine_ce.bin\nfirmware:       amdgpu/green_sardine_pfp.bin\nfirmware:       amdgpu/green_sardine_me.bin\nfirmware:       amdgpu/green_sardine_mec.bin\nfirmware:       amdgpu/green_sardine_mec2.bin\nfirmware:       amdgpu/green_sardine_rlc.bin\nfirmware:       amdgpu/aldebaran_mec.bin\nfirmware:       amdgpu/aldebaran_mec2.bin\nfirmware:       amdgpu/aldebaran_rlc.bin\nfirmware:       amdgpu/aldebaran_sjt_mec.bin\nfirmware:       amdgpu/aldebaran_sjt_mec2.bin\nfirmware:       amdgpu/gc_9_4_3_mec.bin\nfirmware:       amdgpu/gc_9_4_4_mec.bin\nfirmware:       amdgpu/gc_9_5_0_mec.bin\nfirmware:       amdgpu/gc_9_4_3_rlc.bin\nfirmware:       amdgpu/gc_9_4_4_rlc.bin\nfirmware:       amdgpu/gc_9_5_0_rlc.bin\nfirmware:       amdgpu/gc_9_4_3_sjt_mec.bin\nfirmware:       amdgpu/gc_9_4_4_sjt_mec.bin\nfirmware:       amdgpu/navi10_ce.bin\nfirmware:       amdgpu/navi10_pfp.bin\nfirmware:       amdgpu/navi10_me.bin\nfirmware:       amdgpu/navi10_mec.bin\nfirmware:       amdgpu/navi10_mec2.bin\nfirmware:       amdgpu/navi10_rlc.bin\nfirmware:       amdgpu/navi14_ce_wks.bin\nfirmware:       amdgpu/navi14_pfp_wks.bin\nfirmware:       amdgpu/navi14_me_wks.bin\nfirmware:       amdgpu/navi14_mec_wks.bin\nfirmware:       amdgpu/navi14_mec2_wks.bin\nfirmware:       amdgpu/navi14_ce.bin\nfirmware:       amdgpu/navi14_pfp.bin\nfirmware:       amdgpu/navi14_me.bin\nfirmware:       amdgpu/navi14_mec.bin\nfirmware:       amdgpu/navi14_mec2.bin\nfirmware:       amdgpu/navi14_rlc.bin\nfirmware:       amdgpu/navi12_ce.bin\nfirmware:       amdgpu/navi12_pfp.bin\nfirmware:       amdgpu/navi12_me.bin\nfirmware:       amdgpu/navi12_mec.bin\nfirmware:       amdgpu/navi12_mec2.bin\nfirmware:       amdgpu/navi12_rlc.bin\nfirmware:       amdgpu/sienna_cichlid_ce.bin\nfirmware:       amdgpu/sienna_cichlid_pfp.bin\nfirmware:       amdgpu/sienna_cichlid_me.bin\nfirmware:       amdgpu/sienna_cichlid_mec.bin\nfirmware:       amdgpu/sienna_cichlid_mec2.bin\nfirmware:       amdgpu/sienna_cichlid_rlc.bin\nfirmware:       amdgpu/navy_flounder_ce.bin\nfirmware:       amdgpu/navy_flounder_pfp.bin\nfirmware:       amdgpu/navy_flounder_me.bin\nfirmware:       amdgpu/navy_flounder_mec.bin\nfirmware:       amdgpu/navy_flounder_mec2.bin\nfirmware:       amdgpu/navy_flounder_rlc.bin\nfirmware:       amdgpu/vangogh_ce.bin\nfirmware:       amdgpu/vangogh_pfp.bin\nfirmware:       amdgpu/vangogh_me.bin\nfirmware:       amdgpu/vangogh_mec.bin\nfirmware:       amdgpu/vangogh_mec2.bin\nfirmware:       amdgpu/vangogh_rlc.bin\nfirmware:       amdgpu/dimgrey_cavefish_ce.bin\nfirmware:       amdgpu/dimgrey_cavefish_pfp.bin\nfirmware:       amdgpu/dimgrey_cavefish_me.bin\nfirmware:       amdgpu/dimgrey_cavefish_mec.bin\nfirmware:       amdgpu/dimgrey_cavefish_mec2.bin\nfirmware:       amdgpu/dimgrey_cavefish_rlc.bin\nfirmware:       amdgpu/beige_goby_ce.bin\nfirmware:       amdgpu/beige_goby_pfp.bin\nfirmware:       amdgpu/beige_goby_me.bin\nfirmware:       amdgpu/beige_goby_mec.bin\nfirmware:       amdgpu/beige_goby_mec2.bin\nfirmware:       amdgpu/beige_goby_rlc.bin\nfirmware:       amdgpu/yellow_carp_ce.bin\nfirmware:       amdgpu/yellow_carp_pfp.bin\nfirmware:       amdgpu/yellow_carp_me.bin\nfirmware:       amdgpu/yellow_carp_mec.bin\nfirmware:       amdgpu/yellow_carp_mec2.bin\nfirmware:       amdgpu/yellow_carp_rlc.bin\nfirmware:       amdgpu/cyan_skillfish2_ce.bin\nfirmware:       amdgpu/cyan_skillfish2_pfp.bin\nfirmware:       amdgpu/cyan_skillfish2_me.bin\nfirmware:       amdgpu/cyan_skillfish2_mec.bin\nfirmware:       amdgpu/cyan_skillfish2_mec2.bin\nfirmware:       amdgpu/cyan_skillfish2_rlc.bin\nfirmware:       amdgpu/gc_10_3_6_ce.bin\nfirmware:       amdgpu/gc_10_3_6_pfp.bin\nfirmware:       amdgpu/gc_10_3_6_me.bin\nfirmware:       amdgpu/gc_10_3_6_mec.bin\nfirmware:       amdgpu/gc_10_3_6_mec2.bin\nfirmware:       amdgpu/gc_10_3_6_rlc.bin\nfirmware:       amdgpu/gc_10_3_7_ce.bin\nfirmware:       amdgpu/gc_10_3_7_pfp.bin\nfirmware:       amdgpu/gc_10_3_7_me.bin\nfirmware:       amdgpu/gc_10_3_7_mec.bin\nfirmware:       amdgpu/gc_10_3_7_mec2.bin\nfirmware:       amdgpu/gc_10_3_7_rlc.bin\nfirmware:       amdgpu/gc_11_0_0_imu.bin\nfirmware:       amdgpu/gc_11_0_0_imu_kicker.bin\nfirmware:       amdgpu/gc_11_0_1_imu.bin\nfirmware:       amdgpu/gc_11_0_2_imu.bin\nfirmware:       amdgpu/gc_11_0_3_imu.bin\nfirmware:       amdgpu/gc_11_0_4_imu.bin\nfirmware:       amdgpu/gc_11_5_0_imu.bin\nfirmware:       amdgpu/gc_11_5_1_imu.bin\nfirmware:       amdgpu/gc_11_5_2_imu.bin\nfirmware:       amdgpu/gc_11_5_3_imu.bin\nfirmware:       amdgpu/gc_11_5_4_imu.bin\nfirmware:       amdgpu/gc_11_0_0_pfp.bin\nfirmware:       amdgpu/gc_11_0_0_me.bin\nfirmware:       amdgpu/gc_11_0_0_mec.bin\nfirmware:       amdgpu/gc_11_0_0_rlc.bin\nfirmware:       amdgpu/gc_11_0_0_rlc_kicker.bin\nfirmware:       amdgpu/gc_11_0_0_rlc_1.bin\nfirmware:       amdgpu/gc_11_0_0_toc.bin\nfirmware:       amdgpu/gc_11_0_1_pfp.bin\nfirmware:       amdgpu/gc_11_0_1_me.bin\nfirmware:       amdgpu/gc_11_0_1_mec.bin\nfirmware:       amdgpu/gc_11_0_1_rlc.bin\nfirmware:       amdgpu/gc_11_0_2_pfp.bin\nfirmware:       amdgpu/gc_11_0_2_me.bin\nfirmware:       amdgpu/gc_11_0_2_mec.bin\nfirmware:       amdgpu/gc_11_0_2_rlc.bin\nfirmware:       amdgpu/gc_11_0_3_pfp.bin\nfirmware:       amdgpu/gc_11_0_3_me.bin\nfirmware:       amdgpu/gc_11_0_3_mec.bin\nfirmware:       amdgpu/gc_11_0_3_rlc.bin\nfirmware:       amdgpu/gc_11_0_4_pfp.bin\nfirmware:       amdgpu/gc_11_0_4_me.bin\nfirmware:       amdgpu/gc_11_0_4_mec.bin\nfirmware:       amdgpu/gc_11_0_4_rlc.bin\nfirmware:       amdgpu/gc_11_5_0_pfp.bin\nfirmware:       amdgpu/gc_11_5_0_me.bin\nfirmware:       amdgpu/gc_11_5_0_mec.bin\nfirmware:       amdgpu/gc_11_5_0_rlc.bin\nfirmware:       amdgpu/gc_11_5_1_pfp.bin\nfirmware:       amdgpu/gc_11_5_1_me.bin\nfirmware:       amdgpu/gc_11_5_1_mec.bin\nfirmware:       amdgpu/gc_11_5_1_rlc.bin\nfirmware:       amdgpu/gc_11_5_2_pfp.bin\nfirmware:       amdgpu/gc_11_5_2_me.bin\nfirmware:       amdgpu/gc_11_5_2_mec.bin\nfirmware:       amdgpu/gc_11_5_2_rlc.bin\nfirmware:       amdgpu/gc_11_5_3_pfp.bin\nfirmware:       amdgpu/gc_11_5_3_me.bin\nfirmware:       amdgpu/gc_11_5_3_mec.bin\nfirmware:       amdgpu/gc_11_5_3_rlc.bin\nfirmware:       amdgpu/gc_11_5_4_pfp.bin\nfirmware:       amdgpu/gc_11_5_4_me.bin\nfirmware:       amdgpu/gc_11_5_4_mec.bin\nfirmware:       amdgpu/gc_11_5_4_rlc.bin\nfirmware:       amdgpu/gc_12_0_0_pfp.bin\nfirmware:       amdgpu/gc_12_0_0_me.bin\nfirmware:       amdgpu/gc_12_0_0_mec.bin\nfirmware:       amdgpu/gc_12_0_0_rlc.bin\nfirmware:       amdgpu/gc_12_0_0_toc.bin\nfirmware:       amdgpu/gc_12_0_1_pfp.bin\nfirmware:       amdgpu/gc_12_0_1_me.bin\nfirmware:       amdgpu/gc_12_0_1_mec.bin\nfirmware:       amdgpu/gc_12_0_1_rlc.bin\nfirmware:       amdgpu/gc_12_0_1_rlc_kicker.bin\nfirmware:       amdgpu/gc_12_0_1_toc.bin\nfirmware:       amdgpu/gc_12_1_0_mec.bin\nfirmware:       amdgpu/gc_12_1_0_rlc.bin\nfirmware:       amdgpu/gc_12_0_0_imu.bin\nfirmware:       amdgpu/gc_12_0_1_imu.bin\nfirmware:       amdgpu/gc_12_0_1_imu_kicker.bin\nfirmware:       amdgpu/gc_12_1_0_imu.bin\nfirmware:       amdgpu/topaz_sdma.bin\nfirmware:       amdgpu/topaz_sdma1.bin\nfirmware:       amdgpu/tonga_sdma.bin\nfirmware:       amdgpu/tonga_sdma1.bin\nfirmware:       amdgpu/carrizo_sdma.bin\nfirmware:       amdgpu/carrizo_sdma1.bin\nfirmware:       amdgpu/fiji_sdma.bin\nfirmware:       amdgpu/fiji_sdma1.bin\nfirmware:       amdgpu/stoney_sdma.bin\nfirmware:       amdgpu/polaris10_sdma.bin\nfirmware:       amdgpu/polaris10_sdma1.bin\nfirmware:       amdgpu/polaris11_sdma.bin\nfirmware:       amdgpu/polaris11_sdma1.bin\nfirmware:       amdgpu/polaris12_sdma.bin\nfirmware:       amdgpu/polaris12_sdma1.bin\nfirmware:       amdgpu/vegam_sdma.bin\nfirmware:       amdgpu/vegam_sdma1.bin\nfirmware:       amdgpu/vega10_sdma.bin\nfirmware:       amdgpu/vega10_sdma1.bin\nfirmware:       amdgpu/vega12_sdma.bin\nfirmware:       amdgpu/vega12_sdma1.bin\nfirmware:       amdgpu/vega20_sdma.bin\nfirmware:       amdgpu/vega20_sdma1.bin\nfirmware:       amdgpu/raven_sdma.bin\nfirmware:       amdgpu/picasso_sdma.bin\nfirmware:       amdgpu/raven2_sdma.bin\nfirmware:       amdgpu/arcturus_sdma.bin\nfirmware:       amdgpu/renoir_sdma.bin\nfirmware:       amdgpu/green_sardine_sdma.bin\nfirmware:       amdgpu/aldebaran_sdma.bin\nfirmware:       amdgpu/sdma_4_4_2.bin\nfirmware:       amdgpu/sdma_4_4_4.bin\nfirmware:       amdgpu/sdma_4_4_5.bin\nfirmware:       amdgpu/navi10_sdma.bin\nfirmware:       amdgpu/navi10_sdma1.bin\nfirmware:       amdgpu/navi14_sdma.bin\nfirmware:       amdgpu/navi14_sdma1.bin\nfirmware:       amdgpu/navi12_sdma.bin\nfirmware:       amdgpu/navi12_sdma1.bin\nfirmware:       amdgpu/cyan_skillfish2_sdma.bin\nfirmware:       amdgpu/cyan_skillfish2_sdma1.bin\nfirmware:       amdgpu/sienna_cichlid_sdma.bin\nfirmware:       amdgpu/navy_flounder_sdma.bin\nfirmware:       amdgpu/dimgrey_cavefish_sdma.bin\nfirmware:       amdgpu/beige_goby_sdma.bin\nfirmware:       amdgpu/vangogh_sdma.bin\nfirmware:       amdgpu/yellow_carp_sdma.bin\nfirmware:       amdgpu/sdma_5_2_6.bin\nfirmware:       amdgpu/sdma_5_2_7.bin\nfirmware:       amdgpu/sdma_6_0_0.bin\nfirmware:       amdgpu/sdma_6_0_1.bin\nfirmware:       amdgpu/sdma_6_0_2.bin\nfirmware:       amdgpu/sdma_6_0_3.bin\nfirmware:       amdgpu/sdma_6_1_0.bin\nfirmware:       amdgpu/sdma_6_1_1.bin\nfirmware:       amdgpu/sdma_6_1_2.bin\nfirmware:       amdgpu/sdma_6_1_3.bin\nfirmware:       amdgpu/sdma_6_1_4.bin\nfirmware:       amdgpu/sdma_7_0_0.bin\nfirmware:       amdgpu/sdma_7_0_1.bin\nfirmware:       amdgpu/sdma_7_1_0.bin\nfirmware:       amdgpu/gc_11_0_0_mes.bin\nfirmware:       amdgpu/gc_11_0_0_mes_2.bin\nfirmware:       amdgpu/gc_11_0_0_mes1.bin\nfirmware:       amdgpu/gc_11_0_1_mes.bin\nfirmware:       amdgpu/gc_11_0_1_mes_2.bin\nfirmware:       amdgpu/gc_11_0_1_mes1.bin\nfirmware:       amdgpu/gc_11_0_2_mes.bin\nfirmware:       amdgpu/gc_11_0_2_mes_2.bin\nfirmware:       amdgpu/gc_11_0_2_mes1.bin\nfirmware:       amdgpu/gc_11_0_3_mes.bin\nfirmware:       amdgpu/gc_11_0_3_mes_2.bin\nfirmware:       amdgpu/gc_11_0_3_mes1.bin\nfirmware:       amdgpu/gc_11_0_4_mes.bin\nfirmware:       amdgpu/gc_11_0_4_mes_2.bin\nfirmware:       amdgpu/gc_11_0_4_mes1.bin\nfirmware:       amdgpu/gc_11_5_0_mes_2.bin\nfirmware:       amdgpu/gc_11_5_0_mes1.bin\nfirmware:       amdgpu/gc_11_5_1_mes_2.bin\nfirmware:       amdgpu/gc_11_5_1_mes1.bin\nfirmware:       amdgpu/gc_11_5_2_mes_2.bin\nfirmware:       amdgpu/gc_11_5_2_mes1.bin\nfirmware:       amdgpu/gc_11_5_3_mes_2.bin\nfirmware:       amdgpu/gc_11_5_3_mes1.bin\nfirmware:       amdgpu/gc_11_5_4_mes_2.bin\nfirmware:       amdgpu/gc_11_5_4_mes1.bin\nfirmware:       amdgpu/gc_12_0_0_mes.bin\nfirmware:       amdgpu/gc_12_0_0_mes1.bin\nfirmware:       amdgpu/gc_12_0_0_uni_mes.bin\nfirmware:       amdgpu/gc_12_0_1_mes.bin\nfirmware:       amdgpu/gc_12_0_1_mes1.bin\nfirmware:       amdgpu/gc_12_0_1_uni_mes.bin\nfirmware:       amdgpu/gc_12_1_0_mes.bin\nfirmware:       amdgpu/gc_12_1_0_mes1.bin\nfirmware:       amdgpu/gc_12_1_0_uni_mes.bin\nfirmware:       amdgpu/tahiti_uvd.bin\nfirmware:       amdgpu/verde_uvd.bin\nfirmware:       amdgpu/pitcairn_uvd.bin\nfirmware:       amdgpu/oland_uvd.bin\nfirmware:       amdgpu/bonaire_uvd.bin\nfirmware:       amdgpu/kabini_uvd.bin\nfirmware:       amdgpu/kaveri_uvd.bin\nfirmware:       amdgpu/hawaii_uvd.bin\nfirmware:       amdgpu/mullins_uvd.bin\nfirmware:       amdgpu/tonga_uvd.bin\nfirmware:       amdgpu/carrizo_uvd.bin\nfirmware:       amdgpu/fiji_uvd.bin\nfirmware:       amdgpu/stoney_uvd.bin\nfirmware:       amdgpu/polaris10_uvd.bin\nfirmware:       amdgpu/polaris11_uvd.bin\nfirmware:       amdgpu/polaris12_uvd.bin\nfirmware:       amdgpu/vegam_uvd.bin\nfirmware:       amdgpu/vega10_uvd.bin\nfirmware:       amdgpu/vega12_uvd.bin\nfirmware:       amdgpu/vega20_uvd.bin\nfirmware:       amdgpu/vce_1_0_0.bin\nfirmware:       amdgpu/bonaire_vce.bin\nfirmware:       amdgpu/kabini_vce.bin\nfirmware:       amdgpu/kaveri_vce.bin\nfirmware:       amdgpu/hawaii_vce.bin\nfirmware:       amdgpu/mullins_vce.bin\nfirmware:       amdgpu/tonga_vce.bin\nfirmware:       amdgpu/carrizo_vce.bin\nfirmware:       amdgpu/fiji_vce.bin\nfirmware:       amdgpu/stoney_vce.bin\nfirmware:       amdgpu/polaris10_vce.bin\nfirmware:       amdgpu/polaris11_vce.bin\nfirmware:       amdgpu/polaris12_vce.bin\nfirmware:       amdgpu/vegam_vce.bin\nfirmware:       amdgpu/vega10_vce.bin\nfirmware:       amdgpu/vega12_vce.bin\nfirmware:       amdgpu/vega20_vce.bin\nfirmware:       amdgpu/raven_vcn.bin\nfirmware:       amdgpu/picasso_vcn.bin\nfirmware:       amdgpu/raven2_vcn.bin\nfirmware:       amdgpu/arcturus_vcn.bin\nfirmware:       amdgpu/renoir_vcn.bin\nfirmware:       amdgpu/green_sardine_vcn.bin\nfirmware:       amdgpu/aldebaran_vcn.bin\nfirmware:       amdgpu/navi10_vcn.bin\nfirmware:       amdgpu/navi14_vcn.bin\nfirmware:       amdgpu/navi12_vcn.bin\nfirmware:       amdgpu/sienna_cichlid_vcn.bin\nfirmware:       amdgpu/navy_flounder_vcn.bin\nfirmware:       amdgpu/vangogh_vcn.bin\nfirmware:       amdgpu/dimgrey_cavefish_vcn.bin\nfirmware:       amdgpu/beige_goby_vcn.bin\nfirmware:       amdgpu/yellow_carp_vcn.bin\nfirmware:       amdgpu/vcn_3_1_2.bin\nfirmware:       amdgpu/vcn_4_0_0.bin\nfirmware:       amdgpu/vcn_4_0_2.bin\nfirmware:       amdgpu/vcn_4_0_3.bin\nfirmware:       amdgpu/vcn_4_0_4.bin\nfirmware:       amdgpu/vcn_4_0_5.bin\nfirmware:       amdgpu/vcn_4_0_6.bin\nfirmware:       amdgpu/vcn_4_0_6_1.bin\nfirmware:       amdgpu/vcn_5_0_0.bin\nfirmware:       amdgpu/vcn_5_0_1.bin\nfirmware:       amdgpu/vcn_5_3_0.bin\nfirmware:       amdgpu/vpe_6_1_0.bin\nfirmware:       amdgpu/vpe_6_1_1.bin\nfirmware:       amdgpu/vpe_6_1_3.bin\nfirmware:       amdgpu/umsch_mm_4_0_0.bin\nfirmware:       amdgpu/arcturus_smc.bin\nfirmware:       amdgpu/navi10_smc.bin\nfirmware:       amdgpu/navi14_smc.bin\nfirmware:       amdgpu/navi12_smc.bin\nfirmware:       amdgpu/sienna_cichlid_smc.bin\nfirmware:       amdgpu/navy_flounder_smc.bin\nfirmware:       amdgpu/dimgrey_cavefish_smc.bin\nfirmware:       amdgpu/beige_goby_smc.bin\nfirmware:       amdgpu/aldebaran_smc.bin\nfirmware:       amdgpu/smu_13_0_0.bin\nfirmware:       amdgpu/smu_13_0_0_kicker.bin\nfirmware:       amdgpu/smu_13_0_7.bin\nfirmware:       amdgpu/smu_13_0_10.bin\nfirmware:       amdgpu/smu_13_0_6.bin\nfirmware:       amdgpu/smu_13_0_14.bin\nfirmware:       amdgpu/smu_14_0_2.bin\nfirmware:       amdgpu/smu_14_0_3.bin\nfirmware:       amdgpu/smu_14_0_3_kicker.bin\nfirmware:       amdgpu/bonaire_smc.bin\nfirmware:       amdgpu/bonaire_k_smc.bin\nfirmware:       amdgpu/hawaii_smc.bin\nfirmware:       amdgpu/hawaii_k_smc.bin\nfirmware:       amdgpu/topaz_smc.bin\nfirmware:       amdgpu/topaz_k_smc.bin\nfirmware:       amdgpu/tonga_smc.bin\nfirmware:       amdgpu/tonga_k_smc.bin\nfirmware:       amdgpu/fiji_smc.bin\nfirmware:       amdgpu/polaris10_smc.bin\nfirmware:       amdgpu/polaris10_smc_sk.bin\nfirmware:       amdgpu/polaris10_k_smc.bin\nfirmware:       amdgpu/polaris10_k2_smc.bin\nfirmware:       amdgpu/polaris11_smc.bin\nfirmware:       amdgpu/polaris11_smc_sk.bin\nfirmware:       amdgpu/polaris11_k_smc.bin\nfirmware:       amdgpu/polaris11_k2_smc.bin\nfirmware:       amdgpu/polaris12_smc.bin\nfirmware:       amdgpu/polaris12_k_smc.bin\nfirmware:       amdgpu/vegam_smc.bin\nfirmware:       amdgpu/vega10_smc.bin\nfirmware:       amdgpu/vega10_acg_smc.bin\nfirmware:       amdgpu/vega12_smc.bin\nfirmware:       amdgpu/vega20_smc.bin\nfirmware:       amdgpu/tahiti_smc.bin\nfirmware:       amdgpu/pitcairn_smc.bin\nfirmware:       amdgpu/pitcairn_k_smc.bin\nfirmware:       amdgpu/verde_smc.bin\nfirmware:       amdgpu/verde_k_smc.bin\nfirmware:       amdgpu/oland_smc.bin\nfirmware:       amdgpu/oland_k_smc.bin\nfirmware:       amdgpu/hainan_smc.bin\nfirmware:       amdgpu/hainan_k_smc.bin\nfirmware:       amdgpu/banks_k_2_smc.bin\nfirmware:       amdgpu/renoir_dmcub.bin\nfirmware:       amdgpu/sienna_cichlid_dmcub.bin\nfirmware:       amdgpu/navy_flounder_dmcub.bin\nfirmware:       amdgpu/green_sardine_dmcub.bin\nfirmware:       amdgpu/vangogh_dmcub.bin\nfirmware:       amdgpu/dimgrey_cavefish_dmcub.bin\nfirmware:       amdgpu/beige_goby_dmcub.bin\nfirmware:       amdgpu/yellow_carp_dmcub.bin\nfirmware:       amdgpu/dcn_3_1_4_dmcub.bin\nfirmware:       amdgpu/dcn_3_1_5_dmcub.bin\nfirmware:       amdgpu/dcn_3_1_6_dmcub.bin\nfirmware:       amdgpu/dcn_3_2_0_dmcub.bin\nfirmware:       amdgpu/dcn_3_2_1_dmcub.bin\nfirmware:       amdgpu/raven_dmcu.bin\nfirmware:       amdgpu/navi12_dmcu.bin\nfirmware:       amdgpu/dcn_3_5_dmcub.bin\nfirmware:       amdgpu/dcn_3_5_1_dmcub.bin\nfirmware:       amdgpu/dcn_3_6_dmcub.bin\nfirmware:       amdgpu/dcn_4_0_1_dmcub.bin\nfirmware:       amdgpu/isp_4_1_1.bin\nname:           amdgpu\nintree:         Y\ndepends:        drm_display_helper,drm_ttm_helper,amdxcp,ttm,gpu-sched,drm_exec,i2c-algo-bit,video,drm_suballoc_helper,drm_buddy,cec,drm_panel_backlight_quirks\nalias:          pci:v00001002d00006780sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006784sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006788sv*sd*bc*sc*i*\nalias:          pci:v00001002d0000678Asv*sd*bc*sc*i*\nalias:          pci:v00001002d00006790sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006791sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006792sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006798sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006799sv*sd*bc*sc*i*\nalias:          pci:v00001002d0000679Asv*sd*bc*sc*i*\nalias:          pci:v00001002d0000679Bsv*sd*bc*sc*i*\nalias:          pci:v00001002d0000679Esv*sd*bc*sc*i*\nalias:          pci:v00001002d0000679Fsv*sd*bc*sc*i*\nalias:          pci:v00001002d00006800sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006801sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006802sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006806sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006808sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006809sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006810sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006811sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006816sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006817sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006818sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006819sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006600sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006601sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006602sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006603sv*sd*bc*sc*i*\nalias:          pci:v00001002d00006604sv*sd*b",
+      "stdout_truncated": true,
+      "timed_out": false
+    },
+    "pacman_versions": {
+      "args": [
+        "pacman",
+        "-Q",
+        "linux-cachyos",
+        "linux-firmware",
+        "amd-ucode",
+        "mesa",
+        "vulkan-radeon",
+        "vulkan-tools",
+        "shaderc",
+        "glslang",
+        "llvm",
+        "clang",
+        "rocm-core",
+        "rocm-hip-runtime",
+        "hip-runtime-amd",
+        "rocm-smi-lib"
+      ],
+      "available": true,
+      "path": "/usr/bin/pacman",
+      "returncode": 1,
+      "stderr": "error: package 'rocm-core' was not found\nerror: package 'rocm-hip-runtime' was not found\nerror: package 'hip-runtime-amd' was not found\nerror: package 'rocm-smi-lib' was not found\n",
+      "stderr_truncated": false,
+      "stdout": "linux-cachyos 7.0.12-1\nlinux-firmware 1:20260519-1\namd-ucode 1:20260519-1\nmesa 2:26.1.2-1\nvulkan-radeon 2:26.1.2-1\nvulkan-tools 1.4.350.1-1.1\nshaderc 2026.2-1.1\nglslang 1:1.4.350.0-1.1\nllvm 22.1.6-2\nclang 22.1.6-2\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "proc_version": {
+      "args": [
+        "cat",
+        "/proc/version"
+      ],
+      "available": true,
+      "path": "/usr/bin/cat",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "Linux version 7.0.12-1-cachyos (linux-cachyos@cachyos) (clang version 22.1.6, LLD 22.1.6) #1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "python_rocm_sdk_packages": {
+      "args": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3",
+        "-c",
+        "import importlib.metadata as m\nfor n in ['rocm','rocm-sdk-core','rocm-sdk-devel','rocm-sdk-libraries-gfx1151','_rocm_sdk_devel']:\n    try:\n        d=m.distribution(n); print(n, d.version, d.locate_file(''))\n    except Exception as e:\n        print(n, 'missing', type(e).__name__)\n"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "rocm 7.13.0a20260411 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\nrocm-sdk-core 7.13.0a20260411 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\nrocm-sdk-devel 7.13.0a20260411 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\nrocm-sdk-libraries-gfx1151 7.13.0a20260411 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages\n_rocm_sdk_devel missing PackageNotFoundError\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "rocm_smi": {
+      "args": [
+        "rocm-smi",
+        "--showproductname",
+        "--showdriverversion"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/rocm-smi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n============================== Version of System Component ===============================\nDriver version: 7.0.12-1-cachyos\n==========================================================================================\n====================================== Product Info ======================================\nGPU[0]\t\t: Card Series: \t\tRadeon 8060S Graphics\nGPU[0]\t\t: Card Model: \t\t0x1586\nGPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]\nGPU[0]\t\t: Card SKU: \t\tSTRXLGEN\nGPU[0]\t\t: Subsystem ID: \t0x000a\nGPU[0]\t\t: Device Rev: \t\t0xc1\nGPU[0]\t\t: Node ID: \t\t1\nGPU[0]\t\t: GUID: \t\t54630\nGPU[0]\t\t: GFX Version: \t\tgfx1151\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "rocm_smi_metrics": {
+      "args": [
+        "rocm-smi",
+        "--showproductname",
+        "--showdriverversion",
+        "--showvbios",
+        "--showid",
+        "--showtemp",
+        "--showclocks",
+        "--showpower",
+        "--showuse",
+        "--showmeminfo",
+        "vram",
+        "--showmeminfo",
+        "vis_vram"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/rocm-smi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n============================== Version of System Component ===============================\nDriver version: 7.0.12-1-cachyos\n==========================================================================================\n=========================================== ID ===========================================\nGPU[0]\t\t: Device Name: \t\tRadeon 8060S Graphics\nGPU[0]\t\t: Device ID: \t\t0x1586\nGPU[0]\t\t: Device Rev: \t\t0xc1\nGPU[0]\t\t: Subsystem ID: \t0x000a\nGPU[0]\t\t: GUID: \t\t54630\n==========================================================================================\n========================================= VBIOS ==========================================\nGPU[0]\t\t: VBIOS version: 113-STRXLGEN-001\n==========================================================================================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 49.0\n==========================================================================================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: mclk clock level: 2: (1000Mhz)\nGPU[0]\t\t: sclk clock level: 1: (622Mhz)\n==========================================================================================\n=================================== Power Consumption ====================================\nGPU[0]\t\t: Current Socket Graphics Package Power (W): 24.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VIS_VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VIS_VRAM Total Used Memory (B): 154951680\n==========================================================================================\n====================================== Product Info ======================================\nGPU[0]\t\t: Card Series: \t\tRadeon 8060S Graphics\nGPU[0]\t\t: Card Model: \t\t0x1586\nGPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]\nGPU[0]\t\t: Card SKU: \t\tSTRXLGEN\nGPU[0]\t\t: Subsystem ID: \t0x000a\nGPU[0]\t\t: Device Rev: \t\t0xc1\nGPU[0]\t\t: Node ID: \t\t1\nGPU[0]\t\t: GUID: \t\t54630\nGPU[0]\t\t: GFX Version: \t\tgfx1151\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "rocminfo": {
+      "args": [
+        "rocminfo"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/rocminfo",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "\u001b[37mROCk module is loaded\u001b[0m\n=====================    \nHSA System Attributes    \n=====================    \nRuntime Version:         1.21\nRuntime Ext Version:     1.19\nSystem Timestamp Freq.:  1000.000000MHz\nSig. Max Wait Duration:  18446744073709551615 (0xFFFFFFFFFFFFFFFF) (timestamp count)\nMachine Model:           LARGE                              \nSystem Endianness:       LITTLE                             \nMwaitx:                  DISABLED\nXNACK enabled:           NO\nDMAbuf Support:          YES\nVMM Support:             YES\n\n==========               \nHSA Agents               \n==========               \n*******                  \nAgent 1                  \n*******                  \n  Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Uuid:                    CPU-XX                             \n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Feature:                 None specified                     \n  Profile:                 FULL_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        0(0x0)                             \n  Queue Min Size:          0(0x0)                             \n  Queue Max Size:          0(0x0)                             \n  Queue Type:              MULTI                              \n  Node:                    0                                  \n  Device Type:             CPU                                \n  Cache Info:              \n    L1:                      49152(0xc000) KB                   \n  Chip ID:                 0(0x0)                             \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          64(0x40)                           \n  Max Clock Freq. (MHz):   5187                               \n  BDFID:                   0                                  \n  Internal Node ID:        0                                  \n  Compute Unit:            32                                 \n  SIMDs per CU:            0                                  \n  Shader Engines:          0                                  \n  Shader Arrs. per Eng.:   0                                  \n  WatchPts on Addr. Ranges:1                                  \n  Memory Properties:       \n  Features:                None\n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: FINE GRAINED        \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: EXTENDED FINE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 3                   \n      Segment:                 GLOBAL; FLAGS: KERNARG, FINE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 4                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n  ISA Info:                \n*******                  \nAgent 2                  \n*******                  \n  Name:                    gfx1151                            \n  Uuid:                    GPU-XX                             \n  Marketing Name:          Radeon 8060S Graphics              \n  Vendor Name:             AMD                                \n  Feature:                 KERNEL_DISPATCH                    \n  Profile:                 BASE_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        128(0x80)                          \n  Queue Min Size:          64(0x40)                           \n  Queue Max Size:          131072(0x20000)                    \n  Queue Type:              MULTI                              \n  Node:                    1                                  \n  Device Type:             GPU                                \n  Cache Info:              \n    L1:                      32(0x20) KB                        \n    L2:                      2048(0x800) KB                     \n    L3:                      32768(0x8000) KB                   \n  Chip ID:                 5510(0x1586)                       \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          128(0x80)                          \n  Max Clock Freq. (MHz):   2900                               \n  BDFID:                   49408                              \n  Internal Node ID:        1                                  \n  Compute Unit:            40                                 \n  SIMDs per CU:            2                                  \n  Shader Engines:          2                                  \n  Shader Arrs. per Eng.:   2                                  \n  WatchPts on Addr. Ranges:4                                  \n  Coherent Host Access:    FALSE                              \n  Memory Properties:       APU\n  Features:                KERNEL_DISPATCH \n  Fast F16 Operation:      TRUE                               \n  Wavefront Size:          32(0x20)                           \n  Workgroup Max Size:      1024(0x400)                        \n  Workgroup Max Size per Dimension:\n    x                        1024(0x400)                        \n    y                        1024(0x400)                        \n    z                        1024(0x400)                        \n  Max Waves Per CU:        32(0x20)                           \n  Max Work-item Per CU:    1024(0x400)                        \n  Grid Max Size:           4294967295(0xffffffff)             \n  Grid Max Size per Dimension:\n    x                        2147483647(0x7fffffff)             \n    y                        65535(0xffff)                      \n    z                        65535(0xffff)                      \n  Max fbarriers/Workgrp:   32                                 \n  Packet Processor uCode:: 35                                 \n  SDMA engine uCode::      18                                 \n  IOMMU Support::          None                               \n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    125829120(0x7800000) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:2048KB                             \n      Alloc Alignment:         4KB                                \n      Accessible by all:       FALSE                              \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: EXTENDED FINE GRAINED\n      Size:                    125829120(0x7800000) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:2048KB                             \n      Alloc Alignment:         4KB                                \n      Accessible by all:       FALSE                              \n    Pool 3                   \n      Segment:                 GROUP                              \n      Size:                    64(0x40) KB                        \n      Allocatable:             FALSE                              \n      Alloc Granule:           0KB                                \n      Alloc Recommended Granule:0KB                                \n      Alloc Alignment:         0KB                                \n      Accessible by all:       FALSE                              \n  ISA Info:                \n    ISA 1                    \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Machine Models:          HSA_MACHINE_MODEL_LARGE            \n      Profiles:                HSA_PROFILE_BASE                   \n      Default Rounding Mode:   NEAR                               \n      Default Rounding Mode:   NEAR                               \n      Fast f16:                TRUE                               \n      Workgroup Max Size:      1024(0x400)                        \n      Workgroup Max Size per Dimension:\n        x                        1024(0x400)                        \n        y                        1024(0x400)                        \n        z                        1024(0x400)                        \n      Grid Max Size:           4294967295(0xffffffff)             \n      Grid Max Size per Dimension:\n        x                        2147483647(0x7fffffff)             \n        y                        65535(0xffff)                      \n        z                        65535(0xffff)                      \n      FBarrier Max Size:       32                                 \n    ISA 2                    \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic   \n      Machine Models:          HSA_MACHINE_MODEL_LARGE            \n      Profiles:                HSA_PROFILE_BASE                   \n      Default Rounding Mode:   NEAR                               \n      Default Rounding Mode:   NEAR                               \n      Fast f16:                TRUE                               \n      Workgroup Max Size:      1024(0x400)                        \n      Workgroup Max Size per Dimension:\n        x                        1024(0x400)                        \n        y                        1024(0x400)                        \n        z                        1024(0x400)                        \n      Grid Max Size:           4294967295(0xffffffff)             \n      Grid Max Size per Dimension:\n        x                        2147483647(0x7fffffff)             \n        y                        65535(0xffff)                      \n        z                        65535(0xffff)                      \n      FBarrier Max Size:       32                                 \n*******                  \nAgent 3                  \n*******                  \n  Name:                    aie2p                              \n  Uuid:                    AIE-XX                             \n  Marketing Name:          RyzenAI-npu5                       \n  Vendor Name:             AMD                                \n  Feature:                 AGENT_DISPATCH                     \n  Profile:                 BASE_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        1(0x1)                             \n  Queue Min Size:          64(0x40)                           \n  Queue Max Size:          64(0x40)                           \n  Queue Type:              SINGLE                             \n  Node:                    0                                  \n  Device Type:             DSP                                \n  Cache Info:              \n    L2:                      2048(0x800) KB                     \n    L3:                      32768(0x8000) KB                   \n  Chip ID:                 0(0x0)                             \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          0(0x0)                             \n  Max Clock Freq. (MHz):   0                                  \n  BDFID:                   0                                  \n  Internal Node ID:        0                                  \n  Compute Unit:            0                                  \n  SIMDs per CU:            0                                  \n  Shader Engines:          0                                  \n  Shader Arrs. per Eng.:   0                                  \n  WatchPts on Addr. Ranges:0                                  \n  Memory Properties:       \n  Features:                AGENT_DISPATCH\n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: KERNARG, COARSE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    65536(0x10000) KB                  \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:0KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 3                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n  ISA Info:                \n*** Done ***             \n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "ryzenadj_info": {
+      "args": [
+        "ryzenadj",
+        "-i"
+      ],
+      "available": true,
+      "path": "/usr/bin/ryzenadj",
+      "returncode": 255,
+      "stderr": "no compatible ryzen_smu kernel module found, fallback to /dev/mem\npcilib: Cannot open /sys/bus/pci/devices/0000:00:00.0/config\npcilib: Cannot open /sys/bus/pci/devices/0000:00:00.0/config\npcilib: Cannot open /sys/bus/pci/devices/0000:00:00.0/config\npcilib: Cannot open /sys/bus/pci/devices/0000:00:00.0/config\npcilib: Cannot open /sys/bus/pci/devices/0000:00:00.0/config\n",
+      "stderr_truncated": false,
+      "stdout": "PCI Bus is not writeable, check secure boot\nUnable to get MP1 SMU Obj\nUnable to init ryzenadj\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "ryzenadj_sudo_info": {
+      "args": [
+        "sudo",
+        "-n",
+        "ryzenadj",
+        "-i"
+      ],
+      "available": true,
+      "path": "/usr/bin/sudo",
+      "returncode": 0,
+      "stderr": "no compatible ryzen_smu kernel module found, fallback to /dev/mem\n",
+      "stderr_truncated": false,
+      "stdout": "CPU Family: Strix Halo\nSMU BIOS Interface Version: 25\nVersion: v0.19.0 \nPM Table Version: 64020c\n|        Name         |   Value   |     Parameter      |\n|---------------------|-----------|--------------------|\n| STAPM LIMIT         |   100.000 | stapm-limit        |\n| STAPM VALUE         |    12.841 |                    |\n| PPT LIMIT FAST      |   115.000 | fast-limit         |\n| PPT VALUE FAST      |    36.604 |                    |\n| PPT LIMIT SLOW      |   100.000 | slow-limit         |\n| PPT VALUE SLOW      |    17.958 |                    |\n| StapmTimeConst      |       nan | stapm-time         |\n| SlowPPTTimeConst    |       nan | slow-time          |\n| PPT LIMIT APU       |    70.000 | apu-slow-limit     |\n| PPT VALUE APU       |     0.000 |                    |\n| TDC LIMIT VDD       |       nan | vrm-current        |\n| TDC VALUE VDD       |       nan |                    |\n| TDC LIMIT SOC       |       nan | vrmsoc-current     |\n| TDC VALUE SOC       |       nan |                    |\n| EDC LIMIT VDD       |       nan | vrmmax-current     |\n| EDC VALUE VDD       |       nan |                    |\n| EDC LIMIT SOC       |       nan | vrmsocmax-current  |\n| EDC VALUE SOC       |       nan |                    |\n| THM LIMIT CORE      |   100.000 | tctl-temp          |\n| THM VALUE CORE      |    48.627 |                    |\n| STT LIMIT APU       |   100.000 | apu-skin-temp      |\n| STT VALUE APU       |    48.627 |                    |\n| STT LIMIT dGPU      |   100.000 | dgpu-skin-temp     |\n| STT VALUE dGPU      |    50.830 |                    |\n| CCLK Boost SETPOINT |       nan | power-saving /     |\n| CCLK BUSY VALUE     |       nan | max-performance    |\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "uname": {
+      "args": [
+        "uname",
+        "-a"
+      ],
+      "available": true,
+      "path": "/usr/bin/uname",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "Linux gfx1151 7.0.12-1-cachyos #1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000 x86_64 GNU/Linux\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "vulkaninfo_summary": {
+      "args": [
+        "vulkaninfo",
+        "--summary"
+      ],
+      "available": true,
+      "path": "/usr/bin/vulkaninfo",
+      "returncode": 0,
+      "stderr": "'DISPLAY' environment variable not set... skipping surface info\n",
+      "stderr_truncated": false,
+      "stdout": "==========\nVULKANINFO\n==========\n\nVulkan Instance Version: 1.4.350\n\n\nInstance Extensions: count = 26\n-------------------------------\nVK_EXT_acquire_drm_display             : extension revision 1\nVK_EXT_acquire_xlib_display            : extension revision 1\nVK_EXT_debug_report                    : extension revision 10\nVK_EXT_debug_utils                     : extension revision 2\nVK_EXT_direct_mode_display             : extension revision 1\nVK_EXT_display_surface_counter         : extension revision 1\nVK_EXT_headless_surface                : extension revision 1\nVK_EXT_layer_settings                  : extension revision 2\nVK_EXT_surface_maintenance1            : extension revision 1\nVK_EXT_swapchain_colorspace            : extension revision 5\nVK_KHR_device_group_creation           : extension revision 1\nVK_KHR_display                         : extension revision 23\nVK_KHR_external_fence_capabilities     : extension revision 1\nVK_KHR_external_memory_capabilities    : extension revision 1\nVK_KHR_external_semaphore_capabilities : extension revision 1\nVK_KHR_get_display_properties2         : extension revision 1\nVK_KHR_get_physical_device_properties2 : extension revision 2\nVK_KHR_get_surface_capabilities2       : extension revision 1\nVK_KHR_portability_enumeration         : extension revision 1\nVK_KHR_surface                         : extension revision 25\nVK_KHR_surface_maintenance1            : extension revision 1\nVK_KHR_surface_protected_capabilities  : extension revision 1\nVK_KHR_wayland_surface                 : extension revision 6\nVK_KHR_xcb_surface                     : extension revision 6\nVK_KHR_xlib_surface                    : extension revision 6\nVK_LUNARG_direct_driver_loading        : extension revision 1\n\nInstance Layers: count = 2\n--------------------------\nVK_LAYER_MESA_anti_lag      Open-source implementation of the VK_AMD_anti_lag extension. 1.4.303  version 1\nVK_LAYER_MESA_device_select Linux device selection layer                                 1.4.303  version 1\n\nDevices:\n========\nGPU0:\n\tapiVersion         = 1.4.348\n\tdriverVersion      = 26.1.2\n\tvendorID           = 0x1002\n\tdeviceID           = 0x1586\n\tdeviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU\n\tdeviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)\n\tdriverID           = DRIVER_ID_MESA_RADV\n\tdriverName         = radv\n\tdriverInfo         = Mesa 26.1.2-arch2.1\n\tconformanceVersion = 1.4.0.0\n\tdeviceUUID         = 00000000-c100-0000-0000-000000000000\n\tdriverUUID         = 414d442d-4d45-5341-2d44-525600000000\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    }
+  },
+  "devices": {
+    "amd_smi_metric_lines": [
+      "SOCKET_POWER: N/A",
+      "CLOCK: N/A",
+      "EDGE: 49 \u00b0C",
+      "PERF_LEVEL: AMDSMI_DEV_PERF_LEVEL_AUTO",
+      "TOTAL_VRAM: 512 MB",
+      "USED_VRAM: 147 MB",
+      "TOTAL_GTT: 122880 MB"
+    ],
+    "amd_smi_static_lines": [
+      "MARKET_NAME: Radeon 8060S Graphics",
+      "DEVICE_ID: 0x1586",
+      "NUM_COMPUTE_UNITS: 40",
+      "TARGET_GRAPHICS_VERSION: gfx1151"
+    ],
+    "inxi_cpu_gpu_lines": [
+      "Kernel: 7.0.12-1-cachyos arch: x86_64 bits: 64 compiler: clang v: 22.1.6",
+      "Console: N/A Distro: CachyOS base: Arch Linux",
+      "Machine:",
+      "Firmware: UEFI vendor: INSYDE v: 03.04 date: 11/19/2025",
+      "CPU:",
+      "Info: 16-core model: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S bits: 64 type: MT MCP arch: Zen 5",
+      "Speed (MHz): avg: 2020 min/max: 625/5188 boost: enabled cores: 1: 2020 2: 2020 3: 2020 4: 2020",
+      "Graphics:",
+      "Device-1: Advanced Micro Devices [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S 8060S",
+      "Graphics] vendor: Framework driver: amdgpu v: kernel pcie: speed: 16 GT/s lanes: 16 ports:",
+      "Display: unspecified server: N/A driver: N/A tty: 80x40",
+      "API: OpenGL v: 4.6 vendor: mesa v: 26.1.2-arch2.1 note: console (EGL sourced) renderer: AMD",
+      "Radeon 8060S Graphics (radeonsi strix_halo ACO DRM 3.64 7.0.12-1-cachyos), llvmpipe (LLVM",
+      "API: Vulkan v: 1.4.350 surfaces: N/A device: 0 type: integrated-gpu driver: mesa radv",
+      "Info: Tools: api: eglinfo, glxinfo, vulkaninfo gpu: amd-smi,amdgpu_top x11: xprop"
+    ],
+    "lspci_display_lines": [
+      "00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Root Complex [1022:1507] (rev 02)",
+      "00:00.2 IOMMU [0806]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo IOMMU [1022:1508] (rev 02)",
+      "00:01.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:01.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)",
+      "00:01.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)",
+      "00:02.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:02.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)",
+      "00:02.5 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)",
+      "00:03.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:08.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:08.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:08.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:08.3 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:14.0 SMBus [0c05]: Advanced Micro Devices, Inc. [AMD] FCH SMBus Controller [1022:790b] (rev 71)",
+      "00:14.3 ISA bridge [0601]: Advanced Micro Devices, Inc. [AMD] FCH LPC Bridge [1022:790e] (rev 51)",
+      "00:18.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 0 [1022:12b8]",
+      "00:18.1 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 1 [1022:12b9]",
+      "00:18.2 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 2 [1022:12ba]",
+      "00:18.3 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 3 [1022:12bb]",
+      "00:18.4 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 4 [1022:12bc]",
+      "00:18.5 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 5 [1022:12bd]",
+      "00:18.6 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 6 [1022:12be]",
+      "00:18.7 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 7 [1022:12bf]",
+      "c1:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics] [1002:1586] (rev c1)",
+      "c1:00.1 Audio device [0403]: Advanced Micro Devices, Inc. [AMD/ATI] Radeon High Definition Audio Controller [1002:1640]",
+      "c1:00.2 Encryption controller [1080]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo CCP/ASP [1022:17e0]",
+      "c1:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1587]",
+      "c1:00.6 Audio device [0403]: Advanced Micro Devices, Inc. [AMD] Ryzen HD Audio Controller [1022:15e3]",
+      "c2:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe Dummy Function [1022:150d]",
+      "c2:00.1 Signal processing controller [1180]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo Neural Processing Unit [1022:17f0] (rev 11)",
+      "c3:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1588]",
+      "c3:00.3 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1589]",
+      "c3:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:158b]",
+      "c3:00.5 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158d]",
+      "c3:00.6 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158e]"
+    ],
+    "rocm_smi_lines": [
+      "Driver version: 7.0.12-1-cachyos",
+      "GPU[0]\t\t: Card Series: \t\tRadeon 8060S Graphics",
+      "GPU[0]\t\t: Card Model: \t\t0x1586",
+      "GPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]",
+      "GPU[0]\t\t: Card SKU: \t\tSTRXLGEN",
+      "GPU[0]\t\t: Subsystem ID: \t0x000a",
+      "GPU[0]\t\t: Device Rev: \t\t0xc1",
+      "GPU[0]\t\t: Node ID: \t\t1",
+      "GPU[0]\t\t: GUID: \t\t54630",
+      "GPU[0]\t\t: GFX Version: \t\tgfx1151"
+    ],
+    "rocm_smi_metric_lines": [
+      "Driver version: 7.0.12-1-cachyos",
+      "GPU[0]\t\t: Device Name: \t\tRadeon 8060S Graphics",
+      "GPU[0]\t\t: Device ID: \t\t0x1586",
+      "GPU[0]\t\t: Device Rev: \t\t0xc1",
+      "========================================= VBIOS ==========================================",
+      "GPU[0]\t\t: VBIOS version: 113-STRXLGEN-001",
+      "====================================== Temperature =======================================",
+      "GPU[0]\t\t: Temperature (Sensor edge) (C): 49.0",
+      "=============================== Current clock frequencies ================================",
+      "GPU[0]\t\t: mclk clock level: 2: (1000Mhz)",
+      "GPU[0]\t\t: sclk clock level: 1: (622Mhz)",
+      "=================================== Power Consumption ====================================",
+      "GPU[0]\t\t: Current Socket Graphics Package Power (W): 24.0",
+      "GPU[0]\t\t: GPU use (%): 0",
+      "================================== Memory Usage (Bytes) ==================================",
+      "GPU[0]\t\t: VIS_VRAM Total Memory (B): 536870912",
+      "GPU[0]\t\t: VIS_VRAM Total Used Memory (B): 154951680",
+      "GPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]",
+      "GPU[0]\t\t: Device Rev: \t\t0xc1",
+      "GPU[0]\t\t: GFX Version: \t\tgfx1151"
+    ],
+    "rocminfo_name_gfx_lines": [
+      "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "Vendor Name:             CPU",
+      "Name:                    gfx1151",
+      "Marketing Name:          Radeon 8060S Graphics",
+      "Vendor Name:             AMD",
+      "Name:                    amdgcn-amd-amdhsa--gfx1151",
+      "Name:                    amdgcn-amd-amdhsa--gfx11-generic",
+      "Name:                    aie2p",
+      "Marketing Name:          RyzenAI-npu5",
+      "Vendor Name:             AMD"
+    ],
+    "ryzenadj_lines": [
+      "CPU Family: Strix Halo",
+      "SMU BIOS Interface Version: 25",
+      "Version: v0.19.0",
+      "PM Table Version: 64020c",
+      "| STAPM LIMIT         |   100.000 | stapm-limit        |",
+      "| STAPM VALUE         |    12.841 |                    |",
+      "| PPT LIMIT FAST      |   115.000 | fast-limit         |",
+      "| PPT VALUE FAST      |    36.604 |                    |",
+      "| PPT LIMIT SLOW      |   100.000 | slow-limit         |",
+      "| PPT VALUE SLOW      |    17.958 |                    |",
+      "| SlowPPTTimeConst    |       nan | slow-time          |",
+      "| PPT LIMIT APU       |    70.000 | apu-slow-limit     |",
+      "| PPT VALUE APU       |     0.000 |                    |",
+      "| THM LIMIT CORE      |   100.000 | tctl-temp          |",
+      "| THM VALUE CORE      |    48.627 |                    |",
+      "| STT LIMIT APU       |   100.000 | apu-skin-temp      |",
+      "| STT VALUE APU       |    48.627 |                    |",
+      "| STT LIMIT dGPU      |   100.000 | dgpu-skin-temp     |",
+      "| STT VALUE dGPU      |    50.830 |                    |",
+      "| CCLK Boost SETPOINT |       nan | power-saving /     |",
+      "| CCLK BUSY VALUE     |       nan | max-performance    |"
+    ],
+    "vulkan_summary_lines": [
+      "VK_LUNARG_direct_driver_loading        : extension revision 1",
+      "GPU0:",
+      "apiVersion         = 1.4.348",
+      "driverVersion      = 26.1.2",
+      "deviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+      "deviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "driverID           = DRIVER_ID_MESA_RADV",
+      "driverName         = radv",
+      "driverInfo         = Mesa 26.1.2-arch2.1",
+      "driverUUID         = 414d442d-4d45-5341-2d44-525600000000"
+    ]
+  },
+  "host": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": null,
+      "PATH": "/home/lhl/.codex/packages/standalone/releases/0.142.5-x86_64-unknown-linux-musl/codex-path:/home/lhl/.codex/tmp/arg0/codex-arg09Lc1C0:/home/lhl/miniforge3/envs/therock/bin:/run/user/1000/fnm_multishells/760215_1783398566796/bin:/home/lhl/miniforge3/condabin:/home/lhl/.local/bin:/home/lhl/.mimocode/bin:/home/lhl/.opencode/bin:/run/user/1000/fnm_multishells/760201_1783398566326/bin:/run/user/1000/fnm_multishells/1735423_1781623428314/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+      "RADV_PERFTEST": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "VK_ICD_FILENAMES": null
+    },
+    "executable": "/home/lhl/miniforge3/envs/therock/bin/python3",
+    "platform": "Linux-7.0.12-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "uname": {
+      "machine": "x86_64",
+      "node": "gfx1151",
+      "processor": "",
+      "release": "7.0.12-1-cachyos",
+      "system": "Linux",
+      "version": "#1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000"
+    }
+  },
+  "kind": "hipengine_micro_environment",
+  "repo": {
+    "branch": "benchmarks-micro",
+    "commit": "e5a3a419d8fadab6448e4d6a2a74320d050a4d85",
+    "commit_short": "e5a3a419",
+    "dirty": false,
+    "root": "/home/lhl/hipEngine-benchmarks-micro",
+    "status_short": []
+  },
+  "schema_version": 1,
+  "software": {
+    "amdclang_lines": [
+      "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)",
+      "InstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    ],
+    "amdgpu_module_lines": [
+      "filename:       /lib/modules/7.0.12-1-cachyos/kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko.zst",
+      "firmware:       amdgpu/vega10_gpu_info.bin",
+      "firmware:       amdgpu/vega12_gpu_info.bin",
+      "firmware:       amdgpu/raven_gpu_info.bin",
+      "firmware:       amdgpu/picasso_gpu_info.bin",
+      "firmware:       amdgpu/raven2_gpu_info.bin",
+      "firmware:       amdgpu/arcturus_gpu_info.bin",
+      "firmware:       amdgpu/navi12_gpu_info.bin",
+      "firmware:       amdgpu/cyan_skillfish_gpu_info.bin",
+      "firmware:       amdgpu/ip_discovery.bin",
+      "firmware:       amdgpu/vega10_ip_discovery.bin",
+      "firmware:       amdgpu/vega12_ip_discovery.bin",
+      "firmware:       amdgpu/vega20_ip_discovery.bin",
+      "firmware:       amdgpu/raven_ip_discovery.bin",
+      "firmware:       amdgpu/raven2_ip_discovery.bin",
+      "firmware:       amdgpu/picasso_ip_discovery.bin",
+      "firmware:       amdgpu/arcturus_ip_discovery.bin",
+      "firmware:       amdgpu/aldebaran_ip_discovery.bin",
+      "firmware:       amdgpu/bonaire_pfp.bin",
+      "firmware:       amdgpu/bonaire_me.bin",
+      "firmware:       amdgpu/bonaire_ce.bin",
+      "firmware:       amdgpu/bonaire_rlc.bin",
+      "firmware:       amdgpu/bonaire_mec.bin",
+      "firmware:       amdgpu/hawaii_pfp.bin",
+      "firmware:       amdgpu/hawaii_me.bin",
+      "firmware:       amdgpu/hawaii_ce.bin",
+      "firmware:       amdgpu/hawaii_rlc.bin",
+      "firmware:       amdgpu/hawaii_mec.bin",
+      "firmware:       amdgpu/kaveri_pfp.bin",
+      "firmware:       amdgpu/kaveri_me.bin",
+      "firmware:       amdgpu/kaveri_ce.bin",
+      "firmware:       amdgpu/kaveri_rlc.bin",
+      "firmware:       amdgpu/kaveri_mec.bin",
+      "firmware:       amdgpu/kaveri_mec2.bin",
+      "firmware:       amdgpu/kabini_pfp.bin",
+      "firmware:       amdgpu/kabini_me.bin",
+      "firmware:       amdgpu/kabini_ce.bin",
+      "firmware:       amdgpu/kabini_rlc.bin",
+      "firmware:       amdgpu/kabini_mec.bin",
+      "firmware:       amdgpu/mullins_pfp.bin",
+      "firmware:       amdgpu/mullins_me.bin",
+      "firmware:       amdgpu/mullins_ce.bin",
+      "firmware:       amdgpu/mullins_rlc.bin",
+      "firmware:       amdgpu/mullins_mec.bin",
+      "firmware:       amdgpu/bonaire_sdma.bin",
+      "firmware:       amdgpu/bonaire_sdma1.bin",
+      "firmware:       amdgpu/hawaii_sdma.bin",
+      "firmware:       amdgpu/hawaii_sdma1.bin",
+      "firmware:       amdgpu/kaveri_sdma.bin",
+      "firmware:       amdgpu/kaveri_sdma1.bin",
+      "firmware:       amdgpu/kabini_sdma.bin",
+      "firmware:       amdgpu/kabini_sdma1.bin",
+      "firmware:       amdgpu/mullins_sdma.bin",
+      "firmware:       amdgpu/mullins_sdma1.bin",
+      "firmware:       amdgpu/tahiti_mc.bin",
+      "firmware:       amdgpu/pitcairn_mc.bin",
+      "firmware:       amdgpu/verde_mc.bin",
+      "firmware:       amdgpu/oland_mc.bin",
+      "firmware:       amdgpu/hainan_mc.bin",
+      "firmware:       amdgpu/si58_mc.bin",
+      "firmware:       amdgpu/tahiti_pfp.bin",
+      "firmware:       amdgpu/tahiti_me.bin",
+      "firmware:       amdgpu/tahiti_ce.bin",
+      "firmware:       amdgpu/tahiti_rlc.bin",
+      "firmware:       amdgpu/pitcairn_pfp.bin",
+      "firmware:       amdgpu/pitcairn_me.bin",
+      "firmware:       amdgpu/pitcairn_ce.bin",
+      "firmware:       amdgpu/pitcairn_rlc.bin",
+      "firmware:       amdgpu/verde_pfp.bin",
+      "firmware:       amdgpu/verde_me.bin",
+      "firmware:       amdgpu/verde_ce.bin",
+      "firmware:       amdgpu/verde_rlc.bin",
+      "firmware:       amdgpu/oland_pfp.bin",
+      "firmware:       amdgpu/oland_me.bin",
+      "firmware:       amdgpu/oland_ce.bin",
+      "firmware:       amdgpu/oland_rlc.bin",
+      "firmware:       amdgpu/hainan_pfp.bin",
+      "firmware:       amdgpu/hainan_me.bin",
+      "firmware:       amdgpu/hainan_ce.bin",
+      "firmware:       amdgpu/hainan_rlc.bin",
+      "firmware:       amdgpu/bonaire_mc.bin",
+      "firmware:       amdgpu/hawaii_mc.bin",
+      "firmware:       amdgpu/topaz_mc.bin",
+      "firmware:       amdgpu/tonga_mc.bin",
+      "firmware:       amdgpu/polaris11_mc.bin",
+      "firmware:       amdgpu/polaris10_mc.bin",
+      "firmware:       amdgpu/polaris12_mc.bin",
+      "firmware:       amdgpu/polaris12_32_mc.bin",
+      "firmware:       amdgpu/polaris11_k_mc.bin",
+      "firmware:       amdgpu/polaris10_k_mc.bin",
+      "firmware:       amdgpu/polaris12_k_mc.bin",
+      "firmware:       amdgpu/vega10_sos.bin",
+      "firmware:       amdgpu/vega10_asd.bin",
+      "firmware:       amdgpu/vega10_cap.bin",
+      "firmware:       amdgpu/vega12_sos.bin",
+      "firmware:       amdgpu/vega12_asd.bin",
+      "firmware:       amdgpu/raven_asd.bin",
+      "firmware:       amdgpu/picasso_asd.bin",
+      "firmware:       amdgpu/raven2_asd.bin",
+      "firmware:       amdgpu/picasso_ta.bin",
+      "firmware:       amdgpu/raven2_ta.bin",
+      "firmware:       amdgpu/raven_ta.bin",
+      "firmware:       amdgpu/vega20_sos.bin",
+      "firmware:       amdgpu/vega20_asd.bin",
+      "firmware:       amdgpu/vega20_ta.bin",
+      "firmware:       amdgpu/navi10_sos.bin",
+      "firmware:       amdgpu/navi10_asd.bin",
+      "firmware:       amdgpu/navi10_ta.bin",
+      "firmware:       amdgpu/navi14_sos.bin",
+      "firmware:       amdgpu/navi14_asd.bin",
+      "firmware:       amdgpu/navi14_ta.bin",
+      "firmware:       amdgpu/navi12_sos.bin",
+      "firmware:       amdgpu/navi12_asd.bin",
+      "firmware:       amdgpu/navi12_ta.bin",
+      "firmware:       amdgpu/navi12_cap.bin",
+      "firmware:       amdgpu/arcturus_sos.bin",
+      "firmware:       amdgpu/arcturus_asd.bin",
+      "firmware:       amdgpu/arcturus_ta.bin",
+      "firmware:       amdgpu/sienna_cichlid_sos.bin",
+      "firmware:       amdgpu/sienna_cichlid_ta.bin"
+    ],
+    "arch_package_lines": [
+      "linux-cachyos 7.0.12-1",
+      "linux-firmware 1:20260519-1",
+      "amd-ucode 1:20260519-1",
+      "mesa 2:26.1.2-1",
+      "vulkan-radeon 2:26.1.2-1",
+      "vulkan-tools 1.4.350.1-1.1",
+      "shaderc 2026.2-1.1",
+      "glslang 1:1.4.350.0-1.1",
+      "llvm 22.1.6-2",
+      "clang 22.1.6-2",
+      "error: package 'rocm-core' was not found",
+      "error: package 'rocm-hip-runtime' was not found",
+      "error: package 'hip-runtime-amd' was not found",
+      "error: package 'rocm-smi-lib' was not found"
+    ],
+    "conda_rocm_lines": [
+      "# packages in environment at /home/lhl/miniforge3/envs/therock:",
+      "rocm                            7.13.0a20260411                        pypi_0                pypi",
+      "rocm-sdk-core                   7.13.0a20260411                        pypi_0                pypi",
+      "rocm-sdk-devel                  7.13.0a20260411                        pypi_0                pypi",
+      "rocm-sdk-libraries-gfx1151      7.13.0a20260411                        pypi_0                pypi",
+      "torch                           2.12.0a0+rocm7.13.0a20260411           pypi_0                pypi",
+      "torchaudio                      2.11.0a0+rocm7.13.0a20260411           pypi_0                pypi",
+      "torchvision                     0.27.0a0+rocm7.13.0a20260411           pypi_0                pypi",
+      "triton                          3.7.0+git18f89f64.rocm7.13.0a20260411  pypi_0                pypi"
+    ],
+    "glslc_lines": [
+      "2026.2",
+      "Target: SPIR-V 1.0"
+    ],
+    "hipcc_lines": [
+      "HIP version: 7.13.60980-c76140fa27",
+      "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)",
+      "InstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    ],
+    "kernel_lines": [
+      "Linux gfx1151 7.0.12-1-cachyos #1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000 x86_64 GNU/Linux",
+      "Linux version 7.0.12-1-cachyos (linux-cachyos@cachyos) (clang version 22.1.6, LLD 22.1.6) #1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000"
+    ],
+    "vulkan_driver_lines": [
+      "Vulkan Instance Version: 1.4.350",
+      "apiVersion         = 1.4.348",
+      "driverVersion      = 26.1.2",
+      "driverName         = radv",
+      "driverInfo         = Mesa 26.1.2-arch2.1"
+    ]
+  }
+}
