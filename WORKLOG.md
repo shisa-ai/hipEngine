@@ -147605,3 +147605,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to mark the bridge as
   diagnostic/opt-in and to move the recovery queue from "add c3/c5/c6/c7 perf
   coverage" to "isolate the local c>N generated-token divergence first."
+
+## 2026-07-09 - PARO c2 generated-token bisection
+
+- Ran short c2 diagnostics on gfx1151/Radeon 8060S, local shisa
+  `Qwen3.6-35B-A3B-PARO-packed`, prompt 512, decode 8, warmup 0, final sampler
+  audit enabled.
+- Native c2 retained bridge is red at token 2 (`220` vs c1 `17`) while the
+  final norm/cast/LM-head/argmax audit is clean:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-finalnorm-audit.json`.
+- Forcing selected-c1 linear projections does not move the failure:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-selected-c1-proj-finalnorm-audit.json`.
+- Forcing full-attention per-row moves the failure later, to token 6:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-finalnorm-audit.json`.
+- Forcing linear decode per-row while leaving full-attention native still fails
+  at token 2:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-perrow-finalnorm-audit.json`.
+- Under full-attention per-row, selected-c1 linear state and selected-c1 linear
+  output still fail at token 6:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearstate-c1-finalnorm-audit.json`
+  and
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearout-c1-finalnorm-audit.json`.
+- Full-attention per-row plus global selected-c1 MoE is green for the short c2
+  diagnostic:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-moe-selected-c1-finalnorm-audit.json`.
+- Full-attention per-row plus all linear per-row is also green for the short c2
+  diagnostic:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-full-perrow-finalnorm-audit.json`.
+- Interpretation: sampler suffix is clean; native full-attention causes the
+  first c2 divergence, then grouped compact MoE is the next divergence after
+  full-attention is forced per-row. The narrow
+  `--batch-decode-linear-moe-path per_row_c1` diagnostic currently crashes with
+  `HIP error 1: invalid argument`, so the broader
+  `--batch-decode-moe-path selected_c1` fallback is the usable MoE
+  discriminator for now.
