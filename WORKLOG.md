@@ -146967,3 +146967,22 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. The original
   matrix `sampler/top-k/argmax` row is now `Partial`: deterministic top-1
   argmax is covered, while full top-k/stochastic sampling remains untested.
+
+## 2026-07-08 - Sampler deterministic top-k harness support
+
+- Extended the sampler argmax microbench harnesses with compile-time
+  `HIPENGINE_ARGMAX_TOPK` variants. The Python runner now accepts
+  `--top-k-list`, builds `wg*_k*` HIP/Vulkan variants, keys comparisons by
+  `(top_k, rows, workgroup_size)`, and records top-k in normalized artifacts.
+- Updated the HIP, Vulkan C++, and GLSL kernels to emit `rows * top_k`
+  selected indices/values and validate them against a CPU deterministic top-k
+  oracle. Top-1 remains the default when `--top-k-list` is omitted.
+- Corrected top-k bytes/comparison accounting to reflect repeated row scans
+  instead of reporting a single top-1 pass.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/sampler_argmax.py`;
+  `git diff --check`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/sampler_argmax.py --backend hip --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1 --workgroups 64 --top-k-list 8 --vocab 1024 --reps 2 --warmup 1 --samples 2 --build-dir /tmp/hipengine-micro-sampler-topk-smoke --out /tmp/hip-sampler-topk-smoke.json --pretty`
+  passed with correctness; and
+  `python3 benchmarks/micro/runners/sampler_argmax.py --backend vulkan --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1 --workgroups 64 --top-k-list 8 --vocab 1024 --debug-vocab 256 --reps 2 --warmup 1 --samples 2 --build-dir /tmp/hipengine-micro-sampler-topk-smoke --out /tmp/vulkan-sampler-topk-smoke.json --quiet-shader-dump --pretty`
+  passed with correctness.

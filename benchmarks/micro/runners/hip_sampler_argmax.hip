@@ -16,9 +16,16 @@
 #define HIPENGINE_ARGMAX_WG 256
 #endif
 
+#ifndef HIPENGINE_ARGMAX_TOPK
+#define HIPENGINE_ARGMAX_TOPK 1
+#endif
+
 namespace {
 
 constexpr uint32_t kWorkgroupSize = HIPENGINE_ARGMAX_WG;
+constexpr uint32_t kTopK = HIPENGINE_ARGMAX_TOPK;
+static_assert(kTopK > 0, "HIPENGINE_ARGMAX_TOPK must be positive");
+static_assert(kTopK <= kWorkgroupSize, "HIPENGINE_ARGMAX_TOPK must be <= HIPENGINE_ARGMAX_WG");
 
 struct Args {
   std::string json_path;
@@ -34,6 +41,7 @@ struct Row {
   uint32_t rows;
   uint32_t vocab;
   uint32_t workgroup_size;
+  uint32_t top_k;
   double bytes_per_dispatch;
   double comparisons_per_dispatch;
   double median_us;
@@ -136,6 +144,26 @@ __host__ __device__ bool better_pair(Pair a, Pair b) {
   return (a.value > b.value) || (a.value == b.value && a.index < b.index);
 }
 
+__host__ __device__ void insert_topk(Pair* top, Pair candidate) {
+  for (uint32_t i = 0; i < kTopK; ++i) {
+    if (better_pair(candidate, top[i])) {
+      for (uint32_t j = kTopK - 1; j > i; --j) {
+        top[j] = top[j - 1];
+      }
+      top[i] = candidate;
+      return;
+    }
+  }
+}
+
+void cpu_topk(const std::vector<float>& logits, uint32_t row, uint32_t vocab, std::vector<Pair>& out) {
+  out.assign(kTopK, Pair{-std::numeric_limits<float>::infinity(), 0xffffffffu});
+  size_t base = static_cast<size_t>(row) * vocab;
+  for (uint32_t col = 0; col < vocab; ++col) {
+    insert_topk(out.data(), Pair{logits[base + col], col});
+  }
+}
+
 __global__ __launch_bounds__(kWorkgroupSize) void sampler_argmax_kernel(
     const float* __restrict__ logits,
     uint32_t* __restrict__ out_indices,
@@ -148,36 +176,63 @@ __global__ __launch_bounds__(kWorkgroupSize) void sampler_argmax_kernel(
     return;
   }
 
-  Pair best{-std::numeric_limits<float>::infinity(), 0xffffffffu};
-  size_t base = static_cast<size_t>(row) * vocab;
-  for (uint32_t col = tid; col < vocab; col += kWorkgroupSize) {
-    Pair candidate{logits[base + col], col};
-    if (better_pair(candidate, best)) {
-      best = candidate;
-    }
+  __shared__ uint32_t selected_indices[kTopK];
+  __shared__ float selected_values[kTopK];
+  if (tid < kTopK) {
+    selected_indices[tid] = 0xffffffffu;
+    selected_values[tid] = -std::numeric_limits<float>::infinity();
   }
+  __syncthreads();
+
+  size_t base = static_cast<size_t>(row) * vocab;
 
   __shared__ float shared_values[kWorkgroupSize];
   __shared__ uint32_t shared_indices[kWorkgroupSize];
-  shared_values[tid] = best.value;
-  shared_indices[tid] = best.index;
-  __syncthreads();
-
-  for (uint32_t offset = kWorkgroupSize / 2; offset > 0; offset >>= 1) {
-    if (tid < offset) {
-      Pair current{shared_values[tid], shared_indices[tid]};
-      Pair other{shared_values[tid + offset], shared_indices[tid + offset]};
-      if (better_pair(other, current)) {
-        shared_values[tid] = other.value;
-        shared_indices[tid] = other.index;
+  for (uint32_t pass = 0; pass < kTopK; ++pass) {
+    Pair best{-std::numeric_limits<float>::infinity(), 0xffffffffu};
+    for (uint32_t col = tid; col < vocab; col += kWorkgroupSize) {
+      bool already_selected = false;
+#pragma unroll
+      for (uint32_t i = 0; i < kTopK; ++i) {
+        if (i < pass && selected_indices[i] == col) {
+          already_selected = true;
+        }
       }
+      if (already_selected) {
+        continue;
+      }
+      Pair candidate{logits[base + col], col};
+      if (better_pair(candidate, best)) {
+        best = candidate;
+      }
+    }
+
+    shared_values[tid] = best.value;
+    shared_indices[tid] = best.index;
+    __syncthreads();
+
+    for (uint32_t offset = kWorkgroupSize / 2; offset > 0; offset >>= 1) {
+      if (tid < offset) {
+        Pair current{shared_values[tid], shared_indices[tid]};
+        Pair other{shared_values[tid + offset], shared_indices[tid + offset]};
+        if (better_pair(other, current)) {
+          shared_values[tid] = other.value;
+          shared_indices[tid] = other.index;
+        }
+      }
+      __syncthreads();
+    }
+
+    if (tid == 0) {
+      selected_indices[pass] = shared_indices[0];
+      selected_values[pass] = shared_values[0];
     }
     __syncthreads();
   }
 
-  if (tid == 0) {
-    out_indices[row] = shared_indices[0];
-    out_values[row] = shared_values[0];
+  if (tid < kTopK) {
+    out_indices[static_cast<size_t>(row) * kTopK + tid] = selected_indices[tid];
+    out_values[static_cast<size_t>(row) * kTopK + tid] = selected_values[tid];
   }
 }
 
@@ -197,10 +252,13 @@ double percentile(std::vector<double> values, double q) {
 }
 
 Row run_config(const Args& args) {
+  if (kTopK > args.vocab) {
+    fail("top-k must be <= vocab");
+  }
   std::vector<float> logits;
   fill_logits(logits, args.rows, args.vocab);
-  std::vector<uint32_t> actual_indices(args.rows, 0);
-  std::vector<float> actual_values(args.rows, 0.0f);
+  std::vector<uint32_t> actual_indices(static_cast<size_t>(args.rows) * kTopK, 0);
+  std::vector<float> actual_values(static_cast<size_t>(args.rows) * kTopK, 0.0f);
 
   float* d_logits = nullptr;
   uint32_t* d_indices = nullptr;
@@ -226,13 +284,16 @@ Row run_config(const Args& args) {
 
   uint32_t mismatches = 0;
   float max_abs = 0.0f;
+  std::vector<Pair> expected;
   for (uint32_t row = 0; row < args.rows; ++row) {
-    uint32_t expected_index = peak_index(row, args.vocab);
-    float expected_value = logit_value(row, expected_index, args.vocab);
-    float diff = std::abs(actual_values[row] - expected_value);
-    max_abs = std::max(max_abs, diff);
-    if (actual_indices[row] != expected_index || diff > 0.0f) {
-      ++mismatches;
+    cpu_topk(logits, row, args.vocab, expected);
+    for (uint32_t i = 0; i < kTopK; ++i) {
+      size_t offset = static_cast<size_t>(row) * kTopK + i;
+      float diff = std::abs(actual_values[offset] - expected[i].value);
+      max_abs = std::max(max_abs, diff);
+      if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
+        ++mismatches;
+      }
     }
   }
   bool pass = mismatches == 0;
@@ -267,12 +328,16 @@ Row run_config(const Args& args) {
   check(hipFree(d_values), "hipFree values");
 
   double median_us = percentile(samples, 0.5);
-  double bytes = static_cast<double>(args.rows) * args.vocab * sizeof(float);
-  double comparisons = static_cast<double>(args.rows) * args.vocab;
+  double scanned_values =
+      static_cast<double>(args.rows) *
+      (static_cast<double>(kTopK) * args.vocab - static_cast<double>(kTopK * (kTopK - 1)) / 2.0);
+  double bytes = scanned_values * sizeof(float);
+  double comparisons = scanned_values;
   return Row{
       args.rows,
       args.vocab,
       kWorkgroupSize,
+      kTopK,
       bytes,
       comparisons,
       median_us,
@@ -339,16 +404,18 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "    \"rows\": " << row.rows << ",\n";
   *out << "    \"vocab\": " << row.vocab << ",\n";
   *out << "    \"workgroup_size\": " << row.workgroup_size << ",\n";
+  *out << "    \"top_k\": " << row.top_k << ",\n";
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
-  *out << "    \"method\": \"one workgroup per row top-1 argmax reduction; CPU oracle\"\n";
+  *out << "    \"method\": \"one workgroup per row deterministic top-k argmax reduction; CPU oracle\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
   *out << "    {\n";
   *out << "      \"rows\": " << row.rows << ",\n";
   *out << "      \"vocab\": " << row.vocab << ",\n";
   *out << "      \"workgroup_size\": " << row.workgroup_size << ",\n";
+  *out << "      \"top_k\": " << row.top_k << ",\n";
   *out << "      \"bytes_per_dispatch\": " << row.bytes_per_dispatch << ",\n";
   *out << "      \"comparisons_per_dispatch\": " << row.comparisons_per_dispatch << ",\n";
   *out << "      \"median_us\": " << row.median_us << ",\n";
