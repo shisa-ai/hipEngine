@@ -41,8 +41,10 @@ Hardware and model for the local first pass:
 - Hardware: gfx1151 / Radeon 8060S.
 - Model: `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`.
 - Quant: `w4_paro`.
-- Workload: exact token-id prompts, prompt length 512, decode 128,
-  concurrency c=1/2/4/8, greedy completions.
+- Target workload: exact token-id prompts, prompt length 512, decode 128,
+  concurrency c=1/2/4/8, greedy completions. If the server route rejects
+  token-id prompts, run a natural-prompt diagnostic first and keep it separate
+  from retained direct-harness comparisons.
 - Fixture: recreate `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`
   from repo prompt fixtures if the retained benchmark fixture is absent.
 
@@ -59,7 +61,9 @@ Capture for every row:
 - Exact server command, client command, git commit, dirty status, HIP arch,
   ROCm/HIP version, GPU name, model path, quant, prompt/decode/concurrency.
 - `/ready` startup diagnostics and `/v1/hipengine/capabilities`.
-- Client JSON from `scripts/vllm_openai_concurrency_sweep.py`.
+- Client JSON from `scripts/vllm_openai_concurrency_sweep.py` for exact-token
+  completions, or `scripts/mtp-bench.py` server mode for natural-prompt
+  diagnostics.
 - Per-choice hipEngine telemetry if present, especially `scheduler_token_chunks`,
   `execution_path`, `native_compact_prefill`, `native_caware_decode`,
   `serial_decode_fallback`, and native sampler metadata.
@@ -72,6 +76,57 @@ After A/B/C, sweep route caps:
 | --- | --- | --- |
 | `--max-active-requests` | 2, 4, 8 | Only compare rows with the same env config, same prompt fixture, same decode length, and matching native-route telemetry. |
 | `--generation-batch-window-ms` | start at 5, then 1/10 if the baseline is unstable | Report full-request throughput separately from decode-only telemetry. |
+
+## First Server Sweep Results
+
+Measured 2026-07-09 on gfx1151 / Radeon 8060S, shisa
+`Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, `scripts/mtp-bench.py` server mode,
+8 natural chat prompts from `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`,
+`max_tokens=128`, greedy, `ignore_eos=true`, batch window 5 ms. These rows are
+diagnostic and **not** the direct retained 512-token exact-token protocol:
+`/v1/completions` currently rejects token-id prompt arrays, so exact-token server
+benchmarking is itself a follow-up.
+
+Artifact summary:
+`benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-summary.json`.
+
+| Server config | c=1 | c=2 | c=4 | c=8 | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| A: default server | 35.50 | 35.39 | 35.50 | 35.61 | Flat; default server serializes backend decode for this workload. |
+| B: native decode env | 35.50 | 37.48 | 40.33 | 42.36 | Modest c>N lift only. |
+| C: native decode + startup warmup | 35.66 | 37.55 | 40.56 | 41.51 | Startup c>N warmup ran, but steady throughput is unchanged vs B. |
+
+Route-cap sweep under config C, c=8:
+
+| `--max-active-requests` | Backend generated tok/s | Result |
+| ---: | ---: | --- |
+| 8 | 41.51 | Best of the cap sweep. |
+| 4 | 39.59 | Worse than cap 8. |
+| 2 | 37.47 | Worse than cap 8. |
+
+Telemetry notes:
+
+- Default c=8 reports `execution_path=scheduler_native_packed_prefill_serial_decode`
+  and `serial_decode_fallback=true`.
+- Native-decode c=8 reports
+  `execution_path=scheduler_native_packed_prefill_native_decode`, but
+  `native_caware_decode=false` in the emitted decode state. That explains why the
+  env flag does not approach the direct retained c>N harness.
+- The direct retained c=8 harness on gfx1100 is `212.093 tok/s`; this gfx1151
+  server diagnostic reaches only `42.36 tok/s`. Hardware and workload differ, so
+  do not treat the ratio as a direct regression claim, but it proves the server
+  route is still the first blocker before PARO speculative/MTP work.
+
+Immediate next targets from this sweep:
+
+1. Add or expose an exact-token server benchmark route so PARO server rows can
+   run the same 512/128 fixture as the direct retained harness.
+2. Inspect why `scheduler_native_packed_prefill_native_decode` still emits
+   `native_caware_decode=false` and scales weakly.
+3. Add server AR buckets for prefill, decode layer wall, projection, attention,
+   MoE, sampler/LM-head, host sync/readback, and scheduler wall.
+4. Only after the AR server path scales should PARO MTP/DFlash verifier
+   lifecycle optimizations be ported from GGUF.
 
 ## PARO MTP/DFlash Buckets To Add Next
 
