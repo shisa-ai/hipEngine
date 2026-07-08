@@ -19,6 +19,41 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
+## Retained Results Index
+
+Last updated: 2026-07-08.
+
+New retained runs should update this index first, then the detailed retained
+evidence section, coverage audit, and benchmark rollups. This keeps the numeric
+results visible while the longer attribution narrative evolves.
+
+Hardware/software for the retained local rows: gfx1151, `AMD Radeon 8060S
+Graphics (RADV STRIX_HALO)`, Mesa `26.1.2-arch2.1`, Arch Linux. Cross-GPU
+reruns on gfx1100/W7900 and 7900 XTX are still external.
+
+| Area | Main artifact | Result | Current read |
+| --- | --- | --- | --- |
+| Dispatch/grid floor | `dispatch-floor-comparison.json` | Vulkan replay is `43.3x` faster than HIP graph at one-block, 941-dispatch bursts; gap shrinks to `1.09x` at 8192 blocks. | Real runtime-dispatch advantage, not compiler/ACO evidence. |
+| f32 GEMV geometry | `geometry-sweep-comparison.json` | Best-native Vulkan is `5.79x-14.03x` faster than HIP; both backends prefer wg256. | Real diagnostic gap, but still `diagnostic_unclassified`. |
+| Geometry ISA/stat extraction | `geometry-isa-stats-comparison.json` | HIP emits VOPD and reports no scratch/spills; RADV reports no scratch/spills and no final-shader VOPD. | Does not support a simple ACO VOPD or spill story. |
+| VOPD/VALU scheduling | `vopd-sweep-comparison.json` | HIP emits VOPD in all retained rows; RADV emits zero VOPD; wins are mixed by body. | Negative for "RADV wins through better VOPD pairing." |
+| Memory/waitcnt | `memory-waitcnt-comparison.json` | Vulkan is `1.02x-2.25x` faster on most synthetic load+accumulate rows; gather is near tied. | Useful memory-scheduling lead, but not enough for a generic LLVM filing. |
+| Packed q8/q4/q6 dot path | `dot-path-comparison.json` | Vulkan is `3.28x-3.42x` faster; HIP and RADV both emit final dot4 instructions. | Missing HIP dot4 is ruled out; remaining gap is surrounding scheduling/layout. |
+| HIP wave64 controls | `dot-path-wave64-comparison.json`, `memory-waitcnt-wave64-comparison.json` | HIP wave64 is `1.007x-1.061x` slower on dot and regresses the gather row `6.35x` versus wave32. | Wave64 is not the missing HIP switch. |
+| HIP fixed-shape controls | `dot-path-fixed-block-comparison.json`, `memory-waitcnt-fixed-block-comparison.json`, `geometry-sweep-fixed-workgroup-comparison.json` | Fixed dot indexing is flat (`0.993x-1.000x` fixed/runtime); geometry improves some HIP wg256 rows by up to `6.3%` but leaves Vulkan `5.56x-14.03x` faster. | Runtime `blockDim`/fixed-shape overhead does not explain the retained gaps. |
+| HIP fixed-wave64 geometry | `geometry-sweep-fixed-workgroup-wave64-comparison.json` | HIP fixed-wave64 is `1.13x-1.23x` slower than fixed-wave32; Vulkan remains `6.31x-16.18x` faster. | Removes wave-mode confound without recovering HIP. |
+| LDS/subgroup reduction | `reduction-sweep.json` | Matched Vulkan LDS remains `8.19x-14.55x` faster than HIP LDS; HIP wave-shuffle is flat versus HIP LDS. | Reduction topology alone is not the f32 geometry fix. |
+| Accumulator reduction | `reduction-accum-sweep.json` | Matched Vulkan accumulator rows remain `9.57x-15.81x` faster; HIP accumulator variants are mostly slower than HIP LDS. | No-LDS accumulator variants do not recover HIP. |
+| True two-stage reduction | `two-stage-reduction.json` | 54 matched rows pass correctness; Vulkan/HIP speedup is `0.690x-1.118x`, median `0.835x`, with only 3 rows above parity. | Negative for a broad Vulkan/RADV two-stage reduction win on gfx1151. |
+| Sampler top-1 argmax | `sampler-argmax-comparison.json` | Vulkan is `12.75x-26.94x` faster than HIP across matched top-1 rows. | Concrete deterministic argmax diagnostic lead; not stochastic sampling. |
+| Sampler top-k8 argmax | `sampler-topk8-comparison.json` | Vulkan is `12.79x-25.93x` faster; best-native wg256 rows are HIP `132.701/135.923/162.030 us` vs Vulkan `5.7205/5.9910/12.6654 us`. | Exposed-bucket lead if sampler remains visible after fusion. |
+| HIP q8_1 real-slice layout | `hip-real-q4-selected-dual-q8_1-dp4a.json`, `hip-real-q6-selected-down-x8-q8_1-dp4a.json` | HIP q8_1+dp4a is `2.77x` faster than raw Q4 selected-dual and `1.68x` faster than Q6 T16 float; q8_1 materialization is `0.0025-0.0027 ms`. | q8_1 activation materialization is not the HIP blocker in tested slices. |
+| Q6_K selected-down X8 real slice | `q6-x8-real-slice-hip-vulkan-comparison.json`, `q6-x8-real-slice-isa-comparison.json` | Vulkan is `1.67x` slower than HIP combined and `1.85x` slower on dot; RADV has more static instructions and waitcnt-family instructions. | Negative production transfer for generic Vulkan dot/memory claims. |
+| Q4_K selected-dual real slice | `q4-selected-dual-real-slice-hip-vulkan-comparison.json`, `q4-selected-dual-real-slice-isa-comparison.json` | Vulkan is `1.18x` faster combined and `1.17x` faster on dot; both emit dot4 and no scratch/spills. | Real slice-specific Vulkan lead, not broad `compiler_aco` proof. |
+| Q4_K setup/amortization | `vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json` | Steady Vulkan remains positive, but standalone setup is `47.8645 ms`, requiring about `908` retained calls to amortize if charged per call. | Any Vulkan path needs persistent residency and end-to-end wall-time proof. |
+| Dense Q8_0 real slice | `q8-0-dense-real-slice-comparison.json` | Across 54 rows, Vulkan/HIP is `0.279x-1.120x` combined and `0.238x-1.169x` on dot; useful wins are limited to smaller `768x2048` cases. | Mostly negative for making dense Q8_0 a near-term Vulkan target. |
+| Q6_K lm-head rowtile diagnostic | `q6-lm-head-rowtile-comparison.json` | Across 18 matched rows, Vulkan/HIP is `0.367x-1.058x` combined and `0.367x-1.112x` on dot; only `2048x32768`, rows=1 wins. | Mostly negative for the current Vulkan X8 lm-head target; diagnostic is not bit-identical cross-backend math/layout. |
+
 ## Current Conclusion
 
 As of the retained gfx1151/STRIX_HALO runs on 2026-07-08, the retained
@@ -2117,3 +2152,107 @@ The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
 geometry, Z% is ACO waitcnt/VGPR quality, remaining is dispatch." That is the
 level of evidence needed to guide LLVM work or justify a backend investment.
+
+## PARO / GGUF Gap-Closing Roadmap
+
+The retained gfx1151 result changes the implementation plan in an important
+way: do not treat the llama.cpp Vulkan ceiling as a generic backend mandate.
+The gap should be made up first by tightening hipEngine's HIP/PARO/GGUF hot
+paths, then by using Vulkan only where retained production-shaped evidence says
+RADV has a specific advantage that HIP has not recovered.
+
+Shared priorities:
+
+1. Keep the baseline exact. PARO and GGUF comparisons must record model, quant,
+   context, decode shape, concurrency, GPU, driver stack, command, correctness
+   gate, and memory. Refresh same-host llama.cpp HIP/Vulkan and PARO anchors
+   before calling a gap closed or open.
+2. Spend effort on shipped hot buckets, not generic attribution rows. The broad
+   gfx1151 matrix has already answered dispatch, VOPD, wave64, fixed-shape,
+   dot-lowering, memory/waitcnt, reduction-topology, dense Q8_0, Q6 selected
+   down, Q6 lm-head, and deterministic sampler/argmax diagnostics.
+3. Prefer HIP fixes that compound across PARO and GGUF: fewer launches,
+   graph-captured shape buckets, resident sidecar layouts, q8_1 activation
+   reuse, fused lm-head+sample, and row/group-aware selected-MoE kernels.
+4. Treat compiler or hand-ISA work as slice-specific. Current rows do not show
+   a broad LLVM miss on VOPD, dot4, spills, or wave mode. A hand-ISA patch needs
+   to target a measured instruction/waitcnt/addressing sequence in one real
+   slice and prove wall-time movement.
+
+### PARO Focus
+
+PARO should stay HIP-first. The best near-term path is to make the native PARO
+route less launch-bound and more batch/row aware, because the retained Vulkan
+evidence does not identify a broad RADV codegen feature that would transfer
+cleanly to PARO W4 pack8.
+
+| Priority | Implementation focus | Evidence hook | Decision gate |
+| --- | --- | --- | --- |
+| P0 | Graph-captured decode and verify buckets keyed by active `C`, context bucket, mode, experts, and replay length | Dispatch-floor Vulkan win is real runtime evidence, and `docs/PLAN.md` already treats hipGraph capture as the first dispatch lever | Promote when same-suite PARO decode improves without correctness or memory regression |
+| P0 | c>1 selected-MoE and verifier row batching: token-to-lane metadata, grouped selected experts, and compact row tiles | PARO's practical gap is likely exposed aggregate decode/verify work, not a missing scalar dot instruction | Promote only on retained c=1/c=2/c=4/c=8 rows with generated-token equality |
+| P0 | Preserve and extend q8_1/dp4a selected-slice wins where PARO/GGUF share activation quantization economics | HIP q8_1 real-slice controls are positive and q8_1 materialization is small | Retain only if the full quantize+dot path wins, not just the prequantized dot |
+| P1 | Fuse exposed sampler work into lm-head/sample or rewrite the HIP sampler reduction | Vulkan deterministic top-1/top-k8 argmax is `12.75x-26.94x` faster, but stochastic/fused sampling is not tested | First prove sampler remains exposed after current launch fusion and lm-head work |
+| P2 | Profile GDN/recurrent and linear-attention decode as production slices before porting or rewriting | GDN/recurrent remains decision-gated in the matrix | Run only if verifier/PARO profiling isolates it as an exposed backend limiter |
+
+PARO-specific non-goals from the retained data:
+
+- Do not port broad PARO decode to Vulkan because of the f32 geometry or
+  dispatch rows alone. Dispatch should be attacked with HIP graph/fusion first.
+- Do not chase wave64 as a PARO switch. The retained HIP wave64 controls do not
+  close dot, memory, or geometry gaps.
+- Do not start hand-ISA for PARO until a production PARO slice shows a concrete
+  avoidable instruction, waitcnt, or addressing sequence.
+
+### GGUF Focus
+
+GGUF should use the microbench results more directly because the retained real
+slices are GGUF-shaped. The current read is: keep HIP as the default backend,
+recover the one Q4_K slice where Vulkan wins if possible, and avoid spending
+backend effort on slices where HIP already wins.
+
+| Priority | Implementation focus | Evidence hook | Decision gate |
+| --- | --- | --- | --- |
+| P0 | Keep Q4_K_M as the canonical comparison quant and remove raw+packed duplicate residency where possible | `docs/TUNING-gguf.md` makes Q4_K_M the active 1:1 llama.cpp comparison and memory remains a 24 GiB-class constraint | Retain only with stable IDs/logits, decode/prefill, and tracked/sampled memory |
+| P0 | Tighten HIP Q4_K selected-dual q8_1+dp4a before building a Vulkan backend | Vulkan Q4_K selected-dual is `1.18x` faster combined, but HIP already emits dot4/VOPD and has no spills | Try source/layout/reduction/waitcnt or narrow inline-asm recovery against the same real-slice oracle |
+| P0 | Keep HIP Q6_K selected-down X8 q8_1+dp4a as the default direction | Matched Vulkan Q6_K X8 is `1.67x` slower combined and RADV has more static instructions/waitcnts | Do not port this Q6 selected-down shape to Vulkan unless a new shader/layout changes the retained result |
+| P0 | Keep dense Q8_0 projection work in HIP for larger production shapes | Dense Q8_0 Vulkan is mostly slower; useful wins appear only in smaller `768x2048` cases | Add another dense row only if profiling shows a different exposed shape |
+| P0 | Keep Q6_K lm-head on the HIP T16 rowtile path unless a new Vulkan lm-head layout is proposed | Current Vulkan X8 diagnostic only wins `2048x32768`, rows=1 and loses rows=4/8 strongly | Focus on HIP rowtile, chunking, and fused lm-head+sample before another Vulkan lm-head probe |
+| P1 | Fuse lm-head, top-k/top-1, and sampling boundaries where correctness allows | Sampler argmax is the largest retained Vulkan diagnostic win, but isolated from production lm-head | Decide after profiling whether sampler remains exposed in real GGUF decode |
+| P2 | Re-profile GDN/recurrent and verifier GEMV before adding new Vulkan rows | These rows are decision-gated, not missing broad attribution work | Only run if a retained server/profile artifact shows they gate wall time |
+
+The most plausible GGUF "make up the gap" path is therefore:
+
+1. Keep Q4_K selected-dual as the one serious HIP recovery target.
+2. Preserve the HIP-faster Q6 selected-down, dense Q8_0, and Q6 lm-head paths.
+3. Reduce launch count and shape churn with graph buckets and fused boundaries.
+4. Attack exposed sampler cost with a HIP reduction rewrite or fused
+   lm-head+sample path before trying Vulkan.
+5. Keep memory work tied to the GGUF gates: sidecars and repacks must improve
+   speed without losing 24 GiB-class viability or correctness.
+
+### When Vulkan Makes Sense
+
+Vulkan makes sense as a narrow probe backend, not as a second production stack
+yet. The useful shape is:
+
+- Persistent Vulkan device, descriptor, pipeline, and resident weight buffers.
+- A registry-local backend key such as `vulkan_radv_gfx11`, with no
+  engine-wide `if backend == "vulkan"` branches.
+- One or two proven hot kernels first: Q4_K selected-dual and possibly
+  deterministic sampler/top-k if production profiling shows it remains exposed.
+- End-to-end wall-time measurement, not only standalone shader replay.
+- Cross-GPU reruns on gfx1100/W7900 and 7900 XTX before promotion.
+
+Do not make Q6_K selected-down X8, dense Q8_0 larger rows, or the current Q6_K
+lm-head X8 diagnostic the first Vulkan backend targets. They are retained
+negative or mostly negative on gfx1151. Also do not use Vulkan to solve one-shot
+setup overhead; the Q4 setup probe already shows persistent residency is
+mandatory.
+
+The Vulkan decision gate is simple: build a production-registry Q4_K selected
+dual probe only if we are ready to keep Vulkan objects and buffers resident and
+measure real hipEngine decode wall time. If that probe wins after setup,
+correctness, memory, and cross-GPU checks, Vulkan becomes a targeted backend
+for proven kernels. If it does not, the roadmap stays HIP/PARO/GGUF focused:
+launch fusion, row-aware kernels, q8_1/dp4a layout economics, sampler fusion,
+and narrow hand-ISA only where a retained real slice proves the need.
