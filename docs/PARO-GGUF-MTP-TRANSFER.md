@@ -128,10 +128,10 @@ Immediate next targets from this sweep:
 4. Only after the AR server path scales should PARO MTP/DFlash verifier
    lifecycle optimizations be ported from GGUF.
 
-## Retained Defaults Port and Current Bottleneck
+## Retained Defaults Bridge and Current Bottleneck
 
 After the first sweep, the server path gained two pieces of observability and
-one correctness-gated default bridge from the direct retained harness:
+an opt-in retained-evidence bridge from the direct retained harness:
 
 - `GenerationTelemetry` now accepts a `diagnostics` payload, and the OpenAI
   response capability metadata advertises `choice_telemetry.diagnostics`.
@@ -139,14 +139,18 @@ one correctness-gated default bridge from the direct retained harness:
   `batch_total_ms`, `batch_prefill_ms`, `batch_decode_ms`,
   `batch_decode_step_ms_avg`, `batch_decode_steps`, and
   `batch_native_decode_steps`.
-- When `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` is enabled and no
-  explicit projection/sampler override is set, the runner auto-loads retained
+- When `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` is explicitly set and no
+  explicit projection/sampler override is set, the runner can load retained
   direct-harness defaults where repo evidence exists:
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json`
   for c2/c4/c8 projection dispatch, and
   `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`
-  for row-aware batched LM-head sampling. Unsupported row counts still fail
-  closed to row-GEMV projection and serial LM-head.
+  for row-aware batched LM-head sampling.
+
+Important status: this bridge is **not** auto-enabled by
+`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. A local gfx1151/shisa
+recheck rejected the old retained defaults on generated-token equality, so they
+remain diagnostic/opt-in until fresh local c>N equality evidence is green.
 
 Measured 2026-07-09 on the same gfx1151/Radeon 8060S server setup, c=8,
 batch window 20 ms, native decode plus startup warmup plus retained defaults:
@@ -165,31 +169,46 @@ Artifact:
 | Mean per-choice decode timing | `6477.628 ms` |
 | Mean per-choice decode step timing | `51.005 ms` |
 
-The run is decode-bound, not prefill-bound. The detailed diagnostics split the
-8 requests into one healthy c2 group and one slow c6 group:
+The run is decode-bound, not prefill-bound. Its detailed diagnostics split the
+8 requests into one faster c2 group and one slow c6 group:
 
 | Active rows | Requests | Decode step timing | Projection | Sampler | Current blocker |
 | ---: | ---: | ---: | --- | --- | --- |
-| 2 | 2 | `27.36 ms` | `gemv_awq_selected_dual_pack8_strided_c2` | evidenced batched LM-head | Covered by retained direct-harness evidence. |
+| 2 | 2 | `27.36 ms` | `gemv_awq_selected_dual_pack8_strided_c2` | evidenced batched LM-head | Fast in this timing run, but later local equality recheck rejected the retained bridge. |
 | 6 | 6 | `58.89 ms` | row-GEMV fallback | serial LM-head | No c6 projection dispatch candidate and no c6 sampler equality artifact. |
 
-This means the next recovery target is row-shape coverage, not a broad server
-rewrite. The server naturally admits intermediate live row counts like c3/c5/c6
-and c7; the retained direct-harness evidence only covers c2/c4/c8. Until those
-intermediate shapes get equality/perf evidence, the server will keep mixing
-fast c2/c4/c8 subgroups with slow fallback subgroups.
+Follow-up local generated-token checks changed the immediate diagnosis:
+
+| Probe | Rows | Result | First mismatch | Artifact |
+| --- | --- | --- | --- | --- |
+| Old retained c2/c4/c8 bridge on local gfx1151 shisa | c2, c4, c8 | Rejected correctness | token 2 for every row | `benchmarks/results/2026-07-09-hipengine-qwen35-c248-local-retained-defaults-check/summary.json` |
+| Intermediate-row sampler seed matrix | c3, c5, c6, c7 | Rejected correctness | token 4 for c3/c5/c6; c7 mostly token 4 with one row at token 2 | `benchmarks/results/2026-07-09-hipengine-qwen35-c3567-serial-sampler-equality-seed/summary.json` |
+| c6 all-full-attention rowchunk probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-all-probe.json` |
+| c6 per-row full-attention probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-fullattn-perrow-probe.json` |
+
+This means the next recovery target is no longer simply "add row-shape
+coverage." The server naturally admits intermediate live row counts like
+c3/c5/c6 and c7, but local generated-token equality currently fails both for
+those intermediate shapes and for the old c2/c4/c8 retained bridge. Until that
+divergence is isolated, no PARO server c>N perf path should be promoted by
+default.
 
 Immediate next targets:
 
-1. Generate correctness-only sampler equality artifacts for c3/c5/c6/c7 with
-   `scripts/qwen35_batch_equality_matrix.py`.
-2. Measure projection dispatch candidates for c3/c5/c6/c7, then extend the
-   retained projection catalog only for rows where aggregate and per-request
-   ratios beat row-GEMV and generated-token equality stays green.
-3. Re-run the c=8 natural-prompt server diagnostic. If the c6 row now uses an
-   evidenced projection and row-aware LM-head but remains slow, split decode
-   layer timing into projection, attention, MoE, sampler/LM-head, host sync, and
-   scheduler buckets before touching kernels.
+1. Diff the local gfx1151/shisa c>N decode path against the earlier accepted
+   retained direct harness: model snapshot, fixture, sampler settings,
+   full-attention rowchunk policy, projection dispatch, and row ordering.
+2. Add a narrow generated-token bisection mode for PARO c>N decode so token-2
+   and token-4 failures can be attributed to layer family, sampler suffix, or
+   row/state mapping before more projection tuning.
+3. Only after local c>N equality is green, measure projection dispatch
+   candidates and row-aware LM-head for c2/c3/c4/c5/c6/c7/c8, then extend the
+   retained catalog for rows where aggregate and per-request ratios beat
+   row-GEMV and generated-token equality stays green.
+4. Re-run the c=8 natural-prompt server diagnostic with fresh local evidence.
+   If the slow row group remains, split decode layer timing into projection,
+   attention, MoE, sampler/LM-head, host sync, and scheduler buckets before
+   touching kernels.
 
 ## PARO MTP/DFlash Buckets To Add Next
 

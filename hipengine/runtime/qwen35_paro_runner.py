@@ -164,10 +164,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _retained_batch_defaults_enabled() -> bool:
-    return _env_flag(
-        _RETAINED_BATCH_DEFAULTS_ENV,
-        default=_env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"),
-    )
+    return _env_flag(_RETAINED_BATCH_DEFAULTS_ENV, default=False)
 
 
 def _env_float(name: str, default: float) -> float:
