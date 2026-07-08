@@ -147497,3 +147497,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - First sweep plan is A/B/C server AR over c=1/2/4/8, prompt/decode 512/128:
   default server, `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`, and
   native decode plus `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1`.
+
+## 2026-07-09 - Server prompt-suite backend-token metric
+
+- Updated `scripts/mtp-bench.py` to preserve hipEngine backend
+  `decode_state.generated_tokens` and aggregate
+  `aggregate_backend_generated_per_second` when the server includes
+  `choices[].hipengine`.
+- Reason: hipEngine OpenAI `usage.completion_tokens` is visible-text
+  retokenization and can differ from backend generated-token count, so server
+  AR/MTP diagnostics need a backend-token metric for decode throughput.
+- Validation: `python3 -m py_compile scripts/mtp-bench.py`; `git diff --check
+  -- scripts/mtp-bench.py`.
