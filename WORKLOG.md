@@ -147054,3 +147054,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation:
   `rg -n "memory-bound real-slice|real-slice transfer remain|do not yet show the same effect|until a memory-bound real slice transfers|remaining gate before|still needed before filing|memory-bound production-slice confirmation" docs/HIP-vs-VULKAN.md`
   returned no matches; `git diff --check`.
+
+## 2026-07-08 - HIP vs Vulkan original matrix audit added
+
+- Added an `Original Matrix Row Status` table to `docs/HIP-vs-VULKAN.md`.
+  This audits the older proposed matrix rows against retained evidence instead
+  of letting unrun speculative rows look implicitly complete.
+- Covered rows now explicitly include dispatch no-op/tiny/burst, VOPD dependent
+  chains, f32 geometry, reduction-only, selected-MoE gather replacement,
+  memory coalesced/strided/gather/interleave, VOPD independent/dependent/mixed,
+  q4/scalar dot replacement, q8_1 quantize, Q6 selected-down, Q4 selected-dual,
+  and barrier stress.
+- Partial/deferred rows are now explicit: rows>1 verifier GEMV has geometry
+  rows and HIP rowtile evidence but no matched Vulkan rowtile verifier
+  microbench; Q5 selected-down, dense q8_0 attention/shared projection,
+  two-stage/no-LDS reduction, GDN/recurrent, q6 lm-head rowtile, and
+  sampler/top-k remain decision-gated rather than retained HIP/Vulkan rows.
+- Tightened the coverage wording: current gfx1151 evidence covers the
+  decision-grade attribution list justified by the present HIP-vs-Vulkan
+  question, not every speculative row from the original matrix.
