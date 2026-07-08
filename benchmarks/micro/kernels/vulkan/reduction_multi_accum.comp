@@ -1,0 +1,69 @@
+#version 450
+
+#ifndef HIPENGINE_ACCUM_COUNT
+#define HIPENGINE_ACCUM_COUNT 4
+#endif
+
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(set = 0, binding = 1) readonly buffer WBuffer {
+    float w[];
+};
+
+layout(set = 0, binding = 2) buffer OutBuffer {
+    float out_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint k;
+    uint rows;
+    uint body_repeats;
+    uint reserved;
+} pc;
+
+shared float scratch[256];
+
+void main() {
+    uint row = gl_WorkGroupID.x;
+    uint lid = gl_LocalInvocationID.x;
+    uint wg = gl_WorkGroupSize.x;
+    float accum[HIPENGINE_ACCUM_COUNT];
+    for (uint a = 0u; a < HIPENGINE_ACCUM_COUNT; ++a) {
+        accum[a] = 0.0;
+    }
+
+    for (uint repeat = 0u; repeat < pc.body_repeats; ++repeat) {
+        for (uint base_i = lid; base_i < pc.k; base_i += wg * HIPENGINE_ACCUM_COUNT) {
+            for (uint a = 0u; a < HIPENGINE_ACCUM_COUNT; ++a) {
+                uint i = base_i + a * wg;
+                if (i < pc.k) {
+                    uint j = (i + repeat) % pc.k;
+                    accum[a] = fma(x[j], w[row * pc.k + j], accum[a]);
+                }
+            }
+        }
+    }
+
+    float sum = 0.0;
+    for (uint a = 0u; a < HIPENGINE_ACCUM_COUNT; ++a) {
+        sum += accum[a];
+    }
+
+    scratch[lid] = sum;
+    barrier();
+
+    for (uint offset = wg >> 1; offset > 0u; offset >>= 1u) {
+        if (lid < offset) {
+            scratch[lid] += scratch[lid + offset];
+        }
+        barrier();
+    }
+
+    if (lid == 0u) {
+        out_values[row] = scratch[0];
+    }
+}
