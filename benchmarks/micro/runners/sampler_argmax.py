@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run paired HIP/Vulkan sampler top-1 argmax microbenchmarks."""
+"""Run paired HIP/Vulkan sampler top-k/argmax microbenchmarks."""
 
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ VULKAN_HARNESS = MICRO_ROOT / "runners" / "vulkan_sampler_argmax.cpp"
 VULKAN_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "sampler_argmax.comp"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
 ISA_STATS = MICRO_ROOT / "runners" / "isa_stats.py"
-BENCH_NAME = "sampler_argmax_top1"
-DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-sampler-argmax")
+BENCH_NAME = "sampler_argmax_topk"
+DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-sampler-topk")
 
 
 def _load_module(path: Path, name: str):
@@ -149,12 +149,12 @@ def _parse_csv_u32(text: str) -> list[int]:
     return values
 
 
-def _compile_define(workgroup: int) -> str:
-    return f"-DHIPENGINE_ARGMAX_WG={workgroup}"
+def _compile_defines(workgroup: int, top_k: int) -> list[str]:
+    return [f"-DHIPENGINE_ARGMAX_WG={workgroup}", f"-DHIPENGINE_ARGMAX_TOPK={top_k}"]
 
 
-def _compile_hip(workgroup: int, args: argparse.Namespace) -> tuple[Path, Path, list[str]]:
-    build_dir = args.build_dir / "hip" / f"wg{workgroup}"
+def _compile_hip(workgroup: int, top_k: int, args: argparse.Namespace) -> tuple[Path, Path, list[str]]:
+    build_dir = args.build_dir / "hip" / f"wg{workgroup}_k{top_k}"
     build_dir.mkdir(parents=True, exist_ok=True)
     hipcc = shutil.which("hipcc")
     if not hipcc:
@@ -167,7 +167,7 @@ def _compile_hip(workgroup: int, args: argparse.Namespace) -> tuple[Path, Path, 
             "-O3",
             "-std=c++17",
             "--save-temps",
-            _compile_define(workgroup),
+            *_compile_defines(workgroup, top_k),
             str(HIP_HARNESS),
             "-o",
             "hip_sampler_argmax",
@@ -175,7 +175,7 @@ def _compile_hip(workgroup: int, args: argparse.Namespace) -> tuple[Path, Path, 
     )
     completed = _run_command(command, cwd=build_dir)
     if completed.returncode != 0:
-        raise RuntimeError(f"HIP sampler argmax build failed for wg{workgroup}")
+        raise RuntimeError(f"HIP sampler argmax build failed for wg{workgroup} top_k{top_k}")
     artifacts = [path for path in build_dir.iterdir() if path.is_file()]
     obj = (
         _find_single(artifacts, f"{args.gfx_arch}.o")
@@ -185,8 +185,8 @@ def _compile_hip(workgroup: int, args: argparse.Namespace) -> tuple[Path, Path, 
     return build_dir / "hip_sampler_argmax", obj, command
 
 
-def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Path, list[str], list[str]]:
-    build_dir = args.build_dir / "vulkan" / f"wg{workgroup}"
+def _compile_vulkan(workgroup: int, top_k: int, args: argparse.Namespace) -> tuple[Path, Path, list[str], list[str]]:
+    build_dir = args.build_dir / "vulkan" / f"wg{workgroup}_k{top_k}"
     build_dir.mkdir(parents=True, exist_ok=True)
     spirv = build_dir / "sampler_argmax.spv"
     glslc = shutil.which("glslc")
@@ -195,7 +195,7 @@ def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Pat
         shader_command = [
             glslc,
             "-O",
-            _compile_define(workgroup),
+            *_compile_defines(workgroup, top_k),
             str(VULKAN_SHADER),
             "-o",
             str(spirv),
@@ -204,7 +204,7 @@ def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Pat
         shader_command = [
             glslang,
             "-V",
-            _compile_define(workgroup),
+            *_compile_defines(workgroup, top_k),
             str(VULKAN_SHADER),
             "-o",
             str(spirv),
@@ -213,7 +213,7 @@ def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Pat
         raise RuntimeError("neither glslc nor glslangValidator is available")
     completed = _run_command(shader_command, cwd=REPO_ROOT)
     if completed.returncode != 0:
-        raise RuntimeError(f"Vulkan sampler argmax shader build failed for wg{workgroup}")
+        raise RuntimeError(f"Vulkan sampler argmax shader build failed for wg{workgroup} top_k{top_k}")
 
     compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++")
     if not compiler:
@@ -223,7 +223,7 @@ def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Pat
         compiler,
         "-O2",
         "-std=c++17",
-        _compile_define(workgroup),
+        *_compile_defines(workgroup, top_k),
         str(VULKAN_HARNESS),
         "-o",
         str(exe),
@@ -231,7 +231,7 @@ def _compile_vulkan(workgroup: int, args: argparse.Namespace) -> tuple[Path, Pat
     ]
     completed = _run_command(build_command, cwd=REPO_ROOT)
     if completed.returncode != 0:
-        raise RuntimeError(f"Vulkan sampler argmax harness build failed for wg{workgroup}")
+        raise RuntimeError(f"Vulkan sampler argmax harness build failed for wg{workgroup} top_k{top_k}")
     return spirv, exe, shader_command, build_command
 
 
@@ -278,9 +278,10 @@ def _vulkan_isa(
     spirv: Path,
     args: argparse.Namespace,
     workgroup: int,
+    top_k: int,
 ) -> tuple[dict[str, Any], list[str], int]:
     isa = _load_module(ISA_STATS, "micro_isa_stats_for_sampler_argmax")
-    raw_path = args.build_dir / "vulkan" / f"wg{workgroup}" / "debug_raw.json"
+    raw_path = args.build_dir / "vulkan" / f"wg{workgroup}_k{top_k}" / "debug_raw.json"
     command = [
         str(exe),
         "--spirv",
@@ -370,7 +371,7 @@ def _normalize_result(
     *,
     backend: str,
     raw_rows: list[dict[str, Any]],
-    isa_by_workgroup: dict[int, dict[str, Any]],
+    isa_by_variant: dict[tuple[int, int], dict[str, Any]],
     environment: dict[str, Any],
     source_hash: str,
     wrapper_command: list[str],
@@ -381,7 +382,7 @@ def _normalize_result(
 ) -> dict[str, Any]:
     rows = []
     for raw in raw_rows:
-        isa = isa_by_workgroup[int(raw["workgroup_size"])]
+        isa = isa_by_variant[(int(raw["workgroup_size"]), int(raw.get("top_k", 1)))]
         row = {**raw, **{f"isa_{k}": v for k, v in isa.items()}}
         row["instruction_count"] = isa.get("instruction_count")
         row["waitcnt_count"] = isa.get("waitcnt_count")
@@ -429,12 +430,13 @@ def _normalize_result(
             "benchmark_family": "sampler_argmax",
             "rows_list": sorted({int(row["rows"]) for row in rows}),
             "workgroups": sorted({int(row["workgroup_size"]) for row in rows}),
+            "top_k_list": sorted({int(row.get("top_k", 1)) for row in rows}),
             "vocab": primary.get("vocab"),
             "commands": commands,
         },
         "correctness": {
             "status": "pass" if correctness_pass else "fail",
-            "oracle": "CPU argmax over deterministic logits with unique per-row peak",
+            "oracle": "CPU top-k over deterministic logits with stable value/index ordering",
             "max_abs": max((float(row.get("max_abs", 0.0)) for row in rows), default=0.0),
             "mismatches": sum((int(row.get("mismatches", 0)) for row in rows), 0),
         },
@@ -454,8 +456,9 @@ def _normalize_result(
         "classification": "diagnostic_unclassified",
         "measurements": {"rows": rows},
         "notes": (
-            "Sampler/top-1 argmax diagnostic. One workgroup reduces one logits row; "
-            "the row tests reduction, memory scan, tie-break, LDS/shared-memory, and scheduler behavior."
+            "Sampler/top-k argmax diagnostic. One workgroup repeatedly reduces one logits row; "
+            "the row tests reduction, memory scan, tie-break, LDS/shared-memory, and scheduler behavior. "
+            "This is deterministic top-k, not stochastic sampling."
         ),
     }
     if environment_ref:
@@ -465,39 +468,48 @@ def _normalize_result(
     return _json_safe(result)
 
 
-def _run_hip(args: argparse.Namespace, rows_list: list[int], workgroups: list[int]) -> dict[str, Any]:
+def _run_hip(
+    args: argparse.Namespace,
+    rows_list: list[int],
+    workgroups: list[int],
+    top_k_list: list[int],
+) -> dict[str, Any]:
     environment = _collect_environment(args)
     source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
     raw_rows: list[dict[str, Any]] = []
-    isa_by_workgroup: dict[int, dict[str, Any]] = {}
+    isa_by_variant: dict[tuple[int, int], dict[str, Any]] = {}
     commands: list[dict[str, Any]] = []
-    for workgroup in workgroups:
-        exe, obj, build_command = _compile_hip(workgroup, args)
-        isa_by_workgroup[workgroup] = _hip_isa(obj)
-        for rows in rows_list:
-            raw_path = args.build_dir / "hip" / f"wg{workgroup}" / f"rows{rows}.json"
-            harness_command = [str(exe), *_harness_args(args, raw_path, rows)]
-            completed = _run_command(harness_command, cwd=REPO_ROOT)
-            if completed.returncode != 0:
-                raise RuntimeError(f"HIP sampler argmax run failed for wg{workgroup} rows{rows}")
-            raw = json.loads(raw_path.read_text(encoding="utf-8"))
-            raw_row = _row_from_raw(raw)
-            raw_row["hardware"] = raw.get("hardware", {})
-            raw_rows.append(raw_row)
-            commands.append(
-                {
-                    "workgroup_size": workgroup,
-                    "rows": rows,
-                    "build_command": build_command,
-                    "harness_command": harness_command,
-                    "object_path": str(obj),
-                    "raw_json_retained": False,
-                }
-            )
+    for top_k in top_k_list:
+        for workgroup in workgroups:
+            exe, obj, build_command = _compile_hip(workgroup, top_k, args)
+            isa_by_variant[(workgroup, top_k)] = _hip_isa(obj)
+            for rows in rows_list:
+                raw_path = args.build_dir / "hip" / f"wg{workgroup}_k{top_k}" / f"rows{rows}.json"
+                harness_command = [str(exe), *_harness_args(args, raw_path, rows)]
+                completed = _run_command(harness_command, cwd=REPO_ROOT)
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        f"HIP sampler argmax run failed for wg{workgroup} top_k{top_k} rows{rows}"
+                    )
+                raw = json.loads(raw_path.read_text(encoding="utf-8"))
+                raw_row = _row_from_raw(raw)
+                raw_row["hardware"] = raw.get("hardware", {})
+                raw_rows.append(raw_row)
+                commands.append(
+                    {
+                        "workgroup_size": workgroup,
+                        "top_k": top_k,
+                        "rows": rows,
+                        "build_command": build_command,
+                        "harness_command": harness_command,
+                        "object_path": str(obj),
+                        "raw_json_retained": False,
+                    }
+                )
     return _normalize_result(
         backend="hip",
         raw_rows=raw_rows,
-        isa_by_workgroup=isa_by_workgroup,
+        isa_by_variant=isa_by_variant,
         environment=environment,
         source_hash=source_hash,
         wrapper_command=sys.argv.copy(),
@@ -508,44 +520,53 @@ def _run_hip(args: argparse.Namespace, rows_list: list[int], workgroups: list[in
     )
 
 
-def _run_vulkan(args: argparse.Namespace, rows_list: list[int], workgroups: list[int]) -> dict[str, Any]:
+def _run_vulkan(
+    args: argparse.Namespace,
+    rows_list: list[int],
+    workgroups: list[int],
+    top_k_list: list[int],
+) -> dict[str, Any]:
     environment = _collect_environment(args)
     source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_SHADER])
     raw_rows: list[dict[str, Any]] = []
-    isa_by_workgroup: dict[int, dict[str, Any]] = {}
+    isa_by_variant: dict[tuple[int, int], dict[str, Any]] = {}
     commands: list[dict[str, Any]] = []
-    for workgroup in workgroups:
-        spirv, exe, shader_command, build_command = _compile_vulkan(workgroup, args)
-        isa_row, debug_command, shader_dump_bytes = _vulkan_isa(exe, spirv, args, workgroup)
-        isa_by_workgroup[workgroup] = isa_row
-        for rows in rows_list:
-            raw_path = args.build_dir / "vulkan" / f"wg{workgroup}" / f"rows{rows}.json"
-            harness_command = [str(exe), "--spirv", str(spirv), *_harness_args(args, raw_path, rows)]
-            completed = _run_command(harness_command, cwd=REPO_ROOT)
-            if completed.returncode != 0:
-                raise RuntimeError(f"Vulkan sampler argmax run failed for wg{workgroup} rows{rows}")
-            raw = json.loads(raw_path.read_text(encoding="utf-8"))
-            raw_row = _row_from_raw(raw)
-            raw_row["hardware"] = raw.get("hardware", {})
-            raw_rows.append(raw_row)
-            commands.append(
-                {
-                    "workgroup_size": workgroup,
-                    "rows": rows,
-                    "shader_command": shader_command,
-                    "build_command": build_command,
-                    "harness_command": harness_command,
-                    "debug_command": debug_command,
-                    "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
-                    "shader_dump_bytes": shader_dump_bytes,
-                    "raw_json_retained": False,
-                    "shader_dump_retained": False,
-                }
-            )
+    for top_k in top_k_list:
+        for workgroup in workgroups:
+            spirv, exe, shader_command, build_command = _compile_vulkan(workgroup, top_k, args)
+            isa_row, debug_command, shader_dump_bytes = _vulkan_isa(exe, spirv, args, workgroup, top_k)
+            isa_by_variant[(workgroup, top_k)] = isa_row
+            for rows in rows_list:
+                raw_path = args.build_dir / "vulkan" / f"wg{workgroup}_k{top_k}" / f"rows{rows}.json"
+                harness_command = [str(exe), "--spirv", str(spirv), *_harness_args(args, raw_path, rows)]
+                completed = _run_command(harness_command, cwd=REPO_ROOT)
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        f"Vulkan sampler argmax run failed for wg{workgroup} top_k{top_k} rows{rows}"
+                    )
+                raw = json.loads(raw_path.read_text(encoding="utf-8"))
+                raw_row = _row_from_raw(raw)
+                raw_row["hardware"] = raw.get("hardware", {})
+                raw_rows.append(raw_row)
+                commands.append(
+                    {
+                        "workgroup_size": workgroup,
+                        "top_k": top_k,
+                        "rows": rows,
+                        "shader_command": shader_command,
+                        "build_command": build_command,
+                        "harness_command": harness_command,
+                        "debug_command": debug_command,
+                        "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
+                        "shader_dump_bytes": shader_dump_bytes,
+                        "raw_json_retained": False,
+                        "shader_dump_retained": False,
+                    }
+                )
     return _normalize_result(
         backend="vulkan",
         raw_rows=raw_rows,
-        isa_by_workgroup=isa_by_workgroup,
+        isa_by_variant=isa_by_variant,
         environment=environment,
         source_hash=source_hash,
         wrapper_command=sys.argv.copy(),
@@ -556,8 +577,8 @@ def _run_vulkan(args: argparse.Namespace, rows_list: list[int], workgroups: list
     )
 
 
-def _row_key(row: dict[str, Any]) -> tuple[int, int]:
-    return int(row["rows"]), int(row["workgroup_size"])
+def _row_key(row: dict[str, Any]) -> tuple[int, int, int]:
+    return int(row.get("top_k", 1)), int(row["rows"]), int(row["workgroup_size"])
 
 
 def build_comparison(
@@ -587,8 +608,9 @@ def build_comparison(
         vulkan_us = float(vulkan["median_us"])
         matched.append(
             {
-                "rows": key[0],
-                "workgroup_size": key[1],
+                "top_k": key[0],
+                "rows": key[1],
+                "workgroup_size": key[2],
                 "vocab": hip.get("vocab"),
                 "hip_median_us": hip_us,
                 "vulkan_median_us": vulkan_us,
@@ -647,9 +669,9 @@ def build_comparison(
                 and all(row.get("hip_correctness_pass") and row.get("vulkan_correctness_pass") for row in matched),
             },
             "interpretation": (
-                "Sampler/top-1 argmax diagnostic. This covers the sampler/top-k/argmax "
+                "Sampler/top-k argmax diagnostic. This covers the sampler/top-k/argmax "
                 "matrix bucket for reduction, scan, LDS/shared-memory, register, VOPD, "
-                "and waitcnt evidence. It is not a full stochastic sampler or production "
+                "and waitcnt evidence for deterministic top-k. It is not a full stochastic sampler or production "
                 "lm-head fusion result."
             ),
         }
@@ -668,6 +690,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
     parser.add_argument("--rows-list", default="1,4,8")
     parser.add_argument("--workgroups", default="64,128,256")
+    parser.add_argument("--top-k-list", default="1")
     parser.add_argument("--vocab", type=int, default=32768)
     parser.add_argument("--reps", type=int, default=50)
     parser.add_argument("--warmup", type=int, default=10)
@@ -707,13 +730,18 @@ def main(argv: list[str] | None = None) -> int:
     else:
         rows_list = _parse_csv_u32(args.rows_list)
         workgroups = _parse_csv_u32(args.workgroups)
+        top_k_list = _parse_csv_u32(args.top_k_list)
+        if any(top_k > args.vocab for top_k in top_k_list):
+            raise ValueError(f"top-k must be <= vocab: {top_k_list} > {args.vocab}")
         for workgroup in workgroups:
             if workgroup & (workgroup - 1):
                 raise ValueError(f"workgroup must be a power of two: {workgroup}")
+            if any(top_k > workgroup for top_k in top_k_list):
+                raise ValueError(f"top-k must be <= workgroup size for wg{workgroup}: {top_k_list}")
         if args.backend == "hip":
-            result = _run_hip(args, rows_list, workgroups)
+            result = _run_hip(args, rows_list, workgroups, top_k_list)
         else:
-            result = _run_vulkan(args, rows_list, workgroups)
+            result = _run_vulkan(args, rows_list, workgroups, top_k_list)
     text = json.dumps(result, indent=2 if args.pretty else None, sort_keys=True) + "\n"
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
