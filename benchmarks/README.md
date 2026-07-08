@@ -8,8 +8,8 @@ shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, LDS/barrier/subgroup/accumulator reduction
 controls, sampler top-1/top-k8 argmax diagnostics, plus a matched Vulkan Q6_K
 X8 selected-down real-slice probe and matched Vulkan Q4_K selected-dual gate/up
-real-slice probe with targeted HIP/RADV ISA comparisons and a bounded Q4
-setup/amortization probe.
+real-slice probe with targeted HIP/RADV ISA comparisons, a bounded Q4
+setup/amortization probe, and a dense Q8_0 real-slice probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -128,6 +128,15 @@ and command recording **0.0639 ms**. If all measured setup is charged to the
 Q4 quantize+dot delta, breakeven is about **908 calls**. Classified as a
 bounded setup probe: useful only with persistent pipelines and resident buffers,
 not a one-shot-call or production-backend win.
+Dense Q8_0 real-slice probe: raw GGUF Q8_0 dense q8_1+dp4a shapes
+**768x2048**, **2048x2048**, and **2048x6144** with rows **1/4/8** and
+row_tile **1/4** all pass CPU correctness on HIP and Vulkan. Across 54 matched
+rows, Vulkan/HIP speedup ranges from **0.279x-1.120x** for quantize+dot and
+**0.238x-1.169x** for prequantized dot. Vulkan only wins useful smaller
+**768x2048** cases; larger rows favor HIP, for example **2048x2048 rows=4
+row_tile=4** is Vulkan **0.863x** combined and **2048x6144 rows=8 row_tile=4**
+is Vulkan **0.707x** combined. Classified `real_slice_probe`; closes dense
+Q8_0 as mostly negative for Vulkan on current gfx1151 data.
 Artifacts:
 [`micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`](micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`](micro/results/gfx1151/strix-halo/hip-sampler-argmax.json),
@@ -148,6 +157,10 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json),
 [`micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json),
+[`micro/results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`](micro/results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`](micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json),
+[`micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`](micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json),
+[`micro/results/gfx1151/strix-halo/environment-q8-0-dense.json`](micro/results/gfx1151/strix-halo/environment-q8-0-dense.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json),
