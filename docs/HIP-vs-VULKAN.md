@@ -37,28 +37,72 @@ It was generated from clean repo commit `e5a3a419` with
 `python3 benchmarks/micro/system_info.py --include-privileged --timeout-s 8
 --max-output-chars 30000 --pretty`. The snapshot records:
 
-- Kernel/AMDGPU: `linux-cachyos 7.0.12-1`, `/proc/version` built with clang
-  `22.1.6`, `rocm-smi` driver `7.0.12-1-cachyos`, amdgpu module path
-  `/lib/modules/7.0.12-1-cachyos/kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko.zst`,
-  amdgpu module parameters, and `modinfo amdgpu` firmware declarations.
-- Firmware/packages: Arch `linux-firmware 1:20260519-1`, `amd-ucode
-  1:20260519-1`, VBIOS `113-STRXLGEN-001`, UEFI `INSYDE 03.04`
-  dated `11/19/2025`.
-- HIP/ROCm/TheRock: TheRock conda env at `/home/lhl/miniforge3/envs/therock`,
-  `rocm`, `rocm-sdk-core`, `rocm-sdk-devel`, and
-  `rocm-sdk-libraries-gfx1151` all `7.13.0a20260411`; `hipcc` HIP
-  `7.13.60980-c76140fa27`; AMD clang `23.0.0git` from ROCm LLVM commit
-  `7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3`.
-- Vulkan/Mesa: Vulkan instance `1.4.350`, device API `1.4.348`, RADV driver
-  version `26.1.2`, Mesa `26.1.2-arch2.1`; Arch packages
-  `mesa 2:26.1.2-1`, `vulkan-radeon 2:26.1.2-1`, `vulkan-tools
-  1.4.350.1-1.1`, `shaderc 2026.2-1.1`, `glslang 1:1.4.350.0-1.1`,
-  `llvm 22.1.6-2`, and `clang 22.1.6-2`.
-- Device/power state: `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, `gfx1151`,
-  `40` CUs, Strix Halo, `ryzenadj` `v0.19.0`, SMU BIOS interface `25`, PM
-  table `64020c`, STAPM limit `100 W`, fast PPT limit `115 W`, slow PPT limit
-  `100 W`, APU PPT limit `70 W`, with the full RyzenAdj table retained in the
-  artifact.
+Kernel/AMDGPU:
+
+| Component | Version / value |
+| --- | --- |
+| `linux-cachyos` | `7.0.12-1` |
+| `/proc/version` compiler | clang `22.1.6` |
+| `rocm-smi` driver | `7.0.12-1-cachyos` |
+| `amdgpu` module | `/lib/modules/7.0.12-1-cachyos/kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko.zst` |
+| `amdgpu` parameters | retained in artifact |
+| `modinfo amdgpu` firmware declarations | retained in artifact |
+
+Firmware/packages:
+
+| Component | Version / value |
+| --- | --- |
+| `linux-firmware` | `1:20260519-1` |
+| `amd-ucode` | `1:20260519-1` |
+| VBIOS | `113-STRXLGEN-001` |
+| UEFI | `INSYDE 03.04` |
+| UEFI date | `11/19/2025` |
+
+HIP/ROCm/TheRock:
+
+| Component | Version / value |
+| --- | --- |
+| TheRock conda env | `/home/lhl/miniforge3/envs/therock` |
+| `rocm` | `7.13.0a20260411` |
+| `rocm-sdk-core` | `7.13.0a20260411` |
+| `rocm-sdk-devel` | `7.13.0a20260411` |
+| `rocm-sdk-libraries-gfx1151` | `7.13.0a20260411` |
+| `hipcc` HIP | `7.13.60980-c76140fa27` |
+| AMD clang | `23.0.0git` |
+| ROCm LLVM commit | `7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3` |
+
+Vulkan/Mesa:
+
+| Component | Version / value |
+| --- | --- |
+| Vulkan instance | `1.4.350` |
+| Vulkan device API | `1.4.348` |
+| RADV driver | `26.1.2` |
+| Mesa driver info | `26.1.2-arch2.1` |
+| `mesa` | `2:26.1.2-1` |
+| `vulkan-radeon` | `2:26.1.2-1` |
+| `vulkan-tools` | `1.4.350.1-1.1` |
+| `shaderc` | `2026.2-1.1` |
+| `glslang` | `1:1.4.350.0-1.1` |
+| `llvm` | `22.1.6-2` |
+| `clang` | `22.1.6-2` |
+
+Device/power state:
+
+| Component | Version / value |
+| --- | --- |
+| CPU/APU | `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S` |
+| GPU target | `gfx1151` |
+| Compute units | `40` |
+| Platform | Strix Halo |
+| `ryzenadj` | `v0.19.0` |
+| SMU BIOS interface | `25` |
+| PM table | `64020c` |
+| STAPM limit | `100 W` |
+| Fast PPT limit | `115 W` |
+| Slow PPT limit | `100 W` |
+| APU PPT limit | `70 W` |
+| Full RyzenAdj table | retained in artifact |
 
 | Area | Main artifact | Result | Current read |
 | --- | --- | --- | --- |
