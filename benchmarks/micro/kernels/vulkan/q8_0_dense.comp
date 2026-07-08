@@ -1,0 +1,180 @@
+#version 450
+#extension GL_EXT_integer_dot_product : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+#ifndef HIPENGINE_LOCAL_SIZE_X
+#define HIPENGINE_LOCAL_SIZE_X 64
+#endif
+
+#ifndef HIPENGINE_ROW_TILE
+#define HIPENGINE_ROW_TILE 1
+#endif
+
+layout(local_size_x = HIPENGINE_LOCAL_SIZE_X, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint in_features;
+    uint out_features;
+    uint experts;
+    uint q8_blocks_per_row;
+    uint out_packed;
+    uint blocks_per_row;
+    uint reserved;
+} pc;
+
+layout(set = 0, binding = 1) readonly buffer XQBuffer {
+    uint xq_words[];
+};
+
+layout(set = 0, binding = 3) readonly buffer WeightBuffer {
+    uint weight_words[];
+};
+
+layout(set = 0, binding = 4) buffer OutBuffer {
+    uint out_bf16[];
+};
+
+shared float partial0[8];
+shared float partial1[8];
+shared float partial2[8];
+shared float partial3[8];
+
+const uint Q8_0_BLOCK_BYTES = 34u;
+
+uint load_byte(uint byte_index) {
+    uint word = weight_words[byte_index >> 2];
+    return (word >> ((byte_index & 3u) * 8u)) & 0xffu;
+}
+
+uint load_u16(uint byte_index) {
+    return load_byte(byte_index) | (load_byte(byte_index + 1u) << 8);
+}
+
+uint load_u32(uint byte_index) {
+    return load_byte(byte_index) |
+        (load_byte(byte_index + 1u) << 8) |
+        (load_byte(byte_index + 2u) << 16) |
+        (load_byte(byte_index + 3u) << 24);
+}
+
+float fp16_at(uint byte_index) {
+    return unpackHalf2x16(load_u16(byte_index)).x;
+}
+
+int dot_s8_s8(uint a, uint b, int c) {
+    return c + dotPacked4x8EXT(int32_t(a), int32_t(b));
+}
+
+uint float_to_bf16(float value) {
+    uint bits = floatBitsToUint(value);
+    uint lsb = (bits >> 16) & 1u;
+    bits += 0x7fffu + lsb;
+    return bits >> 16;
+}
+
+void store_reduced(uint row, uint col, float value, uint row_slot) {
+    float sum = subgroupAdd(value);
+    if (subgroupElect()) {
+        if (row_slot == 0u) {
+            partial0[gl_SubgroupID] = sum;
+        } else if (row_slot == 1u) {
+            partial1[gl_SubgroupID] = sum;
+        } else if (row_slot == 2u) {
+            partial2[gl_SubgroupID] = sum;
+        } else {
+            partial3[gl_SubgroupID] = sum;
+        }
+    }
+    barrier();
+    if (gl_LocalInvocationID.x == 0u && row < pc.rows) {
+        float total = 0.0;
+        for (uint i = 0u; i < gl_NumSubgroups; ++i) {
+            if (row_slot == 0u) {
+                total += partial0[i];
+            } else if (row_slot == 1u) {
+                total += partial1[i];
+            } else if (row_slot == 2u) {
+                total += partial2[i];
+            } else {
+                total += partial3[i];
+            }
+        }
+        out_bf16[row * pc.out_features + col] = float_to_bf16(total);
+    }
+    barrier();
+}
+
+void main() {
+    uint col = gl_WorkGroupID.x;
+    uint row0 = gl_WorkGroupID.y * uint(HIPENGINE_ROW_TILE);
+    uint tid = gl_LocalInvocationID.x;
+    if (col >= pc.out_features) {
+        return;
+    }
+
+    float acc0 = 0.0;
+    float acc1 = 0.0;
+    float acc2 = 0.0;
+    float acc3 = 0.0;
+    uint groups4 = pc.in_features >> 2;
+
+    for (uint group = tid; group < groups4; group += HIPENGINE_LOCAL_SIZE_X) {
+        uint q8_block = group >> 3;
+        uint lane_word = group & 7u;
+        uint weight_block = (col * pc.q8_blocks_per_row + q8_block) * Q8_0_BLOCK_BYTES;
+        float wd = fp16_at(weight_block);
+        uint w_pack = load_u32(weight_block + 2u + lane_word * 4u);
+
+        uint row = row0;
+        if (row < pc.rows) {
+            uint xq_base = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+            uint x_pack = xq_words[xq_base + 1u + lane_word];
+            float xd = unpackHalf2x16(xq_words[xq_base]).x;
+            acc0 += wd * xd * float(dot_s8_s8(w_pack, x_pack, 0));
+        }
+
+#if HIPENGINE_ROW_TILE >= 2
+        row = row0 + 1u;
+        if (row < pc.rows) {
+            uint xq_base = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+            uint x_pack = xq_words[xq_base + 1u + lane_word];
+            float xd = unpackHalf2x16(xq_words[xq_base]).x;
+            acc1 += wd * xd * float(dot_s8_s8(w_pack, x_pack, 0));
+        }
+#endif
+
+#if HIPENGINE_ROW_TILE >= 3
+        row = row0 + 2u;
+        if (row < pc.rows) {
+            uint xq_base = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+            uint x_pack = xq_words[xq_base + 1u + lane_word];
+            float xd = unpackHalf2x16(xq_words[xq_base]).x;
+            acc2 += wd * xd * float(dot_s8_s8(w_pack, x_pack, 0));
+        }
+#endif
+
+#if HIPENGINE_ROW_TILE >= 4
+        row = row0 + 3u;
+        if (row < pc.rows) {
+            uint xq_base = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+            uint x_pack = xq_words[xq_base + 1u + lane_word];
+            float xd = unpackHalf2x16(xq_words[xq_base]).x;
+            acc3 += wd * xd * float(dot_s8_s8(w_pack, x_pack, 0));
+        }
+#endif
+    }
+
+    store_reduced(row0, col, acc0, 0u);
+#if HIPENGINE_ROW_TILE >= 2
+    store_reduced(row0 + 1u, col, acc1, 1u);
+#endif
+#if HIPENGINE_ROW_TILE >= 3
+    store_reduced(row0 + 2u, col, acc2, 2u);
+#endif
+#if HIPENGINE_ROW_TILE >= 4
+    store_reduced(row0 + 3u, col, acc3, 3u);
+#endif
+}
