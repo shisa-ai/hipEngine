@@ -39,6 +39,12 @@ void main() {
     }
 
     float subgroup_sum = subgroupAdd(sum);
+    if (gl_NumSubgroups == 1) {
+        if (gl_SubgroupInvocationID == 0) {
+            out_values[row] = subgroup_sum;
+        }
+        return;
+    }
     if (gl_SubgroupInvocationID == 0) {
         subgroup_sums[gl_SubgroupID] = subgroup_sum;
     }

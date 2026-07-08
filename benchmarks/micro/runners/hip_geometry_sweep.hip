@@ -21,6 +21,14 @@
 #define HIPENGINE_REDUCTION_VARIANT 0
 #endif
 
+#if HIPENGINE_REDUCTION_VARIANT == 3
+#define HIPENGINE_ACCUM_COUNT 4
+#elif HIPENGINE_REDUCTION_VARIANT == 4
+#define HIPENGINE_ACCUM_COUNT 8
+#elif HIPENGINE_REDUCTION_VARIANT == 5
+#define HIPENGINE_ACCUM_COUNT 16
+#endif
+
 namespace {
 
 #if HIPENGINE_FIXED_WORKGROUP_SIZE
@@ -248,17 +256,47 @@ __global__ void f32_gemv_geometry_kernel(
       blockDim.x;
 #endif
   float sum = 0.0f;
+#ifdef HIPENGINE_ACCUM_COUNT
+  float accum[HIPENGINE_ACCUM_COUNT];
+#pragma unroll
+  for (uint32_t a = 0; a < HIPENGINE_ACCUM_COUNT; ++a) {
+    accum[a] = 0.0f;
+  }
+  for (uint32_t repeat = 0; repeat < body_repeats; ++repeat) {
+    for (uint32_t base_i = lid; base_i < k; base_i += wg * HIPENGINE_ACCUM_COUNT) {
+#pragma unroll
+      for (uint32_t a = 0; a < HIPENGINE_ACCUM_COUNT; ++a) {
+        uint32_t i = base_i + a * wg;
+        if (i < k) {
+          uint32_t j = (i + repeat) % k;
+          accum[a] = fmaf(x[j], w[static_cast<size_t>(row) * k + j], accum[a]);
+        }
+      }
+    }
+  }
+#pragma unroll
+  for (uint32_t a = 0; a < HIPENGINE_ACCUM_COUNT; ++a) {
+    sum += accum[a];
+  }
+#else
   for (uint32_t repeat = 0; repeat < body_repeats; ++repeat) {
     for (uint32_t i = lid; i < k; i += wg) {
       uint32_t j = (i + repeat) % k;
       sum = fmaf(x[j], w[static_cast<size_t>(row) * k + j], sum);
     }
   }
+#endif
 #if HIPENGINE_REDUCTION_VARIANT == 2
   uint32_t lane = lid % warpSize;
   uint32_t wave = lid / warpSize;
   uint32_t wave_count = (wg + warpSize - 1) / warpSize;
   float wave_sum = wave_reduce_sum(sum);
+  if (wave_count == 1) {
+    if (lane == 0) {
+      out[row] = wave_sum;
+    }
+    return;
+  }
   if (lane == 0) {
     scratch[wave] = wave_sum;
   }
