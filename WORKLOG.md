@@ -147048,3 +147048,19 @@ python3 scripts/gguf_mtp_bench.py \
   reduction profile.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP vs Vulkan conclusion doc stop condition
+
+- Updated `docs/HIP-vs-VULKAN.md` to state the gfx1151 stop condition
+  directly: no more broad local attribution sweeps for generic VOPD, wave64,
+  fixed-block, dispatch-only, dot-lowering, memory/waitcnt, LDS/subgroup,
+  accumulator, or standalone Q4/Q6 real-slice rows.
+- Reclassified older unrun matrix rows as `Decision-gated` or
+  `Covered, scoped` instead of leaving them as open-ended `Partial`/`Deferred`
+  benchmark debt. The remaining useful tests are cross-GPU retained-suite
+  reruns, a narrow Q4_K selected-dual HIP recovery experiment, a true
+  production-registry Q4 Vulkan probe, or new production slices only when fresh
+  profiling makes the answer actionable.
+- Added an LLVM-map note that no retained row is currently clean enough for a
+  broad LLVM-AMDGPU-vs-RADV/ACO filing; the Q4_K selected-dual row is a
+  slice-specific HIP recovery lead only.
