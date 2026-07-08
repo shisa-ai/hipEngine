@@ -146914,6 +146914,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
 
+## 2026-07-08 - Q6 lm-head rowtile diagnostic runner support
+
+- Added `benchmarks/micro/runners/q6_lm_head_rowtile_probe.py` to compare the
+  HIP production-style BF16 x Q6_K T16 lm-head rowtile path against the existing
+  Vulkan Q6_K X8 q8_1+dp4a full-output shader at lm-head-sized output shapes.
+- Scope caveat: this is a diagnostic backend-target probe, not a bit-identical
+  cross-backend math/layout comparison. HIP correctness is rowtile chunked
+  output versus per-row decode; Vulkan correctness is the existing full CPU
+  q8_1+Q6_K X8 oracle.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/q6_lm_head_rowtile_probe.py`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py --backend hip --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 2048x4096 --rows-list 1,4 --reps 3 --warmup 1 --samples 2 --build-dir /tmp/hipengine-q6-lmhead-smoke-commit --out /tmp/q6-lmhead-hip-smoke.json --pretty`.
+- Smoke result: HIP correctness passed for rows=`1/4`, shape=`2048x4096`.
+  Retained clean-provenance HIP/Vulkan/comparison artifacts are next.
+
 ## 2026-07-08 - LDS/barrier/subgroup reduction sweep retained
 
 - Added the reduction-topology controls for the f32 geometry gap:
