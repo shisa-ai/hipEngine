@@ -119,6 +119,13 @@ def test_qwen35_retained_batch_defaults_load_projection_artifact(
     candidates, blockers = runner_module._env_projection_dispatch_candidates()
 
     assert blockers == ()
+    assert candidates == ()
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    candidates, blockers = runner_module._env_projection_dispatch_candidates()
+
+    assert blockers == ()
     assert [candidate.name for candidate in candidates] == ["wmma_caware"]
 
 

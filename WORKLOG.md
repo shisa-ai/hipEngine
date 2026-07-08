@@ -147580,3 +147580,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `jq empty benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8*.json`;
   `ss -ltnp | grep 18083 || true` confirmed no server left listening after
   cleanup.
+
+## 2026-07-09 - PARO retained defaults made opt-in after local red checks
+
+- Rechecked the old retained c2/c4/c8 direct-harness bridge against the local
+  gfx1151/Radeon 8060S shisa
+  `Qwen3.6-35B-A3B-PARO-packed` snapshot and found it is not safe to auto-load
+  for the server/native route: c2/c4/c8 all failed generated-token equality at
+  token 2.
+- Artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c248-local-retained-defaults-check/summary.json`.
+- Ran the intermediate-row sampler/equality seed matrix for c3/c5/c6/c7. Those
+  rows are also red: c3/c5/c6 first mismatch at token 4, and c7 mostly token 4
+  with one row at token 2.
+- Artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c3567-serial-sampler-equality-seed/summary.json`.
+- c6 row-shape probes are also rejected correctness:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-all-probe.json`
+  and
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-fullattn-perrow-probe.json`.
+- Changed `_retained_batch_defaults_enabled()` so retained defaults require
+  explicit `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`; native decode alone no
+  longer auto-loads stale W7900/direct retained artifacts.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to mark the bridge as
+  diagnostic/opt-in and to move the recovery queue from "add c3/c5/c6/c7 perf
+  coverage" to "isolate the local c>N generated-token divergence first."
