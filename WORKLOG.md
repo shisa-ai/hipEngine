@@ -147085,3 +147085,26 @@ python3 scripts/gguf_mtp_bench.py \
 - Smoke result: HIP and Vulkan correctness passed for shape `256x64`, rows
   `1/4`, rowtile `1/4`; comparison matched 4 rows. Retained production-shaped
   sweep still pending.
+
+## 2026-07-08 - HIP vs Vulkan dense Q8_0 retained result
+
+- Retained dense Q8_0 real-slice artifacts on gfx1151/Radeon 8060S/RADV Mesa
+  26.1.2:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`,
+  and
+  `benchmarks/micro/results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 2048x2048,2048x6144,768x2048 --rows-list 1,4,8 --row-tiles 1,4 --reps 60 --warmup 10 --samples 7 --build-dir /tmp/hipengine-q8-dense-retained --out benchmarks/micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json --pretty`;
+  `python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 2048x2048,2048x6144,768x2048 --rows-list 1,4,8 --local-sizes 64,128,256 --row-tiles 1,4 --reps 60 --warmup 10 --samples 7 --build-dir /tmp/hipengine-q8-dense-retained --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json --pretty`;
+  `python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json --out benchmarks/micro/results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json --pretty`.
+- Result: HIP passes all `18` CPU correctness rows, Vulkan passes all `54`, and
+  the comparison matches all `54` rows. Across matched rows, Vulkan/HIP speedup
+  ranges `0.279x-1.120x` for q8_1 quantize+Q8_0 dot and `0.238x-1.169x` for
+  prequantized dot. Useful Vulkan wins are limited to small `768x2048` cases;
+  larger shapes favor HIP, including `2048x2048` rows=4 row_tile=4 at `0.863x`
+  combined and `2048x6144` rows=8 row_tile=4 at `0.707x` combined.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
