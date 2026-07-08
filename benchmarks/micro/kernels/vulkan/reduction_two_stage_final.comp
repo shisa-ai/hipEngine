@@ -1,0 +1,53 @@
+#version 450
+
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(set = 0, binding = 1) readonly buffer WBuffer {
+    float w[];
+};
+
+layout(set = 0, binding = 2) readonly buffer PartialBuffer {
+    float partials[];
+};
+
+layout(set = 0, binding = 3) buffer OutBuffer {
+    float out_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint k;
+    uint rows;
+    uint body_repeats;
+    uint split_count;
+} pc;
+
+shared float scratch[256];
+
+void main() {
+    uint row = gl_WorkGroupID.x;
+    uint lid = gl_LocalInvocationID.x;
+    uint wg = gl_WorkGroupSize.x;
+    float sum = 0.0;
+
+    for (uint i = lid; i < pc.split_count; i += wg) {
+        sum += partials[row * pc.split_count + i];
+    }
+
+    scratch[lid] = sum;
+    barrier();
+
+    for (uint offset = wg >> 1u; offset > 0u; offset >>= 1u) {
+        if (lid < offset) {
+            scratch[lid] += scratch[lid + offset];
+        }
+        barrier();
+    }
+
+    if (lid == 0u) {
+        out_values[row] = scratch[0];
+    }
+}
