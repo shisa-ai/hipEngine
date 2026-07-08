@@ -4120,11 +4120,13 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
     if path != "auto":
         return path
-    # The retained-claim gate requires grouped-compact MoE, and the current
-    # correctness frontier is generated-token green for c=2/c=4/c=8 with grouped-
-    # compact. Keep selected-c1 as an explicit speed/diagnostic override rather
-    # than the correctness-first auto default.
-    return "grouped_compact"
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # Local gfx1151/shisa generated-token equality is green for c=2/c=4/c=8 only
+    # when grouped-compact MoE is replaced by selected-c1 MoE. This remains a
+    # diagnostic correctness bridge, not a retained throughput claim.
+    return "selected_c1" if int(batch_size) in {2, 4, 8} else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4167,25 +4169,12 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Original c3/c5/c6 evidence shows rowchunking only the first four full-
-    # attention producer layers preserves generated-token equality for those
-    # correctness-first auto row counts while smaller tested subsets remain red.
-    # C4 layer 11 alone is repeat/profile-green on the primary first-four
-    # fixture, but the hard rows4..7 fixture invalidated it as a prompt-stable
-    # default. Current primary and hard rows4..7 probes both pass when only the
-    # final four full-attention producer layers stay native, so c4 uses first-
-    # six. A current c8 first-nine/drop39 profiler recaptured row3/token118 red
-    # in the older all-layer scope, but the newer drop27/drop31 default keeps
-    # three explicit drop39 repeats green; prior broader drop35 evidence is red.
-    # Keep c7 all-layer until its selected-layer path is profiler-stable; use
-    # the c8 drop27/drop31/drop39 rowchunk diagnostic as the current narrowest
-    # repeated-green c8 scope.
+    # c3/c5/c6 keep the older selected-layer diagnostic scope. Local gfx1151
+    # shisa c4/c8 only recovered full 512/128 generated-token equality with
+    # rowchunk2 on every full-attention layer plus selected-c1 MoE, so empty
+    # deliberately means all full-attention layers for those row counts.
     if int(batch_size) in {3, 5, 6}:
         return "3,7,11,15"
-    if int(batch_size) == 4:
-        return "3,15"
-    if int(batch_size) == 8:
-        return "3,7,11,15,19,23"
     return ""
 
 
@@ -4194,9 +4183,9 @@ def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> st
     if path != "batch":
         return path
     if _resolved_batch_decode_full_attn_row_chunk_layers(args):
-        # Layer-scoped c4 rowchunk leaves later full-attention layers on the
-        # native path, so keep the already accepted row-aware batch-GEMV O
-        # projection for all full-attention layers in that narrowed diagnostic.
+        # Layer-scoped rowchunk leaves later full-attention layers on the native
+        # path, so keep the row-aware batch-GEMV O projection in that narrowed
+        # diagnostic.
         return "batch_gemv"
     return path
 
@@ -5012,7 +5001,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects grouped_compact for the retained-claim correctness frontier, while selected_c1 remains an explicit speed/diagnostic path.",
+        help="Global MoE path for c>N batch decode; auto selects the local generated-token equality frontier (selected_c1 for c=2/c=4/c=8, grouped_compact elsewhere).",
     )
     parser.add_argument(
         "--batch-decode-linear-path",

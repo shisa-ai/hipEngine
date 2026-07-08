@@ -147639,3 +147639,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `HIP error 1: invalid argument`, so the broader
   `--batch-decode-moe-path selected_c1` fallback is the usable MoE
   discriminator for now.
+
+## 2026-07-09 - PARO local cN recovery frontier
+
+- Consolidated the follow-up full 512/128 local gfx1151/Radeon 8060S shisa
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, fixture
+  `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`,
+  greedy generated-token equality probes against independent c1 resident runs.
+- c2 is generated-token green with native full-attention, selected-c1 MoE, and
+  batched LM-head: `78.021 tok/s`, median step `25.445 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c2-p512-d128-selected-c1-moe-local-equality.json`.
+- c4 is generated-token green with selected-c1 MoE plus rowchunk2 on every
+  full-attention layer: `99.046 tok/s`, median step `40.061 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json`.
+- c8 is generated-token green with selected-c1 MoE plus rowchunk2 on every
+  full-attention layer: `115.066 tok/s`, median step `69.149 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json`.
+- c6 remains server-relevant and red with the c4/c8 repair shape:
+  rowchunk2-all plus selected-c1 MoE and serial LM-head fails at token 2
+  (`106.869 tok/s` diagnostic, invalid for promotion), artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json`.
+- c6 broad correctness floor is green only with per-row full-attention plus
+  per-row linear plus selected-c1 MoE and serial LM-head: `69.802 tok/s`, median
+  step `85.979 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-linear-full-perrow-moe-selected-c1-serial-sampler-local-equality.json`.
+- Updated the retained-bench auto diagnostic resolver to select selected-c1 MoE
+  for c2/c4/c8 and all-layer full-attention rowchunk2 for c4/c8. Updated the
+  explicit retained-defaults runtime rowchunk scope to match c4/c8 all-layer
+  evidence while keeping the bridge gated by
+  `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` with the current recovery frontier
+  and next repair order. These rows are not retained throughput claims until
+  primitive correctness, profiler, and baseline gates are supplied.

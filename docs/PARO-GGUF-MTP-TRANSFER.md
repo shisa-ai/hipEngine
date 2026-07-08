@@ -186,29 +186,13 @@ Follow-up local generated-token checks changed the immediate diagnosis:
 | c6 all-full-attention rowchunk probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-all-probe.json` |
 | c6 per-row full-attention probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-fullattn-perrow-probe.json` |
 
-This means the next recovery target is no longer simply "add row-shape
-coverage." The server naturally admits intermediate live row counts like
-c3/c5/c6 and c7, but local generated-token equality currently fails both for
-those intermediate shapes and for the old c2/c4/c8 retained bridge. Until that
-divergence is isolated, no PARO server c>N perf path should be promoted by
-default.
-
-Immediate next targets:
-
-1. Diff the local gfx1151/shisa c>N decode path against the earlier accepted
-   retained direct harness: model snapshot, fixture, sampler settings,
-   full-attention rowchunk policy, projection dispatch, and row ordering.
-2. Add a narrow generated-token bisection mode for PARO c>N decode so token-2
-   and token-4 failures can be attributed to layer family, sampler suffix, or
-   row/state mapping before more projection tuning.
-3. Only after local c>N equality is green, measure projection dispatch
-   candidates and row-aware LM-head for c2/c3/c4/c5/c6/c7/c8, then extend the
-   retained catalog for rows where aggregate and per-request ratios beat
-   row-GEMV and generated-token equality stays green.
-4. Re-run the c=8 natural-prompt server diagnostic with fresh local evidence.
-   If the slow row group remains, split decode layer timing into projection,
-   attention, MoE, sampler/LM-head, host sync, and scheduler buckets before
-   touching kernels.
+This changed the recovery target from "add row-shape coverage" to "recover
+local generated-token equality first." The old retained c2/c4/c8 bridge was red,
+and the server naturally admits intermediate live row counts like c3/c5/c6 and
+c7. Later probes recovered c2/c4/c8 with different diagnostic shapes, documented
+below, while c6 remains the server-relevant blocker. Until c6 is isolated or the
+scheduler avoids c6 live-row groups, no PARO server c>N perf path should be
+promoted by default.
 
 ## c2 Generated-Token Bisection
 
@@ -242,13 +226,56 @@ Interpretation:
   `--batch-decode-moe-path selected_c1` fallback as the working MoE
   discriminator until that diagnostic branch is fixed.
 
-Repair order from this bisection:
+Follow-up full 512/128 probes refined this repair order: c2 no longer needs a
+per-row full-attention fallback when the global selected-c1 MoE discriminator is
+enabled, but c4/c8 do need all full-attention producer layers split into
+rowchunk2 groups. c6 remains blocked unless the path falls back much more
+broadly.
 
-1. Fix native c2 full-attention generated-token parity against the c1 path.
-2. Fix or replace grouped compact MoE for local c>N PARO once full-attention
-   parity is green.
-3. Re-run the short c2 bisection, then the full 512/128 c2/c4/c8 equality gate,
-   before re-enabling any server/default perf path.
+## Local c>N Recovery Frontier
+
+Measured 2026-07-09 on gfx1151 / Radeon 8060S with local shisa
+`Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, fixture
+`/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`,
+prompt 512, decode 128, greedy. These are generated-token equality probes
+against independent c1 resident runs. They are **not** retained throughput
+claims yet because the primitive/profiler/baseline retained gates are still
+missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
+
+| Rows | Diagnostic shape | Generated-token equality | Decode aggregate | Artifact |
+| ---: | --- | --- | ---: | --- |
+| 2 | native full-attention, selected-c1 MoE, batched LM-head | Pass | `78.021 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-p512-d128-selected-c1-moe-local-equality.json` |
+| 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | per-row full-attention, per-row linear, selected-c1 MoE, serial LM-head | Pass | `69.802 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-linear-full-perrow-moe-selected-c1-serial-sampler-local-equality.json` |
+
+The current retained-bench auto diagnostic path should therefore start from the
+green local frontier:
+
+- c2/c4/c8: auto-select selected-c1 MoE.
+- c4/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
+  every full-attention layer is rowchunked.
+- c3/c5/c6: keep the older selected-layer rowchunk diagnostic scope until
+  local full 512/128 equality evidence replaces it.
+
+Server relevance: the natural c=8 server diagnostic previously split into a
+fast c2 group and a slow c6 group. Recovering c2/c4/c8 direct diagnostics helps,
+but it does not fully recover server concurrency until either the c6 native
+shape is fixed or the scheduler avoids c6 live-row groups without losing
+throughput.
+
+Next repair order:
+
+1. Treat c2/c4/c8 selected-c1 MoE plus c4/c8 all-layer rowchunk2 as the local
+   equality starting point for direct retained sweeps.
+2. Isolate c6 after the rowchunk2+selected-c1 failure: first split native
+   segmented linear versus full-attention suffixes, then narrow from the broad
+   per-row full+linear correctness floor.
+3. Add primitive correctness/profiler/baseline gates for any recovered shape
+   before promoting a retained/default throughput claim.
+4. Re-run the c=8 server diagnostic only after c6 or scheduler grouping is
+   corrected, because the current server path naturally admits c6.
 
 ## PARO MTP/DFlash Buckets To Add Next
 
