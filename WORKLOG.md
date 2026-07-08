@@ -147236,3 +147236,50 @@ python3 scripts/gguf_mtp_bench.py \
   dense Q8_0, and Q6 lm-head paths; reduce launch count with graph/fusion; and
   only pursue Vulkan as a persistent, registry-local Q4/sampler probe if it
   moves end-to-end wall time.
+
+## 2026-07-08 - HIP vs Vulkan local completion audit
+
+- Added a local completion audit section to `docs/HIP-vs-VULKAN.md` spelling
+  out why the gfx1151 attribution suite is complete for the current question:
+  scheduling, register allocation/spills, VOPD/dual issue, workgroup shapes,
+  wave/subgroup mode, memory/waitcnt behavior, dot lowering, retained
+  production slices, Vulkan backend decision, and hand-ISA decision all have
+  retained local evidence or an explicit decision gate.
+- Validation commands:
+  `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`;
+  `rocminfo | grep -E 'Name:|gfx'`;
+  `vulkaninfo --summary`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/*.json`;
+  explicit existence check for the critical comparison artifacts named by the
+  retained-results index;
+  structured `jq` checks over geometry, VOPD, memory/waitcnt, dot, reduction,
+  sampler, dense Q8_0, Q6 lm-head, Q4, and Q6 artifacts.
+- Result: HIP is available; current host exposes only `gfx1151` / Radeon 8060S
+  and Vulkan RADV STRIX_HALO Mesa 26.1.2; all `94` retained local JSON
+  artifacts parse; critical artifacts exist; retained row counts/correctness
+  match the doc. Cross-GPU gfx1100/W7900 and 7900 XTX reruns remain portability
+  work because those devices are not exposed on this host.
+
+## 2026-07-08 - Microbenchmark system-info collector expansion
+
+- Expanded `benchmarks/micro/collect_env.py` and added
+  `benchmarks/micro/system_info.py` as a discoverable alias for retained
+  system-info capture.
+- New capture fields include kernel and `/proc/version`, Arch package versions
+  for kernel/firmware/Mesa/Vulkan/LLVM tools, hipcc/AMD clang/TheRock ROCm
+  package versions, glslc/LLVM tools, Vulkan/RADV summary, amdgpu module state
+  and parameters, amdgpu firmware debugfs probe, dmesg amdgpu/firmware probe,
+  rocm-smi metrics, amd-smi static/metric views, inxi CPU/GPU/system data,
+  non-privileged `ryzenadj -i`, and optional fast-failing
+  `sudo -n ryzenadj -i` via `--include-privileged`.
+- Smoke validation:
+  `python3 -m py_compile benchmarks/micro/collect_env.py benchmarks/micro/system_info.py`;
+  `python3 benchmarks/micro/system_info.py --include-privileged --timeout-s 8 --max-output-chars 12000 --pretty --out /tmp/hipengine-system-info-smoke.json`;
+  `jq empty /tmp/hipengine-system-info-smoke.json`;
+  `git diff --check`.
+- Smoke result: JSON generation passed. The local smoke captured TheRock ROCm
+  `7.13.0a20260411`, `hipcc` HIP `7.13.60980-c76140fa27`, AMD clang
+  `23.0.0git`, Arch `linux-cachyos 7.0.12-1`, `linux-firmware
+  1:20260519-1`, Mesa/RADV `26.1.2`, Vulkan tools `1.4.350.1`, shaderc
+  `2026.2`, glslang `1:1.4.350.0`, and a successful Strix Halo RyzenAdj
+  privileged table.

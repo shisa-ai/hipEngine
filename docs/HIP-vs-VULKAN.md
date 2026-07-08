@@ -570,6 +570,49 @@ Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are now the most useful
 microbenchmark follow-up. They should confirm portability of the retained
 gfx1151 conclusions, not restart broad attribution.
 
+### Local Completion Audit
+
+Audit date: 2026-07-08. Current host probes expose HIP `gfx1151` and one Vulkan
+RADV device, `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, Mesa
+`26.1.2-arch2.1`. No gfx1100/W7900 or 7900 XTX device is exposed on this host,
+so cross-GPU reruns are portability work, not unrun local attribution rows.
+
+Validation state for the local retained suite:
+
+- `jq empty benchmarks/micro/results/gfx1151/strix-halo/*.json` passes for all
+  `94` retained JSON artifacts.
+- The critical comparison artifacts named in the retained-results index exist:
+  dispatch, geometry, ISA/stat extraction, VOPD, memory/waitcnt, dot, wave64,
+  fixed-shape, reductions, sampler, Q4/Q6 real slices, dense Q8_0, and Q6
+  lm-head rowtile.
+- Structured artifact checks show correctness passing in the retained paired
+  suites: geometry `36` matched rows, VOPD `6`, memory/waitcnt `14`, dot-path
+  `4`, dense Q8_0 `54`, Q6 lm-head `18`, reduction sweep `36`,
+  accumulator sweep `108`, two-stage reduction `54`, plus deterministic
+  sampler top-1/top-k8 and Q4/Q6 real-slice ISA joins.
+
+Requirement-by-requirement status:
+
+| Requirement from the HIP/Vulkan question | Local gfx1151 status | Proof |
+| --- | --- | --- |
+| Compiler/body scheduling | Covered | VOPD sweep, memory/waitcnt sweep, packed-dot sweep, and Q4/Q6 real-slice ISA joins record instruction counts and waitcnt-family counts. |
+| Register allocation / spills | Covered | HIP code-object metadata and RADV shaderstats across geometry, memory, dot, VOPD, sampler, Q4, and Q6 rows report no retained HIP scratch/spill explanation. |
+| VOPD / dual issue | Covered | HIP emits VOPD in retained diagnostic and real-slice rows; RADV final shaders emit `0` VOPD in the retained rows, so the ACO VOPD explanation is negative on gfx1151. |
+| Workgroup shapes | Covered | Geometry sweep and fixed-workgroup controls cover wg32/64/128/256 where relevant; HIP and Vulkan both prefer wg256 in the f32 geometry harness. |
+| Wave/subgroup mode | Covered | HIP wave64 controls and LDS/subgroup/accumulator/two-stage reduction controls are retained and do not recover HIP. |
+| Memory/waitcnt behavior | Covered | Synthetic memory rows favor Vulkan, but wave64/fixed controls and the Q6 production transfer prevent a broad LLVM waitcnt claim. |
+| Dot lowering / packed integer path | Covered | HIP and RADV both emit dot4 in q8/q4/q6 diagnostics and Q4/Q6 real-slice dot shaders. |
+| Production-shaped slices | Covered for retained hot slices | Q6 selected-down, Q4 selected-dual, dense Q8_0, Q6 lm-head rowtile, and deterministic sampler rows are retained; result is split and shape-specific. |
+| Vulkan backend decision | Covered for attribution | Current evidence does not justify a production backend; only a future persistent Q4/sampler registry probe could change that product decision. |
+| Hand-ISA decision | Covered for attribution | No broad path; only Q4 selected-dual remains a narrow decision-gated HIP recovery experiment. |
+
+Therefore the local gfx1151 attribution suite is complete for the current
+question. Remaining work is explicitly outside this local completion boundary:
+cross-GPU reruns, a Q4 HIP recovery experiment only if we choose to act on that
+slice, a production-registry Vulkan probe only if product work is justified, or
+new production slices only when fresh profiling identifies them as exposed hot
+buckets.
+
 ## Current Retained Evidence
 
 ### gfx1151 Dispatch/Grid Floor
