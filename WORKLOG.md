@@ -147073,3 +147073,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Tightened the coverage wording: current gfx1151 evidence covers the
   decision-grade attribution list justified by the present HIP-vs-Vulkan
   question, not every speculative row from the original matrix.
+
+## 2026-07-08 - HIP vs Vulkan conclusions checkpointed
+
+- Updated `docs/HIP-vs-VULKAN.md` with an explicit checkpoint answer to the
+  current "what else should we test?" question: no more broad local gfx1151
+  attribution sweeps are useful before changing implementation direction.
+- Clarified the remaining decision-gated tests: cross-GPU reruns on
+  gfx1100/W7900 and 7900 XTX, a narrow Q4_K HIP recovery experiment only if it
+  targets the retained Q4 ISA delta, a true production-registry Q4 Vulkan probe
+  only if backend work becomes product-relevant, and any new production slice
+  only when profiling exposes it as a shipped hot bucket.
+- Replaced the old open-ended `Questions To Answer` section with answered
+  gfx1151 checkpoint conclusions and remaining gates. Retained decision: no
+  broad `compiler_aco`, Vulkan backend, or hand-ISA path is justified by the
+  current evidence; Q4_K selected-dual remains the only narrow LLVM/HIP recovery
+  lead.

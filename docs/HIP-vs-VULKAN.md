@@ -28,6 +28,12 @@ LLVM-AMDGPU" as a single explanation.
 
 The practical conclusion is:
 
+- Locally, there is nothing else broad to test on gfx1151 before changing
+  engineering direction. The useful remaining tests are decision-gated:
+  cross-GPU portability reruns, a narrow Q4_K HIP recovery experiment if we
+  want to act on the measured Q4 delta, a true production-registry Q4 Vulkan
+  probe if backend work becomes product-relevant, and any new production slice
+  only if profiling exposes it as a shipped hot bucket.
 - Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
   real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
@@ -278,12 +284,13 @@ items or carefully scoped hand-ISA candidates.
 
 ## What To Test Next
 
-The broad attribution phase is done for gfx1151. Do **not** spend more gfx1151
-time on dispatch-only, broad geometry-only, generic VOPD, generic memory, basic
-dot-lowering, HIP wave64, HIP fixed-block, generic LDS/subgroup reduction
-variants, or more Q4/Q6 standalone real-slice sweeps. Those have already
-answered the coarse questions. The remaining useful work is decision-grade
-only:
+The broad attribution phase is done for gfx1151. The answer to "is there
+anything else we should test?" is: yes, but only tests that can change an
+implementation decision. Do **not** spend more gfx1151 time on dispatch-only,
+broad geometry-only, generic VOPD, generic memory, basic dot-lowering, HIP
+wave64, HIP fixed-block, generic LDS/subgroup reduction variants, or more Q4/Q6
+standalone real-slice sweeps. Those have already answered the coarse questions.
+The remaining useful work is decision-grade only:
 
 Immediate triage:
 
@@ -311,7 +318,8 @@ Recommended next tests, in order:
 2. Narrow HIP Q4_K selected-dual source or inline-asm experiment only if we are
    willing to validate a concrete real-slice recovery. The first ISA comparison
    is already retained and rules out the easy dot4/spill/VOPD explanations; a
-   follow-up should target the measured instruction/waitcnt/reduction shape.
+   follow-up should target the measured instruction/waitcnt/reduction shape and
+   be retained only if it moves the same real slice.
 3. True production-registry Vulkan Q4 probe only after we decide the bounded
    probe and cross-GPU portability justify backend work. The retained
    setup/amortization row does not cover hipEngine registry integration or
@@ -1154,40 +1162,53 @@ staging/upload. This is still not a production `vulkan_radv_gfx11` backend
 result because it does not exercise hipEngine registry integration, whole-layer
 residency, or end-to-end decode wall time.
 
-## Questions To Answer
+## Answered Questions And Remaining Gates
 
-1. **Compiler scheduling:** When the algorithm, data layout, wave/subgroup size,
-   and workgroup geometry are matched, does RADV/ACO still beat
-   LLVM-AMDGPU? If yes, is the delta visible as fewer VGPRs, less scratch, fewer
-   `s_waitcnt`, better unroll, or more VOPD pairing?
-2. **Geometry:** How much of the Vulkan win comes from 64-thread subgroup
-   shapes versus the common HIP 128/256-thread block shapes?
-3. **Wave mode:** HIP wave64 did not close retained dot/memory gaps. Combining
-   HIP wave64 with fixed-workgroup geometry is also negative: HIP gets slower
-   than fixed wave32 and Vulkan remains much faster, so wave mode is not the
-   missing f32 geometry switch.
-4. **Dispatch/runtime:** Is Vulkan faster because individual shaders are faster,
-   or because command-buffer/pipeline execution reduces per-dispatch cost?
-5. **Memory scheduling:** Retained gfx1151 rows show higher Vulkan bandwidth on
-   coalesced, strided, and interleave loops. This survives fixed-block
-   controls, but the first memory-heavy production-shaped transfer check
-   (Q6_K X8 selected-down) is negative for Vulkan and for a generic LLVM
-   waitcnt issue. Any LLVM-facing memory claim now needs another shipped hot
-   slice where the synthetic result actually transfers.
-6. **VOPD portability:** gfx1151 retained evidence is negative for "ACO finds
-   VOPD that LLVM misses." Do gfx1100/W7900 and 7900 XTX reproduce that answer,
-   or is this driver/GPU-specific?
-7. **dp4a/sudot4:** Does the compiler matter once the code uses the intended
-   RDNA3 dot instruction? Retained gfx1151 packed-dot rows say HIP and RADV
-   both emit dot4, while HIP wave64 and fixed-block indexing do not close the
-   gap. The Q6_K X8 real-slice Vulkan probe also emits dot4 but is slower than
-   HIP, while the Q4_K selected-dual probe is faster than HIP. The targeted Q4
-   ISA comparison shows HIP also emits dot4 for the positive Q4 slice, so the
-   remaining question is surrounding scheduling/source shape rather than dot
-   availability. Synthetic dot-path wins do not transfer automatically; each
-   production slice needs its own retained check.
-8. **LLVM roadmap:** For each confirmed RADV/ACO win, what exactly would LLVM
-   need to improve?
+The original questions now have a useful gfx1151 checkpoint answer:
+
+1. **Compiler scheduling:** Not proven as a broad RADV/ACO advantage. The
+   retained Q4_K slice has fewer RADV static instructions and waitcnt-family
+   instructions, but the retained Q6_K slice goes the other way and is faster
+   on HIP. Treat scheduling as slice-specific until another production slice
+   confirms the direction.
+2. **Geometry:** Workgroup shape matters, but it is not the whole Vulkan
+   ceiling. HIP and Vulkan both prefer wg256 in the retained f32 geometry rows,
+   fixed HIP workgroups do not close the gap, and HIP fixed-wave64 makes the
+   geometry rows slower.
+3. **Wave mode:** HIP wave64 is not the missing switch. It does not close the
+   dot/memory gaps, badly regresses gather, and does not close the f32 geometry
+   gap when combined with fixed workgroups.
+4. **Dispatch/runtime:** Vulkan command-buffer replay has a real launch/runtime
+   advantage for tiny bursts. This supports launch fusion and bounded Vulkan
+   probes, but it is classified `runtime_dispatch`, not `compiler_aco`.
+5. **Memory scheduling:** Synthetic memory rows favor Vulkan, but the first
+   memory-heavy production transfer, Q6_K selected-down X8, is faster on HIP
+   and has fewer HIP static instructions/waitcnt-family instructions. A generic
+   LLVM waitcnt issue is not justified from the current data.
+6. **VOPD portability:** gfx1151 evidence is negative for "ACO finds VOPD that
+   LLVM misses." HIP emits VOPD in retained diagnostic and real-slice rows;
+   RADV emits none in the retained final shaders. Cross-GPU reruns are the
+   remaining portability gate.
+7. **dp4a/sudot4:** Basic dot lowering is not the blocker. HIP and RADV both
+   emit dot4 in retained q8/q4/q6 diagnostics and in the Q4/Q6 real-slice dot
+   shaders. Synthetic dot-path wins do not transfer automatically: Q6 loses on
+   Vulkan, while Q4 wins.
+8. **LLVM roadmap:** No broad LLVM issue should be filed yet. The only current
+   LLVM/HIP improvement lead is narrow Q4_K selected-dual recovery, focused on
+   the measured instruction count, waitcnt placement, memory/address structure,
+   or reduction/LDS shape for that exact hot slice.
+
+Remaining gates:
+
+- **Portability:** rerun the retained harness set on gfx1100/W7900 and
+  7900 XTX before treating gfx1151 conclusions as a family-wide RDNA3 result.
+- **Q4 recovery:** try a narrow HIP source, builtin, or inline-asm experiment
+  only if it targets the retained Q4_K ISA delta and improves the same real
+  slice under the CPU oracle.
+- **Vulkan product value:** build a production-registry Q4 probe only if we
+  decide the bounded setup/amortization result justifies real backend work.
+- **New slices:** add another HIP/Vulkan production slice only when profiling
+  identifies a shipped hot bucket whose answer would change the backend plan.
 
 ## Ground Rules
 
