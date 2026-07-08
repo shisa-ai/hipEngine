@@ -25,6 +25,7 @@ VULKAN_SHADERS = {
     "lds_tree": MICRO_ROOT / "kernels" / "vulkan" / "geometry_sweep.comp",
     "extra_barrier": MICRO_ROOT / "kernels" / "vulkan" / "reduction_extra_barrier.comp",
     "subgroup": MICRO_ROOT / "kernels" / "vulkan" / "reduction_subgroup.comp",
+    "multi_accum": MICRO_ROOT / "kernels" / "vulkan" / "reduction_multi_accum.comp",
 }
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-reduction-sweep")
@@ -33,11 +34,17 @@ HIP_VARIANTS = {
     "lds_tree": 0,
     "extra_barrier": 1,
     "wave_shuffle": 2,
+    "multi_accum4": 3,
+    "multi_accum8": 4,
+    "multi_accum16": 5,
 }
 VULKAN_VARIANTS = {
-    "lds_tree": "lds_tree",
-    "extra_barrier": "extra_barrier",
-    "subgroup": "subgroup",
+    "lds_tree": {"shader": "lds_tree", "defines": []},
+    "extra_barrier": {"shader": "extra_barrier", "defines": []},
+    "subgroup": {"shader": "subgroup", "defines": []},
+    "multi_accum4": {"shader": "multi_accum", "defines": ["-DHIPENGINE_ACCUM_COUNT=4"]},
+    "multi_accum8": {"shader": "multi_accum", "defines": ["-DHIPENGINE_ACCUM_COUNT=8"]},
+    "multi_accum16": {"shader": "multi_accum", "defines": ["-DHIPENGINE_ACCUM_COUNT=16"]},
 }
 
 
@@ -138,14 +145,16 @@ def _compile_hip(args: argparse.Namespace, variant: str, variant_id: int) -> tup
 
 
 def _compile_vulkan_shader(args: argparse.Namespace, variant: str) -> tuple[Path, list[str]]:
-    shader = VULKAN_SHADERS[variant]
+    variant_config = VULKAN_VARIANTS[variant]
+    shader = VULKAN_SHADERS[str(variant_config["shader"])]
+    defines = list(variant_config["defines"])
     spirv = args.build_dir / f"vulkan_reduction_{variant}.spv"
     glslc = shutil.which("glslc")
     glslang = shutil.which("glslangValidator")
     if glslc:
-        command = [glslc, "--target-env=vulkan1.1", "-O", str(shader), "-o", str(spirv)]
+        command = [glslc, "--target-env=vulkan1.1", "-O", *defines, str(shader), "-o", str(spirv)]
     elif glslang:
-        command = [glslang, "-V", "--target-env", "vulkan1.1", str(shader), "-o", str(spirv)]
+        command = [glslang, "-V", "--target-env", "vulkan1.1", *defines, str(shader), "-o", str(spirv)]
     else:
         raise RuntimeError("neither glslc nor glslangValidator is available")
     completed = _run_command(command, cwd=REPO_ROOT)
@@ -270,12 +279,21 @@ def _comparisons(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     backend_pairs = [
         ("lds_tree", "hip", "vulkan", "vulkan_lds_vs_hip_lds"),
         ("extra_barrier", "hip", "vulkan", "vulkan_extra_barrier_vs_hip_extra_barrier"),
+        ("multi_accum4", "hip", "vulkan", "vulkan_multi_accum4_vs_hip_multi_accum4"),
+        ("multi_accum8", "hip", "vulkan", "vulkan_multi_accum8_vs_hip_multi_accum8"),
+        ("multi_accum16", "hip", "vulkan", "vulkan_multi_accum16_vs_hip_multi_accum16"),
     ]
     variant_pairs = [
         ("hip", "extra_barrier", "lds_tree", "hip_extra_barrier_vs_lds_tree"),
         ("vulkan", "extra_barrier", "lds_tree", "vulkan_extra_barrier_vs_lds_tree"),
         ("hip", "wave_shuffle", "lds_tree", "hip_wave_shuffle_vs_lds_tree"),
         ("vulkan", "subgroup", "lds_tree", "vulkan_subgroup_vs_lds_tree"),
+        ("hip", "multi_accum4", "lds_tree", "hip_multi_accum4_vs_lds_tree"),
+        ("hip", "multi_accum8", "lds_tree", "hip_multi_accum8_vs_lds_tree"),
+        ("hip", "multi_accum16", "lds_tree", "hip_multi_accum16_vs_lds_tree"),
+        ("vulkan", "multi_accum4", "lds_tree", "vulkan_multi_accum4_vs_lds_tree"),
+        ("vulkan", "multi_accum8", "lds_tree", "vulkan_multi_accum8_vs_lds_tree"),
+        ("vulkan", "multi_accum16", "lds_tree", "vulkan_multi_accum16_vs_lds_tree"),
         ("mixed", "vulkan_subgroup", "hip_wave_shuffle", "vulkan_subgroup_vs_hip_wave_shuffle"),
     ]
     out: dict[str, list[dict[str, Any]]] = {"backend": [], "variant": []}
@@ -399,7 +417,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.backend in ("both", "vulkan"):
         vulkan_exe, harness_command = _compile_vulkan_harness(args)
         commands.append({"kind": "vulkan_harness", "build_command": harness_command})
-        for variant in VULKAN_VARIANTS.values():
+        for variant in VULKAN_VARIANTS:
             spirv, shader_command = _compile_vulkan_shader(args, variant)
             raw_json = args.build_dir / f"vulkan-{variant}.json"
             raw, run_command = _run_raw(vulkan_exe, raw_json, args, spirv=spirv)
@@ -462,9 +480,9 @@ def main(argv: list[str] | None = None) -> None:
         },
         "interpretation": (
             "Reduction-shape control for LDS tree, extra barrier, HIP wave-shuffle, "
-            "and Vulkan subgroup reductions. This isolates whether the geometry gap "
-            "is better explained by reduction algorithm/barrier topology than by "
-            "generic compiler scheduling."
+            "Vulkan subgroup reductions, and 4/8/16-way lane-local accumulators. "
+            "This isolates whether the geometry gap is better explained by reduction "
+            "algorithm/barrier/accumulator topology than by generic compiler scheduling."
         ),
         "wrapper": {
             "command": [Path(sys.executable).name, *sys.argv],

@@ -147166,3 +147166,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   top-k8, but still does not cover stochastic sampling or fused lm-head+sample.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - Reduction accumulator harness support
+
+- Extended the reduction sweep harness with HIP and Vulkan `multi_accum4`,
+  `multi_accum8`, and `multi_accum16` variants. These keep 4/8/16 lane-local
+  accumulators before the existing workgroup reduction and give the
+  no-LDS-accumulator matrix row a direct control.
+- Added direct no-shared-memory final writes for one-wave HIP wave-shuffle and
+  one-subgroup Vulkan subgroup reductions. Multi-wave/workgroup shapes still
+  use shared memory for the cross-wave final reduction, so this does not answer
+  the true two-stage block-partial plus final-reduce row.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/reduction_sweep.py`;
+  `git diff --check`; and
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/reduction_sweep.py --backend both --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --build-dir /tmp/hipengine-micro-reduction-accum-smoke-verify --out /tmp/reduction-accum-smoke-verify.json --k-list 128 --rows-list 1 --workgroups 32,64 --body-repeats 8 --reps 2 --warmup 1 --samples 2 --pretty`
+  passed correctness for all HIP and Vulkan variants.
