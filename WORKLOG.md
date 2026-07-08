@@ -147481,3 +147481,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_micro_vulkan_dispatch_floor.py` (`23 passed`);
   `git diff --check`;
   conflict-marker scan across repo docs/benchmarks/tests/scripts.
+
+## 2026-07-09 - PARO GGUF transfer sweep plan expanded
+
+- Expanded `docs/PARO-GGUF-MTP-TRANSFER.md` from a terse queue into the active
+  PARO follow-up plan for recent GGUF/MTP work.
+- Captured the evidence split: PARO direct retained c>N is accepted on
+  gfx1100/RX 7900 XTX (`155.987 tok/s` c=4, `212.093 tok/s` c=8), while PARO
+  OpenAI server c>N still needs its own gfx1151/Radeon 8060S measurement before
+  it can inherit any server claim.
+- Documented the missed opportunities to test first: server native-route
+  selection, full-request vs decode-only attribution, route/group caps,
+  startup native-batch warmup, server stage buckets, PARO concurrency doc
+  reconciliation, and PARO MTP/DFlash verifier commit/scatter buckets.
+- First sweep plan is A/B/C server AR over c=1/2/4/8, prompt/decode 512/128:
+  default server, `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`, and
+  native decode plus `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1`.
