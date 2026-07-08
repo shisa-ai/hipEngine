@@ -147456,3 +147456,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   snapshot path and the key system/toolchain/power metadata. `jq empty
   benchmarks/micro/results/gfx1151/strix-halo/*.json` now passes for all `95`
   local JSON artifacts.
+
+## 2026-07-09 - Resolve main rebase after benchmark-micro pull
+
+- Resolved the `git pull` rebase conflict while replaying
+  `2e968043 bench: retain gfx1151 HIP Vulkan dispatch comparison` over
+  `origin/main` by keeping the upstream 2026-07-07 W7900 rollup and the
+  replayed 2026-07-08 gfx1151 HIP/Vulkan dispatch-floor retained result.
+- Continued the rebase through all 56 benchmark-micro commits; `main` now
+  contains the table-formatted HIP/Vulkan environment metadata on top of
+  `origin/main`.
+- Updated focused microbench tests for the current collector/comparison API:
+  `collect_environment()` now passes `include_privileged=False`, and Vulkan
+  official register-count absence is asserted as `False`.
+- Validation:
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/*.json`;
+  `find benchmarks/micro/results -name '*.json' -exec jq empty {} +`;
+  `python3 -m py_compile` across tracked microbench Python runners and
+  collectors;
+  `PYTHONPATH=. pytest -q tests/test_micro_collect_env.py
+  tests/test_micro_dot_path.py tests/test_micro_geometry_sweep.py
+  tests/test_micro_hip_dispatch_floor.py tests/test_micro_isa_stats.py
+  tests/test_micro_memory_waitcnt.py tests/test_micro_vopd_sweep.py
+  tests/test_micro_vulkan_dispatch_floor.py` (`23 passed`);
+  `git diff --check`;
+  conflict-marker scan across repo docs/benchmarks/tests/scripts.
