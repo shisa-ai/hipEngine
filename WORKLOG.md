@@ -146838,3 +146838,38 @@ python3 scripts/gguf_mtp_bench.py \
   production Vulkan backend without true registry/end-to-end evidence.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - Q6 X8 HIP/RADV ISA comparison retained
+
+- Added `benchmarks/micro/runners/q6_x8_isa_stats.py` to compile the production
+  HIP Q6_K X8 selected-down q8_1+dp4a kernel with `hipcc --save-temps`, parse
+  code-object metadata and `llvm-objdump` disassembly, and join it with the
+  retained Vulkan timing and RADV shaderstats artifacts for the same real
+  slice.
+- Retained command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q6_x8_isa_stats.py --hip-result benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json --vulkan-result benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json --vulkan-isa-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json --build-dir /tmp/hipengine-micro-q6-x8-isa-stats --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --out benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`.
+- Artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`.
+- Timing context remains negative for Vulkan on this memory-heavy
+  production-shaped slice: retained HIP Q6 X8 dot is `0.0166549 ms` and
+  quantize+dot is `0.0192499 ms`; best retained Vulkan local_size=64 is
+  `0.0307581 ms` dot and `0.0321678 ms` quantize+dot, so Vulkan is `1.8468x`
+  slower on dot and `1.6711x` slower combined.
+- Targeted dot-shader ISA comparison: HIP emits wave32, `30` SGPR / `51` VGPR,
+  scratch `0`, spills `0`, `599` static instructions, `39` waitcnt-family
+  instructions, `51` VOPD, and `9` dot4; RADV emits wave64, official
+  `108` SGPR / `48` VGPR, scratch `0`, spills `0`, `1117` static instructions,
+  `89` waitcnt-family instructions, `0` VOPD, and `9` dot4.
+- Retained conclusion: the synthetic memory/waitcnt sweep does not transfer to
+  the first memory-heavy production-shaped slice. Do not file a broad
+  LLVM-AMDGPU waitcnt/scheduling issue from the synthetic memory rows alone.
+  The Q6 negative row is not missing RADV dot4 and is not a Vulkan-spill issue.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. Remaining useful
+  tests are cross-GPU reruns, a narrow Q4_K HIP recovery experiment only if we
+  decide to act on the measured Q4 delta, and a true production-registry Q4
+  Vulkan probe only if backend work becomes justified.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/q6_x8_isa_stats.py`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`;
+  `git diff --check`.
