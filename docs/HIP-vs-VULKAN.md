@@ -29,11 +29,12 @@ LLVM-AMDGPU" as a single explanation.
 The practical conclusion is:
 
 - Locally, there is nothing else broad to test on gfx1151 before changing
-  engineering direction. The useful remaining tests are decision-gated:
-  cross-GPU portability reruns, a narrow Q4_K HIP recovery experiment if we
-  want to act on the measured Q4 delta, a true production-registry Q4 Vulkan
-  probe if backend work becomes product-relevant, and any new production slice
-  only if profiling exposes it as a shipped hot bucket.
+  engineering direction. The remaining useful tests are decision-gated, not
+  open attribution debt: cross-GPU portability reruns, a narrow Q4_K HIP
+  recovery experiment if we want to act on the measured Q4 delta, a true
+  production-registry Q4 Vulkan probe if backend work becomes product-relevant,
+  and new production slices only when profiling exposes them as shipped hot
+  buckets.
 - Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
   real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
@@ -68,6 +69,20 @@ The practical conclusion is:
   hand-ISA would normally fix first. Hand-ISA only becomes reasonable for a
   specific hot HIP slice after we isolate a concrete avoidable instruction,
   waitcnt, reduction, or addressing sequence.
+
+Stop condition for local gfx1151 work:
+
+- Do not add more generic VOPD, wave64, fixed-block, dispatch-only, dot-lowering,
+  memory/waitcnt, LDS/subgroup, accumulator, or standalone Q4/Q6 real-slice
+  sweeps. They will not change the current engineering decision.
+- Do run cross-GPU retained-suite reruns when gfx1100/W7900 or 7900 XTX is
+  available, because portability is the one broad question still open.
+- Do run a narrow HIP Q4_K selected-dual recovery only if the patch attacks the
+  retained Q4 instruction/waitcnt/reduction delta and is judged against the same
+  real-slice oracle and timing.
+- Do build a production-registry Vulkan Q4 probe only if we are prepared to test
+  persistent residency and end-to-end wall time, because standalone replay has
+  already answered what it can.
 
 The detailed retained reads are:
 
@@ -416,9 +431,11 @@ gfx1100/W7900 or 7900 XTX device is exposed on this host.
 
 This table audits the older proposed matrix rows below against retained
 artifacts. `Covered` means the row has direct retained HIP/Vulkan evidence or a
-strictly stronger retained replacement. `Partial` means a related retained row
-exists but the exact proposed shape was not run. `Deferred` means the row should
-not be run until profiling or backend scope makes it decision-grade.
+strictly stronger retained replacement. `Covered, scoped` means the production
+subcase that mattered was retained, while adjacent subcases are not open unless
+fresh profiling exposes them. `Decision-gated` means the exact row was not run
+and should not be run as broad attribution work; it needs a production profile
+or backend decision that would make the answer actionable.
 
 | Matrix row | Status | Evidence / reason |
 | --- | --- | --- |
@@ -429,22 +446,22 @@ not be run until profiling or backend scope makes it decision-grade.
 | f32 GEMV row geometry | Covered | `geometry-sweep-comparison.json`, fixed-workgroup controls, and fixed-wave64 controls cover K/rows/workgroup/wave shape. |
 | reduction only | Covered | `reduction-sweep.json` covers LDS, extra-barrier LDS, HIP wave-shuffle, and Vulkan subgroup controls; `reduction-accum-sweep.json` adds wg32/wg64/wg256 accumulator controls. |
 | selected-MoE index gather | Covered by replacement | `memory-waitcnt-comparison.json` covers gather-ID address behavior, and Q4/Q6 selected real slices cover production selected-row behavior. |
-| rows>1 verifier GEMV | Partial | Geometry rows=1/4/8 are covered; HIP rowtile verifier evidence exists in benchmark rollups, but no matched Vulkan rowtile verifier microbench is retained. Run only if verifier profiling makes it a Vulkan/LLVM decision. |
+| rows>1 verifier GEMV | Decision-gated | Geometry rows=1/4/8 are covered; HIP rowtile verifier evidence exists in benchmark rollups, but no matched Vulkan rowtile verifier microbench is retained. Run only if verifier profiling makes it a Vulkan/LLVM decision. |
 | coalesced, strided, gather, interleave memory/waitcnt | Covered | `memory-waitcnt-comparison.json` plus HIP wave64/fixed-block controls and Q6 X8 production transfer. |
 | independent/dependent/dequant/mixed VOPD rows | Covered | `vopd-sweep-comparison.json`; current evidence is negative for RADV VOPD pairing. |
 | q8_1 x q4 dot / scalar dequant | Covered by replacement | `dot-path-comparison.json` covers q4 unsigned x q8 and scalar q4 dequant; Q4 selected-dual real slice covers production q4 q8_1+dp4a. |
-| q8_1 x q5/q6 selected-down | Partial | Q6 selected-down X8 is retained for HIP layout, Vulkan real slice, and HIP/RADV ISA. Q5 selected-down has no retained Vulkan row; run only if profiling identifies Q5 as a separate blocker. |
-| q8_0 dense GEMV | Deferred | Packed q8 signed dot lowering is retained, but no production-shaped dense q8_0 Vulkan GEMV is retained. This is a future row only if dense q8_0 attention/shared projections become the deciding backend question. |
+| q8_1 x q5/q6 selected-down | Covered, scoped | Q6 selected-down X8 is retained for HIP layout, Vulkan real slice, and HIP/RADV ISA. Q5 selected-down has no retained Vulkan row; run only if profiling identifies Q5 as a separate blocker. |
+| q8_0 dense GEMV | Decision-gated | Packed q8 signed dot lowering is retained, but no production-shaped dense q8_0 Vulkan GEMV is retained. Run only if dense q8_0 attention/shared projections become the deciding backend question. |
 | q8_1 activation quantize | Covered | HIP and Vulkan Q4/Q6 real-slice probes include q8_1 quantize timing and correctness. |
-| two-stage reduction | Deferred | One-row reduction controls did not identify reduction topology as the missing switch. Run two-stage only if a large-K reduction bucket reappears in profiling. |
+| two-stage reduction | Decision-gated | One-row reduction controls did not identify reduction topology as the missing switch. Run two-stage only if a large-K reduction bucket reappears in profiling. |
 | no-LDS accumulator reduction | Covered negative | `reduction-accum-sweep.json` covers 4/8/16 lane-local accumulators plus one-wave/no-shared-final controls. Accumulators do not recover HIP and matched Vulkan accumulator rows remain `9.57x-15.81x` faster. |
 | barrier stress | Covered | `reduction-sweep.json` includes extra-barrier HIP and Vulkan reduction variants. |
 | small-K expert-down | Covered | Q6_K selected-down X8 real-slice probe plus ISA comparison covers the retained small-K selected-down production bucket. |
 | selected gate+up dual | Covered | Q4_K selected-dual HIP layout, Vulkan real slice, HIP/RADV ISA comparison, and setup/amortization probe are retained. |
-| dense q8_0 attention projection | Deferred | No matched Vulkan production slice is retained. Run only if attention projection profiling makes dense q8_0 a backend decision. |
-| GDN/recurrent chain | Deferred | No matched Vulkan GDN/recurrent microbench is retained. Run only if verifier profiling isolates GDN/recurrent scheduling/register pressure as the exposed backend limiter. |
-| q6 lm-head rowtile | Deferred | HIP rowtile evidence exists in broader benchmark rollups, but no matched Vulkan lm-head rowtile microbench is retained. Run only if lm-head rowtile becomes the backend decision target. |
-| sampler/top-k/argmax | Partial | `sampler-argmax-comparison.json` covers deterministic top-1 argmax and `sampler-topk8-comparison.json` covers deterministic top-k8 with CPU correctness and ISA stats. Stochastic sampling and fused lm-head+sample integration are not covered; run only if sampler work remains exposed after launch fusion and real-slice work. |
+| dense q8_0 attention projection | Decision-gated | No matched Vulkan production slice is retained. Run only if attention projection profiling makes dense q8_0 a backend decision. |
+| GDN/recurrent chain | Decision-gated | No matched Vulkan GDN/recurrent microbench is retained. Run only if verifier profiling isolates GDN/recurrent scheduling/register pressure as the exposed backend limiter. |
+| q6 lm-head rowtile | Decision-gated | HIP rowtile evidence exists in broader benchmark rollups, but no matched Vulkan lm-head rowtile microbench is retained. Run only if lm-head rowtile becomes the backend decision target. |
+| sampler/top-k/argmax | Covered, scoped | `sampler-argmax-comparison.json` covers deterministic top-1 argmax and `sampler-topk8-comparison.json` covers deterministic top-k8 with CPU correctness and ISA stats. Stochastic sampling and fused lm-head+sample integration are not covered; run only if sampler work remains exposed after launch fusion and real-slice work. |
 
 Tooling that would improve attribution quality, but should not displace the
 remaining portability and integration work:
@@ -1643,6 +1660,13 @@ If a row lands in `compiler_aco`, map it to an LLVM-facing request:
 
 Rows without ISA/stat evidence should not be used as LLVM asks. They can still
 justify hipEngine kernel rewrites or a Vulkan backend.
+
+Current status: no retained row is clean enough to file as a broad
+LLVM-AMDGPU-vs-RADV/ACO issue. The Q4_K selected-dual slice is the only current
+LLVM/HIP recovery lead, and even that is a slice-specific follow-up: it must
+target the measured instruction count, waitcnt placement, memory/address
+structure, or reduction/LDS shape and prove a real-slice speedup under the same
+oracle.
 
 ## Vulkan Backend Effort Scale
 
