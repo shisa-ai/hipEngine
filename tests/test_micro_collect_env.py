@@ -30,6 +30,7 @@ def test_collect_environment_without_device_probes() -> None:
     data = module.collect_environment(
         repo_root=repo_root,
         include_device_probes=False,
+        include_privileged=False,
         timeout_s=2.0,
         max_output_chars=2000,
     )

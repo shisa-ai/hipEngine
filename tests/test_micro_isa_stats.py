@@ -199,6 +199,6 @@ def test_build_isa_comparison_matches_workgroups() -> None:
     row = comparison["matched_rows"][0]
     assert row["workgroup_size"] == 64
     assert row["hip_vgpr"] == 11
-    assert row["vulkan_official_register_counts"] is None
+    assert row["vulkan_official_register_counts"] is False
     assert row["vulkan_estimated_sgpr_span"] == 16
     json.dumps(comparison, allow_nan=False)
