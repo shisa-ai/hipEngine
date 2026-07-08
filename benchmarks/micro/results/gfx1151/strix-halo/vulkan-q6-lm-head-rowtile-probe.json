@@ -1,0 +1,2100 @@
+{
+  "artifact_ref": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json",
+  "backend": "vulkan",
+  "bench": "q6_lm_head_rowtile_probe",
+  "classification": "real_slice_probe",
+  "correctness": {
+    "all_pass": true,
+    "rows": 18
+  },
+  "environment": null,
+  "environment_ref": "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+  "hardware": {
+    "device": {
+      "api_version": "1.4.348",
+      "device_id": 5510,
+      "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "device_type": 1,
+      "driver_version_raw": 109056002,
+      "queue_family": 0,
+      "shader_integer_dot_product": true,
+      "vendor_id": 4098
+    },
+    "gfx_arch": "gfx1151",
+    "gpu": "Radeon 8060S Graphics"
+  },
+  "kind": "hipengine_micro_result",
+  "measurements": {
+    "rows": [
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 4710,
+          "max_abs": 0.25,
+          "mean_abs": 0.004015583545,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 248.1229,
+        "q6_x8_quantize_plus_dot_median_us": 270.8175,
+        "q8_1_quantize_median_us": 1.7693,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 3.5497,
+            "median_ms": 0.0017693,
+            "median_us": 1.7693,
+            "min_us": 1.598,
+            "p05_us": 1.62124,
+            "p95_us": 3.45672,
+            "samples_us": [
+              3.0848,
+              3.5497,
+              1.598,
+              1.7693,
+              1.7142
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 248.4856,
+            "median_ms": 0.2481229,
+            "median_us": 248.1229,
+            "min_us": 247.9425,
+            "p05_us": 247.97296,
+            "p95_us": 248.43708,
+            "samples_us": [
+              248.1229,
+              248.4856,
+              247.9425,
+              248.0948,
+              248.243
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 271.8764,
+            "median_ms": 0.2708175,
+            "median_us": 270.8175,
+            "min_us": 269.9668,
+            "p05_us": 270.07682,
+            "p95_us": 271.69728,
+            "samples_us": [
+              270.9808,
+              271.8764,
+              269.9668,
+              270.5169,
+              270.8175
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 22248,
+          "max_abs": 0.5,
+          "mean_abs": 0.005212841905,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 1019.9408,
+        "q6_x8_quantize_plus_dot_median_us": 1034.8778,
+        "q8_1_quantize_median_us": 5.898,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 8.7234,
+            "median_ms": 0.005898,
+            "median_us": 5.898,
+            "min_us": 5.8019,
+            "p05_us": 5.8071,
+            "p95_us": 8.17116,
+            "samples_us": [
+              8.7234,
+              5.9622,
+              5.898,
+              5.8279,
+              5.8019
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1052.4298,
+            "median_ms": 1.0199408,
+            "median_us": 1019.9408,
+            "min_us": 972.575,
+            "p05_us": 973.78786,
+            "p95_us": 1052.34266,
+            "samples_us": [
+              972.575,
+              978.6393,
+              1051.9941,
+              1019.9408,
+              1052.4298
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1065.5936,
+            "median_ms": 1.0348778,
+            "median_us": 1034.8778,
+            "min_us": 1011.0212,
+            "p05_us": 1014.99322,
+            "p95_us": 1062.9374,
+            "samples_us": [
+              1034.8778,
+              1065.5936,
+              1030.8813,
+              1011.0212,
+              1052.3126
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 41914,
+          "max_abs": 0.5,
+          "mean_abs": 0.005870210196,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 1967.6139,
+        "q6_x8_quantize_plus_dot_median_us": 2016.0989,
+        "q8_1_quantize_median_us": 11.219,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 39.1214,
+            "median_ms": 0.011219,
+            "median_us": 11.219,
+            "min_us": 8.6422,
+            "p05_us": 8.87324,
+            "p95_us": 35.89676,
+            "samples_us": [
+              39.1214,
+              11.219,
+              22.9982,
+              9.7974,
+              8.6422
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 2021.7287,
+            "median_ms": 1.9676139,
+            "median_us": 1967.6139,
+            "min_us": 1948.2757,
+            "p05_us": 1949.4435,
+            "p95_us": 2018.69562,
+            "samples_us": [
+              1948.2757,
+              1954.1147,
+              2006.5633,
+              1967.6139,
+              2021.7287
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 2037.1475,
+            "median_ms": 2.0160989,
+            "median_us": 2016.0989,
+            "min_us": 2008.2142,
+            "p05_us": 2008.33466,
+            "p95_us": 2035.63266,
+            "samples_us": [
+              2016.0989,
+              2029.5733,
+              2037.1475,
+              2008.8165,
+              2008.2142
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 21773,
+          "max_abs": 0.25,
+          "mean_abs": 0.003986665797,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 1176.5508,
+        "q6_x8_quantize_plus_dot_median_us": 1186.6748,
+        "q8_1_quantize_median_us": 4.81,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 14.8739,
+            "median_ms": 0.00481,
+            "median_us": 4.81,
+            "min_us": 1.7232,
+            "p05_us": 2.32534,
+            "p95_us": 12.86352,
+            "samples_us": [
+              1.7232,
+              14.8739,
+              4.822,
+              4.81,
+              4.7339
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1194.1439,
+            "median_ms": 1.1765508,
+            "median_us": 1176.5508,
+            "min_us": 1149.0212,
+            "p05_us": 1150.38176,
+            "p95_us": 1191.18074,
+            "samples_us": [
+              1155.824,
+              1194.1439,
+              1179.3281,
+              1149.0212,
+              1176.5508
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1217.1671,
+            "median_ms": 1.1866748,
+            "median_us": 1186.6748,
+            "min_us": 1162.7459,
+            "p05_us": 1167.00812,
+            "p95_us": 1213.35594,
+            "samples_us": [
+              1162.7459,
+              1217.1671,
+              1184.057,
+              1186.6748,
+              1198.1113
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 103230,
+          "max_abs": 0.5,
+          "mean_abs": 0.005212144481,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 4548.0576,
+        "q6_x8_quantize_plus_dot_median_us": 4546.5217,
+        "q8_1_quantize_median_us": 6.9261,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 6.9781,
+            "median_ms": 0.0069261,
+            "median_us": 6.9261,
+            "min_us": 5.9171,
+            "p05_us": 5.92832,
+            "p95_us": 6.9709,
+            "samples_us": [
+              6.9261,
+              6.9781,
+              6.9421,
+              5.9171,
+              5.9732
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 4580.783,
+            "median_ms": 4.5480576,
+            "median_us": 4548.0576,
+            "min_us": 4528.4246,
+            "p05_us": 4528.45346,
+            "p95_us": 4577.17844,
+            "samples_us": [
+              4562.7602,
+              4548.0576,
+              4528.4246,
+              4580.783,
+              4528.5689
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 4562.2321,
+            "median_ms": 4.5465217,
+            "median_us": 4546.5217,
+            "min_us": 4522.7832,
+            "p05_us": 4524.74806,
+            "p95_us": 4560.42772,
+            "samples_us": [
+              4532.6075,
+              4546.5217,
+              4562.2321,
+              4522.7832,
+              4553.2102
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 194628,
+          "max_abs": 0.5,
+          "mean_abs": 0.005888293077,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 64,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 9019.6425,
+        "q6_x8_quantize_plus_dot_median_us": 9037.8486,
+        "q8_1_quantize_median_us": 22.2067,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 22.6786,
+            "median_ms": 0.0222067,
+            "median_us": 22.2067,
+            "min_us": 22.0323,
+            "p05_us": 22.04034,
+            "p95_us": 22.58422,
+            "samples_us": [
+              22.6786,
+              22.2067,
+              22.0725,
+              22.2067,
+              22.0323
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 9130.1029,
+            "median_ms": 9.0196425,
+            "median_us": 9019.6425,
+            "min_us": 9015.129,
+            "p05_us": 9015.20636,
+            "p95_us": 9109.50988,
+            "samples_us": [
+              9019.6425,
+              9130.1029,
+              9027.1378,
+              9015.129,
+              9015.5158
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 9169.2092,
+            "median_ms": 9.0378486,
+            "median_us": 9037.8486,
+            "min_us": 9007.9106,
+            "p05_us": 9012.68334,
+            "p95_us": 9145.8592,
+            "samples_us": [
+              9031.7743,
+              9052.4592,
+              9037.8486,
+              9007.9106,
+              9169.2092
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 4710,
+          "max_abs": 0.25,
+          "mean_abs": 0.004015583545,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 247.0037,
+        "q6_x8_quantize_plus_dot_median_us": 292.8788,
+        "q8_1_quantize_median_us": 1.9837,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 2.102,
+            "median_ms": 0.0019837,
+            "median_us": 1.9837,
+            "min_us": 1.9536,
+            "p05_us": 1.9554,
+            "p95_us": 2.08256,
+            "samples_us": [
+              2.102,
+              2.0048,
+              1.9626,
+              1.9837,
+              1.9536
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 247.8543,
+            "median_ms": 0.2470037,
+            "median_us": 247.0037,
+            "min_us": 246.7593,
+            "p05_us": 246.7659,
+            "p95_us": 247.80762,
+            "samples_us": [
+              247.8543,
+              247.0037,
+              246.7923,
+              246.7593,
+              247.6209
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 296.2692,
+            "median_ms": 0.2928788,
+            "median_us": 292.8788,
+            "min_us": 291.8369,
+            "p05_us": 291.9423,
+            "p95_us": 295.95542,
+            "samples_us": [
+              291.8369,
+              292.8788,
+              294.7003,
+              292.3639,
+              296.2692
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 22244,
+          "max_abs": 0.5,
+          "mean_abs": 0.005212484277,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 989.669,
+        "q6_x8_quantize_plus_dot_median_us": 1032.4765,
+        "q8_1_quantize_median_us": 5.6256,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 6.1515,
+            "median_ms": 0.0056256,
+            "median_us": 5.6256,
+            "min_us": 5.4712,
+            "p05_us": 5.47502,
+            "p95_us": 6.12006,
+            "samples_us": [
+              6.1515,
+              5.9943,
+              5.4903,
+              5.4712,
+              5.6256
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1047.7761,
+            "median_ms": 0.989669,
+            "median_us": 989.669,
+            "min_us": 968.5354,
+            "p05_us": 972.2157,
+            "p95_us": 1046.7606,
+            "samples_us": [
+              1047.7761,
+              986.9369,
+              989.669,
+              968.5354,
+              1042.6986
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1037.8495,
+            "median_ms": 1.0324765,
+            "median_us": 1032.4765,
+            "min_us": 991.8692,
+            "p05_us": 999.04606,
+            "p95_us": 1036.8534,
+            "samples_us": [
+              991.8692,
+              1037.8495,
+              1027.7535,
+              1032.4765,
+              1032.869
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 41907,
+          "max_abs": 0.5,
+          "mean_abs": 0.005869824017,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 1974.8415,
+        "q6_x8_quantize_plus_dot_median_us": 1996.1976,
+        "q8_1_quantize_median_us": 7.0271,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 7.2196,
+            "median_ms": 0.0070271,
+            "median_us": 7.0271,
+            "min_us": 6.914,
+            "p05_us": 6.93522,
+            "p95_us": 7.21558,
+            "samples_us": [
+              7.0201,
+              7.2196,
+              6.914,
+              7.1995,
+              7.0271
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 2005.3719,
+            "median_ms": 1.9748415,
+            "median_us": 1974.8415,
+            "min_us": 1946.1678,
+            "p05_us": 1947.75274,
+            "p95_us": 2004.96574,
+            "samples_us": [
+              1946.1678,
+              1954.0925,
+              2005.3719,
+              2003.3411,
+              1974.8415
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 2020.3139,
+            "median_ms": 1.9961976,
+            "median_us": 1996.1976,
+            "min_us": 1987.9642,
+            "p05_us": 1988.41908,
+            "p95_us": 2020.22114,
+            "samples_us": [
+              2020.3139,
+              1987.9642,
+              1990.2386,
+              1996.1976,
+              2019.8501
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 21773,
+          "max_abs": 0.25,
+          "mean_abs": 0.003986665797,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 1143.6361,
+        "q6_x8_quantize_plus_dot_median_us": 1191.7453,
+        "q8_1_quantize_median_us": 5.0836,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 5.1015,
+            "median_ms": 0.0050836,
+            "median_us": 5.0836,
+            "min_us": 4.4884,
+            "p05_us": 4.60222,
+            "p95_us": 5.0983,
+            "samples_us": [
+              4.4884,
+              5.0855,
+              5.0836,
+              5.0575,
+              5.1015
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1174.3348,
+            "median_ms": 1.1436361,
+            "median_us": 1143.6361,
+            "min_us": 1139.7798,
+            "p05_us": 1140.00864,
+            "p95_us": 1168.2237,
+            "samples_us": [
+              1174.3348,
+              1139.7798,
+              1143.6361,
+              1140.924,
+              1143.7793
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1199.1634,
+            "median_ms": 1.1917453,
+            "median_us": 1191.7453,
+            "min_us": 1188.4452,
+            "p05_us": 1188.63494,
+            "p95_us": 1198.4771,
+            "samples_us": [
+              1188.4452,
+              1191.7453,
+              1189.3939,
+              1195.7319,
+              1199.1634
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 103210,
+          "max_abs": 0.5,
+          "mean_abs": 0.005211759158,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 4507.4964,
+        "q6_x8_quantize_plus_dot_median_us": 4529.5689,
+        "q8_1_quantize_median_us": 6.9941,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 7.2626,
+            "median_ms": 0.0069941,
+            "median_us": 6.9941,
+            "min_us": 5.817,
+            "p05_us": 5.99952,
+            "p95_us": 7.21032,
+            "samples_us": [
+              7.2626,
+              6.9941,
+              7.0012,
+              5.817,
+              6.7296
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 4543.9909,
+            "median_ms": 4.5074964,
+            "median_us": 4507.4964,
+            "min_us": 4481.1392,
+            "p05_us": 4485.97656,
+            "p95_us": 4541.00532,
+            "samples_us": [
+              4529.063,
+              4507.4964,
+              4481.1392,
+              4505.326,
+              4543.9909
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 4581.9662,
+            "median_ms": 4.5295689,
+            "median_us": 4529.5689,
+            "min_us": 4525.5954,
+            "p05_us": 4525.85808,
+            "p95_us": 4578.97316,
+            "samples_us": [
+              4581.9662,
+              4526.9088,
+              4567.001,
+              4529.5689,
+              4525.5954
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 194597,
+          "max_abs": 0.5,
+          "mean_abs": 0.005887925107,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 128,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 8962.4842,
+        "q6_x8_quantize_plus_dot_median_us": 8982.8225,
+        "q8_1_quantize_median_us": 8.1613,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 8.4328,
+            "median_ms": 0.0081613,
+            "median_us": 8.1613,
+            "min_us": 7.0983,
+            "p05_us": 7.27384,
+            "p95_us": 8.37972,
+            "samples_us": [
+              8.4328,
+              7.976,
+              8.1613,
+              8.1674,
+              7.0983
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 8991.692,
+            "median_ms": 8.9624842,
+            "median_us": 8962.4842,
+            "min_us": 8955.2218,
+            "p05_us": 8955.60684,
+            "p95_us": 8991.27002,
+            "samples_us": [
+              8962.4842,
+              8989.5821,
+              8991.692,
+              8955.2218,
+              8957.147
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 9005.0002,
+            "median_ms": 8.9828225,
+            "median_us": 8982.8225,
+            "min_us": 8975.1699,
+            "p05_us": 8976.31228,
+            "p95_us": 9004.4992,
+            "samples_us": [
+              8980.8818,
+              8975.1699,
+              9005.0002,
+              9002.4952,
+              8982.8225
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 4710,
+          "max_abs": 0.25,
+          "mean_abs": 0.004015583545,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 246.0198,
+        "q6_x8_quantize_plus_dot_median_us": 258.7588,
+        "q8_1_quantize_median_us": 1.3926,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 1.5609,
+            "median_ms": 0.0013926,
+            "median_us": 1.3926,
+            "min_us": 1.3455,
+            "p05_us": 1.34592,
+            "p95_us": 1.56032,
+            "samples_us": [
+              1.558,
+              1.5609,
+              1.3926,
+              1.3455,
+              1.3476
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 249.3211,
+            "median_ms": 0.2460198,
+            "median_us": 246.0198,
+            "min_us": 245.2134,
+            "p05_us": 245.29376,
+            "p95_us": 248.95802,
+            "samples_us": [
+              245.2134,
+              247.5057,
+              246.0198,
+              249.3211,
+              245.6152
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 262.6321,
+            "median_ms": 0.2587588,
+            "median_us": 258.7588,
+            "min_us": 258.4693,
+            "p05_us": 258.49554,
+            "p95_us": 262.54612,
+            "samples_us": [
+              258.7588,
+              258.6005,
+              258.4693,
+              262.6321,
+              262.2022
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 22248,
+          "max_abs": 0.5,
+          "mean_abs": 0.005212841905,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 1013.7412,
+        "q6_x8_quantize_plus_dot_median_us": 1025.5744,
+        "q8_1_quantize_median_us": 6.884,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 14.2678,
+            "median_ms": 0.006884,
+            "median_us": 6.884,
+            "min_us": 5.4853,
+            "p05_us": 5.6468,
+            "p95_us": 12.91566,
+            "samples_us": [
+              14.2678,
+              6.884,
+              7.5071,
+              6.2928,
+              5.4853
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1050.915,
+            "median_ms": 1.0137412,
+            "median_us": 1013.7412,
+            "min_us": 985.0493,
+            "p05_us": 990.1166,
+            "p95_us": 1046.34442,
+            "samples_us": [
+              985.0493,
+              1028.0621,
+              1013.7412,
+              1010.3858,
+              1050.915
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1028.9697,
+            "median_ms": 1.0255744,
+            "median_us": 1025.5744,
+            "min_us": 1023.4855,
+            "p05_us": 1023.67246,
+            "p95_us": 1028.478,
+            "samples_us": [
+              1023.4855,
+              1025.5744,
+              1024.4203,
+              1026.5112,
+              1028.9697
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 41914,
+          "max_abs": 0.5,
+          "mean_abs": 0.005870176872,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 32768,
+        "q6_x8_dot_median_us": 1987.1176,
+        "q6_x8_quantize_plus_dot_median_us": 2043.1267,
+        "q8_1_quantize_median_us": 6.7918,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 6.903,
+            "median_ms": 0.0067918,
+            "median_us": 6.7918,
+            "min_us": 6.7617,
+            "p05_us": 6.76672,
+            "p95_us": 6.88856,
+            "samples_us": [
+              6.903,
+              6.7617,
+              6.7868,
+              6.8308,
+              6.7918
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 2002.268,
+            "median_ms": 1.9871176,
+            "median_us": 1987.1176,
+            "min_us": 1965.2866,
+            "p05_us": 1965.46074,
+            "p95_us": 2000.29268,
+            "samples_us": [
+              2002.268,
+              1966.1573,
+              1992.3914,
+              1965.2866,
+              1987.1176
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 2152.6093,
+            "median_ms": 2.0431267,
+            "median_us": 2043.1267,
+            "min_us": 1993.3193,
+            "p05_us": 1999.80384,
+            "p95_us": 2131.34738,
+            "samples_us": [
+              2025.742,
+              2152.6093,
+              2046.2997,
+              2043.1267,
+              1993.3193
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 21773,
+          "max_abs": 0.25,
+          "mean_abs": 0.003986665797,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 1178.5467,
+        "q6_x8_quantize_plus_dot_median_us": 1200.3295,
+        "q8_1_quantize_median_us": 4.5876,
+        "rows": 1,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 4.6417,
+            "median_ms": 0.0045876,
+            "median_us": 4.5876,
+            "min_us": 3.2941,
+            "p05_us": 3.54398,
+            "p95_us": 4.6373,
+            "samples_us": [
+              3.2941,
+              4.6417,
+              4.5876,
+              4.6197,
+              4.5435
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 1191.7694,
+            "median_ms": 1.1785467,
+            "median_us": 1178.5467,
+            "min_us": 1148.3729,
+            "p05_us": 1148.82976,
+            "p95_us": 1189.54502,
+            "samples_us": [
+              1150.6572,
+              1180.6475,
+              1178.5467,
+              1148.3729,
+              1191.7694
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 1224.4067,
+            "median_ms": 1.2003295,
+            "median_us": 1200.3295,
+            "min_us": 1163.0706,
+            "p05_us": 1170.09116,
+            "p95_us": 1222.97822,
+            "samples_us": [
+              1224.4067,
+              1163.0706,
+              1217.2643,
+              1200.3295,
+              1198.1734
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 103230,
+          "max_abs": 0.5,
+          "mean_abs": 0.005212144481,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 4499.0308,
+        "q6_x8_quantize_plus_dot_median_us": 4517.6274,
+        "q8_1_quantize_median_us": 8.4599,
+        "rows": 4,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 23.7316,
+            "median_ms": 0.0084599,
+            "median_us": 8.4599,
+            "min_us": 7.2186,
+            "p05_us": 7.42076,
+            "p95_us": 20.68988,
+            "samples_us": [
+              8.4599,
+              8.2294,
+              8.523,
+              7.2186,
+              23.7316
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 4540.8991,
+            "median_ms": 4.4990308,
+            "median_us": 4499.0308,
+            "min_us": 4478.3845,
+            "p05_us": 4480.38108,
+            "p95_us": 4534.18708,
+            "samples_us": [
+              4488.3674,
+              4540.8991,
+              4507.339,
+              4499.0308,
+              4478.3845
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 4546.6659,
+            "median_ms": 4.5176274,
+            "median_us": 4517.6274,
+            "min_us": 4492.929,
+            "p05_us": 4497.32084,
+            "p95_us": 4543.25708,
+            "samples_us": [
+              4514.8882,
+              4546.6659,
+              4517.6274,
+              4492.929,
+              4529.6218
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      },
+      {
+        "backend": "vulkan",
+        "correctness": {
+          "exact_bf16_mismatches": 194628,
+          "max_abs": 0.5,
+          "mean_abs": 0.005888255172,
+          "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+          "pass": true,
+          "top1": 1
+        },
+        "correctness_pass": true,
+        "hardware": {
+          "api_version": "1.4.348",
+          "device_id": 5510,
+          "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "device_type": 1,
+          "driver_version_raw": 109056002,
+          "queue_family": 0,
+          "shader_integer_dot_product": true,
+          "vendor_id": 4098
+        },
+        "in_features": 2048,
+        "local_size": 256,
+        "out_features": 152064,
+        "q6_x8_dot_median_us": 9114.2252,
+        "q6_x8_quantize_plus_dot_median_us": 8959.9505,
+        "q8_1_quantize_median_us": 8.2565,
+        "rows": 8,
+        "timing": {
+          "q8_1_quantize": {
+            "max_us": 10.3514,
+            "median_ms": 0.0082565,
+            "median_us": 8.2565,
+            "min_us": 7.1084,
+            "p05_us": 7.1158,
+            "p95_us": 10.1963,
+            "samples_us": [
+              10.3514,
+              9.5759,
+              7.1454,
+              8.2565,
+              7.1084
+            ]
+          },
+          "x8_selected_dp4a_dot_prequantized": {
+            "max_us": 9186.7271,
+            "median_ms": 9.1142252,
+            "median_us": 9114.2252,
+            "min_us": 9059.5293,
+            "p05_us": 9066.59576,
+            "p95_us": 9178.59484,
+            "samples_us": [
+              9186.7271,
+              9146.0658,
+              9114.2252,
+              9094.8616,
+              9059.5293
+            ]
+          },
+          "x8_selected_dp4a_quantize_plus_dot": {
+            "max_us": 9224.6593,
+            "median_ms": 8.9599505,
+            "median_us": 8959.9505,
+            "min_us": 8953.2007,
+            "p05_us": 8953.8373,
+            "p95_us": 9203.67514,
+            "samples_us": [
+              9224.6593,
+              8959.9505,
+              8953.2007,
+              8956.3837,
+              9119.7385
+            ]
+          }
+        },
+        "variant": "q6_x8_q8_1_dp4a_full_output_bf16"
+      }
+    ]
+  },
+  "notes": "Vulkan Q6_K X8 q8_1+dp4a full-output lm-head-shaped diagnostic. This is not bit-identical to the HIP BF16 x Q6_K T16 rowtile path; it tests whether the existing Vulkan Q6 X8 dot shape is a plausible backend target for large lm-head-sized output.",
+  "schema_version": 1,
+  "source": {
+    "branch": "benchmarks-micro",
+    "commit": "c4f026915ece76bedb23ccd52ceab02cc04dd540",
+    "dirty": false,
+    "repo": "/home/lhl/hipEngine-benchmarks-micro",
+    "source_hash": "sha256:727908f30ccf70cfa4ebfc8e9e37a2972aae9ec8672605a12202f528bd07cbcc"
+  },
+  "timing_config": {
+    "method": "pre-recorded Vulkan command buffer via q6_x8_real_slice.py; transfer and pipeline creation excluded",
+    "reps": 10,
+    "samples": 5,
+    "warmup": 3
+  },
+  "wrapper": {
+    "build_dir": "/tmp/hipengine-q6-lmhead-retained-vulkan",
+    "command": [
+      "python3",
+      "benchmarks/micro/runners/q6_lm_head_rowtile_probe.py",
+      "--backend",
+      "vulkan",
+      "--environment-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+      "--environment-ref",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+      "--gfx-arch",
+      "gfx1151",
+      "--hardware-gpu",
+      "Radeon 8060S Graphics",
+      "--shapes",
+      "2048x32768,2048x152064",
+      "--rows-list",
+      "1,4,8",
+      "--local-sizes",
+      "64,128,256",
+      "--reps",
+      "10",
+      "--warmup",
+      "3",
+      "--samples",
+      "5",
+      "--build-dir",
+      "/tmp/hipengine-q6-lmhead-retained-vulkan",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json",
+      "--pretty"
+    ],
+    "commands": [
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x32768_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "64",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls64_2048x152064_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 64,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x32768_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "128",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls128_2048x152064_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 128,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "32768",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x32768_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x32768"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r1/q6_x8.json",
+          "--rows",
+          "1",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r1"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 1,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r4/q6_x8.json",
+          "--rows",
+          "4",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r4"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 4,
+        "shape": "2048x152064"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/q6_x8_real_slice.py",
+          "--out",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r8/q6_x8.json",
+          "--rows",
+          "8",
+          "--experts",
+          "1",
+          "--in-features",
+          "2048",
+          "--out-features",
+          "152064",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "10",
+          "--warmup",
+          "3",
+          "--samples",
+          "5",
+          "--device-index",
+          "0",
+          "--build-dir",
+          "/tmp/hipengine-q6-lmhead-retained-vulkan/vulkan_ls256_2048x152064_r8"
+        ],
+        "kind": "run_vulkan_q6_x8_runner",
+        "local_size": 256,
+        "returncode": 0,
+        "rows": 8,
+        "shape": "2048x152064"
+      }
+    ],
+    "cwd": "/home/lhl/hipEngine-benchmarks-micro",
+    "schema": "hipengine.micro.q6_lm_head_rowtile_probe.v1"
+  }
+}

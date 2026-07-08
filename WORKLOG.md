@@ -146774,6 +146774,44 @@ python3 scripts/gguf_mtp_bench.py \
 - Smoke result: HIP correctness passed for rows=`1/4`, shape=`2048x4096`.
   Retained clean-provenance HIP/Vulkan/comparison artifacts are next.
 
+## 2026-07-08 - HIP vs Vulkan Q6 lm-head rowtile retained result
+
+- Retained Q6 lm-head rowtile diagnostic artifacts on gfx1151/Radeon 8060S/RADV
+  Mesa 26.1.2:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json`,
+  and
+  `benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 2048x32768,2048x152064 --rows-list 1,4,8 --reps 10 --warmup 3 --samples 5 --build-dir /tmp/hipengine-q6-lmhead-retained --out benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json --pretty`;
+  `python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 2048x32768,2048x152064 --rows-list 1,4,8 --local-sizes 64,128,256 --reps 10 --warmup 3 --samples 5 --build-dir /tmp/hipengine-q6-lmhead-retained-vulkan --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json --pretty`;
+  `python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json --out benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json --pretty`.
+- Result: HIP rowtile correctness passed all `6` rowtile-vs-per-row-decode
+  rows, Vulkan CPU-oracle correctness passed all `18` rows, and the comparison
+  matched all `18` rows. The source metadata is clean at commit
+  `c4f026915ece76bedb23ccd52ceab02cc04dd540`.
+- Timing summary: Vulkan/HIP speedup ranges `0.367x-1.058x` for q8_1
+  quantize+dot and `0.367x-1.112x` for prequantized dot. Vulkan only wins the
+  smaller `2048x32768` rows=1 case (`1.058x` combined, local_size=256).
+  Full-vocab rows=1 is near parity/slower (`0.970x` combined best-native), and
+  rows=4/8 strongly favor HIP (`0.397x-0.403x` and `0.367x-0.376x` combined
+  best-native).
+- Caveat: this is not bit-identical cross-backend math/layout. HIP uses the
+  production-style BF16 x Q6_K T16 rowtile chunked path; Vulkan uses the
+  existing Q6_K X8 q8_1+dp4a full-output shader.
+- Conclusion: q6 lm-head rowtile is now covered as a mostly negative Vulkan
+  diagnostic for the current X8 shader target on gfx1151. Another lm-head
+  Vulkan row should wait for a different shader/layout candidate or profiling
+  evidence that a different shape is backend-deciding.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/q6_lm_head_rowtile_probe.py`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`;
+  `git diff --check`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
 ## 2026-07-08 - LDS/barrier/subgroup reduction sweep retained
 
 - Added the reduction-topology controls for the f32 geometry gap:
