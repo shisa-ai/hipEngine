@@ -147108,3 +147108,28 @@ python3 scripts/gguf_mtp_bench.py \
   combined and `2048x6144` rows=8 row_tile=4 at `0.707x` combined.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - Two-stage reduction harness support
+
+- Added a true two-stage f32 reduction microbench:
+  `benchmarks/micro/runners/hip_two_stage_reduction.hip`,
+  `benchmarks/micro/runners/vulkan_two_stage_reduction.cpp`,
+  `benchmarks/micro/runners/two_stage_reduction.py`,
+  `benchmarks/micro/kernels/vulkan/reduction_two_stage_partial.comp`, and
+  `benchmarks/micro/kernels/vulkan/reduction_two_stage_final.comp`.
+- The timed region is exactly block-partial dispatch plus final-reduce dispatch
+  per repetition. HIP uses events around repeated partial+final launches;
+  Vulkan uses a pre-recorded command buffer with partial/final compute dispatches
+  and explicit partial/output buffer barriers. Both backends use the same
+  deterministic CPU oracle.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/two_stage_reduction.py`;
+  `glslc --target-env=vulkan1.1 -O benchmarks/micro/kernels/vulkan/reduction_two_stage_partial.comp -o /tmp/reduction_two_stage_partial.spv`;
+  `glslc --target-env=vulkan1.1 -O benchmarks/micro/kernels/vulkan/reduction_two_stage_final.comp -o /tmp/reduction_two_stage_final.spv`;
+  `git diff --check`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/two_stage_reduction.py --backend both --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --k-list 8192 --rows-list 1,4 --workgroups 128 --split-counts 2 --body-repeats 16 --reps 5 --warmup 1 --samples 2 --build-dir /tmp/hipengine-two-stage-smoke2 --out /tmp/two-stage-smoke2.json --pretty`.
+- Smoke result: HIP and Vulkan correctness passed for K=`8192`, rows=`1/4`,
+  wg=`128`, split_count=`2`; comparison matched 2 rows. A smaller
+  sub-microsecond HIP timing smoke exposed non-positive HIP event samples, so the
+  HIP harness now fails non-positive elapsed timings instead of retaining them.
+  Retained large-K sweep still pending.
