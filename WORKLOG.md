@@ -147219,3 +147219,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Added an LLVM-map note that no retained row is currently clean enough for a
   broad LLVM-AMDGPU-vs-RADV/ACO filing; the Q4_K selected-dual row is a
   slice-specific HIP recovery lead only.
+
+## 2026-07-08 - Q8_0 dense HIP/Vulkan real-slice harness support
+
+- Added `benchmarks/micro/kernels/vulkan/q8_0_dense.comp`,
+  `benchmarks/micro/runners/vulkan_q8_0_dense.cpp`, and
+  `benchmarks/micro/runners/q8_0_dense_real_slice.py` for matched raw GGUF
+  Q8_0 dense q8_1+dp4a probes. The runner supports HIP single/rowtile4,
+  Vulkan local-size and rowtile variants, CPU q8_1/Q8_0 correctness, and a
+  HIP/Vulkan comparison artifact.
+- Smoke validation:
+  `python3 -m py_compile benchmarks/micro/runners/q8_0_dense_real_slice.py`;
+  `glslc --target-env=vulkan1.1 -O -DHIPENGINE_LOCAL_SIZE_X=64 -DHIPENGINE_ROW_TILE=1 benchmarks/micro/kernels/vulkan/q8_0_dense.comp -o /tmp/hipengine-q8-smoke/q8_rt1.spv`;
+  `glslc --target-env=vulkan1.1 -O -DHIPENGINE_LOCAL_SIZE_X=64 -DHIPENGINE_ROW_TILE=4 benchmarks/micro/kernels/vulkan/q8_0_dense.comp -o /tmp/hipengine-q8-smoke/q8_rt4.spv`;
+  `c++ -O2 -std=c++17 benchmarks/micro/runners/vulkan_q8_0_dense.cpp -o /tmp/hipengine-q8-smoke/vulkan_q8_0_dense $(pkg-config --cflags --libs vulkan)`;
+  `git diff --check`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --backend hip --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 256x64 --rows-list 1,4 --row-tiles 1,4 --reps 3 --warmup 1 --samples 2 --build-dir /tmp/hipengine-q8-dense-smoke --out /tmp/hip-q8-dense-smoke.json --pretty`;
+  `python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --backend vulkan --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --shapes 256x64 --rows-list 1,4 --local-sizes 64 --row-tiles 1,4 --reps 3 --warmup 1 --samples 2 --build-dir /tmp/hipengine-q8-dense-smoke --out /tmp/vulkan-q8-dense-smoke.json --pretty`;
+  `python3 benchmarks/micro/runners/q8_0_dense_real_slice.py --compare /tmp/hip-q8-dense-smoke.json /tmp/vulkan-q8-dense-smoke.json --out /tmp/q8-dense-smoke-comparison.json --pretty`.
+- Smoke result: HIP and Vulkan correctness passed for shape `256x64`, rows
+  `1/4`, rowtile `1/4`; comparison matched 4 rows. Retained production-shaped
+  sweep still pending.
