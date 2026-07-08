@@ -10,7 +10,7 @@ controls, true two-stage reduction controls, sampler top-1/top-k8 argmax
 diagnostics, plus a matched Vulkan Q6_K X8 selected-down real-slice probe and
 matched Vulkan Q4_K selected-dual gate/up real-slice probe with targeted
 HIP/RADV ISA comparisons, a bounded Q4 setup/amortization probe, and a dense
-Q8_0 real-slice probe.
+Q8_0 real-slice probe plus Q6_K lm-head rowtile-shaped diagnostic.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -142,6 +142,17 @@ rows, Vulkan/HIP speedup ranges from **0.279x-1.120x** for quantize+dot and
 row_tile=4** is Vulkan **0.863x** combined and **2048x6144 rows=8 row_tile=4**
 is Vulkan **0.707x** combined. Classified `real_slice_probe`; closes dense
 Q8_0 as mostly negative for Vulkan on current gfx1151 data.
+Q6_K lm-head rowtile diagnostic: HIP BF16 x Q6_K T16 rowtile chunks and Vulkan
+Q6_K X8 q8_1+dp4a full-output rows both pass their own correctness gates
+(HIP 6/6, Vulkan 18/18). This is not bit-identical cross-backend math/layout,
+but it tests whether the existing Vulkan Q6 X8 shader is a plausible lm-head
+target. Across 18 matched rows for shapes **2048x32768** and **2048x152064**,
+rows **1/4/8**, and Vulkan local_size **64/128/256**, Vulkan/HIP speedup is
+**0.367x-1.058x** for quantize+dot and **0.367x-1.112x** for prequantized dot.
+Vulkan only wins the smaller **2048x32768 rows=1** case (**1.058x** combined);
+full-vocab rows=1 is near parity/slower (**0.970x** combined), and rows=4/8
+strongly favor HIP. Classified `real_slice_probe`; closes q6 lm-head rowtile as
+mostly negative for the current Vulkan X8 target on gfx1151.
 Artifacts:
 [`micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`](micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`](micro/results/gfx1151/strix-halo/hip-sampler-argmax.json),
@@ -166,6 +177,10 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`](micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json),
 [`micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`](micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json),
 [`micro/results/gfx1151/strix-halo/environment-q8-0-dense.json`](micro/results/gfx1151/strix-halo/environment-q8-0-dense.json),
+[`micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`](micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json`](micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json),
+[`micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json`](micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json),
+[`micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json`](micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json),
