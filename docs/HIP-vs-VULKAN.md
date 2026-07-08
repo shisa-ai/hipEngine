@@ -41,7 +41,8 @@ The practical conclusion is:
   reduction controls are also retained for the f32 reduction question, and the
   positive Q4_K Vulkan slice now has a targeted HIP/RADV ISA comparison plus a
   bounded setup/amortization probe. The negative Q6_K X8 slice also now has a
-  targeted HIP/RADV ISA comparison.
+  targeted HIP/RADV ISA comparison. The sampler/top-1 argmax bucket now has a
+  matched HIP/Vulkan diagnostic row as well.
 - The matched real-slice evidence is now split: Q6_K selected-down X8 is slower
   on Vulkan, while Q4_K selected-dual gate/up is faster on Vulkan. The targeted
   Q4_K HIP/RADV ISA comparison explains what that one win is not: not missing
@@ -132,6 +133,16 @@ The detailed retained reads are:
   slower versus Vulkan LDS (`0.984x-1.132x`). Matched Vulkan LDS remains
   `8.19x-14.55x` faster than matched HIP LDS. This is a reduction/topology
   control, not a clean `compiler_aco` proof.
+- The retained sampler/top-1 argmax sweep covers the previously deferred
+  sampler/argmax bucket for deterministic top-1 reduction. Rows=`1/4/8`,
+  vocab=`32768`, and workgroups=`64/128/256` all pass the CPU argmax oracle on
+  both backends. Vulkan is `12.75x-26.94x` faster than HIP across matched rows;
+  best-native rows are wg256 for both backends, where Vulkan is
+  `12.75x-16.85x` faster. HIP reports wave32, `15` SGPR / `7` VGPR,
+  no scratch/spills, and `3` VOPD; RADV reports wave64, official
+  `108` SGPR / `12` VGPR, no scratch/spills, and `0` VOPD. This is a real
+  exposed-bucket diagnostic lead, but it is not a full stochastic sampler,
+  top-k heap, or fused lm-head+sample result.
 - The first retained HIP real-slice q8_1 layout controls are positive for HIP:
   Q4_K selected-dual gate/up q8_1 quantize+dp4a is `2.77x` faster than the raw
   selected-dual path, and Q6_K selected-down X8 q8_1 quantize+dp4a is `1.68x`
@@ -232,6 +243,10 @@ What we have ruled out:
   codegen miss. The targeted ISA comparison shows HIP emits dot4 and VOPD with
   no spills; RADV wins this slice with fewer static instructions and fewer
   waitcnt-family instructions while using no VOPD.
+- Do not attribute the sampler/top-1 argmax gap to a simple workgroup-size
+  mistake, HIP spills, or missed RADV VOPD. Both backends prefer wg256 on
+  best-native top-1 rows, both report no scratch/spills, HIP emits VOPD, and
+  RADV emits none.
 
 What remains plausible:
 
@@ -261,6 +276,11 @@ What remains plausible:
   be promoted without a matching real slice, and one real-slice win plus a
   standalone setup probe is still not enough to justify a second production
   backend.
+- Sampler/top-1 argmax is now a concrete Vulkan diagnostic win in an exposed
+  server bucket. The useful HIP follow-up is to profile whether top-1/sample is
+  still exposed after launch fusion and lm-head work, then decide between a
+  HIP reduction rewrite, a fused lm-head+argmax path, or a narrow Vulkan probe.
+  The retained row does not cover top-k or stochastic sampling.
 - The most actionable HIP-side work from this suite is not "switch to Vulkan";
   it is to preserve the q8_1/dp4a real-slice wins, keep reducing launches and
   fusion boundaries, isolate memory/waitcnt behavior inside shipped hot
@@ -306,6 +326,7 @@ Immediate triage:
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Both paths emit `3` dot4 instructions and no scratch/spills; HIP emits VOPD, RADV emits none, and RADV has fewer static instructions/waitcnts. This narrows but does not finish Q4 attribution. |
 | Done | HIP wave64 plus fixed-workgroup geometry | HIP fixed-wave64 is slower than fixed-wave32 and leaves Vulkan `6.31x-16.18x` faster, removing the remaining f32 geometry wave-mode confound. |
 | Done | LDS/barrier/subgroup reduction sweep | HIP wave-shuffle is flat versus HIP LDS, Vulkan subgroup is flat to modestly slower versus Vulkan LDS, and matched Vulkan LDS remains `8.19x-14.55x` faster than HIP LDS. |
+| Done, top-1 only | Sampler/argmax diagnostic | Vulkan top-1 argmax is `12.75x-26.94x` faster with CPU correctness and no scratch/spills on either backend; this covers argmax, not full top-k or stochastic sampling. |
 | Done, bounded | Q4_K selected-dual Vulkan setup/amortization probe | Steady Q4 remains positive, but standalone backend setup is `47.9 ms`, so the win needs persistent device/pipeline/buffer residency and does not justify a production backend by itself. |
 | Done, negative for broad LLVM claim | Q6_K X8 memory-heavy production-slice transfer | The matched Vulkan Q6_K X8 slice is `1.67x` slower than HIP combined, and the targeted HIP/RADV ISA comparison shows RADV has more static instructions and waitcnt-family instructions. Do not file a generic LLVM waitcnt/scheduling issue from the synthetic memory sweep alone. |
 | Test only if it changes HIP implementation priority | Narrow Q4_K HIP source/inline-asm experiment | Useful only if it targets the measured Q4 instruction/waitcnt/reduction delta and validates a real-slice speedup; not justified as a broad hand-ISA path. |
@@ -344,6 +365,7 @@ Priority summary:
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing; remaining lead is narrower scheduling/source/reduction work |
 | Done | HIP wave64 plus fixed-workgroup geometry | Wave mode plus fixed workgroup does not close the f32 geometry gap |
 | Done | LDS/barrier/subgroup reduction sweep | Reduction topology does not close the f32 geometry gap |
+| Done, top-1 only | Sampler/top-1 argmax sweep | Covers deterministic argmax; top-k/stochastic sampling remains separate |
 | Done, bounded | Q4_K Vulkan setup/amortization probe | Steady Q4 win needs persistent residency; one-shot setup cost swamps the per-call win |
 | P1 | gfx1100/W7900 and 7900 XTX reruns | Check portability of the classified gfx1151 conclusions |
 | P3 | Narrow Q4_K HIP recovery experiment | Decide whether the one positive Vulkan slice can be recovered without a Vulkan backend |
@@ -370,6 +392,7 @@ gfx1100/W7900 or 7900 XTX device is exposed on this host.
 | Dot lowering / packed integer path | `dot-path-comparison.json`, Q4/Q6 real-slice ISA comparisons | Done on gfx1151; cross-GPU external | HIP and RADV both emit dot4 in q8/q4/q6 and Q4/Q6 real-slice rows; missing HIP dot4 is ruled out. |
 | Layout / quantization economics | `hip-real-q4-selected-dual-q8_1-dp4a.json`, `hip-real-q6-selected-down-x8-q8_1-dp4a.json` | Done for tested HIP selected-MoE slices | q8_1 materialization is small and the HIP q8_1+dp4a path is faster than retained HIP float controls. |
 | Production-shaped Vulkan slices | Q6 X8 and Q4 selected-dual Vulkan real-slice artifacts plus ISA joins | Done for the two retained hot slices; more slices only if profiling picks one | Result is split: Q6 is slower on Vulkan, Q4 is faster on Vulkan. Treat Q4 as slice-specific, not broad `compiler_aco`. |
+| Sampler/top-1 argmax | `sampler-argmax-comparison.json` | Top-1 done on gfx1151; top-k/stochastic sampling still separate | Vulkan is `12.75x-26.94x` faster with no scratch/spills on either backend. This is an exposed-bucket diagnostic, not a full sampler backend. |
 | Vulkan setup / amortization | `vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json` | Bounded standalone probe done | Q4 steady replay remains positive, but one-shot setup costs require persistent pipeline/device/buffer residency. |
 | Production Vulkan backend | No `vulkan_radv_gfx11` registry backend yet | Not locally testable without backend implementation | Current evidence does not justify starting a second production backend; a registry/end-to-end Q4 probe is future product work, not remaining gfx1151 attribution. |
 | Hand-ISA path | Q4/Q6 ISA joins plus generic VOPD/dot rows | No broad path; Q4-only experiment is decision-gated | Only consider a narrow Q4 HIP source/inline-asm recovery if we decide to act on its measured instruction/waitcnt delta. |
@@ -406,7 +429,7 @@ not be run until profiling or backend scope makes it decision-grade.
 | dense q8_0 attention projection | Deferred | No matched Vulkan production slice is retained. Run only if attention projection profiling makes dense q8_0 a backend decision. |
 | GDN/recurrent chain | Deferred | No matched Vulkan GDN/recurrent microbench is retained. Run only if verifier profiling isolates GDN/recurrent scheduling/register pressure as the exposed backend limiter. |
 | q6 lm-head rowtile | Deferred | HIP rowtile evidence exists in broader benchmark rollups, but no matched Vulkan lm-head rowtile microbench is retained. Run only if lm-head rowtile becomes the backend decision target. |
-| sampler/top-k/argmax | Deferred | No matched Vulkan sampler/top-k microbench is retained. Run only if sampler/top-k remains an exposed server bucket after launch fusion and real-slice work. |
+| sampler/top-k/argmax | Partial | `sampler-argmax-comparison.json` covers deterministic top-1 argmax with CPU correctness and ISA stats. Full top-k and stochastic sampling are not covered; run only if sampler/top-k remains exposed after launch fusion and real-slice work. |
 
 Tooling that would improve attribution quality, but should not displace the
 remaining portability and integration work:
@@ -942,6 +965,66 @@ to small relative to the backend gap. The f32 geometry row remains
 structure, address/memory scheduling, or another compiler/runtime effect outside
 the isolated reduction topology.
 
+### gfx1151 Sampler Top-1 Argmax Sweep
+
+Retained artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json`,
+and
+`benchmarks/micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`.
+The run uses the shared environment artifact
+`benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- Benchmark family: deterministic sampler top-1 argmax over synthetic logits,
+  one workgroup per row, vocab=`32768`, rows=`1/4/8`,
+  workgroup=`64/128/256`, CPU oracle with one unique peak per row.
+- Classification: `diagnostic_unclassified`; this covers deterministic top-1
+  argmax, not full top-k, stochastic sampling, or fused lm-head+sample.
+
+Matched timing:
+
+| Rows | Workgroup | HIP median | Vulkan median | Vulkan vs HIP |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 64 | `60.4667 us` | `2.3422 us` | `25.82x` |
+| 1 | 128 | `31.7681 us` | `1.3852 us` | `22.93x` |
+| 1 | 256 | `17.3869 us` | `1.0406 us` | `16.71x` |
+| 4 | 64 | `61.7742 us` | `2.3588 us` | `26.19x` |
+| 4 | 128 | `34.6676 us` | `1.3932 us` | `24.88x` |
+| 4 | 256 | `17.6572 us` | `1.0480 us` | `16.85x` |
+| 8 | 64 | `64.1006 us` | `2.3793 us` | `26.94x` |
+| 8 | 128 | `33.0409 us` | `1.5401 us` | `21.45x` |
+| 8 | 256 | `17.9019 us` | `1.4042 us` | `12.75x` |
+
+Best-native read:
+
+| Rows | HIP best | Vulkan best | Vulkan vs HIP |
+| ---: | ---: | ---: | ---: |
+| 1 | wg256, `17.3869 us` | wg256, `1.0406 us` | `16.71x` |
+| 4 | wg256, `17.6572 us` | wg256, `1.0480 us` | `16.85x` |
+| 8 | wg256, `17.9019 us` | wg256, `1.4042 us` | `12.75x` |
+
+ISA/stat summary:
+
+| Workgroup | HIP ISA | Vulkan/RADV ISA |
+| ---: | --- | --- |
+| 64 | wave32, `15` SGPR / `7` VGPR, scratch `0`, spills `0`, `185` static instructions, `23` waitcnt-family instructions, `3` VOPD | wave64, official `108` SGPR / `12` VGPR, scratch `0`, spills `0`, `141` static instructions, `14` waitcnt-family instructions, `0` VOPD |
+| 128 | wave32, `15` SGPR / `7` VGPR, scratch `0`, spills `0`, `205` static instructions, `26` waitcnt-family instructions, `3` VOPD | wave64, official `108` SGPR / `12` VGPR, scratch `0`, spills `0`, `183` static instructions, `24` waitcnt-family instructions, `0` VOPD |
+| 256 | wave32, `15` SGPR / `7` VGPR, scratch `0`, spills `0`, `230` static instructions, `29` waitcnt-family instructions, `3` VOPD | wave64, official `108` SGPR / `12` VGPR, scratch `0`, spills `0`, `206` static instructions, `27` waitcnt-family instructions, `0` VOPD |
+
+Conclusion: deterministic top-1 argmax is a real Vulkan diagnostic win on this
+gfx1151 system. The win is not explained by missing HIP workgroup tuning,
+missing HIP VOPD, or HIP spills: both backends prefer wg256 for best-native
+rows, HIP emits VOPD while RADV emits none, and neither backend reports
+scratch/spills. The row is useful because sampler/top-1 is an exposed server
+bucket after lm-head in some profiles. It should drive a HIP-side reduction
+rewrite or fused lm-head+argmax experiment only if current profiling still
+shows sampler/top-1 as exposed. It does not cover top-k heap selection,
+stochastic sampling, or production registry integration.
+
 ### gfx1151 HIP q8_1 Real-Slice Layout Controls
 
 Retained artifacts:
@@ -1431,6 +1514,8 @@ matched Vulkan Q4_K selected-dual gate/up slice is retained and positive. A
 bounded setup/amortization probe for that
 Q4_K slice is also retained: steady replay remains positive, but one-shot
 standalone setup requires roughly `908` calls to amortize if charged directly.
+The sampler/top-1 argmax diagnostic is also retained and strongly positive for
+Vulkan, but it is not a full sampler/top-k or lm-head+sample integration row.
 This split result is why production backend work needs true registry/end-to-end
 or cross-GPU confirmation instead of more generic microbenchmarks.
 

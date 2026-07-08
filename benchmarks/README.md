@@ -5,10 +5,11 @@ Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
 ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
-q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls, plus
-a matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan
-Q4_K selected-dual gate/up real-slice probe with targeted HIP/RADV ISA
-comparisons and a bounded Q4 setup/amortization probe.
+q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls,
+sampler/top-1 argmax diagnostics, plus a matched Vulkan Q6_K X8 selected-down
+real-slice probe and matched Vulkan Q4_K selected-dual gate/up real-slice probe
+with targeted HIP/RADV ISA comparisons and a bounded Q4 setup/amortization
+probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -67,6 +68,15 @@ slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS
 than Vulkan LDS (**0.984x-1.132x**). Matched Vulkan LDS remains
 **8.19x-14.55x faster** than matched HIP LDS, so reduction topology is not the
 missing f32 geometry switch.
+Sampler/top-1 argmax diagnostic: rows **1/4/8**, vocab **32768**, and
+workgroups **64/128/256** all pass the CPU argmax oracle on HIP and Vulkan.
+Vulkan is **12.75x-26.94x** faster across matched rows; both backends prefer
+wg256 for best-native rows, where Vulkan is **12.75x-16.85x** faster. HIP
+reports wave32, **15 SGPR / 7 VGPR**, **0 scratch/spills**, and **3 VOPD**;
+RADV reports wave64, official **108 SGPR / 12 VGPR**, **0 scratch/spills**,
+and **0 VOPD**. Classified **diagnostic_unclassified**: a real exposed-bucket
+top-1 argmax lead, not a full top-k/stochastic sampler or fused lm-head+sample
+result.
 HIP q8_1 real-slice layout controls: Q4_K selected-dual gate/up q8_1
 quantize+dp4a is **2.77x** faster than raw selected-dual, and Q6_K
 selected-down X8 q8_1 quantize+dp4a is **1.68x** faster than production T16
@@ -114,6 +124,9 @@ Q4 quantize+dot delta, breakeven is about **908 calls**. Classified as a
 bounded setup probe: useful only with persistent pipelines and resident buffers,
 not a one-shot-call or production-backend win.
 Artifacts:
+[`micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`](micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`](micro/results/gfx1151/strix-halo/hip-sampler-argmax.json),
+[`micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json`](micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json),
