@@ -37,25 +37,28 @@ The practical conclusion is:
   buckets.
 - Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
-  real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
-  matched Vulkan real slices are already retained. LDS/barrier/subgroup and
-  4/8/16 lane-local accumulator reduction controls are also retained for the
-  f32 reduction question, and the positive Q4_K Vulkan slice now has a targeted
-  HIP/RADV ISA comparison plus a bounded setup/amortization probe. The negative
-  Q6_K X8 slice also now has a targeted HIP/RADV ISA comparison. The
-  sampler/top-1 and deterministic top-k8 argmax bucket now has matched
-  HIP/Vulkan diagnostic rows as well.
-- The matched real-slice evidence is now split: Q6_K selected-down X8 is slower
-  on Vulkan, while Q4_K selected-dual gate/up is faster on Vulkan. The targeted
-  Q4_K HIP/RADV ISA comparison explains what that one win is not: not missing
-  HIP dot4, not HIP spills, and not RADV VOPD pairing. It is useful
-  slice-specific evidence, but still not a broad `compiler_aco` proof. The
-  targeted Q6_K X8 comparison points the other direction: the memory-heavy
-  production-shaped slice is faster on HIP even though both paths emit dot4 and
-  neither spills, so the synthetic memory/waitcnt win does not transfer there.
+  real-slice layout, dense Q8_0 real-slice probes, RADV shaderstats, HIP
+  fixed-wave64 geometry, and two selected Vulkan real slices are already
+  retained. LDS/barrier/subgroup and 4/8/16 lane-local accumulator reduction
+  controls are also retained for the f32 reduction question, and the positive
+  Q4_K Vulkan slice now has a targeted HIP/RADV ISA comparison plus a bounded
+  setup/amortization probe. The negative Q6_K X8 slice also now has a targeted
+  HIP/RADV ISA comparison. The sampler/top-1 and deterministic top-k8 argmax
+  bucket now has matched HIP/Vulkan diagnostic rows as well.
+- The matched real-slice evidence is now split and shape-specific: Q6_K
+  selected-down X8 is slower on Vulkan, Q4_K selected-dual gate/up is faster on
+  Vulkan, and dense raw Q8_0 mostly favors HIP except for a few smaller
+  `768x2048` rowtile cases. The targeted Q4_K HIP/RADV ISA comparison explains
+  what that one win is not: not missing HIP dot4, not HIP spills, and not RADV
+  VOPD pairing. It is useful slice-specific evidence, but still not a broad
+  `compiler_aco` proof. The targeted Q6_K X8 comparison points the other
+  direction: the memory-heavy production-shaped slice is faster on HIP even
+  though both paths emit dot4 and neither spills, so the synthetic
+  memory/waitcnt win does not transfer there.
 - Do not start a production Vulkan backend from the current evidence. The
-  dispatch win is real, but it is a runtime result; the first two
-  production-shaped slices disagree by quant/layout shape. The Q4_K
+  dispatch win is real, but it is a runtime result; the retained
+  production-shaped slices disagree by quant/layout shape, and the new dense
+  Q8_0 row is mostly negative for Vulkan. The Q4_K
   setup/amortization probe shows the standalone steady win requires persistent
   device/pipeline/buffer residency: if all measured standalone backend setup is
   charged to each call, the `47.9 ms` setup cost needs roughly `908` retained
@@ -73,7 +76,7 @@ The practical conclusion is:
 Stop condition for local gfx1151 work:
 
 - Do not add more generic VOPD, wave64, fixed-block, dispatch-only, dot-lowering,
-  memory/waitcnt, LDS/subgroup, accumulator, or standalone Q4/Q6 real-slice
+  memory/waitcnt, LDS/subgroup, accumulator, or standalone Q4/Q6/Q8 real-slice
   sweeps. They will not change the current engineering decision.
 - Do run cross-GPU retained-suite reruns when gfx1100/W7900 or 7900 XTX is
   available, because portability is the one broad question still open.
@@ -222,6 +225,17 @@ The detailed retained reads are:
   descriptor plus command recording are tiny. This says Q4 Vulkan is only
   interesting with persistent device/pipeline/buffer residency; it is not a
   one-shot-call backend win.
+- The retained dense Q8_0 real-slice probe closes the prior dense q8_0 GEMV /
+  attention-projection gap for the tested shapes. HIP and Vulkan both pass CPU
+  q8_1/Q8_0 correctness. Across 54 matched rows, Vulkan/HIP speedup ranges from
+  `0.279x` to `1.120x` for quantize+dot and `0.238x` to `1.169x` for
+  prequantized dot. The only useful Vulkan wins are smaller `768x2048` cases:
+  rows=1 row_tile=1 is `1.120x` combined but `0.978x` on dot, rows=1
+  row_tile=4 is `1.112x` combined and `1.001x` on dot, and rows=4 row_tile=4
+  is `1.115x` combined and `1.169x` on dot. The larger production-shaped rows
+  favor HIP; for example `2048x2048` rows=4 row_tile=4 is Vulkan `0.863x`
+  combined, and `2048x6144` rows=8 row_tile=4 is Vulkan `0.707x` combined.
+  This is negative evidence for making dense Q8_0 a near-term Vulkan target.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. The refreshed
   RADV shaderstats extraction reports no Vulkan scratch/spills and official
   `12` VGPR / `108` SGPR allocation for the retained wg64/wg256 shaders, while
@@ -258,6 +272,9 @@ What we have ruled out:
 - Do not reject q8_1/dp4a purely because of activation materialization cost in
   the tested HIP selected-MoE slices. The measured quantization cost is small
   and the full quantize+dot path is faster than the retained HIP float controls.
+- Do not treat dense Q8_0 attention/shared projections as an obvious Vulkan
+  backend target from current gfx1151 data. The retained dense Q8_0 probe is
+  mostly HIP-faster on larger shapes, with only small-shape Vulkan exceptions.
 - Do not pursue a Vulkan port for the Q6_K selected-down X8 q8_1+dp4a slice as
   currently implemented. The matched Vulkan real-slice probe is slower than HIP
   despite passing correctness and using the intended SPIR-V/RADV dot path.
@@ -294,17 +311,17 @@ What remains plausible:
 - Dot-instruction availability is no longer untested for the packed q8/q4/q6
   idiom: HIP emits dot4. HIP wave64 also does not close the dot gap. The
   fixed-block control also does not close it. HIP real-slice q8_1 materialization
-  is positive, and Vulkan real-slice probes are split: Q6_K X8 selected-down is
-  negative while Q4_K selected-dual is positive. A narrow hand-ISA sequence is
-  only worth considering for a specific hot slice after the remaining
-  layout/stat confounds are gone.
+  is positive, and Vulkan real-slice probes are split: Q6_K X8 selected-down and
+  dense Q8_0 are mostly negative while Q4_K selected-dual is positive. A narrow
+  hand-ISA sequence is only worth considering for a specific hot slice after the
+  remaining layout/stat confounds are gone.
 - Real Vulkan inference slices still need caution: the retained production
-  probes are split, with Q6_K selected-down negative and Q4_K selected-dual
-  positive. The Q4 setup/amortization probe says persistent residency is
-  mandatory for that positive slice. Synthetic Vulkan dot-path wins should not
-  be promoted without a matching real slice, and one real-slice win plus a
-  standalone setup probe is still not enough to justify a second production
-  backend.
+  probes are split, with Q6_K selected-down negative, dense Q8_0 mostly negative,
+  and Q4_K selected-dual positive. The Q4 setup/amortization probe says
+  persistent residency is mandatory for that positive slice. Synthetic Vulkan
+  dot-path wins should not be promoted without a matching real slice, and one
+  real-slice win plus a standalone setup probe is still not enough to justify a
+  second production backend.
 - Sampler top-1/top-k8 argmax is now a concrete Vulkan diagnostic win in an
   exposed server bucket. The useful HIP follow-up is to profile whether
   sampler work is still exposed after launch fusion and lm-head work, then
@@ -322,7 +339,8 @@ inference slices prove production value. The HIP roadmap should first try to
 reproduce the useful pieces inside HIP: fixed-shape kernels, dot intrinsics or
 small hand-ISA sequences where proven, better launch fusion, and memory/waitcnt
 controls. A production Vulkan backend is not justified by the dispatch row,
-generic geometry row, or one positive Q4_K real-slice probe alone.
+generic geometry row, one positive Q4_K real-slice probe, or mostly negative
+dense Q8_0 rows.
 
 HIP also does not give us a PTX-equivalent escape hatch in the normal runtime
 path. We can inspect LLVM IR, AMDGPU assembly, and code-object metadata, and we
@@ -359,6 +377,7 @@ Immediate triage:
 | Done, deterministic top-1/top-k8 | Sampler/argmax diagnostic | Vulkan top-1 argmax is `12.75x-26.94x` faster and deterministic top-k8 is `12.79x-25.93x` faster with CPU correctness and no scratch/spills on either backend; stochastic sampling remains separate. |
 | Done, bounded | Q4_K selected-dual Vulkan setup/amortization probe | Steady Q4 remains positive, but standalone backend setup is `47.9 ms`, so the win needs persistent device/pipeline/buffer residency and does not justify a production backend by itself. |
 | Done, negative for broad LLVM claim | Q6_K X8 memory-heavy production-slice transfer | The matched Vulkan Q6_K X8 slice is `1.67x` slower than HIP combined, and the targeted HIP/RADV ISA comparison shows RADV has more static instructions and waitcnt-family instructions. Do not file a generic LLVM waitcnt/scheduling issue from the synthetic memory sweep alone. |
+| Done, mostly negative for Vulkan | Dense Q8_0 production-shaped slice | HIP and Vulkan both pass correctness across retained `768x2048`, `2048x2048`, and `2048x6144` rows. Vulkan only wins a few smaller `768x2048` rowtile cases; larger rows favor HIP, so dense Q8_0 is not a near-term Vulkan target from current gfx1151 data. |
 | Test only if it changes HIP implementation priority | Narrow Q4_K HIP source/inline-asm experiment | Useful only if it targets the measured Q4 instruction/waitcnt/reduction delta and validates a real-slice speedup; not justified as a broad hand-ISA path. |
 
 Recommended next tests, in order:
@@ -379,6 +398,9 @@ Recommended next tests, in order:
    The Q6_K X8 transfer check is already negative, so another memory issue
    should start from a shipped hot bucket rather than from the synthetic memory
    sweep alone.
+5. Another dense Q8_0 production slice only if profiling identifies a different
+   dense Q8_0 shape as exposed and backend-deciding. The retained local row is
+   mostly negative for Vulkan on larger shapes.
 
 Priority summary:
 
@@ -393,6 +415,7 @@ Priority summary:
 | Done | RADV shaderstats allocation extraction | Official RADV allocation counts show no Vulkan scratch/spills in retained rows |
 | Done | Vulkan Q4_K selected-dual gate/up slice | One production-shaped Q4 hot bucket is faster on Vulkan, but not broad `compiler_aco` proof |
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing; remaining lead is narrower scheduling/source/reduction work |
+| Done | Dense Q8_0 production-shaped slice | Closes the dense Q8_0 local gap as mostly HIP-faster on larger rows, with small `768x2048` exceptions |
 | Done | HIP wave64 plus fixed-workgroup geometry | Wave mode plus fixed workgroup does not close the f32 geometry gap |
 | Done | LDS/barrier/subgroup reduction sweep | Reduction topology does not close the f32 geometry gap |
 | Done, deterministic top-1/top-k8 | Sampler argmax sweep | Covers deterministic top-1 and top-k8 argmax; stochastic sampling remains separate |
@@ -421,7 +444,7 @@ gfx1100/W7900 or 7900 XTX device is exposed on this host.
 | Waitcnt / memory scheduling | `memory-waitcnt-comparison.json`, wave64/fixed controls, `q6-x8-real-slice-isa-comparison.json` | Done on gfx1151 for synthetic rows plus first production transfer; cross-GPU external | Synthetic memory rows favor Vulkan, but the first memory-heavy production transfer is negative, so no generic LLVM waitcnt claim is justified. |
 | Dot lowering / packed integer path | `dot-path-comparison.json`, Q4/Q6 real-slice ISA comparisons | Done on gfx1151; cross-GPU external | HIP and RADV both emit dot4 in q8/q4/q6 and Q4/Q6 real-slice rows; missing HIP dot4 is ruled out. |
 | Layout / quantization economics | `hip-real-q4-selected-dual-q8_1-dp4a.json`, `hip-real-q6-selected-down-x8-q8_1-dp4a.json` | Done for tested HIP selected-MoE slices | q8_1 materialization is small and the HIP q8_1+dp4a path is faster than retained HIP float controls. |
-| Production-shaped Vulkan slices | Q6 X8 and Q4 selected-dual Vulkan real-slice artifacts plus ISA joins | Done for the two retained hot slices; more slices only if profiling picks one | Result is split: Q6 is slower on Vulkan, Q4 is faster on Vulkan. Treat Q4 as slice-specific, not broad `compiler_aco`. |
+| Production-shaped Vulkan slices | Q6 X8, Q4 selected-dual, and dense Q8_0 Vulkan real-slice artifacts plus ISA joins where retained | Done for the retained hot slices; more slices only if profiling picks one | Result is split: Q6 is slower on Vulkan, Q4 is faster on Vulkan, and dense Q8_0 is mostly HIP-faster on larger rows. Treat Q4 as slice-specific, not broad `compiler_aco`. |
 | Sampler top-1/top-k8 argmax | `sampler-argmax-comparison.json`, `sampler-topk8-comparison.json` | Deterministic top-1/top-k8 done on gfx1151; stochastic sampling still separate | Vulkan is `12.75x-26.94x` faster on top-1 and `12.79x-25.93x` faster on top-k8 with no scratch/spills on either backend. This is an exposed-bucket diagnostic, not a full sampler backend. |
 | Vulkan setup / amortization | `vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json` | Bounded standalone probe done | Q4 steady replay remains positive, but one-shot setup costs require persistent pipeline/device/buffer residency. |
 | Production Vulkan backend | No `vulkan_radv_gfx11` registry backend yet | Not locally testable without backend implementation | Current evidence does not justify starting a second production backend; a registry/end-to-end Q4 probe is future product work, not remaining gfx1151 attribution. |
@@ -451,14 +474,14 @@ or backend decision that would make the answer actionable.
 | independent/dependent/dequant/mixed VOPD rows | Covered | `vopd-sweep-comparison.json`; current evidence is negative for RADV VOPD pairing. |
 | q8_1 x q4 dot / scalar dequant | Covered by replacement | `dot-path-comparison.json` covers q4 unsigned x q8 and scalar q4 dequant; Q4 selected-dual real slice covers production q4 q8_1+dp4a. |
 | q8_1 x q5/q6 selected-down | Covered, scoped | Q6 selected-down X8 is retained for HIP layout, Vulkan real slice, and HIP/RADV ISA. Q5 selected-down has no retained Vulkan row; run only if profiling identifies Q5 as a separate blocker. |
-| q8_0 dense GEMV | Decision-gated | Packed q8 signed dot lowering is retained, but no production-shaped dense q8_0 Vulkan GEMV is retained. Run only if dense q8_0 attention/shared projections become the deciding backend question. |
+| q8_0 dense GEMV | Covered | `q8-0-dense-real-slice-comparison.json` covers raw Q8_0 dense q8_1+dp4a rows for shapes `768x2048`, `2048x2048`, and `2048x6144`, rows=`1/4/8`, row_tile=`1/4`, with Vulkan local_size=`64/128/256`. Result is mostly HIP-faster on larger shapes. |
 | q8_1 activation quantize | Covered | HIP and Vulkan Q4/Q6 real-slice probes include q8_1 quantize timing and correctness. |
 | two-stage reduction | Decision-gated | One-row reduction controls did not identify reduction topology as the missing switch. Run two-stage only if a large-K reduction bucket reappears in profiling. |
 | no-LDS accumulator reduction | Covered negative | `reduction-accum-sweep.json` covers 4/8/16 lane-local accumulators plus one-wave/no-shared-final controls. Accumulators do not recover HIP and matched Vulkan accumulator rows remain `9.57x-15.81x` faster. |
 | barrier stress | Covered | `reduction-sweep.json` includes extra-barrier HIP and Vulkan reduction variants. |
 | small-K expert-down | Covered | Q6_K selected-down X8 real-slice probe plus ISA comparison covers the retained small-K selected-down production bucket. |
 | selected gate+up dual | Covered | Q4_K selected-dual HIP layout, Vulkan real slice, HIP/RADV ISA comparison, and setup/amortization probe are retained. |
-| dense q8_0 attention projection | Decision-gated | No matched Vulkan production slice is retained. Run only if attention projection profiling makes dense q8_0 a backend decision. |
+| dense q8_0 attention projection | Covered, scoped | The retained dense Q8_0 probe covers production-shaped attention/shared-projection sizes for the tested shapes and is mostly negative for Vulkan. Run another row only if profiling identifies a different dense Q8_0 shape as backend-deciding. |
 | GDN/recurrent chain | Decision-gated | No matched Vulkan GDN/recurrent microbench is retained. Run only if verifier profiling isolates GDN/recurrent scheduling/register pressure as the exposed backend limiter. |
 | q6 lm-head rowtile | Decision-gated | HIP rowtile evidence exists in broader benchmark rollups, but no matched Vulkan lm-head rowtile microbench is retained. Run only if lm-head rowtile becomes the backend decision target. |
 | sampler/top-k/argmax | Covered, scoped | `sampler-argmax-comparison.json` covers deterministic top-1 argmax and `sampler-topk8-comparison.json` covers deterministic top-k8 with CPU correctness and ISA stats. Stochastic sampling and fused lm-head+sample integration are not covered; run only if sampler work remains exposed after launch fusion and real-slice work. |
@@ -1348,6 +1371,56 @@ staging/upload. This is still not a production `vulkan_radv_gfx11` backend
 result because it does not exercise hipEngine registry integration, whole-layer
 residency, or end-to-end decode wall time.
 
+### gfx1151 Dense Q8_0 Real-Slice Probe
+
+Retained artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`,
+and
+`benchmarks/micro/results/gfx1151/strix-halo/environment-q8-0-dense.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Shapes: raw GGUF Q8_0 dense q8_1+dp4a, in/out `768x2048`,
+  `2048x2048`, and `2048x6144`; rows=`1/4/8`; row_tile=`1/4`.
+- HIP implementation: single-row and rowtile4 probes. Timings use HIP events
+  around repeated launches and exclude transfer/build time.
+- Vulkan implementation: standalone dense Q8_0 shader, local_size=`64/128/256`,
+  row_tile=`1/4`. Timings use pre-recorded command buffers and exclude shader
+  compilation, pipeline creation, and transfers.
+- Correctness: CPU q8_1/Q8_0 oracle. HIP passes all `18` rows; Vulkan passes
+  all `54` rows; the comparison artifact matches all `54` rows.
+- Classification: `real_slice_probe`; this closes the dense Q8_0 local matrix
+  row for the tested shapes, but it is not ISA attribution because no paired
+  HIP/RADV ISA extraction is retained for this Q8_0 shader.
+
+Retained range:
+
+| Metric | Vulkan / HIP range across matched rows |
+| --- | ---: |
+| q8_1 quantize + Q8_0 dot | `0.279x-1.120x` |
+| Q8_0 dot, prequantized | `0.238x-1.169x` |
+
+Best Vulkan row per representative configuration:
+
+| Shape | Rows | row_tile | Best Vulkan local_size | HIP q8_1+dot | Vulkan q8_1+dot | Vulkan/HIP | HIP dot | Vulkan dot | Vulkan/HIP dot |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `768x2048` | 1 | 1 | 64 | `6.0111 us` | `5.3684 us` | `1.120x` | `3.7412 us` | `3.8247 us` | `0.978x` |
+| `768x2048` | 1 | 4 | 64 | `6.9148 us` | `6.2180 us` | `1.112x` | `4.6516 us` | `4.6449 us` | `1.001x` |
+| `768x2048` | 4 | 4 | 64 | `10.3230 us` | `9.2544 us` | `1.115x` | `8.0294 us` | `6.8694 us` | `1.169x` |
+| `2048x2048` | 4 | 4 | 64 | `18.8074 us` | `21.7877 us` | `0.863x` | `16.3644 us` | `18.4655 us` | `0.886x` |
+| `2048x6144` | 8 | 4 | 64 | `76.0105 us` | `107.5856 us` | `0.707x` | `73.6030 us` | `104.8472 us` | `0.702x` |
+
+Conclusion: dense Q8_0 is not the missing Vulkan win on gfx1151 for these
+production-shaped rows. Vulkan has a few small-shape parity/win cases at
+`768x2048`, but the larger `2048x2048` and `2048x6144` rows favor HIP,
+especially at rows=`4/8`. This closes the prior q8_0 dense GEMV / dense
+attention-projection matrix gap as mostly negative for Vulkan. Do not start a
+Vulkan dense-Q8 backend path from this row unless future profiling identifies a
+different dense Q8_0 shape as the exposed backend decision.
+
 ## Answered Questions And Remaining Gates
 
 The original questions now have a useful gfx1151 checkpoint answer:
@@ -1378,7 +1451,7 @@ The original questions now have a useful gfx1151 checkpoint answer:
 7. **dp4a/sudot4:** Basic dot lowering is not the blocker. HIP and RADV both
    emit dot4 in retained q8/q4/q6 diagnostics and in the Q4/Q6 real-slice dot
    shaders. Synthetic dot-path wins do not transfer automatically: Q6 loses on
-   Vulkan, while Q4 wins.
+   Vulkan, dense Q8_0 mostly loses on larger Vulkan rows, while Q4 wins.
 8. **LLVM roadmap:** No broad LLVM issue should be filed yet. The only current
    LLVM/HIP improvement lead is narrow Q4_K selected-dual recovery, focused on
    the measured instruction count, waitcnt placement, memory/address structure,
@@ -1395,6 +1468,8 @@ Remaining gates:
   decide the bounded setup/amortization result justifies real backend work.
 - **New slices:** add another HIP/Vulkan production slice only when profiling
   identifies a shipped hot bucket whose answer would change the backend plan.
+  For dense Q8_0, this means a different exposed shape than the retained mostly
+  negative local row.
 
 ## Ground Rules
 
@@ -1567,7 +1642,8 @@ and fixed-block controls do not close the gap, so basic dot-instruction
 availability, wave mode, and runtime block indexing are no longer the main
 questions. HIP real-slice q8_1 materialization/layout controls are retained and
 positive; the Vulkan real-slice checks are retained and split, with Q6_K X8
-negative and Q4_K selected-dual positive.
+negative, dense Q8_0 mostly negative on larger shapes, and Q4_K selected-dual
+positive.
 
 ### 6. LDS, Barriers, And Subgroup Reductions
 
@@ -1619,8 +1695,10 @@ materialization cost is small and the full q8_1+dp4a path is faster than the
 tested HIP float controls. The matched Vulkan Q6_K X8 selected-down production
 slice is retained and negative, with a targeted HIP/RADV ISA comparison showing
 the negative Q6 result is not missing RADV dot4 or caused by Vulkan spills; the
-matched Vulkan Q4_K selected-dual gate/up slice is retained and positive. A
-bounded setup/amortization probe for that
+matched Vulkan Q4_K selected-dual gate/up slice is retained and positive. The
+dense Q8_0 real-slice probe is retained and mostly negative for Vulkan on the
+larger tested shapes, with small `768x2048` exceptions. A bounded
+setup/amortization probe for that
 Q4_K slice is also retained: steady replay remains positive, but one-shot
 standalone setup requires roughly `908` calls to amortize if charged directly.
 The sampler top-1/top-k8 argmax diagnostics are also retained and strongly
