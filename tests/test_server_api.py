@@ -970,6 +970,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
+        "diagnostics": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
     assert body["features"]["structured_outputs"] == {
@@ -4589,6 +4590,7 @@ def test_completions_expose_backend_generation_telemetry() -> None:
                     sampler_fast_path_blockers=("logit_bias",),
                     timing={"prefill_ms": 2.5, "decode_ms": 1.25},
                     usage={"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+                    diagnostics={"batch_execution": {"path": "scheduler_native_compact_batch"}},
                 ),
             )
         ]
@@ -4621,6 +4623,7 @@ def test_completions_expose_backend_generation_telemetry() -> None:
         },
         "timing": {"prefill_ms": 2.5, "decode_ms": 1.25},
         "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+        "diagnostics": {"batch_execution": {"path": "scheduler_native_compact_batch"}},
         "finish_details": _stateless_finish_details(
             "eos",
             eos_token_id=151645,

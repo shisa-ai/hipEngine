@@ -475,14 +475,21 @@ class GenerationTelemetry:
     event: str | None = None
     timing: Mapping[str, float] | None = None
     usage: Mapping[str, int] | None = None
+    diagnostics: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decode_state", DecodeState.from_value(self.decode_state))
         object.__setattr__(self, "event", None if self.event is None else str(self.event))
         timing = None if self.timing is None else {str(key): float(value) for key, value in self.timing.items()}
         usage = None if self.usage is None else {str(key): max(0, int(value)) for key, value in self.usage.items()}
+        diagnostics = (
+            None
+            if self.diagnostics is None
+            else {str(key): value for key, value in self.diagnostics.items()}
+        )
         object.__setattr__(self, "timing", timing)
         object.__setattr__(self, "usage", usage)
+        object.__setattr__(self, "diagnostics", diagnostics)
 
     @classmethod
     def from_value(cls, value: Any) -> "GenerationTelemetry":
@@ -494,12 +501,14 @@ class GenerationTelemetry:
                 event=value.get("event"),
                 timing=value.get("timing"),
                 usage=value.get("usage"),
+                diagnostics=value.get("diagnostics"),
             )
         return cls(
             decode_state=getattr(value, "decode_state", value),
             event=getattr(value, "event", None),
             timing=getattr(value, "timing", None),
             usage=getattr(value, "usage", None),
+            diagnostics=getattr(value, "diagnostics", None),
         )
 
     @classmethod
@@ -540,6 +549,7 @@ class GenerationTelemetry:
         event: str | None = None,
         timing: Mapping[str, float] | None = None,
         usage: Mapping[str, int] | None = None,
+        diagnostics: Mapping[str, Any] | None = None,
     ) -> "GenerationTelemetry":
         return cls(
             decode_state=DecodeState(
@@ -579,6 +589,7 @@ class GenerationTelemetry:
             event=event,
             timing=timing,
             usage=usage,
+            diagnostics=diagnostics,
         )
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -589,6 +600,8 @@ class GenerationTelemetry:
             payload["timing"] = dict(self.timing)
         if self.usage is not None:
             payload["usage"] = dict(self.usage)
+        if self.diagnostics is not None:
+            payload["diagnostics"] = dict(self.diagnostics)
         return payload
 
 

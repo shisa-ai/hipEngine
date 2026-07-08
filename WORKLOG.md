@@ -147544,3 +147544,39 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation:
   `jq empty benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-*.json`;
   no process left listening on port `18083`.
+
+## 2026-07-09 - PARO server AR retained-defaults telemetry
+
+- Added server-visible PARO batch diagnostics:
+  `GenerationTelemetry.diagnostics`, capability metadata under
+  `choice_telemetry.diagnostics`, and PARO batch timing buckets
+  `batch_total_ms`, `batch_prefill_ms`, `batch_decode_ms`,
+  `batch_decode_step_ms_avg`, `batch_decode_steps`, and
+  `batch_native_decode_steps`.
+- Ported direct retained c>N defaults into the PARO runner for the server/native
+  route when `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` is enabled
+  and no explicit env override is present:
+  row-aware full-attention rowchunk layer selection, projection dispatch from
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json`,
+  and batched LM-head defaults from the c2/c4/c8 sampler equality artifacts.
+  Unsupported row counts still fail closed to row-GEMV projection and serial
+  LM-head.
+- c=8 natural-prompt diagnostic, gfx1151/Radeon 8060S, shisa
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, `max_tokens=128`, greedy,
+  `ignore_eos=true`, native decode + startup warmup + retained defaults:
+  `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw20-native-decode-warmup-retained-defaults-timing.json`.
+- Result: aggregate backend generated throughput `42.02 tok/s`, total backend
+  generated tokens `1024`, wall `24.37 s`, backend prefill timing total
+  `2358.156 ms`, backend decode timing total `51821.026 ms`, mean per-choice
+  decode step timing `51.005 ms`.
+- Diagnostics split the live server batch into c2 and c6 groups:
+  c2 requests used `gemv_awq_selected_dual_pack8_strided_c2` and ran at
+  `27.36 ms/step`; c6 requests fell back to row-GEMV projection and serial
+  LM-head at `58.89 ms/step`. Current blocker is missing c3/c5/c6/c7 projection
+  dispatch evidence and sampler equality artifacts, not prefill wall.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` with the retained-defaults port,
+  timing table, and next recovery tasks.
+- Validation:
+  `jq empty benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8*.json`;
+  `ss -ltnp | grep 18083 || true` confirmed no server left listening after
+  cleanup.

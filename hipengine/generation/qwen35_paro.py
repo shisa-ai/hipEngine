@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
+import time
 from typing import Any, ClassVar
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
@@ -553,6 +554,9 @@ class Qwen35ParoOneTokenGenerator:
         output_parts: dict[int, list[str]] = {request_id: [] for request_id in request_ids}
         generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
         next_token_by_request: dict[int, int] = {}
+        batch_started_at = time.perf_counter()
+        prefill_wall_s = 0.0
+        decode_wall_s = 0.0
         packed_slabs = scheduler.next_compact_prefill_slabs(
             chunk_size=max(len(row) for row in prompt_rows),
             block_size=getattr(session, "block_size", 256),
@@ -569,7 +573,9 @@ class Qwen35ParoOneTokenGenerator:
                 }
             )
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+            prefill_started_at = time.perf_counter()
             results = session.prefill_native_packed(slab, sample=True)
+            prefill_wall_s += time.perf_counter() - prefill_started_at
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
             if len(results) != slab.request_count:
                 raise RuntimeError(
@@ -615,6 +621,7 @@ class Qwen35ParoOneTokenGenerator:
             ]
             compact_slots = tuple(slots_for_step) == tuple(range(len(slots_for_step)))
             use_native_decode = compact_slots and len(slots_for_step) > 1 and hasattr(session, "step_batch_native")
+            decode_started_at = time.perf_counter()
             if use_native_decode:
                 try:
                     raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
@@ -646,6 +653,7 @@ class Qwen35ParoOneTokenGenerator:
                     sample=True,
                 )
                 raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+            decode_wall_s += time.perf_counter() - decode_started_at
             generated: list[GeneratedToken] = []
             for request_id, result in zip(request_ids_for_step, results, strict=True):
                 if result is None:
@@ -670,6 +678,15 @@ class Qwen35ParoOneTokenGenerator:
             if callable(getattr(batch_execution, "to_json_dict", None))
             else None
         )
+        total_wall_s = time.perf_counter() - batch_started_at
+        batch_timing = {
+            "batch_total_ms": total_wall_s * 1000.0,
+            "batch_prefill_ms": prefill_wall_s * 1000.0,
+            "batch_decode_ms": decode_wall_s * 1000.0,
+            "batch_decode_step_ms_avg": (decode_wall_s * 1000.0 / decode_steps) if decode_steps else 0.0,
+            "batch_decode_steps": float(decode_steps),
+            "batch_native_decode_steps": float(native_decode_steps),
+        }
         self.last_batch_generation = {
             "path": "scheduler_native_packed_prefill_native_decode"
             if native_decode_complete
@@ -729,6 +746,10 @@ class Qwen35ParoOneTokenGenerator:
                     native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
                     native_caware_decode=self.last_batch_generation["native_caware_decode"],
                     serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+                    timing=batch_timing,
+                    diagnostics={"batch_execution": batch_execution_payload}
+                    if batch_execution_payload is not None
+                    else None,
                 ),
             )
             for request_id in request_ids
@@ -1035,6 +1056,9 @@ class Qwen35ParoOneTokenGenerator:
                         native_caware_decode=self.last_batch_generation["native_caware_decode"],
                         serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
                         native_sampler_rows=self.last_batch_generation["native_sampler_rows"],
+                        diagnostics={"batch_execution": batch_execution_payload}
+                        if batch_execution_payload is not None
+                        else None,
                     ),
                 )
             )
@@ -1652,6 +1676,8 @@ def _telemetry_for_tokens(
     native_caware_decode: bool | None = None,
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool | None = None,
+    timing: dict[str, float] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
@@ -1686,6 +1712,8 @@ def _telemetry_for_tokens(
         native_caware_decode=native_caware_decode,
         serial_decode_fallback=serial_decode_fallback,
         native_sampler_rows=native_sampler_rows,
+        timing=timing,
+        diagnostics=diagnostics,
     )
 
 

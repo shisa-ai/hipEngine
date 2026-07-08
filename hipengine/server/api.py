@@ -1408,6 +1408,7 @@ def _choice_telemetry_capability() -> dict[str, Any]:
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
+        "diagnostics": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
 
