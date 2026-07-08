@@ -147182,3 +147182,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check`; and
   `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/reduction_sweep.py --backend both --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --build-dir /tmp/hipengine-micro-reduction-accum-smoke-verify --out /tmp/reduction-accum-smoke-verify.json --k-list 128 --rows-list 1 --workgroups 32,64 --body-repeats 8 --reps 2 --warmup 1 --samples 2 --pretty`
   passed correctness for all HIP and Vulkan variants.
+
+## 2026-07-08 - HIP vs Vulkan reduction accumulator sweep retained
+
+- Retained reduction accumulator artifacts on gfx1151/Radeon 8060S/RADV Mesa
+  26.1.2:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json`
+  and
+  `benchmarks/micro/results/gfx1151/strix-halo/reduction-accum-sweep.json`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/reduction_sweep.py --backend both --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --build-dir /tmp/hipengine-micro-reduction-accum-retained --out benchmarks/micro/results/gfx1151/strix-halo/reduction-accum-sweep.json --k-list 512,2048,8192 --rows-list 1 --workgroups 32,64,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --pretty`.
+- Result: all rows pass CPU correctness. HIP 4/8/16 lane-local accumulator
+  variants are mostly slower than HIP LDS (`1.02x-2.40x`), Vulkan accumulator
+  variants are mixed versus Vulkan LDS (`0.90x-1.77x`), and matched Vulkan
+  accumulator rows remain `9.57x-15.81x` faster than matched HIP.
+- Conclusion: this closes the no-LDS-accumulator row as negative for HIP
+  recovery in the f32 reduction harness. True two-stage block-partial plus
+  final-reduce remains unrun and not decision-grade without a new large-K
+  reduction profile.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
