@@ -210,6 +210,46 @@ Immediate next targets:
    attention, MoE, sampler/LM-head, host sync, and scheduler buckets before
    touching kernels.
 
+## c2 Generated-Token Bisection
+
+Measured 2026-07-09 on the same gfx1151/Radeon 8060S local shisa setup with a
+short c2 diagnostic (`prompt=512`, `decode=8`, `warmup=0`) and final sampler
+audit enabled. The sampler audit reruns serial per-row final RMSNorm/cast/LM-head
+and argmax from the same hidden rows.
+
+| Diagnostic path | Generated-token result | First mismatch | Sampler suffix audit | Artifact |
+| --- | --- | --- | --- | --- |
+| Native c2 retained bridge | Red | token 2: batch `220`, c1 `17` | Clean: 0 mismatches over 16 checked rows | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-finalnorm-audit.json` |
+| Native c2 + selected-c1 linear projection | Red | token 2: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-selected-c1-proj-finalnorm-audit.json` |
+| Linear per-row fallback + native full-attention | Red | token 2: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-perrow-finalnorm-audit.json` |
+| Full-attention per-row fallback | Red, but later | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-finalnorm-audit.json` |
+| Full-attention per-row + selected-c1 linear state | Red | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearstate-c1-finalnorm-audit.json` |
+| Full-attention per-row + selected-c1 linear output | Red | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearout-c1-finalnorm-audit.json` |
+| Full-attention per-row + global selected-c1 MoE | Green for this short diagnostic | none | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-moe-selected-c1-finalnorm-audit.json` |
+| Full-attention per-row + all linear per-row | Green for this short diagnostic | none | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-full-perrow-finalnorm-audit.json` |
+
+Interpretation:
+
+- The sampler suffix is not the c2 blocker; final norm/cast/LM-head/argmax
+  matched serial per-row for the same hidden rows.
+- Native full-attention is the first local c2 divergence. Forcing
+  full-attention per-row moves the failure from token 2 to token 6.
+- After full-attention is per-row, grouped compact MoE is the next visible
+  divergence. Global selected-c1 MoE clears the short c2 diagnostic; selected-c1
+  linear state and output do not.
+- The narrow `--batch-decode-linear-moe-path per_row_c1` diagnostic currently
+  crashes with `HIP error 1: invalid argument`, so use the broader
+  `--batch-decode-moe-path selected_c1` fallback as the working MoE
+  discriminator until that diagnostic branch is fixed.
+
+Repair order from this bisection:
+
+1. Fix native c2 full-attention generated-token parity against the c1 path.
+2. Fix or replace grouped compact MoE for local c>N PARO once full-attention
+   parity is green.
+3. Re-run the short c2 bisection, then the full 512/128 c2/c4/c8 equality gate,
+   before re-enabling any server/default perf path.
+
 ## PARO MTP/DFlash Buckets To Add Next
 
 Add these buckets before porting GGUF verifier mechanisms:
