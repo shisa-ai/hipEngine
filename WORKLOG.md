@@ -147370,3 +147370,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check`.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP vs Vulkan retained-results index
+
+- Updated `docs/HIP-vs-VULKAN.md` with a top-level retained-results index so
+  each retained gfx1151 HIP/Vulkan row exposes the main artifact, headline
+  numeric result, and current attribution read before the longer narrative.
+- Added the process rule that future retained HIP/Vulkan runs should update the
+  index first, then the detailed retained evidence section, coverage audit, and
+  benchmark rollups. No new benchmark was run for this docs-only visibility
+  change.
+
+## 2026-07-08 - PARO/GGUF gap-closing roadmap from HIP/Vulkan results
+
+- Added a new end-of-doc section to `docs/HIP-vs-VULKAN.md` translating the
+  retained HIP/Vulkan microbench evidence into PARO and GGUF implementation
+  priorities.
+- Current roadmap: keep PARO/GGUF HIP-first; recover the Q4_K selected-dual
+  delta in HIP before building a backend; preserve HIP-faster Q6 selected-down,
+  dense Q8_0, and Q6 lm-head paths; reduce launch count with graph/fusion; and
+  only pursue Vulkan as a persistent, registry-local Q4/sampler probe if it
+  moves end-to-end wall time.
