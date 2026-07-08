@@ -136,6 +136,15 @@ _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT = 1024
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
+_RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json"
+)
+_DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE = (
+    "benchmarks/results/2026-06-02-hipengine-qwen35-c{rows}-native-batch-sampler-equality.json"
+)
+_DEFAULT_BATCH_SAMPLE_EQ_ROWS = (2, 4, 8)
+_DEFAULT_BATCH_SAMPLE_STABILIZE_CAST_ELEMS = {8: 256}
 _LOGGER = logging.getLogger(__name__)
 _VERIFY_DYNAMIC_METADATA_FIELDS = 5
 
@@ -152,6 +161,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None or value.strip() == "":
         return bool(default)
     return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _retained_batch_defaults_enabled() -> bool:
+    return _env_flag(
+        _RETAINED_BATCH_DEFAULTS_ENV,
+        default=_env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"),
+    )
 
 
 def _env_float(name: str, default: float) -> float:
@@ -200,6 +216,56 @@ def _env_int_set(name: str) -> set[int]:
     if any(layer < 0 for layer in parsed):
         raise ValueError(f"{name} layer ids must be non-negative")
     return parsed
+
+
+def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
+    """Evidence-backed rowchunk layer scope for native c>N PARO decode.
+
+    Empty means "chunk every full-attention layer" and is intentionally kept
+    for row counts without stable selected-layer evidence.
+    """
+
+    if rows in {3, 5, 6}:
+        return {3, 7, 11, 15}
+    if rows == 4:
+        return {3, 15}
+    if rows == 8:
+        return {3, 7, 11, 15, 19, 23}
+    return set()
+
+
+def _default_projection_dispatch_artifact() -> str | None:
+    path = Path.cwd() / _DEFAULT_PROJECTION_DISPATCH_ARTIFACT
+    if path.is_file() and not path.is_symlink():
+        return _DEFAULT_PROJECTION_DISPATCH_ARTIFACT
+    return None
+
+
+def _default_batch_sample_evidence(rows: int) -> tuple[str, bool, str | None, int | None, int | None]:
+    """Return safe default sampler settings for rows with retained evidence."""
+
+    if rows not in _DEFAULT_BATCH_SAMPLE_EQ_ROWS:
+        return BatchSamplerMode.SERIAL_LM_HEAD.value, False, None, None, None
+    artifact = _DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=rows)
+    path = Path.cwd() / artifact
+    if not path.is_file() or path.is_symlink():
+        return BatchSamplerMode.SERIAL_LM_HEAD.value, False, None, None, None
+    decision = plan_batch_sampler_dispatch(
+        rows=rows,
+        requested_mode=BatchSamplerMode.BATCHED_LM_HEAD,
+        c2_equality_green=True,
+        equality_artifact=artifact,
+        equality_rows=rows,
+    )
+    if decision.mode is not BatchSamplerMode.BATCHED_LM_HEAD or decision.blockers:
+        return BatchSamplerMode.SERIAL_LM_HEAD.value, False, None, None, None
+    return (
+        BatchSamplerMode.BATCHED_LM_HEAD.value,
+        True,
+        artifact,
+        rows,
+        _DEFAULT_BATCH_SAMPLE_STABILIZE_CAST_ELEMS.get(rows),
+    )
 
 
 _PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
@@ -304,7 +370,11 @@ def _projection_candidate_evidence_blockers(candidate: Any) -> tuple[str, ...]:
 def _env_projection_dispatch_candidates() -> tuple[tuple[Any, ...], tuple[str, ...]]:
     raw = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
     if raw is None or not raw.strip():
-        return (), ()
+        if not _retained_batch_defaults_enabled():
+            return (), ()
+        raw = _default_projection_dispatch_artifact()
+        if raw is None:
+            return (), ()
     payload, artifact_errors = _load_projection_dispatch_env_artifact(
         raw.strip(),
         label=_PROJECTION_DISPATCH_ARTIFACT_ENV,
@@ -5163,9 +5233,16 @@ class Qwen35ParoResidentSession:
             full_attention_row_chunk_size = 2
         force_full_attention_row_chunks = rows > 1 and 0 < full_attention_row_chunk_size < rows
         full_attention_row_chunk_source = "auto" if auto_full_attention_row_chunks else "env"
-        full_attention_row_chunk_layers = (
-            _env_int_set("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS") if rows > 1 else set()
-        )
+        full_attention_row_chunk_layers_env = "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"
+        full_attention_row_chunk_layers_raw = os.environ.get(full_attention_row_chunk_layers_env)
+        if rows <= 1:
+            full_attention_row_chunk_layers = set()
+        elif full_attention_row_chunk_layers_raw is not None and full_attention_row_chunk_layers_raw.strip() != "":
+            full_attention_row_chunk_layers = _env_int_set(full_attention_row_chunk_layers_env)
+        elif force_full_attention_row_chunks and auto_full_attention_row_chunks and _retained_batch_defaults_enabled():
+            full_attention_row_chunk_layers = _retained_full_attention_row_chunk_layers(rows)
+        else:
+            full_attention_row_chunk_layers = set()
         full_attention_input_decode_path = (
             "per_row_rmsnorm_fallback" if force_per_row_full_attention_input else "native_batch"
         )
@@ -8433,14 +8510,32 @@ class Qwen35ParoResidentSession:
             raise ValueError("rows must be positive")
         if rows > self.max_batch_size:
             raise ValueError("rows exceed max_batch_size")
-        sample_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "serial_lm_head")
+        sample_mode_raw = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE")
+        sample_mode = "serial_lm_head" if sample_mode_raw is None or sample_mode_raw.strip() == "" else sample_mode_raw
+        default_sample_eq_ok = False
+        default_sample_eq_artifact: str | None = None
+        default_sample_eq_rows: int | None = None
+        default_sample_stabilize_elems: int | None = None
+        if (sample_mode_raw is None or sample_mode_raw.strip() == "") and _retained_batch_defaults_enabled():
+            (
+                sample_mode,
+                default_sample_eq_ok,
+                default_sample_eq_artifact,
+                default_sample_eq_rows,
+                default_sample_stabilize_elems,
+            ) = _default_batch_sample_evidence(rows)
         try:
             sampler_decision = plan_batch_sampler_dispatch(
                 rows=rows,
                 requested_mode=sample_mode,
-                c2_equality_green=_env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"),
-                equality_artifact=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT") or None,
-                equality_rows=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS") or None,
+                c2_equality_green=_env_flag(
+                    "HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK",
+                    default=default_sample_eq_ok,
+                ),
+                equality_artifact=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT")
+                or default_sample_eq_artifact,
+                equality_rows=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS")
+                or default_sample_eq_rows,
             )
         except ValueError as exc:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head") from exc
@@ -8465,7 +8560,13 @@ class Qwen35ParoResidentSession:
         sampler_final_cast_tiny_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TINY_FENCE")
         sampler_final_cast_elems_fence = max(0, _env_int("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_ELEMS_FENCE", 0))
         sampler_final_cast_elems_fence = min(sampler_final_cast_elems_fence, int(self.config.hidden_size))
-        sampler_stabilize_cast_elems = max(0, _env_int("HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS", 0))
+        sampler_stabilize_cast_elems = max(
+            0,
+            _env_int(
+                "HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS",
+                0 if default_sample_stabilize_elems is None else int(default_sample_stabilize_elems),
+            ),
+        )
         sampler_stabilize_cast_elems = min(sampler_stabilize_cast_elems, int(self.config.hidden_size))
         sampler_sync_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE")
         sampler_suffix_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE")

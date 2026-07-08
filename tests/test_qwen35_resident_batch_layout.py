@@ -42,6 +42,114 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, object]:
+    sequences = [[row, row + 10] for row in range(rows)]
+    return {
+        "schema": 1,
+        "rows": rows,
+        "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
+        "passed": True,
+        "generated_token_equality": {
+            "passed": True,
+            "skipped": False,
+            "batch_sequences": sequences,
+            "c1_sequences": [list(tokens) for tokens in sequences],
+            "mismatches": [],
+        },
+    }
+
+
+def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
+    assert runner_module._retained_full_attention_row_chunk_layers(2) == set()
+    assert runner_module._retained_full_attention_row_chunk_layers(3) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(4) == {3, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(5) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(6) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(7) == set()
+    assert runner_module._retained_full_attention_row_chunk_layers(8) == {3, 7, 11, 15, 19, 23}
+
+
+def test_qwen35_retained_batch_defaults_load_projection_artifact(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_path = tmp_path / runner_module._DEFAULT_PROJECTION_DISPATCH_ARTIFACT
+    artifact_path.parent.mkdir(parents=True)
+    evidence_path = tmp_path / "benchmarks/results/projection-wmma-c4.json"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "rows": 4,
+                "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                "source_artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                "accepted": True,
+                "aggregate_vs_row_gemv": 1.35,
+                "per_request_vs_row_gemv": 1.10,
+            }
+        ),
+        encoding="utf-8",
+    )
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "projection_dispatch_candidates": [
+                    {
+                        "name": "wmma_caware",
+                        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+                        "min_rows": 4,
+                        "max_rows": 4,
+                        "evidence": {
+                            "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                            "aggregate_vs_row_gemv": 1.35,
+                            "per_request_vs_row_gemv": 1.10,
+                            "accepted": True,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", raising=False)
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+
+    candidates, blockers = runner_module._env_projection_dispatch_candidates()
+
+    assert blockers == ()
+    assert [candidate.name for candidate in candidates] == ["wmma_caware"]
+
+
+def test_qwen35_retained_batch_defaults_load_sampler_evidence(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = runner_module._DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=4)
+    artifact_path = tmp_path / artifact
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text(
+        json.dumps(_sampler_equality_payload(rows=4, artifact_path=artifact)),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    mode, eq_ok, eq_artifact, eq_rows, stabilize = runner_module._default_batch_sample_evidence(4)
+
+    assert mode == "batched_lm_head"
+    assert eq_ok is True
+    assert eq_artifact == artifact
+    assert eq_rows == 4
+    assert stabilize is None
+    assert runner_module._default_batch_sample_evidence(7) == (
+        "serial_lm_head",
+        False,
+        None,
+        None,
+        None,
+    )
+
+
 def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> None:
     layout = Qwen35ParoResidentBatchLayout(
         max_batch_size=4,
