@@ -111,6 +111,25 @@ python3 benchmarks/micro/collect_env.py \
   --pretty
 ```
 
+`benchmarks/micro/system_info.py` is an alias for the same collector. The
+environment artifact records repo state, OS/kernel, Arch package versions,
+HIP/ROCm/TheRock compiler versions, LLVM tools, Vulkan/RADV/Mesa versions,
+AMDGPU module/firmware probes, rocm-smi/amd-smi/inxi device state, and
+RyzenAdj output when available.
+
+For Strix Halo or other APU rows where power limits matter, use the
+fast-failing privileged probe after confirming sudo is available:
+
+```bash
+python3 benchmarks/micro/system_info.py \
+  --include-privileged \
+  --out /tmp/hipengine-micro-env.json \
+  --pretty
+```
+
+The privileged path uses `sudo -n ryzenadj -i`, so it records a normal command
+failure instead of blocking for a password prompt.
+
 For tests or machines without ROCm/Vulkan tools:
 
 ```bash
