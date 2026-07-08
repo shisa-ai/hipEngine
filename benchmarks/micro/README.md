@@ -634,8 +634,35 @@ python3 benchmarks/micro/runners/reduction_sweep.py \
 ```
 
 The accumulator extension closes the no-LDS-accumulator diagnostic as negative
-for HIP recovery on gfx1151. It is not a true two-stage block-partial plus
-final-reduce launch sequence.
+for HIP recovery on gfx1151.
+
+True two-stage retained command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 benchmarks/micro/runners/two_stage_reduction.py \
+  --backend both \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --k-list 8192,32768,65536 \
+  --rows-list 1,4,8 \
+  --workgroups 128,256 \
+  --split-counts 2,4,8 \
+  --body-repeats 32 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --build-dir /tmp/hipengine-two-stage-retained \
+  --out benchmarks/micro/results/gfx1151/strix-halo/two-stage-reduction.json \
+  --pretty
+```
+
+The true two-stage block-partial plus final-reduce sweep is also negative for
+a broad Vulkan reduction win on gfx1151. All 54 matched rows pass CPU
+correctness; Vulkan/HIP speedup is `0.690x-1.118x`, median `0.835x`, with only
+3/54 wg256/split8 rows above parity.
 
 ## Sampler Top-1 And Top-K8 Argmax
 
@@ -751,8 +778,9 @@ python3 benchmarks/micro/runners/sampler_argmax.py \
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | True two-stage reduction | Block-partial plus final-reduce rows K=`8192/32768/65536`, rows=`1/4/8`, wg=`128/256`, split_count=`2/4/8` all pass CPU correctness across 54 matched rows. Vulkan/HIP speedup ranges `0.690x-1.118x`, median `0.835x`; only 3/54 wg256/split8 rows are above parity. Classified `diagnostic_unclassified`; closes true two-stage reduction as negative for a broad Vulkan/RADV reduction win on gfx1151. | `results/gfx1151/strix-halo/two-stage-reduction.json`, `results/gfx1151/strix-halo/environment-two-stage-reduction.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Dense Q8_0 real-slice probe | Raw GGUF Q8_0 dense q8_1+dp4a shapes `768x2048`, `2048x2048`, and `2048x6144`, rows=`1/4/8`, row_tile=`1/4` all pass CPU correctness on HIP and Vulkan. Across 54 matched rows, Vulkan/HIP speedup ranges `0.279x-1.120x` for quantize+dot and `0.238x-1.169x` for prequantized dot. Vulkan only wins useful smaller `768x2048` cases; larger rows favor HIP, including `2048x2048` rows=4 row_tile=4 at `0.863x` combined and `2048x6144` rows=8 row_tile=4 at `0.707x` combined. Classified `real_slice_probe`; closes dense Q8_0 as mostly negative for Vulkan on current gfx1151 data. | `results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`, `results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/environment-q8-0-dense.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Reduction accumulator sweep | One-row K=512/2048/8192 wg32/wg64/wg256 rows all pass CPU correctness. HIP 4/8/16 lane-local accumulators are mostly slower than HIP LDS (`1.02x-2.40x`), Vulkan accumulator variants are mixed versus Vulkan LDS (`0.90x-1.77x`), and matched Vulkan accumulator rows remain `9.57x-15.81x` faster than HIP. Classified `diagnostic_unclassified`; closes the no-LDS-accumulator row as negative for HIP recovery. True two-stage block-partial reduction remains unrun until profiling makes it decision-grade. | `results/gfx1151/strix-halo/reduction-accum-sweep.json`, `results/gfx1151/strix-halo/environment-reduction-accum.json` |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Reduction accumulator sweep | One-row K=512/2048/8192 wg32/wg64/wg256 rows all pass CPU correctness. HIP 4/8/16 lane-local accumulators are mostly slower than HIP LDS (`1.02x-2.40x`), Vulkan accumulator variants are mixed versus Vulkan LDS (`0.90x-1.77x`), and matched Vulkan accumulator rows remain `9.57x-15.81x` faster than HIP. Classified `diagnostic_unclassified`; closes the no-LDS-accumulator row as negative for HIP recovery. True two-stage is covered separately by `two-stage-reduction.json`. | `results/gfx1151/strix-halo/reduction-accum-sweep.json`, `results/gfx1151/strix-halo/environment-reduction-accum.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Sampler deterministic top-k8 argmax | Deterministic top-k8 rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the CPU oracle on HIP and Vulkan. Vulkan is `12.79x-25.93x` faster across matched rows; both backends prefer wg256 for best-native rows, where Vulkan is `12.79x-23.20x` faster. HIP reports wave32, 32-34 SGPR / 18-20 VGPR, no scratch/spills, and 5-7 VOPD; RADV reports wave64, official 108 SGPR / 12 VGPR, no scratch/spills, and 0 VOPD. Classified `diagnostic_unclassified`; covers deterministic top-k8 argmax, not stochastic sampling or fused lm-head+sample. | `results/gfx1151/strix-halo/sampler-topk8-comparison.json`, `results/gfx1151/strix-halo/hip-sampler-topk8.json`, `results/gfx1151/strix-halo/vulkan-sampler-topk8.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Sampler top-1 argmax | Deterministic top-1 argmax rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the CPU oracle on HIP and Vulkan. Vulkan is `12.75x-26.94x` faster across matched rows; both backends prefer wg256 for best-native rows, where Vulkan is `12.75x-16.85x` faster. HIP reports wave32, 15 SGPR / 7 VGPR, no scratch/spills, and 3 VOPD; RADV reports wave64, official 108 SGPR / 12 VGPR, no scratch/spills, and 0 VOPD. Classified `diagnostic_unclassified`; top-k8 is covered separately, while stochastic sampling and fused lm-head+sample remain untested. | `results/gfx1151/strix-halo/sampler-argmax-comparison.json`, `results/gfx1151/strix-halo/hip-sampler-argmax.json`, `results/gfx1151/strix-halo/vulkan-sampler-argmax.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q6_K X8 HIP/RADV ISA comparison | Targeted ISA comparison for the negative Q6_K X8 real-slice row shows the Vulkan loss is not missing RADV dot4 or Vulkan spills. HIP and RADV both emit 9 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 30 SGPR / 51 VGPR, 599 static instructions, 39 waitcnt-family instructions, and 51 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 1117 static instructions, 89 waitcnt-family instructions, and 0 VOPD. Classified `real_slice_probe`; this is negative production-transfer evidence for a broad LLVM waitcnt/scheduling claim. | `results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json` |

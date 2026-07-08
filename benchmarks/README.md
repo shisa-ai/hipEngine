@@ -6,10 +6,11 @@ ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, LDS/barrier/subgroup/accumulator reduction
-controls, sampler top-1/top-k8 argmax diagnostics, plus a matched Vulkan Q6_K
-X8 selected-down real-slice probe and matched Vulkan Q4_K selected-dual gate/up
-real-slice probe with targeted HIP/RADV ISA comparisons, a bounded Q4
-setup/amortization probe, and a dense Q8_0 real-slice probe.
+controls, true two-stage reduction controls, sampler top-1/top-k8 argmax
+diagnostics, plus a matched Vulkan Q6_K X8 selected-down real-slice probe and
+matched Vulkan Q4_K selected-dual gate/up real-slice probe with targeted
+HIP/RADV ISA comparisons, a bounded Q4 setup/amortization probe, and a dense
+Q8_0 real-slice probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -70,8 +71,12 @@ than Vulkan LDS (**0.984x-1.132x**). Matched Vulkan LDS remains
 wg32/wg64/wg256 4/8/16 lane-local accumulators: HIP accumulators are mostly
 slower than HIP LDS (**1.02x-2.40x**), while matched Vulkan accumulator rows
 remain **9.57x-15.81x faster** than HIP. Reduction topology and accumulator
-count are not the missing f32 geometry switch; true two-stage reduction remains
-unrun and not decision-grade without a new large-K reduction profile.
+count are not the missing f32 geometry switch. True two-stage block-partial
+plus final-reduce rows at K=8192/32768/65536, rows 1/4/8, wg128/wg256, and
+split_count 2/4/8 also pass CPU correctness across all 54 matched rows; the
+Vulkan/HIP speedup range is **0.690x-1.118x**, median **0.835x**, with only
+3/54 rows above parity. This closes true two-stage reduction as another
+negative Vulkan-backend result on gfx1151.
 Sampler argmax diagnostics: rows **1/4/8**, vocab **32768**, and workgroups
 **64/128/256** all pass CPU oracles on HIP and Vulkan for deterministic top-1
 and top-k8. Vulkan is **12.75x-26.94x** faster across matched top-1 rows and

@@ -147133,3 +147133,32 @@ python3 scripts/gguf_mtp_bench.py \
   sub-microsecond HIP timing smoke exposed non-positive HIP event samples, so the
   HIP harness now fails non-positive elapsed timings instead of retaining them.
   Retained large-K sweep still pending.
+
+## 2026-07-08 - HIP vs Vulkan true two-stage reduction retained result
+
+- Retained true two-stage f32 reduction artifacts on gfx1151/Radeon 8060S/RADV
+  Mesa 26.1.2:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json`
+  and
+  `benchmarks/micro/results/gfx1151/strix-halo/two-stage-reduction.json`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/two_stage_reduction.py --backend both --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --k-list 8192,32768,65536 --rows-list 1,4,8 --workgroups 128,256 --split-counts 2,4,8 --body-repeats 32 --reps 20 --warmup 5 --samples 7 --build-dir /tmp/hipengine-two-stage-retained --out benchmarks/micro/results/gfx1151/strix-halo/two-stage-reduction.json --pretty`.
+- Result: all 54 matched rows pass CPU correctness. Vulkan/HIP speedup ranges
+  `0.690x-1.118x`, median `0.835x`. Only 3/54 rows are above parity, all
+  wg256/split8: K=`8192` rows=`4` at `1.021x`, K=`8192` rows=`8` at `1.118x`,
+  and K=`32768` rows=`4` at `1.004x`.
+- Best-native rows all use wg256/split8 on both backends. HIP remains faster
+  for K=`32768` rows=`1/8` and all K=`65536` rows; Vulkan only shows
+  small/near-parity wins in the short two-stage rows above.
+- Conclusion: true block-partial plus final-reduce is now covered and does not
+  recover a broad Vulkan/RADV reduction win on gfx1151. Remaining useful tests
+  are cross-GPU retained-suite reruns, a narrow Q4_K selected-dual HIP recovery
+  experiment if we act on the measured Q4 delta, or a production-registry Vulkan
+  Q4 probe if backend work becomes product-relevant.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/two_stage_reduction.py`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json benchmarks/micro/results/gfx1151/strix-halo/two-stage-reduction.json`;
+  `git diff --check`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
