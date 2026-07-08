@@ -24,16 +24,19 @@ benchmarks/micro/
     memory_waitcnt.py
     q4_selected_dual_real_slice.py
     reduction_sweep.py
+    sampler_argmax.py
     vopd_sweep.py
     hip_dot_path.hip
     hip_geometry_sweep.hip
     hip_memory_waitcnt.hip
+    hip_sampler_argmax.hip
     hip_vopd_sweep.hip
     hip_dispatch_floor.py
     vulkan_dot_path.cpp
     vulkan_geometry_sweep.cpp
     vulkan_memory_waitcnt.cpp
     vulkan_q4_selected_dual.cpp
+    vulkan_sampler_argmax.cpp
     vulkan_vopd_sweep.cpp
     vulkan_dispatch_floor.py
     vulkan_dispatch_floor.cpp
@@ -46,6 +49,7 @@ benchmarks/micro/
       q8_1_quantize.comp
       reduction_extra_barrier.comp
       reduction_subgroup.comp
+      sampler_argmax.comp
       vopd_sweep.comp
   schemas/
     environment.schema.json
@@ -604,10 +608,70 @@ python3 benchmarks/micro/runners/reduction_sweep.py \
 This is a reduction-topology control for the f32 geometry gap. It does not
 stand alone as LLVM/RADV compiler attribution.
 
+## Sampler Top-1 Argmax
+
+`runners/sampler_argmax.py` runs a matched deterministic top-1 argmax
+diagnostic on HIP and Vulkan. Each shader uses one workgroup per logits row,
+scans vocab=`32768`, reduces to one `(value, index)` pair, and validates against
+a CPU oracle with one unique peak per row. This covers the sampler/argmax
+matrix bucket for reduction, scan, LDS/shared-memory, register, VOPD, and
+waitcnt evidence. It is not a full top-k heap, stochastic sampler, or fused
+lm-head+sample implementation.
+
+Retained gfx1151 commands:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json
+
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 benchmarks/micro/runners/sampler_argmax.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --rows-list 1,4,8 \
+  --workgroups 64,128,256 \
+  --vocab 32768 \
+  --reps 50 \
+  --warmup 10 \
+  --samples 9 \
+  --build-dir /tmp/hipengine-micro-sampler-argmax-retained \
+  --out benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json \
+  --pretty
+
+python3 benchmarks/micro/runners/sampler_argmax.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --rows-list 1,4,8 \
+  --workgroups 64,128,256 \
+  --vocab 32768 \
+  --debug-vocab 1024 \
+  --reps 50 \
+  --warmup 10 \
+  --samples 9 \
+  --build-dir /tmp/hipengine-micro-sampler-argmax-retained \
+  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json \
+  --quiet-shader-dump \
+  --pretty
+
+python3 benchmarks/micro/runners/sampler_argmax.py \
+  --compare benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json \
+            benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json \
+  --out benchmarks/micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json \
+  --pretty
+```
+
 ## Retained Results
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Sampler top-1 argmax | Deterministic top-1 argmax rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the CPU oracle on HIP and Vulkan. Vulkan is `12.75x-26.94x` faster across matched rows; both backends prefer wg256 for best-native rows, where Vulkan is `12.75x-16.85x` faster. HIP reports wave32, 15 SGPR / 7 VGPR, no scratch/spills, and 3 VOPD; RADV reports wave64, official 108 SGPR / 12 VGPR, no scratch/spills, and 0 VOPD. Classified `diagnostic_unclassified`; covers top-1 argmax, not full top-k/stochastic sampling or fused lm-head+sample. | `results/gfx1151/strix-halo/sampler-argmax-comparison.json`, `results/gfx1151/strix-halo/hip-sampler-argmax.json`, `results/gfx1151/strix-halo/vulkan-sampler-argmax.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q6_K X8 HIP/RADV ISA comparison | Targeted ISA comparison for the negative Q6_K X8 real-slice row shows the Vulkan loss is not missing RADV dot4 or Vulkan spills. HIP and RADV both emit 9 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 30 SGPR / 51 VGPR, 599 static instructions, 39 waitcnt-family instructions, and 51 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 1117 static instructions, 89 waitcnt-family instructions, and 0 VOPD. Classified `real_slice_probe`; this is negative production-transfer evidence for a broad LLVM waitcnt/scheduling claim. | `results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q4_K selected-dual Vulkan setup/amortization probe | Instrumented local_size=64 rerun passes full CPU correctness and keeps steady replay positive at `0.292745 ms` prequantized dot and `0.293117 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`. Standalone backend setup before steady replay is `47.8645 ms`, dominated by `25.3268 ms` synthetic host staging and `17.4106 ms` Vulkan instance/device setup; pipeline creation is only `0.1736 ms`, device upload `3.4389 ms`, descriptor setup `0.0171 ms`, and command recording `0.0639 ms`. If all setup is charged to the retained Q4 quantize+dot delta, breakeven is about `908` calls. Classified bounded setup probe: useful only with persistent pipelines/resident buffers, not a production-backend win by itself. | `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | LDS/barrier/subgroup reduction sweep | One-row K=512/2048/8192 wg64/wg256 rows all pass CPU correctness. HIP extra-barrier is only `1.002x-1.028x` slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS (`0.991x-1.005x`), Vulkan extra-barrier is flat versus Vulkan LDS (`0.991x-1.005x`), and Vulkan subgroup is mostly flat to modestly slower than Vulkan LDS (`0.984x-1.132x`). Matched Vulkan LDS remains `8.19x-14.55x` faster than matched HIP LDS, so reduction topology is not the missing f32 geometry switch. Classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/reduction-sweep.json` |

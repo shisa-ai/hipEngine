@@ -147089,3 +147089,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   broad `compiler_aco`, Vulkan backend, or hand-ISA path is justified by the
   current evidence; Q4_K selected-dual remains the only narrow LLVM/HIP recovery
   lead.
+
+## 2026-07-08 - HIP vs Vulkan sampler top-1 argmax retained
+
+- Added a matched sampler/top-1 argmax microbench family:
+  `benchmarks/micro/runners/sampler_argmax.py`,
+  `benchmarks/micro/runners/hip_sampler_argmax.hip`,
+  `benchmarks/micro/runners/vulkan_sampler_argmax.cpp`, and
+  `benchmarks/micro/kernels/vulkan/sampler_argmax.comp`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/sampler_argmax.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1,4,8 --workgroups 64,128,256 --vocab 32768 --reps 50 --warmup 10 --samples 9 --build-dir /tmp/hipengine-micro-sampler-argmax-retained --out benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json --pretty`;
+  `python3 benchmarks/micro/runners/sampler_argmax.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1,4,8 --workgroups 64,128,256 --vocab 32768 --debug-vocab 1024 --reps 50 --warmup 10 --samples 9 --build-dir /tmp/hipengine-micro-sampler-argmax-retained --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json --quiet-shader-dump --pretty`;
+  `python3 benchmarks/micro/runners/sampler_argmax.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json --out benchmarks/micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json --pretty`.
+- Retained artifacts:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`,
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json`,
+  and
+  `benchmarks/micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`.
+- Timing result: rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the
+  CPU argmax oracle on HIP and Vulkan. Vulkan is `12.75x-26.94x` faster across
+  matched rows. Best-native wg256 rows are HIP `17.3869/17.6572/17.9019 us`
+  versus Vulkan `1.0406/1.0480/1.4042 us` for rows `1/4/8`, so Vulkan is
+  `16.71x/16.85x/12.75x` faster on best-native rows.
+- ISA/stat read: HIP reports wave32, `15` SGPR / `7` VGPR, no scratch/spills,
+  and `3` VOPD across retained workgroups; RADV reports wave64, official `108`
+  SGPR / `12` VGPR, no scratch/spills, and `0` VOPD. The row is a real
+  exposed-bucket Vulkan diagnostic win, but not a full top-k/stochastic sampler
+  or fused lm-head+sample result.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. The original
+  matrix `sampler/top-k/argmax` row is now `Partial`: deterministic top-1
+  argmax is covered, while full top-k/stochastic sampling remains untested.
