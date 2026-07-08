@@ -18,9 +18,16 @@
 #define HIPENGINE_ARGMAX_WG 256
 #endif
 
+#ifndef HIPENGINE_ARGMAX_TOPK
+#define HIPENGINE_ARGMAX_TOPK 1
+#endif
+
 namespace {
 
 constexpr uint32_t kWorkgroupSize = HIPENGINE_ARGMAX_WG;
+constexpr uint32_t kTopK = HIPENGINE_ARGMAX_TOPK;
+static_assert(kTopK > 0, "HIPENGINE_ARGMAX_TOPK must be positive");
+static_assert(kTopK <= kWorkgroupSize, "HIPENGINE_ARGMAX_TOPK must be <= HIPENGINE_ARGMAX_WG");
 
 struct Args {
   std::string spirv_path;
@@ -44,6 +51,7 @@ struct Row {
   uint32_t rows;
   uint32_t vocab;
   uint32_t workgroup_size;
+  uint32_t top_k;
   double bytes_per_dispatch;
   double comparisons_per_dispatch;
   double median_us;
@@ -138,6 +146,35 @@ float logit_value(uint32_t row, uint32_t col, uint32_t vocab) {
   uint32_t bits = hash_u32(row * 1664525u + col * 1013904223u);
   int value = static_cast<int>(bits & 0xffffu) - 32768;
   return static_cast<float>(value) * 0.000030517578125f;
+}
+
+struct Pair {
+  float value;
+  uint32_t index;
+};
+
+bool better_pair(Pair a, Pair b) {
+  return (a.value > b.value) || (a.value == b.value && a.index < b.index);
+}
+
+void insert_topk(std::vector<Pair>& top, Pair candidate) {
+  for (uint32_t i = 0; i < kTopK; ++i) {
+    if (better_pair(candidate, top[i])) {
+      for (uint32_t j = kTopK - 1; j > i; --j) {
+        top[j] = top[j - 1];
+      }
+      top[i] = candidate;
+      return;
+    }
+  }
+}
+
+void cpu_topk(const std::vector<float>& logits, uint32_t row, uint32_t vocab, std::vector<Pair>& out) {
+  out.assign(kTopK, Pair{-std::numeric_limits<float>::infinity(), 0xffffffffu});
+  size_t base = static_cast<size_t>(row) * vocab;
+  for (uint32_t col = 0; col < vocab; ++col) {
+    insert_topk(out, Pair{logits[base + col], col});
+  }
 }
 
 void fill_logits(std::vector<float>& logits, uint32_t rows, uint32_t vocab) {
@@ -535,10 +572,13 @@ Row run_config(
     VkPipelineLayout pipeline_layout,
     VkShaderModule shader_module,
     VkFence fence) {
+  if (kTopK > args.vocab) {
+    fail("top-k must be <= vocab");
+  }
   std::vector<float> logits;
   fill_logits(logits, args.rows, args.vocab);
-  std::vector<uint32_t> actual_indices(args.rows, 0);
-  std::vector<float> actual_values(args.rows, 0.0f);
+  std::vector<uint32_t> actual_indices(static_cast<size_t>(args.rows) * kTopK, 0);
+  std::vector<float> actual_values(static_cast<size_t>(args.rows) * kTopK, 0.0f);
   VkDeviceSize logits_bytes = sizeof(float) * logits.size();
   VkDeviceSize index_bytes = sizeof(uint32_t) * actual_indices.size();
   VkDeviceSize value_bytes = sizeof(float) * actual_values.size();
@@ -615,13 +655,16 @@ Row run_config(
 
   uint32_t mismatches = 0;
   float max_abs = 0.0f;
+  std::vector<Pair> expected;
   for (uint32_t row = 0; row < args.rows; ++row) {
-    uint32_t expected_index = peak_index(row, args.vocab);
-    float expected_value = logit_value(row, expected_index, args.vocab);
-    float diff = std::abs(actual_values[row] - expected_value);
-    max_abs = std::max(max_abs, diff);
-    if (actual_indices[row] != expected_index || diff > 0.0f) {
-      ++mismatches;
+    cpu_topk(logits, row, args.vocab, expected);
+    for (uint32_t i = 0; i < kTopK; ++i) {
+      size_t offset = static_cast<size_t>(row) * kTopK + i;
+      float diff = std::abs(actual_values[offset] - expected[i].value);
+      max_abs = std::max(max_abs, diff);
+      if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
+        ++mismatches;
+      }
     }
   }
   bool pass = mismatches == 0;
@@ -663,12 +706,16 @@ Row run_config(
   destroy_buffer(device, values_device);
 
   double median_us = percentile(samples, 0.5);
-  double bytes = static_cast<double>(args.rows) * args.vocab * sizeof(float);
-  double comparisons = static_cast<double>(args.rows) * args.vocab;
+  double scanned_values =
+      static_cast<double>(args.rows) *
+      (static_cast<double>(kTopK) * args.vocab - static_cast<double>(kTopK * (kTopK - 1)) / 2.0);
+  double bytes = scanned_values * sizeof(float);
+  double comparisons = scanned_values;
   return Row{
       args.rows,
       args.vocab,
       kWorkgroupSize,
+      kTopK,
       bytes,
       comparisons,
       median_us,
@@ -708,16 +755,18 @@ void write_json(
   out << "    \"rows\": " << row.rows << ",\n";
   out << "    \"vocab\": " << row.vocab << ",\n";
   out << "    \"workgroup_size\": " << row.workgroup_size << ",\n";
+  out << "    \"top_k\": " << row.top_k << ",\n";
   out << "    \"reps\": " << args.reps << ",\n";
   out << "    \"warmup\": " << args.warmup << ",\n";
   out << "    \"samples\": " << args.samples << ",\n";
-  out << "    \"method\": \"pre-recorded Vulkan command buffer; one workgroup per row top-1 argmax reduction; CPU oracle\"\n";
+  out << "    \"method\": \"pre-recorded Vulkan command buffer; one workgroup per row deterministic top-k argmax reduction; CPU oracle\"\n";
   out << "  },\n";
   out << "  \"rows\": [\n";
   out << "    {\n";
   out << "      \"rows\": " << row.rows << ",\n";
   out << "      \"vocab\": " << row.vocab << ",\n";
   out << "      \"workgroup_size\": " << row.workgroup_size << ",\n";
+  out << "      \"top_k\": " << row.top_k << ",\n";
   out << "      \"bytes_per_dispatch\": " << row.bytes_per_dispatch << ",\n";
   out << "      \"comparisons_per_dispatch\": " << row.comparisons_per_dispatch << ",\n";
   out << "      \"median_us\": " << row.median_us << ",\n";
