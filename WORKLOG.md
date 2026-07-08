@@ -147028,3 +147028,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m py_compile benchmarks/micro/runners/q6_x8_isa_stats.py`;
   `jq empty benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`;
   `git diff --check`.
+
+## 2026-07-08 - HIP vs Vulkan coverage audit updated
+
+- Re-audited `docs/HIP-vs-VULKAN.md` against the active goal list: scheduling,
+  register allocation/spills, VOPD/dual issue, workgroup shape, wave/subgroup
+  mode, memory/waitcnt scheduling, dot lowering, layout economics,
+  production-shaped slices, Vulkan setup/amortization, production Vulkan
+  backend scope, and hand-ISA scope.
+- Local hardware verification:
+  `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  returned `hip OK`; `rocminfo | grep -E 'Name:|gfx'` shows `gfx1151` /
+  `Radeon 8060S Graphics`; `vulkaninfo --summary` shows
+  `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, RADV Mesa
+  `26.1.2-arch2.1`. No gfx1100/W7900 or 7900 XTX device is exposed locally.
+- Added a `Coverage Audit` table to `docs/HIP-vs-VULKAN.md` that maps each
+  attribution area to retained artifacts, coverage state, and the current read.
+  The table makes the remaining cross-GPU work explicit as an external hardware
+  gate and separates production `vulkan_radv_gfx11` backend work from the
+  completed gfx1151 attribution suite.
+- Fixed stale detailed memory/waitcnt language: the synthetic memory rows remain
+  diagnostic because the first memory-heavy production transfer, Q6_K X8
+  selected-down, is negative for Vulkan and for a broad LLVM waitcnt/scheduling
+  claim.
+- Validation:
+  `rg -n "memory-bound real-slice|real-slice transfer remain|do not yet show the same effect|until a memory-bound real slice transfers|remaining gate before|still needed before filing|memory-bound production-slice confirmation" docs/HIP-vs-VULKAN.md`
+  returned no matches; `git diff --check`.
