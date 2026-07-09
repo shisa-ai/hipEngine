@@ -10477,13 +10477,21 @@ class Qwen35ParoResidentSession:
         linear_attn_mode: str = "tree_tloop",
         stream: int = 0,
     ) -> dict[str, Any]:
+        bucket_key = {
+            "rows": int(rows),
+            "capture_width": int(capture_hidden_concat.shape[1]),
+            "base_slot": int(base_slot),
+            "chain_attn_mode": str(chain_attn_mode),
+            "linear_attn_mode": str(linear_attn_mode),
+            "batch_mode": str(batch.mode),
+        }
         key = (
-            int(rows),
-            int(capture_hidden_concat.shape[1]),
-            int(base_slot),
-            str(chain_attn_mode),
-            str(linear_attn_mode),
-            str(batch.mode),
+            bucket_key["rows"],
+            bucket_key["capture_width"],
+            bucket_key["base_slot"],
+            bucket_key["chain_attn_mode"],
+            bucket_key["linear_attn_mode"],
+            bucket_key["batch_mode"],
         )
         entry = self._verify_graph_cache.get(key)
         if (
@@ -10557,13 +10565,7 @@ class Qwen35ParoResidentSession:
                 "status": "replayed",
                 "replayed": True,
                 "validation_passed": entry.validation_passed,
-                "bucket_key": {
-                    "rows": rows,
-                    "capture_width": int(capture_hidden_concat.shape[1]),
-                    "base_slot": base_slot,
-                    "chain_attn_mode": str(chain_attn_mode),
-                    "linear_attn_mode": str(linear_attn_mode),
-                },
+                "bucket_key": dict(bucket_key),
                 "replay_count": entry.replay_count,
             }
 
@@ -10651,13 +10653,7 @@ class Qwen35ParoResidentSession:
                         "status": "validation_failed_fallback",
                         "replayed": False,
                         "validation_passed": False,
-                        "bucket_key": {
-                            "rows": rows,
-                            "capture_width": int(capture_hidden_concat.shape[1]),
-                            "base_slot": base_slot,
-                            "chain_attn_mode": str(chain_attn_mode),
-                            "linear_attn_mode": str(linear_attn_mode),
-                        },
+                        "bucket_key": dict(bucket_key),
                     }
             if os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1":
                 # Debug-only (#107): execute the freshly captured graph so the
@@ -10681,13 +10677,7 @@ class Qwen35ParoResidentSession:
                 "status": "captured_validated" if graph_mode == "validate" else "captured_validated_miss",
                 "replayed": graph_mode == "auto",
                 "validation_passed": True,
-                "bucket_key": {
-                    "rows": rows,
-                    "capture_width": int(capture_hidden_concat.shape[1]),
-                    "base_slot": base_slot,
-                    "chain_attn_mode": str(chain_attn_mode),
-                    "linear_attn_mode": str(linear_attn_mode),
-                },
+                "bucket_key": dict(bucket_key),
                 "replay_count": entry.replay_count,
             }
         except Exception as exc:
@@ -10719,13 +10709,7 @@ class Qwen35ParoResidentSession:
                 "replayed": False,
                 "validation_passed": None,
                 "fallback_reason": str(exc),
-                "bucket_key": {
-                    "rows": rows,
-                    "capture_width": int(capture_hidden_concat.shape[1]),
-                    "base_slot": base_slot,
-                    "chain_attn_mode": str(chain_attn_mode),
-                    "linear_attn_mode": str(linear_attn_mode),
-                },
+                "bucket_key": dict(bucket_key),
             }
 
     def _launch_verify_chain_forward_accept(

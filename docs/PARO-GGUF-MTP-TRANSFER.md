@@ -22,7 +22,7 @@ below:
 | 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
 | 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
 | 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
-| 5 | Shape-keyed HIP graph/fusion buckets | Queued. | Bucket by active rows, context, verifier mode, and replay shape; prove launch-wall reduction. |
+| 5 | Shape-keyed HIP graph/fusion buckets | Implemented for PARO DFlash verifier artifacts: runtime graph events now report the full verifier cache key, and `verifier_graph.shape_stats` aggregates status/timing by that shape. Drafter graph status and QKV fusion counts were already present. | Run with `--verifier-graph auto` or `validate`; only change graph replay/fusion semantics after shape stats show cache hits, misses, fallbacks, and `graph_replay`/`target_verify_forward` wall by shape. |
 | 6 | q8_1/dp4a activation reuse audit | Queued low-risk cleanup. | Only retain where exact and where profiling shows duplicated q8_1 staging. |
 
 The verifier bucket contract is intentionally coarse first-pass instrumentation:
@@ -49,6 +49,16 @@ retained HIP/Vulkan microbench matrix showed a Q4_K-specific Vulkan lead. It is
 not a PARO transfer item: no `Q*_K` block layout is present in the PARO
 `w4_paro` runtime path, and copying that work into PARO would be a category
 error unless a PARO AWQ selected-dual slice shows the same bottleneck.
+
+PARO DFlash verifier graph artifacts now expose shape-keyed graph/fusion
+attribution. Each native verifier graph event reports a `bucket_key` containing
+`rows`, `capture_width`, `base_slot`, `chain_attn_mode`, `linear_attn_mode`,
+and `batch_mode`; the DFlash harness aggregates those events under
+`verifier_graph.shape_stats`. Each shape entry records status counts, replayed
+cycles, validation state, fallback reasons, context-token min/max/sample,
+active-budget counts, replay-count max, and summed target verify buckets. This
+is intentionally observability first: it tells us whether a graph bucket is
+amortizing and where launch wall remains before changing graph replay semantics.
 
 ## Current Evidence Split
 

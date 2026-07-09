@@ -37,7 +37,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.prompts import DEFAULT_STABLE_PROMPT_FIXTURE, file_sha256, load_prompt_records
-from hipengine.benchmark.speculative import DEFAULT_DFLASH_DRAFTER, DEFAULT_TARGET_MODEL, SpeculativeBenchmarkModels, build_speculative_artifact
+from hipengine.benchmark.speculative import (
+    DEFAULT_DFLASH_DRAFTER,
+    DEFAULT_TARGET_MODEL,
+    SpeculativeBenchmarkModels,
+    build_speculative_artifact,
+    record_speculative_graph_shape_stats,
+)
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc, memory_stats, reset_memory_stats
@@ -2358,6 +2364,7 @@ def _run_dflash_chain_on_session(
     target_serial_forward_calls = 0
     target_bulk_rows_total = 0
     verifier_graph_status_counts: Counter[str] = Counter()
+    verifier_graph_shape_stats: dict[str, Any] = {}
     verifier_graph_last: dict[str, Any] | None = None
     verifier_graph_validation_seen = False
     verifier_graph_validation_passed = True
@@ -2592,6 +2599,15 @@ def _run_dflash_chain_on_session(
                 verifier_graph_last = verify_result.graph
                 graph_status = str(verify_result.graph.get("status", "unknown"))
                 verifier_graph_status_counts[graph_status] += 1
+                record_speculative_graph_shape_stats(
+                    verifier_graph_shape_stats,
+                    verify_result.graph,
+                    verifier_mode=verifier_mode,
+                    tree_mode=tree_mode,
+                    context_tokens=context_tokens,
+                    active_budget=active_budget,
+                    target_verify_bucket_seconds=verify_result.bucket_seconds,
+                )
                 validation = verify_result.graph.get("validation_passed")
                 if validation is not None:
                     verifier_graph_validation_seen = True
@@ -2852,6 +2868,7 @@ def _run_dflash_chain_on_session(
         "verifier_graph": {
             "mode": verifier_graph_mode,
             "status_counts": dict(sorted(verifier_graph_status_counts.items())),
+            "shape_stats": dict(sorted(verifier_graph_shape_stats.items())),
             "validation_passed": verifier_graph_validation_passed if verifier_graph_validation_seen else None,
             "last": verifier_graph_last,
         },

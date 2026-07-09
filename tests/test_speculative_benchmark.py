@@ -10,6 +10,7 @@ from hipengine.benchmark.speculative import (
     build_speculative_artifact,
     first_mismatch,
     normalize_speculative_row,
+    record_speculative_graph_shape_stats,
     schema_fixture_row,
 )
 
@@ -104,6 +105,58 @@ def test_aggregate_uses_explicit_decode_tokens_when_samples_are_truncated() -> N
     assert aggregate["ar_decode_tok_s"] == 16.0
     assert aggregate["spec_decode_tok_s"] == 8.0
     assert aggregate["target_verify_rows_per_output_token"] == 2.0
+
+
+def test_record_speculative_graph_shape_stats_groups_runtime_bucket() -> None:
+    shape_stats: dict[str, object] = {}
+    graph = {
+        "mode": "auto",
+        "status": "replayed",
+        "replayed": True,
+        "validation_passed": True,
+        "replay_count": 3,
+        "bucket_key": {
+            "rows": 5,
+            "capture_width": 8192,
+            "base_slot": 1,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "batch_mode": "verify_chain",
+        },
+    }
+
+    record_speculative_graph_shape_stats(
+        shape_stats,
+        graph,
+        verifier_mode="native_bulk_bplus1",
+        tree_mode="chain",
+        context_tokens=512,
+        active_budget=4,
+        target_verify_bucket_seconds={"graph_replay": 0.125, "accept_summary": 0.03125},
+    )
+    record_speculative_graph_shape_stats(
+        shape_stats,
+        {**graph, "replay_count": 4},
+        verifier_mode="native_bulk_bplus1",
+        tree_mode="chain",
+        context_tokens=516,
+        active_budget=4,
+        target_verify_bucket_seconds={"graph_replay": 0.125},
+    )
+
+    assert len(shape_stats) == 1
+    entry = next(iter(shape_stats.values()))
+    assert entry["cycles"] == 2
+    assert entry["replayed_cycles"] == 2
+    assert entry["status_counts"] == {"replayed": 2}
+    assert entry["context_tokens_min"] == 512
+    assert entry["context_tokens_max"] == 516
+    assert entry["context_tokens_sample"] == [512, 516]
+    assert entry["active_budget_counts"] == {"4": 2}
+    assert entry["validation_passed"] is True
+    assert entry["replay_count_max"] == 4
+    assert entry["target_verify_bucket_seconds"]["graph_replay"] == 0.25
+    assert entry["target_verify_bucket_seconds"]["accept_summary"] == 0.03125
 
 
 def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> None:

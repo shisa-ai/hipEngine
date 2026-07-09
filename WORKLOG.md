@@ -148271,3 +148271,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   grouping/shape, graph/fusion launch reduction, and PARO-native AWQ/MoE paths.
 - Validation: re-read the changed `docs/PARO-GGUF-MTP-TRANSFER.md` section and
   ran `git diff --check`.
+
+## 2026-07-09 - PARO DFlash verifier graph shape buckets
+
+- Added shape-keyed graph attribution for PARO DFlash native verifier artifacts.
+  Runtime verifier graph events now report a full `bucket_key` including rows,
+  capture width, base slot, chain/full-attention modes, linear-attention mode,
+  and target batch mode.
+- Added `record_speculative_graph_shape_stats()` to the speculative benchmark
+  schema helpers and wired `scripts/dflash_chain_e2e_bench.py` to emit
+  `verifier_graph.shape_stats`. Each shape aggregates status counts, replayed
+  cycles, context-token min/max/sample, active-budget counts, validation state,
+  fallback reasons, replay-count max, and summed target verify buckets.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to mark shape-keyed verifier graph
+  buckets implemented and keep graph replay/fusion semantic changes gated on
+  real `--verifier-graph auto` or `validate` profile rows.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/benchmark/speculative.py scripts/dflash_chain_e2e_bench.py tests/test_speculative_benchmark.py`;
+  `PYTHONPATH=. uv run --extra dev pytest -q tests/test_speculative_benchmark.py::test_record_speculative_graph_shape_stats_groups_runtime_bucket`;
+  `PYTHONPATH=. uv run --extra dev pytest -q tests/test_speculative_benchmark.py`.
+  Pycompile passed; focused helper test passed; speculative schema file passed
+  (`7 passed`).
