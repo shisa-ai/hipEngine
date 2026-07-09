@@ -3741,6 +3741,8 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     def args_for(rows: int) -> SimpleNamespace:
         return SimpleNamespace(
             batch_size=rows,
+            batch_decode_linear_path="batch_segments",
+            batch_decode_linear_row_chunk_size=0,
             batch_decode_full_attn_path="auto",
             batch_decode_full_attn_row_chunk_size=0,
             batch_decode_full_attn_row_chunk_layers="",
@@ -3760,12 +3762,21 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     c4 = args_for(4)
     assert retained_bench._resolved_batch_decode_full_attn_path(c4) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c4) == 2
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c4) == 0
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == ""
     assert retained_bench._resolved_batch_decode_full_attn_output_path(c4) == "batch"
+
+    c6 = args_for(6)
+    assert retained_bench._resolved_batch_decode_full_attn_path(c6) == "native_batch"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c6) == 2
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c6) == 2
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c6) == ""
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c6) == "batch"
 
     c8 = args_for(8)
     assert retained_bench._resolved_batch_decode_full_attn_path(c8) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c8) == 2
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c8) == 0
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c8) == ""
     assert retained_bench._resolved_batch_decode_full_attn_output_path(c8) == "batch"
 
@@ -3811,6 +3822,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] == "batch_gemv"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3844,6 +3856,10 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
 
+    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=6))
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
+
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=8))
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
@@ -3853,7 +3869,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "0"
-    for batch_size in (3, 5, 6):
+    for batch_size in (3, 5):
         retained_bench._apply_runtime_env_args(
             SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=batch_size)
         )
@@ -3863,6 +3879,19 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            projection_dispatch_artifact=None,
+            batch_decode_linear_path="batch_segments",
+            batch_decode_full_attn_path="auto",
+            batch_size=6,
+        )
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "2"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=4)
     )

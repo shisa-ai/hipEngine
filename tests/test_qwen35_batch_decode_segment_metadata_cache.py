@@ -4,8 +4,9 @@
 ``cu_seqlens`` (``arange(rows+1)``) and ``state_indices`` (physical slot ids)
 device buffers keyed on ``(rows, slots)`` so the batch layer pass performs no
 per-step ``malloc``/``free`` or host->device copy when the active batch is
-unchanged.  This is the last per-step device allocation removed from the batch
-layer pass and is a capture-safety prerequisite for c>1 decode graph replay.
+unchanged. Row-chunked decode can use multiple keys in one step, so each key
+must keep a distinct buffer pair instead of overwriting one scratch pair. This
+is a capture-safety prerequisite for c>1 decode graph replay.
 
 These tests exercise the caching logic against a duck-typed stand-in (real HIP
 runtime + device buffers, no 35B model) and assert:
@@ -13,8 +14,8 @@ runtime + device buffers, no 35B model) and assert:
 * the device-resident ``cu``/``state`` values are correct,
 * an unchanged ``(rows, slots)`` key reuses the same device tensors with no new
   allocation,
-* a changed ``slots`` key refreshes ``state_indices`` while reusing the
-  pre-sized device buffers (no realloc), and
+* a changed ``slots`` key gets its own stable device tensors while the previous
+  key remains readable, and
 * the third return element is an empty buffer tuple (no per-step release).
 """
 
@@ -94,6 +95,7 @@ def test_segment_metadata_values_and_cache_reuse() -> None:
     buffers_after_first = len(stub.buffers)
     cu_buf_ptr = stub._decode_segment_cu_buf.ptr
     state_buf_ptr = stub._decode_segment_state_buf.ptr
+    cache_key = (2, 0, 1)
 
     # Same (rows, slots) key: cached tensors reused, no new allocation.
     cu1, state1, temp1 = meta(stub, rows=2, slots=(0, 1))
@@ -103,31 +105,38 @@ def test_segment_metadata_values_and_cache_reuse() -> None:
     assert len(stub.buffers) == buffers_after_first
     assert stub._decode_segment_cu_buf.ptr == cu_buf_ptr
     assert stub._decode_segment_state_buf.ptr == state_buf_ptr
+    assert set(stub._decode_segment_metadata_cache) == {cache_key}
 
 
-def test_segment_metadata_refreshes_on_slot_change_without_realloc() -> None:
+def test_segment_metadata_keeps_distinct_slot_keys_resident() -> None:
     from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
 
     meta = Qwen35ParoResidentSession._batch_decode_segment_metadata
     stub = _make_stub(max_batch_size=8)
 
-    meta(stub, rows=2, slots=(0, 1))
+    cu0, state0, _ = meta(stub, rows=2, slots=(0, 1))
     cu_buf_ptr = stub._decode_segment_cu_buf.ptr
     state_buf_ptr = stub._decode_segment_state_buf.ptr
     buffers_after_first = len(stub.buffers)
 
-    # Changed slots: state_indices must refresh; pre-sized buffers are reused.
+    # Changed slots: allocate a second resident key instead of overwriting the
+    # first key while earlier chunk kernels may still be queued.
     cu2, state2, _ = meta(stub, rows=2, slots=(0, 3))
     np.testing.assert_array_equal(_read_i32(cu2), np.asarray([0, 1, 2], dtype=np.int32))
     np.testing.assert_array_equal(_read_i64(state2), np.asarray([0, 3], dtype=np.int64))
-    assert stub._decode_segment_cu_buf.ptr == cu_buf_ptr
-    assert stub._decode_segment_state_buf.ptr == state_buf_ptr
-    assert len(stub.buffers) == buffers_after_first
+    np.testing.assert_array_equal(_read_i32(cu0), np.asarray([0, 1, 2], dtype=np.int32))
+    np.testing.assert_array_equal(_read_i64(state0), np.asarray([0, 1], dtype=np.int64))
+    assert cu2.ptr != cu_buf_ptr
+    assert state2.ptr != state_buf_ptr
+    assert len(stub.buffers) == buffers_after_first + 2
 
-    # Wider batch within capacity: cu grows to arange(rows+1), still no realloc.
+    # Wider batch: another distinct key with its own resident tensors.
     cu4, state4, _ = meta(stub, rows=4, slots=(0, 1, 2, 3))
     np.testing.assert_array_equal(_read_i32(cu4), np.asarray([0, 1, 2, 3, 4], dtype=np.int32))
     np.testing.assert_array_equal(_read_i64(state4), np.asarray([0, 1, 2, 3], dtype=np.int64))
-    assert stub._decode_segment_cu_buf.ptr == cu_buf_ptr
-    assert stub._decode_segment_state_buf.ptr == state_buf_ptr
-    assert len(stub.buffers) == buffers_after_first
+    assert len(stub.buffers) == buffers_after_first + 4
+    assert set(stub._decode_segment_metadata_cache) == {
+        (2, 0, 1),
+        (2, 0, 3),
+        (4, 0, 1, 2, 3),
+    }

@@ -228,9 +228,10 @@ Interpretation:
 
 Follow-up full 512/128 probes refined this repair order: c2 no longer needs a
 per-row full-attention fallback when the global selected-c1 MoE discriminator is
-enabled, but c4/c8 do need all full-attention producer layers split into
-rowchunk2 groups. c6 remains blocked unless the path falls back much more
-broadly.
+enabled, c4/c8 need all full-attention producer layers split into rowchunk2
+groups, and c6 needs both all-layer full-attention rowchunk2 and linear-attention
+rowchunk2. c6 rowchunk3 is hidden-red, so the current safe c6 row group cap is
+two rows.
 
 ## Local c>N Recovery Frontier
 
@@ -248,34 +249,50 @@ missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
 | 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head | Pass | `87.782 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, batched LM-head | Pass | `87.519 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-batched-lmhead-local-equality.json` |
 | 6 | per-row full-attention, per-row linear, selected-c1 MoE, serial LM-head | Pass | `69.802 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-linear-full-perrow-moe-selected-c1-serial-sampler-local-equality.json` |
+
+Focused c6 hidden-bisect controls:
+
+| Probe | Result | Artifact |
+| --- | --- | --- |
+| full-attention per-row, native linear batch segments, selected-c1 MoE | Hidden red at layer 2 / generated index 4 | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, linear rowchunk2, selected-c1 MoE | Pass | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, linear rowchunk3, selected-c1 MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, linear rowchunk2, grouped-compact MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
 
 The current retained-bench auto diagnostic path should therefore start from the
 green local frontier:
 
-- c2/c4/c8: auto-select selected-c1 MoE.
-- c4/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
+- c2/c4/c6/c8: auto-select selected-c1 MoE.
+- c4/c6/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
   every full-attention layer is rowchunked.
-- c3/c5/c6: keep the older selected-layer rowchunk diagnostic scope until
+- c6: auto-select linear-attention rowchunk2 for the retained-bench diagnostic.
+- c3/c5: keep the older selected-layer rowchunk diagnostic scope until
   local full 512/128 equality evidence replaces it.
 
 Server relevance: the natural c=8 server diagnostic previously split into a
 fast c2 group and a slow c6 group. Recovering c2/c4/c8 direct diagnostics helps,
-but it does not fully recover server concurrency until either the c6 native
-shape is fixed or the scheduler avoids c6 live-row groups without losing
-throughput.
+and the c6 direct diagnostic now has a correct fallback shape. It is still a
+diagnostic fallback, not a retained/default throughput claim, because it relies
+on selected-c1 MoE and rowchunked linear/full attention and is missing the
+primitive/profiler/baseline retained gates.
 
 Next repair order:
 
-1. Treat c2/c4/c8 selected-c1 MoE plus c4/c8 all-layer rowchunk2 as the local
-   equality starting point for direct retained sweeps.
-2. Isolate c6 after the rowchunk2+selected-c1 failure: first split native
-   segmented linear versus full-attention suffixes, then narrow from the broad
-   per-row full+linear correctness floor.
+1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c6/c8 all-layer full-attention
+   rowchunk2, and c6 linear rowchunk2, as the local equality starting point for
+   direct retained sweeps.
+2. Recover c6 throughput next: rowchunk2 correctness costs about `19.1 tok/s`
+   vs the invalid native-linear c6 diagnostic, batched LM-head is correctness
+   green but neutral/slightly slower, and there is still no c6 projection
+   dispatch candidate.
 3. Add primitive correctness/profiler/baseline gates for any recovered shape
    before promoting a retained/default throughput claim.
-4. Re-run the c=8 server diagnostic only after c6 or scheduler grouping is
-   corrected, because the current server path naturally admits c6.
+4. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
+   explicit scheduler grouping policy, because the current server path naturally
+   admits c6 live-row groups.
 
 ## PARO MTP/DFlash Buckets To Add Next
 
