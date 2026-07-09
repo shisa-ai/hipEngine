@@ -148663,3 +148663,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Exact correctness and GPU comparisons passed; host comparisons were marked
   `not_comparable_submission_contract`. `/tmp/two-stage-*-v2.json` is smoke
   evidence only, not a retained performance claim.
+
+## 2026-07-10 - Reduction-family timing contract v2
+
+- Converted the LDS tree, extra-barrier, HIP wave-shuffle, Vulkan subgroup,
+  and 4/8/16 lane-local accumulator sweep to the v2 timing contract. All HIP
+  variants are compiled at each requested fixed workgroup; Vulkan uses the
+  matching specialization constant. Serial mode writes sequence-tagged shared
+  output with compute barriers, while throughput mode writes disjoint slices.
+- The wrapper validates every raw row, rejects duplicate or incomplete
+  matrices, reports single/burst GPU and host metrics separately, and builds
+  cross-backend ratios only through the shared dependency comparator.
+  Within-backend algorithm comparisons explicitly use burst GPU time. Source
+  provenance now carries commit, dirty state, shared timing helpers, and the
+  executable contract.
+- Validation: `PYTHONPATH=. pytest -q tests/test_micro_reduction_sweep.py
+  tests/test_micro_timing_contract.py` (`14 passed`); Python compilation and
+  scoped diff checks passed. Full gfx1151 wrapper smokes built and ran all 12
+  HIP/Vulkan variants for K=512, rows=1, wg64, body-repeats=8, reps=2,
+  warmup=3, samples=2 in both modes. All 24 raw rows passed exact correctness;
+  each artifact contained five matched cross-backend rows with valid GPU
+  ratios and rejected direct/multi-stream versus command-buffer host ratios.
+  `/tmp/reduction-*-v2.json` is smoke evidence only.
