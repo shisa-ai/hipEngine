@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "timestamp": "2026-07-09T15:10:00+09:00",
+  "performance_claim": false,
+  "hardware": "gfx1151 / Radeon 8060S",
+  "model": "Qwen3.5/3.6-35B-A3B-PARO w4_paro",
+  "workload": {
+    "shape": "c=6 prompt=512 decode=10/16",
+    "kv_storage_dtype": "bf16",
+    "batch_decode_moe_path": "selected_c1",
+    "batch_decode_linear_path": "batch_segments",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_size": 0,
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "c1_decode_path": "native_batch"
+  },
+  "raw_artifacts_not_committed": [
+    {
+      "path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L12-L24-L40-d10-fullnative-no-rowchunk-smallbatch-shared-nativec1-skipctx-linearstate.json",
+      "size": "37M",
+      "reason": "raw hidden trace retained locally only"
+    },
+    {
+      "path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L8-L12-d10-fullnative-no-rowchunk-smallbatch-shared-nativec1-skipctx-linearstate.json",
+      "size": "20M",
+      "reason": "raw hidden trace retained locally only"
+    },
+    {
+      "path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L8-L12-d10-fullrowchunk7-smallbatch-shared-nativec1-skipctx-linearstate.json",
+      "size": "8.3M",
+      "reason": "raw hidden trace retained locally only"
+    }
+  ],
+  "committed_artifacts": [
+    "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-qkv-perrow-output-gemv-smallbatch-shared-local-equality.json"
+  ],
+  "commands": {
+    "hidden_bisect_l8_l12_no_rowchunk": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 10 --warmup-decode-tokens 0 --max-layers 12 --layer-limits 8,9,10,11,12 --trace-decode-start 8 --trace-decode-end 9 --skip-full-context-oracle --skip-linear-state-summary --c1-decode-path native_batch --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch_gemv --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L8-L12-d10-fullnative-no-rowchunk-smallbatch-shared-nativec1-skipctx-linearstate.json",
+    "generated_token_qkv_per_row_reject": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-qkv-path per_row --batch-decode-full-attn-output-path batch_gemv --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-qkv-perrow-output-gemv-smallbatch-shared-local-equality.json"
+  },
+  "findings": [
+    {
+      "probe": "full-native no-rowchunk hidden bisect L8-L12",
+      "status": "mismatch_found",
+      "hidden_passed": false,
+      "token_passed": true,
+      "first_relevant_generated_index": 9,
+      "layer_limits": [8, 9, 10, 11, 12],
+      "first_full_kv_mismatch": {
+        "decode_step": 8,
+        "layer_index": 7,
+        "row": 0,
+        "kind": "key",
+        "sample_positions": [0, 255, 256, 519, 520],
+        "sample_positions_match": true,
+        "first_failed_sample_position": 519,
+        "max_abs": 0.015625,
+        "elements_over_atol": 260
+      },
+      "current_source_failure": {
+        "decode_step": 8,
+        "layer_index": 7,
+        "row": 0,
+        "kind": "key",
+        "check": "batch_source_vs_c1_source",
+        "source_stage": "key_after_prepare",
+        "sample_position": 520,
+        "max_abs": 0.015625,
+        "elements_over_atol": 139
+      },
+      "interpretation": "KV page positions and cache-vs-source checks are clean; the batch-produced layer-7 K/V source differs from the c1 source."
+    },
+    {
+      "probe": "rowchunk layer 7 only hidden bisect",
+      "status": "mismatch_found",
+      "hidden_passed": false,
+      "token_passed": true,
+      "layer_limits": [8, 12],
+      "interpretation": "Rowchunking layer 7 alone does not restore hidden equality in the shallow trace, so the full c6 bridge still needs the wider selected rowchunk set."
+    },
+    {
+      "probe": "no-rowchunk plus per-row QKV generated-token check",
+      "status": "rejected_correctness",
+      "decode_tok_s_aggregate": 107.57784780092946,
+      "median_decode_step_ms": 53.02202398888767,
+      "first_mismatch_indices": [9, 9, 9, 9, 9, 9],
+      "batch_token_at_mismatch": 12,
+      "c1_token_at_mismatch": 27,
+      "interpretation": "Forcing per-row QKV scratch does not repair generated-token equality."
+    }
+  ],
+  "validation": [
+    "python3 -m py_compile scripts/qwen35_batch_hidden_bisect.py",
+    "PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /tmp/nonexistent-model --fixture /tmp/nonexistent-fixture.json --prompt-length 512 --batch-size 6 --decode-tokens 10 --warmup-decode-tokens 0 --max-layers 12 --layer-limits 8,9,10,11,12 --trace-decode-start 8 --trace-decode-end 9 --skip-full-context-oracle --skip-linear-state-summary --dry-run"
+  ],
+  "next_probe_order": [
+    "batch-decode-attn-input-path per_row",
+    "batch-decode-attn-scratch-path staged per-row variants",
+    "batch-decode-attn-context-path per_row_context_only or per_row_paged_context_only",
+    "batch-decode-full-attn-kv-append-path per_row"
+  ]
+}

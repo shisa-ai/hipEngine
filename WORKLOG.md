@@ -147969,3 +147969,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   reduced diagnostic worse.
 - Summary artifact:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-no-rowchunk-substage-rejects-summary.json`.
+
+## 2026-07-09 - PARO c6 hidden-bisect skip flags and no-rowchunk trace summary
+
+- Added two default-off diagnostic flags to
+  `scripts/qwen35_batch_hidden_bisect.py`:
+  `--skip-full-context-oracle` skips the expensive NumPy full-attention context
+  oracle, and `--skip-linear-state-summary` skips expensive prefill/decode
+  linear-state diff summaries. Existing behavior is unchanged when the flags
+  are absent.
+- Validation:
+  `python3 -m py_compile scripts/qwen35_batch_hidden_bisect.py`;
+  `PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /tmp/nonexistent-model --fixture /tmp/nonexistent-fixture.json --prompt-length 512 --batch-size 6 --decode-tokens 10 --warmup-decode-tokens 0 --max-layers 12 --layer-limits 8,9,10,11,12 --trace-decode-start 8 --trace-decode-end 9 --skip-full-context-oracle --skip-linear-state-summary --dry-run`.
+- Summarized the large local c6 no-rowchunk hidden-bisect traces instead of
+  committing the 8.3M/20M/37M raw JSON artifacts. Compact artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-no-rowchunk-summary.json`.
+- Main diagnostic result: full-native no-rowchunk is hidden-red by generated
+  index 9; shallow hidden-bisect remains token-green, but the normal
+  generated-token retained bench with per-row QKV is still red at token 9. The
+  first full-attention KV sample failure points at layer 7 K/V source production
+  (`batch_source_vs_c1_source` at `key_after_prepare`), while cache-vs-source
+  and page-boundary positions are clean. Per-row QKV alone did not repair it:
+  `107.578 tok/s`, median `53.022 ms`, batch token `12` vs c1 token `27`.
+- Next c6 probes: full-attention input path, scratch path, context path, then
+  KV append path, using short generated-token probes before another large hidden
+  trace.
