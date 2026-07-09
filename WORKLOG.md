@@ -148402,3 +148402,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_micro_q6_lm_head_rowtile_probe.py` (`1 passed`);
   `python3 -m compileall -q
   benchmarks/micro/runners/q6_lm_head_rowtile_probe.py`; `git diff --check`.
+
+## 2026-07-10 - Microbenchmark ISA evidence separated from timing
+
+- Marked generic geometry, Q4 selected-dual, and Q6 X8 ISA/stat artifacts with
+  `measurement_scope=isa_only` and `performance_claim=false`. Static register,
+  spill, instruction, waitcnt, dot4, and VOPD evidence remains valid, but these
+  artifacts cannot be mistaken for corrected timing rows.
+- Relabeled the Q6 ISA join's copied pre-v2 timings as
+  `legacy_timing_context` with
+  `legacy_timing_contract_not_comparable`; no old timing field is promoted by
+  the ISA extractor.
+- Validation: `python3 -m pytest -q tests/test_micro_isa_stats.py` (`3 passed`);
+  `python3 -m compileall -q` on all three ISA runners; `git diff --check`.

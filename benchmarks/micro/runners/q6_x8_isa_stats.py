@@ -270,6 +270,8 @@ def main(argv: list[str] | None = None) -> None:
         "kind": "hipengine_micro_comparison",
         "bench": "q6_x8_real_slice_isa_stats",
         "classification": "real_slice_probe",
+        "measurement_scope": "isa_only",
+        "performance_claim": False,
         "hardware": {
             "gfx_arch": args.gfx_arch,
             "gpu_name": args.hardware_gpu,
@@ -288,7 +290,10 @@ def main(argv: list[str] | None = None) -> None:
                 "best_vulkan_correctness_pass": (vulkan_result.get("best_vulkan") or {}).get("correctness_pass"),
             },
         },
-        "timing_context": _timing_context(hip_result, vulkan_result),
+        "legacy_timing_context": {
+            "status": "legacy_timing_contract_not_comparable",
+            "source": _timing_context(hip_result, vulkan_result),
+        },
         "inputs": {
             "hip_result": str(args.hip_result),
             "vulkan_result": str(args.vulkan_result),

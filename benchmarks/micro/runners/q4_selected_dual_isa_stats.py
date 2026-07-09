@@ -274,6 +274,8 @@ def main(argv: list[str] | None = None) -> None:
         "kind": "hipengine_micro_comparison",
         "bench": "q4_selected_dual_real_slice_isa_stats",
         "classification": "real_slice_probe",
+        "measurement_scope": "isa_only",
+        "performance_claim": False,
         "hardware": {
             "gfx_arch": args.gfx_arch,
             "gpu_name": args.hardware_gpu,
