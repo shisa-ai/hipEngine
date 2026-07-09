@@ -148313,3 +148313,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   returned no matches; the matching GGUF search showed the expected
   `mtp_resident_draft.py` q8 helpers and GGUF q8 wrapper files;
   `git diff --check` passed; re-read the changed transfer-doc section.
+
+## 2026-07-10 - gfx1151 PARO/GGUF optimization ledger
+
+- Audited current HEAD `4e4e935ca021` against
+  `docs/MTP-LLAMACPP-PARITY.md`,
+  `docs/PARO-GGUF-MTP-TRANSFER.md`,
+  `docs/HIP-vs-VULKAN.md`, the recent `WORKLOG.md`, retained
+  rollups/artifacts, and the relevant server/generation/runtime/microbenchmark
+  code. No GPU benchmark was rerun for this documentation unit.
+- Confirmed the measurement blockers are still live: OpenAI usage re-tokenizes
+  decoded text, `mtp-bench.py` reads backend tokens/timing from choice
+  0, PARO/GGUF copy batch-wide timings onto multiple choices/slots without
+  timing identity, server artifacts lack required provenance, and the PARO
+  retained harness hard-codes `gfx1100`.
+- Confirmed gfx1151 GGUF is not an end-to-end backend identity: gfx1151 kernel
+  aliases exist, but GGUF generator/model/runner/semantic registry keys remain
+  gfx1100-bound. PARO already demonstrates the intended backend/target plumbing.
+- Confirmed the current Vulkan timing contract is not latency-comparable to HIP
+  for most runners: repeated Vulkan dispatches lack inter-repetition compute
+  dependencies, while HIP uses ordered stream launches. Kept ISA facts and the
+  barrier-positive two-stage control as useful evidence; classified other
+  ratios as independent-throughput hypotheses pending synchronized reruns.
+- Added `docs/SOL-OPTIMIZATION.md` as the active cross-path ledger
+  with stable evidence/backend/GGUF/PARO/speculative/HIP-Vulkan work IDs, exact
+  exit gates, the c1-c8/shrinking baseline matrix, PARO/GGUF optimization parity
+  audit, bounded microbenchmark repair matrix, stop rules, and
+  dependency-ordered execution plan. Added it to `docs/README.md`.
+- The next logical unit is `SOL-E1` exact generated-token/all-choice
+  accounting, followed by `SOL-E2` batch timing ownership before any
+  new server performance decision.
+- Validation: re-read `docs/SOL-OPTIMIZATION.md` and the changed
+  `docs/README.md`; ran `git diff --check` across
+  `docs/SOL-OPTIMIZATION.md`, `docs/README.md`, and
+  `WORKLOG.md`.
