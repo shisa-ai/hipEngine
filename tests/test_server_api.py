@@ -4291,6 +4291,108 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_retained_defaults_split_c6_into_green_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
+        assert fake.calls == [
+            (("prompt-0", "prompt-1", "prompt-2", "prompt-3"), sampling),
+            (("prompt-4", "prompt-5"), sampling),
+        ]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_retained_c6_split_has_disable_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "0")
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
+        assert fake.calls == [(tuple(f"prompt-{index}" for index in range(6)), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_retained_c6_split_remaps_scheduler_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            outputs = super().generate_detailed(prompts, sampling_params)
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {"request_id": index, "token_index": 0, "token_id": 100 + index, "chunk": {"text": output.text}}
+                    for index, output in enumerate(outputs)
+                ]
+            }
+            return outputs
+
+    async def run() -> None:
+        fake = SchedulerChunkFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=8,
+        )
+
+        result = await batcher.submit(
+            tuple(f"prompt-{index}" for index in range(6)),
+            sampling,
+            detailed=True,
+            include_batch_metadata=True,
+        )
+
+        assert isinstance(result, _QueuedBatchResult)
+        assert [output.text for output in result.outputs] == [
+            f"generated:prompt-{index}" for index in range(6)
+        ]
+        assert fake.calls == [
+            (("prompt-0", "prompt-1", "prompt-2", "prompt-3"), sampling),
+            (("prompt-4", "prompt-5"), sampling),
+        ]
+        assert result.scheduler_token_chunks is not None
+        assert [chunk["request_id"] for chunk in result.scheduler_token_chunks] == [0, 1, 2, 3, 4, 5]
+        assert [chunk["chunk"]["text"] for chunk in result.scheduler_token_chunks] == [
+            f"generated:prompt-{index}" for index in range(6)
+        ]
+        assert result.scheduler_token_chunks[4]["hipengine"]["batch_split"] == {
+            "policy": "qwen35_retained_avoid_c6",
+            "split_index": 1,
+            "request_id_offset": 4,
+            "original_rows": 6,
+            "chunk_rows": 2,
+        }
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
     async def run() -> None:
         fake = FakeLLM()

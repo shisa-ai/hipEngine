@@ -148195,3 +148195,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `95744`), `95.345 tok/s`, median `60.251 ms`.
 - Conclusion: selected-c1 MoE is still required for the only green c6 bridge.
   Grouped-compact MoE is both correctness-red and slower on this shape.
+
+## 2026-07-09 - PARO c6 retained server grouping policy
+
+- Queued the next HIP/PARO optimization order in
+  `docs/PARO-GGUF-MTP-TRANSFER.md`: c6 server grouping policy, PARO
+  MTP/DFlash buckets, LM-head/top1 fusion, Q4_K selected-dual HIP recovery,
+  shape-keyed graph/fusion buckets, and q8_1/dp4a reuse audit.
+- Added a narrow server-side retained-defaults grouping policy for PARO c6:
+  when `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`, deterministic greedy
+  default-route batches with exactly six prompt rows are split into c4+c2
+  backend calls. This avoids accidental use of the slower c6 selected
+  full-attention rowchunk bridge while preserving current behavior by default.
+- Added rollback env `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. Sampling,
+  logprobs, processed-generator rows, stop/processors, and speculative MTP
+  routes are not split; they need row-seed and telemetry offset plumbing before
+  this policy can apply safely.
+- Validation:
+  `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`;
+  `PYTHONPATH=. uv run --extra server --extra dev pytest -q tests/test_server_api.py::test_generation_batcher_retained_defaults_split_c6_into_green_groups tests/test_server_api.py::test_generation_batcher_retained_c6_split_has_disable_env tests/test_server_api.py::test_generation_batcher_retained_c6_split_remaps_scheduler_chunks tests/test_server_api.py::test_generation_batcher_coalesces_compatible_submissions tests/test_server_api.py::test_generation_batcher_applies_route_specific_group_limit`;
+  `PYTHONPATH=. uv run --extra server --extra dev pytest -q tests/test_server_api.py -k generation_batcher`.
+  Pycompile passed; focused tests passed (`5 passed`); batcher subset passed
+  (`19 passed`, one Starlette deprecation warning).
