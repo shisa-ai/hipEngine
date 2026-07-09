@@ -255,6 +255,7 @@ missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
 | 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, native linear attention, per-row c1 MoE on linear layers, serial LM-head, native/batch projection | Pass | `92.800 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, native/batch projection | Pass | `87.612 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, selected-c1 projection fallback | Pass | `84.709 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-selectedproj-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, batched LM-head | Pass | `87.519 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-batched-lmhead-local-equality.json` |
@@ -265,6 +266,7 @@ Focused c6 hidden-bisect controls:
 | Probe | Result | Artifact |
 | --- | --- | --- |
 | full-attention per-row, native linear batch segments, selected-c1 MoE | Hidden red at layer 2 / generated index 4 | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, native linear batch segments, per-row c1 MoE on linear layers | Pass, no linear stage drift | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-linearmoe-perrow-after-prefixfix.json` |
 | full-attention per-row, linear rowchunk2, selected-c1 MoE | Pass | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
 | full-attention per-row, linear rowchunk3, selected-c1 MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
 | full-attention per-row, linear rowchunk2, grouped-compact MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
@@ -281,6 +283,23 @@ dispatch catalog with a `1.0343x` aggregate decode gain over the row-GEMV
 fallback. It is projection evidence only, not a retained/default throughput
 claim for the whole c6 path.
 
+Focused c6 native-linear repair:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-native-linear-perrow-moe-repair-summary.json`.
+
+| Shape | Generated-token equality | Decode aggregate | Median step | Status |
+| --- | --- | ---: | ---: | --- |
+| old c6 bridge: full rowchunk2 + linear rowchunk2 + selected-c1 MoE | Pass | `87.612 tok/s` | `68.282 ms` | diagnostic correctness bridge |
+| new c6 repair: full rowchunk2 + native rows=6 linear + per-row c1 MoE on linear layers | Pass | `92.800 tok/s` | `64.335 ms` | diagnostic correctness bridge |
+
+Delta: `+5.92%` aggregate decode and `-3.947 ms` median decode step
+(`-5.78%`) versus the linear-rowchunk bridge. The hidden-bisect says the
+native rows=6 linear layer is bit-clean through `mlp_input`; the first drift in
+the old native-linear probe was the batched selected-c1 MoE output. Fixing
+`reserve_moe_c1_scratch(prefix=...)` to prefix `shared_out`, `moe_out`, and
+the shared-rotate barrier also repaired the row-local MoE replay diagnostic.
+
 The current retained-bench auto diagnostic path should therefore start from the
 green local frontier:
 
@@ -289,7 +308,9 @@ green local frontier:
   generated-token-green projection candidate.
 - c4/c6/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
   every full-attention layer is rowchunked.
-- c6: auto-select linear-attention rowchunk2 for the retained-bench diagnostic.
+- c6: auto-select per-row c1 MoE on linear-attention layers and keep native
+  rows=6 linear-attention segments; explicit linear-rowchunk env overrides keep
+  the older rowchunk2 bridge available for bisection.
 - c3/c5: keep the older selected-layer rowchunk diagnostic scope until
   local full 512/128 equality evidence replaces it.
 
@@ -304,8 +325,9 @@ Runtime retained-default recheck:
 
 | Probe | Result |
 | --- | --- |
-| Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults | rows=6 now uses `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
+| Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults, before the per-row-linear-MoE repair | rows=6 used `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
 | Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
+| Runtime default after the per-row-linear-MoE repair | `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now selects per-row linear MoE for rows=6 when selected-c1 MoE is active and linear-MoE/linear-rowchunk env overrides are blank. A server rerun is still pending; the direct retained-bench local equality row above is the current evidence. |
 
 c6 server splitter:
 
@@ -316,31 +338,32 @@ Compact summary artifact:
 | --- | --- | --- | ---: | ---: | --- |
 | grouped native-linear | grouped-compact | native segments | `56.873 ms` | `8.67 tok/s` | hidden-red timing diagnostic |
 | selected rowchunk repair | selected-c1 | rowchunk2 | `64.101 ms` | `8.14 tok/s` | current server-visible correctness bridge |
-| selected native-linear | selected-c1 | native segments | `51.619 ms` | `9.01 tok/s` | fastest timing, but hidden-red; next repair target |
+| selected native-linear | selected-c1 batch | native segments | `51.619 ms` | `9.01 tok/s` | fastest prior timing, but hidden-red because rows=6 selected-c1 batch MoE drifts |
+| selected native-linear + per-row linear MoE | per-row c1 on linear layers | native segments | pending server rerun | pending | direct retained-bench generated-token green at `92.800 tok/s` |
 | grouped rowchunk | grouped-compact | rowchunk2 | `71.877 ms` | `7.59 tok/s` | hidden-red and slower |
 
-This split says the biggest c6 tax is linear rowchunk2, not projection. If
-native rows=6 linear-attention segments can be made correctness-clean, the
-forced `n=6` server probe should recover about `12.482 ms/step` versus the
-current selected-c1 rowchunk bridge (`64.101 - 51.619 ms`). Grouped MoE still
-needs a separate correctness repair; selected-c1 MoE is the faster green
-starting point for native-linear work.
+This split says the biggest c6 tax was linear rowchunk2, not projection. The
+direct repair shows native rows=6 linear-attention segments are correctness-clean
+when linear-layer MoE is replayed as true per-row c1. The remaining server work
+is to rerun the forced `n=6` probe with the new retained default and then decide
+whether to keep the per-row linear MoE bridge, repair rows=6 selected-c1 batch
+MoE, or avoid live c6 groups in scheduling.
 
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c6/c8 all-layer full-attention
-   rowchunk2, and c6 linear rowchunk2, as the local equality starting point for
-   direct retained sweeps and the opt-in runtime retained-default bridge.
-2. Recover c6 throughput next: rowchunk2 correctness costs about `19.1 tok/s`
-   vs the invalid native-linear c6 diagnostic, batched LM-head is correctness
-   green but neutral/slightly slower, and c6 projection dispatch now recovers
-   only `+3.43%` over the row-GEMV fallback. The larger remaining c6 work is
-   removing selected-c1 MoE/rowchunk fallbacks or avoiding c6 live groups; the
-   server-visible repaired c6 shape currently adds `+7.228 ms/step` over the
-   unrepaired grouped/native-linear c6 probe.
-3. Add primitive correctness/profiler/baseline gates for any recovered shape
+   rowchunk2, and c6 native-linear plus per-row linear MoE, as the local
+   equality starting point for direct retained sweeps and the opt-in runtime
+   retained-default bridge.
+2. Re-run the c6 server probe with the new retained default. Direct local
+   equality recovered `+5.92%` over the linear-rowchunk bridge; the server needs
+   the same shape before c=8 natural traffic can be re-evaluated.
+3. Repair rows=6 selected-c1 batch MoE if the per-row linear MoE bridge remains
+   too expensive; it is now isolated as the source of the native-linear hidden
+   drift.
+4. Add primitive correctness/profiler/baseline gates for any recovered shape
    before promoting a retained/default throughput claim.
-4. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
+5. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
    explicit scheduler grouping policy, because the current server path naturally
    admits c6 live-row groups.
 

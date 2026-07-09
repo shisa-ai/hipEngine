@@ -147797,3 +147797,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   native-linear hidden-red is therefore above these primitives, likely in
   layer-level orchestration/scratch composition or downstream hidden-state
   commit, not the segmented state kernels themselves.
+
+## 2026-07-09 - PARO c6 native-linear per-row MoE repair
+
+- Found the native c6 hidden-red source: native rows=6 linear attention is
+  bit-clean through `mlp_input`; the drift starts in the rows=6 selected-c1 MoE
+  output. The `--batch-decode-linear-moe-path per_row_c1` diagnostic initially
+  crashed because `reserve_moe_c1_scratch(prefix="moe.decode_row")` still used
+  fixed `moe.shared_out`, `moe.out`, and `moe.layer*.shared_rotate_fuse_barrier`
+  names. Fixed those scratch names to honor the prefix.
+- Validation:
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_moe_c1_scratch_prefix_covers_outputs tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env`;
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/qwen35_batch_retained_bench.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_retained_c6_defaults tests/test_qwen35_decode_state.py::test_qwen35_decode_state_moe_c1_scratch_prefix_covers_outputs tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env`.
+- Hidden-bisect:
+  `PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-linear-moe-path per_row_c1 --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-linearmoe-perrow-after-prefixfix.json`
+  passed `eq_ok`, hidden/token true, no linear-stage drift.
+- Full c6 local generated-token equality:
+  `PYTHONPATH=. python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 128 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-moe-path per_row_c1 --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json`
+  passed generated-token equality for all six rows. The retained-claim schema
+  still reports `blocked` because this is a diagnostic per-row-MoE + serial
+  LM-head path, not a native-caware retained performance claim.
+- Timing: new native-linear/per-row-linear-MoE c6 shape measured
+  `92.800 tok/s` aggregate, median step `64.335 ms`, versus the previous
+  linear-rowchunk2 bridge at `87.612 tok/s`, median `68.282 ms`
+  (`+5.92%` aggregate, `-3.947 ms` median step). Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-native-linear-perrow-moe-repair-summary.json`.
+- Runtime retained defaults: with `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`,
+  rows=6 now auto-select per-row linear MoE when selected-c1 MoE is active and
+  linear-MoE/linear-rowchunk env overrides are blank. Explicit
+  `HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE=2` keeps the old
+  rowchunk bridge available for bisection. Next: rerun forced `n=6` server and
+  natural c=8 server diagnostics with the new default.
