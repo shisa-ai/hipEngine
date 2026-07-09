@@ -147781,3 +147781,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   versus that target. Next c6 work should add a focused primitive/runtime RED
   around native rows=6 linear-attention segments and make that path clean before
   any throughput promotion.
+
+## 2026-07-09 - PARO c6 segmented primitive guards
+
+- Added focused HIP primitive guards for c6 native linear-attention state
+  primitives:
+  `tests/test_qwen35_linear_attn_segment_state_rows.py::test_conv_prefill_segments_mutating_c6_one_token_segments_match_independent_c1`
+  and
+  `tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_segments_lowp_fp16_c6_one_token_segments_match_independent_c1`.
+- Validation:
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_linear_attn_segment_state_rows.py::test_conv_prefill_segments_mutating_c6_one_token_segments_match_independent_c1 tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_segments_lowp_fp16_c6_one_token_segments_match_independent_c1`
+  passed (`2 passed`).
+- Result: six one-token segmented conv and FP16 GDN launches match independent
+  c1 launches, including non-monotonic state slots. The remaining c6
+  native-linear hidden-red is therefore above these primitives, likely in
+  layer-level orchestration/scratch composition or downstream hidden-state
+  commit, not the segmented state kernels themselves.
