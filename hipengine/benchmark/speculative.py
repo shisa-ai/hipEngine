@@ -332,6 +332,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "draft_kv_bytes": _optional_int(spec.get("draft_kv_bytes", spec.get("draft_context_kv_bytes"))),
             "draft_kv_capacity_tokens": _optional_int(spec.get("draft_kv_capacity_tokens", spec.get("draft_context_capacity_tokens"))),
             "target_verify_seconds": verify_seconds,
+            "target_verify_bucket_seconds": _float_dict(spec.get("target_verify_bucket_seconds")),
             "commit_seconds": commit_seconds,
             "phase_split": split,
             "target_verify_rows": target_verify_rows,
@@ -395,6 +396,7 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
     ar_seconds = 0.0
     spec_seconds = 0.0
     target_verify_rows = 0
+    target_verify_bucket_seconds: dict[str, float] = {}
     accepted_lengths: list[int] = []
     exact_count = 0
     correctness_count = 0
@@ -418,6 +420,11 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
         ar_seconds += float(ar.get("decode_seconds") or 0.0)
         spec_seconds += float(spec.get("decode_seconds") or 0.0)
         target_verify_rows += int(spec.get("target_verify_rows") or 0)
+        for name, seconds in (spec.get("target_verify_bucket_seconds") or {}).items():
+            parsed_seconds = _optional_float(seconds)
+            if parsed_seconds is not None:
+                key = str(name)
+                target_verify_bucket_seconds[key] = target_verify_bucket_seconds.get(key, 0.0) + parsed_seconds
         accepted_lengths.extend(expand_histogram(acceptance.get("accept_histogram") or {}))
         if correctness.get("exact_match_ar") is True:
             exact_count += 1
@@ -453,6 +460,7 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
         "median_row_speedup_vs_ar": statistics.median(speedups) if speedups else None,
         "target_verify_rows": target_verify_rows,
         "target_verify_rows_per_output_token": _safe_div(target_verify_rows, decode_tokens),
+        "target_verify_bucket_seconds": dict(sorted(target_verify_bucket_seconds.items())),
         "acceptance": acceptance_summary(accepted_lengths),
         "d2h": {
             "scalar_reads": d2h_scalar,
@@ -562,6 +570,7 @@ def build_speculative_artifact(
                 "target_verify_rows_per_output_token",
                 "draft_seconds",
                 "target_verify_seconds",
+                "target_verify_bucket_seconds",
                 "commit_seconds",
                 "scalar_d2h_reads",
                 "vector_d2h_reads",
@@ -627,6 +636,13 @@ def schema_fixture_row() -> dict[str, Any]:
             "draft_kv_bytes": 576,
             "draft_kv_capacity_tokens": 6,
             "target_verify_seconds": 2.25,
+            "target_verify_bucket_seconds": {
+                "metadata_upload": 0.10,
+                "target_verify_forward": 1.50,
+                "accept_summary": 0.20,
+                "commit_scatter": 0.30,
+                "host_orchestration_unbucketed": 0.15,
+            },
             "commit_seconds": 0.40,
             "target_verify_rows": 16,
             "target_forward_calls": 4,

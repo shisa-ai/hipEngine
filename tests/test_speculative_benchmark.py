@@ -52,6 +52,7 @@ def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
     assert row["correctness"]["passed"] is True
     assert row["acceptance"]["accept_histogram"] == {"1": 1, "2": 2, "3": 1}
     assert row["spec"]["target_verify_rows_per_output_token"] == 2.0
+    assert row["spec"]["target_verify_bucket_seconds"]["target_verify_forward"] == 1.50
     assert row["spec"]["phase_split"]["target_verify_fraction"] == 0.75
     assert row["spec"]["draft_context_phase_seconds"] == {
         "full_context_rebuild": 0.20,
@@ -81,6 +82,7 @@ def test_aggregate_speculative_rows_preserves_exact_and_speed_gates() -> None:
     assert aggregate["all_correctness_passed"] is True
     assert aggregate["all_finite_logits"] is True
     assert aggregate["target_verify_rows_per_output_token"] == 2.0
+    assert aggregate["target_verify_bucket_seconds"]["target_verify_forward"] == 1.50
     assert aggregate["d2h"]["scalar_reads"] == 4
     assert aggregate["speed_gate_gt_1p10"] is True
 

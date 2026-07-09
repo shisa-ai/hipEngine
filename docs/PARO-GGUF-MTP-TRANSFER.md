@@ -18,12 +18,23 @@ below:
 
 | Order | Item | Status | Gate |
 | ---: | --- | --- | --- |
-| 1 | PARO server grouping policy for c6 | In progress: retained-defaults mode should avoid accidental c6 live-row groups by splitting exactly six greedy rows into c4+c2. Disable with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. | Focused server batcher tests, then natural c=8/c6-forced server rerun. |
-| 2 | PARO MTP/DFlash bucket instrumentation | Queued. | Add draft, verifier, LM-head/top1, accept, commit/scatter, host sync, and scheduler buckets before porting GGUF verifier mechanics. |
+| 1 | PARO server grouping policy for c6 | Done in `a1c048d2`: retained-defaults mode avoids accidental c6 live-row groups by splitting exactly six greedy rows into c4+c2. Disable with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. | Focused server batcher tests passed; natural c=8/c6-forced server rerun remains the perf gate. |
+| 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
 | 3 | LM-head + top1/top-k fusion | Queued. | Production bucket must show LM-head/sample remains exposed after instrumentation; benchmark as fused wall-time, not standalone sampler only. |
 | 4 | Q4_K selected-dual HIP recovery | Queued GGUF-specific narrow experiment. | Same retained real-slice oracle; only continue if disassembly shows reduced instruction, waitcnt, or address overhead. |
 | 5 | Shape-keyed HIP graph/fusion buckets | Queued. | Bucket by active rows, context, verifier mode, and replay shape; prove launch-wall reduction. |
 | 6 | q8_1/dp4a activation reuse audit | Queued low-risk cleanup. | Only retain where exact and where profiling shows duplicated q8_1 staging. |
+
+The verifier bucket contract is intentionally coarse first-pass instrumentation:
+`metadata_upload`, `target_verify_forward` or `graph_replay`,
+`accept_summary`, `capture_prefix_copy`, `commit_scatter`,
+`canonicalize_scratch`, `host_sync_after_commit`, plus script-side
+`state_copy_pre_verify`, `state_copy_commit`, `canonical_commit_replay`,
+`target_verify_ar_step`, `target_verify_serial_step`, and
+`host_orchestration_unbucketed`. These are host-side wall buckets around the
+existing resident verifier lifecycle, not per-kernel layer-family timings.
+Fine-grained attention/MoE/LM-head splitting still requires profiler-backed
+instrumentation after this artifact plumbing is validated.
 
 ## Current Evidence Split
 

@@ -148217,3 +148217,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. uv run --extra server --extra dev pytest -q tests/test_server_api.py -k generation_batcher`.
   Pycompile passed; focused tests passed (`5 passed`); batcher subset passed
   (`19 passed`, one Starlette deprecation warning).
+
+## 2026-07-09 - PARO DFlash verifier bucket instrumentation
+
+- Added first-pass host-side timing buckets for PARO native DFlash verifier
+  cycles. `Qwen35ParoBulkVerifyResult` now carries `bucket_seconds`, and both
+  `verify_chain_bulk_and_commit` and `verify_tree_bulk_and_commit` report:
+  metadata upload, target forward/graph replay, accept-summary/readback,
+  capture-prefix copy, commit/scatter, canonicalize, and final commit sync.
+- Updated `scripts/dflash_chain_e2e_bench.py` to aggregate
+  `target_verify_bucket_seconds` into benchmark metadata and per-cycle trace
+  samples. The harness also accounts for script-side state copies, canonical
+  replay, AR/serial fallback verify steps, and an unbucketed host orchestration
+  residual so the buckets explain the existing `target_verify_seconds` wall
+  timer.
+- Updated the speculative benchmark schema normalizer and fixture to preserve
+  row-level and aggregate `target_verify_bucket_seconds`; documented the bucket
+  contract in `docs/PARO-GGUF-MTP-TRANSFER.md`.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py tests/test_speculative_benchmark.py`;
+  `PYTHONPATH=. uv run --extra dev pytest -q tests/test_speculative_benchmark.py`.
+  Pycompile passed; speculative schema tests passed (`6 passed`).
