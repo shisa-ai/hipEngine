@@ -8,13 +8,17 @@
 #define HIPENGINE_MEM_PARAM 1
 #endif
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
+layout(local_size_x = HIPENGINE_BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform PushConstants {
     uint n;
     uint body_iters;
     uint data_mask;
-    uint reserved;
+    uint output_offset;
 } pc;
 
 layout(set = 0, binding = 0) readonly buffer XBuffer {
@@ -74,5 +78,6 @@ void main() {
     if (idx >= pc.n) {
         return;
     }
-    out_values[idx] = run_value(idx);
+    uint output_index = pc.output_offset + idx;
+    out_values[output_index] = out_values[output_index] + run_value(idx);
 }

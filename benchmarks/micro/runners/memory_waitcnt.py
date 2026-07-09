@@ -24,6 +24,9 @@ VULKAN_HARNESS = MICRO_ROOT / "runners" / "vulkan_memory_waitcnt.cpp"
 VULKAN_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "memory_waitcnt.comp"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
 ISA_STATS = MICRO_ROOT / "runners" / "isa_stats.py"
+TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
+HIP_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_hip.hpp"
+VULKAN_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp"
 BENCH_NAME = "memory_waitcnt_scheduling"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-memory-waitcnt-build")
 DEFAULT_VARIANTS = (
@@ -57,6 +60,7 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
@@ -184,10 +188,11 @@ def _variant_name(variant: dict[str, Any]) -> str:
     return f"{variant['mode']}_p{variant['param']}"
 
 
-def _compile_defines(variant: dict[str, Any]) -> list[str]:
+def _compile_defines(variant: dict[str, Any], block_size: int) -> list[str]:
     return [
         f"-DHIPENGINE_MEM_MODE={variant['mode_id']}",
         f"-DHIPENGINE_MEM_PARAM={variant['param']}",
+        f"-DHIPENGINE_BLOCK_SIZE={block_size}",
     ]
 
 
@@ -205,6 +210,7 @@ def _compile_hip_variant(
     gfx_arch: str | None,
     hip_wavefront_size: str,
     hip_fixed_block_index: bool,
+    block_size: int,
 ) -> tuple[Path, Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     hipcc = shutil.which("hipcc")
@@ -219,7 +225,7 @@ def _compile_hip_variant(
             "-std=c++17",
             *_hip_wavefront_flags(hip_wavefront_size),
             "--save-temps",
-            *_compile_defines(variant),
+            *_compile_defines(variant, block_size),
             *(["-DHIPENGINE_MEM_FIXED_BLOCK=1"] if hip_fixed_block_index else []),
             str(HIP_HARNESS),
             "-o",
@@ -238,6 +244,7 @@ def _compile_hip_variant(
 def _compile_vulkan_variant(
     build_dir: Path,
     variant: dict[str, Any],
+    block_size: int,
 ) -> tuple[Path, Path, list[str], list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     glslc = shutil.which("glslc")
@@ -247,7 +254,7 @@ def _compile_vulkan_variant(
         shader_command = [
             glslc,
             "-O",
-            *_compile_defines(variant),
+            *_compile_defines(variant, block_size),
             str(VULKAN_SHADER),
             "-o",
             str(spirv),
@@ -256,7 +263,7 @@ def _compile_vulkan_variant(
         shader_command = [
             glslang,
             "-V",
-            *_compile_defines(variant),
+            *_compile_defines(variant, block_size),
             str(VULKAN_SHADER),
             "-o",
             str(spirv),
@@ -275,7 +282,7 @@ def _compile_vulkan_variant(
         compiler,
         "-O2",
         "-std=c++17",
-        *_compile_defines(variant),
+        *_compile_defines(variant, block_size),
         str(VULKAN_HARNESS),
         "-o",
         str(exe),
@@ -287,8 +294,8 @@ def _compile_vulkan_variant(
     return spirv, exe, shader_command, build_command
 
 
-def _harness_args(args: argparse.Namespace, raw_path: Path) -> list[str]:
-    return [
+def _harness_args(args: argparse.Namespace, raw_path: Path, *, backend: str) -> list[str]:
+    command = [
         "--json",
         str(raw_path),
         "--n",
@@ -301,16 +308,80 @@ def _harness_args(args: argparse.Namespace, raw_path: Path) -> list[str]:
         str(args.warmup),
         "--samples",
         str(args.samples),
+        "--timing-mode",
+        args.timing_mode,
         "--device-index",
         str(args.device_index),
     ]
+    if backend == "hip":
+        command.extend(["--independent-streams", str(args.independent_streams)])
+    return command
 
 
-def _row_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
+def _row_from_raw(raw: dict[str, Any], *, backend: str) -> dict[str, Any]:
     rows = raw.get("rows") if isinstance(raw.get("rows"), list) else []
     if not rows:
         raise RuntimeError("raw memory/waitcnt harness JSON has no rows")
-    return dict(rows[0])
+    row = dict(rows[0])
+    timing = _load_module(TIMING_CONTRACT, "micro_timing_contract_for_memory_waitcnt")
+    raw_timing = row.pop("timing_raw")
+    gpu_supported = bool(row.pop("gpu_timestamps_supported", True))
+
+    def control(name: str) -> dict[str, Any]:
+        values = raw_timing[name]
+        return timing.make_timing_control(
+            logical_iterations=int(values["logical_iterations"]),
+            dispatches_per_iteration=int(values["dispatches_per_iteration"]),
+            gpu_samples_us=values["gpu_samples_us"] if gpu_supported else None,
+            host_samples_us=values["host_samples_us"],
+            gpu_clock="hip_event" if backend == "hip" else "vulkan_timestamp",
+            gpu_status="ok" if gpu_supported else "unsupported",
+        )
+
+    mode = str(row["timing_mode"])
+    passed = bool(row.get("correctness_pass")) and bool(
+        row.pop("timed_sequence_correctness_pass")
+    ) and bool(row.pop("synchronization_pass"))
+    repetitions = int(raw_timing["burst"]["logical_iterations"])
+    row.update(
+        timing.make_timed_row_contract(
+            timing_mode=mode,
+            backend=backend,
+            repetitions=repetitions,
+            dispatches_per_iteration=1,
+            dependency_validation_status="pass" if passed else "fail",
+            submission=timing.make_submission(
+                strategy=(
+                    "multi_stream"
+                    if backend == "hip" and mode == "independent_throughput"
+                    else "direct"
+                    if backend == "hip"
+                    else "vulkan_command_buffer"
+                ),
+                queue_or_stream_count=int(row.pop("queue_or_stream_count")),
+                recording_in_timed_region=False,
+            ),
+            single_timing=control("single"),
+            burst_timing=control("burst"),
+            correctness=timing.make_correctness(
+                status="pass" if passed else "fail",
+                oracle="sampled CPU reference for the timed sequence",
+                logical_iterations=repetitions,
+                coverage=(
+                    "all_dispatches" if mode == "independent_throughput" else "chained_final_state"
+                ),
+                synchronization_method=(
+                    "disjoint_outputs"
+                    if mode == "independent_throughput"
+                    else "ordered_stream"
+                    if backend == "hip"
+                    else "compute_barriers"
+                ),
+                barrier_count=int(row.pop("barrier_count")),
+            ),
+        )
+    )
+    return row
 
 
 def _hip_isa(obj: Path) -> dict[str, Any]:
@@ -433,7 +504,7 @@ def _normalize_result(
     correctness_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
     raw0 = {"hardware": {}} if not raw_rows else {"hardware": raw_rows[0].get("hardware", {})}
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": BENCH_NAME,
         "backend": backend,
@@ -449,7 +520,7 @@ def _normalize_result(
             "variants": [{"mode": row.get("mode"), "param": row.get("param")} for row in rows],
             "n": primary.get("n"),
             "body_iters": primary.get("body_iters"),
-            "block_size": primary.get("block_size"),
+            "workgroup_sizes": sorted({int(row["block_size"]) for row in rows}),
             "hip_wavefront_size_request": hip_wavefront_size,
             "hip_fixed_block_index": hip_fixed_block_index,
             "commands": commands,
@@ -459,18 +530,6 @@ def _normalize_result(
             "oracle": "sampled CPU reference for first 64 output elements",
             "max_abs": max((float(row.get("max_abs", 0.0)) for row in rows), default=0.0),
             "max_rel": max((float(row.get("max_rel", 0.0)) for row in rows), default=0.0),
-        },
-        "timing": {
-            "unit": "us_per_dispatch",
-            "median": primary.get("median_us"),
-            "primary": primary,
-            "summary": {
-                "best_bandwidth_gbps": max(
-                    (float(row.get("bandwidth_gbps", 0.0)) for row in rows),
-                    default=0.0,
-                ),
-                "row_count": len(rows),
-            },
         },
         "isa": primary,
         "classification": "diagnostic_unclassified",
@@ -529,40 +588,45 @@ def _infer_gpu_name(raw: dict[str, Any], environment: dict[str, Any], override: 
 
 def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[str, Any]:
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
+    source_hash = _hash_files(
+        [Path(__file__).resolve(), HIP_HARNESS, HIP_TIMING_HEADER, TIMING_CONTRACT]
+    )
     raw_rows: list[dict[str, Any]] = []
     isa_rows: list[dict[str, Any]] = []
     commands: list[dict[str, Any]] = []
     for variant in variants:
-        variant_dir = args.build_dir / "hip" / _variant_name(variant)
-        exe, obj, build_command = _compile_hip_variant(
-            variant_dir,
-            variant,
-            args.gfx_arch,
-            args.hip_wavefront_size,
-            args.hip_fixed_block_index,
-        )
-        raw_path = variant_dir / "raw.json"
-        harness_command = [str(exe), *_harness_args(args, raw_path)]
-        completed = _run_command(harness_command, cwd=REPO_ROOT)
-        if completed.returncode != 0:
-            raise RuntimeError(f"HIP memory/waitcnt run failed for {_variant_name(variant)}")
-        raw = json.loads(raw_path.read_text(encoding="utf-8"))
-        raw_row = _row_from_raw(raw)
-        raw_row["hardware"] = raw.get("hardware", {})
-        raw_rows.append(raw_row)
-        isa_rows.append(_hip_isa(obj))
-        commands.append(
-            {
-                "variant": variant,
-                "hip_wavefront_size_request": args.hip_wavefront_size,
-                "hip_fixed_block_index": args.hip_fixed_block_index,
-                "build_command": build_command,
-                "harness_command": harness_command,
-                "object_path": str(obj),
-                "raw_json_retained": False,
-            }
-        )
+        for block_size in args.workgroup_sizes:
+            variant_dir = args.build_dir / "hip" / _variant_name(variant) / f"wg{block_size}"
+            exe, obj, build_command = _compile_hip_variant(
+                variant_dir,
+                variant,
+                args.gfx_arch,
+                args.hip_wavefront_size,
+                args.hip_fixed_block_index,
+                block_size,
+            )
+            raw_path = variant_dir / "raw.json"
+            harness_command = [str(exe), *_harness_args(args, raw_path, backend="hip")]
+            completed = _run_command(harness_command, cwd=REPO_ROOT)
+            if completed.returncode != 0:
+                raise RuntimeError(f"HIP memory/waitcnt run failed for {_variant_name(variant)}")
+            raw = json.loads(raw_path.read_text(encoding="utf-8"))
+            raw_row = _row_from_raw(raw, backend="hip")
+            raw_row["hardware"] = raw.get("hardware", {})
+            raw_rows.append(raw_row)
+            isa_rows.append(_hip_isa(obj))
+            commands.append(
+                {
+                    "variant": variant,
+                    "workgroup_size": block_size,
+                    "hip_wavefront_size_request": args.hip_wavefront_size,
+                    "hip_fixed_block_index": args.hip_fixed_block_index,
+                    "build_command": build_command,
+                    "harness_command": harness_command,
+                    "object_path": str(obj),
+                    "raw_json_retained": False,
+                }
+            )
     return _normalize_result(
         backend="hip",
         raw_rows=raw_rows,
@@ -581,37 +645,56 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
 
 def _run_vulkan(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[str, Any]:
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_SHADER])
+    source_hash = _hash_files(
+        [
+            Path(__file__).resolve(),
+            VULKAN_HARNESS,
+            VULKAN_SHADER,
+            VULKAN_TIMING_HEADER,
+            TIMING_CONTRACT,
+        ]
+    )
     raw_rows: list[dict[str, Any]] = []
     isa_rows: list[dict[str, Any]] = []
     commands: list[dict[str, Any]] = []
     for variant in variants:
-        variant_dir = args.build_dir / "vulkan" / _variant_name(variant)
-        spirv, exe, shader_command, build_command = _compile_vulkan_variant(variant_dir, variant)
-        raw_path = variant_dir / "raw.json"
-        harness_command = [str(exe), "--spirv", str(spirv), *_harness_args(args, raw_path)]
-        completed = _run_command(harness_command, cwd=REPO_ROOT)
-        if completed.returncode != 0:
-            raise RuntimeError(f"Vulkan memory/waitcnt run failed for {_variant_name(variant)}")
-        raw = json.loads(raw_path.read_text(encoding="utf-8"))
-        raw_row = _row_from_raw(raw)
-        raw_row["hardware"] = raw.get("hardware", {})
-        raw_rows.append(raw_row)
-        isa_row, debug_command, shader_dump_bytes = _vulkan_isa(exe, spirv, args, variant_dir)
-        isa_rows.append(isa_row)
-        commands.append(
-            {
-                "variant": variant,
-                "shader_command": shader_command,
-                "build_command": build_command,
-                "harness_command": harness_command,
-                "debug_command": debug_command,
-                "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
-                "shader_dump_bytes": shader_dump_bytes,
-                "raw_json_retained": False,
-                "shader_dump_retained": False,
-            }
-        )
+        for block_size in args.workgroup_sizes:
+            variant_dir = args.build_dir / "vulkan" / _variant_name(variant) / f"wg{block_size}"
+            spirv, exe, shader_command, build_command = _compile_vulkan_variant(
+                variant_dir, variant, block_size
+            )
+            raw_path = variant_dir / "raw.json"
+            harness_command = [
+                str(exe),
+                "--spirv",
+                str(spirv),
+                *_harness_args(args, raw_path, backend="vulkan"),
+            ]
+            completed = _run_command(harness_command, cwd=REPO_ROOT)
+            if completed.returncode != 0:
+                raise RuntimeError(f"Vulkan memory/waitcnt run failed for {_variant_name(variant)}")
+            raw = json.loads(raw_path.read_text(encoding="utf-8"))
+            raw_row = _row_from_raw(raw, backend="vulkan")
+            raw_row["hardware"] = raw.get("hardware", {})
+            raw_rows.append(raw_row)
+            isa_row, debug_command, shader_dump_bytes = _vulkan_isa(
+                exe, spirv, args, variant_dir
+            )
+            isa_rows.append(isa_row)
+            commands.append(
+                {
+                    "variant": variant,
+                    "workgroup_size": block_size,
+                    "shader_command": shader_command,
+                    "build_command": build_command,
+                    "harness_command": harness_command,
+                    "debug_command": debug_command,
+                    "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
+                    "shader_dump_bytes": shader_dump_bytes,
+                    "raw_json_retained": False,
+                    "shader_dump_retained": False,
+                }
+            )
     return _normalize_result(
         backend="vulkan",
         raw_rows=raw_rows,
@@ -628,8 +711,40 @@ def _run_vulkan(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dic
     )
 
 
-def _row_key(row: dict[str, Any]) -> tuple[str, int]:
-    return str(row["mode"]), int(row["param"])
+def _row_key(row: dict[str, Any]) -> tuple[str, int, int, str]:
+    return (
+        str(row["mode"]),
+        int(row["param"]),
+        int(row["block_size"]),
+        str(row["timing_mode"]),
+    )
+
+
+def _comparison_domain(
+    timing: Any,
+    hip: dict[str, Any],
+    vulkan: dict[str, Any],
+    *,
+    control: str,
+    domain: str,
+) -> dict[str, Any]:
+    try:
+        return {
+            "status": "ok",
+            **timing.comparison_ratio(hip, vulkan, control=control, domain=domain),
+        }
+    except ValueError as exc:
+        status = (
+            "not_comparable_submission_contract"
+            if "submission contracts" in str(exc)
+            else "not_comparable"
+        )
+        return {
+            "status": status,
+            "reason": str(exc),
+            "hip": hip["timing"][control][domain],
+            "vulkan": vulkan["timing"][control][domain],
+        }
 
 
 def build_comparison(
@@ -639,29 +754,40 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
+    hip_input_rows = hip_result.get("measurements", {}).get("rows", [])
+    vulkan_input_rows = vulkan_result.get("measurements", {}).get("rows", [])
+    hip_modes = {row.get("timing_mode") for row in hip_input_rows if isinstance(row, dict)}
+    vulkan_modes = {row.get("timing_mode") for row in vulkan_input_rows if isinstance(row, dict)}
+    if hip_modes != vulkan_modes or None in hip_modes:
+        raise ValueError("HIP and Vulkan timing modes are missing or do not match")
     hip_rows = {
         _row_key(row): row
-        for row in hip_result.get("measurements", {}).get("rows", [])
+        for row in hip_input_rows
         if isinstance(row, dict)
     }
     vulkan_rows = {
         _row_key(row): row
-        for row in vulkan_result.get("measurements", {}).get("rows", [])
+        for row in vulkan_input_rows
         if isinstance(row, dict)
     }
+    timing = _load_module(TIMING_CONTRACT, "micro_timing_contract_for_memory_compare")
     matched = []
     for key in sorted(set(hip_rows) & set(vulkan_rows)):
         hip = hip_rows[key]
         vulkan = vulkan_rows[key]
-        hip_us = float(hip["median_us"])
-        vulkan_us = float(vulkan["median_us"])
-        matched.append(
-            {
+        for control in ("single", "burst"):
+            matched.append({
                 "mode": key[0],
                 "param": key[1],
-                "hip_median_us": hip_us,
-                "vulkan_median_us": vulkan_us,
-                "vulkan_vs_hip_speedup": hip_us / vulkan_us if vulkan_us > 0 else None,
+                "workgroup_size": key[2],
+                "timing_mode": key[3],
+                "control": control,
+                "gpu_elapsed": _comparison_domain(
+                    timing, hip, vulkan, control=control, domain="gpu_elapsed"
+                ),
+                "host_wall": _comparison_domain(
+                    timing, hip, vulkan, control=control, domain="host_wall"
+                ),
                 "hip_bandwidth_gbps": hip.get("bandwidth_gbps"),
                 "vulkan_bandwidth_gbps": vulkan.get("bandwidth_gbps"),
                 "hip_correctness_pass": hip.get("correctness_pass"),
@@ -690,11 +816,10 @@ def build_comparison(
                 "vulkan_estimated_sgpr_span": vulkan.get("estimated_sgpr_span"),
                 "hip_vopd_count": hip.get("vopd_count"),
                 "vulkan_vopd_count": vulkan.get("vopd_count"),
-            }
-        )
+            })
     return _json_safe(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "diagnostic_unclassified",
@@ -713,6 +838,7 @@ def build_comparison(
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
             },
+            "comparisons": matched,
             "matched_rows": matched,
             "interpretation": (
                 "Memory/waitcnt diagnostic. A compiler scheduling claim requires "
@@ -742,9 +868,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--variants", default=DEFAULT_VARIANTS)
     parser.add_argument("--n", type=int, default=32768)
     parser.add_argument("--body-iters", type=int, default=128)
+    parser.add_argument("--workgroups", default="64,128,256")
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--samples", type=int, default=7)
+    parser.add_argument(
+        "--timing-mode",
+        choices=["serial_latency", "independent_throughput"],
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--debug-n", type=int, default=1024)
     parser.add_argument("--debug-body-iters", type=int, default=8)
     parser.add_argument("--device-index", type=int, default=0)
@@ -760,12 +893,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("one of --backend or --compare is required")
     if args.backend != "hip" and args.hip_fixed_block_index:
         parser.error("--hip-fixed-block-index only applies to --backend hip")
-    if min(args.n, args.body_iters, args.reps, args.warmup + 1, args.samples) <= 0:
+    if min(
+        args.n,
+        args.body_iters,
+        args.reps,
+        args.warmup + 1,
+        args.samples,
+        args.independent_streams,
+    ) <= 0:
         parser.error("--n, --body-iters, --reps, and --samples must be positive")
     if args.debug_n <= 0 or args.debug_body_iters <= 0:
         parser.error("--debug-n and --debug-body-iters must be positive")
     try:
         args.variant_specs = parse_variants(args.variants)
+        args.workgroup_sizes = [int(value) for value in args.workgroups.split(",") if value]
+        if not args.workgroup_sizes or any(value not in (64, 128, 256) for value in args.workgroup_sizes):
+            raise ValueError("workgroups must be a comma-separated subset of 64,128,256")
     except ValueError as exc:
         parser.error(str(exc))
     return args
