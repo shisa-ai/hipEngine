@@ -142,8 +142,8 @@ an opt-in retained-evidence bridge from the direct retained harness:
 - When `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` is explicitly set and no
   explicit projection/sampler override is set, the runner can load retained
   direct-harness defaults where repo evidence exists:
-  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json`
-  for c2/c4/c8 projection dispatch, and
+  `benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json`
+  for c2/c4/c6/c8 projection dispatch, and
   `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`
   for row-aware batched LM-head sampling.
 
@@ -176,6 +176,12 @@ The run is decode-bound, not prefill-bound. Its detailed diagnostics split the
 | ---: | ---: | ---: | --- | --- | --- |
 | 2 | 2 | `27.36 ms` | `gemv_awq_selected_dual_pack8_strided_c2` | evidenced batched LM-head | Fast in this timing run, but later local equality recheck rejected the retained bridge. |
 | 6 | 6 | `58.89 ms` | row-GEMV fallback | serial LM-head | No c6 projection dispatch candidate and no c6 sampler equality artifact. |
+
+That server timing row predates the local c6 projection repair below. The c6
+projection fallback is now covered by a local generated-token equality probe,
+but the full c6 path remains diagnostic because selected-c1 MoE plus rowchunked
+full/linear attention are still fallbacks and the retained primitive/profiler/
+baseline gates are not complete.
 
 Follow-up local generated-token checks changed the immediate diagnosis:
 
@@ -249,7 +255,8 @@ missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
 | 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
-| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head | Pass | `87.782 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, native/batch projection | Pass | `87.612 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, selected-c1 projection fallback | Pass | `84.709 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-selectedproj-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, batched LM-head | Pass | `87.519 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-batched-lmhead-local-equality.json` |
 | 6 | per-row full-attention, per-row linear, selected-c1 MoE, serial LM-head | Pass | `69.802 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-linear-full-perrow-moe-selected-c1-serial-sampler-local-equality.json` |
 
@@ -262,10 +269,24 @@ Focused c6 hidden-bisect controls:
 | full-attention per-row, linear rowchunk3, selected-c1 MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
 | full-attention per-row, linear rowchunk2, grouped-compact MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
 
+Focused c6 projection control:
+
+| Projection path | Generated-token equality | Decode aggregate | Median step | Artifact |
+| --- | --- | ---: | ---: | --- |
+| native/batch projection candidate | Pass, prefix `[129,129,129,129,129,129]` | `87.612 tok/s` | `68.282 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json` |
+| selected-c1 row-GEMV fallback | Pass, prefix `[129,129,129,129,129,129]` | `84.709 tok/s` | `70.580 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json` |
+
+This adds `gemv_awq_selected_dual_pack8_strided_c6` to the default projection
+dispatch catalog with a `1.0343x` aggregate decode gain over the row-GEMV
+fallback. It is projection evidence only, not a retained/default throughput
+claim for the whole c6 path.
+
 The current retained-bench auto diagnostic path should therefore start from the
 green local frontier:
 
 - c2/c4/c6/c8: auto-select selected-c1 MoE.
+- c2/c4/c6/c8: load the c-aware projection dispatch catalog; c6 now has a
+  generated-token-green projection candidate.
 - c4/c6/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
   every full-attention layer is rowchunked.
 - c6: auto-select linear-attention rowchunk2 for the retained-bench diagnostic.
@@ -286,8 +307,9 @@ Next repair order:
    direct retained sweeps.
 2. Recover c6 throughput next: rowchunk2 correctness costs about `19.1 tok/s`
    vs the invalid native-linear c6 diagnostic, batched LM-head is correctness
-   green but neutral/slightly slower, and there is still no c6 projection
-   dispatch candidate.
+   green but neutral/slightly slower, and c6 projection dispatch now recovers
+   only `+3.43%` over the row-GEMV fallback. The larger remaining c6 work is
+   removing selected-c1 MoE/rowchunk fallbacks or avoiding c6 live groups.
 3. Add primitive correctness/profiler/baseline gates for any recovered shape
    before promoting a retained/default throughput claim.
 4. Re-run the c=8 server diagnostic with a server-visible c6 repair or an

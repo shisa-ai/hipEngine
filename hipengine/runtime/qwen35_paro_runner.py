@@ -138,7 +138,7 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTU
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
-    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json"
+    "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
 )
 _DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE = (
     "benchmarks/results/2026-06-02-hipengine-qwen35-c{rows}-native-batch-sampler-equality.json"
@@ -223,7 +223,7 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     all-layer rowchunking, and for rows without stable selected-layer evidence.
     """
 
-    if rows in {3, 5, 6}:
+    if rows in {3, 5}:
         return {3, 7, 11, 15}
     return set()
 
