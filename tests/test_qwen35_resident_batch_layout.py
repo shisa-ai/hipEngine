@@ -42,6 +42,15 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+def test_dflash_verify_sync_phases_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", raising=False)
+    assert runner_module._dflash_verify_sync_phases_enabled() is False
+    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", "1")
+    assert runner_module._dflash_verify_sync_phases_enabled() is True
+    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", "off")
+    assert runner_module._dflash_verify_sync_phases_enabled() is False
+
+
 def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, object]:
     sequences = [[row, row + 10] for row in range(rows)]
     return {

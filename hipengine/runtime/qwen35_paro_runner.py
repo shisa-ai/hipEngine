@@ -1431,6 +1431,18 @@ def _dflash_verify_fused_lm_head_enabled() -> bool:
     )
 
 
+def _dflash_verify_sync_phases_enabled() -> bool:
+    """Return True when verifier timing should synchronize each forward phase.
+
+    This is profiling-only.  The default bucket mode records low-overhead
+    host-side boundaries; setting ``HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`` adds
+    device-synchronized verifier sub-buckets for layer-family and LM-head/top1
+    attribution at the cost of extra stream synchronizations.
+    """
+
+    return _env_flag("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", False)
+
+
 @dataclass(frozen=True)
 class Qwen35ParoBulkVerifyResult:
     """Result from one native root+candidate target-verification forward."""
@@ -10088,6 +10100,7 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                     chain_attn_mode=chain_attn_mode,
                     linear_attn_mode=linear_attn_mode,
+                    bucket_seconds=bucket_seconds,
                 )
             else:
                 graph_info = self._run_verify_graph_or_direct(
@@ -10105,8 +10118,11 @@ class Qwen35ParoResidentSession:
                 graph_info["chain_attn_mode"] = chain_attn_mode
                 graph_info["linear_attn_mode"] = linear_attn_mode
                 graph_info["linear_attn_fallback"] = False
-            forward_bucket = "graph_replay" if str(graph_info.get("status")) == "replayed" else "target_verify_forward"
-            _mark_bucket(forward_bucket, t_bucket)
+            graph_status = str(graph_info.get("status"))
+            if graph_status == "replayed":
+                _mark_bucket("graph_replay", t_bucket)
+            elif graph_mode != "off" or not _dflash_verify_sync_phases_enabled():
+                _mark_bucket("target_verify_forward", t_bucket)
             t_bucket = time.perf_counter()
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             if self._verify_gpu_accept_enabled():
@@ -10133,7 +10149,8 @@ class Qwen35ParoResidentSession:
                 gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
                 summary = cpu_summary
                 selected_row = int(cpu_summary.commit_rows[0])
-            _mark_bucket("accept_summary", t_bucket)
+            accept_bucket = "accept_readback" if _dflash_verify_sync_phases_enabled() else "accept_summary"
+            _mark_bucket(accept_bucket, t_bucket)
             if graph_mode != "off":
                 t_bucket = time.perf_counter()
                 self._copy_verify_capture_prefix(
@@ -10298,6 +10315,7 @@ class Qwen35ParoResidentSession:
                 # chain_attn_mode is ignored for tree mode; the dispatcher
                 # checks batch.mode first and routes to the tree orchestrator.
                 chain_attn_mode="batched",
+                bucket_seconds=bucket_seconds,
             )
         else:
             # Same one-capture-per-bucket replay as the chain path; tree
@@ -10318,8 +10336,11 @@ class Qwen35ParoResidentSession:
                 stream=stream,
             )
             graph_info["verifier_mode"] = "verify_tree"
-        forward_bucket = "graph_replay" if str(graph_info.get("status")) == "replayed" else "target_verify_forward"
-        _mark_bucket(forward_bucket, t_bucket)
+        graph_status = str(graph_info.get("status"))
+        if graph_status == "replayed":
+            _mark_bucket("graph_replay", t_bucket)
+        elif graph_mode != "off" or not _dflash_verify_sync_phases_enabled():
+            _mark_bucket("target_verify_forward", t_bucket)
         t_bucket = time.perf_counter()
         gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
         if self._verify_gpu_accept_enabled():
@@ -10346,7 +10367,8 @@ class Qwen35ParoResidentSession:
             gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
             summary = cpu_summary
             selected_row = int(cpu_summary.commit_rows[0])
-        _mark_bucket("accept_summary", t_bucket)
+        accept_bucket = "accept_readback" if _dflash_verify_sync_phases_enabled() else "accept_summary"
+        _mark_bucket(accept_bucket, t_bucket)
         # Compact accepted-path K/V cells from their sparse verifier-row
         # slots back to canonical dense slots, so the next decode cycle
         # reads the correct context.  Skipped (no-op) when the accepted
@@ -10718,9 +10740,24 @@ class Qwen35ParoResidentSession:
         stream: int = 0,
         chain_attn_mode: str = "c1_loop",
         linear_attn_mode: str = "tree_tloop",
+        bucket_seconds: dict[str, float] | None = None,
     ) -> None:
         if linear_attn_mode not in {"tree_tloop", "chain_tloop"}:
             raise ValueError("linear_attn_mode must be tree_tloop or chain_tloop")
+        sync_phase_buckets = bucket_seconds is not None and _dflash_verify_sync_phases_enabled()
+
+        def _mark_phase(name: str, started: float) -> float:
+            if not sync_phase_buckets:
+                return time.perf_counter()
+            self.runtime.stream_synchronize(stream)
+            now = time.perf_counter()
+            seconds = now - started
+            if seconds > 0.0 and math.isfinite(seconds):
+                assert bucket_seconds is not None
+                bucket_seconds[name] = bucket_seconds.get(name, 0.0) + seconds
+            return now
+
+        phase_start = time.perf_counter()
         embedding_lookup_batch_fp16_i64(
             self.embedding.tensor.ptr,
             self.verify_token_ids_i64.ptr,
@@ -10732,13 +10769,16 @@ class Qwen35ParoResidentSession:
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
+        phase_start = _mark_phase("target_verify_embedding", phase_start)
         hidden = Tensor.from_handle(self.verify_trunk_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.verify_trunk_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         parent_rows = Tensor.from_handle(self.verify_parent_rows_i64.ptr, (rows,), DType.INT64, self.device)
         capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
         for layer_id, state in enumerate(self.states):
+            phase_start = time.perf_counter()
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
+                layer_bucket = "target_verify_linear_layers"
                 conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
                 linear_scratch = self._verify_linear_attention_scratch(layer_id, state, rows=rows)
                 self.linear_scratch[layer_id] = linear_scratch
@@ -10777,6 +10817,7 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
             elif layer_type == "full_attention":
+                layer_bucket = "target_verify_full_attention_layers"
                 if batch.mode == "verify_tree":
                     # Tree topology: sibling rows must not see each other; use
                     # the tree-aware orchestrator regardless of
@@ -10842,8 +10883,12 @@ class Qwen35ParoResidentSession:
                     library=self.libraries["cast"],
                     runtime=self.runtime,
                 )
+            _mark_phase(layer_bucket, phase_start)
+        phase_start = time.perf_counter()
         self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
+        phase_start = _mark_phase("lm_head_top1", phase_start)
         self._launch_verify_accept_summary(batch, rows=rows, base_slot=base_slot, stream=stream)
+        _mark_phase("accept_summary_enqueue", phase_start)
 
     def _run_full_attention_chain_c1_loop(
         self,

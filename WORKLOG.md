@@ -148238,3 +148238,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py tests/test_speculative_benchmark.py`;
   `PYTHONPATH=. uv run --extra dev pytest -q tests/test_speculative_benchmark.py`.
   Pycompile passed; speculative schema tests passed (`6 passed`).
+
+## 2026-07-09 - PARO DFlash sync-phase verifier buckets
+
+- Reviewed the queued LM-head/top1 fusion item against existing evidence.
+  `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` is already implemented, exact, and
+  documented as slower on prior W7900 retests, so promoting that fused body
+  would knowingly retain a regression.
+- Added profiling-only verifier phase attribution behind
+  `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`. In graph-off native verifier calls,
+  the resident session now synchronizes and records `target_verify_embedding`,
+  `target_verify_linear_layers`, `target_verify_full_attention_layers`,
+  `lm_head_top1`, `accept_summary_enqueue`, and `accept_readback`. Default
+  runs keep the low-overhead coarse `target_verify_forward` bucket.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to mark LM-head/top1 fusion as
+  evidence-gated: write a new fused schedule only if current PARO DFlash
+  profiles still show `lm_head_top1` as a material bucket.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py`;
+  `PYTHONPATH=. uv run --extra dev pytest -q tests/test_qwen35_resident_batch_layout.py::test_dflash_verify_sync_phases_env`.
+  Pycompile passed; focused env test passed (`1 passed`).
