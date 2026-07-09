@@ -148057,3 +148057,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the selected producer layers.
 - Compact summary:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selectedc1-staged-substage-summary.json`.
+
+## 2026-07-09 - PARO c6 context-only rowchunk diagnostic
+
+- Added a default-off full-attention context-only rowchunk diagnostic path:
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE` plus
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS`. The runner
+  keeps normal batch QKV/append/O/post/MoE, builds rowchunked decode spans only
+  for the context kernel, records `native_context_row_chunks` in execution
+  metadata, and blocks native-caware claims.
+- Added CLI plumbing in `scripts/qwen35_batch_retained_bench.py` and
+  `scripts/qwen35_batch_hidden_bisect.py`.
+- Added tests:
+  `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_context`;
+  `tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_rowchunk_forwards_chunks`.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_rowchunk_forwards_chunks tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_rowchunk_decode_can_target_selected_full_attention_layers`;
+  `PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /tmp/nonexistent-model --fixture /tmp/nonexistent-fixture.json --prompt-length 512 --batch-size 6 --decode-tokens 10 --warmup-decode-tokens 0 --max-layers 12 --layer-limits 8,9,10,11,12 --trace-decode-start 8 --trace-decode-end 9 --skip-full-context-oracle --skip-linear-state-summary --batch-decode-full-attn-context-row-chunk-size 2 --batch-decode-full-attn-context-row-chunk-layers 3,7,11 --dry-run`.
+- Ran two short c6 retained diagnostics on gfx1151/Radeon 8060S with
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, prompt 512, rows=6, decode=16,
+  selected-c1 MoE, native rows=6 linear attention, and batch GEMV full-attention
+  O projection:
+  - Context-only rowchunk2 on selected full-attention layers
+    `3,7,11,15,19,23,27,31`: rejected at token 2, `106.596 tok/s`, median
+    `53.834 ms`; batch token `220` vs c1 token `17`.
+  - Context-only rowchunk2 on all full-attention layers: rejected at token 2,
+    `106.543 tok/s`, median `53.757 ms`; same token `220` vs `17` failure.
+- Conclusion: splitting only the context kernel is not the c6 repair and does
+  not replace the current generated-token-green selected full-layer rowchunk
+  bridge. Next useful split is to compare full native rowchunk2 vs rows=6 native
+  across non-context substages at the layer boundary.
+- Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-context-rowchunk-rejects-summary.json`.

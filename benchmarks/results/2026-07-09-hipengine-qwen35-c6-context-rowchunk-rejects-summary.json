@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-07-09",
+  "status": "rejected_diagnostic",
+  "mode": "qwen35_paro_c6_context_rowchunk_diagnostic",
+  "hardware": "gfx1151 / Radeon 8060S Graphics",
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "quant": "w4_paro",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "shape": "c=6 prompt=512 decode=16",
+  "diagnostic": "full-attention context-only native rowchunk2, selected-c1 MoE, native rows=6 linear attention, batch GEMV full-attention O projection",
+  "result": "Both selected-layer and all-layer context-only rowchunk probes rejected at generated token index 2. Context-only rowchunking does not replace the current generated-token-green full-layer rowchunk bridge.",
+  "rows": [
+    {
+      "label": "selected full-attention context rowchunk layers",
+      "context_row_chunk_size": 2,
+      "context_row_chunk_layers": "3,7,11,15,19,23,27,31",
+      "status": "rejected_correctness",
+      "first_mismatch_indices": [2, 2, 2, 2, 2, 2],
+      "batch_token_at_mismatch": 220,
+      "c1_token_at_mismatch": 17,
+      "decode_tok_s_aggregate": 106.59622336937446,
+      "median_decode_step_ms": 53.833980578929186,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-context-rowchunk2-layers3-31-smallbatch-shared-local-equality.json"
+    },
+    {
+      "label": "all full-attention context rowchunk layers",
+      "context_row_chunk_size": 2,
+      "context_row_chunk_layers": "",
+      "status": "rejected_correctness",
+      "first_mismatch_indices": [2, 2, 2, 2, 2, 2],
+      "batch_token_at_mismatch": 220,
+      "c1_token_at_mismatch": 17,
+      "decode_tok_s_aggregate": 106.54317980784793,
+      "median_decode_step_ms": 53.75730246305466,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-context-rowchunk2-all-smallbatch-shared-local-equality.json"
+    }
+  ],
+  "commands": [
+    "python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-output-path batch_gemv --batch-decode-full-attn-context-row-chunk-size 2 --batch-decode-full-attn-context-row-chunk-layers 3,7,11,15,19,23,27,31 --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-context-rowchunk2-layers3-31-smallbatch-shared-local-equality.json",
+    "python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-output-path batch_gemv --batch-decode-full-attn-context-row-chunk-size 2 --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-context-rowchunk2-all-smallbatch-shared-local-equality.json"
+  ]
+}
