@@ -721,6 +721,7 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                 "rows_list": args.rows_list,
                 "row_tiles": args.row_tiles,
                 "timing_mode": args.timing_mode,
+                "input_scale": args.input_scale,
                 "repetitions": args.reps,
                 "warmup_sequences": args.warmup,
                 "samples": args.samples,
@@ -939,7 +940,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                                 else 3 * args.reps - 2
                             )
                         elif dispatches == 2:
-                            barrier_count = 1
+                            barrier_count = args.reps
                         row = _make_operation_row(
                             backend="vulkan",
                             timing_mode=args.timing_mode,
@@ -994,6 +995,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                 "local_sizes": args.local_sizes,
                 "row_tiles": args.row_tiles,
                 "timing_mode": args.timing_mode,
+                "input_scale": args.input_scale,
                 "repetitions": args.reps,
                 "warmup_sequences": args.warmup,
                 "samples": args.samples,
@@ -1050,6 +1052,28 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
+    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
+        raise ValueError("Q8 comparison requires v2 timing-contract results")
+    if hip_result.get("backend") != "hip" or vulkan_result.get("backend") != "vulkan":
+        raise ValueError("Q8 comparison inputs must be HIP then Vulkan")
+    hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
+    vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
+    if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
+        raise ValueError("HIP and Vulkan Q8 gfx architectures do not match")
+    hip_parameters = hip_result.get("parameters", {})
+    vulkan_parameters = vulkan_result.get("parameters", {})
+    for field in (
+        "shapes",
+        "rows_list",
+        "row_tiles",
+        "timing_mode",
+        "input_scale",
+        "repetitions",
+        "warmup_sequences",
+        "samples",
+    ):
+        if hip_parameters.get(field) != vulkan_parameters.get(field):
+            raise ValueError(f"HIP and Vulkan Q8 {field} values do not match")
     hip_modes = {
         str(row.get("timing_mode"))
         for row in hip_result.get("measurements", {}).get("rows", [])
@@ -1062,19 +1086,29 @@ def build_comparison(
     }
     if len(hip_modes) != 1 or hip_modes != vulkan_modes:
         raise ValueError("HIP and Vulkan Q8 results must use the same single timing mode")
+    hip_comparable = [
+        row
+        for row in hip_result.get("measurements", {}).get("rows", [])
+        if isinstance(row, dict) and row.get("workgroup_match") == "exact_hip_wave32"
+    ]
+    vulkan_comparable = [
+        row
+        for row in vulkan_result.get("measurements", {}).get("rows", [])
+        if isinstance(row, dict) and row.get("workgroup_match") == "exact_hip_wave32"
+    ]
     hip_rows = {
         _row_key(row): row
-        for row in hip_result.get("measurements", {}).get("rows", [])
-        if isinstance(row, dict)
+        for row in hip_comparable
     }
+    vulkan_rows = {_row_key(row): row for row in vulkan_comparable}
+    if len(hip_rows) != len(hip_comparable) or len(vulkan_rows) != len(vulkan_comparable):
+        raise ValueError("Q8 comparison inputs contain duplicate comparable rows")
+    if not hip_rows or set(hip_rows) != set(vulkan_rows):
+        raise ValueError("HIP and Vulkan Q8 comparable row sets do not match")
     matched = []
-    for row in vulkan_result.get("measurements", {}).get("rows", []):
-        if not isinstance(row, dict):
-            continue
-        key = _row_key(row)
-        hip = hip_rows.get(key)
-        if hip is None:
-            continue
+    for key in sorted(hip_rows):
+        hip = hip_rows[key]
+        row = vulkan_rows[key]
         timing_contract.dependency_signature(hip)
         timing_contract.dependency_signature(row)
         ratios: dict[str, Any] = {}

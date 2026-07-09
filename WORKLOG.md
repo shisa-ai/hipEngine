@@ -148589,3 +148589,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   command-buffer host comparison was marked
   `not_comparable_submission_contract`. Results under `/tmp/q8-v2-*.json`
   are diagnostic smoke only, not retained performance claims.
+
+## 2026-07-10 - Dense Q8_0 independent-dependency review
+
+- Independent review found that Vulkan combined throughput used one phase-wide
+  quantize-to-dot barrier. That made every dot wait for every quantize while
+  HIP only ordered quantize-to-dot inside each logical iteration. Replaced the
+  phase barrier with one device event and slice-scoped write-to-read memory
+  dependency per iteration; independent iterations no longer order one
+  another. The row now reports one synchronization edge per measured
+  iteration.
+- Added explicit transfer-write-to-compute-read visibility after Vulkan input
+  uploads. Hardened the comparator to require v2 HIP/Vulkan identity, matching
+  gfx arch, input scale, shape, rows, row tiles, timing mode, repetitions,
+  warmup, samples, and identical exact-wave32 row sets. Unmatched Vulkan-only
+  workgroups remain diagnostics and cannot silently enter a ratio.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_q8_0_dense_real_slice.py tests/test_micro_timing_contract.py`
+  (`15 passed`); Vulkan C++ warning-clean syntax passed. Re-ran gfx1151
+  768x2048 rows=4 rowtile4 serial (reps=3, warmup=2) and independent
+  (reps=3, warmup=4) Vulkan smokes plus matched HIP artifacts. All operations
+  passed exact correctness, strict comparisons emitted GPU ratios, and host
+  wall remained `not_comparable_submission_contract`. Review artifacts are
+  `/tmp/q8-v2-*-strict.json` and `/tmp/q8-v2-vulkan-*-events.json`; smoke only.

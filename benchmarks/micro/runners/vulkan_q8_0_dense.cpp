@@ -660,6 +660,26 @@ void copy_to_device(
   VkBufferCopy copy{};
   copy.size = bytes;
   vkCmdCopyBuffer(cmd, stage.buffer, device_buffer.buffer, 1, &copy);
+  VkBufferMemoryBarrier barrier{};
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = device_buffer.buffer;
+  barrier.offset = 0;
+  barrier.size = bytes;
+  vkCmdPipelineBarrier(
+      cmd,
+      VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      0,
+      0,
+      nullptr,
+      1,
+      &barrier,
+      0,
+      nullptr);
   submit_and_free(device, queue, command_pool, cmd);
 }
 
@@ -888,22 +908,47 @@ void record_quantize_dot(
     const PushConstants& push,
     const Buffer& xq_device,
     const Buffer& out_device,
+    const std::vector<VkEvent>& iteration_events,
     hipengine::micro::TimingMode timing_mode,
     uint32_t row_tile,
     uint32_t reps) {
   if (timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+    if (reps > iteration_events.size()) {
+      fail("independent combined repetitions exceed the event pool");
+    }
+    for (uint32_t rep = 0; rep < reps; ++rep) {
+      vkCmdResetEvent(
+          cmd, iteration_events[rep], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
     for (uint32_t rep = 0; rep < reps; ++rep) {
       dispatch_quantize(
           cmd, quant_pipeline, layout, descriptor_set,
           slice_push(push, rep, rep, rep));
+      vkCmdSetEvent(
+          cmd, iteration_events[rep], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
-    hipengine::micro::compute_buffer_barrier(
-        cmd,
-        {hipengine::micro::make_compute_buffer_barrier(
-            xq_device.buffer,
-            VK_ACCESS_SHADER_WRITE_BIT,
-            VK_ACCESS_SHADER_READ_BIT)});
     for (uint32_t rep = 0; rep < reps; ++rep) {
+      VkBufferMemoryBarrier barrier =
+          hipengine::micro::make_compute_buffer_barrier(
+              xq_device.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_READ_BIT,
+              static_cast<VkDeviceSize>(rep) * push.rows *
+                  push.q8_blocks_per_row * Q8_1_WORDS * sizeof(uint32_t),
+              static_cast<VkDeviceSize>(push.rows) * push.q8_blocks_per_row *
+                  Q8_1_WORDS * sizeof(uint32_t));
+      vkCmdWaitEvents(
+          cmd,
+          1,
+          &iteration_events[rep],
+          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+          0,
+          nullptr,
+          1,
+          &barrier,
+          0,
+          nullptr);
       dispatch_dot(
           cmd, dot_pipeline, layout, descriptor_set,
           slice_push(push, rep, rep, rep), row_tile);
@@ -1218,6 +1263,13 @@ int main(int argc, char** argv) {
     VkFence fence = VK_NULL_HANDLE;
     check(vkCreateFence(device, &fence_info, nullptr, &fence), "vkCreateFence");
 
+    std::vector<VkEvent> iteration_events(work_repetitions, VK_NULL_HANDLE);
+    VkEventCreateInfo event_info{};
+    event_info.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
+    for (VkEvent& event : iteration_events) {
+      check(vkCreateEvent(device, &event_info, nullptr, &event), "vkCreateEvent");
+    }
+
     uint32_t dummy = 0;
     VkDeviceSize x_bytes = sizeof(uint32_t) * x.size();
     VkDeviceSize dummy_bytes = sizeof(uint32_t);
@@ -1351,7 +1403,8 @@ int main(int argc, char** argv) {
       } else {
         record_quantize_dot(
             cmd, quant_pipeline, dot_pipeline, pipeline_layout, descriptor_set,
-            push, xq_device, out_device, args.timing_mode, args.row_tile, reps);
+            push, xq_device, out_device, iteration_events, args.timing_mode,
+            args.row_tile, reps);
       }
     };
 
@@ -1487,6 +1540,9 @@ int main(int argc, char** argv) {
     }
     }
 
+    for (VkEvent event : iteration_events) {
+      vkDestroyEvent(device, event, nullptr);
+    }
     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
     destroy_buffer(device, x_stage);
     destroy_buffer(device, dummy_stage);
