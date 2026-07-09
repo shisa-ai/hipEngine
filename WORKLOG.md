@@ -148796,3 +148796,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   with every correctness gate passing; combined independent used four matched
   lanes and calibrated timestamps. `/tmp/q6-prod-*-v2.json` is smoke evidence,
   not a retained performance claim.
+
+## 2026-07-10 - Dense Q8_0 timing contract v2
+
+- Replaced the dense-Q8 combined independent event path with calibrated queue
+  lanes. Each Vulkan lane owns round-robin repetitions and records
+  `q8_1 quantize -> slice W->R barrier -> Q8_0 dot` over disjoint q8_1/output
+  slices. Quantize-only and prequantized-dot throughput stay in one barrier-free
+  command buffer; serial work retains explicit compute dependencies. HIP worker
+  streams and Vulkan queues are capped by timed repetitions.
+- Hardened the comparison before permitting a rerun: it now checks v2
+  kind/bench/backend/classification, architecture, commit/dirty provenance,
+  shared parameters, exact wave32 control availability, duplicate rows, every
+  row implied by shape/row/rowtile parameters, and per-row correctness. Both
+  backend source hashes are preserved. Serial Vulkan no longer requires
+  timeline or calibrated-timestamp support.
+- Replaced the old max-absolute/top-1 tolerance label with the required
+  KL/top-1 gate while retaining max-error and BF16 diagnostics. The gfx1151
+  smoke reached max per-row KL `3.35e-7` and top-1 `1.0` on all checked burst
+  rows.
+- Validation: `python3 -m pytest -q
+  tests/test_micro_q8_0_dense_real_slice.py
+  tests/test_micro_vulkan_multi_queue_timing.py
+  tests/test_micro_timing_contract.py` (`18 passed`); warning-clean Vulkan C++
+  syntax, Python compile, and scoped diff checks passed. Paired gfx1151 smokes
+  used 64x64, rows=1, wg32, rowtile=1, reps=4, warmup=5, samples=2. Both modes
+  matched the complete three-row matrix with all correctness gates passing;
+  combined independent used four calibrated lanes. `/tmp/q8-*-wrapper-*.json`
+  is smoke evidence only.

@@ -320,21 +320,39 @@ def _compare_bf16_output(expected_f32: np.ndarray, actual_bits: np.ndarray) -> d
     actual_f32 = _bf16_bits_to_f32(actual_bits.reshape(-1)).reshape(expected_f32.shape)
     diff = np.abs(expected_f32.astype(np.float32) - actual_f32)
     top1 = float(np.mean(np.argmax(expected_f32, axis=-1) == np.argmax(actual_f32, axis=-1)))
+    expected64 = expected_f32.astype(np.float64)
+    actual64 = actual_f32.astype(np.float64)
+    expected_shift = expected64 - np.max(expected64, axis=-1, keepdims=True)
+    actual_shift = actual64 - np.max(actual64, axis=-1, keepdims=True)
+    expected_log_p = expected_shift - np.log(
+        np.sum(np.exp(expected_shift), axis=-1, keepdims=True)
+    )
+    actual_log_p = actual_shift - np.log(
+        np.sum(np.exp(actual_shift), axis=-1, keepdims=True)
+    )
+    expected_p = np.exp(expected_log_p)
+    kl_divergence = float(
+        np.max(np.sum(expected_p * (expected_log_p - actual_log_p), axis=-1))
+    )
     return {
-        "oracle": "CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a, bf16 output",
+        "oracle": "CPU Q8_0 dense q8_1+dp4a BF16 logits with KL/top-1 gate",
         "max_abs": float(np.max(diff)),
         "mean_abs": float(np.mean(diff)),
+        "kl_divergence": kl_divergence,
         "top1": top1,
-        "pass": bool(float(np.max(diff)) <= 1.0 and top1 == 1.0),
+        "pass": bool(kl_divergence <= 0.05 and top1 >= 0.90),
     }
 
 
 def _aggregate_correctness(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "oracle": "CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a, bf16 output",
+        "oracle": "CPU Q8_0 dense q8_1+dp4a BF16 logits with KL/top-1 gate",
         "outputs_checked": len(items),
         "max_abs": max((float(item["max_abs"]) for item in items), default=0.0),
         "mean_abs": max((float(item["mean_abs"]) for item in items), default=0.0),
+        "kl_divergence": max(
+            (float(item["kl_divergence"]) for item in items), default=0.0
+        ),
         "top1": min((float(item["top1"]) for item in items), default=1.0),
         "pass": bool(items) and all(bool(item["pass"]) for item in items),
     }
@@ -355,25 +373,37 @@ def _make_operation_row(
     barrier_count: int,
     shape_fields: dict[str, Any],
     gpu_timing_supported: bool = True,
+    submission_strategy: str | None = None,
+    gpu_clock_override: str | None = None,
+    synchronization_method: str | None = None,
+    execution_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     correctness_pass = bool(single_correctness["pass"] and burst_correctness["pass"])
     correctness = timing_contract.make_correctness(
         status="pass" if correctness_pass else "fail",
-        oracle="CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a, bf16 output",
+        oracle="CPU Q8_0 dense q8_1+dp4a BF16 logits with KL <= 0.05 and top-1 >= 90%",
         logical_iterations=repetitions,
         coverage=(
             "all_dispatches"
             if timing_mode == "independent_throughput"
             else "chained_final_state"
         ),
-        synchronization_method=(
+        synchronization_method=synchronization_method
+        or (
             "disjoint_xq_and_output_slices"
             if timing_mode == "independent_throughput"
             else ("hip_stream_order" if backend == "hip" else "vulkan_compute_barrier")
         ),
         barrier_count=barrier_count,
     )
-    gpu_clock = "hip_event" if backend == "hip" else "vulkan_timestamp"
+    gpu_clock = gpu_clock_override or (
+        "hip_event" if backend == "hip" else "vulkan_timestamp"
+    )
+    resolved_submission_strategy = submission_strategy or (
+        "multi_stream"
+        if backend == "hip" and timing_mode == "independent_throughput"
+        else ("direct" if backend == "hip" else "vulkan_command_buffer")
+    )
     contract = timing_contract.make_timed_row_contract(
         timing_mode=timing_mode,
         backend=backend,
@@ -381,12 +411,8 @@ def _make_operation_row(
         dispatches_per_iteration=dispatches_per_iteration,
         dependency_validation_status="pass" if correctness_pass else "fail",
         submission=timing_contract.make_submission(
-            strategy=(
-                "multi_stream"
-                if backend == "hip" and timing_mode == "independent_throughput"
-                else ("direct" if backend == "hip" else "vulkan_command_buffer")
-            ),
-            queue_or_stream_count=stream_count if backend == "hip" else 1,
+            strategy=resolved_submission_strategy,
+            queue_or_stream_count=stream_count,
             recording_in_timed_region=False,
         ),
         single_timing=timing_contract.make_timing_control(
@@ -422,6 +448,11 @@ def _make_operation_row(
             "burst_expected_repetitions": burst_correctness.get("expected_repetitions", []),
             "xq_partitioning": "disjoint" if timing_mode == "independent_throughput" else "shared",
             "output_partitioning": "disjoint" if timing_mode == "independent_throughput" else "shared",
+        },
+        "execution": {
+            "submission_strategy": resolved_submission_strategy,
+            "actual_parallel_lanes": stream_count,
+            **(execution_metadata or {}),
         },
         "correctness_pass": correctness_pass,
         "median_us": (
@@ -483,6 +514,11 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
     runtime = get_hip_runtime()
     q4_lib = build_gguf_q4_k_gemv(load=True)
     q8_lib = build_gguf_q8_0_dp4a_gemv(load=True)
+    effective_parallel_lanes = (
+        min(args.independent_streams, args.reps)
+        if args.timing_mode == "independent_throughput"
+        else 1
+    )
     rows_out: list[dict[str, Any]] = []
     commands: list[dict[str, Any]] = []
     retained_quantize: set[tuple[int, int, int]] = set()
@@ -634,7 +670,7 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                     with hip_timing.HipSequenceTimer(
                         runtime,
                         args.timing_mode,
-                        args.independent_streams,
+                        effective_parallel_lanes,
                     ) as timer:
                         operations = (
                             ("q8_1_quantize", quantize, 1),
@@ -695,6 +731,15 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                                     burst_correctness=burst_correctness,
                                     barrier_count=0,
                                     shape_fields=operation_shape_fields,
+                                    execution_metadata={
+                                        "requested_parallel_lanes": args.independent_streams,
+                                        "calibrated_timestamp_domain": False,
+                                        "lane_assignment": (
+                                            "round_robin_streams"
+                                            if args.timing_mode == "independent_throughput"
+                                            else "ordered_stream"
+                                        ),
+                                    },
                                 )
                             )
             finally:
@@ -720,12 +765,14 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                 "shapes": args.shapes,
                 "rows_list": args.rows_list,
                 "row_tiles": args.row_tiles,
+                "exact_local_size": 32,
                 "timing_mode": args.timing_mode,
                 "input_scale": args.input_scale,
                 "repetitions": args.reps,
                 "warmup_sequences": args.warmup,
                 "samples": args.samples,
                 "independent_streams": args.independent_streams,
+                "actual_parallel_lanes": effective_parallel_lanes,
             },
             "artifact_ref": str(args.out) if args.out else None,
             "wrapper": {
@@ -741,6 +788,7 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                 "samples": args.samples,
                 "timing_mode": args.timing_mode,
                 "independent_streams": args.independent_streams,
+                "actual_parallel_lanes": effective_parallel_lanes,
                 "method": "HIP events plus host wall for one-dispatch and exact repeated sequences",
             },
             "measurements": {"rows": rows_out},
@@ -766,9 +814,9 @@ def _compile_shader(shader: Path, spirv: Path, defines: list[str]) -> list[str]:
     glslc = shutil.which("glslc")
     glslang = shutil.which("glslangValidator")
     if glslc:
-        command = [glslc, "--target-env=vulkan1.1", "-O", *defines, str(shader), "-o", str(spirv)]
+        command = [glslc, "--target-env=vulkan1.2", "-O", *defines, str(shader), "-o", str(spirv)]
     elif glslang:
-        command = [glslang, "-V", "--target-env", "vulkan1.1", *defines, str(shader), "-o", str(spirv)]
+        command = [glslang, "-V", "--target-env", "vulkan1.2", *defines, str(shader), "-o", str(spirv)]
     else:
         raise RuntimeError("neither glslc nor glslangValidator is available")
     completed = _run_command(command, cwd=REPO_ROOT)
@@ -816,6 +864,8 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     commands.append({"kind": "compile_harness", "command": _compile_harness(exe)})
     rows_out: list[dict[str, Any]] = []
     retained_quantize: set[tuple[int, int, int]] = set()
+    actual_parallel_lanes: int | None = None
+    calibrated_timestamp_extension: str | None = None
 
     for local_size in _parse_csv_u32(args.local_sizes):
         for row_tile in _parse_csv_u32(args.row_tiles):
@@ -868,6 +918,8 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                         str(args.samples),
                         "--timing-mode",
                         args.timing_mode,
+                        "--independent-lanes",
+                        str(args.independent_streams),
                         "--device-index",
                         str(args.device_index),
                     ]
@@ -888,6 +940,25 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                     if completed.returncode != 0:
                         raise RuntimeError(f"Vulkan Q8_0 dense run failed: {' '.join(run_command)}")
                     raw = json.loads(raw_out.read_text(encoding="utf-8"))
+                    raw_hardware = raw.get("hardware", {})
+                    raw_actual_lanes = int(
+                        raw_hardware.get("actual_independent_lanes", 1)
+                    )
+                    if actual_parallel_lanes is None:
+                        actual_parallel_lanes = raw_actual_lanes
+                    elif actual_parallel_lanes != raw_actual_lanes:
+                        raise RuntimeError(
+                            "Vulkan Q8_0 dense actual lane count changed across rows"
+                        )
+                    raw_calibrated_extension = str(
+                        raw_hardware.get("calibrated_timestamp_extension", "")
+                    )
+                    if calibrated_timestamp_extension is None:
+                        calibrated_timestamp_extension = raw_calibrated_extension
+                    elif calibrated_timestamp_extension != raw_calibrated_extension:
+                        raise RuntimeError(
+                            "Vulkan Q8_0 dense calibrated timestamp extension changed"
+                        )
                     timing = raw.get("timing", {})
                     correctness = raw.get("correctness", {})
                     operations = (
@@ -932,6 +1003,20 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                             list(burst["gpu_samples_us"]),
                             list(burst["host_samples_us"]),
                         )
+                        submission_strategy = str(
+                            burst.get("submission_strategy", "vulkan_command_buffer")
+                        )
+                        operation_lanes = int(burst.get("actual_lanes", 1))
+                        if int(single.get("actual_lanes", operation_lanes)) != operation_lanes:
+                            raise RuntimeError(
+                                f"Vulkan Q8_0 dense {operation} single/burst lane counts differ"
+                            )
+                        calibrated_domain = bool(
+                            burst.get("calibrated_timestamp_domain", False)
+                        )
+                        operation_calibrated_extension = str(
+                            burst.get("calibrated_timestamp_extension", "")
+                        )
                         barrier_count = 0
                         if args.timing_mode == "serial_latency":
                             barrier_count = (
@@ -947,13 +1032,40 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                             operation=operation,
                             repetitions=args.reps,
                             dispatches_per_iteration=dispatches,
-                            stream_count=1,
+                            stream_count=operation_lanes,
                             single_samples=single_samples,
                             burst_samples=burst_samples,
                             single_correctness=single_correctness,
                             burst_correctness=burst_correctness,
                             barrier_count=barrier_count,
                             gpu_timing_supported=bool(raw.get("gpu_timestamps_supported")),
+                            submission_strategy=submission_strategy,
+                            gpu_clock_override=(
+                                "vulkan_calibrated_multi_queue_timestamp_span"
+                                if calibrated_domain
+                                else "vulkan_timestamp"
+                            ),
+                            synchronization_method=(
+                                "timeline_coordinated_multi_queue_disjoint_slices"
+                                if submission_strategy == "vulkan_multi_queue"
+                                else None
+                            ),
+                            execution_metadata={
+                                "requested_parallel_lanes": args.independent_streams,
+                                "calibrated_timestamp_domain": calibrated_domain,
+                                "calibrated_timestamp_extension": operation_calibrated_extension,
+                                "lane_assignment": (
+                                    "round_robin_multi_queue"
+                                    if submission_strategy == "vulkan_multi_queue"
+                                    else "single_command_buffer"
+                                ),
+                                "single_lane_gpu_samples_us": list(
+                                    single.get("lane_gpu_samples_us", [])
+                                ),
+                                "burst_lane_gpu_samples_us": list(
+                                    burst.get("lane_gpu_samples_us", [])
+                                ),
+                            },
                             shape_fields={
                                 "variant": operation_variant,
                                 "row_tile": operation_row_tile,
@@ -994,11 +1106,14 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                 "rows_list": args.rows_list,
                 "local_sizes": args.local_sizes,
                 "row_tiles": args.row_tiles,
+                "exact_local_size": 32,
                 "timing_mode": args.timing_mode,
                 "input_scale": args.input_scale,
                 "repetitions": args.reps,
                 "warmup_sequences": args.warmup,
                 "samples": args.samples,
+                "independent_streams": args.independent_streams,
+                "actual_parallel_lanes": actual_parallel_lanes or 1,
             },
             "artifact_ref": str(args.out) if args.out else None,
             "wrapper": {
@@ -1013,7 +1128,14 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                 "warmup": args.warmup,
                 "samples": args.samples,
                 "timing_mode": args.timing_mode,
-                "method": "Vulkan timestamps plus submit/fence host wall for one-dispatch and exact repeated command buffers",
+                "independent_streams": args.independent_streams,
+                "actual_parallel_lanes": actual_parallel_lanes or 1,
+                "calibrated_timestamp_extension": calibrated_timestamp_extension or "",
+                "method": (
+                    "Vulkan timestamps plus submit/fence host wall; exact repeated "
+                    "command buffers for serial and single-operation rows, calibrated "
+                    "timeline-coordinated multi-queue lanes for independent combined rows"
+                ),
             },
             "measurements": {"rows": rows_out},
             "correctness": {
@@ -1034,9 +1156,10 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     return _json_safe(result)
 
 
-def _row_key(row: dict[str, Any]) -> tuple[str, int, int, int, int, int]:
+def _row_key(row: dict[str, Any]) -> tuple[str, str, int, int, int, int, int]:
     return (
         str(row["operation"]),
+        str(row["variant"]),
         int(row["in_features"]),
         int(row["out_features"]),
         int(row["rows"]),
@@ -1052,25 +1175,39 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
-    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
-        raise ValueError("Q8 comparison requires v2 timing-contract results")
-    if hip_result.get("backend") != "hip" or vulkan_result.get("backend") != "vulkan":
-        raise ValueError("Q8 comparison inputs must be HIP then Vulkan")
+    for result, backend in ((hip_result, "hip"), (vulkan_result, "vulkan")):
+        if result.get("schema_version") != 2:
+            raise ValueError("Q8 comparison requires v2 timing-contract results")
+        if result.get("kind") != "hipengine_micro_result":
+            raise ValueError("Q8 comparison inputs must be micro results")
+        if result.get("bench") != BENCH_NAME or result.get("backend") != backend:
+            raise ValueError("Q8 comparison inputs must be matching HIP then Vulkan results")
+        if result.get("classification") != "real_slice_probe":
+            raise ValueError("Q8 comparison inputs must be real-slice probes")
+        correctness = result.get("correctness", {})
+        if correctness.get("status") != "pass" or not correctness.get("all_pass"):
+            raise ValueError(f"{backend} Q8 correctness gate did not pass")
     hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
     vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
     if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
         raise ValueError("HIP and Vulkan Q8 gfx architectures do not match")
+    for field in ("repo", "branch", "commit", "dirty"):
+        if hip_result.get("source", {}).get(field) != vulkan_result.get("source", {}).get(field):
+            raise ValueError(f"HIP and Vulkan Q8 source {field} values do not match")
     hip_parameters = hip_result.get("parameters", {})
     vulkan_parameters = vulkan_result.get("parameters", {})
     for field in (
         "shapes",
         "rows_list",
         "row_tiles",
+        "exact_local_size",
         "timing_mode",
         "input_scale",
         "repetitions",
         "warmup_sequences",
         "samples",
+        "independent_streams",
+        "actual_parallel_lanes",
     ):
         if hip_parameters.get(field) != vulkan_parameters.get(field):
             raise ValueError(f"HIP and Vulkan Q8 {field} values do not match")
@@ -1086,6 +1223,19 @@ def build_comparison(
     }
     if len(hip_modes) != 1 or hip_modes != vulkan_modes:
         raise ValueError("HIP and Vulkan Q8 results must use the same single timing mode")
+    shapes = _parse_shapes(str(hip_parameters["shapes"]))
+    row_counts = _parse_csv_u32(str(hip_parameters["rows_list"]))
+    row_tiles = [
+        value
+        for value in _parse_csv_u32(str(hip_parameters["row_tiles"]))
+        if value in (1, 4)
+    ]
+    if not row_tiles:
+        raise ValueError("Q8 comparison parameters contain no supported row tiles")
+    expected_rows = len(shapes) * len(row_counts) * (1 + 2 * len(row_tiles))
+    vulkan_local_sizes = _parse_csv_u32(str(vulkan_parameters.get("local_sizes", "")))
+    if int(hip_parameters["exact_local_size"]) not in vulkan_local_sizes:
+        raise ValueError("Vulkan Q8 local sizes omit the exact HIP wave32 control")
     hip_comparable = [
         row
         for row in hip_result.get("measurements", {}).get("rows", [])
@@ -1105,10 +1255,36 @@ def build_comparison(
         raise ValueError("Q8 comparison inputs contain duplicate comparable rows")
     if not hip_rows or set(hip_rows) != set(vulkan_rows):
         raise ValueError("HIP and Vulkan Q8 comparable row sets do not match")
+    if len(hip_rows) != expected_rows:
+        raise ValueError(
+            f"Q8 comparison row set is incomplete: expected {expected_rows}, got {len(hip_rows)}"
+        )
     matched = []
     for key in sorted(hip_rows):
         hip = hip_rows[key]
         row = vulkan_rows[key]
+        if not hip.get("correctness_pass") or not row.get("correctness_pass"):
+            raise ValueError("Q8 comparison rows must pass correctness")
+        if (
+            next(iter(hip_modes)) == "independent_throughput"
+            and key[0] == "q8_0_dense_dp4a_quantize_plus_dot"
+        ):
+            hip_lanes = int(hip.get("execution", {}).get("actual_parallel_lanes", 0))
+            vulkan_lanes = int(row.get("execution", {}).get("actual_parallel_lanes", 0))
+            if hip_lanes <= 0 or hip_lanes != vulkan_lanes:
+                raise ValueError(
+                    "HIP and Vulkan Q8 combined independent actual lane counts do not match"
+                )
+            if row.get("submission", {}).get("strategy") != "vulkan_multi_queue":
+                raise ValueError(
+                    "Vulkan Q8 combined independent rows require multi-queue submission"
+                )
+            if not bool(
+                row.get("execution", {}).get("calibrated_timestamp_domain")
+            ):
+                raise ValueError(
+                    "Vulkan Q8 combined independent rows require calibrated timestamps"
+                )
         timing_contract.dependency_signature(hip)
         timing_contract.dependency_signature(row)
         ratios: dict[str, Any] = {}
@@ -1149,13 +1325,15 @@ def build_comparison(
         matched.append(
             {
                 "operation": key[0],
-                "in_features": key[1],
-                "out_features": key[2],
-                "rows": key[3],
-                "row_tile": key[4],
-                "local_size": key[5],
+                "in_features": key[2],
+                "out_features": key[3],
+                "rows": key[4],
+                "row_tile": key[5],
+                "local_size": key[6],
                 "variant": hip.get("variant"),
                 "workgroup_match": row.get("workgroup_match"),
+                "hip_execution": hip.get("execution", {}),
+                "vulkan_execution": row.get("execution", {}),
                 "ratios": ratios,
                 "hip_correctness_pass": hip.get("correctness_pass"),
                 "vulkan_correctness_pass": row.get("correctness_pass"),
@@ -1189,6 +1367,10 @@ def build_comparison(
             "bench": BENCH_NAME,
             "classification": "real_slice_probe",
             "source": hip_result.get("source", {}),
+            "sources": {
+                "hip": hip_result.get("source", {}),
+                "vulkan": vulkan_result.get("source", {}),
+            },
             "command": command,
             "hardware": {
                 "hip": hip_result.get("hardware", {}),
@@ -1210,12 +1392,13 @@ def build_comparison(
                 "timing_mode": next(iter(hip_modes)) if hip_modes else None,
                 "burst_gpu_speedup_min": min(speedups) if speedups else None,
                 "burst_gpu_speedup_max": max(speedups) if speedups else None,
-                "host_wall_status": "not_comparable_direct_vs_command_buffer",
+                "host_wall_status": "not_comparable_submission_contract",
             },
             "interpretation": (
                 "Matched wave32/rowtile raw Q8_0 dense q8_1+dp4a probe. GPU timestamp "
-                "ratios compare equal dependency contracts. HIP direct/multi-stream host wall "
-                "is intentionally not compared with Vulkan pre-recorded command-buffer wall."
+                "ratios compare equal dependency contracts; combined independent rows also "
+                "require matched HIP stream and calibrated Vulkan queue-lane counts. HIP "
+                "direct/multi-stream host wall is intentionally not compared with Vulkan replay."
             ),
         }
     )
@@ -1255,6 +1438,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--reps and --samples must be positive; --warmup must be non-negative")
     if args.independent_streams <= 0:
         parser.error("--independent-streams must be positive")
+    if (
+        args.timing_mode == "independent_throughput"
+        and min(args.independent_streams, args.reps) < 2
+    ):
+        parser.error(
+            "independent throughput requires at least two streams/lanes and repetitions"
+        )
     return args
 
 
