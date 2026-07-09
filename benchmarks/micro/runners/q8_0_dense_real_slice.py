@@ -9,12 +9,13 @@ import importlib.util
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -25,7 +26,18 @@ VULKAN_HARNESS = MICRO_ROOT / "runners" / "vulkan_q8_0_dense.cpp"
 VULKAN_QUANT_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "q8_1_quantize.comp"
 VULKAN_DOT_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "q8_0_dense.comp"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
+TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
+HIP_TIMING = MICRO_ROOT / "hip_timing.py"
 HIP_Q8_SOURCE = REPO_ROOT / "hipengine" / "kernels" / "hip_gfx1100" / "quant" / "gguf_q8_0_dp4a_gemv.hip"
+HIP_Q8_QUANTIZE_SOURCE = (
+    REPO_ROOT / "hipengine" / "kernels" / "hip_gfx1100" / "quant" / "gguf_q4_k_gemv.hip"
+)
+HIP_Q8_WRAPPER = (
+    REPO_ROOT / "hipengine" / "kernels" / "hip_gfx1100" / "quant" / "gguf_q8_0_dp4a_gemv.py"
+)
+HIP_Q8_QUANTIZE_WRAPPER = (
+    REPO_ROOT / "hipengine" / "kernels" / "hip_gfx1100" / "quant" / "gguf_q4_k_gemv.py"
+)
 BENCH_NAME = "q8_0_dense_real_slice"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-q8-0-dense-real-slice")
 Q8_0_BLOCK = 32
@@ -34,6 +46,19 @@ Q8_1_BLOCK_BYTES = 36
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+
+def _load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+timing_contract = _load_module(TIMING_CONTRACT, "micro_q8_timing_contract")
+hip_timing = _load_module(HIP_TIMING, "micro_q8_hip_timing")
 
 
 def _load_collect_env_module():
@@ -52,6 +77,7 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
@@ -138,6 +164,44 @@ def _source_record(environment: dict[str, Any], source_hash: str) -> dict[str, A
     }
 
 
+def _infer_gpu_name(
+    environment: dict[str, Any],
+    override: str | None,
+    fallback: str | None = None,
+) -> str:
+    if override:
+        return override
+    if fallback:
+        return fallback
+    devices = environment.get("devices")
+    if isinstance(devices, dict):
+        for key in ("vulkan_summary_lines", "lspci_display_lines", "rocm_smi_lines"):
+            lines = devices.get(key)
+            if not isinstance(lines, list):
+                continue
+            for line in lines:
+                text = str(line)
+                if any(marker in text for marker in ("AMD", "ATI", "Radeon", "Instinct")):
+                    return text
+    return "unknown"
+
+
+def _infer_gfx_arch(environment: dict[str, Any], override: str | None) -> str:
+    if override:
+        return override
+    env_arch = os.environ.get("HIPENGINE_HIP_ARCH")
+    if env_arch:
+        return env_arch
+    devices = environment.get("devices")
+    if isinstance(devices, dict):
+        for value in devices.values():
+            text = "\n".join(str(item) for item in value) if isinstance(value, list) else str(value)
+            match = re.search(r"\bgfx[0-9a-fA-F]+\b", text)
+            if match:
+                return match.group(0)
+    return "unknown"
+
+
 def _parse_csv_u32(text: str) -> list[int]:
     values = [int(item) for item in text.split(",") if item]
     if not values or any(value <= 0 for value in values):
@@ -182,11 +246,22 @@ def _hash_u32(value: int) -> int:
     return value & 0xFFFFFFFF
 
 
-def _make_x_bf16(rows: int, in_features: int, input_scale: float) -> np.ndarray:
+def _make_x_bf16(
+    rows: int,
+    in_features: int,
+    input_scale: float,
+    *,
+    repetition: int = 0,
+) -> np.ndarray:
     x = np.empty((rows, in_features), dtype=np.float32)
     for row in range(rows):
         for k in range(in_features):
-            bits = _hash_u32(row * 1315423911 + k * 2654435761 + 0x9E3779B9)
+            bits = _hash_u32(
+                row * 1315423911
+                + k * 2654435761
+                + repetition * 2246822519
+                + 0x9E3779B9
+            )
             centered = (int(bits & 0xFFFF) - 32768) / 32768.0
             x[row, k] = centered * input_scale
     return _f32_to_bf16_bits(x)
@@ -254,54 +329,134 @@ def _compare_bf16_output(expected_f32: np.ndarray, actual_bits: np.ndarray) -> d
     }
 
 
-def _percentile(values: list[float], q: float) -> float:
-    if not values:
-        return 0.0
-    sorted_values = sorted(values)
-    pos = q * (len(sorted_values) - 1)
-    lo = math.floor(pos)
-    hi = math.ceil(pos)
-    if lo == hi:
-        return sorted_values[lo]
-    t = pos - lo
-    return sorted_values[lo] * (1.0 - t) + sorted_values[hi] * t
-
-
-def _stats(samples_us: list[float]) -> dict[str, Any]:
+def _aggregate_correctness(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "median_us": _percentile(samples_us, 0.5),
-        "median_ms": _percentile(samples_us, 0.5) / 1000.0,
-        "p05_us": _percentile(samples_us, 0.05),
-        "p95_us": _percentile(samples_us, 0.95),
-        "min_us": min(samples_us) if samples_us else 0.0,
-        "max_us": max(samples_us) if samples_us else 0.0,
-        "samples_us": samples_us,
+        "oracle": "CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a, bf16 output",
+        "outputs_checked": len(items),
+        "max_abs": max((float(item["max_abs"]) for item in items), default=0.0),
+        "mean_abs": max((float(item["mean_abs"]) for item in items), default=0.0),
+        "top1": min((float(item["top1"]) for item in items), default=1.0),
+        "pass": bool(items) and all(bool(item["pass"]) for item in items),
     }
 
 
-def _time_hip(runtime: Any, fn: Callable[[], None], *, reps: int, warmup: int, samples: int) -> dict[str, Any]:
-    for _ in range(warmup):
-        fn()
-    runtime.device_synchronize()
-    start = runtime.event_create()
-    stop = runtime.event_create()
-    samples_us: list[float] = []
-    try:
-        for _ in range(samples):
-            runtime.event_record(start)
-            for _ in range(reps):
-                fn()
-            runtime.event_record(stop)
-            runtime.event_synchronize(stop)
-            samples_us.append(runtime.event_elapsed_time_ms(start, stop) * 1000.0 / reps)
-    finally:
-        runtime.event_destroy(start)
-        runtime.event_destroy(stop)
-    return _stats(samples_us)
+def _make_operation_row(
+    *,
+    backend: str,
+    timing_mode: str,
+    operation: str,
+    repetitions: int,
+    dispatches_per_iteration: int,
+    stream_count: int,
+    single_samples: Any,
+    burst_samples: Any,
+    single_correctness: dict[str, Any],
+    burst_correctness: dict[str, Any],
+    barrier_count: int,
+    shape_fields: dict[str, Any],
+    gpu_timing_supported: bool = True,
+) -> dict[str, Any]:
+    correctness_pass = bool(single_correctness["pass"] and burst_correctness["pass"])
+    correctness = timing_contract.make_correctness(
+        status="pass" if correctness_pass else "fail",
+        oracle="CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a, bf16 output",
+        logical_iterations=repetitions,
+        coverage=(
+            "all_dispatches"
+            if timing_mode == "independent_throughput"
+            else "chained_final_state"
+        ),
+        synchronization_method=(
+            "disjoint_xq_and_output_slices"
+            if timing_mode == "independent_throughput"
+            else ("hip_stream_order" if backend == "hip" else "vulkan_compute_barrier")
+        ),
+        barrier_count=barrier_count,
+    )
+    gpu_clock = "hip_event" if backend == "hip" else "vulkan_timestamp"
+    contract = timing_contract.make_timed_row_contract(
+        timing_mode=timing_mode,
+        backend=backend,
+        repetitions=repetitions,
+        dispatches_per_iteration=dispatches_per_iteration,
+        dependency_validation_status="pass" if correctness_pass else "fail",
+        submission=timing_contract.make_submission(
+            strategy=(
+                "multi_stream"
+                if backend == "hip" and timing_mode == "independent_throughput"
+                else ("direct" if backend == "hip" else "vulkan_command_buffer")
+            ),
+            queue_or_stream_count=stream_count if backend == "hip" else 1,
+            recording_in_timed_region=False,
+        ),
+        single_timing=timing_contract.make_timing_control(
+            logical_iterations=1,
+            dispatches_per_iteration=dispatches_per_iteration,
+            gpu_samples_us=single_samples.gpu_sequence_us if gpu_timing_supported else None,
+            host_samples_us=single_samples.host_sequence_us,
+            gpu_clock=gpu_clock,
+            gpu_status="ok" if gpu_timing_supported else "unsupported",
+        ),
+        burst_timing=timing_contract.make_timing_control(
+            logical_iterations=repetitions,
+            dispatches_per_iteration=dispatches_per_iteration,
+            gpu_samples_us=burst_samples.gpu_sequence_us if gpu_timing_supported else None,
+            host_samples_us=burst_samples.host_sequence_us,
+            gpu_clock=gpu_clock,
+            gpu_status="ok" if gpu_timing_supported else "unsupported",
+        ),
+        correctness=correctness,
+    )
+    return {
+        "backend": backend,
+        "operation": operation,
+        **shape_fields,
+        **contract,
+        "numeric_correctness": {
+            "single": single_correctness,
+            "burst": burst_correctness,
+        },
+        "sequence_validation": {
+            "input_repetition_pattern": "distinct_deterministic_salt",
+            "single_expected_repetitions": single_correctness.get("expected_repetitions", [0]),
+            "burst_expected_repetitions": burst_correctness.get("expected_repetitions", []),
+            "xq_partitioning": "disjoint" if timing_mode == "independent_throughput" else "shared",
+            "output_partitioning": "disjoint" if timing_mode == "independent_throughput" else "shared",
+        },
+        "correctness_pass": correctness_pass,
+        "median_us": (
+            contract["timing"]["burst"]["gpu_elapsed"]["per_iteration_us"]["median"]
+            if gpu_timing_supported
+            else contract["timing"]["burst"]["host_wall"]["per_iteration_us"]["median"]
+        ),
+    }
+
+
+def _measure_hip_operation(
+    timer: Any,
+    launch: Any,
+    *,
+    repetitions: int,
+    warmup: int,
+    samples: int,
+) -> tuple[Any, Any]:
+    if warmup:
+        timer.run_and_wait(warmup, launch)
+    return (
+        timer.measure(1, samples, launch),
+        timer.measure(repetitions, samples, launch),
+    )
 
 
 def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
-    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
@@ -314,19 +469,50 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), HIP_Q8_SOURCE])
+    source_hash = _hash_files(
+        [
+            Path(__file__).resolve(),
+            HIP_Q8_SOURCE,
+            HIP_Q8_QUANTIZE_SOURCE,
+            HIP_Q8_WRAPPER,
+            HIP_Q8_QUANTIZE_WRAPPER,
+            TIMING_CONTRACT,
+            HIP_TIMING,
+        ]
+    )
     runtime = get_hip_runtime()
     q4_lib = build_gguf_q4_k_gemv(load=True)
     q8_lib = build_gguf_q8_0_dp4a_gemv(load=True)
     rows_out: list[dict[str, Any]] = []
     commands: list[dict[str, Any]] = []
+    retained_quantize: set[tuple[int, int, int]] = set()
 
     for in_features, out_features in _parse_shapes(args.shapes):
         for rows in _parse_csv_u32(args.rows_list):
-            x_bits = np.ascontiguousarray(_make_x_bf16(rows, in_features, args.input_scale))
+            work_repetitions = max(args.reps, args.warmup, 1)
+            x_slices = [
+                np.ascontiguousarray(
+                    _make_x_bf16(
+                        rows,
+                        in_features,
+                        args.input_scale,
+                        repetition=rep,
+                    )
+                )
+                for rep in range(work_repetitions)
+            ]
+            x_bits = np.ascontiguousarray(np.stack(x_slices))
             weight = np.ascontiguousarray(_make_q8_0_weight(out_features, in_features))
-            expected = _q8_0_q8_1_oracle(x_bits, weight)
+            expected = [_q8_0_q8_1_oracle(x_slice, weight) for x_slice in x_slices]
             blocks = in_features // Q8_0_BLOCK
+            x_slice_bytes = rows * in_features * 2
+            xq_slice_bytes = rows * blocks * Q8_1_BLOCK_BYTES
+            out_slice_bytes = rows * out_features * 2
+            work_slices = (
+                work_repetitions
+                if args.timing_mode == "independent_throughput"
+                else 1
+            )
             buffers = []
 
             def _dev(arr: np.ndarray):
@@ -338,22 +524,20 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
             try:
                 x_buf = _dev(x_bits)
                 weight_buf = _dev(weight)
-                xq_buf = malloc(rows * blocks * Q8_1_BLOCK_BYTES, runtime=runtime)
-                out_buf = malloc(rows * out_features * 2, runtime=runtime)
-                buffers.extend([xq_buf, out_buf])
+                xq_pre_buf = malloc(work_repetitions * xq_slice_bytes, runtime=runtime)
+                xq_work_buf = malloc(work_slices * xq_slice_bytes, runtime=runtime)
+                out_buf = malloc(work_slices * out_slice_bytes, runtime=runtime)
+                buffers.extend([xq_pre_buf, xq_work_buf, out_buf])
 
-                def quantize() -> None:
+                for rep in range(work_repetitions):
                     gguf_q4_k_quantize_bf16_q8_1(
-                        x_buf.ptr,
-                        xq_buf.ptr,
+                        x_buf.ptr + rep * x_slice_bytes,
+                        xq_pre_buf.ptr + rep * xq_slice_bytes,
                         rows,
                         in_features,
                         library=q4_lib,
                         runtime=runtime,
                     )
-
-                quant_stats = _time_hip(runtime, quantize, reps=args.reps, warmup=args.warmup, samples=args.samples)
-                quantize()
                 runtime.device_synchronize()
 
                 variants = [
@@ -364,78 +548,187 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                     if row_tile not in _parse_csv_u32(args.row_tiles):
                         continue
 
-                    def dot() -> None:
+                    def quantize(rep: int, stream: int) -> None:
+                        output_slice = rep if args.timing_mode == "independent_throughput" else 0
+                        gguf_q4_k_quantize_bf16_q8_1(
+                            x_buf.ptr + rep * x_slice_bytes,
+                            xq_work_buf.ptr + output_slice * xq_slice_bytes,
+                            rows,
+                            in_features,
+                            stream=stream,
+                            library=q4_lib,
+                            runtime=runtime,
+                        )
+
+                    def dot(rep: int, stream: int) -> None:
+                        output_slice = rep if args.timing_mode == "independent_throughput" else 0
                         dot_fn(
-                            xq_buf.ptr,
+                            xq_pre_buf.ptr + rep * xq_slice_bytes,
                             weight_buf.ptr,
-                            out_buf.ptr,
+                            out_buf.ptr + output_slice * out_slice_bytes,
                             rows,
                             in_features,
                             out_features,
+                            stream=stream,
                             library=q8_lib,
                             runtime=runtime,
                         )
 
-                    def combined() -> None:
-                        quantize()
-                        dot()
-
-                    dot()
-                    runtime.device_synchronize()
-                    out_bits = np.empty(rows * out_features, dtype=np.uint16)
-                    copy_device_to_host(host_array_ptr(out_bits), out_buf, out_bits.nbytes, runtime=runtime)
-                    correctness = _compare_bf16_output(expected, out_bits.reshape(rows, out_features))
-                    if not correctness["pass"]:
-                        raise RuntimeError(
-                            f"HIP Q8_0 dense correctness failed for {in_features}x{out_features} "
-                            f"rows={rows} variant={variant}: {correctness}"
+                    def combined(rep: int, stream: int) -> None:
+                        output_slice = rep if args.timing_mode == "independent_throughput" else 0
+                        quantize(rep, stream)
+                        dot_fn(
+                            xq_work_buf.ptr + output_slice * xq_slice_bytes,
+                            weight_buf.ptr,
+                            out_buf.ptr + output_slice * out_slice_bytes,
+                            rows,
+                            in_features,
+                            out_features,
+                            stream=stream,
+                            library=q8_lib,
+                            runtime=runtime,
                         )
-                    dot_stats = _time_hip(runtime, dot, reps=args.reps, warmup=args.warmup, samples=args.samples)
-                    combined_stats = _time_hip(runtime, combined, reps=args.reps, warmup=args.warmup, samples=args.samples)
-                    rows_out.append(
-                        {
-                            "backend": "hip",
-                            "variant": variant,
-                            "row_tile": row_tile,
-                            "rows": rows,
-                            "in_features": in_features,
-                            "out_features": out_features,
-                            "local_size": 32,
-                            "q8_blocks_per_row": blocks,
-                            "q8_0_weight_bytes": int(weight.nbytes),
-                            "q8_1_quantize_median_us": quant_stats["median_us"],
-                            "q8_0_dense_dp4a_dot_median_us": dot_stats["median_us"],
-                            "q8_0_dense_dp4a_quantize_plus_dot_median_us": combined_stats["median_us"],
-                            "timing": {
-                                "q8_1_quantize": quant_stats,
-                                "q8_0_dense_dp4a_dot_prequantized": dot_stats,
-                                "q8_0_dense_dp4a_quantize_plus_dot": combined_stats,
-                            },
-                            "correctness": correctness,
-                            "correctness_pass": correctness["pass"],
-                        }
-                    )
+
+                    def dot_work(rep: int, stream: int) -> None:
+                        output_slice = rep if args.timing_mode == "independent_throughput" else 0
+                        dot_fn(
+                            xq_work_buf.ptr + output_slice * xq_slice_bytes,
+                            weight_buf.ptr,
+                            out_buf.ptr + output_slice * out_slice_bytes,
+                            rows,
+                            in_features,
+                            out_features,
+                            stream=stream,
+                            library=q8_lib,
+                            runtime=runtime,
+                        )
+
+                    def validate_output(expected_indices: list[int]) -> dict[str, Any]:
+                        out_bits = np.empty(work_slices * rows * out_features, dtype=np.uint16)
+                        copy_device_to_host(
+                            host_array_ptr(out_bits),
+                            DeviceBuffer(out_buf.ptr, out_bits.nbytes),
+                            out_bits.nbytes,
+                            runtime=runtime,
+                        )
+                        shaped = out_bits.reshape(work_slices, rows, out_features)
+                        slices = expected_indices if args.timing_mode == "independent_throughput" else [0]
+                        return _aggregate_correctness(
+                            [
+                                _compare_bf16_output(expected[expected_idx], shaped[output_idx])
+                                for output_idx, expected_idx in zip(slices, expected_indices, strict=True)
+                            ]
+                        )
+
+                    shape_fields = {
+                        "variant": variant,
+                        "row_tile": row_tile,
+                        "rows": rows,
+                        "in_features": in_features,
+                        "out_features": out_features,
+                        "local_size": 32,
+                        "workgroup_match": "exact_hip_wave32",
+                        "q8_blocks_per_row": blocks,
+                        "q8_0_weight_bytes": int(weight.nbytes),
+                    }
+                    with hip_timing.HipSequenceTimer(
+                        runtime,
+                        args.timing_mode,
+                        args.independent_streams,
+                    ) as timer:
+                        operations = (
+                            ("q8_1_quantize", quantize, 1),
+                            ("q8_0_dense_dp4a_dot_prequantized", dot, 1),
+                            ("q8_0_dense_dp4a_quantize_plus_dot", combined, 2),
+                        )
+                        for operation, launch, dispatches in operations:
+                            operation_shape_fields = dict(shape_fields)
+                            if operation == "q8_1_quantize":
+                                quantize_key = (in_features, out_features, rows)
+                                if quantize_key in retained_quantize:
+                                    continue
+                                retained_quantize.add(quantize_key)
+                                operation_shape_fields.update(
+                                    {"variant": "quantize", "row_tile": 0}
+                                )
+                            single_samples, burst_samples = _measure_hip_operation(
+                                timer,
+                                launch,
+                                repetitions=args.reps,
+                                warmup=args.warmup,
+                                samples=args.samples,
+                            )
+                            timer.run_and_wait(1, launch)
+                            if operation == "q8_1_quantize":
+                                timer.run_and_wait(1, dot_work)
+                            single_correctness = validate_output([0])
+                            single_correctness["expected_repetitions"] = [0]
+                            timer.run_and_wait(args.reps, launch)
+                            expected_indices = (
+                                list(range(args.reps))
+                                if args.timing_mode == "independent_throughput"
+                                else [args.reps - 1]
+                            )
+                            if operation == "q8_1_quantize":
+                                timer.run_and_wait(
+                                    args.reps if args.timing_mode == "independent_throughput" else 1,
+                                    dot_work,
+                                )
+                            burst_correctness = validate_output(expected_indices)
+                            burst_correctness["expected_repetitions"] = expected_indices
+                            if not single_correctness["pass"] or not burst_correctness["pass"]:
+                                raise RuntimeError(
+                                    f"HIP Q8_0 dense {operation} correctness failed for "
+                                    f"{in_features}x{out_features} rows={rows} variant={variant}"
+                                )
+                            rows_out.append(
+                                _make_operation_row(
+                                    backend="hip",
+                                    timing_mode=args.timing_mode,
+                                    operation=operation,
+                                    repetitions=args.reps,
+                                    dispatches_per_iteration=dispatches,
+                                    stream_count=timer.stream_count,
+                                    single_samples=single_samples,
+                                    burst_samples=burst_samples,
+                                    single_correctness=single_correctness,
+                                    burst_correctness=burst_correctness,
+                                    barrier_count=0,
+                                    shape_fields=operation_shape_fields,
+                                )
+                            )
             finally:
                 for buffer in reversed(buffers):
                     free(buffer, runtime=runtime)
 
-    return _json_safe(
-        {
-            "schema_version": 1,
+    correctness_pass = bool(rows_out) and all(
+        bool(row.get("correctness_pass")) for row in rows_out
+    )
+    result = {
+            "schema_version": 2,
             "kind": "hipengine_micro_result",
             "bench": BENCH_NAME,
             "backend": "hip",
             "classification": "real_slice_probe",
             "source": _source_record(environment, source_hash),
             "hardware": {
-                "gpu": args.hardware_gpu,
-                "gfx_arch": args.gfx_arch or os.environ.get("HIPENGINE_HIP_ARCH"),
+                "gpu_name": _infer_gpu_name(environment, args.hardware_gpu),
+                "gfx_arch": _infer_gfx_arch(environment, args.gfx_arch),
             },
-            "environment": None if args.environment_ref else environment,
-            "environment_ref": str(args.environment_ref) if args.environment_ref else None,
+            "command": [Path(sys.executable).name, *sys.argv],
+            "parameters": {
+                "shapes": args.shapes,
+                "rows_list": args.rows_list,
+                "row_tiles": args.row_tiles,
+                "timing_mode": args.timing_mode,
+                "repetitions": args.reps,
+                "warmup_sequences": args.warmup,
+                "samples": args.samples,
+                "independent_streams": args.independent_streams,
+            },
             "artifact_ref": str(args.out) if args.out else None,
             "wrapper": {
-                "schema": "hipengine.micro.q8_0_dense_real_slice_runner.v1",
+                "schema": "hipengine.micro.q8_0_dense_real_slice_runner.v2",
                 "command": [Path(sys.executable).name, *sys.argv],
                 "cwd": str(REPO_ROOT),
                 "build_dir": str(args.build_dir),
@@ -445,11 +738,15 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                 "reps": args.reps,
                 "warmup": args.warmup,
                 "samples": args.samples,
-                "method": "HIP events around repeated launches; transfer and build excluded",
+                "timing_mode": args.timing_mode,
+                "independent_streams": args.independent_streams,
+                "method": "HIP events plus host wall for one-dispatch and exact repeated sequences",
             },
             "measurements": {"rows": rows_out},
             "correctness": {
-                "all_pass": all(bool(row.get("correctness_pass")) for row in rows_out),
+                "status": "pass" if correctness_pass else "fail",
+                "oracle": "CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a",
+                "all_pass": correctness_pass,
                 "rows": len(rows_out),
             },
             "notes": (
@@ -457,7 +754,11 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
                 "single-row and rowtile4 kernels."
             ),
         }
-    )
+    if args.environment_ref:
+        result["environment_ref"] = str(args.environment_ref)
+    else:
+        result["environment"] = environment
+    return _json_safe(result)
 
 
 def _compile_shader(shader: Path, spirv: Path, defines: list[str]) -> list[str]:
@@ -496,7 +797,16 @@ def _compile_harness(exe: Path) -> list[str]:
 
 def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_QUANT_SHADER, VULKAN_DOT_SHADER])
+    source_hash = _hash_files(
+        [
+            Path(__file__).resolve(),
+            VULKAN_HARNESS,
+            VULKAN_QUANT_SHADER,
+            VULKAN_DOT_SHADER,
+            TIMING_CONTRACT,
+            MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp",
+        ]
+    )
     args.build_dir.mkdir(parents=True, exist_ok=True)
     exe = args.build_dir / "vulkan_q8_0_dense"
     quant_spv = args.build_dir / "q8_1_quantize.spv"
@@ -504,6 +814,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     commands.append({"kind": "compile_shader", "command": _compile_shader(VULKAN_QUANT_SHADER, quant_spv, [])})
     commands.append({"kind": "compile_harness", "command": _compile_harness(exe)})
     rows_out: list[dict[str, Any]] = []
+    retained_quantize: set[tuple[int, int, int]] = set()
 
     for local_size in _parse_csv_u32(args.local_sizes):
         for row_tile in _parse_csv_u32(args.row_tiles):
@@ -554,6 +865,8 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                         str(args.warmup),
                         "--samples",
                         str(args.samples),
+                        "--timing-mode",
+                        args.timing_mode,
                         "--device-index",
                         str(args.device_index),
                     ]
@@ -575,47 +888,119 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                         raise RuntimeError(f"Vulkan Q8_0 dense run failed: {' '.join(run_command)}")
                     raw = json.loads(raw_out.read_text(encoding="utf-8"))
                     timing = raw.get("timing", {})
-                    correctness = raw.get("correctness_vs_cpu", {})
-                    row = {
-                        "backend": "vulkan",
-                        "variant": variant,
-                        "row_tile": row_tile,
-                        "rows": rows,
-                        "in_features": in_features,
-                        "out_features": out_features,
-                        "local_size": local_size,
-                        "q8_blocks_per_row": in_features // Q8_0_BLOCK,
-                        "q8_0_weight_bytes": out_features * (in_features // Q8_0_BLOCK) * Q8_0_BLOCK_BYTES,
-                        "q8_1_quantize_median_us": timing["q8_1_quantize"]["median_us"],
-                        "q8_0_dense_dp4a_dot_median_us": timing["q8_0_dense_dp4a_dot_prequantized"]["median_us"],
-                        "q8_0_dense_dp4a_quantize_plus_dot_median_us": timing[
-                            "q8_0_dense_dp4a_quantize_plus_dot"
-                        ]["median_us"],
-                        "timing": timing,
-                        "correctness": correctness,
-                        "correctness_pass": bool(correctness.get("pass")),
-                        "hardware": raw.get("hardware", {}),
-                    }
-                    rows_out.append(row)
+                    correctness = raw.get("correctness", {})
+                    operations = (
+                        ("q8_1_quantize", 1),
+                        ("q8_0_dense_dp4a_dot_prequantized", 1),
+                        ("q8_0_dense_dp4a_quantize_plus_dot", 2),
+                    )
+                    for operation, dispatches in operations:
+                        quantize_key = (in_features, out_features, rows)
+                        if operation == "q8_1_quantize":
+                            if quantize_key in retained_quantize:
+                                continue
+                            retained_quantize.add(quantize_key)
+                            operation_variant = "quantize"
+                            operation_row_tile = 0
+                            operation_local_size = 32
+                            workgroup_match = "exact_hip_wave32"
+                        else:
+                            operation_variant = variant
+                            operation_row_tile = row_tile
+                            operation_local_size = local_size
+                            workgroup_match = (
+                                "exact_hip_wave32" if local_size == 32 else "vulkan_diagnostic_unmatched"
+                            )
+                        operation_timing = timing[operation]
+                        operation_correctness = correctness[operation]
+                        single_correctness = dict(operation_correctness["single"])
+                        burst_correctness = dict(operation_correctness["burst"])
+                        single_correctness["expected_repetitions"] = [0]
+                        burst_correctness["expected_repetitions"] = (
+                            list(range(args.reps))
+                            if args.timing_mode == "independent_throughput"
+                            else [args.reps - 1]
+                        )
+                        single = operation_timing["single"]
+                        burst = operation_timing["burst"]
+                        single_samples = hip_timing.HipTimingSamples(
+                            list(single["gpu_samples_us"]),
+                            list(single["host_samples_us"]),
+                        )
+                        burst_samples = hip_timing.HipTimingSamples(
+                            list(burst["gpu_samples_us"]),
+                            list(burst["host_samples_us"]),
+                        )
+                        barrier_count = 0
+                        if args.timing_mode == "serial_latency":
+                            barrier_count = (
+                                args.reps - 1
+                                if dispatches == 1
+                                else 3 * args.reps - 2
+                            )
+                        elif dispatches == 2:
+                            barrier_count = 1
+                        row = _make_operation_row(
+                            backend="vulkan",
+                            timing_mode=args.timing_mode,
+                            operation=operation,
+                            repetitions=args.reps,
+                            dispatches_per_iteration=dispatches,
+                            stream_count=1,
+                            single_samples=single_samples,
+                            burst_samples=burst_samples,
+                            single_correctness=single_correctness,
+                            burst_correctness=burst_correctness,
+                            barrier_count=barrier_count,
+                            gpu_timing_supported=bool(raw.get("gpu_timestamps_supported")),
+                            shape_fields={
+                                "variant": operation_variant,
+                                "row_tile": operation_row_tile,
+                                "rows": rows,
+                                "in_features": in_features,
+                                "out_features": out_features,
+                                "local_size": operation_local_size,
+                                "workgroup_match": workgroup_match,
+                                "q8_blocks_per_row": in_features // Q8_0_BLOCK,
+                                "q8_0_weight_bytes": out_features
+                                * (in_features // Q8_0_BLOCK)
+                                * Q8_0_BLOCK_BYTES,
+                                "hardware": raw.get("hardware", {}),
+                            },
+                        )
+                        rows_out.append(row)
 
-    return _json_safe(
-        {
-            "schema_version": 1,
+    correctness_pass = bool(rows_out) and all(
+        bool(row.get("correctness_pass")) for row in rows_out
+    )
+    device = rows_out[0].get("hardware", {}) if rows_out else {}
+    device_name = device.get("device_name") if isinstance(device, dict) else None
+    result = {
+            "schema_version": 2,
             "kind": "hipengine_micro_result",
             "bench": BENCH_NAME,
             "backend": "vulkan",
             "classification": "real_slice_probe",
             "source": _source_record(environment, source_hash),
             "hardware": {
-                "gpu": args.hardware_gpu,
-                "gfx_arch": args.gfx_arch,
-                "device": rows_out[0].get("hardware", {}) if rows_out else {},
+                "gpu_name": _infer_gpu_name(environment, args.hardware_gpu, device_name),
+                "gfx_arch": _infer_gfx_arch(environment, args.gfx_arch),
+                "device": device,
             },
-            "environment": None if args.environment_ref else environment,
-            "environment_ref": str(args.environment_ref) if args.environment_ref else None,
+            "command": [Path(sys.executable).name, *sys.argv],
+            "parameters": {
+                "shapes": args.shapes,
+                "rows_list": args.rows_list,
+                "local_sizes": args.local_sizes,
+                "row_tiles": args.row_tiles,
+                "timing_mode": args.timing_mode,
+                "repetitions": args.reps,
+                "warmup_sequences": args.warmup,
+                "samples": args.samples,
+            },
             "artifact_ref": str(args.out) if args.out else None,
             "wrapper": {
-                "schema": "hipengine.micro.q8_0_dense_real_slice_runner.v1",
+                "schema": "hipengine.micro.q8_0_dense_real_slice_runner.v2",
                 "command": [Path(sys.executable).name, *sys.argv],
                 "cwd": str(REPO_ROOT),
                 "build_dir": str(args.build_dir),
@@ -625,11 +1010,14 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                 "reps": args.reps,
                 "warmup": args.warmup,
                 "samples": args.samples,
-                "method": "pre-recorded Vulkan command buffer, host wall divided by reps; transfer and pipeline creation excluded",
+                "timing_mode": args.timing_mode,
+                "method": "Vulkan timestamps plus submit/fence host wall for one-dispatch and exact repeated command buffers",
             },
             "measurements": {"rows": rows_out},
             "correctness": {
-                "all_pass": all(bool(row.get("correctness_pass")) for row in rows_out),
+                "status": "pass" if correctness_pass else "fail",
+                "oracle": "CPU q8_1 quantize plus raw GGUF Q8_0 dense dp4a",
+                "all_pass": correctness_pass,
                 "rows": len(rows_out),
             },
             "notes": (
@@ -637,15 +1025,21 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
                 "single-row and rowtile4 shader variants."
             ),
         }
-    )
+    if args.environment_ref:
+        result["environment_ref"] = str(args.environment_ref)
+    else:
+        result["environment"] = environment
+    return _json_safe(result)
 
 
-def _row_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
+def _row_key(row: dict[str, Any]) -> tuple[str, int, int, int, int, int]:
     return (
+        str(row["operation"]),
         int(row["in_features"]),
         int(row["out_features"]),
         int(row["rows"]),
         int(row["row_tile"]),
+        int(row["local_size"]),
     )
 
 
@@ -656,6 +1050,18 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
+    hip_modes = {
+        str(row.get("timing_mode"))
+        for row in hip_result.get("measurements", {}).get("rows", [])
+        if isinstance(row, dict)
+    }
+    vulkan_modes = {
+        str(row.get("timing_mode"))
+        for row in vulkan_result.get("measurements", {}).get("rows", [])
+        if isinstance(row, dict)
+    }
+    if len(hip_modes) != 1 or hip_modes != vulkan_modes:
+        raise ValueError("HIP and Vulkan Q8 results must use the same single timing mode")
     hip_rows = {
         _row_key(row): row
         for row in hip_result.get("measurements", {}).get("rows", [])
@@ -669,35 +1075,82 @@ def build_comparison(
         hip = hip_rows.get(key)
         if hip is None:
             continue
-        hip_dot = float(hip["q8_0_dense_dp4a_dot_median_us"])
-        vk_dot = float(row["q8_0_dense_dp4a_dot_median_us"])
-        hip_combined = float(hip["q8_0_dense_dp4a_quantize_plus_dot_median_us"])
-        vk_combined = float(row["q8_0_dense_dp4a_quantize_plus_dot_median_us"])
+        timing_contract.dependency_signature(hip)
+        timing_contract.dependency_signature(row)
+        ratios: dict[str, Any] = {}
+        for control in timing_contract.TIMING_CONTROLS:
+            try:
+                gpu_ratio: dict[str, Any] = {
+                    "status": "ok",
+                    **timing_contract.comparison_ratio(
+                        hip,
+                        row,
+                        control=control,
+                        domain="gpu_elapsed",
+                    ),
+                }
+            except ValueError as exc:
+                gpu_ratio = {"status": "not_comparable", "reason": str(exc)}
+            try:
+                host_ratio: dict[str, Any] = {
+                    "status": "ok",
+                    **timing_contract.comparison_ratio(
+                        hip,
+                        row,
+                        control=control,
+                        domain="host_wall",
+                    ),
+                }
+            except ValueError as exc:
+                host_ratio = {
+                    "status": "not_comparable_submission_contract",
+                    "reason": str(exc),
+                    "hip_submission": hip["submission"]["strategy"],
+                    "vulkan_submission": row["submission"]["strategy"],
+                }
+            ratios[control] = {
+                "gpu_elapsed": gpu_ratio,
+                "host_wall": host_ratio,
+            }
         matched.append(
             {
-                "in_features": key[0],
-                "out_features": key[1],
-                "rows": key[2],
-                "row_tile": key[3],
+                "operation": key[0],
+                "in_features": key[1],
+                "out_features": key[2],
+                "rows": key[3],
+                "row_tile": key[4],
+                "local_size": key[5],
                 "variant": hip.get("variant"),
-                "vulkan_local_size": row.get("local_size"),
-                "hip_dot_median_us": hip_dot,
-                "vulkan_dot_median_us": vk_dot,
-                "vulkan_vs_hip_dot_speedup": hip_dot / vk_dot if vk_dot > 0 else None,
-                "hip_quantize_plus_dot_median_us": hip_combined,
-                "vulkan_quantize_plus_dot_median_us": vk_combined,
-                "vulkan_vs_hip_quantize_plus_dot_speedup": hip_combined / vk_combined if vk_combined > 0 else None,
-                "hip_q8_1_quantize_median_us": hip.get("q8_1_quantize_median_us"),
-                "vulkan_q8_1_quantize_median_us": row.get("q8_1_quantize_median_us"),
+                "workgroup_match": row.get("workgroup_match"),
+                "ratios": ratios,
                 "hip_correctness_pass": hip.get("correctness_pass"),
                 "vulkan_correctness_pass": row.get("correctness_pass"),
             }
         )
-    speedups = [float(row["vulkan_vs_hip_quantize_plus_dot_speedup"]) for row in matched]
-    dot_speedups = [float(row["vulkan_vs_hip_dot_speedup"]) for row in matched]
+    speedups = [
+        float(row["ratios"]["burst"]["gpu_elapsed"]["vulkan_vs_hip_speedup"])
+        for row in matched
+        if row["ratios"]["burst"]["gpu_elapsed"]["status"] == "ok"
+    ]
+    comparisons = [
+        {
+            "operation": row["operation"],
+            "in_features": row["in_features"],
+            "out_features": row["out_features"],
+            "rows": row["rows"],
+            "row_tile": row["row_tile"],
+            "local_size": row["local_size"],
+            "timing_mode": next(iter(hip_modes)),
+            "control": control,
+            "gpu_elapsed": row["ratios"][control]["gpu_elapsed"],
+            "host_wall": row["ratios"][control]["host_wall"],
+        }
+        for row in matched
+        for control in timing_contract.TIMING_CONTROLS
+    ]
     return _json_safe(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "real_slice_probe",
@@ -717,17 +1170,18 @@ def build_comparison(
                 "vulkan": vulkan_result.get("correctness", {}),
             },
             "matched_rows": matched,
+            "comparisons": comparisons,
             "summary": {
                 "matched_rows": len(matched),
-                "combined_speedup_min": min(speedups) if speedups else None,
-                "combined_speedup_max": max(speedups) if speedups else None,
-                "dot_speedup_min": min(dot_speedups) if dot_speedups else None,
-                "dot_speedup_max": max(dot_speedups) if dot_speedups else None,
+                "timing_mode": next(iter(hip_modes)) if hip_modes else None,
+                "burst_gpu_speedup_min": min(speedups) if speedups else None,
+                "burst_gpu_speedup_max": max(speedups) if speedups else None,
+                "host_wall_status": "not_comparable_direct_vs_command_buffer",
             },
             "interpretation": (
-                "Matched raw Q8_0 dense q8_1+dp4a production-shaped probe. "
-                "This row covers the prior q8_0 dense GEMV / dense attention projection "
-                "matrix gap for the tested synthetic shapes; ISA extraction is a separate follow-up."
+                "Matched wave32/rowtile raw Q8_0 dense q8_1+dp4a probe. GPU timestamp "
+                "ratios compare equal dependency contracts. HIP direct/multi-stream host wall "
+                "is intentionally not compared with Vulkan pre-recorded command-buffer wall."
             ),
         }
     )
@@ -745,18 +1199,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
     parser.add_argument("--shapes", default="2048x2048,2048x6144,768x2048")
     parser.add_argument("--rows-list", default="1,4,8")
-    parser.add_argument("--local-sizes", default="64,128,256")
+    parser.add_argument("--local-sizes", default="32,64,128,256")
     parser.add_argument("--row-tiles", default="1,4")
     parser.add_argument("--input-scale", type=float, default=0.1)
     parser.add_argument("--reps", type=int, default=80)
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--samples", type=int, default=9)
+    parser.add_argument(
+        "--timing-mode",
+        choices=timing_contract.TIMING_MODES,
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--skip-device-probes", action="store_true")
     parser.add_argument("--env-timeout-s", type=float, default=10.0)
     parser.add_argument("--env-max-output-chars", type=int, default=20000)
     parser.add_argument("--pretty", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.reps <= 0 or args.samples <= 0 or args.warmup < 0:
+        parser.error("--reps and --samples must be positive; --warmup must be non-negative")
+    if args.independent_streams <= 0:
+        parser.error("--independent-streams must be positive")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -11,7 +11,9 @@ layout(push_constant) uniform PushConstants {
     uint q8_blocks_per_row;
     uint out_packed;
     uint blocks_per_row;
-    uint reserved;
+    uint rep;
+    uint xq_slice;
+    uint output_slice;
 } pc;
 
 layout(set = 0, binding = 0) readonly buffer XBuffer {
@@ -24,6 +26,11 @@ layout(set = 0, binding = 1) buffer XQBuffer {
 
 float bf16_to_f32(uint bits) {
     return uintBitsToFloat((bits & 0xffffu) << 16);
+}
+
+uint load_bf16(uint element_index) {
+    uint packed = x_bf16[element_index >> 1u];
+    return (packed >> ((element_index & 1u) * 16u)) & 0xffffu;
 }
 
 uint i8_to_byte(int value) {
@@ -39,14 +46,18 @@ void main() {
     }
 
     uint k = q8_block * 32u + lane;
-    float xv = k < pc.in_features ? bf16_to_f32(x_bf16[row * pc.in_features + k]) : 0.0;
+    uint x_slice_base = pc.rep * pc.rows * pc.in_features;
+    float xv = k < pc.in_features
+        ? bf16_to_f32(load_bf16(x_slice_base + row * pc.in_features + k))
+        : 0.0;
     float amax = subgroupMax(abs(xv));
     float sum = subgroupAdd(xv);
     float d = amax / 127.0;
     int q = amax == 0.0 ? 0 : int(round(xv / d));
     q = clamp(q, -128, 127);
 
-    uint block_word = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+    uint xq_slice_base = pc.xq_slice * pc.rows * pc.q8_blocks_per_row * 9u;
+    uint block_word = xq_slice_base + (row * pc.q8_blocks_per_row + q8_block) * 9u;
     if (lane < 9u) {
         xq_words[block_word + lane] = 0u;
     }

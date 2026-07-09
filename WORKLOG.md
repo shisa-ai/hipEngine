@@ -148562,3 +148562,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   all four runs; GPU ratios were emitted and direct-HIP versus command-buffer
   host walls were rejected. The tiny rows are diagnostic only under
   `/tmp/vopd-*-serial.json` and `/tmp/vopd-*-independent.json`.
+
+## 2026-07-10 - Dense Q8_0 real-slice timing contract v2
+
+- Converted the paired Q8_0 q8_1-quantize/dp4a real-slice probe to timing
+  contract v2. HIP uses an ordered stream or event-coordinated nonblocking
+  streams. Vulkan records serialized quantize/dot dependencies or independent
+  disjoint xq/output slices and reports timestamp plus submit/fence wall.
+- Corrected the Vulkan storage contract to match HIP: activations are packed
+  BF16 at two bytes per element, outputs are 16-bit BF16 storage, and the
+  harness explicitly requires/enables `storageBuffer16BitAccess`. The shared
+  q8_1 push ABI is now ten uints ending in `rep`, `xq_slice`, and
+  `output_slice`.
+- Normalized warmup to one sequence of exactly `warmup` logical operations;
+  independent inputs, q8_1 intermediates, and outputs cover
+  `max(reps, warmup)`. The quantize-only, prequantized-dot, and combined rows
+  each have one-dispatch and exact-burst CPU-oracle validation. Source hashes
+  cover production HIP kernels/wrappers plus shared timing code.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_q8_0_dense_real_slice.py tests/test_micro_timing_contract.py`
+  (`14 passed`); Python compile, Vulkan C++ syntax, q8_1 GLSL, and Q8_0
+  wg32/rowtile4 GLSL builds passed. gfx1151 wrapper smokes used 768x2048,
+  rows=4, rowtile4, reps=3, samples=2: serial warmup=2 and independent
+  warmup=4. HIP and Vulkan passed all three operations in both modes; every
+  GPU comparison was emitted and every direct/multi-stream HIP versus Vulkan
+  command-buffer host comparison was marked
+  `not_comparable_submission_contract`. Results under `/tmp/q8-v2-*.json`
+  are diagnostic smoke only, not retained performance claims.
