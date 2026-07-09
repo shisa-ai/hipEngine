@@ -10,7 +10,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "micro_timing_hip.hpp"
 
 #ifndef HIPENGINE_DOT_MODE
 #define HIPENGINE_DOT_MODE 0
@@ -24,9 +27,13 @@
 #define HIPENGINE_DOT_FIXED_BLOCK 0
 #endif
 
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
 namespace {
 
-constexpr uint32_t kBlockSize = 256;
+constexpr uint32_t kBlockSize = HIPENGINE_BLOCK_SIZE;
 constexpr uint32_t kModeQ8Signed = 0;
 constexpr uint32_t kModeQ4Unsigned = 1;
 constexpr uint32_t kModeQ6Zero = 2;
@@ -45,6 +52,8 @@ struct Args {
   uint32_t reps = 20;
   uint32_t warmup = 5;
   uint32_t samples = 7;
+  std::string timing_mode = "serial_latency";
+  uint32_t independent_streams = 4;
   int device_index = 0;
 };
 
@@ -67,6 +76,10 @@ struct Row {
   double max_abs;
   double max_rel;
   bool correctness_pass;
+  bool timed_sequence_correctness_pass;
+  uint32_t stream_count;
+  hipengine::micro::TimingSamples single_timing;
+  hipengine::micro::TimingSamples burst_timing;
 };
 
 [[noreturn]] void fail(const std::string& message) {
@@ -105,15 +118,22 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
+    } else if (flag == "--independent-streams") {
+      args.independent_streams =
+          static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--device-index") {
       args.device_index = std::stoi(require_value(i, argc, argv, flag));
     } else {
       fail("unknown argument: " + flag);
     }
   }
-  if (args.n == 0 || args.body_iters == 0 || args.reps == 0 || args.samples == 0) {
-    fail("--n, --body-iters, --reps, and --samples must be positive");
+  if (args.n == 0 || args.body_iters == 0 || args.reps == 0 || args.samples == 0 ||
+      args.independent_streams == 0) {
+    fail("--n, --body-iters, --reps, --samples, and --independent-streams must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   return args;
 }
 
@@ -300,7 +320,8 @@ __global__ void dot_path_kernel(
     int32_t* __restrict__ out,
     uint32_t n,
     uint32_t body_iters,
-    uint32_t data_mask) {
+    uint32_t data_mask,
+    uint32_t sequence_id) {
   uint32_t idx =
 #if HIPENGINE_DOT_FIXED_BLOCK
       blockIdx.x * kBlockSize + threadIdx.x;
@@ -310,7 +331,9 @@ __global__ void dot_path_kernel(
   if (idx >= n) {
     return;
   }
-  out[idx] = run_value(weights, activations, idx, n, body_iters, data_mask);
+  out[idx] =
+      run_value(weights, activations, idx, n, body_iters, data_mask) +
+      static_cast<int32_t>(sequence_id);
 }
 
 double percentile(std::vector<double> values, double q) {
@@ -332,7 +355,12 @@ Row run_config(const Args& args) {
   std::vector<uint32_t> weights;
   std::vector<uint32_t> activations;
   fill_inputs(weights, activations, args.n, args.body_iters);
-  std::vector<int32_t> actual(args.n, 0);
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const uint32_t output_slots =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+          ? std::max(args.reps, args.warmup)
+          : 1u;
+  std::vector<int32_t> actual(static_cast<size_t>(args.n) * output_slots, 0);
   uint32_t data_mask = static_cast<uint32_t>(weights.size() - 1);
 
   uint32_t* d_weights = nullptr;
@@ -349,54 +377,75 @@ Row run_config(const Args& args) {
   check(hipMemcpy(d_activations, activations.data(), activations_bytes, hipMemcpyHostToDevice),
         "hipMemcpy activations");
   check(hipMemset(d_out, 0, out_bytes), "hipMemset out");
+  check(hipDeviceSynchronize(), "initial output sync");
 
   dim3 block(kBlockSize);
   dim3 grid((args.n + kBlockSize - 1) / kBlockSize);
-  dot_path_kernel<<<grid, block>>>(d_weights, d_activations, d_out, args.n, args.body_iters, data_mask);
-  check(hipGetLastError(), "correctness launch");
-  check(hipDeviceSynchronize(), "correctness sync");
-  check(hipMemcpy(actual.data(), d_out, out_bytes, hipMemcpyDeviceToHost), "copy out");
+  hipengine::micro::HipSequenceTimer timer(timing_mode, args.independent_streams);
+  auto launch = [&](uint32_t rep, hipStream_t stream) {
+    const uint32_t slot =
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput ? rep : 0u;
+    dot_path_kernel<<<grid, block, 0, stream>>>(
+        d_weights,
+        d_activations,
+        d_out + static_cast<size_t>(slot) * args.n,
+        args.n,
+        args.body_iters,
+        data_mask,
+        rep);
+  };
 
+  timer.run_and_wait(1, launch);
+  check(hipMemcpy(actual.data(), d_out, sizeof(int32_t) * args.n, hipMemcpyDeviceToHost),
+        "copy single out");
   double max_abs = 0.0;
   double max_rel = 0.0;
-  uint32_t checked = std::min<uint32_t>(args.n, 64);
-  for (uint32_t i = 0; i < checked; ++i) {
-    int expected = run_value(weights.data(), activations.data(), i, args.n, args.body_iters, data_mask);
-    double diff = std::abs(static_cast<double>(actual[i] - expected));
-    max_abs = std::max(max_abs, diff);
-    max_rel = std::max(max_rel, diff / std::max(1.0, std::abs(static_cast<double>(expected))));
-  }
-  bool pass = max_abs == 0.0;
-
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    dot_path_kernel<<<grid, block>>>(d_weights, d_activations, d_out, args.n, args.body_iters, data_mask);
-  }
-  check(hipDeviceSynchronize(), "warmup sync");
-
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  check(hipEventCreate(&start), "hipEventCreate start");
-  check(hipEventCreate(&stop), "hipEventCreate stop");
-  std::vector<double> samples;
-  samples.reserve(args.samples);
-  for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    check(hipEventRecord(start, 0), "hipEventRecord start");
-    for (uint32_t rep = 0; rep < args.reps; ++rep) {
-      dot_path_kernel<<<grid, block>>>(d_weights, d_activations, d_out, args.n, args.body_iters, data_mask);
+  const uint32_t checked = std::min<uint32_t>(args.n, 64);
+  auto check_slot = [&](uint32_t slot, uint32_t sequence_id) {
+    for (uint32_t i = 0; i < checked; ++i) {
+      int expected =
+          run_value(weights.data(), activations.data(), i, args.n, args.body_iters, data_mask) +
+          static_cast<int32_t>(sequence_id);
+      const int32_t observed = actual[static_cast<size_t>(slot) * args.n + i];
+      double diff = std::abs(static_cast<double>(observed - expected));
+      max_abs = std::max(max_abs, diff);
+      max_rel =
+          std::max(max_rel, diff / std::max(1.0, std::abs(static_cast<double>(expected))));
     }
-    check(hipEventRecord(stop, 0), "hipEventRecord stop");
-    check(hipEventSynchronize(stop), "hipEventSynchronize stop");
-    float elapsed_ms = 0.0f;
-    check(hipEventElapsedTime(&elapsed_ms, start, stop), "hipEventElapsedTime");
-    samples.push_back(static_cast<double>(elapsed_ms) * 1000.0 / args.reps);
-  }
+  };
+  check_slot(0, 0);
+  const bool single_pass = max_abs == 0.0;
 
-  check(hipEventDestroy(start), "hipEventDestroy start");
-  check(hipEventDestroy(stop), "hipEventDestroy stop");
+  if (args.warmup > 0) {
+    timer.run_and_wait(args.warmup, launch);
+  }
+  hipengine::micro::TimingSamples single_timing = timer.measure(1, args.samples, launch);
+  hipengine::micro::TimingSamples burst_timing =
+      timer.measure(args.reps, args.samples, launch);
+
+  check(hipMemset(d_out, 0, out_bytes), "hipMemset exact burst out");
+  check(hipDeviceSynchronize(), "exact burst memset sync");
+  timer.run_and_wait(args.reps, launch);
+  check(hipMemcpy(actual.data(), d_out, out_bytes, hipMemcpyDeviceToHost),
+        "copy exact burst out");
+  if (timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+    for (uint32_t slot = 0; slot < args.reps; ++slot) {
+      check_slot(slot, slot);
+    }
+  } else {
+    check_slot(0, args.reps - 1);
+  }
+  const bool burst_pass = max_abs == 0.0;
+
   check(hipFree(d_weights), "hipFree weights");
   check(hipFree(d_activations), "hipFree activations");
   check(hipFree(d_out), "hipFree out");
 
+  std::vector<double> samples;
+  samples.reserve(burst_timing.gpu_sequence_us.size());
+  for (double sample : burst_timing.gpu_sequence_us) {
+    samples.push_back(sample / args.reps);
+  }
   double median_us = percentile(samples, 0.5);
   double bytes = bytes_per_dispatch(args.n, args.body_iters);
   double ops = ops_per_dispatch(args.n, args.body_iters);
@@ -418,7 +467,11 @@ Row run_config(const Args& args) {
       ops / median_us / 1000.0,
       max_abs,
       max_rel,
-      pass,
+      single_pass && burst_pass,
+      burst_pass,
+      timer.stream_count(),
+      std::move(single_timing),
+      std::move(burst_timing),
   };
 }
 
@@ -447,6 +500,34 @@ std::string json_escape(const std::string& text) {
     }
   }
   return out.str();
+}
+
+void write_samples(std::ostream& out, const std::vector<double>& samples) {
+  out << "[";
+  for (size_t i = 0; i < samples.size(); ++i) {
+    if (i != 0) {
+      out << ", ";
+    }
+    out << samples[i];
+  }
+  out << "]";
+}
+
+void write_timing_raw(
+    std::ostream& out,
+    const char* name,
+    uint32_t logical_iterations,
+    const hipengine::micro::TimingSamples& timing,
+    bool trailing_comma) {
+  out << "      \"" << name << "\": {\n";
+  out << "        \"logical_iterations\": " << logical_iterations << ",\n";
+  out << "        \"dispatches_per_iteration\": 1,\n";
+  out << "        \"gpu_samples_us\": ";
+  write_samples(out, timing.gpu_sequence_us);
+  out << ",\n";
+  out << "        \"host_samples_us\": ";
+  write_samples(out, timing.host_sequence_us);
+  out << "\n      }" << (trailing_comma ? "," : "") << "\n";
 }
 
 void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
@@ -479,6 +560,8 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "    \"fixed_block_indexing\": "
        << (HIPENGINE_DOT_FIXED_BLOCK ? "true" : "false") << ",\n";
   *out << "    \"data_elems\": " << row.data_elems << ",\n";
+  *out << "    \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  *out << "    \"independent_streams\": " << args.independent_streams << ",\n";
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
@@ -501,6 +584,18 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "      \"max_us\": " << row.max_us << ",\n";
   *out << "      \"bandwidth_gbps\": " << row.bandwidth_gbps << ",\n";
   *out << "      \"gops\": " << row.gops << ",\n";
+  *out << "      \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  *out << "      \"queue_or_stream_count\": " << row.stream_count << ",\n";
+  *out << "      \"gpu_timestamps_supported\": true,\n";
+  *out << "      \"timed_sequence_correctness_pass\": "
+       << (row.timed_sequence_correctness_pass ? "true" : "false") << ",\n";
+  *out << "      \"synchronization_pass\": "
+       << (row.timed_sequence_correctness_pass ? "true" : "false") << ",\n";
+  *out << "      \"barrier_count\": 0,\n";
+  *out << "      \"timing_raw\": {\n";
+  write_timing_raw(*out, "single", 1, row.single_timing, true);
+  write_timing_raw(*out, "burst", args.reps, row.burst_timing, false);
+  *out << "      },\n";
   *out << "      \"max_abs\": " << row.max_abs << ",\n";
   *out << "      \"max_rel\": " << row.max_rel << ",\n";
   *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
