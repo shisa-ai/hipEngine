@@ -4,22 +4,7 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform PushConstants {
     uint n;
-    uint salt0;
-    uint salt1;
-    uint salt2;
-    uint salt3;
-    uint salt4;
-    uint salt5;
-    uint salt6;
-    uint salt7;
-    uint salt8;
-    uint salt9;
-    uint salt10;
-    uint salt11;
-    uint salt12;
-    uint salt13;
-    uint salt14;
-    uint salt15;
+    uint output_base;
 } pc;
 
 layout(set = 0, binding = 0) buffer OutputBuffer {
@@ -32,9 +17,6 @@ void main() {
         return;
     }
 
-    uint bits = pc.salt0 ^ pc.salt1 ^ pc.salt2 ^ pc.salt3
-        ^ pc.salt4 ^ pc.salt5 ^ pc.salt6 ^ pc.salt7
-        ^ pc.salt8 ^ pc.salt9 ^ pc.salt10 ^ pc.salt11
-        ^ pc.salt12 ^ pc.salt13 ^ pc.salt14 ^ pc.salt15;
-    out_values[idx] = 1.0 + float(bits & 1u);
+    uint output_index = pc.output_base + idx;
+    out_values[output_index] = out_values[output_index] + 1.0;
 }

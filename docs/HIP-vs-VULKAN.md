@@ -88,7 +88,7 @@ Last updated: 2026-07-10.
 
 | Family | `serial_latency` | `independent_throughput` | Current status |
 | --- | --- | --- | --- |
-| Dispatch/grid floor | Pending v2 rerun | Pending v2 rerun | Narrow matched dispatch only; HIP wide argument-marshalling remains HIP-only. |
+| Dispatch/grid floor | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | HIP graph/Vulkan command-buffer host wall is matched only in serial mode; independent host wall remains unpaired. |
 | Geometry | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Fixed HIP workgroups match Vulkan specialization; gfx1151 correctness smoke passed both modes. |
 | Reduction | Pending v2 repair/rerun | Pending v2 repair/rerun | Static ISA evidence remains valid. |
 | Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; gfx1151 correctness smoke passed both modes. |
