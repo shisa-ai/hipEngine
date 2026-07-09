@@ -497,6 +497,8 @@ def _base_result(
         "kind": "hipengine_micro_result",
         "bench": BENCH_NAME,
         "backend": backend,
+        "measurement_scope": "isa_only",
+        "performance_claim": False,
         "hardware": {
             "gpu_name": _infer_gpu_name(environment, hardware_gpu),
             "gfx_arch": _infer_gfx_arch(environment, gfx_arch),
@@ -796,6 +798,8 @@ def build_comparison(
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "diagnostic_unclassified",
+            "measurement_scope": "isa_only",
+            "performance_claim": False,
             "source": hip_result.get("source", {}),
             "command": command,
             "hardware": {

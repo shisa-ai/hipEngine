@@ -195,6 +195,8 @@ def test_build_isa_comparison_matches_workgroups() -> None:
 
     assert comparison["kind"] == "hipengine_micro_comparison"
     assert comparison["classification"] == "diagnostic_unclassified"
+    assert comparison["measurement_scope"] == "isa_only"
+    assert comparison["performance_claim"] is False
     assert len(comparison["matched_rows"]) == 1
     row = comparison["matched_rows"][0]
     assert row["workgroup_size"] == 64
