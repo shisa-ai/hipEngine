@@ -69,7 +69,10 @@ unsupported or below-resolution GPU clock is recorded as such, never as zero.
 
 Comparators key on workload shape, timing mode, dependency signature, and
 control. They emit GPU and host ratios separately and reject v1, missing, or
-mismatched contracts. Static ISA extractors declare
+mismatched contracts. A host-wall ratio additionally requires a matched
+submission class: HIP graph replay can compare with Vulkan command-buffer
+replay, while an eager HIP launch loop cannot. Unmatched host walls remain
+visible as backend-specific measurements without a ratio. Static ISA extractors declare
 `measurement_scope=isa_only` and cannot emit a timing claim.
 
 The executable contract is in:

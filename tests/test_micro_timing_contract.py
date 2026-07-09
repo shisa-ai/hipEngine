@@ -22,7 +22,14 @@ def _load_contract_module():
     return module
 
 
-def _timed_row(module, *, backend: str, timing_mode: str, repetitions: int = 8):
+def _timed_row(
+    module,
+    *,
+    backend: str,
+    timing_mode: str,
+    repetitions: int = 8,
+    strategy: str | None = None,
+):
     single = module.make_timing_control(
         logical_iterations=1,
         dispatches_per_iteration=1,
@@ -44,7 +51,8 @@ def _timed_row(module, *, backend: str, timing_mode: str, repetitions: int = 8):
         dispatches_per_iteration=1,
         dependency_validation_status="pass",
         submission=module.make_submission(
-            strategy="multi_stream" if timing_mode == "independent_throughput" else "direct",
+            strategy=strategy
+            or ("multi_stream" if timing_mode == "independent_throughput" else "direct"),
             queue_or_stream_count=4 if timing_mode == "independent_throughput" else 1,
             recording_in_timed_region=False,
         ),
@@ -99,8 +107,18 @@ def test_independent_mode_requires_validation_of_every_output() -> None:
 
 def test_comparison_emits_separate_gpu_and_host_ratios() -> None:
     module = _load_contract_module()
-    hip = _timed_row(module, backend="hip", timing_mode="serial_latency")
-    vulkan = _timed_row(module, backend="vulkan", timing_mode="serial_latency")
+    hip = _timed_row(
+        module,
+        backend="hip",
+        timing_mode="serial_latency",
+        strategy="hip_graph",
+    )
+    vulkan = _timed_row(
+        module,
+        backend="vulkan",
+        timing_mode="serial_latency",
+        strategy="vulkan_command_buffer",
+    )
     vulkan["timing"]["burst"]["gpu_elapsed"]["per_iteration_us"]["median"] = 7.0
     vulkan["timing"]["burst"]["host_wall"]["per_iteration_us"]["median"] = 8.0
 
@@ -109,6 +127,27 @@ def test_comparison_emits_separate_gpu_and_host_ratios() -> None:
 
     assert gpu["vulkan_vs_hip_speedup"] == 1.5
     assert host["vulkan_vs_hip_speedup"] == 12.5 / 8.0
+
+
+def test_host_wall_comparison_rejects_enqueue_vs_command_buffer() -> None:
+    module = _load_contract_module()
+    hip = _timed_row(
+        module,
+        backend="hip",
+        timing_mode="serial_latency",
+        strategy="direct",
+    )
+    vulkan = _timed_row(
+        module,
+        backend="vulkan",
+        timing_mode="serial_latency",
+        strategy="vulkan_command_buffer",
+    )
+
+    gpu = module.comparison_ratio(hip, vulkan, control="burst", domain="gpu_elapsed")
+    assert gpu["vulkan_vs_hip_speedup"] == 1.0
+    with pytest.raises(ValueError, match="host-wall submission contracts"):
+        module.comparison_ratio(hip, vulkan, control="burst", domain="host_wall")
 
 
 def test_comparison_rejects_cross_mode_rows() -> None:

@@ -12,6 +12,8 @@ TIMING_MODES = ("serial_latency", "independent_throughput")
 TIMING_CONTROLS = ("single", "burst")
 TIMING_DOMAINS = ("gpu_elapsed", "host_wall")
 METRIC_STATUSES = ("ok", "unsupported", "below_resolution", "not_run")
+_PRE_RECORDED_STRATEGIES = {"hip_graph", "vulkan_command_buffer"}
+_HOST_ENQUEUED_STRATEGIES = {"direct", "multi_stream"}
 
 
 def parse_timing_mode(value: str) -> str:
@@ -306,6 +308,24 @@ def dependency_signature(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def submission_class(row: dict[str, Any]) -> tuple[Any, ...]:
+    validate_timed_row(row)
+    submission = row["submission"]
+    strategy = submission["strategy"]
+    if strategy in _PRE_RECORDED_STRATEGIES:
+        strategy_class = "pre_recorded_replay"
+    elif strategy in _HOST_ENQUEUED_STRATEGIES:
+        strategy_class = "host_enqueued"
+    else:
+        strategy_class = strategy
+    return (
+        strategy_class,
+        submission["recording_in_timed_region"],
+        submission["submit_in_host_wall"],
+        submission["completion_in_host_wall"],
+    )
+
+
 def comparison_ratio(
     hip_row: dict[str, Any],
     vulkan_row: dict[str, Any],
@@ -317,6 +337,8 @@ def comparison_ratio(
         raise ValueError("invalid timing control or domain")
     if dependency_signature(hip_row) != dependency_signature(vulkan_row):
         raise ValueError("HIP and Vulkan dependency contracts are not comparable")
+    if domain == "host_wall" and submission_class(hip_row) != submission_class(vulkan_row):
+        raise ValueError("HIP and Vulkan host-wall submission contracts are not comparable")
     hip_control = hip_row["timing"][control]
     vk_control = vulkan_row["timing"][control]
     for field in ("logical_iterations", "dispatches_per_iteration"):
