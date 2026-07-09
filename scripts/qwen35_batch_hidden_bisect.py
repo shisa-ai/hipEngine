@@ -1937,6 +1937,7 @@ def _run_batch_hidden(
     require_cached_build: bool,
     trace_decode_start: int = 0,
     trace_decode_end: int | None = None,
+    collect_full_context_oracle: bool = True,
 ) -> HiddenRun:
     rows = len(prompts)
     with Qwen35ParoResidentSession(
@@ -2013,15 +2014,18 @@ def _run_batch_hidden(
                     getattr(session, "_decode_full_attention_trace", None)
                 )
                 decode_full_attention_by_step.append(decode_full_attention_layers)
-                decode_full_context_oracles_by_step.append(
-                    _decode_full_context_oracles_from_trace(
-                        session,
-                        decode_full_attention_layers,
-                        rows=rows,
-                        positions=positions,
-                        slots=tuple(range(rows)),
+                if collect_full_context_oracle:
+                    decode_full_context_oracles_by_step.append(
+                        _decode_full_context_oracles_from_trace(
+                            session,
+                            decode_full_attention_layers,
+                            rows=rows,
+                            positions=positions,
+                            slots=tuple(range(rows)),
+                        )
                     )
-                )
+                else:
+                    decode_full_context_oracles_by_step.append({})
                 decode_full_kv_samples_by_step.append(
                     _copy_decode_full_kv_samples(
                         session,
@@ -2077,6 +2081,7 @@ def _run_c1_hidden(
     trace_decode_start: int = 0,
     trace_decode_end: int | None = None,
     c1_decode_path: str = "serial",
+    collect_full_context_oracle: bool = True,
 ) -> HiddenRun:
     if c1_decode_path not in {"serial", "native_batch"}:
         raise ValueError("c1_decode_path must be serial or native_batch")
@@ -2190,16 +2195,17 @@ def _run_c1_hidden(
                         decode_full_attention_rows_by_step[step],
                         decode_full_attention_layers,
                     )
-                    _merge_decode_full_context_oracle_rows(
-                        decode_full_context_oracle_rows_by_step[step],
-                        _decode_full_context_oracles_from_trace(
-                            session,
-                            decode_full_attention_layers,
-                            rows=1,
-                            positions=(position,),
-                            slots=(0,),
-                        ),
-                    )
+                    if collect_full_context_oracle:
+                        _merge_decode_full_context_oracle_rows(
+                            decode_full_context_oracle_rows_by_step[step],
+                            _decode_full_context_oracles_from_trace(
+                                session,
+                                decode_full_attention_layers,
+                                rows=1,
+                                positions=(position,),
+                                slots=(0,),
+                            ),
+                        )
                     _merge_decode_full_kv_sample_rows(
                         decode_full_kv_sample_rows_by_step[step],
                         _copy_decode_full_kv_samples(session, rows=1, positions=(position,), slots=(0,)),
@@ -5374,9 +5380,10 @@ def _summarize_layer_limit(
     state_focus_atol: float | None = None,
     layer_types: Sequence[str] | None = None,
     focus_hidden_flat_indices: Sequence[int] = (),
+    summarize_linear_states: bool = True,
 ) -> dict[str, Any]:
     prefill = _prefill_summary(batch, c1, atol=atol, focus_hidden_flat_indices=focus_hidden_flat_indices)
-    prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol)
+    prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol) if summarize_linear_states else None
     prefill_linear_inputs = _prefill_linear_input_summary(
         batch,
         c1,
@@ -5409,7 +5416,11 @@ def _summarize_layer_limit(
     )
     decode_full_context_oracle = _decode_full_context_oracle_summary(batch, c1)
     decode_full_kv_samples = _decode_full_kv_sample_summary(batch, c1, atol=0.0)
-    decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol, focus_atol=state_focus_atol)
+    decode_linear_states = (
+        _decode_linear_state_summary(batch, c1, atol=state_atol, focus_atol=state_focus_atol)
+        if summarize_linear_states
+        else None
+    )
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -5688,6 +5699,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Last decode step (exclusive) for expensive per-layer traces; defaults to --decode-tokens.",
     )
     parser.add_argument(
+        "--skip-full-context-oracle",
+        action="store_true",
+        help="Skip the expensive NumPy full-attention context oracle while keeping traced stages, KV samples, hidden comparisons, and token checks.",
+    )
+    parser.add_argument(
+        "--skip-linear-state-summary",
+        action="store_true",
+        help="Skip expensive prefill/decode linear-state diff summaries while keeping hidden, token, stage, and KV checks.",
+    )
+    parser.add_argument(
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_c1"),
         default="grouped_compact",
@@ -5917,6 +5938,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "trace_decode_start": int(trace_decode_start),
             "trace_decode_end": int(trace_decode_end),
             "trace_decode_window": [int(trace_decode_start), int(trace_decode_end)],
+            "skip_full_context_oracle": bool(args.skip_full_context_oracle),
+            "skip_linear_state_summary": bool(args.skip_linear_state_summary),
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
@@ -6177,6 +6200,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             require_cached_build=args.require_cached_build,
             trace_decode_start=trace_decode_start,
             trace_decode_end=trace_decode_end,
+            collect_full_context_oracle=not bool(args.skip_full_context_oracle),
         )
         c1 = _run_c1_hidden(
             runner,
@@ -6189,6 +6213,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             trace_decode_start=trace_decode_start,
             trace_decode_end=trace_decode_end,
             c1_decode_path=str(args.c1_decode_path),
+            collect_full_context_oracle=not bool(args.skip_full_context_oracle),
         )
         layer_summaries.append(
             _summarize_layer_limit(
@@ -6200,6 +6225,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 state_focus_atol=args.state_focus_atol,
                 layer_types=layer_types,
                 focus_hidden_flat_indices=focus_hidden_flat_indices,
+                summarize_linear_states=not bool(args.skip_linear_state_summary),
             )
         )
 

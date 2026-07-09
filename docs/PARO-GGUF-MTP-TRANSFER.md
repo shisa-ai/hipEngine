@@ -403,6 +403,27 @@ full-attention substage hidden-bisect around the selected producer layers,
 especially row interaction or scratch/state aliasing in native rows=6 context
 construction, rather than more O-projection-only probes.
 
+Follow-up c6 hidden-bisect no-rowchunk diagnostics:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-no-rowchunk-summary.json`.
+
+The raw hidden traces were `8.3M` to `37M`, so they are kept locally and the
+compact summary records only the diagnosis. The diagnostic script now has
+`--skip-full-context-oracle` and `--skip-linear-state-summary` to avoid the
+expensive NumPy full-context oracle and linear-state summaries when the active
+question is hidden/token/KV source equality.
+
+| Probe | Equality result | Key signal | Conclusion |
+| --- | --- | --- | --- |
+| Full-native no-rowchunk hidden-bisect, L8-L12, trace generated index 9 | hidden red, token green | first full KV sample mismatch at layer 7 key, row 0, sample positions `[0,255,256,519,520]`; positions match; current `batch_source_vs_c1_source` fails at `key_after_prepare` while cache-vs-source is clean | Cache placement/page boundaries are not the lead; layer-7 K/V source production differs before append. |
+| Rowchunk layer 7 only hidden-bisect | hidden red, token green | same layer-7 class of mismatch remains in the shallow trace | Rowchunking layer 7 alone is not enough; the known green bridge still needs selected rowchunks `3,7,11,15,19,23,27,31`. |
+| No-rowchunk generated-token probe with full-attention QKV forced per-row | generated-token red at token 9 | `107.578 tok/s`, median `53.022 ms`; batch token `12` vs c1 token `27` on all rows | Per-row QKV scratch alone is not the repair. |
+
+Next useful c6 isolation should move through full-attention substages in order:
+input path, scratch path, context path, then KV append path. Short
+generated-token probes should come before another large hidden trace.
+
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c8 all-layer full-attention

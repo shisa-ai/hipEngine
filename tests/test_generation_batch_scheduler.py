@@ -12752,6 +12752,8 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["trace_decode_start"] == 0
     assert payload["workload"]["trace_decode_end"] == 4
     assert payload["workload"]["trace_decode_window"] == [0, 4]
+    assert payload["workload"]["skip_full_context_oracle"] is False
+    assert payload["workload"]["skip_linear_state_summary"] is False
     assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
     assert payload["workload"]["linear_state_atol"] == 1.0e-6
     assert "linear_state_focus_atol" not in payload["workload"]
@@ -12782,6 +12784,32 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert len(payload["commands"]) == 3
     assert all("scripts/qwen35_batch_hidden_bisect.py" in command for command in payload["commands"])
     assert output.exists()
+
+    skip_expensive_summaries = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+            "--skip-full-context-oracle",
+            "--skip-linear-state-summary",
+        ]
+    )
+    skip_payload = run_hidden_bisect(
+        skip_expensive_summaries,
+        ["--dry-run", "--skip-full-context-oracle", "--skip-linear-state-summary"],
+    )
+    assert skip_payload["workload"]["skip_full_context_oracle"] is True
+    assert skip_payload["workload"]["skip_linear_state_summary"] is True
+    assert "--skip-full-context-oracle" in skip_payload["commands"][0]
+    assert "--skip-linear-state-summary" in skip_payload["commands"][0]
 
     c8_auto_projection = build_hidden_bisect_parser().parse_args(
         [
