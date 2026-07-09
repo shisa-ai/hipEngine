@@ -274,6 +274,7 @@ class MoeC1DispatchCache:
         selected_rotate_barrier_epoch: int = 0,
         selected_down_barrier_target: int = 0,
         selected_down_barrier_epoch: int = 0,
+        force_small_batch_shared_expert: bool = False,
     ) -> Tensor:
         """Update per-call args and invoke the C dispatcher.  Returns ``out``."""
 
@@ -288,6 +289,7 @@ class MoeC1DispatchCache:
         args.selected_rotate_barrier_epoch = int(selected_rotate_barrier_epoch)
         args.selected_down_barrier_target = int(selected_down_barrier_target)
         args.selected_down_barrier_epoch = int(selected_down_barrier_epoch)
+        args.force_small_batch_shared_expert = 1 if force_small_batch_shared_expert else 0
         # ---- Scratch pointers (may change if scratch instance differs across
         # calls; the verifier reuses a persistent scratch so this is usually
         # the same address each time, but we refresh defensively) ----
@@ -304,6 +306,7 @@ class MoeC1DispatchCache:
         if self._layer_kind == "linear_attention":
             args.shared_gate_out = scratch.shared_gate_out.ptr
             args.shared_up_out = scratch.shared_up_out.ptr
+            args.shared_up_packed = scratch.shared_up.ptr
             args.shared_intermediate = scratch.shared_intermediate.ptr
         else:
             args.shared_up_packed = scratch.shared_up.ptr

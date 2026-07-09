@@ -372,6 +372,21 @@ keep the shared-expert small-batch bypass, fold it into the bundled C dispatcher
 remove the remaining full-attention rowchunk blocker, or avoid live c6 groups in
 scheduling.
 
+Follow-up c6 C-dispatch folding result:
+
+| Shape | Generated-token equality | Decode aggregate | Median step | Artifact |
+| --- | --- | ---: | ---: | --- |
+| Prior runtime bypass for forced small-batch shared expert | Pass | `108.929 tok/s` | `54.716 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json` |
+| C dispatcher handles forced small-batch shared expert | Pass | `109.205 tok/s` | `54.610 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-smallbatch-shared-selected-full-rowchunks-local-equality.json` |
+| Same-session C dispatcher disabled | Pass | `109.123 tok/s` | `54.672 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-off-smallbatch-shared-selected-full-rowchunks-local-equality.json` |
+
+This folds the small-batch shared-expert correctness route into the bundled
+MoE C dispatcher, but the measured delta is noise-level (`+0.075%` vs the
+same-session C-dispatch-off fallback). Treat it as structural cleanup, not a
+c6 speed win. The active c6 performance blocker remains full-attention
+rowchunking on selected layers or, alternatively, scheduling that avoids c6
+live-row groups.
+
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c8 all-layer full-attention
@@ -383,9 +398,9 @@ Next repair order:
    scheduler forms c6 groups; the latest natural c=8 probe formed two c4 groups,
    so it did not exercise c6. Forced `n=6` now measures `50.434 ms/step` and
    `9.26 backend generated tok/s`.
-3. Fold the small-batch shared-expert route into the c1 C dispatcher or add a
-   dispatcher variant for it; the current runtime bypass is correct but loses
-   the bundled-launch path.
+3. Remove the remaining selected full-attention rowchunk blocker, or add an
+   explicit scheduler grouping policy that avoids live c6 groups when a faster
+   c2/c4/c8 path is available.
 4. Add primitive correctness/profiler/baseline gates for any recovered shape
    before promoting a retained/default throughput claim.
 5. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
