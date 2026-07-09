@@ -46,11 +46,23 @@ def _metric(clock: str, value: float, iterations: int) -> dict:
 
 def _row(backend: str, mode: str, gpu_us: float, reps: int = 4) -> dict:
     independent = mode == "independent_throughput"
-    ordering = "none" if independent else (
-        "hip_stream_order" if backend == "hip" else "vulkan_compute_barrier"
+    ordering = (
+        "hip_round_robin_stream_order"
+        if independent and backend == "hip"
+        else "vulkan_round_robin_queue_order"
+        if independent
+        else "hip_stream_order"
+        if backend == "hip"
+        else "vulkan_compute_barrier"
     )
-    submission = "multi_stream" if independent and backend == "hip" else (
-        "direct" if backend == "hip" else "vulkan_command_buffer"
+    submission = (
+        "multi_stream"
+        if independent and backend == "hip"
+        else "vulkan_multi_queue"
+        if independent
+        else "direct"
+        if backend == "hip"
+        else "vulkan_command_buffer"
     )
     clock = "hip_event" if backend == "hip" else "vulkan_timestamp"
     return {
@@ -73,7 +85,7 @@ def _row(backend: str, mode: str, gpu_us: float, reps: int = 4) -> dict:
             "recording_in_timed_region": False,
             "submit_in_host_wall": True,
             "completion_in_host_wall": True,
-            "queue_or_stream_count": 2 if independent and backend == "hip" else 1,
+            "queue_or_stream_count": 2 if independent else 1,
         },
         "timing": {
             "single": {
@@ -131,6 +143,15 @@ def test_two_stage_comparison_rejects_duplicate_rows() -> None:
         module._matched_rows([row, dict(row)])
 
 
+def test_two_stage_comparison_rejects_worker_lane_mismatch() -> None:
+    module = _load_runner_module()
+    hip = _row("hip", "independent_throughput", 10.0)
+    vulkan = _row("vulkan", "independent_throughput", 5.0)
+    vulkan["submission"]["queue_or_stream_count"] = 1
+    with pytest.raises(ValueError, match="worker lane counts"):
+        module._matched_rows([hip, vulkan])
+
+
 def test_two_stage_cli_exposes_explicit_timing_modes() -> None:
     module = _load_runner_module()
     args = module.parse_args(
@@ -138,3 +159,18 @@ def test_two_stage_cli_exposes_explicit_timing_modes() -> None:
     )
     assert args.timing_mode == "independent_throughput"
     assert args.independent_streams == 4
+
+
+def test_two_stage_vulkan_uses_calibrated_queue_lanes_not_events() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "micro"
+        / "runners"
+        / "vulkan_two_stage_reduction.cpp"
+    ).read_text(encoding="utf-8")
+    assert "VulkanMultiQueueTimer" in source
+    assert "calibrated_timestamps_extension" in source
+    assert "vulkan_round_robin_queue_order" in source
+    assert "vkCmdSetEvent" not in source
+    assert "vkCmdWaitEvents" not in source

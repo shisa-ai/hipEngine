@@ -148741,3 +148741,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   performance claim is made from that plumbing smoke. Next, each multi-stage
   harness must replace its cumulative
   event path with queue lanes before its throughput row can be retained.
+
+## 2026-07-10 - Two-stage reduction calibrated queue lanes
+
+- Replaced the withdrawn single-command-buffer event path with genuine
+  round-robin lanes. HIP caps worker streams to the measured repetition count;
+  Vulkan selects the timestamp-capable compute-only family, requests the same
+  lane count, enables timeline plus calibrated timestamps, and records each
+  queue as `partial -> slice-scoped W->R barrier -> final` for only that
+  queue's assigned repetitions.
+- A host-signaled timeline value releases all Vulkan lanes after submission.
+  The burst GPU clock is the calibrated minimum-start to maximum-end span;
+  single control still uses one queue. Untimed validation copies each lane's
+  disjoint output slices from that lane, so every timed repetition is checked.
+  The comparator rejects unequal HIP stream and Vulkan queue counts. Timed
+  command buffers now use a reusable recording flag instead of resubmitting a
+  command buffer declared `ONE_TIME_SUBMIT`.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_two_stage_reduction.py tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`17 passed`); Python compile,
+  gfx1151 HIP syntax, warning-clean Vulkan C++ syntax, and scoped diff checks
+  passed. Paired gfx1151 smokes used K=512, rows=1, wg64, split=2,
+  body-repeats=8, reps=2, warmup=3, samples=2. Serial used one lane;
+  independent used two matched lanes and `VK_KHR_calibrated_timestamps`.
+  Exact correctness and GPU comparisons passed in both modes; host ratios were
+  rejected by submission class. `/tmp/two-stage-*-mq-v2.json` is smoke only.

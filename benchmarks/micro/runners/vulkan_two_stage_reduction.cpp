@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -31,6 +32,7 @@ struct Args {
   uint32_t warmup = 5;
   uint32_t samples = 7;
   std::string timing_mode = "serial_latency";
+  uint32_t independent_queues = 4;
   uint32_t device_index = 0;
 };
 
@@ -65,6 +67,8 @@ struct Row {
   float max_rel;
   bool correctness_pass;
   uint32_t barrier_count;
+  uint32_t queue_count;
+  std::string calibrated_timestamp_extension;
   bool gpu_timestamps_supported;
   double timestamp_period_ns;
   uint32_t timestamp_valid_bits;
@@ -148,6 +152,9 @@ Args parse_args(int argc, char** argv) {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--timing-mode") {
       args.timing_mode = require_value(i, argc, argv, flag);
+    } else if (flag == "--independent-queues") {
+      args.independent_queues = static_cast<uint32_t>(
+          std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(
           std::stoul(require_value(i, argc, argv, flag)));
@@ -158,8 +165,9 @@ Args parse_args(int argc, char** argv) {
   if (args.partial_spirv_path.empty() || args.final_spirv_path.empty()) {
     fail("--partial-spirv and --final-spirv are required");
   }
-  if (args.body_repeats == 0 || args.reps == 0 || args.samples == 0) {
-    fail("--body-repeats, --reps, and --samples must be positive");
+  if (args.body_repeats == 0 || args.reps == 0 || args.samples == 0 ||
+      args.independent_queues == 0) {
+    fail("--body-repeats, --reps, --samples, and --independent-queues must be positive");
   }
   (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   for (uint32_t wg : args.workgroups) {
@@ -185,22 +193,6 @@ std::vector<uint32_t> read_spirv(const std::string& path) {
     fail("could not read SPIR-V file: " + path);
   }
   return words;
-}
-
-uint32_t find_queue_family(VkPhysicalDevice physical_device) {
-  uint32_t count = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-  if (count == 0) {
-    fail("physical device has no queue families");
-  }
-  std::vector<VkQueueFamilyProperties> families(count);
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, families.data());
-  for (uint32_t i = 0; i < count; ++i) {
-    if ((families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0) {
-      return i;
-    }
-  }
-  fail("physical device has no compute queue family");
 }
 
 uint32_t find_memory_type(
@@ -414,6 +406,24 @@ VkCommandBuffer begin_one_time(VkDevice device, VkCommandPool command_pool) {
   return command_buffer;
 }
 
+VkCommandBuffer begin_reusable(VkDevice device, VkCommandPool command_pool) {
+  VkCommandBufferAllocateInfo allocate_info{};
+  allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  allocate_info.commandPool = command_pool;
+  allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocate_info.commandBufferCount = 1;
+  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+  check(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer),
+        "vkAllocateCommandBuffers reusable");
+
+  VkCommandBufferBeginInfo begin_info{};
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+  check(vkBeginCommandBuffer(command_buffer, &begin_info),
+        "vkBeginCommandBuffer reusable");
+  return command_buffer;
+}
+
 void submit_and_free(
     VkDevice device,
     VkQueue queue,
@@ -609,7 +619,9 @@ void partials_barrier(
     VkCommandBuffer command_buffer,
     const Buffer& partial_device,
     VkAccessFlags src_access,
-    VkAccessFlags dst_access) {
+    VkAccessFlags dst_access,
+    VkDeviceSize offset = 0,
+    VkDeviceSize size = VK_WHOLE_SIZE) {
   VkBufferMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   barrier.srcAccessMask = src_access;
@@ -617,8 +629,8 @@ void partials_barrier(
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.buffer = partial_device.buffer;
-  barrier.offset = 0;
-  barrier.size = partial_device.size;
+  barrier.offset = offset;
+  barrier.size = size;
   vkCmdPipelineBarrier(
       command_buffer,
       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -635,7 +647,8 @@ void partials_barrier(
 void out_copy_barrier(
     VkCommandBuffer command_buffer,
     const Buffer& out_device,
-    VkDeviceSize out_bytes) {
+    VkDeviceSize offset,
+    VkDeviceSize size) {
   VkBufferMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -643,8 +656,8 @@ void out_copy_barrier(
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.buffer = out_device.buffer;
-  barrier.offset = 0;
-  barrier.size = out_bytes;
+  barrier.offset = offset;
+  barrier.size = size;
   vkCmdPipelineBarrier(
       command_buffer,
       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -675,8 +688,9 @@ void record_dispatches(
     const Buffer& partial_device,
     const Buffer& out_device,
     const Buffer& out_stage,
-    const std::vector<VkEvent>& iteration_events,
-    VkDeviceSize out_bytes) {
+    VkDeviceSize out_bytes,
+    uint32_t first_rep = 0,
+    uint32_t rep_stride = 1) {
   if (timer != nullptr) {
     timer->record_begin(command_buffer);
   }
@@ -728,43 +742,27 @@ void record_dispatches(
   };
 
   if (independent) {
-    if (logical_iterations > iteration_events.size()) {
-      fail("independent repetitions exceed the event pool");
-    }
-    for (uint32_t rep = 0; rep < logical_iterations; ++rep) {
-      vkCmdResetEvent(
-          command_buffer,
-          iteration_events[rep],
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    }
-    for (uint32_t rep = 0; rep < logical_iterations; ++rep) {
+    const VkDeviceSize partial_slice_bytes =
+        static_cast<VkDeviceSize>(rows) * split_count * sizeof(float);
+    const VkDeviceSize out_slice_bytes =
+        static_cast<VkDeviceSize>(rows) * sizeof(float);
+    for (uint32_t rep = first_rep; rep < logical_iterations; rep += rep_stride) {
       record_partial(rep);
-      vkCmdSetEvent(
+      partials_barrier(
           command_buffer,
-          iteration_events[rep],
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    }
-    for (uint32_t rep = 0; rep < logical_iterations; ++rep) {
-      VkBufferMemoryBarrier barrier =
-          hipengine::micro::make_compute_buffer_barrier(
-              partial_device.buffer,
-              VK_ACCESS_SHADER_WRITE_BIT,
-              VK_ACCESS_SHADER_READ_BIT,
-              static_cast<VkDeviceSize>(rep) * rows * split_count * sizeof(float),
-              static_cast<VkDeviceSize>(rows) * split_count * sizeof(float));
-      vkCmdWaitEvents(
-          command_buffer,
-          1,
-          &iteration_events[rep],
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          0,
-          nullptr,
-          1,
-          &barrier,
-          0,
-          nullptr);
+          partial_device,
+          VK_ACCESS_SHADER_WRITE_BIT,
+          VK_ACCESS_SHADER_READ_BIT,
+          static_cast<VkDeviceSize>(rep) * partial_slice_bytes,
+          partial_slice_bytes);
       record_final(rep);
+      if (copy_out) {
+        const VkDeviceSize offset = static_cast<VkDeviceSize>(rep) * out_slice_bytes;
+        out_copy_barrier(command_buffer, out_device, offset, out_slice_bytes);
+        VkBufferCopy copy{offset, offset, out_slice_bytes};
+        vkCmdCopyBuffer(
+            command_buffer, out_device.buffer, out_stage.buffer, 1, &copy);
+      }
     }
   } else {
     for (uint32_t rep = 0; rep < logical_iterations; ++rep) {
@@ -799,8 +797,8 @@ void record_dispatches(
   if (timer != nullptr) {
     timer->record_end(command_buffer);
   }
-  if (copy_out) {
-    out_copy_barrier(command_buffer, out_device, out_bytes);
+  if (copy_out && !independent) {
+    out_copy_barrier(command_buffer, out_device, 0, out_bytes);
     VkBufferCopy copy{};
     copy.size = out_bytes;
     vkCmdCopyBuffer(command_buffer, out_device.buffer, out_stage.buffer, 1, &copy);
@@ -828,22 +826,45 @@ SequenceTiming measure_command(
   return result;
 }
 
+SequenceTiming measure_multi_queue_commands(
+    hipengine::micro::VulkanMultiQueueTimer& timer,
+    const std::vector<VkQueue>& queues,
+    const std::vector<VkCommandBuffer>& command_buffers,
+    const std::vector<VkFence>& fences,
+    uint32_t samples) {
+  SequenceTiming result;
+  result.gpu_sequence_us.reserve(samples);
+  result.host_sequence_us.reserve(samples);
+  for (uint32_t sample = 0; sample < samples; ++sample) {
+    const auto timing = timer.submit_and_wait(queues, command_buffers, fences);
+    result.gpu_sequence_us.push_back(timing.gpu_sequence_us);
+    result.host_sequence_us.push_back(timing.host_sequence_us);
+  }
+  return result;
+}
+
 Row run_config(
     const Args& args,
     VkPhysicalDevice physical_device,
     VkDevice device,
-    VkQueue queue,
+    const std::vector<VkQueue>& queues,
     VkCommandPool command_pool,
     VkDescriptorSetLayout descriptor_set_layout,
     VkPipelineLayout pipeline_layout,
     VkShaderModule partial_shader_module,
     VkShaderModule final_shader_module,
-    VkFence fence,
+    const std::vector<VkFence>& fences,
     uint32_t queue_family,
+    const char* calibrated_timestamp_extension,
     uint32_t k,
     uint32_t rows,
     uint32_t workgroup_size,
     uint32_t split_count) {
+  if (queues.empty() || fences.size() != queues.size()) {
+    fail("two-stage queue/fence vectors must be non-empty and matched");
+  }
+  VkQueue queue = queues.front();
+  VkFence fence = fences.front();
   std::vector<float> x;
   std::vector<float> w;
   fill_inputs(x, w, k, rows);
@@ -852,6 +873,9 @@ Row run_config(
   const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
   const bool independent =
       timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
+  const uint32_t queue_count = independent
+      ? std::min<uint32_t>(args.reps, static_cast<uint32_t>(queues.size()))
+      : 1u;
   const uint32_t output_slices = independent
       ? std::max<uint32_t>(1, std::max(args.reps, args.warmup))
       : 1;
@@ -923,14 +947,62 @@ Row run_config(
       create_pipeline(device, pipeline_layout, final_shader_module, workgroup_size);
   VkDescriptorSet descriptor_set = create_descriptor_set(
       device, descriptor_set_layout, x_device, w_device, partial_device, out_device);
-  hipengine::micro::VulkanSequenceTimer timer(
+  hipengine::micro::VulkanSequenceTimer single_queue_timer(
       physical_device, device, queue_family);
-  std::vector<VkEvent> iteration_events(output_slices, VK_NULL_HANDLE);
-  VkEventCreateInfo event_info{};
-  event_info.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
-  for (VkEvent& event : iteration_events) {
-    check(vkCreateEvent(device, &event_info, nullptr, &event), "vkCreateEvent");
+  const bool use_multi_queue = independent && queue_count > 1;
+  std::unique_ptr<hipengine::micro::VulkanMultiQueueTimer> multi_queue_timer;
+  if (use_multi_queue) {
+    if (calibrated_timestamp_extension == nullptr) {
+      fail("independent two-stage timing requires calibrated timestamps");
+    }
+    multi_queue_timer = std::make_unique<hipengine::micro::VulkanMultiQueueTimer>(
+        physical_device,
+        device,
+        queue_family,
+        queue_count,
+        calibrated_timestamp_extension);
   }
+  const std::vector<VkQueue> active_queues(
+      queues.begin(), queues.begin() + queue_count);
+  const std::vector<VkFence> active_fences(
+      fences.begin(), fences.begin() + queue_count);
+
+  auto make_multi_queue_commands = [&](
+                                       uint32_t logical_iterations,
+                                       bool copy_out,
+                                       bool reusable) {
+    std::vector<VkCommandBuffer> commands(queue_count, VK_NULL_HANDLE);
+    for (uint32_t lane = 0; lane < queue_count; ++lane) {
+      VkCommandBuffer command = reusable
+          ? begin_reusable(device, command_pool)
+          : begin_one_time(device, command_pool);
+      multi_queue_timer->record_begin(command, lane);
+      record_dispatches(
+          command,
+          partial_pipeline,
+          final_pipeline,
+          pipeline_layout,
+          descriptor_set,
+          k,
+          rows,
+          split_count,
+          args.body_repeats,
+          logical_iterations,
+          timing_mode,
+          nullptr,
+          copy_out,
+          partial_device,
+          out_device,
+          out_stage,
+          out_bytes,
+          lane,
+          queue_count);
+      multi_queue_timer->record_end(command, lane);
+      check(vkEndCommandBuffer(command), "vkEndCommandBuffer multi-queue lane");
+      commands[lane] = command;
+    }
+    return commands;
+  };
 
   VkCommandBuffer correctness_cmd = begin_one_time(device, command_pool);
   record_dispatches(
@@ -950,7 +1022,6 @@ Row run_config(
       partial_device,
       out_device,
       out_stage,
-      iteration_events,
       out_bytes);
   submit_and_free(device, queue, command_pool, correctness_cmd);
   std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
@@ -970,27 +1041,35 @@ Row run_config(
     check_value(actual[row], expected[row], 0);
   }
 
-  VkCommandBuffer burst_correctness_cmd = begin_one_time(device, command_pool);
-  record_dispatches(
-      burst_correctness_cmd,
-      partial_pipeline,
-      final_pipeline,
-      pipeline_layout,
-      descriptor_set,
-      k,
-      rows,
-      split_count,
-      args.body_repeats,
-      args.reps,
-      timing_mode,
-      nullptr,
-      true,
-      partial_device,
-      out_device,
-      out_stage,
-      iteration_events,
-      out_bytes);
-  submit_and_free(device, queue, command_pool, burst_correctness_cmd);
+  if (use_multi_queue) {
+    std::vector<VkCommandBuffer> commands =
+        make_multi_queue_commands(args.reps, true, false);
+    (void)multi_queue_timer->submit_and_wait(
+        active_queues, commands, active_fences);
+    vkFreeCommandBuffers(
+        device, command_pool, static_cast<uint32_t>(commands.size()), commands.data());
+  } else {
+    VkCommandBuffer burst_correctness_cmd = begin_one_time(device, command_pool);
+    record_dispatches(
+        burst_correctness_cmd,
+        partial_pipeline,
+        final_pipeline,
+        pipeline_layout,
+        descriptor_set,
+        k,
+        rows,
+        split_count,
+        args.body_repeats,
+        args.reps,
+        timing_mode,
+        nullptr,
+        true,
+        partial_device,
+        out_device,
+        out_stage,
+        out_bytes);
+    submit_and_free(device, queue, command_pool, burst_correctness_cmd);
+  }
   std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
   if (independent) {
     for (uint32_t rep = 0; rep < args.reps; ++rep) {
@@ -1005,30 +1084,38 @@ Row run_config(
   }
 
   if (args.warmup > 0) {
-    VkCommandBuffer warmup_cmd = begin_one_time(device, command_pool);
-    record_dispatches(
-        warmup_cmd,
-        partial_pipeline,
-        final_pipeline,
-        pipeline_layout,
-        descriptor_set,
-        k,
-        rows,
-        split_count,
-        args.body_repeats,
-        args.warmup,
-        timing_mode,
-        nullptr,
-        false,
-        partial_device,
-        out_device,
-        out_stage,
-        iteration_events,
-        out_bytes);
-    submit_and_free(device, queue, command_pool, warmup_cmd);
+    if (use_multi_queue) {
+      std::vector<VkCommandBuffer> commands =
+          make_multi_queue_commands(args.warmup, false, false);
+      (void)multi_queue_timer->submit_and_wait(
+          active_queues, commands, active_fences);
+      vkFreeCommandBuffers(
+          device, command_pool, static_cast<uint32_t>(commands.size()), commands.data());
+    } else {
+      VkCommandBuffer warmup_cmd = begin_one_time(device, command_pool);
+      record_dispatches(
+          warmup_cmd,
+          partial_pipeline,
+          final_pipeline,
+          pipeline_layout,
+          descriptor_set,
+          k,
+          rows,
+          split_count,
+          args.body_repeats,
+          args.warmup,
+          timing_mode,
+          nullptr,
+          false,
+          partial_device,
+          out_device,
+          out_stage,
+          out_bytes);
+      submit_and_free(device, queue, command_pool, warmup_cmd);
+    }
   }
 
-  VkCommandBuffer single_cmd = begin_one_time(device, command_pool);
+  VkCommandBuffer single_cmd = begin_reusable(device, command_pool);
   record_dispatches(
       single_cmd,
       partial_pipeline,
@@ -1041,44 +1128,56 @@ Row run_config(
       args.body_repeats,
       1,
       timing_mode,
-      &timer,
+      &single_queue_timer,
       false,
       partial_device,
       out_device,
       out_stage,
-      iteration_events,
       out_bytes);
   check(vkEndCommandBuffer(single_cmd), "vkEndCommandBuffer single timing");
-  VkCommandBuffer burst_cmd = begin_one_time(device, command_pool);
-  record_dispatches(
-      burst_cmd,
-      partial_pipeline,
-      final_pipeline,
-      pipeline_layout,
-      descriptor_set,
-      k,
-      rows,
-      split_count,
-      args.body_repeats,
-      args.reps,
-      timing_mode,
-      &timer,
-      false,
-      partial_device,
-      out_device,
-      out_stage,
-      iteration_events,
-      out_bytes);
-  check(vkEndCommandBuffer(burst_cmd), "vkEndCommandBuffer burst timing");
   SequenceTiming single_timing =
-      measure_command(timer, queue, single_cmd, fence, args.samples);
-  SequenceTiming burst_timing =
-      measure_command(timer, queue, burst_cmd, fence, args.samples);
-  vkFreeCommandBuffers(device, command_pool, 1, &single_cmd);
-  vkFreeCommandBuffers(device, command_pool, 1, &burst_cmd);
-  for (VkEvent event : iteration_events) {
-    vkDestroyEvent(device, event, nullptr);
+      measure_command(single_queue_timer, queue, single_cmd, fence, args.samples);
+  SequenceTiming burst_timing;
+  std::vector<VkCommandBuffer> burst_commands;
+  if (use_multi_queue) {
+    burst_commands = make_multi_queue_commands(args.reps, false, true);
+    burst_timing = measure_multi_queue_commands(
+        *multi_queue_timer,
+        active_queues,
+        burst_commands,
+        active_fences,
+        args.samples);
+  } else {
+    VkCommandBuffer burst_cmd = begin_reusable(device, command_pool);
+    record_dispatches(
+        burst_cmd,
+        partial_pipeline,
+        final_pipeline,
+        pipeline_layout,
+        descriptor_set,
+        k,
+        rows,
+        split_count,
+        args.body_repeats,
+        args.reps,
+        timing_mode,
+        &single_queue_timer,
+        false,
+        partial_device,
+        out_device,
+        out_stage,
+        out_bytes);
+    check(vkEndCommandBuffer(burst_cmd), "vkEndCommandBuffer burst timing");
+    burst_timing = measure_command(
+        single_queue_timer, queue, burst_cmd, fence, args.samples);
+    burst_commands.push_back(burst_cmd);
   }
+  vkFreeCommandBuffers(device, command_pool, 1, &single_cmd);
+  vkFreeCommandBuffers(
+      device,
+      command_pool,
+      static_cast<uint32_t>(burst_commands.size()),
+      burst_commands.data());
   vkDestroyPipeline(device, partial_pipeline, nullptr);
   vkDestroyPipeline(device, final_pipeline, nullptr);
   destroy_buffer(device, x_stage);
@@ -1089,7 +1188,8 @@ Row run_config(
   destroy_buffer(device, partial_device);
   destroy_buffer(device, out_device);
 
-  const std::vector<double>& sequence_samples = timer.gpu_timestamps_supported()
+  const std::vector<double>& sequence_samples =
+      single_queue_timer.gpu_timestamps_supported()
       ? burst_timing.gpu_sequence_us
       : burst_timing.host_sequence_us;
   std::vector<double> per_iteration;
@@ -1117,10 +1217,12 @@ Row run_config(
       max_abs,
       max_rel,
       pass,
-      independent ? 1u : (2 * args.reps - 1),
-      timer.gpu_timestamps_supported(),
-      timer.timestamp_period_ns(),
-      timer.timestamp_valid_bits(),
+      independent ? args.reps : (2 * args.reps - 1),
+      queue_count,
+      use_multi_queue ? calibrated_timestamp_extension : "",
+      single_queue_timer.gpu_timestamps_supported(),
+      single_queue_timer.timestamp_period_ns(),
+      single_queue_timer.timestamp_valid_bits(),
       std::move(single_timing),
       std::move(burst_timing),
   };
@@ -1197,13 +1299,20 @@ void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
   out << "      \"dependency_contract\": {\"work_dependency\": \""
       << (independent ? "independent" : "chained")
       << "\", \"inter_dispatch_ordering\": \""
-      << (independent ? "none" : "vulkan_compute_barrier")
+      << (independent ? "vulkan_round_robin_queue_order" : "vulkan_compute_barrier")
       << "\", \"output_partitioning\": \""
       << (independent ? "disjoint" : "chained_shared")
       << "\", \"validation_status\": \"pass\"},\n";
-  out << "      \"submission\": {\"strategy\": \"vulkan_command_buffer\", "
+  out << "      \"submission\": {\"strategy\": \""
+      << (independent && row.queue_count > 1
+              ? "vulkan_multi_queue"
+              : "vulkan_command_buffer")
+      << "\", "
          "\"recording_in_timed_region\": false, \"submit_in_host_wall\": true, "
-         "\"completion_in_host_wall\": true, \"queue_or_stream_count\": 1},\n";
+         "\"completion_in_host_wall\": true, \"queue_or_stream_count\": "
+      << row.queue_count
+      << ", \"calibrated_timestamp_extension\": \""
+      << json_escape(row.calibrated_timestamp_extension) << "\"},\n";
   out << "      \"timing\": {\"single\": ";
   write_timing_control(out, row.single_timing, 1, row.gpu_timestamps_supported);
   out << ", \"burst\": ";
@@ -1220,7 +1329,7 @@ void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
       << (independent ? "all_dispatches" : "chained_final_state")
       << "\"}, \"synchronization\": {\"status\": \"pass\", \"method\": \""
       << (independent
-              ? "disjoint_outputs_with_per_iteration_partial_to_final_events"
+              ? "round_robin_queue_lanes_with_intra_operation_barriers"
               : "partial_to_final_and_repetition_compute_barriers")
       << "\", \"barrier_count\": " << row.barrier_count << "}},\n";
 }
@@ -1271,6 +1380,7 @@ void write_json(
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
   *out << "    \"timing_mode\": \"" << args.timing_mode << "\",\n";
+  *out << "    \"independent_queues\": " << args.independent_queues << ",\n";
   *out << "    \"method\": \"pre-recorded command buffer with block-partial dispatch plus final-reduce dispatch\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
@@ -1294,6 +1404,9 @@ void write_json(
     *out << "      \"max_rel\": " << row.max_rel << ",\n";
     *out << "      \"gpu_timestamps_supported\": "
          << (row.gpu_timestamps_supported ? "true" : "false") << ",\n";
+    *out << "      \"queue_count\": " << row.queue_count << ",\n";
+    *out << "      \"calibrated_timestamp_extension\": \""
+         << json_escape(row.calibrated_timestamp_extension) << "\",\n";
     *out << "      \"timestamp_period_ns\": " << row.timestamp_period_ns << ",\n";
     *out << "      \"timestamp_valid_bits\": " << row.timestamp_valid_bits << ",\n";
     *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
@@ -1315,7 +1428,7 @@ int main(int argc, char** argv) {
     app_info.applicationVersion = 1;
     app_info.pEngineName = "hipEngine microbench";
     app_info.engineVersion = 1;
-    app_info.apiVersion = VK_API_VERSION_1_1;
+    app_info.apiVersion = VK_API_VERSION_1_2;
 
     VkInstanceCreateInfo instance_info{};
     instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1338,24 +1451,55 @@ int main(int argc, char** argv) {
     VkPhysicalDevice physical_device = physical_devices[args.device_index];
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
-    uint32_t queue_family = find_queue_family(physical_device);
+    const bool independent =
+        args.timing_mode == "independent_throughput";
+    const uint32_t requested_queues = independent
+        ? std::min(args.independent_queues, args.reps)
+        : 1u;
+    const auto queue_selection =
+        hipengine::micro::select_compute_queue_family(
+            physical_device, requested_queues);
+    const uint32_t queue_family = queue_selection.index;
+    const uint32_t queue_count = queue_selection.queue_count;
+    const char* calibrated_timestamp_extension = nullptr;
+    VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
+    if (independent && queue_count > 1) {
+      if (!hipengine::micro::timeline_semaphore_supported(physical_device)) {
+        fail("independent two-stage timing requires timeline semaphores");
+      }
+      calibrated_timestamp_extension =
+          hipengine::micro::calibrated_timestamps_extension(physical_device);
+      if (calibrated_timestamp_extension == nullptr) {
+        fail("independent two-stage timing requires calibrated timestamps");
+      }
+      timeline_features.sType =
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+      timeline_features.timelineSemaphore = VK_TRUE;
+    }
 
-    float priority = 1.0f;
+    std::vector<float> priorities(queue_count, 1.0f);
     VkDeviceQueueCreateInfo queue_info{};
     queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queue_info.queueFamilyIndex = queue_family;
-    queue_info.queueCount = 1;
-    queue_info.pQueuePriorities = &priority;
+    queue_info.queueCount = queue_count;
+    queue_info.pQueuePriorities = priorities.data();
 
     VkDeviceCreateInfo device_info{};
     device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    device_info.pNext = timeline_features.sType != 0 ? &timeline_features : nullptr;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
+    if (calibrated_timestamp_extension != nullptr) {
+      device_info.enabledExtensionCount = 1;
+      device_info.ppEnabledExtensionNames = &calibrated_timestamp_extension;
+    }
     VkDevice device = VK_NULL_HANDLE;
     check(vkCreateDevice(physical_device, &device_info, nullptr, &device),
           "vkCreateDevice");
-    VkQueue queue = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, queue_family, 0, &queue);
+    std::vector<VkQueue> queues(queue_count, VK_NULL_HANDLE);
+    for (uint32_t index = 0; index < queue_count; ++index) {
+      vkGetDeviceQueue(device, queue_family, index, &queues[index]);
+    }
 
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1367,8 +1511,10 @@ int main(int argc, char** argv) {
 
     VkFenceCreateInfo fence_info{};
     fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    VkFence fence = VK_NULL_HANDLE;
-    check(vkCreateFence(device, &fence_info, nullptr, &fence), "vkCreateFence");
+    std::vector<VkFence> fences(queue_count, VK_NULL_HANDLE);
+    for (VkFence& fence : fences) {
+      check(vkCreateFence(device, &fence_info, nullptr, &fence), "vkCreateFence");
+    }
 
     VkDescriptorSetLayout descriptor_set_layout = create_descriptor_set_layout(device);
     VkPipelineLayout pipeline_layout = create_pipeline_layout(device, descriptor_set_layout);
@@ -1386,14 +1532,15 @@ int main(int argc, char** argv) {
                 args,
                 physical_device,
                 device,
-                queue,
+                queues,
                 command_pool,
                 descriptor_set_layout,
                 pipeline_layout,
                 partial_shader_module,
                 final_shader_module,
-                fence,
+                fences,
                 queue_family,
+                calibrated_timestamp_extension,
                 k,
                 row_count,
                 workgroup_size,
@@ -1416,7 +1563,9 @@ int main(int argc, char** argv) {
     vkDestroyShaderModule(device, final_shader_module, nullptr);
     vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
-    vkDestroyFence(device, fence, nullptr);
+    for (VkFence fence : fences) {
+      vkDestroyFence(device, fence, nullptr);
+    }
     vkDestroyCommandPool(device, command_pool, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
