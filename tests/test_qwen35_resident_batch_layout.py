@@ -70,7 +70,8 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_full_attention_row_chunk_layers(8) == set()
     assert not runner_module._retained_selected_c1_moe_rows(3)
     assert runner_module._retained_selected_c1_moe_rows(6)
-    assert runner_module._retained_per_row_linear_moe_rows(6)
+    assert not runner_module._retained_per_row_linear_moe_rows(6)
+    assert runner_module._retained_force_small_batch_shared_expert_rows(6)
     assert runner_module._retained_linear_row_chunk_size(4) == 0
     assert runner_module._retained_linear_row_chunk_size(6) == 0
 
@@ -6153,6 +6154,7 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
             monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE", raising=False)
         else:
             monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE", per_row_linear_moe_env)
+        monkeypatch.delenv("HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT", raising=False)
         session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
         session.device = device
         session.max_batch_size = 6
@@ -6229,20 +6231,23 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert metadata_calls == [(6, (0, 1, 2, 3, 4, 5))]
     assert moe_rows == [(6, True)]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True]
-    assert [call[1]["force_per_row_moe"] for call in state.calls] == [True]
+    assert [call[1]["force_per_row_moe"] for call in state.calls] == [False]
+    assert [call[1]["force_small_batch_shared_expert"] for call in state.calls] == [True]
     execution = session.last_batch_decode_execution
     assert "linear_attention_decode_path" not in execution
     assert "linear_attention_row_chunk_size" not in execution
     assert execution["layer_executions"][0]["linear_attention_decode_path"] == "native_batch_segments"
-    assert execution["layer_executions"][0]["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
-    assert execution["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
+    assert execution["layer_executions"][0]["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_c1_shared_expert_decode_path"] == "small_batch_forced"
     assert execution["moe_grouped_compact_layers"] == 0
-    assert execution["moe_selected_c1_fallback_layers"] == 1
+    assert execution["moe_selected_c1_fallback_layers"] == 0
 
     session, _metadata_calls, moe_rows, state = run_case(selected_c1_moe_env="0", linear_row_chunk_env=None)
     assert moe_rows == [(6, False)]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [False]
     assert [call[1]["force_per_row_moe"] for call in state.calls] == [False]
+    assert [call[1]["force_small_batch_shared_expert"] for call in state.calls] == [False]
     execution = session.last_batch_decode_execution
     assert "linear_attention_decode_path" not in execution
     assert execution["moe_decode_path"] == "grouped_compact"
@@ -6258,6 +6263,7 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert moe_rows == [(2, True), (2, True), (2, True)]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True, True, True]
     assert [call[1]["force_per_row_moe"] for call in state.calls] == [False, False, False]
+    assert [call[1]["force_small_batch_shared_expert"] for call in state.calls] == [True, True, True]
     execution = session.last_batch_decode_execution
     assert execution["linear_attention_decode_path"] == "native_batch_row_chunks"
     assert execution["linear_attention_row_chunk_size"] == 2
@@ -6269,6 +6275,7 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert moe_rows == [(6, True)]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True]
     assert [call[1]["force_per_row_moe"] for call in state.calls] == [False]
+    assert [call[1]["force_small_batch_shared_expert"] for call in state.calls] == [True]
     execution = session.last_batch_decode_execution
     assert "linear_attention_decode_path" not in execution
     assert "linear_attention_row_chunk_size" not in execution
