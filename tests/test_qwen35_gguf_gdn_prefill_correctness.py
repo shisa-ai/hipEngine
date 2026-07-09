@@ -56,6 +56,8 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
@@ -571,6 +573,131 @@ def _run_decode_order_segments_mutating(
             buf.free()
 
 
+def _lowp_fp16_arrays(inputs: _GDNInputs) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    gate = _bf16_u16_to_f32(inputs.gate_u16).astype(np.float16)
+    a = _bf16_u16_to_f32(inputs.a_u16).astype(np.float16)
+    b = _bf16_u16_to_f32(inputs.b_u16).astype(np.float16)
+    return gate, a, b
+
+
+def _run_lowp_fp16_single(
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    init_state: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    conv_out = _to_device(inputs.conv_out_f32)
+    gate_arr, a_arr, b_arr = _lowp_fp16_arrays(inputs)
+    gate = _to_device(gate_arr)
+    a = _to_device(a_arr)
+    b = _to_device(b_arr)
+    dt_bias = _to_device(inputs.dt_bias_f32)
+    a_log = _to_device(inputs.a_log_f32)
+    norm_weight = _to_device(inputs.norm_weight_f32)
+    state = _to_device(init_state)
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * np.dtype(np.float32).itemsize)
+    try:
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
+            conv_out.ptr,
+            gate.ptr,
+            a.ptr,
+            b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            norm_weight.ptr,
+            state.ptr,
+            out.ptr,
+            rms_norm_eps,
+            inputs.num_k_heads,
+            inputs.num_v_heads,
+            inputs.head_k_dim,
+            inputs.head_v_dim,
+        )
+        out_f32 = _from_device(out, out_shape, np.float32)
+        state_after = _from_device(
+            state,
+            (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim),
+            np.float32,
+        )
+        return out_f32, state_after
+    finally:
+        for buf in (
+            conv_out,
+            gate,
+            a,
+            b,
+            dt_bias,
+            a_log,
+            norm_weight,
+            state,
+            out,
+        ):
+            buf.free()
+
+
+def _run_lowp_fp16_segments(
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    cu_seqlens_arr: np.ndarray,
+    state_indices_arr: np.ndarray,
+    init_state_slots: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    conv_out = _to_device(inputs.conv_out_f32)
+    gate_arr, a_arr, b_arr = _lowp_fp16_arrays(inputs)
+    gate = _to_device(gate_arr)
+    a = _to_device(a_arr)
+    b = _to_device(b_arr)
+    dt_bias = _to_device(inputs.dt_bias_f32)
+    a_log = _to_device(inputs.a_log_f32)
+    norm_weight = _to_device(inputs.norm_weight_f32)
+    state = _to_device(init_state_slots)
+    cu = _to_device(np.ascontiguousarray(cu_seqlens_arr, dtype=np.int32))
+    state_indices = _to_device(np.ascontiguousarray(state_indices_arr, dtype=np.int64))
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * np.dtype(np.float32).itemsize)
+    try:
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
+            conv_out.ptr,
+            gate.ptr,
+            a.ptr,
+            b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            norm_weight.ptr,
+            state.ptr,
+            out.ptr,
+            cu.ptr,
+            state_indices.ptr,
+            inputs.tokens,
+            int(len(cu_seqlens_arr) - 1),
+            rms_norm_eps,
+            inputs.num_k_heads,
+            inputs.num_v_heads,
+            inputs.head_k_dim,
+            inputs.head_v_dim,
+        )
+        out_f32 = _from_device(out, out_shape, np.float32)
+        state_after = _from_device(state, init_state_slots.shape, np.float32)
+        return out_f32, state_after
+    finally:
+        for buf in (
+            conv_out,
+            gate,
+            a,
+            b,
+            dt_bias,
+            a_log,
+            norm_weight,
+            state,
+            cu,
+            state_indices,
+            out,
+        ):
+            buf.free()
+
+
 def _run_chain(
     inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -931,6 +1058,49 @@ def test_gdn_prefill_segments_mutating_matches_per_segment_decode_order() -> Non
         expected_state_after,
         label="packed mutating segments final state",
     )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_segments_lowp_fp16_c6_one_token_segments_match_independent_c1() -> None:
+    inputs = _GDNInputs(
+        tokens=6,
+        num_k_heads=1,
+        num_v_heads=2,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=31,
+    )
+    rng = np.random.default_rng(3131)
+    init_slots = rng.normal(
+        0.0,
+        0.05,
+        size=(6, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim),
+    ).astype(np.float32)
+    cu_seqlens = np.asarray([0, 1, 2, 3, 4, 5, 6], dtype=np.int32)
+    state_indices = np.asarray([0, 2, 4, 1, 3, 5], dtype=np.int64)
+
+    packed_out, packed_state_after = _run_lowp_fp16_segments(
+        inputs,
+        _RMS_EPS,
+        cu_seqlens_arr=cu_seqlens,
+        state_indices_arr=state_indices,
+        init_state_slots=init_slots,
+    )
+
+    expected_out = np.empty_like(packed_out)
+    expected_state_after = init_slots.copy()
+    for segment, slot in enumerate(state_indices.tolist()):
+        sliced = _slice_gdn_inputs(inputs, segment, segment + 1, init_slots[int(slot)])
+        seg_out, seg_state_after = _run_lowp_fp16_single(
+            sliced,
+            _RMS_EPS,
+            init_state=init_slots[int(slot)],
+        )
+        expected_out[segment : segment + 1] = seg_out
+        expected_state_after[int(slot)] = seg_state_after
+
+    np.testing.assert_allclose(packed_out, expected_out, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(packed_state_after, expected_state_after, rtol=0.0, atol=0.0)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
