@@ -5792,7 +5792,6 @@ class Qwen35ParoResidentSession:
                         layer_force_full_attention_suffix_row_chunks = (
                             force_full_attention_suffix_row_chunks
                             and not layer_force_full_attention_row_chunks
-                            and not layer_force_full_attention_context_row_chunks
                             and (
                                 not full_attention_suffix_row_chunk_layers
                                 or layer_id in full_attention_suffix_row_chunk_layers
@@ -5801,13 +5800,19 @@ class Qwen35ParoResidentSession:
                         if layer_force_full_attention_row_chunks:
                             full_attention_decode_path = "native_batch_row_chunks"
                             row_chunked_full_attention_layers.append(int(layer_id))
-                        elif layer_force_full_attention_context_row_chunks:
-                            full_attention_context_decode_path = "native_context_row_chunks"
-                            layer_full_attention_context_decode_path = "native_context_row_chunks"
-                            row_chunked_full_attention_context_layers.append(int(layer_id))
-                        elif layer_force_full_attention_suffix_row_chunks:
-                            row_chunked_full_attention_suffix_layers.append(int(layer_id))
-                        elif full_attention_decode_path == "none":
+                        else:
+                            if layer_force_full_attention_context_row_chunks:
+                                full_attention_context_decode_path = "native_context_row_chunks"
+                                layer_full_attention_context_decode_path = "native_context_row_chunks"
+                                row_chunked_full_attention_context_layers.append(int(layer_id))
+                            if layer_force_full_attention_suffix_row_chunks:
+                                row_chunked_full_attention_suffix_layers.append(int(layer_id))
+                        if (
+                            not layer_force_full_attention_row_chunks
+                            and not layer_force_full_attention_context_row_chunks
+                            and not layer_force_full_attention_suffix_row_chunks
+                            and full_attention_decode_path == "none"
+                        ):
                             full_attention_decode_path = "native_batch"
                         native_full_attention_layers += 1
                         persistent_attention_scratch = self.full_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
@@ -5884,12 +5889,21 @@ class Qwen35ParoResidentSession:
                                         "positions": [int(position) for position in chunk_positions],
                                     }
                                 )
-                            batch_full_spans_metadata = {
-                                "batch": batch_full_spans_metadata,
+                            suffix_metadata = {
                                 "suffix_row_chunk_size": int(chunk_size),
                                 "suffix_row_chunk_include_gate": bool(full_attention_suffix_row_chunk_include_gate),
                                 "suffix_row_chunks": suffix_chunk_records,
                             }
+                            if (
+                                isinstance(batch_full_spans_metadata, dict)
+                                and "context_row_chunks" in batch_full_spans_metadata
+                            ):
+                                batch_full_spans_metadata.update(suffix_metadata)
+                            else:
+                                batch_full_spans_metadata = {
+                                    "batch": batch_full_spans_metadata,
+                                    **suffix_metadata,
+                                }
                         attention_scratch = (
                             persistent_attention_scratch
                             if force_per_row_full_attention_persistent_scratch

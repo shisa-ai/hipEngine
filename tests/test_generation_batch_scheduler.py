@@ -12854,6 +12854,67 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert c3_rowchunk_payload["workload"]["full_attention_decode_path"] == "native_batch_row_chunks"
     assert c3_rowchunk_payload["workload"]["native_caware_decode"] is False
 
+    rowchunk_boundary_compare = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "6",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "12",
+            "--layer-limits",
+            "8,12",
+            "--batch-decode-full-attn-row-chunk-size",
+            "2",
+            "--batch-decode-full-attn-row-chunk-layers",
+            "3,7,11",
+            "--compare-full-attn-rowchunk-boundary",
+        ]
+    )
+    rowchunk_boundary_payload = run_hidden_bisect(
+        rowchunk_boundary_compare,
+        [
+            "--dry-run",
+            "--batch-decode-full-attn-row-chunk-size",
+            "2",
+            "--batch-decode-full-attn-row-chunk-layers",
+            "3,7,11",
+            "--compare-full-attn-rowchunk-boundary",
+        ],
+    )
+    assert rowchunk_boundary_payload["mode"] == "qwen35_paro_native_hidden_bisect_rowchunk_boundary"
+    assert rowchunk_boundary_payload["workload"]["compare_full_attention_rowchunk_boundary"] is True
+    assert rowchunk_boundary_payload["workload"]["comparison_variant_labels"] == {
+        "batch": "native_no_rowchunk",
+        "c1": "native_full_attention_rowchunk_repair",
+    }
+    assert rowchunk_boundary_payload["workload"]["batch_decode_full_attention_row_chunk_size"] == 2
+    assert rowchunk_boundary_payload["workload"]["batch_decode_full_attention_row_chunk_layers"] == "3,7,11"
+    assert rowchunk_boundary_payload["workload"]["full_attention_decode_path"] == "native_batch_vs_row_chunks"
+    assert "native no-rowchunk c>N batch vs rowchunk-repair" in rowchunk_boundary_payload["correctness"]["oracle"]
+
+    invalid_rowchunk_boundary_compare = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "6",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "12",
+            "--layer-limits",
+            "8",
+            "--compare-full-attn-rowchunk-boundary",
+        ]
+    )
+    with pytest.raises(ValueError, match="compare-full-attn-rowchunk-boundary requires native_batch full-attention"):
+        run_hidden_bisect(invalid_rowchunk_boundary_compare, ["--dry-run", "--compare-full-attn-rowchunk-boundary"])
+
     focused_trace = build_hidden_bisect_parser().parse_args(
         [
             "--dry-run",

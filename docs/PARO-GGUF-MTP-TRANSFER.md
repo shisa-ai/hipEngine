@@ -432,6 +432,8 @@ question is hidden/token/KV source equality.
 | Context-only native rowchunk2 on all full-attention layers | generated-token red at token 2 | `106.543 tok/s`, median `53.757 ms`; same token `220` vs `17` failure | The context-only split is not just missing a selected layer; the branch is correctness-red in the same way when applied everywhere. |
 | Suffix native rowchunk2 after batch context+gate on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 9 | `106.864 tok/s`, median `53.609 ms`; batch token `12` vs c1 token `27` | Chunking only O/post/MoE after batch context+gate preserves the no-rowchunk failure shape. |
 | Suffix native rowchunk2 including gate on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 9 | `107.508 tok/s`, median `53.189 ms`; batch token `12` vs c1 token `27` | Chunking gate/O/post/MoE after batch context also does not repair c6. |
+| Native no-rowchunk vs selected full-layer rowchunk boundary compare, L8 trace generated index 8 | hidden red | layer 3 output drift is sub-tolerance (`0.000122 max_abs`), layer 4 `attn_input` first exceeds tolerance (`0.001953`), layer 7 `attn_input_pre_qkv` reaches `0.0078125` | The layer-7 QKV/KV source mismatch is downstream of rowchunk/no-rowchunk numerical drift that begins at the selected layer-3 full-attention boundary and is amplified by layer 4. |
+| Combined context rowchunk2 plus suffix rowchunk2 including gate on selected layers `3,7,11,15,19,23,27,31` | generated-token red at token 2 | `103.998 tok/s`, median `54.865 ms`; metadata now shows both `native_context_row_chunks` and `native_suffix_row_chunks_include_gate`; batch token `220` vs c1 token `17` | Combining the context and suffix splits is correctly wired, but it is neither a repair nor faster than the current green selected full-layer rowchunk bridge. |
 
 The staged full-attention substage diagnostics now work with the selected-c1 MoE
 bridge used by the server-visible c6 path. They did not repair no-rowchunk c6:
@@ -443,12 +445,18 @@ artifact:
 The suffix rowchunk diagnostic rejects at token 9 whether the gate stays batched
 or is included in each chunk; compact summary artifact:
 `benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.
+The full-layer rowchunk boundary compare and corrected combined context+suffix
+probe are summarized in
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`.
 The remaining full-attention rowchunk tax is not explained by O projection,
 input/RMSNorm, QKV scratch, KV append, batch gate, context-kernel row chunking,
-or post-context suffix chunking in isolation. The next useful split is lower-level
-hidden/KV source instrumentation across the full native rowchunk boundary:
-identify which pre-context producer state changes when the entire layer is
-executed as rowchunk2 versus a single rows=6 native pass.
+post-context suffix chunking in isolation, or context+suffix chunking together.
+The boundary compare now points at a numerical boundary rather than a page/KV
+placement bug: layer 3 full-layer rowchunking introduces sub-tolerance output
+drift, layer 4 amplifies it past tolerance, and layer 7 observes downstream QKV
+and KV-source differences. The next useful split is to reduce or avoid the
+selected full-layer rowchunk tax directly, or to add a scheduler grouping policy
+that avoids live c6 groups when faster green c2/c4/c8 shapes are available.
 
 Next repair order:
 

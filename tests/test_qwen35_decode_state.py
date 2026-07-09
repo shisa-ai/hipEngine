@@ -972,6 +972,132 @@ def test_qwen35_decode_state_decode_batch_suffix_rowchunk_can_include_gate(monke
     )
 
 
+def test_qwen35_decode_state_can_rowchunk_context_and_suffix_together(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    hidden = _tensor(0xD000, (4, 4096), "fp16")
+    scratch = state.reserve_full_attention_scratch(tokens=4, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    moe_scratch = state.reserve_moe_c1_scratch(tokens=4, activation_dtype="fp16")
+    batch_key_cache = _tensor(0xE000, (4, 256, 2, 256), "bf16")
+    batch_value_cache = _tensor(0xF000, (4, 256, 2, 256), "bf16")
+    batch_spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (4, 4), "int32"),
+        live_counts=_tensor(0x2000, (4,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    chunk0_spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1100, (2, 4), "int32"),
+        live_counts=_tensor(0x2100, (2,), "int64"),
+        max_live_count=5,
+        storage_dtype="bf16",
+    )
+    chunk1_spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1200, (2, 4), "int32"),
+        live_counts=_tensor(0x2200, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    calls: list[tuple] = []
+
+    monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: calls.append(("input_norm",)) or scratch.attn_input)
+    monkeypatch.setattr(
+        state,
+        "prepare_full_attention_qkv_fp16_decode_rows",
+        lambda *args, **kwargs: calls.append(("prepare",)) or (scratch.query, scratch.key, scratch.value, scratch.gate),
+    )
+    monkeypatch.setattr(state, "append_full_attention_kv_fp16_decode_batch", lambda *args, **kwargs: calls.append(("append",)))
+    monkeypatch.setattr(
+        state,
+        "decode_full_attention_context_gate_fp16_batch",
+        lambda *args, **kwargs: pytest.fail("unexpected batch context+gate"),
+    )
+    monkeypatch.setattr(
+        state,
+        "project_full_attention_o_fp16",
+        lambda gated, sub_scratch, *, tokens, **kwargs: calls.append(
+            ("o_proj", int(gated.ptr), int(sub_scratch.o_proj.ptr), int(tokens))
+        )
+        or sub_scratch.o_proj,
+    )
+    monkeypatch.setattr(
+        state,
+        "post_attention_add_rmsnorm_fp16",
+        lambda row_hidden, attn_out, sub_scratch, *, tokens, **kwargs: calls.append(
+            ("post_norm", int(row_hidden.ptr), int(attn_out.ptr), int(sub_scratch.normed.ptr), int(tokens))
+        )
+        or (sub_scratch.normed, sub_scratch.residual),
+    )
+    monkeypatch.setattr(
+        state,
+        "run_moe_c1_fp16",
+        lambda mlp_input, residual, *, scratch, tokens, **kwargs: calls.append(
+            ("moe", int(mlp_input.ptr), int(residual.ptr), int(scratch.moe_out.ptr), int(tokens))
+        )
+        or scratch.moe_out,
+    )
+
+    def fake_context(query_ptr, key_ptr, value_ptr, out_ptr, spans, rows, max_live_count, *args, **kwargs):
+        calls.append(("chunk_context", int(query_ptr), int(out_ptr), int(rows), int(max_live_count)))
+
+    def fake_gate(context_ptr, gate_ptr, gated_ptr, elements, **kwargs):
+        calls.append(("chunk_gate", int(context_ptr), int(gate_ptr), int(gated_ptr), int(elements)))
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_batch_spans", fake_context)
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", fake_gate)
+
+    out = state.run_full_attention_moe_decode_batch_layer_fp16(
+        hidden,
+        key_cache=batch_key_cache,
+        value_cache=batch_value_cache,
+        append_spans=batch_spans,
+        decode_spans=batch_spans,
+        cos_table=_tensor(0x4000, (8, 4), "fp32"),
+        sin_table=_tensor(0x5000, (8, 4), "fp32"),
+        positions=_tensor(0x6000, (4,), "int64"),
+        max_positions=8,
+        attention_scratch=scratch,
+        moe_scratch=moe_scratch,
+        tokens=4,
+        force_selected_c1_moe=True,
+        context_row_chunks=((0, 2, chunk0_spans), (2, 2, chunk1_spans)),
+        suffix_row_chunks=((0, 2), (2, 2)),
+        suffix_row_chunk_include_gate=True,
+    )
+
+    q_width = state.config.num_attention_heads * state.config.head_dim
+    query_row_nbytes = q_width * scratch.query.dtype.itemsize
+    context_row_nbytes = q_width * DType.FP32.itemsize
+    row_nbytes = state.config.hidden_size * DType.FP16.itemsize
+    assert out is moe_scratch.moe_out
+    assert calls[:6] == [
+        ("input_norm",),
+        ("prepare",),
+        ("append",),
+        ("chunk_context", scratch.query.ptr, scratch.query_raw.ptr, 2, 5),
+        (
+            "chunk_context",
+            scratch.query.ptr + 2 * query_row_nbytes,
+            scratch.query_raw.ptr + 2 * context_row_nbytes,
+            2,
+            8,
+        ),
+        ("chunk_gate", scratch.query_raw.ptr, scratch.gate.ptr, scratch.gated_attn.ptr, 2 * q_width),
+    ]
+    assert calls[6:9] == [
+        ("o_proj", scratch.gated_attn.ptr, scratch.o_proj.ptr, 2),
+        ("post_norm", hidden.ptr, scratch.o_proj.ptr, moe_scratch.normed.ptr, 2),
+        ("moe", moe_scratch.normed.ptr, moe_scratch.residual.ptr, moe_scratch.moe_out.ptr, 2),
+    ]
+    assert calls[9] == (
+        "chunk_gate",
+        scratch.query_raw.ptr + 2 * context_row_nbytes,
+        scratch.gate.ptr + 2 * row_nbytes,
+        scratch.gated_attn.ptr + 2 * row_nbytes,
+        2 * q_width,
+    )
+
+
 def test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _full_attention_weights())
