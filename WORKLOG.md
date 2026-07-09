@@ -147863,3 +147863,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `hardware.arch=gfx1100`; `rocminfo` in the same artifact shows
   `gfx1151` / Radeon 8060S. The compact summary records the measured hardware
   as gfx1151. Clean up the script metadata separately.
+
+## 2026-07-09 - PARO c6 small-batch server rerun
+
+- Started a fresh gfx1151/Radeon 8060S shisa PARO server on port `18086` with
+  `HIPENGINE_HIP_ARCH=gfx1151`,
+  `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`,
+  `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1`,
+  `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`, batch window `200 ms`,
+  `max_active_requests=8`, and `max_context_tokens=1024`.
+- `/ready` passed after startup; native batch warmup covered decode widths
+  `[2,4,8]`.
+- Forced a true rows=6 server path:
+  `PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18086 --model llama --prompt-names code_python --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency 1 --extra-payload '{"n":6}' --out benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json`.
+- Result: `9.16 backend generated tok/s`, `51.053 ms/step`,
+  `248.528 ms` batch prefill, `6483.671 ms` batch decode. Decode metadata shows
+  rows=6, `moe_decode_path=selected_c1_batch`,
+  `moe_c1_shared_expert_decode_path=small_batch_forced`, native rows=6 linear
+  segments, `full_attention_decode_path=native_batch_row_chunks`, and
+  `full_attention_row_chunk_size=2`.
+- Compared with the prior c6 server correctness bridge (`64.101 ms/step`,
+  `8.14 tok/s`), this is `-13.048 ms/step` and `+12.53%` backend generated
+  throughput. Status remains diagnostic because full-attention rowchunking is
+  still the active blocker. Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-smallbatch-shared-summary.json`.

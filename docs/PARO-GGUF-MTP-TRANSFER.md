@@ -337,6 +337,7 @@ Runtime retained-default recheck:
 | Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults, before the per-row-linear-MoE repair | rows=6 used `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
 | Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
 | Runtime default after the small-batch shared-expert repair | `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now selects selected-c1 batch MoE plus `moe_c1_shared_expert_decode_path=small_batch_forced` for rows=6 when selected-c1 MoE is active and the shared-expert env override is blank. Direct retained-bench generated-token equality passed at `107.891 tok/s`, median `55.293 ms`; artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json`. A server rerun is still pending. |
+| Forced OpenAI `n=6` server request after the small-batch shared-expert repair | rows=6 used `moe_decode_path=selected_c1_batch`, `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk, `full_attention_decode_path=native_batch_row_chunks`, and `full_attention_row_chunk_size=2`; backend generated throughput `9.16 tok/s`, decode step `51.053 ms`. Compact summary `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-smallbatch-shared-summary.json`; raw artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json`. |
 
 c6 server splitter:
 
@@ -349,16 +350,17 @@ Compact summary artifact:
 | selected rowchunk repair | selected-c1 | rowchunk2 | `64.101 ms` | `8.14 tok/s` | current server-visible correctness bridge |
 | selected native-linear | selected-c1 batch | native segments | `51.619 ms` | `9.01 tok/s` | fastest prior timing, but hidden-red because rows=6 selected-c1 batch MoE drifts |
 | selected native-linear + per-row linear MoE | per-row c1 on linear layers | native segments | pending server rerun | pending | direct retained-bench generated-token green at `92.800 tok/s` |
-| selected native-linear + small-batch shared expert | selected-c1 batch with small-batch shared expert | native segments | pending server rerun | pending | direct retained-bench generated-token green at `107.891 tok/s` |
+| selected native-linear + small-batch shared expert | selected-c1 batch with small-batch shared expert | native segments | `51.053 ms` | `9.16 tok/s` | server-visible; full-attention rowchunk diagnostic remains |
 | grouped rowchunk | grouped-compact | rowchunk2 | `71.877 ms` | `7.59 tok/s` | hidden-red and slower |
 
 This split says the biggest c6 tax was linear rowchunk2, not projection. The
 direct repair shows native rows=6 linear-attention segments are correctness-clean
 when the selected-c1 shared expert uses the small-batch path. The remaining
-server work is to rerun the forced `n=6` probe with the new retained default and
-then decide whether to keep the shared-expert small-batch bypass, fold it into
-the bundled C dispatcher, remove the remaining full-attention rowchunk blocker,
-or avoid live c6 groups in scheduling.
+server rerun confirms the new default is visible and recovers the c6 server
+timing to `51.053 ms/step`; the remaining work is to decide whether to keep the
+shared-expert small-batch bypass, fold it into the bundled C dispatcher, remove
+the remaining full-attention rowchunk blocker, or avoid live c6 groups in
+scheduling.
 
 Next repair order:
 
@@ -366,9 +368,9 @@ Next repair order:
    rowchunk2, and c6 native-linear plus forced small-batch shared expert, as the local
    equality starting point for direct retained sweeps and the opt-in runtime
    retained-default bridge.
-2. Re-run the c6 server probe with the new retained default. Direct local
-   equality recovered `+23.15%` over the linear-rowchunk bridge; the server needs
-   the same shape before c=8 natural traffic can be re-evaluated.
+2. Re-run natural c=8 server traffic with the server-visible c6 small-batch
+   shared-expert repair; forced `n=6` now measures `51.053 ms/step` and
+   `9.16 backend generated tok/s`.
 3. Fold the small-batch shared-expert route into the c1 C dispatcher or add a
    dispatcher variant for it; the current runtime bypass is correct but loses
    the bundled-launch path.
