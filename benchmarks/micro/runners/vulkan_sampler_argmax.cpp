@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "micro_timing_vulkan.hpp"
+
 #ifndef HIPENGINE_ARGMAX_WG
 #define HIPENGINE_ARGMAX_WG 256
 #endif
@@ -37,13 +39,14 @@ struct Args {
   uint32_t reps = 50;
   uint32_t warmup = 10;
   uint32_t samples = 9;
+  std::string timing_mode = "serial_latency";
   uint32_t device_index = 0;
 };
 
 struct PushConstants {
   uint32_t rows;
   uint32_t vocab;
-  uint32_t reserved0;
+  uint32_t output_base;
   uint32_t reserved1;
 };
 
@@ -61,9 +64,17 @@ struct Row {
   double max_us;
   double bandwidth_gbps;
   double gcomparisons_per_s;
-  uint32_t mismatches;
+  std::vector<double> single_gpu_samples_us;
+  std::vector<double> single_host_samples_us;
+  std::vector<double> burst_gpu_samples_us;
+  std::vector<double> burst_host_samples_us;
+  uint32_t single_mismatches;
+  uint32_t burst_mismatches;
   float max_abs;
   bool correctness_pass;
+  bool gpu_timestamps_supported;
+  double timestamp_period_ns;
+  uint32_t timestamp_valid_bits;
 };
 
 struct Buffer {
@@ -111,6 +122,8 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else {
@@ -123,6 +136,7 @@ Args parse_args(int argc, char** argv) {
   if (args.rows == 0 || args.vocab == 0 || args.reps == 0 || args.samples == 0) {
     fail("--rows, --vocab, --reps, and --samples must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   return args;
 }
 
@@ -438,14 +452,16 @@ void record_dispatches(
     VkPipelineLayout pipeline_layout,
     VkDescriptorSet descriptor_set,
     const Args& args,
+    hipengine::micro::TimingMode timing_mode,
     uint32_t reps,
     bool copy_out,
     const Buffer& indices_device,
     const Buffer& indices_stage,
     const Buffer& values_device,
     const Buffer& values_stage,
-    VkDeviceSize index_bytes,
-    VkDeviceSize value_bytes) {
+    VkDeviceSize copy_index_bytes,
+    VkDeviceSize copy_value_bytes,
+    const hipengine::micro::VulkanSequenceTimer* timer = nullptr) {
   vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
   vkCmdBindDescriptorSets(
       command_buffer,
@@ -456,8 +472,18 @@ void record_dispatches(
       &descriptor_set,
       0,
       nullptr);
-  PushConstants push{args.rows, args.vocab, 0, 0};
+  if (timer != nullptr) {
+    timer->record_begin(command_buffer);
+  }
+  const uint32_t output_elems = args.rows * kTopK;
   for (uint32_t rep = 0; rep < reps; ++rep) {
+    PushConstants push{
+        args.rows,
+        args.vocab,
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? rep * output_elems
+            : 0u,
+        rep};
     vkCmdPushConstants(
         command_buffer,
         pipeline_layout,
@@ -466,6 +492,26 @@ void record_dispatches(
         sizeof(PushConstants),
         &push);
     vkCmdDispatch(command_buffer, args.rows, 1, 1);
+    if (timing_mode == hipengine::micro::TimingMode::SerialLatency && rep + 1 < reps) {
+      std::vector<VkBufferMemoryBarrier> barriers{
+          hipengine::micro::make_compute_buffer_barrier(
+              indices_device.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              0,
+              copy_index_bytes),
+          hipengine::micro::make_compute_buffer_barrier(
+              values_device.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              0,
+              copy_value_bytes),
+      };
+      hipengine::micro::compute_buffer_barrier(command_buffer, barriers);
+    }
+  }
+  if (timer != nullptr) {
+    timer->record_end(command_buffer);
   }
   if (copy_out) {
     VkBufferMemoryBarrier barriers[2]{};
@@ -476,10 +522,10 @@ void record_dispatches(
     barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barriers[0].buffer = indices_device.buffer;
     barriers[0].offset = 0;
-    barriers[0].size = index_bytes;
+    barriers[0].size = copy_index_bytes;
     barriers[1] = barriers[0];
     barriers[1].buffer = values_device.buffer;
-    barriers[1].size = value_bytes;
+    barriers[1].size = copy_value_bytes;
     vkCmdPipelineBarrier(
         command_buffer,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -492,10 +538,10 @@ void record_dispatches(
         0,
         nullptr);
     VkBufferCopy index_copy{};
-    index_copy.size = index_bytes;
+    index_copy.size = copy_index_bytes;
     vkCmdCopyBuffer(command_buffer, indices_device.buffer, indices_stage.buffer, 1, &index_copy);
     VkBufferCopy value_copy{};
-    value_copy.size = value_bytes;
+    value_copy.size = copy_value_bytes;
     vkCmdCopyBuffer(command_buffer, values_device.buffer, values_stage.buffer, 1, &value_copy);
   }
 }
@@ -526,6 +572,43 @@ double submit_once(VkDevice device, VkQueue queue, VkCommandBuffer command_buffe
   check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
   auto t1 = std::chrono::steady_clock::now();
   return std::chrono::duration<double, std::micro>(t1 - t0).count();
+}
+
+struct CorrectnessResult {
+  uint32_t mismatches = 0;
+  float max_abs = 0.0f;
+};
+
+CorrectnessResult validate_outputs(
+    const std::vector<float>& logits,
+    const std::vector<uint32_t>& actual_indices,
+    const std::vector<float>& actual_values,
+    uint32_t rows,
+    uint32_t vocab,
+    uint32_t copies,
+    bool independent,
+    uint32_t final_sequence_id) {
+  CorrectnessResult result;
+  std::vector<Pair> expected;
+  const size_t output_elems = static_cast<size_t>(rows) * kTopK;
+  for (uint32_t copy = 0; copy < copies; ++copy) {
+    for (uint32_t row = 0; row < rows; ++row) {
+      cpu_topk(logits, row, vocab, expected);
+      for (uint32_t i = 0; i < kTopK; ++i) {
+        size_t offset = static_cast<size_t>(copy) * output_elems +
+                        static_cast<size_t>(row) * kTopK + i;
+        uint32_t sequence_id = independent ? copy : final_sequence_id;
+        float tagged_expected =
+            expected[i].value + static_cast<float>(sequence_id) * 0.125f;
+        float diff = std::abs(actual_values[offset] - tagged_expected);
+        result.max_abs = std::max(result.max_abs, diff);
+        if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
+          ++result.mismatches;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 std::string json_escape(const std::string& text) {
@@ -562,6 +645,14 @@ std::string version_string(uint32_t version) {
   return out.str();
 }
 
+void write_samples(std::ostream& out, const std::vector<double>& samples) {
+  out << "[";
+  for (size_t i = 0; i < samples.size(); ++i) {
+    out << (i == 0 ? "" : ", ") << samples[i];
+  }
+  out << "]";
+}
+
 Row run_config(
     const Args& args,
     VkPhysicalDevice physical_device,
@@ -575,13 +666,21 @@ Row run_config(
   if (kTopK > args.vocab) {
     fail("top-k must be <= vocab");
   }
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const bool independent =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
   std::vector<float> logits;
   fill_logits(logits, args.rows, args.vocab);
-  std::vector<uint32_t> actual_indices(static_cast<size_t>(args.rows) * kTopK, 0);
-  std::vector<float> actual_values(static_cast<size_t>(args.rows) * kTopK, 0.0f);
+  const size_t output_elems = static_cast<size_t>(args.rows) * kTopK;
+  const uint32_t output_copies = independent ? args.reps : 1u;
+  const uint32_t allocation_copies =
+      independent ? std::max(args.reps, args.warmup) : 1u;
+  const size_t allocation_elems = output_elems * allocation_copies;
+  std::vector<uint32_t> actual_indices(allocation_elems, 0);
+  std::vector<float> actual_values(allocation_elems, 0.0f);
   VkDeviceSize logits_bytes = sizeof(float) * logits.size();
-  VkDeviceSize index_bytes = sizeof(uint32_t) * actual_indices.size();
-  VkDeviceSize value_bytes = sizeof(float) * actual_values.size();
+  VkDeviceSize index_bytes = sizeof(uint32_t) * allocation_elems;
+  VkDeviceSize value_bytes = sizeof(float) * allocation_elems;
 
   Buffer logits_stage = create_buffer(
       physical_device,
@@ -634,14 +733,38 @@ Row run_config(
   VkDescriptorSet descriptor_set = create_descriptor_set(
       device, descriptor_set_layout, logits_device, indices_device, values_device, descriptor_pool);
 
-  VkCommandBuffer correctness_cmd = begin_one_time(device, command_pool);
+  VkCommandBuffer single_correctness_cmd = begin_one_time(device, command_pool);
   record_dispatches(
-      correctness_cmd,
+      single_correctness_cmd,
       pipeline,
       pipeline_layout,
       descriptor_set,
       args,
+      timing_mode,
       1,
+      true,
+      indices_device,
+      indices_stage,
+      values_device,
+      values_stage,
+      sizeof(uint32_t) * output_elems,
+      sizeof(float) * output_elems);
+  submit_and_free(device, queue, command_pool, single_correctness_cmd);
+  std::memcpy(
+      actual_indices.data(), indices_stage.mapped, sizeof(uint32_t) * output_elems);
+  std::memcpy(actual_values.data(), values_stage.mapped, sizeof(float) * output_elems);
+  CorrectnessResult single_correctness =
+      validate_outputs(logits, actual_indices, actual_values, args.rows, args.vocab, 1, independent, 0);
+
+  VkCommandBuffer burst_correctness_cmd = begin_one_time(device, command_pool);
+  record_dispatches(
+      burst_correctness_cmd,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      args,
+      timing_mode,
+      args.reps,
       true,
       indices_device,
       indices_stage,
@@ -649,53 +772,81 @@ Row run_config(
       values_stage,
       index_bytes,
       value_bytes);
-  submit_and_free(device, queue, command_pool, correctness_cmd);
+  submit_and_free(device, queue, command_pool, burst_correctness_cmd);
   std::memcpy(actual_indices.data(), indices_stage.mapped, static_cast<size_t>(index_bytes));
   std::memcpy(actual_values.data(), values_stage.mapped, static_cast<size_t>(value_bytes));
+  CorrectnessResult burst_correctness = validate_outputs(
+      logits,
+      actual_indices,
+      actual_values,
+      args.rows,
+      args.vocab,
+      output_copies,
+      independent,
+      args.reps - 1);
 
-  uint32_t mismatches = 0;
-  float max_abs = 0.0f;
-  std::vector<Pair> expected;
-  for (uint32_t row = 0; row < args.rows; ++row) {
-    cpu_topk(logits, row, args.vocab, expected);
-    for (uint32_t i = 0; i < kTopK; ++i) {
-      size_t offset = static_cast<size_t>(row) * kTopK + i;
-      float diff = std::abs(actual_values[offset] - expected[i].value);
-      max_abs = std::max(max_abs, diff);
-      if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
-        ++mismatches;
-      }
-    }
+  hipengine::micro::VulkanSequenceTimer timer(physical_device, device, find_queue_family(physical_device));
+  auto make_timing_command = [&](uint32_t iterations) {
+    VkCommandBuffer command = begin_one_time(device, command_pool);
+    record_dispatches(
+        command,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        args,
+        timing_mode,
+        iterations,
+        false,
+        indices_device,
+        indices_stage,
+        values_device,
+        values_stage,
+        index_bytes,
+        value_bytes,
+        &timer);
+    check(vkEndCommandBuffer(command), "vkEndCommandBuffer timing");
+    return command;
+  };
+  VkCommandBuffer single_timing_cmd = make_timing_command(1);
+  VkCommandBuffer burst_timing_cmd = make_timing_command(args.reps);
+  if (args.warmup > 0) {
+    VkCommandBuffer warmup_cmd = begin_one_time(device, command_pool);
+    record_dispatches(
+        warmup_cmd,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        args,
+        timing_mode,
+        args.warmup,
+        false,
+        indices_device,
+        indices_stage,
+        values_device,
+        values_stage,
+        index_bytes,
+        value_bytes);
+    submit_and_free(device, queue, command_pool, warmup_cmd);
   }
-  bool pass = mismatches == 0;
-
-  VkCommandBuffer timing_cmd = begin_one_time(device, command_pool);
-  record_dispatches(
-      timing_cmd,
-      pipeline,
-      pipeline_layout,
-      descriptor_set,
-      args,
-      args.reps,
-      false,
-      indices_device,
-      indices_stage,
-      values_device,
-      values_stage,
-      index_bytes,
-      value_bytes);
-  check(vkEndCommandBuffer(timing_cmd), "vkEndCommandBuffer timing");
-
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    (void)submit_once(device, queue, timing_cmd, fence);
-  }
-  std::vector<double> samples;
-  samples.reserve(args.samples);
+  std::vector<double> single_gpu_samples_us;
+  std::vector<double> single_host_samples_us;
+  std::vector<double> burst_gpu_samples_us;
+  std::vector<double> burst_host_samples_us;
   for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    samples.push_back(submit_once(device, queue, timing_cmd, fence) / args.reps);
+    auto single = timer.submit_and_wait(queue, single_timing_cmd, fence);
+    if (timer.gpu_timestamps_supported()) {
+      single_gpu_samples_us.push_back(single.gpu_sequence_us);
+    }
+    single_host_samples_us.push_back(single.host_sequence_us);
+    auto burst = timer.submit_and_wait(queue, burst_timing_cmd, fence);
+    if (timer.gpu_timestamps_supported()) {
+      burst_gpu_samples_us.push_back(burst.gpu_sequence_us);
+    }
+    burst_host_samples_us.push_back(burst.host_sequence_us);
   }
 
-  vkFreeCommandBuffers(device, command_pool, 1, &timing_cmd);
+  vkFreeCommandBuffers(device, command_pool, 1, &single_timing_cmd);
+  vkFreeCommandBuffers(device, command_pool, 1, &burst_timing_cmd);
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
   vkDestroyPipeline(device, pipeline, nullptr);
   destroy_buffer(device, logits_stage);
@@ -705,12 +856,20 @@ Row run_config(
   destroy_buffer(device, indices_device);
   destroy_buffer(device, values_device);
 
-  double median_us = percentile(samples, 0.5);
+  std::vector<double> burst_per_iteration_us;
+  const std::vector<double>& sequence_samples =
+      timer.gpu_timestamps_supported() ? burst_gpu_samples_us : burst_host_samples_us;
+  burst_per_iteration_us.reserve(sequence_samples.size());
+  for (double value : sequence_samples) {
+    burst_per_iteration_us.push_back(value / args.reps);
+  }
+  double median_us = percentile(burst_per_iteration_us, 0.5);
   double scanned_values =
       static_cast<double>(args.rows) *
       (static_cast<double>(kTopK) * args.vocab - static_cast<double>(kTopK * (kTopK - 1)) / 2.0);
   double bytes = scanned_values * sizeof(float);
   double comparisons = scanned_values;
+  bool pass = single_correctness.mismatches == 0 && burst_correctness.mismatches == 0;
   return Row{
       args.rows,
       args.vocab,
@@ -719,15 +878,23 @@ Row run_config(
       bytes,
       comparisons,
       median_us,
-      percentile(samples, 0.05),
-      percentile(samples, 0.95),
-      *std::min_element(samples.begin(), samples.end()),
-      *std::max_element(samples.begin(), samples.end()),
+      percentile(burst_per_iteration_us, 0.05),
+      percentile(burst_per_iteration_us, 0.95),
+      *std::min_element(burst_per_iteration_us.begin(), burst_per_iteration_us.end()),
+      *std::max_element(burst_per_iteration_us.begin(), burst_per_iteration_us.end()),
       bytes / median_us / 1000.0,
       comparisons / median_us / 1000.0,
-      mismatches,
-      max_abs,
+      std::move(single_gpu_samples_us),
+      std::move(single_host_samples_us),
+      std::move(burst_gpu_samples_us),
+      std::move(burst_host_samples_us),
+      single_correctness.mismatches,
+      burst_correctness.mismatches,
+      std::max(single_correctness.max_abs, burst_correctness.max_abs),
       pass,
+      timer.gpu_timestamps_supported(),
+      timer.timestamp_period_ns(),
+      timer.timestamp_valid_bits(),
   };
 }
 
@@ -759,7 +926,12 @@ void write_json(
   out << "    \"reps\": " << args.reps << ",\n";
   out << "    \"warmup\": " << args.warmup << ",\n";
   out << "    \"samples\": " << args.samples << ",\n";
-  out << "    \"method\": \"pre-recorded Vulkan command buffer; one workgroup per row deterministic top-k argmax reduction; CPU oracle\"\n";
+  out << "    \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  out << "    \"gpu_timestamps_supported\": "
+      << (row.gpu_timestamps_supported ? "true" : "false") << ",\n";
+  out << "    \"timestamp_period_ns\": " << row.timestamp_period_ns << ",\n";
+  out << "    \"timestamp_valid_bits\": " << row.timestamp_valid_bits << ",\n";
+  out << "    \"method\": \"pre-recorded Vulkan command buffers with GPU timestamps and submit/fence host wall; exact single and burst CPU oracles\"\n";
   out << "  },\n";
   out << "  \"rows\": [\n";
   out << "    {\n";
@@ -776,7 +948,21 @@ void write_json(
   out << "      \"max_us\": " << row.max_us << ",\n";
   out << "      \"bandwidth_gbps\": " << row.bandwidth_gbps << ",\n";
   out << "      \"gcomparisons_per_s\": " << row.gcomparisons_per_s << ",\n";
-  out << "      \"mismatches\": " << row.mismatches << ",\n";
+  out << "      \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  out << "      \"single_gpu_samples_us\": ";
+  write_samples(out, row.single_gpu_samples_us);
+  out << ",\n      \"single_host_samples_us\": ";
+  write_samples(out, row.single_host_samples_us);
+  out << ",\n      \"burst_gpu_samples_us\": ";
+  write_samples(out, row.burst_gpu_samples_us);
+  out << ",\n      \"burst_host_samples_us\": ";
+  write_samples(out, row.burst_host_samples_us);
+  out << ",\n";
+  out << "      \"gpu_timestamps_supported\": "
+      << (row.gpu_timestamps_supported ? "true" : "false") << ",\n";
+  out << "      \"single_mismatches\": " << row.single_mismatches << ",\n";
+  out << "      \"burst_mismatches\": " << row.burst_mismatches << ",\n";
+  out << "      \"mismatches\": " << (row.single_mismatches + row.burst_mismatches) << ",\n";
   out << "      \"max_abs\": " << row.max_abs << ",\n";
   out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
   out << "    }\n";

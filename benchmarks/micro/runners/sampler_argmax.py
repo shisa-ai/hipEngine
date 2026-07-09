@@ -22,8 +22,11 @@ MICRO_ROOT = REPO_ROOT / "benchmarks" / "micro"
 HIP_HARNESS = MICRO_ROOT / "runners" / "hip_sampler_argmax.hip"
 VULKAN_HARNESS = MICRO_ROOT / "runners" / "vulkan_sampler_argmax.cpp"
 VULKAN_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "sampler_argmax.comp"
+HIP_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_hip.hpp"
+VULKAN_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
 ISA_STATS = MICRO_ROOT / "runners" / "isa_stats.py"
+TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
 BENCH_NAME = "sampler_argmax_topk"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-sampler-topk")
 
@@ -37,6 +40,9 @@ def _load_module(path: Path, name: str):
     return module
 
 
+timing_contract = _load_module(TIMING_CONTRACT, "micro_sampler_timing_contract")
+
+
 def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     if args.environment_json:
         return json.loads(args.environment_json.read_text(encoding="utf-8"))
@@ -44,6 +50,7 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
@@ -235,8 +242,14 @@ def _compile_vulkan(workgroup: int, top_k: int, args: argparse.Namespace) -> tup
     return spirv, exe, shader_command, build_command
 
 
-def _harness_args(args: argparse.Namespace, raw_path: Path, rows: int) -> list[str]:
-    return [
+def _harness_args(
+    args: argparse.Namespace,
+    raw_path: Path,
+    rows: int,
+    *,
+    backend: str,
+) -> list[str]:
+    command = [
         "--json",
         str(raw_path),
         "--rows",
@@ -249,9 +262,14 @@ def _harness_args(args: argparse.Namespace, raw_path: Path, rows: int) -> list[s
         str(args.warmup),
         "--samples",
         str(args.samples),
+        "--timing-mode",
+        args.timing_mode,
         "--device-index",
         str(args.device_index),
     ]
+    if backend == "hip":
+        command.extend(["--independent-streams", str(args.independent_streams)])
+    return command
 
 
 def _row_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
@@ -380,10 +398,84 @@ def _normalize_result(
     gfx_arch: str | None,
     environment_ref: str | None,
 ) -> dict[str, Any]:
-    rows = []
+    rows: list[dict[str, Any]] = []
     for raw in raw_rows:
         isa = isa_by_variant[(int(raw["workgroup_size"]), int(raw.get("top_k", 1)))]
-        row = {**raw, **{f"isa_{k}": v for k, v in isa.items()}}
+        config = raw.get("raw_config") if isinstance(raw.get("raw_config"), dict) else {}
+        repetitions = int(config.get("reps", 0))
+        timing_mode = timing_contract.parse_timing_mode(str(raw.get("timing_mode")))
+        gpu_supported = backend == "hip" or bool(raw.get("gpu_timestamps_supported"))
+        gpu_clock = "hip_event" if backend == "hip" else "vulkan_timestamp"
+
+        def timing_control(name: str, logical_iterations: int) -> dict[str, Any]:
+            gpu_samples = raw.get(f"{name}_gpu_samples_us") if gpu_supported else None
+            return timing_contract.make_timing_control(
+                logical_iterations=logical_iterations,
+                dispatches_per_iteration=1,
+                gpu_samples_us=gpu_samples,
+                host_samples_us=raw.get(f"{name}_host_samples_us"),
+                gpu_clock=gpu_clock,
+                gpu_status="ok" if gpu_supported else "unsupported",
+            )
+
+        correctness_pass = bool(raw.get("correctness_pass"))
+        correctness = timing_contract.make_correctness(
+            status="pass" if correctness_pass else "fail",
+            oracle="CPU top-k over deterministic logits with stable value/index ordering",
+            logical_iterations=repetitions,
+            coverage=(
+                "all_dispatches"
+                if timing_mode == "independent_throughput"
+                else "chained_final_state"
+            ),
+            synchronization_method=(
+                "disjoint_output_slices"
+                if timing_mode == "independent_throughput"
+                else ("hip_stream_order" if backend == "hip" else "vulkan_compute_barrier")
+            ),
+            barrier_count=(
+                repetitions - 1
+                if backend == "vulkan" and timing_mode == "serial_latency"
+                else 0
+            ),
+        )
+        submission = timing_contract.make_submission(
+            strategy=(
+                "multi_stream"
+                if backend == "hip" and timing_mode == "independent_throughput"
+                else (
+                    "direct"
+                    if backend == "hip"
+                    else "vulkan_command_buffer"
+                )
+            ),
+            queue_or_stream_count=int(raw.get("stream_count", 1)) if backend == "hip" else 1,
+            recording_in_timed_region=False,
+        )
+        contract = timing_contract.make_timed_row_contract(
+            timing_mode=timing_mode,
+            backend=backend,
+            repetitions=repetitions,
+            dispatches_per_iteration=1,
+            dependency_validation_status="pass" if correctness_pass else "fail",
+            submission=submission,
+            single_timing=timing_control("single", 1),
+            burst_timing=timing_control("burst", repetitions),
+            correctness=correctness,
+        )
+        raw_fields = {
+            key: value
+            for key, value in raw.items()
+            if key
+            not in {
+                "raw_config",
+                "single_gpu_samples_us",
+                "single_host_samples_us",
+                "burst_gpu_samples_us",
+                "burst_host_samples_us",
+            }
+        }
+        row = {**raw_fields, **contract, **{f"isa_{k}": v for k, v in isa.items()}}
         row["instruction_count"] = isa.get("instruction_count")
         row["waitcnt_count"] = isa.get("waitcnt_count")
         row["waitcnt_depctr_count"] = isa.get("waitcnt_depctr_count")
@@ -409,13 +501,21 @@ def _normalize_result(
         ):
             if isa.get(key) is not None:
                 row[key] = isa.get(key)
+        burst_gpu = row["timing"]["burst"]["gpu_elapsed"]
+        burst_host = row["timing"]["burst"]["host_wall"]
+        primary_metric = burst_gpu if burst_gpu["status"] == "ok" else burst_host
+        row["median_us"] = primary_metric["per_iteration_us"]["median"]
+        row["bandwidth_gbps"] = float(row["bytes_per_dispatch"]) / row["median_us"] / 1000.0
+        row["gcomparisons_per_s"] = (
+            float(row["comparisons_per_dispatch"]) / row["median_us"] / 1000.0
+        )
         rows.append(row)
 
     primary = min(rows, key=lambda row: float(row["median_us"])) if rows else {}
     correctness_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
     raw0 = raw_rows[0] if raw_rows else {}
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": BENCH_NAME,
         "backend": backend,
@@ -432,6 +532,13 @@ def _normalize_result(
             "workgroups": sorted({int(row["workgroup_size"]) for row in rows}),
             "top_k_list": sorted({int(row.get("top_k", 1)) for row in rows}),
             "vocab": primary.get("vocab"),
+            "timing_mode": primary.get("timing_mode"),
+            "repetitions": int(
+                (raw_rows[0].get("raw_config") or {}).get("reps", 0)
+            ) if raw_rows else 0,
+            "warmup_logical_iterations": int(
+                (raw_rows[0].get("raw_config") or {}).get("warmup", 0)
+            ) if raw_rows else 0,
             "commands": commands,
         },
         "correctness": {
@@ -440,23 +547,12 @@ def _normalize_result(
             "max_abs": max((float(row.get("max_abs", 0.0)) for row in rows), default=0.0),
             "mismatches": sum((int(row.get("mismatches", 0)) for row in rows), 0),
         },
-        "timing": {
-            "unit": "us_per_dispatch",
-            "median": primary.get("median_us"),
-            "primary": primary,
-            "summary": {
-                "best_bandwidth_gbps": max(
-                    (float(row.get("bandwidth_gbps", 0.0)) for row in rows),
-                    default=0.0,
-                ),
-                "row_count": len(rows),
-            },
-        },
         "isa": primary,
         "classification": "diagnostic_unclassified",
         "measurements": {"rows": rows},
         "notes": (
-            "Sampler/top-k argmax diagnostic. One workgroup repeatedly reduces one logits row; "
+            "Sampler/top-k argmax diagnostic with explicit serial-latency or independent-throughput semantics. "
+            "One workgroup reduces one logits row; "
             "the row tests reduction, memory scan, tie-break, LDS/shared-memory, and scheduler behavior. "
             "This is deterministic top-k, not stochastic sampling."
         ),
@@ -475,7 +571,9 @@ def _run_hip(
     top_k_list: list[int],
 ) -> dict[str, Any]:
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
+    source_hash = _hash_files(
+        [Path(__file__).resolve(), HIP_HARNESS, HIP_TIMING_HEADER, TIMING_CONTRACT]
+    )
     raw_rows: list[dict[str, Any]] = []
     isa_by_variant: dict[tuple[int, int], dict[str, Any]] = {}
     commands: list[dict[str, Any]] = []
@@ -485,7 +583,10 @@ def _run_hip(
             isa_by_variant[(workgroup, top_k)] = _hip_isa(obj)
             for rows in rows_list:
                 raw_path = args.build_dir / "hip" / f"wg{workgroup}_k{top_k}" / f"rows{rows}.json"
-                harness_command = [str(exe), *_harness_args(args, raw_path, rows)]
+                harness_command = [
+                    str(exe),
+                    *_harness_args(args, raw_path, rows, backend="hip"),
+                ]
                 completed = _run_command(harness_command, cwd=REPO_ROOT)
                 if completed.returncode != 0:
                     raise RuntimeError(
@@ -494,6 +595,7 @@ def _run_hip(
                 raw = json.loads(raw_path.read_text(encoding="utf-8"))
                 raw_row = _row_from_raw(raw)
                 raw_row["hardware"] = raw.get("hardware", {})
+                raw_row["raw_config"] = raw.get("config", {})
                 raw_rows.append(raw_row)
                 commands.append(
                     {
@@ -527,7 +629,15 @@ def _run_vulkan(
     top_k_list: list[int],
 ) -> dict[str, Any]:
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_SHADER])
+    source_hash = _hash_files(
+        [
+            Path(__file__).resolve(),
+            VULKAN_HARNESS,
+            VULKAN_SHADER,
+            VULKAN_TIMING_HEADER,
+            TIMING_CONTRACT,
+        ]
+    )
     raw_rows: list[dict[str, Any]] = []
     isa_by_variant: dict[tuple[int, int], dict[str, Any]] = {}
     commands: list[dict[str, Any]] = []
@@ -538,7 +648,12 @@ def _run_vulkan(
             isa_by_variant[(workgroup, top_k)] = isa_row
             for rows in rows_list:
                 raw_path = args.build_dir / "vulkan" / f"wg{workgroup}_k{top_k}" / f"rows{rows}.json"
-                harness_command = [str(exe), "--spirv", str(spirv), *_harness_args(args, raw_path, rows)]
+                harness_command = [
+                    str(exe),
+                    "--spirv",
+                    str(spirv),
+                    *_harness_args(args, raw_path, rows, backend="vulkan"),
+                ]
                 completed = _run_command(harness_command, cwd=REPO_ROOT)
                 if completed.returncode != 0:
                     raise RuntimeError(
@@ -547,6 +662,7 @@ def _run_vulkan(
                 raw = json.loads(raw_path.read_text(encoding="utf-8"))
                 raw_row = _row_from_raw(raw)
                 raw_row["hardware"] = raw.get("hardware", {})
+                raw_row["raw_config"] = raw.get("config", {})
                 raw_rows.append(raw_row)
                 commands.append(
                     {
@@ -577,8 +693,45 @@ def _run_vulkan(
     )
 
 
-def _row_key(row: dict[str, Any]) -> tuple[int, int, int]:
-    return int(row.get("top_k", 1)), int(row["rows"]), int(row["workgroup_size"])
+def _row_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
+    return (
+        str(row.get("timing_mode")),
+        int(row.get("top_k", 1)),
+        int(row["rows"]),
+        int(row["workgroup_size"]),
+    )
+
+
+def _domain_comparison(
+    hip: dict[str, Any],
+    vulkan: dict[str, Any],
+    *,
+    control: str,
+    domain: str,
+) -> dict[str, Any]:
+    hip_status = hip["timing"][control][domain]["status"]
+    vulkan_status = vulkan["timing"][control][domain]["status"]
+    if hip_status != "ok" or vulkan_status != "ok":
+        return {
+            "status": "unsupported",
+            "hip_status": hip_status,
+            "vulkan_status": vulkan_status,
+        }
+    try:
+        ratio = timing_contract.comparison_ratio(
+            hip,
+            vulkan,
+            control=control,
+            domain=domain,
+        )
+    except ValueError as exc:
+        if domain != "host_wall":
+            raise
+        return {
+            "status": "not_comparable_submission_contract",
+            "reason": str(exc),
+        }
+    return {"status": "ok", **ratio}
 
 
 def build_comparison(
@@ -590,6 +743,8 @@ def build_comparison(
     vulkan_ref: str | None = None,
     out_ref: str | None = None,
 ) -> dict[str, Any]:
+    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
+        raise ValueError("sampler comparison requires v2 timing-contract results")
     hip_rows = {
         _row_key(row): row
         for row in hip_result.get("measurements", {}).get("rows", [])
@@ -600,53 +755,54 @@ def build_comparison(
         for row in vulkan_result.get("measurements", {}).get("rows", [])
         if isinstance(row, dict)
     }
-    matched = []
+    hip_modes = {key[0] for key in hip_rows}
+    vulkan_modes = {key[0] for key in vulkan_rows}
+    if hip_modes != vulkan_modes:
+        raise ValueError("HIP and Vulkan timing modes do not match")
+    comparisons: list[dict[str, Any]] = []
     for key in sorted(set(hip_rows) & set(vulkan_rows)):
         hip = hip_rows[key]
         vulkan = vulkan_rows[key]
-        hip_us = float(hip["median_us"])
-        vulkan_us = float(vulkan["median_us"])
-        matched.append(
-            {
-                "top_k": key[0],
-                "rows": key[1],
-                "workgroup_size": key[2],
-                "vocab": hip.get("vocab"),
-                "hip_median_us": hip_us,
-                "vulkan_median_us": vulkan_us,
-                "vulkan_vs_hip_speedup": hip_us / vulkan_us if vulkan_us > 0 else None,
-                "hip_bandwidth_gbps": hip.get("bandwidth_gbps"),
-                "vulkan_bandwidth_gbps": vulkan.get("bandwidth_gbps"),
-                "hip_correctness_pass": hip.get("correctness_pass"),
-                "vulkan_correctness_pass": vulkan.get("correctness_pass"),
-                "hip_instruction_count": hip.get("instruction_count"),
-                "vulkan_instruction_count": vulkan.get("instruction_count"),
-                "hip_waitcnt_count": hip.get("waitcnt_count"),
-                "vulkan_waitcnt_count": vulkan.get("waitcnt_count"),
-                "hip_load_instruction_count": hip.get("load_instruction_count"),
-                "vulkan_load_instruction_count": vulkan.get("load_instruction_count"),
-                "hip_wave_size": hip.get("wave_size"),
-                "vulkan_wave_size": vulkan.get("wave_size"),
-                "hip_vgpr": hip.get("vgpr"),
-                "hip_sgpr": hip.get("sgpr"),
-                "hip_scratch_bytes": hip.get("scratch_bytes"),
-                "vulkan_vgpr": vulkan.get("vgpr"),
-                "vulkan_sgpr": vulkan.get("sgpr"),
-                "vulkan_scratch_bytes": vulkan.get("scratch_bytes"),
-                "vulkan_sgpr_spill_count": vulkan.get("sgpr_spill_count"),
-                "vulkan_vgpr_spill_count": vulkan.get("vgpr_spill_count"),
-                "vulkan_subgroups_per_simd": vulkan.get("subgroups_per_simd"),
-                "vulkan_code_size_bytes": vulkan.get("code_size_bytes"),
-                "hip_vopd_count": hip.get("vopd_count"),
-                "vulkan_vopd_count": vulkan.get("vopd_count"),
-                "hip_barrier_count": hip.get("isa_barrier_count"),
-                "vulkan_barrier_count": vulkan.get("isa_barrier_count"),
-            }
-        )
-    best = max(matched, key=lambda row: float(row["vulkan_vs_hip_speedup"])) if matched else {}
+        timing_contract.dependency_signature(hip)
+        timing_contract.dependency_signature(vulkan)
+        for control in timing_contract.TIMING_CONTROLS:
+            comparisons.append(
+                {
+                    "timing_mode": key[0],
+                    "control": control,
+                    "top_k": key[1],
+                    "rows": key[2],
+                    "workgroup_size": key[3],
+                    "vocab": hip.get("vocab"),
+                    "gpu_elapsed": _domain_comparison(
+                        hip, vulkan, control=control, domain="gpu_elapsed"
+                    ),
+                    "host_wall": _domain_comparison(
+                        hip, vulkan, control=control, domain="host_wall"
+                    ),
+                    "isa": {
+                        "hip_instruction_count": hip.get("instruction_count"),
+                        "vulkan_instruction_count": vulkan.get("instruction_count"),
+                        "hip_waitcnt_count": hip.get("waitcnt_count"),
+                        "vulkan_waitcnt_count": vulkan.get("waitcnt_count"),
+                        "hip_wave_size": hip.get("wave_size"),
+                        "vulkan_wave_size": vulkan.get("wave_size"),
+                    },
+                }
+            )
+    burst_gpu = [
+        row
+        for row in comparisons
+        if row["control"] == "burst" and row["gpu_elapsed"].get("status") == "ok"
+    ]
+    best = max(
+        burst_gpu,
+        key=lambda row: float(row["gpu_elapsed"]["vulkan_vs_hip_speedup"]),
+        default={},
+    )
     return _json_safe(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "diagnostic_unclassified",
@@ -661,12 +817,17 @@ def build_comparison(
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
             },
-            "matched_rows": matched,
+            "comparisons": comparisons,
             "summary": {
-                "best_vulkan_vs_hip_speedup": best.get("vulkan_vs_hip_speedup"),
+                "best_vulkan_vs_hip_gpu_burst_speedup": (
+                    best.get("gpu_elapsed", {}).get("vulkan_vs_hip_speedup")
+                    if best
+                    else None
+                ),
                 "best_row": best,
-                "all_correct": bool(matched)
-                and all(row.get("hip_correctness_pass") and row.get("vulkan_correctness_pass") for row in matched),
+                "all_correct": bool(comparisons)
+                and hip_result.get("correctness", {}).get("status") == "pass"
+                and vulkan_result.get("correctness", {}).get("status") == "pass",
             },
             "interpretation": (
                 "Sampler/top-k argmax diagnostic. This covers the sampler/top-k/argmax "
@@ -695,6 +856,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--reps", type=int, default=50)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--samples", type=int, default=9)
+    parser.add_argument(
+        "--timing-mode",
+        choices=timing_contract.TIMING_MODES,
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--debug-vocab", type=int, default=1024)
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--skip-device-probes", action="store_true")
@@ -707,8 +874,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--compare and --backend are mutually exclusive")
     if not args.compare and not args.backend:
         parser.error("one of --backend or --compare is required")
-    if args.vocab <= 0 or args.reps <= 0 or args.samples <= 0 or args.debug_vocab <= 0:
-        parser.error("--vocab, --reps, --samples, and --debug-vocab must be positive")
+    if (
+        args.vocab <= 0
+        or args.reps <= 0
+        or args.samples <= 0
+        or args.debug_vocab <= 0
+        or args.independent_streams <= 0
+    ):
+        parser.error(
+            "--vocab, --reps, --samples, --debug-vocab, and --independent-streams must be positive"
+        )
     return args
 
 

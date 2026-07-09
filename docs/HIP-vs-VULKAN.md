@@ -94,7 +94,7 @@ Last updated: 2026-07-10.
 | Memory/waitcnt | Pending v2 rerun | Pending v2 rerun | Static ISA evidence remains valid. |
 | Packed dot | Pending v2 rerun | Pending v2 rerun | Static dot4 evidence remains valid. |
 | VOPD | Pending v2 rerun | Pending v2 rerun | Static VOPD evidence remains valid. |
-| Sampler | Pending v2 rerun | Pending v2 rerun | Correctness remains deterministic top-1/top-k; old timing is legacy. |
+| Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
 | Two-stage reduction | Pending v2 rerun | Diagnostic only | Existing barriers make this the strongest legacy control, but clocks still differed. |
 | Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
 | Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
