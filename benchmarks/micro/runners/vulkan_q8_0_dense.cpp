@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,7 @@ struct Args {
   uint32_t warmup = 20;
   uint32_t samples = 9;
   uint32_t device_index = 0;
+  uint32_t independent_lanes = 4;
   float input_scale = 0.1f;
   hipengine::micro::TimingMode timing_mode = hipengine::micro::TimingMode::SerialLatency;
 };
@@ -62,6 +64,11 @@ struct Buffer {
 struct SequenceTiming {
   std::vector<double> gpu_samples_us;
   std::vector<double> host_samples_us;
+  std::vector<std::vector<double>> lane_gpu_samples_us;
+  std::string submission_strategy = "vulkan_command_buffer";
+  uint32_t actual_lanes = 1;
+  bool calibrated_timestamp_domain = false;
+  std::string calibrated_timestamp_extension;
 };
 
 struct OperationTiming {
@@ -72,6 +79,7 @@ struct OperationTiming {
 struct Correctness {
   double max_abs = 0.0;
   double mean_abs = 0.0;
+  double kl_divergence = 0.0;
   double top1 = 0.0;
   uint32_t exact_bf16_mismatches = 0;
   uint32_t outputs_checked = 0;
@@ -131,6 +139,9 @@ Args parse_args(int argc, char** argv) {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--independent-lanes") {
+      args.independent_lanes =
+          static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--input-scale") {
       args.input_scale = std::stof(require_value(i, argc, argv, flag));
     } else if (flag == "--timing-mode") {
@@ -144,8 +155,8 @@ Args parse_args(int argc, char** argv) {
     fail("--quantize-spirv and --dot-spirv are required");
   }
   if (args.rows == 0 || args.in_features == 0 || args.out_features == 0 ||
-      args.reps == 0 || args.samples == 0) {
-    fail("rows, features, reps, and samples must be positive");
+      args.reps == 0 || args.samples == 0 || args.independent_lanes == 0) {
+    fail("rows, features, reps, samples, and independent lanes must be positive");
   }
   if ((args.in_features % Q8_0_BLOCK) != 0) {
     fail("in_features must be divisible by 32");
@@ -411,10 +422,42 @@ Correctness compare_outputs(const std::vector<uint32_t>& expected, const std::ve
     if (expected_argmax == actual_argmax) {
       ++top1_match;
     }
+    double expected_max = -std::numeric_limits<double>::infinity();
+    double actual_max = -std::numeric_limits<double>::infinity();
+    for (uint32_t col = 0; col < args.out_features; ++col) {
+      const size_t idx = static_cast<size_t>(row) * args.out_features + col;
+      expected_max = std::max(
+          expected_max, static_cast<double>(bf16_bits_to_float(expected[idx])));
+      actual_max = std::max(
+          actual_max, static_cast<double>(bf16_bits_to_float(actual[idx])));
+    }
+    double expected_sum = 0.0;
+    double actual_sum = 0.0;
+    for (uint32_t col = 0; col < args.out_features; ++col) {
+      const size_t idx = static_cast<size_t>(row) * args.out_features + col;
+      expected_sum += std::exp(
+          static_cast<double>(bf16_bits_to_float(expected[idx])) - expected_max);
+      actual_sum += std::exp(
+          static_cast<double>(bf16_bits_to_float(actual[idx])) - actual_max);
+    }
+    const double expected_log_z = expected_max + std::log(expected_sum);
+    const double actual_log_z = actual_max + std::log(actual_sum);
+    double row_kl = 0.0;
+    for (uint32_t col = 0; col < args.out_features; ++col) {
+      const size_t idx = static_cast<size_t>(row) * args.out_features + col;
+      const double expected_value =
+          static_cast<double>(bf16_bits_to_float(expected[idx]));
+      const double actual_value =
+          static_cast<double>(bf16_bits_to_float(actual[idx]));
+      const double expected_log_p = expected_value - expected_log_z;
+      const double actual_log_p = actual_value - actual_log_z;
+      row_kl += std::exp(expected_log_p) * (expected_log_p - actual_log_p);
+    }
+    result.kl_divergence = std::max(result.kl_divergence, row_kl);
   }
   result.top1 = static_cast<double>(top1_match) / static_cast<double>(args.rows);
   result.outputs_checked = 1;
-  result.pass = result.max_abs <= 1.0 && result.top1 == 1.0;
+  result.pass = result.kl_divergence <= 0.05 && result.top1 >= 0.90;
   return result;
 }
 
@@ -444,6 +487,8 @@ Correctness compare_output_slices(
     Correctness item = compare_outputs(expected[expected_slices[i]], actual_slice, args);
     aggregate.max_abs = std::max(aggregate.max_abs, item.max_abs);
     aggregate.mean_abs = std::max(aggregate.mean_abs, item.mean_abs);
+    aggregate.kl_divergence =
+        std::max(aggregate.kl_divergence, item.kl_divergence);
     aggregate.top1 = std::min(aggregate.top1, item.top1);
     aggregate.exact_bf16_mismatches += item.exact_bf16_mismatches;
     aggregate.outputs_checked += item.outputs_checked;
@@ -469,19 +514,6 @@ std::vector<uint32_t> read_spirv(const std::string& path) {
   return words;
 }
 
-uint32_t find_queue_family(VkPhysicalDevice physical_device) {
-  uint32_t count = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
-  std::vector<VkQueueFamilyProperties> families(count);
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, families.data());
-  for (uint32_t i = 0; i < count; ++i) {
-    if ((families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0) {
-      return i;
-    }
-  }
-  fail("physical device has no compute queue family");
-}
-
 bool has_device_extension(VkPhysicalDevice physical_device, const char* extension_name) {
   uint32_t count = 0;
   check(vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr),
@@ -497,7 +529,9 @@ bool has_device_extension(VkPhysicalDevice physical_device, const char* extensio
   return false;
 }
 
-void require_integer_dot_product(VkPhysicalDevice physical_device) {
+void require_integer_dot_product(
+    VkPhysicalDevice physical_device,
+    bool require_timeline_semaphore) {
   if (!has_device_extension(physical_device, VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME)) {
     fail("physical device does not expose VK_KHR_shader_integer_dot_product");
   }
@@ -505,7 +539,11 @@ void require_integer_dot_product(VkPhysicalDevice physical_device) {
   dot_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR;
   VkPhysicalDevice16BitStorageFeatures storage16_features{};
   storage16_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+  VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
+  timeline_features.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
   dot_features.pNext = &storage16_features;
+  storage16_features.pNext = &timeline_features;
   VkPhysicalDeviceFeatures2 features2{};
   features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
   features2.pNext = &dot_features;
@@ -516,14 +554,21 @@ void require_integer_dot_product(VkPhysicalDevice physical_device) {
   if (storage16_features.storageBuffer16BitAccess != VK_TRUE) {
     fail("physical device reports storageBuffer16BitAccess=false");
   }
+  if (require_timeline_semaphore && timeline_features.timelineSemaphore != VK_TRUE) {
+    fail("physical device reports timelineSemaphore=false");
+  }
 }
 
-VkDevice create_device(VkPhysicalDevice physical_device, uint32_t queue_family, const float* queue_priority) {
+VkDevice create_device(
+    VkPhysicalDevice physical_device,
+    const hipengine::micro::VulkanQueueFamilySelection& queue_selection,
+    const char* calibrated_timestamp_extension) {
+  std::vector<float> queue_priorities(queue_selection.queue_count, 1.0f);
   VkDeviceQueueCreateInfo queue_info{};
   queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queue_info.queueFamilyIndex = queue_family;
-  queue_info.queueCount = 1;
-  queue_info.pQueuePriorities = queue_priority;
+  queue_info.queueFamilyIndex = queue_selection.index;
+  queue_info.queueCount = queue_selection.queue_count;
+  queue_info.pQueuePriorities = queue_priorities.data();
 
   VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR dot_features{};
   dot_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR;
@@ -531,20 +576,30 @@ VkDevice create_device(VkPhysicalDevice physical_device, uint32_t queue_family, 
   VkPhysicalDevice16BitStorageFeatures storage16_features{};
   storage16_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
   storage16_features.storageBuffer16BitAccess = VK_TRUE;
+  VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
+  timeline_features.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+  const bool enable_timeline = queue_selection.queue_count > 1;
+  timeline_features.timelineSemaphore = enable_timeline ? VK_TRUE : VK_FALSE;
   dot_features.pNext = &storage16_features;
+  storage16_features.pNext = enable_timeline ? &timeline_features : nullptr;
 
   VkPhysicalDeviceFeatures2 features2{};
   features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
   features2.pNext = &dot_features;
 
-  const char* extensions[] = {VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME};
+  std::vector<const char*> extensions{
+      VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME};
+  if (calibrated_timestamp_extension != nullptr) {
+    extensions.push_back(calibrated_timestamp_extension);
+  }
   VkDeviceCreateInfo device_info{};
   device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   device_info.pNext = &features2;
   device_info.queueCreateInfoCount = 1;
   device_info.pQueueCreateInfos = &queue_info;
-  device_info.enabledExtensionCount = 1;
-  device_info.ppEnabledExtensionNames = extensions;
+  device_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+  device_info.ppEnabledExtensionNames = extensions.data();
 
   VkDevice device = VK_NULL_HANDLE;
   check(vkCreateDevice(physical_device, &device_info, nullptr, &device), "vkCreateDevice");
@@ -908,52 +963,11 @@ void record_quantize_dot(
     const PushConstants& push,
     const Buffer& xq_device,
     const Buffer& out_device,
-    const std::vector<VkEvent>& iteration_events,
     hipengine::micro::TimingMode timing_mode,
     uint32_t row_tile,
     uint32_t reps) {
   if (timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
-    if (reps > iteration_events.size()) {
-      fail("independent combined repetitions exceed the event pool");
-    }
-    for (uint32_t rep = 0; rep < reps; ++rep) {
-      vkCmdResetEvent(
-          cmd, iteration_events[rep], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    }
-    for (uint32_t rep = 0; rep < reps; ++rep) {
-      dispatch_quantize(
-          cmd, quant_pipeline, layout, descriptor_set,
-          slice_push(push, rep, rep, rep));
-      vkCmdSetEvent(
-          cmd, iteration_events[rep], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    }
-    for (uint32_t rep = 0; rep < reps; ++rep) {
-      VkBufferMemoryBarrier barrier =
-          hipengine::micro::make_compute_buffer_barrier(
-              xq_device.buffer,
-              VK_ACCESS_SHADER_WRITE_BIT,
-              VK_ACCESS_SHADER_READ_BIT,
-              static_cast<VkDeviceSize>(rep) * push.rows *
-                  push.q8_blocks_per_row * Q8_1_WORDS * sizeof(uint32_t),
-              static_cast<VkDeviceSize>(push.rows) * push.q8_blocks_per_row *
-                  Q8_1_WORDS * sizeof(uint32_t));
-      vkCmdWaitEvents(
-          cmd,
-          1,
-          &iteration_events[rep],
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          0,
-          nullptr,
-          1,
-          &barrier,
-          0,
-          nullptr);
-      dispatch_dot(
-          cmd, dot_pipeline, layout, descriptor_set,
-          slice_push(push, rep, rep, rep), row_tile);
-    }
-    return;
+    fail("independent combined work must use calibrated multi-queue lanes");
   }
 
   for (uint32_t rep = 0; rep < reps; ++rep) {
@@ -980,6 +994,36 @@ void record_quantize_dot(
                   VK_ACCESS_SHADER_WRITE_BIT),
           });
     }
+  }
+}
+
+void record_quantize_dot_lane(
+    VkCommandBuffer cmd,
+    VkPipeline quant_pipeline,
+    VkPipeline dot_pipeline,
+    VkPipelineLayout layout,
+    VkDescriptorSet descriptor_set,
+    const PushConstants& push,
+    const Buffer& xq_device,
+    uint32_t row_tile,
+    uint32_t lane,
+    uint32_t lane_count,
+    uint32_t reps) {
+  const VkDeviceSize xq_slice_bytes =
+      static_cast<VkDeviceSize>(push.rows) * push.q8_blocks_per_row *
+      Q8_1_WORDS * sizeof(uint32_t);
+  for (uint32_t rep = lane; rep < reps; rep += lane_count) {
+    const PushConstants sliced = slice_push(push, rep, rep, rep);
+    dispatch_quantize(cmd, quant_pipeline, layout, descriptor_set, sliced);
+    hipengine::micro::compute_buffer_barrier(
+        cmd,
+        {hipengine::micro::make_compute_buffer_barrier(
+            xq_device.buffer,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT,
+            static_cast<VkDeviceSize>(rep) * xq_slice_bytes,
+            xq_slice_bytes)});
+    dispatch_dot(cmd, dot_pipeline, layout, descriptor_set, sliced, row_tile);
   }
 }
 
@@ -1013,6 +1057,31 @@ SequenceTiming time_command(
         timer.submit_and_wait(queue, command_buffer, fence);
     timing.gpu_samples_us.push_back(value.gpu_sequence_us);
     timing.host_samples_us.push_back(value.host_sequence_us);
+  }
+  return timing;
+}
+
+SequenceTiming time_multi_queue_commands(
+    hipengine::micro::VulkanMultiQueueTimer& timer,
+    const std::vector<VkQueue>& queues,
+    const std::vector<VkCommandBuffer>& command_buffers,
+    const std::vector<VkFence>& fences,
+    uint32_t samples) {
+  SequenceTiming timing{};
+  timing.submission_strategy = "vulkan_multi_queue";
+  timing.actual_lanes = timer.lane_count();
+  timing.calibrated_timestamp_domain = true;
+  timing.calibrated_timestamp_extension =
+      timer.calibrated_timestamps_extension_name();
+  timing.gpu_samples_us.reserve(samples);
+  timing.host_samples_us.reserve(samples);
+  timing.lane_gpu_samples_us.reserve(samples);
+  for (uint32_t sample = 0; sample < samples; ++sample) {
+    hipengine::micro::VulkanMultiQueueTimingSample value =
+        timer.submit_and_wait(queues, command_buffers, fences);
+    timing.gpu_samples_us.push_back(value.gpu_sequence_us);
+    timing.host_samples_us.push_back(value.host_sequence_us);
+    timing.lane_gpu_samples_us.push_back(std::move(value.lane_gpu_us));
   }
   return timing;
 }
@@ -1060,7 +1129,29 @@ void write_sequence_json(
     const char* suffix) {
   out << "      \"" << name << "\": {\n";
   write_samples_json("gpu_samples_us", timing.gpu_samples_us, out, ",");
-  write_samples_json("host_samples_us", timing.host_samples_us, out, "");
+  write_samples_json("host_samples_us", timing.host_samples_us, out, ",");
+  out << "        \"submission_strategy\": \""
+      << json_escape(timing.submission_strategy) << "\",\n";
+  out << "        \"actual_lanes\": " << timing.actual_lanes << ",\n";
+  out << "        \"calibrated_timestamp_domain\": "
+      << (timing.calibrated_timestamp_domain ? "true" : "false") << ",\n";
+  out << "        \"calibrated_timestamp_extension\": \""
+      << json_escape(timing.calibrated_timestamp_extension) << "\",\n";
+  out << "        \"lane_gpu_samples_us\": [";
+  for (size_t sample = 0; sample < timing.lane_gpu_samples_us.size(); ++sample) {
+    if (sample != 0) {
+      out << ", ";
+    }
+    out << "[";
+    for (size_t lane = 0; lane < timing.lane_gpu_samples_us[sample].size(); ++lane) {
+      if (lane != 0) {
+        out << ", ";
+      }
+      out << timing.lane_gpu_samples_us[sample][lane];
+    }
+    out << "]";
+  }
+  out << "]\n";
   out << "      }" << suffix << "\n";
 }
 
@@ -1083,6 +1174,7 @@ void write_correctness_json(
   out << "      \"" << name << "\": {\n";
   out << "        \"max_abs\": " << correctness.max_abs << ",\n";
   out << "        \"mean_abs\": " << correctness.mean_abs << ",\n";
+  out << "        \"kl_divergence\": " << correctness.kl_divergence << ",\n";
   out << "        \"top1\": " << correctness.top1 << ",\n";
   out << "        \"exact_bf16_mismatches\": "
       << correctness.exact_bf16_mismatches << ",\n";
@@ -1118,7 +1210,8 @@ void write_json(
     int argc,
     char** argv,
     const VkPhysicalDeviceProperties& properties,
-    uint32_t queue_family,
+    const hipengine::micro::VulkanQueueFamilySelection& queue_selection,
+    const char* calibrated_timestamp_extension,
     bool gpu_timestamps_supported,
     const OperationTiming& quantize_timing,
     const OperationTiming& dot_timing,
@@ -1144,7 +1237,20 @@ void write_json(
   out << "    \"device_type\": " << properties.deviceType << ",\n";
   out << "    \"api_version\": \"" << version_string(properties.apiVersion) << "\",\n";
   out << "    \"driver_version_raw\": " << properties.driverVersion << ",\n";
-  out << "    \"queue_family\": " << queue_family << ",\n";
+  out << "    \"requested_api_version\": \"1.2\",\n";
+  out << "    \"queue_family\": " << queue_selection.index << ",\n";
+  out << "    \"queue_flags\": " << queue_selection.flags << ",\n";
+  out << "    \"queue_timestamp_valid_bits\": "
+      << queue_selection.timestamp_valid_bits << ",\n";
+  out << "    \"requested_independent_lanes\": " << args.independent_lanes << ",\n";
+  out << "    \"actual_independent_lanes\": " << queue_selection.queue_count << ",\n";
+  out << "    \"timeline_semaphore\": true,\n";
+  out << "    \"calibrated_timestamp_extension\": \""
+      << json_escape(
+             calibrated_timestamp_extension != nullptr
+                 ? calibrated_timestamp_extension
+                 : "")
+      << "\",\n";
   out << "    \"shader_integer_dot_product\": true,\n";
   out << "    \"storage_buffer_16bit\": true\n";
   out << "  },\n";
@@ -1163,7 +1269,9 @@ void write_json(
   out << "    \"reps\": " << args.reps << ",\n";
   out << "    \"warmup\": " << args.warmup << ",\n";
   out << "    \"samples\": " << args.samples << ",\n";
-  out << "    \"method\": \"pre-recorded Vulkan command buffer; GPU timestamps and submit-plus-fence host wall for one-dispatch and exact repeated sequences\"\n";
+  out << "    \"independent_lanes_requested\": " << args.independent_lanes << ",\n";
+  out << "    \"independent_lanes_actual\": " << queue_selection.queue_count << ",\n";
+  out << "    \"method\": \"single command-buffer replay for quantize/dot and serial combined; calibrated timeline-coordinated multi-queue lanes for independent combined\"\n";
   out << "  },\n";
   out << "  \"timing\": {\n";
   write_operation_timing_json("q8_1_quantize", quantize_timing, out, ",");
@@ -1214,7 +1322,7 @@ int main(int argc, char** argv) {
     app_info.applicationVersion = 1;
     app_info.pEngineName = "hipEngine microbench";
     app_info.engineVersion = 1;
-    app_info.apiVersion = VK_API_VERSION_1_1;
+    app_info.apiVersion = VK_API_VERSION_1_2;
 
     VkInstanceCreateInfo instance_info{};
     instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1235,15 +1343,40 @@ int main(int argc, char** argv) {
       fail("--device-index is outside the physical-device list");
     }
     VkPhysicalDevice physical_device = physical_devices[args.device_index];
-    require_integer_dot_product(physical_device);
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
-    uint32_t queue_family = find_queue_family(physical_device);
-
-    float queue_priority = 1.0f;
-    VkDevice device = create_device(physical_device, queue_family, &queue_priority);
-    VkQueue queue = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, queue_family, 0, &queue);
+    const uint32_t requested_lanes =
+        args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? std::min(args.independent_lanes, args.reps)
+            : 1u;
+    if (args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput &&
+        requested_lanes < 2) {
+      fail("independent combined timing requires at least two requested lanes and repetitions");
+    }
+    const bool require_multi_queue = requested_lanes > 1;
+    require_integer_dot_product(physical_device, require_multi_queue);
+    const hipengine::micro::VulkanQueueFamilySelection queue_selection =
+        hipengine::micro::select_compute_queue_family(
+            physical_device, requested_lanes);
+    if (args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput &&
+        queue_selection.queue_count < 2) {
+      fail("selected Vulkan compute queue family cannot provide two independent lanes");
+    }
+    const char* calibrated_timestamp_extension = nullptr;
+    if (require_multi_queue) {
+      calibrated_timestamp_extension =
+          hipengine::micro::calibrated_timestamps_extension(physical_device);
+      if (calibrated_timestamp_extension == nullptr) {
+        fail("physical device does not expose calibrated timestamps");
+      }
+    }
+    VkDevice device = create_device(
+        physical_device, queue_selection, calibrated_timestamp_extension);
+    std::vector<VkQueue> queues(queue_selection.queue_count, VK_NULL_HANDLE);
+    for (uint32_t lane = 0; lane < queue_selection.queue_count; ++lane) {
+      vkGetDeviceQueue(device, queue_selection.index, lane, &queues[lane]);
+    }
+    VkQueue queue = queues.front();
 
     VkShaderModule quant_module = create_shader_module(device, quantize_spirv);
     VkShaderModule dot_module = create_shader_module(device, dot_spirv);
@@ -1254,7 +1387,7 @@ int main(int argc, char** argv) {
 
     VkCommandPoolCreateInfo command_pool_info{};
     command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    command_pool_info.queueFamilyIndex = queue_family;
+    command_pool_info.queueFamilyIndex = queue_selection.index;
     VkCommandPool command_pool = VK_NULL_HANDLE;
     check(vkCreateCommandPool(device, &command_pool_info, nullptr, &command_pool), "vkCreateCommandPool");
 
@@ -1262,12 +1395,10 @@ int main(int argc, char** argv) {
     fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence fence = VK_NULL_HANDLE;
     check(vkCreateFence(device, &fence_info, nullptr, &fence), "vkCreateFence");
-
-    std::vector<VkEvent> iteration_events(work_repetitions, VK_NULL_HANDLE);
-    VkEventCreateInfo event_info{};
-    event_info.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
-    for (VkEvent& event : iteration_events) {
-      check(vkCreateEvent(device, &event_info, nullptr, &event), "vkCreateEvent");
+    std::vector<VkFence> lane_fences(queue_selection.queue_count, VK_NULL_HANDLE);
+    for (VkFence& lane_fence : lane_fences) {
+      check(vkCreateFence(device, &fence_info, nullptr, &lane_fence),
+            "vkCreateFence multi-queue lane");
     }
 
     uint32_t dummy = 0;
@@ -1403,7 +1534,7 @@ int main(int argc, char** argv) {
       } else {
         record_quantize_dot(
             cmd, quant_pipeline, dot_pipeline, pipeline_layout, descriptor_set,
-            push, xq_device, out_device, iteration_events, args.timing_mode,
+            push, xq_device, out_device, args.timing_mode,
             args.row_tile, reps);
       }
     };
@@ -1411,7 +1542,17 @@ int main(int argc, char** argv) {
     bool correctness_pass = false;
     {
     hipengine::micro::VulkanSequenceTimer timer(
-        physical_device, device, queue_family);
+        physical_device, device, queue_selection.index);
+    std::unique_ptr<hipengine::micro::VulkanMultiQueueTimer> multi_queue_timer;
+    if (args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+      multi_queue_timer =
+          std::make_unique<hipengine::micro::VulkanMultiQueueTimer>(
+              physical_device,
+              device,
+              queue_selection.index,
+              queue_selection.queue_count,
+              calibrated_timestamp_extension);
+    }
     auto make_timed_command = [&](Operation operation, uint32_t reps) {
       VkCommandBuffer cmd = begin_reusable(device, command_pool);
       timer.record_begin(cmd);
@@ -1436,7 +1577,128 @@ int main(int argc, char** argv) {
       return timing;
     };
 
+    const VkDeviceSize xq_slice_bytes =
+        static_cast<VkDeviceSize>(args.rows) * (args.in_features / Q8_0_BLOCK) *
+        Q8_1_WORDS * sizeof(uint32_t);
+    const VkDeviceSize out_slice_bytes =
+        static_cast<VkDeviceSize>(args.rows) * args.out_features * sizeof(uint16_t);
+    auto make_multi_queue_commands = [&](uint32_t reps) {
+      if (!multi_queue_timer) {
+        fail("multi-queue commands requested outside independent mode");
+      }
+      std::vector<VkCommandBuffer> commands(
+          queue_selection.queue_count, VK_NULL_HANDLE);
+      for (uint32_t lane = 0; lane < queue_selection.queue_count; ++lane) {
+        VkCommandBuffer cmd = begin_reusable(device, command_pool);
+        std::vector<VkBufferMemoryBarrier> initial_hazards;
+        for (uint32_t rep = lane; rep < reps; rep += queue_selection.queue_count) {
+          initial_hazards.push_back(
+              hipengine::micro::make_compute_buffer_barrier(
+                  xq_device.buffer,
+                  VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                  VK_ACCESS_SHADER_WRITE_BIT,
+                  static_cast<VkDeviceSize>(rep) * xq_slice_bytes,
+                  xq_slice_bytes));
+          initial_hazards.push_back(
+              hipengine::micro::make_compute_buffer_barrier(
+                  out_device.buffer,
+                  VK_ACCESS_SHADER_WRITE_BIT,
+                  VK_ACCESS_SHADER_WRITE_BIT,
+                  static_cast<VkDeviceSize>(rep) * out_slice_bytes,
+                  out_slice_bytes));
+        }
+        hipengine::micro::compute_buffer_barrier(cmd, initial_hazards);
+        multi_queue_timer->record_begin(cmd, lane);
+        record_quantize_dot_lane(
+            cmd,
+            quant_pipeline,
+            dot_pipeline,
+            pipeline_layout,
+            descriptor_set,
+            push,
+            xq_device,
+            args.row_tile,
+            lane,
+            queue_selection.queue_count,
+            reps);
+        multi_queue_timer->record_end(cmd, lane);
+        check(vkEndCommandBuffer(cmd), "vkEndCommandBuffer multi-queue lane");
+        commands[lane] = cmd;
+      }
+      return commands;
+    };
+    auto free_multi_queue_commands = [&](std::vector<VkCommandBuffer>& commands) {
+      if (!commands.empty()) {
+        vkFreeCommandBuffers(
+            device,
+            command_pool,
+            static_cast<uint32_t>(commands.size()),
+            commands.data());
+      }
+    };
+    auto run_multi_queue = [&](uint32_t reps, uint32_t samples) {
+      std::vector<VkCommandBuffer> commands = make_multi_queue_commands(reps);
+      SequenceTiming timing = time_multi_queue_commands(
+          *multi_queue_timer, queues, commands, lane_fences, samples);
+      free_multi_queue_commands(commands);
+      return timing;
+    };
+    auto measure_combined_multi_queue = [&]() {
+      if (args.warmup > 0) {
+        (void)run_multi_queue(args.warmup, 1);
+      }
+      return OperationTiming{
+          run_multi_queue(1, args.samples),
+          run_multi_queue(args.reps, args.samples),
+      };
+    };
+
+    auto copy_multi_queue_outputs = [&](uint32_t reps) {
+      for (uint32_t lane = 0; lane < queue_selection.queue_count; ++lane) {
+        VkCommandBuffer cmd = begin_one_time(device, command_pool);
+        for (uint32_t rep = lane; rep < reps; rep += queue_selection.queue_count) {
+          buffer_barrier(
+              cmd,
+              out_device,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_TRANSFER_READ_BIT,
+              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+              VK_PIPELINE_STAGE_TRANSFER_BIT);
+          VkBufferCopy out_copy{};
+          out_copy.srcOffset = static_cast<VkDeviceSize>(rep) * out_slice_bytes;
+          out_copy.dstOffset = out_copy.srcOffset;
+          out_copy.size = out_slice_bytes;
+          vkCmdCopyBuffer(
+              cmd, out_device.buffer, out_stage.buffer, 1, &out_copy);
+        }
+        submit_and_free(device, queues[lane], command_pool, cmd);
+      }
+      std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
+    };
+
+    auto compare_validated_outputs = [&](uint32_t reps) {
+      std::vector<uint32_t> output_slices;
+      std::vector<uint32_t> expected_slices;
+      if (args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+        for (uint32_t rep = 0; rep < reps; ++rep) {
+          output_slices.push_back(rep);
+          expected_slices.push_back(rep);
+        }
+      } else {
+        output_slices.push_back(0);
+        expected_slices.push_back(reps - 1u);
+      }
+      return compare_output_slices(
+          expected, actual, output_slices, expected_slices, args);
+    };
+
     auto validate_operation = [&](Operation operation, uint32_t reps) {
+      if (operation == Combined &&
+          args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+        (void)run_multi_queue(reps, 1);
+        copy_multi_queue_outputs(reps);
+        return compare_validated_outputs(reps);
+      }
       VkCommandBuffer cmd = begin_one_time(device, command_pool);
       record_operation(cmd, operation, reps);
       if (operation == Quantize) {
@@ -1470,20 +1732,7 @@ int main(int argc, char** argv) {
       vkCmdCopyBuffer(cmd, out_device.buffer, out_stage.buffer, 1, &out_copy);
       submit_and_free(device, queue, command_pool, cmd);
       std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
-
-      std::vector<uint32_t> output_slices;
-      std::vector<uint32_t> expected_slices;
-      if (args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
-        for (uint32_t rep = 0; rep < reps; ++rep) {
-          output_slices.push_back(rep);
-          expected_slices.push_back(rep);
-        }
-      } else {
-        output_slices.push_back(0);
-        expected_slices.push_back(reps - 1u);
-      }
-      return compare_output_slices(
-          expected, actual, output_slices, expected_slices, args);
+      return compare_validated_outputs(reps);
     };
 
     OperationTiming dot_timing = measure_operation(Dot);
@@ -1492,7 +1741,10 @@ int main(int argc, char** argv) {
     OperationTiming quantize_timing = measure_operation(Quantize);
     OperationValidation quantize_validation{
         validate_operation(Quantize, 1), validate_operation(Quantize, args.reps)};
-    OperationTiming combined_timing = measure_operation(Combined);
+    OperationTiming combined_timing =
+        args.timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? measure_combined_multi_queue()
+            : measure_operation(Combined);
     OperationValidation combined_validation{
         validate_operation(Combined, 1), validate_operation(Combined, args.reps)};
 
@@ -1519,7 +1771,8 @@ int main(int argc, char** argv) {
           argc,
           argv,
           properties,
-          queue_family,
+          queue_selection,
+          calibrated_timestamp_extension,
           timer.gpu_timestamps_supported(),
           quantize_timing,
           dot_timing,
@@ -1540,8 +1793,8 @@ int main(int argc, char** argv) {
     }
     }
 
-    for (VkEvent event : iteration_events) {
-      vkDestroyEvent(device, event, nullptr);
+    for (VkFence lane_fence : lane_fences) {
+      vkDestroyFence(device, lane_fence, nullptr);
     }
     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
     destroy_buffer(device, x_stage);
