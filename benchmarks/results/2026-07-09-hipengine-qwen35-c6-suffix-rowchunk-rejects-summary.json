@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "mode": "qwen35_paro_c6_suffix_rowchunk_diagnostic_summary",
+  "status": "rejected_correctness",
+  "performance_claim": false,
+  "date": "2026-07-09",
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S",
+    "arch": "gfx1151",
+    "default_hardware": false
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_tokens_per_request": 512,
+    "decode_tokens_per_request": 16,
+    "rows": 6,
+    "linear_attention_decode_path": "native_batch",
+    "moe_decode_path": "selected_c1",
+    "moe_c1_shared_expert_decode_path": "small_batch_forced",
+    "full_attention_output_path": "batch_gemv",
+    "full_attention_suffix_row_chunk_size": 2,
+    "full_attention_suffix_row_chunk_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31
+    ],
+    "retained_defaults_env": "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1"
+  },
+  "results": [
+    {
+      "name": "suffix_rowchunk_after_batch_context_gate",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-suffix-rowchunk2-3-31-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "generated_token_equality": false,
+      "first_mismatch_index": 9,
+      "batch_token_at_mismatch": 12,
+      "c1_token_at_mismatch": 27,
+      "decode_tok_s_aggregate": 106.86397958724038,
+      "decode_step_median_ms": 53.6093715345487
+    },
+    {
+      "name": "suffix_rowchunk_include_gate",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-suffix-rowchunk2-includegate-3-31-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "generated_token_equality": false,
+      "first_mismatch_index": 9,
+      "batch_token_at_mismatch": 12,
+      "c1_token_at_mismatch": 27,
+      "decode_tok_s_aggregate": 107.50769169483186,
+      "decode_step_median_ms": 53.18944191094488
+    }
+  ],
+  "conclusion": "Chunking only the post-context full-attention suffix, with or without gate, does not repair native rows=6 full-attention. Both variants keep the no-rowchunk token-9 failure shape. The known green bridge remains selected full-layer rowchunk2 on layers 3,7,11,15,19,23,27,31."
+}
