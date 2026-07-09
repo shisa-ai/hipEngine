@@ -147671,3 +147671,13 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Updated `docs/PARO-GGUF-MTP-TRANSFER.md` with the current recovery frontier
   and next repair order. These rows are not retained throughput claims until
   primitive correctness, profiler, and baseline gates are supplied.
+
+## 2026-07-09 - Local lockfile policy
+
+- Re-audited the untracked `uv.lock`: it is not tracked, no ignore rule matched
+  it, and prior release/benchmark work treated it as local resolver state for
+  this library checkout.
+- Added `uv.lock` to `.gitignore` instead of promoting it into `main`.
+- Left the remaining untracked benchmark/probe artifact pile local: the current
+  retained cN frontier artifacts are already committed, and the other untracked
+  files are superseded probes or sidecars without live doc references.
