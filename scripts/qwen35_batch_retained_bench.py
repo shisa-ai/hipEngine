@@ -4171,10 +4171,10 @@ def _resolved_batch_decode_linear_row_chunk_size(args: argparse.Namespace) -> in
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c6 native segmented linear attention is hidden-red as one 6-row group and
-    # as two 3-row chunks; rowchunk2 is generated-token green with selected-c1
-    # MoE and all-layer full-attention rowchunk2.
-    return 2 if int(batch_size) == 6 else 0
+    # c6 native segmented linear attention is generated-token green with
+    # selected-c1 MoE once only the drifting shared-expert path is forced
+    # through the small-batch route, so no linear rowchunk is needed.
+    return 0
 
 
 def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) -> str:
@@ -4189,9 +4189,13 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # c3/c5 keep the older selected-layer diagnostic scope. Local gfx1151
     # shisa c4/c6/c8 recovered full 512/128 generated-token equality with
     # rowchunk2 on every full-attention layer plus selected-c1 MoE, so empty
-    # deliberately means all full-attention layers for those row counts.
+    # deliberately means all full-attention layers for c4/c8. c6 has a narrower
+    # local equality frontier: rowchunk the early full-attention layers through
+    # 31 and leave layers 35/39 full-native.
     if int(batch_size) in {3, 5}:
         return "3,7,11,15"
+    if int(batch_size) == 6:
+        return "3,7,11,15,19,23,27,31"
     return ""
 
 
