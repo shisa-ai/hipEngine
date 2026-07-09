@@ -147762,3 +147762,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `64.101 ms/step` and `8.14 backend generated tok/s`. Next c6 work is removing
   selected-c1/rowchunk overhead or avoiding live c6 groups, not merely making
   the repair server-visible.
+
+## 2026-07-09 - PARO c6 server linear/MoE splitter
+
+- Retained a compact summary of four forced OpenAI `n=6` server timing
+  diagnostics on gfx1151/Radeon 8060S, shisa
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, code_python, max_tokens=128,
+  batch window 200 ms, native decode + startup warmup + retained defaults:
+  `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-linear-moe-split-summary.json`.
+- Split results:
+  grouped/native-linear `56.873 ms/step`, `8.67 backend generated tok/s`;
+  selected-c1/linear-rowchunk2 repair `64.101 ms/step`, `8.14 tok/s`;
+  selected-c1/native-linear `51.619 ms/step`, `9.01 tok/s`;
+  grouped/linear-rowchunk2 `71.877 ms/step`, `7.59 tok/s`.
+- Interpretation: selected-c1 MoE plus native rows=6 linear attention is the
+  fast target but is known hidden-red from the local c6 hidden-bisect. The
+  current correctness bridge pays about `12.482 ms/step` for linear rowchunk2
+  versus that target. Next c6 work should add a focused primitive/runtime RED
+  around native rows=6 linear-attention segments and make that path clean before
+  any throughput promotion.
