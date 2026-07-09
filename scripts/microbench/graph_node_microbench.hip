@@ -1,18 +1,23 @@
-// M16.1 diagnostic micro-bench: isolate the ROCm HIP graph-replay per-node cost.
+// HIP side of the v2 narrow dispatch/grid-floor timing contract.
 //
 // A trivial kernel (one block, writes memory so it cannot be elided) is launched
 // back-to-back `count` times from a C loop. Issuing the whole burst from C removes
 // all Python/ctypes per-node overhead, so the wall time measures the *pure HIP*
 // host-issue + GPU-dispatch cost of N serial launches.
 //
-// The same C burst is captured into ONE HIP graph (fixed args, fixed stream) and
-// replayed in steady state; comparing direct-burst vs graph-replay per-node cost
-// answers whether HIP graphs collapse the dispatch residual on W7900/gfx1100.
+// The matched serial path replays a pre-recorded graph, while the independent
+// path partitions disjoint outputs over nonblocking streams.
 //
 // Not a production kernel: no registry entry, no KVLiveSpans ABI. Diagnostic only.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
+
+#include <algorithm>
+#include <exception>
+#include <vector>
+
+#include "../../benchmarks/micro/runners/micro_timing_hip.hpp"
 
 extern "C" __global__ void gmb_noop_kernel(float* __restrict__ out, int n) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -110,4 +115,217 @@ extern "C" int gmb_launch_n(float* out, int n, int count, int grid_blocks, hipSt
         n);
   }
   return static_cast<int>(hipGetLastError());
+}
+
+namespace {
+
+struct ScopedGraph {
+  hipGraph_t graph = nullptr;
+  hipGraphExec_t exec = nullptr;
+
+  ~ScopedGraph() {
+    if (exec != nullptr) {
+      (void)hipGraphExecDestroy(exec);
+    }
+    if (graph != nullptr) {
+      (void)hipGraphDestroy(graph);
+    }
+  }
+};
+
+void capture_graph(
+    ScopedGraph& captured,
+    float* out,
+    int n,
+    int count,
+    int grid_blocks) {
+  hipStream_t stream = nullptr;
+  hipengine::micro::timing_hip_check(
+      hipStreamCreateWithFlags(&stream, hipStreamNonBlocking),
+      "hipStreamCreateWithFlags capture");
+  try {
+    hipengine::micro::timing_hip_check(
+        hipStreamBeginCapture(stream, hipStreamCaptureModeRelaxed),
+        "hipStreamBeginCapture");
+    hipengine::micro::timing_hip_check(
+        static_cast<hipError_t>(gmb_launch_n(out, n, count, grid_blocks, stream)),
+        "gmb_launch_n capture");
+    hipengine::micro::timing_hip_check(
+        hipStreamEndCapture(stream, &captured.graph),
+        "hipStreamEndCapture");
+    hipGraphNode_t error_node = nullptr;
+    char log_buffer[4096] = {};
+    hipengine::micro::timing_hip_check(
+        hipGraphInstantiate(
+            &captured.exec,
+            captured.graph,
+            &error_node,
+            log_buffer,
+            sizeof(log_buffer)),
+        "hipGraphInstantiate");
+  } catch (...) {
+    (void)hipStreamDestroy(stream);
+    throw;
+  }
+  hipengine::micro::timing_hip_check(
+      hipStreamDestroy(stream), "hipStreamDestroy capture");
+}
+
+void zero_output(float* out, size_t elements) {
+  hipengine::micro::timing_hip_check(
+      hipMemset(out, 0, elements * sizeof(float)), "hipMemset output");
+  hipengine::micro::timing_hip_check(
+      hipDeviceSynchronize(), "hipDeviceSynchronize after memset");
+}
+
+uint32_t copy_and_count_mismatches(
+    const float* out,
+    size_t elements,
+    float expected) {
+  std::vector<float> host(elements);
+  hipengine::micro::timing_hip_check(
+      hipMemcpy(
+          host.data(),
+          out,
+          elements * sizeof(float),
+          hipMemcpyDeviceToHost),
+      "hipMemcpy validation output");
+  return static_cast<uint32_t>(std::count_if(
+      host.begin(), host.end(), [expected](float value) { return value != expected; }));
+}
+
+void copy_timing_samples(
+    const hipengine::micro::TimingSamples& samples,
+    double* gpu_us,
+    double* host_us) {
+  std::copy(samples.gpu_sequence_us.begin(), samples.gpu_sequence_us.end(), gpu_us);
+  std::copy(samples.host_sequence_us.begin(), samples.host_sequence_us.end(), host_us);
+}
+
+}  // namespace
+
+extern "C" int gmb_measure_graph_contract(
+    float* out,
+    int n,
+    int count,
+    int grid_blocks,
+    int samples,
+    int warmup,
+    double* single_gpu_us,
+    double* single_host_us,
+    double* burst_gpu_us,
+    double* burst_host_us,
+    uint32_t* single_mismatches,
+    uint32_t* burst_mismatches) {
+  if (out == nullptr || n <= 0 || count <= 0 || samples <= 0 || warmup < 0 ||
+      single_gpu_us == nullptr || single_host_us == nullptr || burst_gpu_us == nullptr ||
+      burst_host_us == nullptr || single_mismatches == nullptr ||
+      burst_mismatches == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  try {
+    ScopedGraph single_graph;
+    ScopedGraph burst_graph;
+    capture_graph(single_graph, out, n, 1, grid_blocks);
+    capture_graph(burst_graph, out, n, count, grid_blocks);
+    hipengine::micro::HipSequenceTimer timer(
+        hipengine::micro::TimingMode::SerialLatency, 1);
+
+    auto run_graph = [](hipGraphExec_t exec, hipStream_t stream) {
+      hipengine::micro::timing_hip_check(
+          hipGraphLaunch(exec, stream), "hipGraphLaunch");
+    };
+    zero_output(out, static_cast<size_t>(n));
+    timer.run_and_wait(1, [&](uint32_t, hipStream_t stream) {
+      run_graph(single_graph.exec, stream);
+    });
+    *single_mismatches = copy_and_count_mismatches(out, n, 1.0f);
+
+    zero_output(out, static_cast<size_t>(n));
+    timer.run_and_wait(1, [&](uint32_t, hipStream_t stream) {
+      run_graph(burst_graph.exec, stream);
+    });
+    *burst_mismatches =
+        copy_and_count_mismatches(out, n, static_cast<float>(count));
+
+    if (warmup > 0) {
+      timer.run_and_wait(static_cast<uint32_t>(warmup), [&](uint32_t, hipStream_t stream) {
+        run_graph(single_graph.exec, stream);
+      });
+    }
+    auto single = timer.measure(1, static_cast<uint32_t>(samples), [&](uint32_t, hipStream_t stream) {
+      run_graph(single_graph.exec, stream);
+    });
+    auto burst = timer.measure(1, static_cast<uint32_t>(samples), [&](uint32_t, hipStream_t stream) {
+      run_graph(burst_graph.exec, stream);
+    });
+    copy_timing_samples(single, single_gpu_us, single_host_us);
+    copy_timing_samples(burst, burst_gpu_us, burst_host_us);
+    return static_cast<int>(hipSuccess);
+  } catch (const std::exception&) {
+    return static_cast<int>(hipErrorUnknown);
+  }
+}
+
+extern "C" int gmb_measure_independent_contract(
+    float* out,
+    int n,
+    int count,
+    int grid_blocks,
+    int independent_streams,
+    int samples,
+    int warmup,
+    double* single_gpu_us,
+    double* single_host_us,
+    double* burst_gpu_us,
+    double* burst_host_us,
+    uint32_t* single_mismatches,
+    uint32_t* burst_mismatches) {
+  if (out == nullptr || n <= 0 || count <= 0 || independent_streams <= 0 ||
+      samples <= 0 || warmup < 0 || single_gpu_us == nullptr ||
+      single_host_us == nullptr || burst_gpu_us == nullptr ||
+      burst_host_us == nullptr || single_mismatches == nullptr ||
+      burst_mismatches == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  try {
+    const uint32_t stream_count = static_cast<uint32_t>(
+        std::min(count, independent_streams));
+    hipengine::micro::HipSequenceTimer timer(
+        hipengine::micro::TimingMode::IndependentThroughput, stream_count);
+    const unsigned int grid_x = gmb_grid(n, grid_blocks);
+    auto launch = [&](uint32_t rep, hipStream_t stream) {
+      hipLaunchKernelGGL(
+          gmb_noop_kernel,
+          dim3(grid_x),
+          dim3(256),
+          0,
+          stream,
+          out + static_cast<size_t>(rep) * static_cast<size_t>(n),
+          n);
+      hipengine::micro::timing_hip_check(
+          hipGetLastError(), "gmb_noop_kernel launch");
+    };
+
+    zero_output(out, static_cast<size_t>(count) * static_cast<size_t>(n));
+    timer.run_and_wait(1, launch);
+    *single_mismatches = copy_and_count_mismatches(out, n, 1.0f);
+
+    zero_output(out, static_cast<size_t>(count) * static_cast<size_t>(n));
+    timer.run_and_wait(static_cast<uint32_t>(count), launch);
+    *burst_mismatches = copy_and_count_mismatches(
+        out, static_cast<size_t>(count) * static_cast<size_t>(n), 1.0f);
+
+    if (warmup > 0) {
+      timer.run_and_wait(static_cast<uint32_t>(warmup), launch);
+    }
+    auto single = timer.measure(1, static_cast<uint32_t>(samples), launch);
+    auto burst = timer.measure(
+        static_cast<uint32_t>(count), static_cast<uint32_t>(samples), launch);
+    copy_timing_samples(single, single_gpu_us, single_host_us);
+    copy_timing_samples(burst, burst_gpu_us, burst_host_us);
+    return static_cast<int>(hipSuccess);
+  } catch (const std::exception&) {
+    return static_cast<int>(hipErrorUnknown);
+  }
 }

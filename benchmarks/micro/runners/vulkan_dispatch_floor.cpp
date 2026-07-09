@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "micro_timing_vulkan.hpp"
+
 namespace {
 
 constexpr uint32_t kLocalSizeX = 256;
@@ -25,12 +27,13 @@ struct Args {
   uint32_t n = 256;
   uint32_t reps = 50;
   uint32_t warmup = 10;
+  std::string timing_mode = "serial_latency";
   uint32_t device_index = 0;
 };
 
 struct PushConstants {
   uint32_t n;
-  uint32_t salt[16];
+  uint32_t output_base;
 };
 
 struct Row {
@@ -40,6 +43,23 @@ struct Row {
   double us_per_dispatch;
   double burst_us_min;
   uint32_t reps;
+  std::vector<double> single_gpu_samples_us;
+  std::vector<double> single_host_samples_us;
+  std::vector<double> burst_gpu_samples_us;
+  std::vector<double> burst_host_samples_us;
+  bool single_correctness_pass;
+  bool burst_correctness_pass;
+  uint32_t correctness_mismatches;
+  bool gpu_timestamps_supported;
+};
+
+struct Buffer {
+  VkBuffer buffer = VK_NULL_HANDLE;
+  VkDeviceMemory memory = VK_NULL_HANDLE;
+  void* mapped = nullptr;
+  VkDeviceSize size = 0;
+  uint32_t memory_type = 0;
+  VkMemoryPropertyFlags memory_properties = 0;
 };
 
 [[noreturn]] void fail(const std::string& message) {
@@ -103,6 +123,8 @@ Args parse_args(int argc, char** argv) {
       args.reps = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--warmup") {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(
           std::stoul(require_value(i, argc, argv, flag)));
@@ -119,6 +141,7 @@ Args parse_args(int argc, char** argv) {
   if (args.n == 0 || args.reps == 0) {
     fail("--n and --reps must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   return args;
 }
 
@@ -171,6 +194,59 @@ uint32_t find_memory_type(
   fail("no compatible memory type found");
 }
 
+Buffer create_buffer(
+    VkPhysicalDevice physical_device,
+    VkDevice device,
+    VkDeviceSize size,
+    VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags required,
+    bool map) {
+  VkBufferCreateInfo buffer_info{};
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = size;
+  buffer_info.usage = usage;
+  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  Buffer result{};
+  result.size = size;
+  check(vkCreateBuffer(device, &buffer_info, nullptr, &result.buffer), "vkCreateBuffer");
+
+  VkMemoryRequirements requirements{};
+  vkGetBufferMemoryRequirements(device, result.buffer, &requirements);
+  result.memory_type = find_memory_type(
+      physical_device, requirements.memoryTypeBits, required);
+  VkPhysicalDeviceMemoryProperties memory_properties{};
+  vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+  result.memory_properties =
+      memory_properties.memoryTypes[result.memory_type].propertyFlags;
+
+  VkMemoryAllocateInfo allocate_info{};
+  allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocate_info.allocationSize = requirements.size;
+  allocate_info.memoryTypeIndex = result.memory_type;
+  check(vkAllocateMemory(device, &allocate_info, nullptr, &result.memory),
+        "vkAllocateMemory");
+  check(vkBindBufferMemory(device, result.buffer, result.memory, 0),
+        "vkBindBufferMemory");
+  if (map) {
+    check(vkMapMemory(device, result.memory, 0, requirements.size, 0, &result.mapped),
+          "vkMapMemory");
+  }
+  return result;
+}
+
+void destroy_buffer(VkDevice device, Buffer& buffer) {
+  if (buffer.mapped != nullptr) {
+    vkUnmapMemory(device, buffer.memory);
+  }
+  if (buffer.buffer != VK_NULL_HANDLE) {
+    vkDestroyBuffer(device, buffer.buffer, nullptr);
+  }
+  if (buffer.memory != VK_NULL_HANDLE) {
+    vkFreeMemory(device, buffer.memory, nullptr);
+  }
+  buffer = {};
+}
+
 uint32_t auto_grid(uint32_t n) {
   return std::max<uint32_t>(1, (n + kLocalSizeX - 1) / kLocalSizeX);
 }
@@ -207,9 +283,13 @@ VkCommandBuffer record_command_buffer(
     VkPipeline pipeline,
     VkPipelineLayout pipeline_layout,
     VkDescriptorSet descriptor_set,
+    const Buffer& output,
+    hipengine::micro::TimingMode timing_mode,
     uint32_t dispatch_count,
     uint32_t grid_blocks,
-    uint32_t n) {
+    uint32_t n,
+    const hipengine::micro::VulkanSequenceTimer* timer = nullptr,
+    const Buffer* readback = nullptr) {
   VkCommandBufferAllocateInfo allocate_info{};
   allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   allocate_info.commandPool = command_pool;
@@ -232,12 +312,39 @@ VkCommandBuffer record_command_buffer(
       &descriptor_set,
       0,
       nullptr);
+  if (readback != nullptr) {
+    vkCmdFillBuffer(command_buffer, output.buffer, 0, output.size, 0);
+    VkBufferMemoryBarrier clear_barrier{};
+    clear_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    clear_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    clear_barrier.dstAccessMask =
+        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    clear_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    clear_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    clear_barrier.buffer = output.buffer;
+    clear_barrier.offset = 0;
+    clear_barrier.size = output.size;
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0,
+        0,
+        nullptr,
+        1,
+        &clear_barrier,
+        0,
+        nullptr);
+  }
+  if (timer != nullptr) {
+    timer->record_begin(command_buffer);
+  }
   for (uint32_t i = 0; i < dispatch_count; ++i) {
-    PushConstants push{};
-    push.n = n;
-    for (uint32_t s = 0; s < 16; ++s) {
-      push.salt[s] = i + s + 1;
-    }
+    PushConstants push{
+        n,
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? i * n
+            : 0u};
     vkCmdPushConstants(
         command_buffer,
         pipeline_layout,
@@ -246,52 +353,208 @@ VkCommandBuffer record_command_buffer(
         sizeof(PushConstants),
         &push);
     vkCmdDispatch(command_buffer, grid_blocks, 1, 1);
+    if (timing_mode == hipengine::micro::TimingMode::SerialLatency &&
+        i + 1 < dispatch_count) {
+      hipengine::micro::compute_buffer_barrier(
+          command_buffer,
+          {hipengine::micro::make_compute_buffer_barrier(
+              output.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+              0,
+              static_cast<VkDeviceSize>(n) * sizeof(float))});
+    }
+  }
+  if (timer != nullptr) {
+    timer->record_end(command_buffer);
+  }
+  if (readback != nullptr) {
+    VkBufferMemoryBarrier copy_barrier{};
+    copy_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    copy_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    copy_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    copy_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    copy_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    copy_barrier.buffer = output.buffer;
+    copy_barrier.offset = 0;
+    copy_barrier.size = output.size;
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0,
+        nullptr,
+        1,
+        &copy_barrier,
+        0,
+        nullptr);
+    VkBufferCopy copy{0, 0, output.size};
+    vkCmdCopyBuffer(command_buffer, output.buffer, readback->buffer, 1, &copy);
+
+    VkBufferMemoryBarrier host_barrier{};
+    host_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    host_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.buffer = readback->buffer;
+    host_barrier.offset = 0;
+    host_barrier.size = readback->size;
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        0,
+        0,
+        nullptr,
+        1,
+        &host_barrier,
+        0,
+        nullptr);
   }
   check(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer");
   return command_buffer;
 }
 
 Row measure_row(
+    VkPhysicalDevice physical_device,
     VkDevice device,
     VkQueue queue,
     VkCommandPool command_pool,
     VkPipeline pipeline,
     VkPipelineLayout pipeline_layout,
     VkDescriptorSet descriptor_set,
+    const Buffer& output,
+    const Buffer& readback,
     VkFence fence,
     const Args& args,
     uint32_t dispatch_count,
     uint32_t grid_blocks) {
-  VkCommandBuffer command_buffer = record_command_buffer(
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  auto validate = [&](uint32_t count) {
+    const uint32_t copies =
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput ? count : 1u;
+    const float expected =
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? 1.0f
+            : static_cast<float>(count);
+    uint32_t mismatches = 0;
+    const float* values = static_cast<const float*>(readback.mapped);
+    for (uint32_t copy = 0; copy < copies; ++copy) {
+      for (uint32_t i = 0; i < args.n; ++i) {
+        if (values[static_cast<size_t>(copy) * args.n + i] != expected) {
+          ++mismatches;
+        }
+      }
+    }
+    return mismatches;
+  };
+  auto run_correctness = [&](uint32_t count) {
+    VkCommandBuffer command = record_command_buffer(
+        device,
+        command_pool,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        output,
+        timing_mode,
+        count,
+        grid_blocks,
+        args.n,
+        nullptr,
+        &readback);
+    (void)submit_once(device, queue, command, fence);
+    vkFreeCommandBuffers(device, command_pool, 1, &command);
+    return validate(count);
+  };
+  uint32_t single_mismatches = run_correctness(1);
+  uint32_t burst_mismatches = run_correctness(dispatch_count);
+
+  hipengine::micro::VulkanSequenceTimer timer(
+      physical_device, device, find_queue_family(physical_device));
+  VkCommandBuffer single_command_buffer = record_command_buffer(
       device,
       command_pool,
       pipeline,
       pipeline_layout,
       descriptor_set,
+      output,
+      timing_mode,
+      1,
+      grid_blocks,
+      args.n,
+      &timer);
+  VkCommandBuffer burst_command_buffer = record_command_buffer(
+      device,
+      command_pool,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      output,
+      timing_mode,
       dispatch_count,
       grid_blocks,
-      args.n);
+      args.n,
+      &timer);
 
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    (void)submit_once(device, queue, command_buffer, fence);
+  if (args.warmup > 0) {
+    VkCommandBuffer warmup_command_buffer = record_command_buffer(
+        device,
+        command_pool,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        output,
+        timing_mode,
+        args.warmup,
+        grid_blocks,
+        args.n);
+    (void)submit_once(device, queue, warmup_command_buffer, fence);
+    vkFreeCommandBuffers(device, command_pool, 1, &warmup_command_buffer);
   }
-  std::vector<double> samples;
-  samples.reserve(args.reps);
+  std::vector<double> single_gpu_samples;
+  std::vector<double> single_host_samples;
+  std::vector<double> burst_gpu_samples;
+  std::vector<double> burst_host_samples;
+  single_host_samples.reserve(args.reps);
+  burst_host_samples.reserve(args.reps);
   for (uint32_t i = 0; i < args.reps; ++i) {
-    samples.push_back(submit_once(device, queue, command_buffer, fence));
+    auto single = timer.submit_and_wait(queue, single_command_buffer, fence);
+    if (timer.gpu_timestamps_supported()) {
+      single_gpu_samples.push_back(single.gpu_sequence_us);
+    }
+    single_host_samples.push_back(single.host_sequence_us);
   }
-  check(vkQueueWaitIdle(queue), "vkQueueWaitIdle");
-  vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+  for (uint32_t i = 0; i < args.reps; ++i) {
+    auto burst = timer.submit_and_wait(queue, burst_command_buffer, fence);
+    if (timer.gpu_timestamps_supported()) {
+      burst_gpu_samples.push_back(burst.gpu_sequence_us);
+    }
+    burst_host_samples.push_back(burst.host_sequence_us);
+  }
+  vkFreeCommandBuffers(device, command_pool, 1, &single_command_buffer);
+  vkFreeCommandBuffers(device, command_pool, 1, &burst_command_buffer);
 
-  double burst_median = median(samples);
-  double burst_min = *std::min_element(samples.begin(), samples.end());
+  const auto& burst_samples =
+      timer.gpu_timestamps_supported() ? burst_gpu_samples : burst_host_samples;
+  double burst_median = median(burst_samples);
+  double burst_min = *std::min_element(burst_samples.begin(), burst_samples.end());
   return Row{
       dispatch_count,
       grid_blocks,
       burst_median,
       burst_median / static_cast<double>(dispatch_count),
       burst_min,
-      args.reps};
+      args.reps,
+      std::move(single_gpu_samples),
+      std::move(single_host_samples),
+      std::move(burst_gpu_samples),
+      std::move(burst_host_samples),
+      single_mismatches == 0,
+      burst_mismatches == 0,
+      single_mismatches + burst_mismatches,
+      timer.gpu_timestamps_supported()};
 }
 
 std::string json_escape(const std::string& text) {
@@ -328,6 +591,14 @@ std::string version_string(uint32_t version) {
   return out.str();
 }
 
+void write_samples(std::ostream& out, const std::vector<double>& samples) {
+  out << "[";
+  for (size_t i = 0; i < samples.size(); ++i) {
+    out << (i == 0 ? "" : ", ") << samples[i];
+  }
+  out << "]";
+}
+
 void write_rows(std::ostream& out, const std::vector<Row>& rows, int indent) {
   std::string pad(static_cast<size_t>(indent), ' ');
   out << "[\n";
@@ -339,7 +610,26 @@ void write_rows(std::ostream& out, const std::vector<Row>& rows, int indent) {
     out << pad << "    \"burst_us_median\": " << row.burst_us_median << ",\n";
     out << pad << "    \"us_per_dispatch\": " << row.us_per_dispatch << ",\n";
     out << pad << "    \"burst_us_min\": " << row.burst_us_min << ",\n";
-    out << pad << "    \"reps\": " << row.reps << "\n";
+    out << pad << "    \"reps\": " << row.reps << ",\n";
+    out << pad << "    \"single_gpu_samples_us\": ";
+    write_samples(out, row.single_gpu_samples_us);
+    out << ",\n";
+    out << pad << "    \"single_host_samples_us\": ";
+    write_samples(out, row.single_host_samples_us);
+    out << ",\n";
+    out << pad << "    \"burst_gpu_samples_us\": ";
+    write_samples(out, row.burst_gpu_samples_us);
+    out << ",\n";
+    out << pad << "    \"burst_host_samples_us\": ";
+    write_samples(out, row.burst_host_samples_us);
+    out << ",\n";
+    out << pad << "    \"single_correctness_pass\": "
+        << (row.single_correctness_pass ? "true" : "false") << ",\n";
+    out << pad << "    \"burst_correctness_pass\": "
+        << (row.burst_correctness_pass ? "true" : "false") << ",\n";
+    out << pad << "    \"correctness_mismatches\": " << row.correctness_mismatches << ",\n";
+    out << pad << "    \"gpu_timestamps_supported\": "
+        << (row.gpu_timestamps_supported ? "true" : "false") << "\n";
     out << pad << "  }" << (i + 1 == rows.size() ? "\n" : ",\n");
   }
   out << pad << "]";
@@ -349,6 +639,8 @@ void write_json(
     const Args& args,
     const VkPhysicalDeviceProperties& properties,
     uint32_t queue_family,
+    const Buffer& output_buffer,
+    const Buffer& readback_buffer,
     const std::vector<Row>& rows,
     const std::vector<Row>& grid_rows,
     std::ostream& out) {
@@ -363,7 +655,18 @@ void write_json(
   out << "    \"device_type\": " << properties.deviceType << ",\n";
   out << "    \"api_version\": \"" << version_string(properties.apiVersion) << "\",\n";
   out << "    \"driver_version_raw\": " << properties.driverVersion << ",\n";
-  out << "    \"queue_family\": " << queue_family << "\n";
+  out << "    \"queue_family\": " << queue_family << ",\n";
+  out << "    \"output_memory_type\": " << output_buffer.memory_type << ",\n";
+  out << "    \"output_memory_property_flags\": "
+      << output_buffer.memory_properties << ",\n";
+  out << "    \"output_device_local\": "
+      << ((output_buffer.memory_properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+              ? "true"
+              : "false")
+      << ",\n";
+  out << "    \"readback_memory_type\": " << readback_buffer.memory_type << ",\n";
+  out << "    \"readback_memory_property_flags\": "
+      << readback_buffer.memory_properties << "\n";
   out << "  },\n";
   out << "  \"config\": {\n";
   out << "    \"counts\": [";
@@ -380,10 +683,9 @@ void write_json(
   out << "    \"n_elements\": " << args.n << ",\n";
   out << "    \"reps\": " << args.reps << ",\n";
   out << "    \"warmup\": " << args.warmup << ",\n";
+  out << "    \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
   out << "    \"local_size_x\": " << kLocalSizeX << ",\n";
-  out << "    \"method\": \"pre-recorded Vulkan command buffer with N compute"
-         " dispatches; wall time around vkQueueSubmit+vkWaitForFences; shader"
-         " writes a storage buffer to prevent empty-shader elimination\"\n";
+  out << "    \"method\": \"pre-recorded Vulkan command buffers with timestamp and host-wall single/burst controls; exact burst correctness\"\n";
   out << "  },\n";
   out << "  \"rows\": ";
   write_rows(out, rows, 2);
@@ -457,32 +759,33 @@ int main(int argc, char** argv) {
     check(vkCreateShaderModule(device, &shader_info, nullptr, &shader_module),
           "vkCreateShaderModule");
 
-    VkBufferCreateInfo buffer_info{};
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = static_cast<VkDeviceSize>(args.n) * sizeof(float);
-    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VkBuffer buffer = VK_NULL_HANDLE;
-    check(vkCreateBuffer(device, &buffer_info, nullptr, &buffer), "vkCreateBuffer");
-
-    VkMemoryRequirements memory_requirements{};
-    vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
-    uint32_t memory_type = find_memory_type(
+    uint32_t max_dispatch_count = args.grid_sweep_count;
+    for (uint32_t count : args.counts) {
+      max_dispatch_count = std::max(max_dispatch_count, count);
+    }
+    max_dispatch_count = std::max(max_dispatch_count, std::max(args.warmup, 1u));
+    const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+    uint32_t output_copies =
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? max_dispatch_count
+            : 1u;
+    VkDeviceSize output_size =
+        static_cast<VkDeviceSize>(args.n) * output_copies * sizeof(float);
+    Buffer output_buffer = create_buffer(
         physical_device,
-        memory_requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    VkMemoryAllocateInfo allocate_info{};
-    allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocate_info.allocationSize = memory_requirements.size;
-    allocate_info.memoryTypeIndex = memory_type;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    check(vkAllocateMemory(device, &allocate_info, nullptr, &memory), "vkAllocateMemory");
-    check(vkBindBufferMemory(device, buffer, memory, 0), "vkBindBufferMemory");
-
-    void* mapped = nullptr;
-    check(vkMapMemory(device, memory, 0, memory_requirements.size, 0, &mapped), "vkMapMemory");
-    std::memset(mapped, 0, static_cast<size_t>(memory_requirements.size));
-    vkUnmapMemory(device, memory);
+        device,
+        output_size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        false);
+    Buffer readback_buffer = create_buffer(
+        physical_device,
+        device,
+        output_size,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        true);
 
     VkDescriptorSetLayoutBinding binding{};
     binding.binding = 0;
@@ -551,9 +854,9 @@ int main(int argc, char** argv) {
           "vkAllocateDescriptorSets");
 
     VkDescriptorBufferInfo descriptor_buffer_info{};
-    descriptor_buffer_info.buffer = buffer;
+    descriptor_buffer_info.buffer = output_buffer.buffer;
     descriptor_buffer_info.offset = 0;
-    descriptor_buffer_info.range = buffer_info.size;
+    descriptor_buffer_info.range = output_buffer.size;
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = descriptor_set;
@@ -579,12 +882,15 @@ int main(int argc, char** argv) {
     rows.reserve(args.counts.size());
     for (uint32_t count : args.counts) {
       rows.push_back(measure_row(
+          physical_device,
           device,
           queue,
           command_pool,
           pipeline,
           pipeline_layout,
           descriptor_set,
+          output_buffer,
+          readback_buffer,
           fence,
           args,
           count,
@@ -599,12 +905,15 @@ int main(int argc, char** argv) {
     grid_rows.reserve(args.grid_sweep.size());
     for (uint32_t grid_blocks : args.grid_sweep) {
       grid_rows.push_back(measure_row(
+          physical_device,
           device,
           queue,
           command_pool,
           pipeline,
           pipeline_layout,
           descriptor_set,
+          output_buffer,
+          readback_buffer,
           fence,
           args,
           args.grid_sweep_count,
@@ -615,13 +924,29 @@ int main(int argc, char** argv) {
     }
 
     if (args.json_path.empty()) {
-      write_json(args, properties, queue_family, rows, grid_rows, std::cout);
+      write_json(
+          args,
+          properties,
+          queue_family,
+          output_buffer,
+          readback_buffer,
+          rows,
+          grid_rows,
+          std::cout);
     } else {
       std::ofstream output(args.json_path);
       if (!output) {
         fail("could not open JSON output: " + args.json_path);
       }
-      write_json(args, properties, queue_family, rows, grid_rows, output);
+      write_json(
+          args,
+          properties,
+          queue_family,
+          output_buffer,
+          readback_buffer,
+          rows,
+          grid_rows,
+          output);
       std::cout << "wrote " << args.json_path << "\n";
     }
 
@@ -632,8 +957,8 @@ int main(int argc, char** argv) {
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
-    vkDestroyBuffer(device, buffer, nullptr);
-    vkFreeMemory(device, memory, nullptr);
+    destroy_buffer(device, readback_buffer);
+    destroy_buffer(device, output_buffer);
     vkDestroyShaderModule(device, shader_module, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);

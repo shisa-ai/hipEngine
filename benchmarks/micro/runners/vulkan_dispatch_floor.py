@@ -22,9 +22,23 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER_CPP = REPO_ROOT / "benchmarks" / "micro" / "runners" / "vulkan_dispatch_floor.cpp"
 SHADER_GLSL = REPO_ROOT / "benchmarks" / "micro" / "kernels" / "vulkan" / "dispatch_floor.comp"
+TIMING_CONTRACT = REPO_ROOT / "benchmarks" / "micro" / "timing_contract.py"
+TIMING_HEADER = REPO_ROOT / "benchmarks" / "micro" / "runners" / "micro_timing_vulkan.hpp"
 COLLECT_ENV = Path(__file__).resolve().parents[1] / "collect_env.py"
 BENCH_NAME = "dispatch_grid_floor"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-vulkan-build")
+
+
+def _load_timing_contract():
+    spec = importlib.util.spec_from_file_location("micro_dispatch_timing_contract", TIMING_CONTRACT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load timing contract: {TIMING_CONTRACT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+timing_contract = _load_timing_contract()
 
 
 def _load_collect_env_module():
@@ -135,6 +149,7 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
@@ -195,34 +210,105 @@ def _infer_gpu_name(
     return "unknown"
 
 
-def _reference_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        return {}
-    for row in rows:
-        if row.get("dispatch_count") == 941:
-            return row
-    return rows[-1]
+def _samples(raw: dict[str, Any], name: str, expected: int) -> list[float]:
+    values = raw.get(name)
+    if not isinstance(values, list) or len(values) != expected:
+        raise ValueError(f"{name} must contain exactly {expected} timing samples")
+    return [float(value) for value in values]
 
 
-def _timing_summary(legacy: dict[str, Any]) -> dict[str, Any]:
-    config = legacy.get("config") if isinstance(legacy.get("config"), dict) else {}
-    rows = legacy.get("rows") if isinstance(legacy.get("rows"), list) else []
-    reference = _reference_row(rows)
-    return _json_safe(
-        {
-            "unit": "us_per_dispatch",
-            "median": reference.get("us_per_dispatch"),
-            "warmup_iters": config.get("warmup"),
-            "measured_iters": config.get("reps"),
-            "primary": {
-                "dispatch_count": reference.get("dispatch_count"),
-                "grid_blocks": reference.get("grid_blocks"),
-                "burst_us_median": reference.get("burst_us_median"),
-                "burst_us_min": reference.get("burst_us_min"),
-                "us_per_dispatch": reference.get("us_per_dispatch"),
-            },
-        }
+def _contract_row(
+    raw: dict[str, Any],
+    config: dict[str, Any],
+    *,
+    sweep: str,
+) -> dict[str, Any]:
+    timing_mode = timing_contract.parse_timing_mode(str(config.get("timing_mode")))
+    dispatch_count = int(raw["dispatch_count"])
+    sample_count = int(config["reps"])
+    if dispatch_count <= 0 or sample_count <= 0:
+        raise ValueError("dispatch_count and reps must be positive")
+    burst_iterations = dispatch_count
+    burst_dispatches = 1
+    gpu_supported = bool(raw.get("gpu_timestamps_supported"))
+    correctness_pass = bool(raw.get("single_correctness_pass")) and bool(
+        raw.get("burst_correctness_pass")
     )
+    correctness = timing_contract.make_correctness(
+        status="pass" if correctness_pass else "fail",
+        oracle="exact narrow-kernel output after the measured dispatch sequence",
+        logical_iterations=burst_iterations,
+        coverage=(
+            "all_dispatches"
+            if timing_mode == "independent_throughput"
+            else "chained_final_state"
+        ),
+        synchronization_method=(
+            "disjoint_output_slices"
+            if timing_mode == "independent_throughput"
+            else "vulkan_compute_barrier"
+        ),
+        barrier_count=dispatch_count - 1 if timing_mode == "serial_latency" else 0,
+    )
+    contract = timing_contract.make_timed_row_contract(
+        timing_mode=timing_mode,
+        backend="vulkan",
+        repetitions=burst_iterations,
+        dispatches_per_iteration=burst_dispatches,
+        dependency_validation_status="pass" if correctness_pass else "fail",
+        submission=timing_contract.make_submission(
+            strategy="vulkan_command_buffer",
+            queue_or_stream_count=1,
+            recording_in_timed_region=False,
+        ),
+        single_timing=timing_contract.make_timing_control(
+            logical_iterations=1,
+            dispatches_per_iteration=1,
+            gpu_samples_us=(
+                _samples(raw, "single_gpu_samples_us", sample_count)
+                if gpu_supported
+                else None
+            ),
+            host_samples_us=_samples(raw, "single_host_samples_us", sample_count),
+            gpu_clock="vulkan_timestamp",
+            gpu_status="ok" if gpu_supported else "unsupported",
+        ),
+        burst_timing=timing_contract.make_timing_control(
+            logical_iterations=burst_iterations,
+            dispatches_per_iteration=burst_dispatches,
+            gpu_samples_us=(
+                _samples(raw, "burst_gpu_samples_us", sample_count)
+                if gpu_supported
+                else None
+            ),
+            host_samples_us=_samples(raw, "burst_host_samples_us", sample_count),
+            gpu_clock="vulkan_timestamp",
+            gpu_status="ok" if gpu_supported else "unsupported",
+        ),
+        correctness=correctness,
+    )
+    base = {
+        key: value
+        for key, value in raw.items()
+        if key
+        not in {
+            "single_gpu_samples_us",
+            "single_host_samples_us",
+            "burst_gpu_samples_us",
+            "burst_host_samples_us",
+        }
+    }
+    metric = contract["timing"]["burst"]["gpu_elapsed"]
+    if metric["status"] != "ok":
+        metric = contract["timing"]["burst"]["host_wall"]
+    sequence_median = float(metric["sequence_us"]["median"])
+    return {
+        **base,
+        **contract,
+        "sweep": sweep,
+        "burst_us_median": sequence_median,
+        "us_per_dispatch": sequence_median / dispatch_count,
+    }
 
 
 def normalize_legacy_dispatch_result(
@@ -240,8 +326,23 @@ def normalize_legacy_dispatch_result(
 ) -> dict[str, Any]:
     config = legacy.get("config") if isinstance(legacy.get("config"), dict) else {}
     hardware = legacy.get("hardware") if isinstance(legacy.get("hardware"), dict) else {}
+    raw_rows = legacy.get("rows") if isinstance(legacy.get("rows"), list) else []
+    raw_grid_rows = (
+        legacy.get("grid_sweep_rows")
+        if isinstance(legacy.get("grid_sweep_rows"), list)
+        else []
+    )
+    rows = [
+        *(_contract_row(row, config, sweep="count") for row in raw_rows),
+        *(_contract_row(row, config, sweep="grid") for row in raw_grid_rows),
+    ]
+    if not rows:
+        raise ValueError("raw Vulkan dispatch artifact contains no timing rows")
+    correctness_pass = bool(rows) and all(
+        row["correctness"]["timed_sequence"]["status"] == "pass" for row in rows
+    )
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": BENCH_NAME,
         "backend": "vulkan",
@@ -274,27 +375,29 @@ def normalize_legacy_dispatch_result(
                 "local_size_x": config.get("local_size_x"),
                 "reps": config.get("reps"),
                 "warmup": config.get("warmup"),
+                "timing_mode": config.get("timing_mode"),
                 "method": config.get("method"),
                 "vulkan_hardware": hardware,
             }
         ),
         "correctness": {
-            "status": "not_applicable",
-            "oracle": "dispatch-floor diagnostic; shader writes only prevent empty dispatch removal",
+            "status": "pass" if correctness_pass else "fail",
+            "oracle": "exact single and measured-burst narrow-kernel outputs",
+            "mismatches": sum(int(row.get("correctness_mismatches", 0)) for row in rows),
         },
-        "timing": _timing_summary(legacy),
         "classification": "runtime_dispatch",
         "measurements": _json_safe(
             {
-                "rows": legacy.get("rows"),
-                "grid_sweep_rows": legacy.get("grid_sweep_rows"),
+                "rows": rows,
+                "count_rows": rows[: len(raw_rows)],
+                "grid_sweep_rows": rows[len(raw_rows) :],
             }
         ),
         "notes": (
-            "Vulkan command buffers are pre-recorded outside the timed region. Timing "
-            "is wall time around vkQueueSubmit+vkWaitForFences, so this isolates "
-            "steady dispatch/replay cost rather than shader compilation, pipeline "
-            "creation, or descriptor setup."
+            "Vulkan command buffers are pre-recorded outside the timed region and write "
+            "device-local output memory. A separate host-visible staging buffer is used "
+            "only for untimed exact validation. Each row contains GPU-timestamp and "
+            "submit/fence host-wall single and burst controls."
         ),
     }
     if environment_ref:
@@ -317,6 +420,8 @@ def _legacy_command(args: argparse.Namespace, exe_path: Path, spirv_path: Path, 
         str(args.reps),
         "--warmup",
         str(args.warmup),
+        "--timing-mode",
+        args.timing_mode,
         "--grid-sweep-count",
         str(args.grid_sweep_count),
         "--device-index",
@@ -358,13 +463,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--grid-sweep-count", type=int, default=941)
     parser.add_argument("--reps", type=int, default=50)
     parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument(
+        "--timing-mode",
+        choices=timing_contract.TIMING_MODES,
+        default="serial_latency",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     environment = _collect_environment(args)
-    source_hash = _hash_files([Path(__file__).resolve(), RUNNER_CPP, SHADER_GLSL])
+    source_hash = _hash_files(
+        [Path(__file__).resolve(), RUNNER_CPP, SHADER_GLSL, TIMING_HEADER, TIMING_CONTRACT]
+    )
     wrapper_command = [
         sys.executable,
         str(Path(__file__).resolve().relative_to(REPO_ROOT)),

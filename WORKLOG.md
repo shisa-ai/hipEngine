@@ -148612,3 +148612,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passed exact correctness, strict comparisons emitted GPU ratios, and host
   wall remained `not_comparable_submission_contract`. Review artifacts are
   `/tmp/q8-v2-*-strict.json` and `/tmp/q8-v2-vulkan-*-events.json`; smoke only.
+
+## 2026-07-10 - Dispatch/grid-floor timing contract v2
+
+- Rebuilt the narrow dispatch floor around exact v2 semantics. Serial mode
+  measures a pre-recorded N-dispatch HIP graph against a pre-recorded Vulkan
+  command buffer with N-1 read/write compute barriers. Independent mode uses
+  event-coordinated HIP streams and disjoint output slices versus a Vulkan
+  command buffer with no inter-dispatch barriers. The wide-argument HIP probe
+  remains HIP-only diagnostic data outside cross-backend rows.
+- Both native harnesses emit one-dispatch and N-dispatch GPU/host samples and
+  validate the exact measured output. Vulkan timing uses device-local output;
+  host-visible staging exists only in untimed validation. Serial graph and
+  command-buffer host submissions share the pre-recorded replay class and may
+  produce a host ratio; independent multi-stream versus one Vulkan submission
+  is marked `not_comparable_submission_contract`.
+- Parent review corrected the row model so N dispatches are N logical
+  iterations rather than one iteration containing N dispatches. Warmup now
+  runs exactly `warmup` logical dispatches once, independent allocation covers
+  warmup beyond the measured count, and Vulkan collects all single samples
+  before all burst samples to match HIP ordering.
+- Validation: `PYTHONPATH=. pytest -q tests/test_micro_hip_dispatch_floor.py
+  tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_timing_contract.py`
+  (`24 passed`); Python compile, gfx1151 HIP syntax, warning-clean Vulkan C++
+  syntax, and GLSL compile passed. gfx1151 smokes used counts=1,4, n=256,
+  reps=3, warmup=6, plus a four-dispatch one-block grid row in both modes.
+  HIP/Vulkan exact correctness passed every row. Serial GPU and host ratios
+  emitted; independent emitted GPU ratios and rejected host ratios. Artifacts
+  `/tmp/dispatch-*-v2.json` are diagnostic smoke only.
