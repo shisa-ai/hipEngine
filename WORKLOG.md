@@ -148370,3 +148370,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   (`8 passed`); `python3 -m compileall -q
   benchmarks/micro/timing_contract.py`; `git diff --check` on the contract,
   schema, and tests.
+
+## 2026-07-10 - HIP independent-sequence timing support
+
+- Added `HipRuntime.stream_wait_event()` with a typed
+  `hipStreamWaitEvent` binding. Microbenchmarks can now establish an event
+  fan-out/fan-in interval across nonblocking streams without relying on global
+  device synchronization.
+- Added `benchmarks/micro/hip_timing.py`. Serial mode measures ordered launches
+  on one stream; independent mode assigns repetition IDs across worker streams,
+  gates them from a coordinator start event, and joins completion events before
+  recording the stop event. Both paths return GPU-event sequence time and host
+  submit-to-completion wall independently.
+- Validation: `python3 -m pytest -q tests/test_hip_runtime.py
+  tests/test_micro_hip_timing.py` (`6 passed`); `python3 -m compileall -q
+  hipengine/core/hip.py benchmarks/micro/hip_timing.py`; `git diff --check` on
+  the runtime/helper/tests.
