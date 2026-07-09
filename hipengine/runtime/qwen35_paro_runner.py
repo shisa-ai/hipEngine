@@ -237,8 +237,13 @@ def _retained_selected_c1_moe_rows(rows: int) -> bool:
     return int(rows) in {2, 4, 6, 8}
 
 
+def _retained_per_row_linear_moe_rows(rows: int) -> bool:
+    return int(rows) == 6
+
+
 def _retained_linear_row_chunk_size(rows: int) -> int:
-    return 2 if int(rows) == 6 else 0
+    return 0
+
 
 
 def _default_projection_dispatch_artifact() -> str | None:
@@ -5021,8 +5026,20 @@ class Qwen35ParoResidentSession:
                 )
             )
         )
-        force_per_row_linear_moe = (not dense_mlp) and rows > 1 and _env_flag(
-            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"
+        force_per_row_linear_moe_env = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"
+        force_per_row_linear_moe = (
+            (not dense_mlp)
+            and rows > 1
+            and (
+                _env_flag(force_per_row_linear_moe_env)
+                or (
+                    force_selected_c1_moe
+                    and _retained_batch_defaults_enabled()
+                    and _env_is_blank(force_per_row_linear_moe_env)
+                    and _env_is_blank("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE")
+                    and _retained_per_row_linear_moe_rows(rows)
+                )
+            )
         )
         force_selected_c1_linear_projections = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"

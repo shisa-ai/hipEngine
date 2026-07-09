@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-09T03:55:00+00:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "rocminfo_arch": "gfx1151",
+    "default_hardware": false
+  },
+  "workload": {
+    "model": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "quant": "w4_paro",
+    "batch_size": 6,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens_per_request": 128,
+    "warmup_decode_tokens": 0,
+    "sampler": "serial_lm_head"
+  },
+  "change": {
+    "summary": "Replace the c6 retained linear-attention rowchunk2 bridge with native rows=6 linear attention plus per-row c1 MoE only on linear-attention layers.",
+    "runtime_default": "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 now auto-selects per-row linear MoE for rows=6 when selected-c1 MoE is active and both linear-MoE and linear-rowchunk env overrides are blank.",
+    "scratch_fix": "reserve_moe_c1_scratch(prefix=...) now applies the prefix to shared_out, moe_out, and shared_rotate_fuse_barrier so row-local c1 MoE scratch cannot alias batch MoE outputs."
+  },
+  "correctness": {
+    "hidden_bisect": {
+      "artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-linearmoe-perrow-after-prefixfix.json",
+      "status": "eq_ok",
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_linear_stage_drift": null
+    },
+    "local_generated_equality": {
+      "artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json",
+      "status": "blocked_by_retained_claim_schema",
+      "generated_token_equality_passed": true,
+      "reason_blocked": "Diagnostic path uses per-row linear MoE and serial LM-head, so it is not a native-caware retained performance claim."
+    }
+  },
+  "comparison": {
+    "old_c6_bridge": {
+      "description": "full-attention rowchunk2, linear-attention rowchunk2, selected-c1 MoE, native/batch projection, serial LM-head",
+      "artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json",
+      "generated_token_equality_passed": true,
+      "aggregate_decode_tok_s": 87.61225903492758,
+      "per_request_decode_tok_s": 14.60204317248793,
+      "decode_seconds": 8.765896558994427,
+      "median_decode_step_ms": 68.28186206985265,
+      "p95_decode_step_ms": 68.90534795820713
+    },
+    "new_c6_repair": {
+      "description": "full-attention rowchunk2, native rows=6 linear attention, per-row c1 MoE on linear layers, native/batch projection, serial LM-head",
+      "artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json",
+      "generated_token_equality_passed": true,
+      "aggregate_decode_tok_s": 92.8002359403646,
+      "per_request_decode_tok_s": 15.466705990060767,
+      "decode_seconds": 8.275841027963907,
+      "median_decode_step_ms": 64.33474796358496,
+      "p95_decode_step_ms": 64.81695687398314
+    },
+    "delta": {
+      "aggregate_decode_tok_s_relative_pct": 5.921519388478247,
+      "decode_seconds_delta": -0.4900555310305208,
+      "median_decode_step_delta_ms": -3.9471141062676907,
+      "median_decode_step_relative_pct": -5.780618727459095
+    }
+  },
+  "commands": {
+    "hidden_bisect": "PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-linear-moe-path per_row_c1 --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-linearmoe-perrow-after-prefixfix.json",
+    "local_equality": "PYTHONPATH=. python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 128 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-moe-path per_row_c1 --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json"
+  }
+}

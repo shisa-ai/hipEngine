@@ -1027,6 +1027,21 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     assert scratch.moe_out.shape == (1, 4096)
 
 
+def test_qwen35_decode_state_moe_c1_scratch_prefix_covers_outputs() -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+
+    batch = state.reserve_moe_c1_scratch(tokens=6, activation_dtype="fp16")
+    row = state.reserve_moe_c1_scratch(tokens=1, activation_dtype="fp16", prefix="moe.decode_row")
+
+    assert row.shared_out.ptr != batch.shared_out.ptr
+    assert row.moe_out.ptr != batch.moe_out.ptr
+    assert row.shared_rotate_fuse_barrier.ptr != batch.shared_rotate_fuse_barrier.ptr
+    assert state.workspace.allocation("moe.decode_row.shared_out").tensor is row.shared_out
+    assert state.workspace.allocation("moe.decode_row.out").tensor is row.moe_out
+    assert state.workspace.allocation("moe.decode_row.layer0.shared_rotate_fuse_barrier").tensor is row.shared_rotate_fuse_barrier
+
+
 def test_qwen35_decode_state_reuses_and_replaces_named_scratch() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)

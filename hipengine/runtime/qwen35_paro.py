@@ -10588,10 +10588,10 @@ class Qwen35ParoDecodeState:
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
-            shared_out=self.workspace.reserve_tensor("moe.shared_out", (tokens, cfg.hidden_size), lowp),
-            moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), lowp),
+            shared_out=self.workspace.reserve_tensor(f"{prefix}.shared_out", (tokens, cfg.hidden_size), lowp),
+            moe_out=self.workspace.reserve_tensor(f"{prefix}.out", (tokens, cfg.hidden_size), lowp),
             shared_rotate_fuse_barrier=self.workspace.reserve_tensor(
-                f"moe.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
+                f"{prefix}.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
             ),
         )
 
