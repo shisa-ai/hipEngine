@@ -148766,3 +148766,33 @@ graphless decode launch-collapse path without regressing target/serial parity.
   independent used two matched lanes and `VK_KHR_calibrated_timestamps`.
   Exact correctness and GPU comparisons passed in both modes; host ratios were
   rejected by submission class. `/tmp/two-stage-*-mq-v2.json` is smoke only.
+
+## 2026-07-10 - Q6 X8 selected-down timing contract v2
+
+- Rebuilt the paired Q6_K X8 selected-down probe around one explicit
+  backend-specific ABI contract: int64 selected IDs, native BF16 output, the
+  shared ten-uint q8_1 push layout, and disjoint activation/q8_1/output slices
+  for every independent repetition. Serial Vulkan work uses compute barriers;
+  combined independent work runs round-robin over calibrated Vulkan queues.
+  Quantize-only and prequantized-dot throughput remain disjoint single-command-
+  buffer probes. The cumulative event path is gone.
+- The strict comparator requires identical architecture, commit/dirty state,
+  model/quant/layout/shape/workgroup parameters, expected row sets, and combined
+  HIP-stream/Vulkan-queue counts. Both backend source hashes are preserved.
+  Host wall stays unpaired because direct or multi-stream HIP and Vulkan
+  command-buffer submission are different classes. Worker lanes are capped by
+  timed repetitions, not a longer warmup.
+- Corrected a misleading correctness label. Vulkan is not bit-identical to the
+  scalar CPU accumulation: the retained diagnostics include BF16 mismatch and
+  max-error counts, while the executable gate is now max per-row KL <= 0.05
+  and top-1 agreement >= 90%. The production-shaped smoke reached KL <=
+  `0.00605` and top-1 `1.0` for every checked burst.
+- Validation: `uv run pytest -q tests/test_micro_q6_x8_real_slice.py
+  tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`23 passed`); warning-clean
+  Vulkan C++ syntax, GLSL, Python compile, and scoped diff checks passed.
+  Paired gfx1151 smokes used rows=8, experts=256, 512x2048, wg64, reps=8,
+  warmup=5, samples=3. Serial and independent each matched all three operations
+  with every correctness gate passing; combined independent used four matched
+  lanes and calibrated timestamps. `/tmp/q6-prod-*-v2.json` is smoke evidence,
+  not a retained performance claim.

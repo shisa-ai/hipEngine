@@ -97,7 +97,7 @@ Last updated: 2026-07-10.
 | Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
 | Two-stage reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Multi-stage work is round-robin over matched HIP streams and Vulkan compute queues; Vulkan uses calibrated cross-queue timestamps and one partial-to-final barrier per operation. gfx1151 exact-burst smoke passed both modes. |
 | Q4 selected-dual | Harness v2 complete; retained rerun pending | Multi-queue repair in progress | Serial and one-stage throughput paths pass; the combined event-based throughput row is withheld pending round-robin queue lanes. |
-| Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
+| Q6 selected-down X8 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Shared int64/BF16 ABI, disjoint q8_1/output slices, calibrated queue lanes for combined throughput, and KL/top-1 correctness gate. Production-shaped gfx1151 smoke passed both modes. |
 | Dense Q8_0 | Harness v2 complete; retained rerun pending | Multi-queue repair in progress | Quantize-only and dot-only throughput paths remain valid; the combined event-based row is withheld because event scopes are cumulative. |
 | Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 are different math/layouts; no ratio is permitted. |
 
