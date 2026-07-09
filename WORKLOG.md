@@ -148640,3 +148640,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   HIP/Vulkan exact correctness passed every row. Serial GPU and host ratios
   emitted; independent emitted GPU ratios and rejected host ratios. Artifacts
   `/tmp/dispatch-*-v2.json` are diagnostic smoke only.
+
+## 2026-07-10 - Two-stage reduction timing contract v2
+
+- Converted the paired block-partial plus final-reduce control to the v2
+  serial-latency and independent-throughput contract. HIP uses an ordered
+  stream or disjoint multi-stream partial/output slices. Vulkan serial mode
+  inserts partial-to-final and inter-iteration compute barriers; independent
+  mode uses a slice-scoped event dependency from each partial dispatch to only
+  its corresponding final dispatch.
+- Added transfer-write-to-compute-read visibility for Vulkan input uploads,
+  exact `max(reps, warmup)` storage sizing, sequence-tagged single/burst
+  validation, fixed HIP workgroup builds, separate GPU/host clocks, strict row
+  matching, and commit/dirty/source-hash provenance. HIP direct/multi-stream
+  host wall remains visible but is not ratioed against Vulkan command-buffer
+  wall.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_two_stage_reduction.py tests/test_micro_timing_contract.py`
+  (`13 passed`); Python compile, gfx1151 HIP syntax, warning-clean Vulkan C++
+  syntax, and both GLSL builds passed. gfx1151 smokes used K=512, rows=1,
+  wg64, split=2, body-repeats=8, reps=2, warmup=3, samples=2 in both modes.
+  Exact correctness and GPU comparisons passed; host comparisons were marked
+  `not_comparable_submission_contract`. `/tmp/two-stage-*-v2.json` is smoke
+  evidence only, not a retained performance claim.

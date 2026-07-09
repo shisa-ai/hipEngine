@@ -23,6 +23,9 @@ HIP_SOURCE = MICRO_ROOT / "runners" / "hip_two_stage_reduction.hip"
 VULKAN_SOURCE = MICRO_ROOT / "runners" / "vulkan_two_stage_reduction.cpp"
 VULKAN_PARTIAL_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "reduction_two_stage_partial.comp"
 VULKAN_FINAL_SHADER = MICRO_ROOT / "kernels" / "vulkan" / "reduction_two_stage_final.comp"
+HIP_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_hip.hpp"
+VULKAN_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp"
+TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-two-stage-reduction")
 
@@ -31,6 +34,15 @@ def _load_collect_env_module():
     spec = importlib.util.spec_from_file_location("micro_collect_env", COLLECT_ENV)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load environment collector: {COLLECT_ENV}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_timing_contract_module():
+    spec = importlib.util.spec_from_file_location("micro_timing_contract", TIMING_CONTRACT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load timing contract: {TIMING_CONTRACT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -99,15 +111,24 @@ def _vulkan_cflags_libs() -> list[str]:
     return shlex.split(completed.stdout.strip()) or ["-lvulkan"]
 
 
-def _compile_hip(args: argparse.Namespace) -> tuple[Path, list[str]]:
+def _compile_hip(args: argparse.Namespace, workgroup: int) -> tuple[Path, list[str]]:
     hipcc = shutil.which("hipcc")
     if not hipcc:
         raise RuntimeError("hipcc is not available")
-    exe = args.build_dir / "hip_two_stage_reduction"
+    exe = args.build_dir / f"hip_two_stage_reduction_wg{workgroup}"
     command = [hipcc]
     if args.gfx_arch:
         command.append(f"--offload-arch={args.gfx_arch}")
-    command.extend(["-O3", "-std=c++17", str(HIP_SOURCE), "-o", str(exe)])
+    command.extend(
+        [
+            "-O3",
+            "-std=c++17",
+            f"-DHIPENGINE_FIXED_WORKGROUP_SIZE={workgroup}",
+            str(HIP_SOURCE),
+            "-o",
+            str(exe),
+        ]
+    )
     completed = _run_command(command, cwd=REPO_ROOT)
     if completed.returncode != 0:
         raise RuntimeError("HIP two-stage reduction build failed")
@@ -150,7 +171,12 @@ def _compile_vulkan_harness(args: argparse.Namespace) -> tuple[Path, list[str]]:
     return exe, command
 
 
-def _base_run_args(args: argparse.Namespace, raw_json: Path) -> list[str]:
+def _base_run_args(
+    args: argparse.Namespace,
+    raw_json: Path,
+    *,
+    workgroups: str | None = None,
+) -> list[str]:
     return [
         "--json",
         str(raw_json),
@@ -159,7 +185,7 @@ def _base_run_args(args: argparse.Namespace, raw_json: Path) -> list[str]:
         "--rows-list",
         args.rows_list,
         "--workgroups",
-        args.workgroups,
+        workgroups or args.workgroups,
         "--split-counts",
         args.split_counts,
         "--body-repeats",
@@ -170,14 +196,25 @@ def _base_run_args(args: argparse.Namespace, raw_json: Path) -> list[str]:
         str(args.warmup),
         "--samples",
         str(args.samples),
+        "--timing-mode",
+        args.timing_mode,
         "--device-index",
         str(args.device_index),
     ]
 
 
-def _run_hip(exe: Path, args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
-    raw_json = args.build_dir / "hip-two-stage.json"
-    command = [str(exe), *_base_run_args(args, raw_json)]
+def _run_hip(
+    exe: Path,
+    args: argparse.Namespace,
+    workgroup: int,
+) -> tuple[dict[str, Any], list[str]]:
+    raw_json = args.build_dir / f"hip-two-stage-wg{workgroup}.json"
+    command = [
+        str(exe),
+        *_base_run_args(args, raw_json, workgroups=str(workgroup)),
+        "--independent-streams",
+        str(args.independent_streams),
+    ]
     completed = _run_command(command, cwd=REPO_ROOT)
     if completed.returncode != 0:
         raise RuntimeError("HIP two-stage reduction run failed")
@@ -212,22 +249,50 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
 
 
+def _source_record(environment: dict[str, Any], source_hash: str) -> dict[str, Any]:
+    repo = environment.get("repo")
+    if not isinstance(repo, dict):
+        repo = {}
+    return {
+        "repo": str(repo.get("root") or REPO_ROOT),
+        "branch": str(repo.get("branch") or ""),
+        "commit": str(repo.get("commit") or ""),
+        "dirty": bool(repo.get("dirty")),
+        "source_hash": source_hash,
+    }
+
+
 def _annotate_rows(raw: dict[str, Any], *, backend: str) -> list[dict[str, Any]]:
+    timing_contract = _load_timing_contract_module()
+    config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
+    repetitions = int(config.get("reps", 0))
+    timing_mode = timing_contract.parse_timing_mode(str(config.get("timing_mode")))
+    if repetitions <= 0:
+        raise ValueError(f"{backend} two-stage result has invalid repetitions")
     rows = []
     for row in raw.get("rows", []):
         item = dict(row)
+        if item.get("timing_mode") != timing_mode:
+            raise ValueError(f"{backend} two-stage row timing mode disagrees with config")
+        timing_contract.validate_timed_row(item, expected_repetitions=repetitions)
         item["backend"] = backend
         item["variant"] = "two_stage"
+        item["workgroup_specialization"] = (
+            "fixed" if backend == "hip" else "specialization_constant"
+        )
         rows.append(item)
     return rows
 
 
-def _row_index(rows: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, Any, str], dict[str, Any]]:
+def _row_index(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[Any, Any, Any, Any, Any, str], dict[str, Any]]:
     indexed = {}
     for row in rows:
         key = (
@@ -235,32 +300,67 @@ def _row_index(rows: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, Any, str
             row.get("rows"),
             row.get("workgroup_size"),
             row.get("split_count"),
+            row.get("timing_mode"),
             row.get("backend"),
         )
+        if key in indexed:
+            raise ValueError(f"duplicate two-stage result row: {key}")
         indexed[key] = row
     return indexed
 
 
 def _matched_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    timing_contract = _load_timing_contract_module()
     index = _row_index(rows)
-    shape_keys = sorted({key[:4] for key in index})
+    shape_keys = sorted({key[:5] for key in index})
     matched = []
-    for k, row_count, workgroup_size, split_count in shape_keys:
-        hip = index.get((k, row_count, workgroup_size, split_count, "hip"))
-        vulkan = index.get((k, row_count, workgroup_size, split_count, "vulkan"))
+    for k, row_count, workgroup_size, split_count, timing_mode in shape_keys:
+        hip = index.get((k, row_count, workgroup_size, split_count, timing_mode, "hip"))
+        vulkan = index.get(
+            (k, row_count, workgroup_size, split_count, timing_mode, "vulkan")
+        )
         if not hip or not vulkan:
             continue
-        hip_us = float(hip["median_us"])
-        vulkan_us = float(vulkan["median_us"])
+        ratios: dict[str, Any] = {}
+        for control in timing_contract.TIMING_CONTROLS:
+            domains: dict[str, Any] = {}
+            for domain in timing_contract.TIMING_DOMAINS:
+                try:
+                    domains[domain] = {
+                        "status": "ok",
+                        **timing_contract.comparison_ratio(
+                            hip,
+                            vulkan,
+                            control=control,
+                            domain=domain,
+                        ),
+                    }
+                except ValueError as exc:
+                    domains[domain] = {
+                        "status": (
+                            "not_comparable_submission_contract"
+                            if domain == "host_wall"
+                            else "not_comparable"
+                        ),
+                        "reason": str(exc),
+                    }
+            ratios[control] = domains
+        burst_gpu = ratios["burst"]["gpu_elapsed"]
         matched.append(
             {
                 "k": k,
                 "rows": row_count,
                 "workgroup_size": workgroup_size,
                 "split_count": split_count,
-                "hip_median_us": hip_us,
-                "vulkan_median_us": vulkan_us,
-                "vulkan_vs_hip_speedup": hip_us / vulkan_us if vulkan_us > 0.0 else None,
+                "timing_mode": timing_mode,
+                "ratios": ratios,
+                "hip_gpu_burst_median_us": burst_gpu.get("hip_us_per_iteration"),
+                "vulkan_gpu_burst_median_us": burst_gpu.get(
+                    "vulkan_us_per_iteration"
+                ),
+                "vulkan_vs_hip_gpu_burst_speedup": burst_gpu.get(
+                    "vulkan_vs_hip_speedup"
+                ),
                 "hip_correctness_pass": bool(hip.get("correctness_pass")),
                 "vulkan_correctness_pass": bool(vulkan.get("correctness_pass")),
             }
@@ -270,9 +370,9 @@ def _matched_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _summary(matched: list[dict[str, Any]]) -> dict[str, Any]:
     speedups = [
-        float(item["vulkan_vs_hip_speedup"])
+        float(item["vulkan_vs_hip_gpu_burst_speedup"])
         for item in matched
-        if isinstance(item.get("vulkan_vs_hip_speedup"), (int, float))
+        if isinstance(item.get("vulkan_vs_hip_gpu_burst_speedup"), (int, float))
     ]
     return {
         "matched_rows": len(matched),
@@ -283,7 +383,33 @@ def _summary(matched: list[dict[str, Any]]) -> dict[str, Any]:
             bool(item.get("hip_correctness_pass")) and bool(item.get("vulkan_correctness_pass"))
             for item in matched
         ),
+        "primary_domain": "gpu_elapsed",
+        "host_wall_status": "not_comparable_direct_vs_command_buffer",
     }
+
+
+def _validate_raw_config(
+    raw: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    backend: str,
+) -> None:
+    config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
+    expected = {
+        "k_list": _parse_csv_u32(args.k_list),
+        "rows_list": _parse_csv_u32(args.rows_list),
+        "split_counts": _parse_csv_u32(args.split_counts),
+        "body_repeats": args.body_repeats,
+        "reps": args.reps,
+        "warmup": args.warmup,
+        "samples": args.samples,
+        "timing_mode": args.timing_mode,
+    }
+    for field, value in expected.items():
+        if config.get(field) != value:
+            raise ValueError(
+                f"{backend} two-stage raw config {field} does not match invocation"
+            )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -306,9 +432,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--samples", type=int, default=7)
+    parser.add_argument(
+        "--timing-mode",
+        choices=("serial_latency", "independent_throughput"),
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--pretty", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.independent_streams <= 0:
+        parser.error("--independent-streams must be positive")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -324,13 +459,20 @@ def main(argv: list[str] | None = None) -> None:
     rows: list[dict[str, Any]] = []
 
     if args.backend in ("both", "hip"):
-        hip_exe, build_command = _compile_hip(args)
-        raw, run_command = _run_hip(hip_exe, args)
-        raw_results["hip"] = raw
-        rows.extend(_annotate_rows(raw, backend="hip"))
-        commands.append(
-            {"kind": "hip", "build_command": build_command, "run_command": run_command}
-        )
+        for workgroup in _parse_csv_u32(args.workgroups):
+            hip_exe, build_command = _compile_hip(args, workgroup)
+            raw, run_command = _run_hip(hip_exe, args, workgroup)
+            _validate_raw_config(raw, args, backend="hip")
+            raw_results[f"hip:wg{workgroup}"] = raw
+            rows.extend(_annotate_rows(raw, backend="hip"))
+            commands.append(
+                {
+                    "kind": "hip",
+                    "workgroup": workgroup,
+                    "build_command": build_command,
+                    "run_command": run_command,
+                }
+            )
 
     if args.backend in ("both", "vulkan"):
         vulkan_exe, harness_command = _compile_vulkan_harness(args)
@@ -341,6 +483,7 @@ def main(argv: list[str] | None = None) -> None:
             args, VULKAN_FINAL_SHADER, "reduction_two_stage_final"
         )
         raw, run_command = _run_vulkan(vulkan_exe, partial_spirv, final_spirv, args)
+        _validate_raw_config(raw, args, backend="vulkan")
         raw_results["vulkan"] = raw
         rows.extend(_annotate_rows(raw, backend="vulkan"))
         commands.append(
@@ -354,15 +497,32 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     matched = _matched_rows(rows)
+    if args.backend == "both":
+        expected_matches = (
+            len(_parse_csv_u32(args.k_list))
+            * len(_parse_csv_u32(args.rows_list))
+            * len(_parse_csv_u32(args.workgroups))
+            * len(_parse_csv_u32(args.split_counts))
+        )
+        if len(matched) != expected_matches:
+            raise ValueError(
+                "HIP and Vulkan two-stage row sets do not match exactly: "
+                f"expected {expected_matches}, got {len(matched)}"
+            )
     source_paths = [
         Path(__file__).resolve(),
         HIP_SOURCE,
         VULKAN_SOURCE,
         VULKAN_PARTIAL_SHADER,
         VULKAN_FINAL_SHADER,
+        HIP_TIMING_HEADER,
+        VULKAN_TIMING_HEADER,
+        TIMING_CONTRACT,
     ]
+    source_hash = _hash_files(source_paths)
     result = {
-        "schema": "hipengine.micro.two_stage_reduction.v1",
+        "schema": "hipengine.micro.two_stage_reduction.v2",
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": "two_stage_reduction",
         "classification": "diagnostic_unclassified",
@@ -380,25 +540,26 @@ def main(argv: list[str] | None = None) -> None:
             "reps": args.reps,
             "warmup": args.warmup,
             "samples": args.samples,
+            "timing_mode": args.timing_mode,
+            "independent_streams": args.independent_streams,
         },
         "environment": {
             "ref": args.environment_ref,
             "captured": environment if not args.environment_ref else None,
         },
-        "source": {
-            "repo": str(REPO_ROOT),
-            "source_hash": _hash_files(source_paths),
-        },
+        "source": _source_record(environment, source_hash),
         "commands": _json_safe(commands),
         "raw_results": raw_results,
         "rows": rows,
         "matched_rows": matched,
         "summary": _summary(matched),
+        "artifact_ref": str(args.out),
         "interpretation": (
-            "True two-stage f32 reduction control: each timed repetition records a "
-            "block-partial dispatch followed by a final-reduce dispatch. This closes "
-            "the previous block-partial plus final-reduce matrix gap for the tested "
-            "large-K shapes."
+            "True two-stage f32 reduction control. serial_latency orders each partial "
+            "and final dispatch and reuses shared state. independent_throughput uses "
+            "disjoint slices with one partial-to-final event dependency per logical "
+            "operation. GPU ratios are comparable; HIP direct/multi-stream and Vulkan "
+            "command-buffer host wall are intentionally not compared."
         ),
         "wrapper": {
             "command": [Path(sys.executable).name, *sys.argv],
