@@ -68,6 +68,10 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_full_attention_row_chunk_layers(6) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(7) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(8) == set()
+    assert not runner_module._retained_selected_c1_moe_rows(3)
+    assert runner_module._retained_selected_c1_moe_rows(6)
+    assert runner_module._retained_linear_row_chunk_size(4) == 0
+    assert runner_module._retained_linear_row_chunk_size(6) == 2
 
 
 def test_qwen35_retained_batch_defaults_load_projection_artifact(
@@ -6124,6 +6128,130 @@ def test_qwen35_resident_linear_batch_decode_can_force_native_row_chunks(monkeyp
             "segment_metadata": {"cu_seqlens": [0, 1], "state_indices": [4]},
         },
     ]
+
+
+def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -> None:
+    device = Device("hip", 0)
+
+    def run_case(
+        *,
+        selected_c1_moe_env: str | None,
+        linear_row_chunk_env: str | None,
+    ) -> tuple[Qwen35ParoResidentSession, list[tuple[int, tuple[int, ...]]], list[tuple[int, bool]], object]:
+        monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+        if selected_c1_moe_env is None:
+            monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", raising=False)
+        else:
+            monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", selected_c1_moe_env)
+        if linear_row_chunk_env is None:
+            monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE", raising=False)
+        else:
+            monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE", linear_row_chunk_env)
+        session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+        session.device = device
+        session.max_batch_size = 6
+        session.hidden_nbytes = 8 * DType.FP16.itemsize
+        session.config = SimpleNamespace(hidden_size=8, layer_types=("linear_attention",), num_experts=4)
+        session.batch_hidden = Tensor.from_handle(0x1000, (6, 8), DType.FP16, device)
+        session.batch_next_hidden = Tensor.from_handle(0x2000, (6, 8), DType.FP16, device)
+        conv = Tensor.from_handle(0x3000, (8, 4), DType.FP32, device)
+        recurrent = Tensor.from_handle(0x4000, (2, 4, 4), DType.FP32, device)
+        session.linear_states = {
+            0: (
+                conv,
+                recurrent,
+                DeviceBuffer(0x3000, 6 * conv.numel * conv.dtype.itemsize),
+                DeviceBuffer(0x4000, 6 * recurrent.numel * recurrent.dtype.itemsize),
+                None,
+                None,
+            )
+        }
+        metadata_calls: list[tuple[int, tuple[int, ...]]] = []
+
+        def fake_metadata(*, rows: int, slots: tuple[int, ...]):
+            metadata_calls.append((int(rows), tuple(int(slot) for slot in slots)))
+            call_index = len(metadata_calls)
+            return (
+                Tensor.from_handle(0xA000 + call_index * 0x100, (rows + 1,), DType.INT32, device),
+                Tensor.from_handle(0xB000 + call_index * 0x100, (rows,), DType.INT64, device),
+                (),
+            )
+
+        session._batch_decode_segment_metadata = fake_metadata
+        session._ensure_linear_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(
+            attn_input=Tensor.from_handle(0x5000, (rows, 8), DType.FP16, device)
+        )
+        moe_rows: list[tuple[int, bool]] = []
+
+        def fake_moe_scratch(layer_id, rows, *, force_selected_c1_moe=False):
+            moe_rows.append((int(rows), bool(force_selected_c1_moe)))
+            return SimpleNamespace(residual=Tensor.from_handle(0x6000, (rows, 8), DType.FP16, device))
+
+        session._ensure_moe_decode_batch_scratch = fake_moe_scratch
+
+        class FakeRuntime:
+            def __init__(self) -> None:
+                self.copies: list[tuple[int, int, int, int]] = []
+
+            def memcpy_async(self, dst, src, nbytes, kind, stream):
+                self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+        class FakeState:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def run_linear_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
+                self.calls.append((hidden, kwargs))
+                return Tensor.from_handle(0x9000 + len(self.calls) * 0x100, (kwargs["tokens"], 8), DType.FP16, device)
+
+        runtime = FakeRuntime()
+        state = FakeState()
+        session.runtime = runtime
+        session.states = [state]
+        session.libraries = {}
+
+        out = session._run_layers_batch_decode(
+            rows=6,
+            positions=(4, 5, 6, 7, 8, 9),
+            slots=(0, 1, 2, 3, 4, 5),
+            stream=5,
+        )
+        assert out.ptr in {0x1000, 0x2000}
+        return session, metadata_calls, moe_rows, state
+
+    session, metadata_calls, moe_rows, state = run_case(selected_c1_moe_env=None, linear_row_chunk_env=None)
+    assert metadata_calls == [
+        (6, (0, 1, 2, 3, 4, 5)),
+        (2, (0, 1)),
+        (2, (2, 3)),
+        (2, (4, 5)),
+    ]
+    assert moe_rows == [(2, True), (2, True), (2, True)]
+    assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True, True, True]
+    execution = session.last_batch_decode_execution
+    assert execution["linear_attention_decode_path"] == "native_batch_row_chunks"
+    assert execution["linear_attention_row_chunk_size"] == 2
+    assert execution["linear_attention_row_chunked_layers"] == [0]
+    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_grouped_compact_layers"] == 0
+
+    session, _metadata_calls, moe_rows, state = run_case(selected_c1_moe_env="0", linear_row_chunk_env=None)
+    assert moe_rows == [(2, False), (2, False), (2, False)]
+    assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [False, False, False]
+    execution = session.last_batch_decode_execution
+    assert execution["linear_attention_decode_path"] == "native_batch_row_chunks"
+    assert execution["moe_decode_path"] == "grouped_compact"
+    assert execution["moe_grouped_compact_layers"] == 1
+
+    session, metadata_calls, moe_rows, state = run_case(selected_c1_moe_env=None, linear_row_chunk_env="0")
+    assert metadata_calls == [(6, (0, 1, 2, 3, 4, 5))]
+    assert moe_rows == [(6, True)]
+    assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True]
+    execution = session.last_batch_decode_execution
+    assert "linear_attention_decode_path" not in execution
+    assert "linear_attention_row_chunk_size" not in execution
+    assert execution["layer_executions"][0]["linear_attention_decode_path"] == "native_batch_segments"
+    assert execution["moe_decode_path"] == "selected_c1_batch"
 
 
 def test_qwen35_resident_linear_batch_decode_can_force_per_row_moe_probe(monkeypatch) -> None:
