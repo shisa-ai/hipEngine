@@ -98,7 +98,7 @@ Last updated: 2026-07-10.
 | Two-stage reduction | Pending v2 rerun | Diagnostic only | Existing barriers make this the strongest legacy control, but clocks still differed. |
 | Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
 | Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
-| Dense Q8_0 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Packed-BF16 input/output, exact wave32/rowtile matches, and full quantize/dot hazard validation passed on gfx1151. |
+| Dense Q8_0 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Packed-BF16 I/O, exact wave32/rowtile matches, and per-iteration Vulkan event dependencies passed on gfx1151. |
 | Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 are different math/layouts; no ratio is permitted. |
 
 ### Evidence That Still Stands

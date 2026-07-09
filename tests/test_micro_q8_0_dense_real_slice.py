@@ -54,6 +54,17 @@ def _result(module, backend: str, timing_mode: str = "serial_latency"):
         "kind": "hipengine_micro_result",
         "bench": module.BENCH_NAME,
         "backend": backend,
+        "hardware": {"gpu_name": "fixture", "gfx_arch": "gfx1151"},
+        "parameters": {
+            "shapes": "64x64",
+            "rows_list": "1",
+            "row_tiles": "1",
+            "timing_mode": timing_mode,
+            "input_scale": 0.1,
+            "repetitions": 2,
+            "warmup_sequences": 1,
+            "samples": 2,
+        },
         "measurements": {"rows": [row]},
     }
 
@@ -86,6 +97,8 @@ def test_q8_shader_push_layout_and_serial_barriers_are_explicit() -> None:
     assert "uint load_bf16(uint element_index)" in quant_shader
     assert "uint16_t out_bf16[]" in dot_shader
     assert "storageBuffer16BitAccess" in harness
+    assert "vkCmdSetEvent" in harness
+    assert "vkCmdWaitEvents" in harness
     assert "VK_ACCESS_SHADER_WRITE_BIT,\n            VK_ACCESS_SHADER_READ_BIT" in harness
     assert "VK_ACCESS_SHADER_READ_BIT,\n                  VK_ACCESS_SHADER_WRITE_BIT" in harness
     assert harness.count("VK_ACCESS_SHADER_WRITE_BIT,\n                  VK_ACCESS_SHADER_WRITE_BIT") >= 1
@@ -141,6 +154,29 @@ def test_q8_warmup_is_one_logical_sequence() -> None:
         ("measure", 1, 3, launch),
         ("measure", 4, 3, launch),
     ]
+
+
+def test_q8_comparison_rejects_mismatched_provenance_and_rows() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+
+    vulkan["parameters"]["input_scale"] = 0.2
+    try:
+        module.build_comparison(hip, vulkan, command=["q8-test"])
+    except ValueError as exc:
+        assert "input_scale" in str(exc)
+    else:
+        raise AssertionError("expected an input-scale mismatch rejection")
+
+    vulkan = _result(module, "vulkan")
+    vulkan["measurements"]["rows"][0]["local_size"] = 64
+    try:
+        module.build_comparison(hip, vulkan, command=["q8-test"])
+    except ValueError as exc:
+        assert "row sets" in str(exc)
+    else:
+        raise AssertionError("expected a comparable-row mismatch rejection")
 
 
 def test_q8_independent_storage_covers_warmup() -> None:
