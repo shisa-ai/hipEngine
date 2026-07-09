@@ -148499,3 +148499,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   comparisons emitted GPU ratios and marked host wall
   `not_comparable_submission_contract`. Tiny-shape timings are diagnostic smoke
   only; artifacts are under `/tmp/sampler-*-v2.json`.
+
+## 2026-07-10 - Packed-dot timing contract v2
+
+- Converted q8/q4/q6/scalar packed-dot diagnostics to timing contract v2 and
+  parameterized matched HIP/Vulkan workgroups at 64/128/256. HIP uses ordered
+  or nonblocking multi-stream launches; Vulkan uses serial WAW barriers or
+  independent disjoint output slices in a pre-recorded command buffer. Both
+  report reps=1/burst GPU and host distributions.
+- Review changed warmup to exactly `warmup` logical operations, allocated
+  independent output storage for `max(reps, warmup)`, and added an integer
+  per-repetition result tag. Serial final-state correctness now detects missing
+  ordering; independent correctness samples the same 64 elements from every
+  output slice. Source hashes include the shared timing headers and contract.
+- Focused validation: `python3 -m pytest -q tests/test_micro_dot_path.py
+  tests/test_micro_timing_contract.py` (`15 passed`); `python3 -m compileall -q
+  benchmarks/micro/runners/dot_path.py`; native HIP/Vulkan/GLSL builds and
+  `git diff --check` passed.
+- gfx1151 correctness smoke used q8_signed/groups2, n=256, body-iters=4, fixed
+  wg64, reps=3, warmup=4, samples=3 in both modes. All four rows passed the v2
+  exact-burst gate; comparisons emitted GPU ratios and rejected host-wall
+  ratios as unmatched submission contracts. These tiny rows are diagnostic
+  smoke only; artifacts are under `/tmp/dot-*-v2.json`.

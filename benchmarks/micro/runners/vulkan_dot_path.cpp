@@ -12,7 +12,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "micro_timing_vulkan.hpp"
 
 #ifndef HIPENGINE_DOT_MODE
 #define HIPENGINE_DOT_MODE 0
@@ -22,9 +25,13 @@
 #define HIPENGINE_DOT_GROUPS 16
 #endif
 
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
 namespace {
 
-constexpr uint32_t kBlockSize = 256;
+constexpr uint32_t kBlockSize = HIPENGINE_BLOCK_SIZE;
 
 struct Args {
   std::string spirv_path;
@@ -34,6 +41,7 @@ struct Args {
   uint32_t reps = 20;
   uint32_t warmup = 5;
   uint32_t samples = 7;
+  std::string timing_mode = "serial_latency";
   uint32_t device_index = 0;
 };
 
@@ -41,7 +49,8 @@ struct PushConstants {
   uint32_t n;
   uint32_t body_iters;
   uint32_t data_mask;
-  uint32_t reserved;
+  uint32_t output_offset;
+  uint32_t sequence_id;
 };
 
 struct Row {
@@ -63,6 +72,12 @@ struct Row {
   double max_abs;
   double max_rel;
   bool correctness_pass;
+  bool timed_sequence_correctness_pass;
+  bool gpu_timestamps_supported;
+  std::vector<double> single_gpu_samples_us;
+  std::vector<double> single_host_samples_us;
+  std::vector<double> burst_gpu_samples_us;
+  std::vector<double> burst_host_samples_us;
 };
 
 struct Buffer {
@@ -110,6 +125,8 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else {
@@ -122,6 +139,7 @@ Args parse_args(int argc, char** argv) {
   if (args.n == 0 || args.body_iters == 0 || args.reps == 0 || args.samples == 0) {
     fail("--n, --body-iters, --reps, and --samples must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   return args;
 }
 
@@ -614,6 +632,8 @@ void record_dispatches(
     const Args& args,
     uint32_t data_mask,
     uint32_t reps,
+    hipengine::micro::TimingMode timing_mode,
+    const hipengine::micro::VulkanSequenceTimer* timer,
     bool copy_out,
     const Buffer& out_device,
     const Buffer& out_stage,
@@ -628,8 +648,15 @@ void record_dispatches(
       &descriptor_set,
       0,
       nullptr);
-  PushConstants push{args.n, args.body_iters, data_mask, 0};
+  if (timer != nullptr) {
+    timer->record_begin(command_buffer);
+  }
   for (uint32_t rep = 0; rep < reps; ++rep) {
+    const uint32_t output_offset =
+        timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+            ? rep * args.n
+            : 0u;
+    PushConstants push{args.n, args.body_iters, data_mask, output_offset, rep};
     vkCmdPushConstants(
         command_buffer,
         pipeline_layout,
@@ -638,6 +665,17 @@ void record_dispatches(
         sizeof(PushConstants),
         &push);
     vkCmdDispatch(command_buffer, grid_blocks(args.n), 1, 1);
+    if (timing_mode == hipengine::micro::TimingMode::SerialLatency && rep + 1 < reps) {
+      hipengine::micro::compute_buffer_barrier(
+          command_buffer,
+          {hipengine::micro::make_compute_buffer_barrier(
+              out_device.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_WRITE_BIT)});
+    }
+  }
+  if (timer != nullptr) {
+    timer->record_end(command_buffer);
   }
   if (copy_out) {
     VkBufferMemoryBarrier barrier{};
@@ -721,6 +759,35 @@ std::string json_escape(const std::string& text) {
   return out.str();
 }
 
+void write_samples(std::ostream& out, const std::vector<double>& samples) {
+  out << "[";
+  for (size_t i = 0; i < samples.size(); ++i) {
+    if (i != 0) {
+      out << ", ";
+    }
+    out << samples[i];
+  }
+  out << "]";
+}
+
+void write_timing_raw(
+    std::ostream& out,
+    const char* name,
+    uint32_t logical_iterations,
+    const std::vector<double>& gpu_samples,
+    const std::vector<double>& host_samples,
+    bool trailing_comma) {
+  out << "      \"" << name << "\": {\n";
+  out << "        \"logical_iterations\": " << logical_iterations << ",\n";
+  out << "        \"dispatches_per_iteration\": 1,\n";
+  out << "        \"gpu_samples_us\": ";
+  write_samples(out, gpu_samples);
+  out << ",\n";
+  out << "        \"host_samples_us\": ";
+  write_samples(out, host_samples);
+  out << "\n      }" << (trailing_comma ? "," : "") << "\n";
+}
+
 std::string version_string(uint32_t version) {
   std::ostringstream out;
   out << VK_VERSION_MAJOR(version) << "." << VK_VERSION_MINOR(version) << "."
@@ -733,6 +800,7 @@ Row run_config(
     VkPhysicalDevice physical_device,
     VkDevice device,
     VkQueue queue,
+    uint32_t queue_family,
     VkCommandPool command_pool,
     VkDescriptorSetLayout descriptor_set_layout,
     VkPipelineLayout pipeline_layout,
@@ -741,7 +809,12 @@ Row run_config(
   std::vector<uint32_t> weights;
   std::vector<uint32_t> activations;
   fill_inputs(weights, activations, args.n, args.body_iters);
-  std::vector<int32_t> actual(args.n, 0);
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const uint32_t output_slots =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput
+          ? std::max(args.reps, args.warmup)
+          : 1u;
+  std::vector<int32_t> actual(static_cast<size_t>(args.n) * output_slots, 0);
   uint32_t data_mask = static_cast<uint32_t>(weights.size() - 1);
   VkDeviceSize weights_bytes = sizeof(uint32_t) * weights.size();
   VkDeviceSize activations_bytes = sizeof(uint32_t) * activations.size();
@@ -817,6 +890,8 @@ Row run_config(
       args,
       data_mask,
       1,
+      timing_mode,
+      nullptr,
       true,
       out_device,
       out_stage,
@@ -826,40 +901,118 @@ Row run_config(
 
   double max_abs = 0.0;
   double max_rel = 0.0;
-  uint32_t checked = std::min<uint32_t>(args.n, 64);
-  for (uint32_t i = 0; i < checked; ++i) {
-    int expected = run_value(weights.data(), activations.data(), i, args.n, args.body_iters, data_mask);
-    double diff = std::abs(static_cast<double>(actual[i] - expected));
-    max_abs = std::max(max_abs, diff);
-    max_rel = std::max(max_rel, diff / std::max(1.0, std::abs(static_cast<double>(expected))));
-  }
-  bool pass = max_abs == 0.0;
+  const uint32_t checked = std::min<uint32_t>(args.n, 64);
+  auto check_slot = [&](uint32_t slot, uint32_t sequence_id) {
+    for (uint32_t i = 0; i < checked; ++i) {
+      int expected =
+          run_value(weights.data(), activations.data(), i, args.n, args.body_iters, data_mask) +
+          static_cast<int32_t>(sequence_id);
+      int32_t observed = actual[static_cast<size_t>(slot) * args.n + i];
+      double diff = std::abs(static_cast<double>(observed - expected));
+      max_abs = std::max(max_abs, diff);
+      max_rel =
+          std::max(max_rel, diff / std::max(1.0, std::abs(static_cast<double>(expected))));
+    }
+  };
+  check_slot(0, 0);
+  const bool single_pass = max_abs == 0.0;
 
-  VkCommandBuffer timing_cmd = begin_one_time(device, command_pool);
+  hipengine::micro::VulkanSequenceTimer timer(physical_device, device, queue_family);
+  VkCommandBuffer single_cmd = begin_one_time(device, command_pool);
   record_dispatches(
-      timing_cmd,
+      single_cmd,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      args,
+      data_mask,
+      1,
+      timing_mode,
+      &timer,
+      false,
+      out_device,
+      out_stage,
+      out_bytes);
+  check(vkEndCommandBuffer(single_cmd), "vkEndCommandBuffer single timing");
+
+  VkCommandBuffer burst_cmd = begin_one_time(device, command_pool);
+  record_dispatches(
+      burst_cmd,
       pipeline,
       pipeline_layout,
       descriptor_set,
       args,
       data_mask,
       args.reps,
+      timing_mode,
+      &timer,
       false,
       out_device,
       out_stage,
       out_bytes);
-  check(vkEndCommandBuffer(timing_cmd), "vkEndCommandBuffer timing");
+  check(vkEndCommandBuffer(burst_cmd), "vkEndCommandBuffer burst timing");
 
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    (void)submit_once(device, queue, timing_cmd, fence);
+  if (args.warmup > 0) {
+    VkCommandBuffer warmup_cmd = begin_one_time(device, command_pool);
+    record_dispatches(
+        warmup_cmd,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        args,
+        data_mask,
+        args.warmup,
+        timing_mode,
+        nullptr,
+        false,
+        out_device,
+        out_stage,
+        out_bytes);
+    submit_and_free(device, queue, command_pool, warmup_cmd);
   }
-  std::vector<double> samples;
-  samples.reserve(args.samples);
+  std::vector<double> single_gpu_samples;
+  std::vector<double> single_host_samples;
   for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    samples.push_back(submit_once(device, queue, timing_cmd, fence) / args.reps);
+    auto timing = timer.submit_and_wait(queue, single_cmd, fence);
+    single_gpu_samples.push_back(timing.gpu_sequence_us);
+    single_host_samples.push_back(timing.host_sequence_us);
+  }
+  std::vector<double> burst_gpu_samples;
+  std::vector<double> burst_host_samples;
+  for (uint32_t sample = 0; sample < args.samples; ++sample) {
+    auto timing = timer.submit_and_wait(queue, burst_cmd, fence);
+    burst_gpu_samples.push_back(timing.gpu_sequence_us);
+    burst_host_samples.push_back(timing.host_sequence_us);
   }
 
-  vkFreeCommandBuffers(device, command_pool, 1, &timing_cmd);
+  VkCommandBuffer burst_correctness_cmd = begin_one_time(device, command_pool);
+  record_dispatches(
+      burst_correctness_cmd,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      args,
+      data_mask,
+      args.reps,
+      timing_mode,
+      nullptr,
+      true,
+      out_device,
+      out_stage,
+      out_bytes);
+  submit_and_free(device, queue, command_pool, burst_correctness_cmd);
+  std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
+  if (timing_mode == hipengine::micro::TimingMode::IndependentThroughput) {
+    for (uint32_t slot = 0; slot < args.reps; ++slot) {
+      check_slot(slot, slot);
+    }
+  } else {
+    check_slot(0, args.reps - 1);
+  }
+  const bool burst_pass = max_abs == 0.0;
+
+  vkFreeCommandBuffers(device, command_pool, 1, &single_cmd);
+  vkFreeCommandBuffers(device, command_pool, 1, &burst_cmd);
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
   vkDestroyPipeline(device, pipeline, nullptr);
   destroy_buffer(device, weights_stage);
@@ -869,6 +1022,13 @@ Row run_config(
   destroy_buffer(device, activations_device);
   destroy_buffer(device, out_device);
 
+  std::vector<double> samples;
+  samples.reserve(args.samples);
+  const std::vector<double>& burst_source =
+      timer.gpu_timestamps_supported() ? burst_gpu_samples : burst_host_samples;
+  for (double sample : burst_source) {
+    samples.push_back(sample / args.reps);
+  }
   double median_us = percentile(samples, 0.5);
   double bytes = bytes_per_dispatch(args.n, args.body_iters);
   double ops = ops_per_dispatch(args.n, args.body_iters);
@@ -890,7 +1050,13 @@ Row run_config(
       ops / median_us / 1000.0,
       max_abs,
       max_rel,
-      pass,
+      single_pass && burst_pass,
+      burst_pass,
+      timer.gpu_timestamps_supported(),
+      std::move(single_gpu_samples),
+      std::move(single_host_samples),
+      std::move(burst_gpu_samples),
+      std::move(burst_host_samples),
   };
 }
 
@@ -924,6 +1090,7 @@ void write_json(
   out << "    \"body_iters\": " << row.body_iters << ",\n";
   out << "    \"block_size\": " << row.block_size << ",\n";
   out << "    \"data_elems\": " << row.data_elems << ",\n";
+  out << "    \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
   out << "    \"reps\": " << args.reps << ",\n";
   out << "    \"warmup\": " << args.warmup << ",\n";
   out << "    \"samples\": " << args.samples << ",\n";
@@ -946,6 +1113,32 @@ void write_json(
   out << "      \"max_us\": " << row.max_us << ",\n";
   out << "      \"bandwidth_gbps\": " << row.bandwidth_gbps << ",\n";
   out << "      \"gops\": " << row.gops << ",\n";
+  out << "      \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  out << "      \"queue_or_stream_count\": 1,\n";
+  out << "      \"gpu_timestamps_supported\": "
+      << (row.gpu_timestamps_supported ? "true" : "false") << ",\n";
+  out << "      \"timed_sequence_correctness_pass\": "
+      << (row.timed_sequence_correctness_pass ? "true" : "false") << ",\n";
+  out << "      \"synchronization_pass\": "
+      << (row.timed_sequence_correctness_pass ? "true" : "false") << ",\n";
+  out << "      \"barrier_count\": "
+      << (args.timing_mode == "serial_latency" ? args.reps - 1 : 0) << ",\n";
+  out << "      \"timing_raw\": {\n";
+  write_timing_raw(
+      out,
+      "single",
+      1,
+      row.single_gpu_samples_us,
+      row.single_host_samples_us,
+      true);
+  write_timing_raw(
+      out,
+      "burst",
+      args.reps,
+      row.burst_gpu_samples_us,
+      row.burst_host_samples_us,
+      false);
+  out << "      },\n";
   out << "      \"max_abs\": " << row.max_abs << ",\n";
   out << "      \"max_rel\": " << row.max_rel << ",\n";
   out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
@@ -1020,6 +1213,7 @@ int main(int argc, char** argv) {
         physical_device,
         device,
         queue,
+        queue_family,
         command_pool,
         descriptor_layout,
         pipeline_layout,

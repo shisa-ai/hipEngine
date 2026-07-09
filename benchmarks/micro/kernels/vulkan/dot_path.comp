@@ -10,13 +10,18 @@
 #define HIPENGINE_DOT_GROUPS 16
 #endif
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
+layout(local_size_x = HIPENGINE_BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform PushConstants {
     uint n;
     uint body_iters;
     uint data_mask;
-    uint reserved;
+    uint output_offset;
+    uint sequence_id;
 } pc;
 
 layout(set = 0, binding = 0) readonly buffer WeightBuffer {
@@ -85,5 +90,5 @@ void main() {
     if (idx >= pc.n) {
         return;
     }
-    out_values[idx] = run_value(idx);
+    out_values[pc.output_offset + idx] = run_value(idx) + int(pc.sequence_id);
 }
