@@ -147949,3 +147949,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   groups.
 - Summary artifact:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-cdispatch-smallbatch-shared-summary.json`.
+
+## 2026-07-09 - PARO c6 full-attention no-rowchunk reject probes
+
+- Checked the lockfile policy before committing diagnostics: `uv.lock` is
+  already ignored by `.gitignore:22`, so no gitignore update is needed.
+- Ran a reduced c6 local retained diagnostic on gfx1151/Radeon 8060S with
+  native rows=6 full attention, no full-attention rowchunk, and forced
+  full-attention O projection batch GEMV:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch_gemv --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-output-gemv-smallbatch-shared-local-equality.json`.
+  Result: rejected correctness, first mismatch token 9, `108.525 tok/s`,
+  median `52.264 ms`. Conclusion: O projection alone is not the native c6
+  no-rowchunk full-attention divergence.
+- Added the dense-context batch-gate override on selected frontier layers
+  `3,7,11,15,19,23,27,31`:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-dense-context-batch-gate-layers 3,7,11,15,19,23,27,31 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-output-gemv-densectx-batchgate-3-31-smallbatch-shared-local-equality.json`.
+  Result: rejected correctness, first mismatch token 2, `102.893 tok/s`,
+  median `55.530 ms`. Conclusion: this override is not the repair and makes the
+  reduced diagnostic worse.
+- Summary artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-no-rowchunk-substage-rejects-summary.json`.
