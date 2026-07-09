@@ -148347,3 +148347,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `docs/README.md`; ran `git diff --check` across
   `docs/SOL-OPTIMIZATION.md`, `docs/README.md`, and
   `WORKLOG.md`.
+
+## 2026-07-10 - HIP/Vulkan microbenchmark timing contract v2
+
+- Audited every paired microbenchmark family before rerunning gfx1151. Most
+  Vulkan runners recorded repeated dispatches without an inter-dispatch
+  dependency while reusing writable buffers, so the retained rows contain WAW
+  hazards (and quantize+dot rows also contain a cross-repetition WAR hazard).
+  HIP used an ordered stream. The two-stage reduction is the only existing
+  barrier-positive burst control; VOPD fence-serialized one dispatch at a time.
+- Added the dependency-free `benchmarks/micro/timing_contract.py` contract.
+  Timed rows must identify `serial_latency` or `independent_throughput`, encode
+  dependency/output/submission semantics, include reps=1 and burst controls,
+  report GPU elapsed and host submit-to-completion wall separately, and validate
+  the actual timed repetition sequence. Missing or mismatched contracts are
+  rejected before a HIP/Vulkan ratio is calculated.
+- Upgraded `benchmarks/micro/schemas/result.schema.json` with version-2 result
+  and comparison branches while retaining the historical v1 result branch.
+  Version 2 defines the timed-row fields and explicit unavailable timestamp
+  states instead of accepting fabricated zero timings.
+- Validation: `python3 -m pytest -q tests/test_micro_timing_contract.py`
+  (`8 passed`); `python3 -m compileall -q
+  benchmarks/micro/timing_contract.py`; `git diff --check` on the contract,
+  schema, and tests.
