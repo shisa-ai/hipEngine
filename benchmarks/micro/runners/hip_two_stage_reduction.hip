@@ -393,7 +393,7 @@ Row run_config(
   check(hipMemset(d_out, 0, out_bytes), "hipMemset out");
 
   uint32_t requested_streams = independent
-      ? std::min(args.independent_streams, std::max(args.reps, args.warmup))
+      ? std::min(args.independent_streams, args.reps)
       : 1;
   hipengine::micro::HipSequenceTimer timer(timing_mode, requested_streams);
   auto launch = [&](uint32_t rep, hipStream_t stream) {
@@ -549,7 +549,7 @@ void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
   out << "      \"dependency_contract\": {\"work_dependency\": \""
       << (independent ? "independent" : "chained")
       << "\", \"inter_dispatch_ordering\": \""
-      << (independent ? "none" : "hip_stream_order")
+      << (independent ? "hip_round_robin_stream_order" : "hip_stream_order")
       << "\", \"output_partitioning\": \""
       << (independent ? "disjoint" : "chained_shared")
       << "\", \"validation_status\": \"pass\"},\n";
@@ -572,7 +572,9 @@ void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
       << ", \"coverage\": \""
       << (independent ? "all_dispatches" : "chained_final_state")
       << "\"}, \"synchronization\": {\"status\": \"pass\", \"method\": \""
-      << (independent ? "disjoint_outputs" : "ordered_stream_final_chain")
+      << (independent
+              ? "round_robin_stream_lanes_with_intra_operation_order"
+              : "ordered_stream_final_chain")
       << "\", \"barrier_count\": " << row.barrier_count << "}}\n";
 }
 

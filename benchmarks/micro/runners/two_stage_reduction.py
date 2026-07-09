@@ -235,6 +235,8 @@ def _run_vulkan(
         "--final-spirv",
         str(final_spirv),
         *_base_run_args(args, raw_json),
+        "--independent-queues",
+        str(args.independent_streams),
     ]
     completed = _run_command(command, cwd=REPO_ROOT)
     if completed.returncode != 0:
@@ -321,6 +323,14 @@ def _matched_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         if not hip or not vulkan:
             continue
+        hip_lanes = int(hip.get("submission", {}).get("queue_or_stream_count", 0))
+        vulkan_lanes = int(
+            vulkan.get("submission", {}).get("queue_or_stream_count", 0)
+        )
+        if hip_lanes <= 0 or hip_lanes != vulkan_lanes:
+            raise ValueError(
+                "HIP and Vulkan two-stage worker lane counts do not match"
+            )
         ratios: dict[str, Any] = {}
         for control in timing_contract.TIMING_CONTROLS:
             domains: dict[str, Any] = {}
@@ -353,6 +363,7 @@ def _matched_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "workgroup_size": workgroup_size,
                 "split_count": split_count,
                 "timing_mode": timing_mode,
+                "worker_lanes": hip_lanes,
                 "ratios": ratios,
                 "hip_gpu_burst_median_us": burst_gpu.get("hip_us_per_iteration"),
                 "vulkan_gpu_burst_median_us": burst_gpu.get(
@@ -405,6 +416,9 @@ def _validate_raw_config(
         "samples": args.samples,
         "timing_mode": args.timing_mode,
     }
+    expected[
+        "independent_streams" if backend == "hip" else "independent_queues"
+    ] = args.independent_streams
     for field, value in expected.items():
         if config.get(field) != value:
             raise ValueError(
@@ -542,6 +556,7 @@ def main(argv: list[str] | None = None) -> None:
             "samples": args.samples,
             "timing_mode": args.timing_mode,
             "independent_streams": args.independent_streams,
+            "independent_queues": args.independent_streams,
         },
         "environment": {
             "ref": args.environment_ref,
@@ -557,9 +572,11 @@ def main(argv: list[str] | None = None) -> None:
         "interpretation": (
             "True two-stage f32 reduction control. serial_latency orders each partial "
             "and final dispatch and reuses shared state. independent_throughput uses "
-            "disjoint slices with one partial-to-final event dependency per logical "
-            "operation. GPU ratios are comparable; HIP direct/multi-stream and Vulkan "
-            "command-buffer host wall are intentionally not compared."
+            "disjoint slices with one intra-operation partial-to-final dependency per "
+            "logical operation, distributed over matched HIP stream and Vulkan queue "
+            "lanes. Vulkan cross-queue GPU span uses calibrated timestamps. GPU ratios "
+            "are comparable; unlike host submission classes are intentionally not "
+            "compared."
         ),
         "wrapper": {
             "command": [Path(sys.executable).name, *sys.argv],
