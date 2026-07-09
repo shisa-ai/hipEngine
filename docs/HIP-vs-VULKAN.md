@@ -53,7 +53,7 @@ Each timed row must use exactly one of these modes:
 | Mode | Work dependency | Writable storage | Backend-native efficient submission |
 | --- | --- | --- | --- |
 | `serial_latency` | Every logical iteration is ordered after the preceding iteration. | A shared output is allowed only with an explicit dependency; the timed sequence carries a synchronization validation. | HIP uses an ordered stream. Vulkan pre-records one command buffer with compute-to-compute execution and memory barriers between logical iterations. |
-| `independent_throughput` | No dependency exists between logical iterations. | Every concurrently eligible iteration has a disjoint writable slice; inputs are immutable. | HIP distributes repetitions over nonblocking streams with event fan-out/fan-in. Vulkan pre-records independent dispatches without inter-repetition barriers. |
+| `independent_throughput` | No data dependency exists between logical iterations. | Every concurrently eligible iteration has a disjoint writable slice; inputs are immutable. | HIP distributes repetitions round-robin over nonblocking streams with event fan-out/fan-in. Vulkan uses one barrier-free command buffer for one-stage work and round-robin compute queues with a host-signaled timeline semaphore for multi-stage work; each queue orders only its assigned operations, and cross-queue GPU span requires an enabled calibrated-timestamps extension. |
 
 Both modes report two clocks for the same sequence:
 
@@ -95,10 +95,10 @@ Last updated: 2026-07-10.
 | Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Matched wg64/128/256 and sequence-tagged gfx1151 smoke passed; static dot4 evidence remains valid. |
 | VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; static VOPD evidence remains valid. |
 | Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
-| Two-stage reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Each logical operation preserves partial-to-final ordering; independent Vulkan uses per-operation events and disjoint partial/output slices rather than a phase-wide barrier. gfx1151 correctness smoke passed both modes. |
-| Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
+| Two-stage reduction | Harness v2 complete; retained rerun pending | Multi-queue repair in progress | The single-command-buffer event trial passed numeric checks but is not dependency-independent because Vulkan event signal scopes are cumulative. |
+| Q4 selected-dual | Harness v2 complete; retained rerun pending | Multi-queue repair in progress | Serial and one-stage throughput paths pass; the combined event-based throughput row is withheld pending round-robin queue lanes. |
 | Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
-| Dense Q8_0 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Packed-BF16 I/O, exact wave32/rowtile matches, and per-iteration Vulkan event dependencies passed on gfx1151. |
+| Dense Q8_0 | Harness v2 complete; retained rerun pending | Multi-queue repair in progress | Quantize-only and dot-only throughput paths remain valid; the combined event-based row is withheld because event scopes are cumulative. |
 | Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 are different math/layouts; no ratio is permitted. |
 
 ### Evidence That Still Stands
