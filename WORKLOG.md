@@ -148542,3 +148542,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `not_comparable_submission_contract`. These are diagnostic smokes only;
   artifacts are under `/tmp/memory-*-serial.json` and
   `/tmp/memory-*-independent.json`.
+
+## 2026-07-10 - VOPD timing contract v2
+
+- Converted the paired f32 VOPD scheduling diagnostic to timing contract v2
+  with matched wg64/128/256 builds. The serialized kernel accumulates into a
+  shared output and Vulkan inserts write-to-read/write barriers; throughput
+  mode writes one disjoint output per logical iteration.
+- Single and burst controls now report HIP-event/Vulkan-timestamp GPU elapsed
+  and host wall separately and validate the exact accumulated sequence.
+  Warmup is exactly the requested number of logical iterations, independent
+  storage covers `max(reps, warmup)`, and source hashes include the shared
+  timing helpers and Python contract.
+- Focused validation: `PYTHONPATH=. pytest -q tests/test_micro_vopd_sweep.py
+  tests/test_micro_timing_contract.py` (`15 passed`); Python compilation and
+  full HIP/Vulkan wrapper builds passed on gfx1151. Smokes used
+  independent_fma:2, wg128, n=256, body-iters=8, reps=3, samples=2, with
+  serial warmup=2 and independent warmup=4. Exact-burst correctness passed in
+  all four runs; GPU ratios were emitted and direct-HIP versus command-buffer
+  host walls were rejected. The tiny rows are diagnostic only under
+  `/tmp/vopd-*-serial.json` and `/tmp/vopd-*-independent.json`.
