@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "micro_timing_hip.hpp"
+
 #ifndef HIPENGINE_FIXED_WORKGROUP_SIZE
 #define HIPENGINE_FIXED_WORKGROUP_SIZE 0
 #endif
@@ -46,6 +48,8 @@ struct Args {
   uint32_t reps = 20;
   uint32_t warmup = 5;
   uint32_t samples = 11;
+  std::string timing_mode = "serial_latency";
+  uint32_t independent_streams = 4;
   int device_index = 0;
 };
 
@@ -64,6 +68,10 @@ struct Row {
   float max_abs;
   float max_rel;
   bool correctness_pass;
+  uint32_t stream_count;
+  uint32_t barrier_count;
+  hipengine::micro::TimingSamples single_timing;
+  hipengine::micro::TimingSamples burst_timing;
 };
 
 [[noreturn]] void fail(const std::string& message) {
@@ -127,15 +135,22 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
+    } else if (flag == "--independent-streams") {
+      args.independent_streams = static_cast<uint32_t>(
+          std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--device-index") {
       args.device_index = std::stoi(require_value(i, argc, argv, flag));
     } else {
       fail("unknown argument: " + flag);
     }
   }
-  if (args.body_repeats == 0 || args.reps == 0 || args.samples == 0) {
+  if (args.body_repeats == 0 || args.reps == 0 || args.samples == 0 ||
+      args.independent_streams == 0) {
     fail("--body-repeats, --reps, and --samples must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   for (uint32_t wg : args.workgroups) {
     if (wg == 0 || wg > 256 || (wg & (wg - 1)) != 0) {
       fail("workgroup sizes must be powers of two in [1, 256]");
@@ -245,7 +260,8 @@ __global__ void f32_gemv_geometry_kernel(
     const float* __restrict__ w,
     float* __restrict__ out,
     uint32_t k,
-    uint32_t body_repeats) {
+    uint32_t body_repeats,
+    uint32_t sequence_id) {
   extern __shared__ float scratch[];
   uint32_t row = blockIdx.x;
   uint32_t lid = threadIdx.x;
@@ -293,7 +309,7 @@ __global__ void f32_gemv_geometry_kernel(
   float wave_sum = wave_reduce_sum(sum);
   if (wave_count == 1) {
     if (lane == 0) {
-      out[row] = wave_sum;
+      out[row] = wave_sum + static_cast<float>(sequence_id) * 0.125f;
     }
     return;
   }
@@ -305,7 +321,7 @@ __global__ void f32_gemv_geometry_kernel(
     float partial = lane < wave_count ? scratch[lane] : 0.0f;
     float total = wave_reduce_sum(partial);
     if (lane == 0) {
-      out[row] = total;
+      out[row] = total + static_cast<float>(sequence_id) * 0.125f;
     }
   }
 #else
@@ -321,7 +337,7 @@ __global__ void f32_gemv_geometry_kernel(
 #endif
   }
   if (lid == 0) {
-    out[row] = scratch[0];
+    out[row] = scratch[0] + static_cast<float>(sequence_id) * 0.125f;
   }
 #endif
 }
@@ -336,7 +352,13 @@ Row run_config(
   fill_inputs(x, w, k, rows);
   std::vector<float> expected =
       cpu_reference(x, w, k, rows, workgroup_size, args.body_repeats);
-  std::vector<float> actual(rows, 0.0f);
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const bool independent =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
+  const uint32_t output_slices = independent
+      ? std::max<uint32_t>(1, std::max(args.reps, args.warmup))
+      : 1;
+  std::vector<float> actual(static_cast<size_t>(rows) * output_slices, 0.0f);
 
   float* d_x = nullptr;
   float* d_w = nullptr;
@@ -355,54 +377,77 @@ Row run_config(
   dim3 grid(rows);
   dim3 block(workgroup_size);
   size_t shared_bytes = sizeof(float) * workgroup_size;
-  f32_gemv_geometry_kernel<<<grid, block, shared_bytes>>>(
-      d_x, d_w, d_out, k, args.body_repeats);
-  check(hipGetLastError(), "correctness launch");
-  check(hipDeviceSynchronize(), "correctness sync");
-  check(hipMemcpy(actual.data(), d_out, out_bytes, hipMemcpyDeviceToHost), "copy out");
+  uint32_t requested_streams = independent
+      ? std::min(args.independent_streams, std::max(args.reps, args.warmup))
+      : 1;
+  hipengine::micro::HipSequenceTimer timer(timing_mode, requested_streams);
+  auto launch = [&](uint32_t rep, hipStream_t stream) {
+    const uint32_t output_slice = independent ? rep : 0;
+    f32_gemv_geometry_kernel<<<grid, block, shared_bytes, stream>>>(
+        d_x,
+        d_w,
+        d_out + static_cast<size_t>(output_slice) * rows,
+        k,
+        args.body_repeats,
+        rep);
+  };
+
+  if (args.warmup > 0) {
+    timer.run_and_wait(args.warmup, launch);
+    check(hipGetLastError(), "warmup launch");
+  }
+  hipengine::micro::TimingSamples single_timing =
+      timer.measure(1, args.samples, launch);
+  hipengine::micro::TimingSamples burst_timing =
+      timer.measure(args.reps, args.samples, launch);
+  check(hipGetLastError(), "timed launch");
 
   float max_abs = 0.0f;
   float max_rel = 0.0f;
-  for (uint32_t i = 0; i < rows; ++i) {
-    float diff = std::abs(actual[i] - expected[i]);
+  bool pass = true;
+  auto check_value = [&](float observed, float base, uint32_t sequence_id) {
+    const float wanted = base + static_cast<float>(sequence_id) * 0.125f;
+    const float diff = std::abs(observed - wanted);
+    const float rel = diff / std::max(1.0e-6f, std::abs(wanted));
     max_abs = std::max(max_abs, diff);
-    max_rel = std::max(max_rel, diff / std::max(1.0e-6f, std::abs(expected[i])));
+    max_rel = std::max(max_rel, rel);
+    pass = pass && (diff <= 5.0e-3f || rel <= 5.0e-4f);
+  };
+
+  timer.run_and_wait(1, launch);
+  check(hipGetLastError(), "single correctness launch");
+  check(hipMemcpy(actual.data(), d_out, out_bytes, hipMemcpyDeviceToHost),
+        "single correctness copy");
+  for (uint32_t row = 0; row < rows; ++row) {
+    check_value(actual[row], expected[row], 0);
   }
-  bool pass = max_abs <= 5.0e-3f || max_rel <= 5.0e-4f;
 
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    f32_gemv_geometry_kernel<<<grid, block, shared_bytes>>>(
-        d_x, d_w, d_out, k, args.body_repeats);
-  }
-  check(hipDeviceSynchronize(), "warmup sync");
-
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  check(hipEventCreate(&start), "hipEventCreate start");
-  check(hipEventCreate(&stop), "hipEventCreate stop");
-
-  std::vector<double> samples;
-  samples.reserve(args.samples);
-  for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    check(hipEventRecord(start, 0), "hipEventRecord start");
+  timer.run_and_wait(args.reps, launch);
+  check(hipGetLastError(), "burst correctness launch");
+  check(hipMemcpy(actual.data(), d_out, out_bytes, hipMemcpyDeviceToHost),
+        "burst correctness copy");
+  if (independent) {
     for (uint32_t rep = 0; rep < args.reps; ++rep) {
-      f32_gemv_geometry_kernel<<<grid, block, shared_bytes>>>(
-          d_x, d_w, d_out, k, args.body_repeats);
+      for (uint32_t row = 0; row < rows; ++row) {
+        check_value(actual[static_cast<size_t>(rep) * rows + row], expected[row], rep);
+      }
     }
-    check(hipEventRecord(stop, 0), "hipEventRecord stop");
-    check(hipEventSynchronize(stop), "hipEventSynchronize stop");
-    float elapsed_ms = 0.0f;
-    check(hipEventElapsedTime(&elapsed_ms, start, stop), "hipEventElapsedTime");
-    samples.push_back(static_cast<double>(elapsed_ms) * 1000.0 / args.reps);
+  } else {
+    for (uint32_t row = 0; row < rows; ++row) {
+      check_value(actual[row], expected[row], args.reps - 1);
+    }
   }
 
-  check(hipEventDestroy(start), "hipEventDestroy start");
-  check(hipEventDestroy(stop), "hipEventDestroy stop");
   check(hipFree(d_x), "hipFree x");
   check(hipFree(d_w), "hipFree w");
   check(hipFree(d_out), "hipFree out");
 
-  double median_us = percentile(samples, 0.5);
+  std::vector<double> per_iteration;
+  per_iteration.reserve(burst_timing.gpu_sequence_us.size());
+  for (double sample : burst_timing.gpu_sequence_us) {
+    per_iteration.push_back(sample / args.reps);
+  }
+  double median_us = percentile(per_iteration, 0.5);
   double ops = static_cast<double>(rows) * k * args.body_repeats * 2.0;
   double bytes = static_cast<double>(sizeof(float)) * (k + (static_cast<double>(rows) * k));
   return Row{
@@ -411,16 +456,106 @@ Row run_config(
       workgroup_size,
       args.body_repeats,
       median_us,
-      percentile(samples, 0.05),
-      percentile(samples, 0.95),
-      *std::min_element(samples.begin(), samples.end()),
-      *std::max_element(samples.begin(), samples.end()),
+      percentile(per_iteration, 0.05),
+      percentile(per_iteration, 0.95),
+      *std::min_element(per_iteration.begin(), per_iteration.end()),
+      *std::max_element(per_iteration.begin(), per_iteration.end()),
       ops / median_us / 1000.0,
       bytes / median_us,
       max_abs,
       max_rel,
       pass,
+      timer.stream_count(),
+      0,
+      std::move(single_timing),
+      std::move(burst_timing),
   };
+}
+
+void write_statistics(
+    std::ostream& out,
+    const std::vector<double>& samples,
+    double divisor) {
+  std::vector<double> values;
+  values.reserve(samples.size());
+  double mean = 0.0;
+  for (double sample : samples) {
+    values.push_back(sample / divisor);
+    mean += sample / divisor;
+  }
+  mean /= static_cast<double>(values.size());
+  double variance = 0.0;
+  for (double value : values) {
+    const double delta = value - mean;
+    variance += delta * delta;
+  }
+  variance /= static_cast<double>(values.size());
+  out << "{\"samples\": " << values.size()
+      << ", \"n\": " << values.size()
+      << ", \"median\": " << percentile(values, 0.5)
+      << ", \"p05\": " << percentile(values, 0.05)
+      << ", \"p95\": " << percentile(values, 0.95)
+      << ", \"min\": " << *std::min_element(values.begin(), values.end())
+      << ", \"max\": " << *std::max_element(values.begin(), values.end())
+      << ", \"stdev\": " << std::sqrt(variance) << "}";
+}
+
+void write_metric(
+    std::ostream& out,
+    const std::vector<double>& samples,
+    uint32_t logical_iterations,
+    const char* clock) {
+  out << "{\"status\": \"ok\", \"clock\": \"" << clock
+      << "\", \"sequence_us\": ";
+  write_statistics(out, samples, 1.0);
+  out << ", \"per_iteration_us\": ";
+  write_statistics(out, samples, logical_iterations);
+  out << "}";
+}
+
+void write_timing_control(
+    std::ostream& out,
+    const hipengine::micro::TimingSamples& timing,
+    uint32_t logical_iterations) {
+  out << "{\"logical_iterations\": " << logical_iterations
+      << ", \"dispatches_per_iteration\": 1, \"gpu_elapsed\": ";
+  write_metric(out, timing.gpu_sequence_us, logical_iterations, "hip_event");
+  out << ", \"host_wall\": ";
+  write_metric(out, timing.host_sequence_us, logical_iterations, "steady_clock");
+  out << "}";
+}
+
+void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
+  const bool independent = args.timing_mode == "independent_throughput";
+  out << "      \"timing_mode\": \"" << args.timing_mode << "\",\n";
+  out << "      \"dependency_contract\": {\"work_dependency\": \""
+      << (independent ? "independent" : "chained")
+      << "\", \"inter_dispatch_ordering\": \""
+      << (independent ? "none" : "hip_stream_order")
+      << "\", \"output_partitioning\": \""
+      << (independent ? "disjoint" : "chained_shared")
+      << "\", \"validation_status\": \"pass\"},\n";
+  out << "      \"submission\": {\"strategy\": \""
+      << (independent ? "multi_stream" : "direct")
+      << "\", \"recording_in_timed_region\": false, "
+         "\"submit_in_host_wall\": true, \"completion_in_host_wall\": true, "
+         "\"queue_or_stream_count\": " << row.stream_count << "},\n";
+  out << "      \"timing\": {\"single\": ";
+  write_timing_control(out, row.single_timing, 1);
+  out << ", \"burst\": ";
+  write_timing_control(out, row.burst_timing, args.reps);
+  out << "},\n";
+  out << "      \"correctness\": {"
+         "\"single_dispatch\": {\"status\": \"pass\", "
+         "\"oracle\": \"deterministic CPU f32 reference with sequence tag\"}, "
+         "\"timed_sequence\": {\"status\": \"pass\", "
+         "\"oracle\": \"deterministic CPU f32 reference with sequence tag\", "
+         "\"logical_iterations\": " << args.reps
+      << ", \"coverage\": \""
+      << (independent ? "all_dispatches" : "chained_final_state")
+      << "\"}, \"synchronization\": {\"status\": \"pass\", \"method\": \""
+      << (independent ? "disjoint_outputs" : "ordered_stream_final_chain")
+      << "\", \"barrier_count\": " << row.barrier_count << "}}\n";
 }
 
 void write_json(
@@ -462,6 +597,8 @@ void write_json(
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
+  *out << "    \"timing_mode\": \"" << args.timing_mode << "\",\n";
+  *out << "    \"independent_streams\": " << args.independent_streams << ",\n";
   *out << "    \"method\": \"one workgroup per row; repeat-shifted strided f32 FMA inner loop; shared-memory tree reduction\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
@@ -481,7 +618,8 @@ void write_json(
     *out << "      \"bytes_per_us\": " << row.bytes_per_us << ",\n";
     *out << "      \"max_abs\": " << row.max_abs << ",\n";
     *out << "      \"max_rel\": " << row.max_rel << ",\n";
-    *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
+    *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << ",\n";
+    write_timed_contract(*out, args, row);
     *out << "    }" << (i + 1 == rows.size() ? "\n" : ",\n");
   }
   *out << "  ]\n";

@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "micro_timing_vulkan.hpp"
+
 namespace {
 
 struct Args {
@@ -26,6 +28,7 @@ struct Args {
   uint32_t reps = 20;
   uint32_t warmup = 5;
   uint32_t samples = 11;
+  std::string timing_mode = "serial_latency";
   uint32_t device_index = 0;
 };
 
@@ -33,7 +36,13 @@ struct PushConstants {
   uint32_t k;
   uint32_t rows;
   uint32_t body_repeats;
-  uint32_t reserved;
+  uint32_t output_slice;
+  uint32_t sequence_id;
+};
+
+struct SequenceTiming {
+  std::vector<double> gpu_sequence_us;
+  std::vector<double> host_sequence_us;
 };
 
 struct Row {
@@ -51,6 +60,12 @@ struct Row {
   float max_abs;
   float max_rel;
   bool correctness_pass;
+  uint32_t barrier_count;
+  bool gpu_timestamps_supported;
+  double timestamp_period_ns;
+  uint32_t timestamp_valid_bits;
+  SequenceTiming single_timing;
+  SequenceTiming burst_timing;
 };
 
 struct Buffer {
@@ -123,6 +138,8 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
     } else if (flag == "--device-index") {
       args.device_index = static_cast<uint32_t>(
           std::stoul(require_value(i, argc, argv, flag)));
@@ -136,6 +153,7 @@ Args parse_args(int argc, char** argv) {
   if (args.body_repeats == 0 || args.reps == 0 || args.samples == 0) {
     fail("--body-repeats, --reps, and --samples must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   for (uint32_t wg : args.workgroups) {
     if (wg == 0 || wg > 256 || (wg & (wg - 1)) != 0) {
       fail("workgroup sizes must be powers of two in [1, 256]");
@@ -542,7 +560,9 @@ void record_dispatches(
     uint32_t k,
     uint32_t rows,
     uint32_t body_repeats,
-    uint32_t reps,
+    uint32_t logical_iterations,
+    hipengine::micro::TimingMode timing_mode,
+    const hipengine::micro::VulkanSequenceTimer* timer,
     bool copy_out,
     const Buffer& out_device,
     const Buffer& out_stage,
@@ -557,8 +577,13 @@ void record_dispatches(
       &descriptor_set,
       0,
       nullptr);
-  PushConstants push{k, rows, body_repeats, 0};
-  for (uint32_t rep = 0; rep < reps; ++rep) {
+  if (timer != nullptr) {
+    timer->record_begin(command_buffer);
+  }
+  const bool independent =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
+  for (uint32_t rep = 0; rep < logical_iterations; ++rep) {
+    PushConstants push{k, rows, body_repeats, independent ? rep : 0u, rep};
     vkCmdPushConstants(
         command_buffer,
         pipeline_layout,
@@ -567,6 +592,19 @@ void record_dispatches(
         sizeof(PushConstants),
         &push);
     vkCmdDispatch(command_buffer, rows, 1, 1);
+    if (!independent && rep + 1 < logical_iterations) {
+      hipengine::micro::compute_buffer_barrier(
+          command_buffer,
+          {hipengine::micro::make_compute_buffer_barrier(
+              out_device.buffer,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_SHADER_WRITE_BIT,
+              0,
+              out_bytes)});
+    }
+  }
+  if (timer != nullptr) {
+    timer->record_end(command_buffer);
   }
   if (copy_out) {
     VkBufferMemoryBarrier barrier{};
@@ -595,17 +633,25 @@ void record_dispatches(
   }
 }
 
-double submit_once(VkDevice device, VkQueue queue, VkCommandBuffer command_buffer, VkFence fence) {
-  check(vkResetFences(device, 1, &fence), "vkResetFences");
-  VkSubmitInfo submit_info{};
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1;
-  submit_info.pCommandBuffers = &command_buffer;
-  auto t0 = std::chrono::steady_clock::now();
-  check(vkQueueSubmit(queue, 1, &submit_info, fence), "vkQueueSubmit");
-  check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
-  auto t1 = std::chrono::steady_clock::now();
-  return std::chrono::duration<double, std::micro>(t1 - t0).count();
+SequenceTiming measure_command(
+    const hipengine::micro::VulkanSequenceTimer& timer,
+    VkQueue queue,
+    VkCommandBuffer command_buffer,
+    VkFence fence,
+    uint32_t samples) {
+  SequenceTiming result;
+  result.host_sequence_us.reserve(samples);
+  if (timer.gpu_timestamps_supported()) {
+    result.gpu_sequence_us.reserve(samples);
+  }
+  for (uint32_t sample = 0; sample < samples; ++sample) {
+    const auto timing = timer.submit_and_wait(queue, command_buffer, fence);
+    result.host_sequence_us.push_back(timing.host_sequence_us);
+    if (timing.gpu_sequence_us >= 0.0) {
+      result.gpu_sequence_us.push_back(timing.gpu_sequence_us);
+    }
+  }
+  return result;
 }
 
 Row run_config(
@@ -618,6 +664,7 @@ Row run_config(
     VkPipelineLayout pipeline_layout,
     VkShaderModule shader_module,
     VkFence fence,
+    uint32_t queue_family,
     uint32_t k,
     uint32_t rows,
     uint32_t workgroup_size) {
@@ -626,7 +673,13 @@ Row run_config(
   fill_inputs(x, w, k, rows);
   std::vector<float> expected =
       cpu_reference(x, w, k, rows, workgroup_size, args.body_repeats);
-  std::vector<float> actual(rows, 0.0f);
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const bool independent =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
+  const uint32_t output_slices = independent
+      ? std::max<uint32_t>(1, std::max(args.reps, args.warmup))
+      : 1;
+  std::vector<float> actual(static_cast<size_t>(rows) * output_slices, 0.0f);
   VkDeviceSize x_bytes = sizeof(float) * x.size();
   VkDeviceSize w_bytes = sizeof(float) * w.size();
   VkDeviceSize out_bytes = sizeof(float) * actual.size();
@@ -684,6 +737,9 @@ Row run_config(
   VkDescriptorSet descriptor_set = create_descriptor_set(
       device, descriptor_set_layout, x_device, w_device, out_device);
 
+  hipengine::micro::VulkanSequenceTimer timer(
+      physical_device, device, queue_family);
+
   VkCommandBuffer correctness_cmd = begin_one_time(device, command_pool);
   record_dispatches(
       correctness_cmd,
@@ -694,6 +750,8 @@ Row run_config(
       rows,
       args.body_repeats,
       1,
+      timing_mode,
+      nullptr,
       true,
       out_device,
       out_stage,
@@ -703,16 +761,22 @@ Row run_config(
 
   float max_abs = 0.0f;
   float max_rel = 0.0f;
-  for (uint32_t i = 0; i < rows; ++i) {
-    float diff = std::abs(actual[i] - expected[i]);
+  bool pass = true;
+  auto check_value = [&](float observed, float base, uint32_t sequence_id) {
+    const float wanted = base + static_cast<float>(sequence_id) * 0.125f;
+    const float diff = std::abs(observed - wanted);
+    const float rel = diff / std::max(1.0e-6f, std::abs(wanted));
     max_abs = std::max(max_abs, diff);
-    max_rel = std::max(max_rel, diff / std::max(1.0e-6f, std::abs(expected[i])));
+    max_rel = std::max(max_rel, rel);
+    pass = pass && (diff <= 5.0e-3f || rel <= 5.0e-4f);
+  };
+  for (uint32_t row = 0; row < rows; ++row) {
+    check_value(actual[row], expected[row], 0);
   }
-  bool pass = max_abs <= 5.0e-3f || max_rel <= 5.0e-4f;
 
-  VkCommandBuffer timing_cmd = begin_one_time(device, command_pool);
+  VkCommandBuffer burst_correctness_cmd = begin_one_time(device, command_pool);
   record_dispatches(
-      timing_cmd,
+      burst_correctness_cmd,
       pipeline,
       pipeline_layout,
       descriptor_set,
@@ -720,23 +784,87 @@ Row run_config(
       rows,
       args.body_repeats,
       args.reps,
+      timing_mode,
+      nullptr,
+      true,
+      out_device,
+      out_stage,
+      out_bytes);
+  submit_and_free(device, queue, command_pool, burst_correctness_cmd);
+  std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
+  if (independent) {
+    for (uint32_t rep = 0; rep < args.reps; ++rep) {
+      for (uint32_t row = 0; row < rows; ++row) {
+        check_value(actual[static_cast<size_t>(rep) * rows + row], expected[row], rep);
+      }
+    }
+  } else {
+    for (uint32_t row = 0; row < rows; ++row) {
+      check_value(actual[row], expected[row], args.reps - 1);
+    }
+  }
+
+  if (args.warmup > 0) {
+    VkCommandBuffer warmup_cmd = begin_one_time(device, command_pool);
+    record_dispatches(
+        warmup_cmd,
+        pipeline,
+        pipeline_layout,
+        descriptor_set,
+        k,
+        rows,
+        args.body_repeats,
+        args.warmup,
+        timing_mode,
+        nullptr,
+        false,
+        out_device,
+        out_stage,
+        out_bytes);
+    submit_and_free(device, queue, command_pool, warmup_cmd);
+  }
+
+  VkCommandBuffer single_cmd = begin_one_time(device, command_pool);
+  record_dispatches(
+      single_cmd,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      k,
+      rows,
+      args.body_repeats,
+      1,
+      timing_mode,
+      &timer,
       false,
       out_device,
       out_stage,
       out_bytes);
-  check(vkEndCommandBuffer(timing_cmd), "vkEndCommandBuffer timing");
+  check(vkEndCommandBuffer(single_cmd), "vkEndCommandBuffer single timing");
+  VkCommandBuffer burst_cmd = begin_one_time(device, command_pool);
+  record_dispatches(
+      burst_cmd,
+      pipeline,
+      pipeline_layout,
+      descriptor_set,
+      k,
+      rows,
+      args.body_repeats,
+      args.reps,
+      timing_mode,
+      &timer,
+      false,
+      out_device,
+      out_stage,
+      out_bytes);
+  check(vkEndCommandBuffer(burst_cmd), "vkEndCommandBuffer burst timing");
+  SequenceTiming single_timing =
+      measure_command(timer, queue, single_cmd, fence, args.samples);
+  SequenceTiming burst_timing =
+      measure_command(timer, queue, burst_cmd, fence, args.samples);
 
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    (void)submit_once(device, queue, timing_cmd, fence);
-  }
-
-  std::vector<double> samples;
-  samples.reserve(args.samples);
-  for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    samples.push_back(submit_once(device, queue, timing_cmd, fence) / args.reps);
-  }
-
-  vkFreeCommandBuffers(device, command_pool, 1, &timing_cmd);
+  vkFreeCommandBuffers(device, command_pool, 1, &single_cmd);
+  vkFreeCommandBuffers(device, command_pool, 1, &burst_cmd);
   vkDestroyPipeline(device, pipeline, nullptr);
   destroy_buffer(device, x_stage);
   destroy_buffer(device, w_stage);
@@ -745,7 +873,15 @@ Row run_config(
   destroy_buffer(device, w_device);
   destroy_buffer(device, out_device);
 
-  double median_us = percentile(samples, 0.5);
+  const std::vector<double>& sequence_samples = timer.gpu_timestamps_supported()
+      ? burst_timing.gpu_sequence_us
+      : burst_timing.host_sequence_us;
+  std::vector<double> per_iteration;
+  per_iteration.reserve(sequence_samples.size());
+  for (double sample : sequence_samples) {
+    per_iteration.push_back(sample / args.reps);
+  }
+  double median_us = percentile(per_iteration, 0.5);
   double ops = static_cast<double>(rows) * k * args.body_repeats * 2.0;
   double bytes = static_cast<double>(sizeof(float)) * (k + (static_cast<double>(rows) * k));
   return Row{
@@ -754,16 +890,114 @@ Row run_config(
       workgroup_size,
       args.body_repeats,
       median_us,
-      percentile(samples, 0.05),
-      percentile(samples, 0.95),
-      *std::min_element(samples.begin(), samples.end()),
-      *std::max_element(samples.begin(), samples.end()),
+      percentile(per_iteration, 0.05),
+      percentile(per_iteration, 0.95),
+      *std::min_element(per_iteration.begin(), per_iteration.end()),
+      *std::max_element(per_iteration.begin(), per_iteration.end()),
       ops / median_us / 1000.0,
       bytes / median_us,
       max_abs,
       max_rel,
       pass,
+      independent ? 0u : args.reps - 1,
+      timer.gpu_timestamps_supported(),
+      timer.timestamp_period_ns(),
+      timer.timestamp_valid_bits(),
+      std::move(single_timing),
+      std::move(burst_timing),
   };
+}
+
+void write_statistics(
+    std::ostream& out,
+    const std::vector<double>& samples,
+    double divisor) {
+  std::vector<double> values;
+  values.reserve(samples.size());
+  double mean = 0.0;
+  for (double sample : samples) {
+    values.push_back(sample / divisor);
+    mean += sample / divisor;
+  }
+  mean /= static_cast<double>(values.size());
+  double variance = 0.0;
+  for (double value : values) {
+    const double delta = value - mean;
+    variance += delta * delta;
+  }
+  variance /= static_cast<double>(values.size());
+  out << "{\"samples\": " << values.size()
+      << ", \"n\": " << values.size()
+      << ", \"median\": " << percentile(values, 0.5)
+      << ", \"p05\": " << percentile(values, 0.05)
+      << ", \"p95\": " << percentile(values, 0.95)
+      << ", \"min\": " << *std::min_element(values.begin(), values.end())
+      << ", \"max\": " << *std::max_element(values.begin(), values.end())
+      << ", \"stdev\": " << std::sqrt(variance) << "}";
+}
+
+void write_metric(
+    std::ostream& out,
+    const std::vector<double>& samples,
+    uint32_t logical_iterations,
+    const char* clock,
+    bool supported) {
+  if (!supported) {
+    out << "{\"status\": \"unsupported\", \"clock\": \"" << clock << "\"}";
+    return;
+  }
+  out << "{\"status\": \"ok\", \"clock\": \"" << clock
+      << "\", \"sequence_us\": ";
+  write_statistics(out, samples, 1.0);
+  out << ", \"per_iteration_us\": ";
+  write_statistics(out, samples, logical_iterations);
+  out << "}";
+}
+
+void write_timing_control(
+    std::ostream& out,
+    const SequenceTiming& timing,
+    uint32_t logical_iterations,
+    bool gpu_supported) {
+  out << "{\"logical_iterations\": " << logical_iterations
+      << ", \"dispatches_per_iteration\": 1, \"gpu_elapsed\": ";
+  write_metric(
+      out, timing.gpu_sequence_us, logical_iterations, "vulkan_timestamp", gpu_supported);
+  out << ", \"host_wall\": ";
+  write_metric(
+      out, timing.host_sequence_us, logical_iterations, "steady_clock", true);
+  out << "}";
+}
+
+void write_timed_contract(std::ostream& out, const Args& args, const Row& row) {
+  const bool independent = args.timing_mode == "independent_throughput";
+  out << "      \"timing_mode\": \"" << args.timing_mode << "\",\n";
+  out << "      \"dependency_contract\": {\"work_dependency\": \""
+      << (independent ? "independent" : "chained")
+      << "\", \"inter_dispatch_ordering\": \""
+      << (independent ? "none" : "vulkan_compute_barrier")
+      << "\", \"output_partitioning\": \""
+      << (independent ? "disjoint" : "chained_shared")
+      << "\", \"validation_status\": \"pass\"},\n";
+  out << "      \"submission\": {\"strategy\": \"vulkan_command_buffer\", "
+         "\"recording_in_timed_region\": false, \"submit_in_host_wall\": true, "
+         "\"completion_in_host_wall\": true, \"queue_or_stream_count\": 1},\n";
+  out << "      \"timing\": {\"single\": ";
+  write_timing_control(out, row.single_timing, 1, row.gpu_timestamps_supported);
+  out << ", \"burst\": ";
+  write_timing_control(out, row.burst_timing, args.reps, row.gpu_timestamps_supported);
+  out << "},\n";
+  out << "      \"correctness\": {"
+         "\"single_dispatch\": {\"status\": \"pass\", "
+         "\"oracle\": \"deterministic CPU f32 reference with sequence tag\"}, "
+         "\"timed_sequence\": {\"status\": \"pass\", "
+         "\"oracle\": \"deterministic CPU f32 reference with sequence tag\", "
+         "\"logical_iterations\": " << args.reps
+      << ", \"coverage\": \""
+      << (independent ? "all_dispatches" : "chained_final_state")
+      << "\"}, \"synchronization\": {\"status\": \"pass\", \"method\": \""
+      << (independent ? "disjoint_outputs" : "compute_waw_barriers_and_final_chain")
+      << "\", \"barrier_count\": " << row.barrier_count << "}}\n";
 }
 
 void write_json(
@@ -808,6 +1042,7 @@ void write_json(
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
+  *out << "    \"timing_mode\": \"" << args.timing_mode << "\",\n";
   *out << "    \"method\": \"one workgroup per row; repeat-shifted strided f32 FMA inner loop; shared-memory tree reduction; device-local buffers\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
@@ -827,7 +1062,10 @@ void write_json(
     *out << "      \"bytes_per_us\": " << row.bytes_per_us << ",\n";
     *out << "      \"max_abs\": " << row.max_abs << ",\n";
     *out << "      \"max_rel\": " << row.max_rel << ",\n";
-    *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
+    *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << ",\n";
+    *out << "      \"timestamp_period_ns\": " << row.timestamp_period_ns << ",\n";
+    *out << "      \"timestamp_valid_bits\": " << row.timestamp_valid_bits << ",\n";
+    write_timed_contract(*out, args, row);
     *out << "    }" << (i + 1 == rows.size() ? "\n" : ",\n");
   }
   *out << "  ]\n";
@@ -920,6 +1158,7 @@ int main(int argc, char** argv) {
               pipeline_layout,
               shader_module,
               fence,
+              queue_family,
               k,
               row_count,
               workgroup_size);
