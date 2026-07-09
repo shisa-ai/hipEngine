@@ -387,6 +387,22 @@ c6 speed win. The active c6 performance blocker remains full-attention
 rowchunking on selected layers or, alternatively, scheduling that avoids c6
 live-row groups.
 
+Follow-up c6 no-rowchunk full-attention rejects:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-no-rowchunk-substage-rejects-summary.json`.
+
+| Probe | Generated-token equality | First mismatch | Decode aggregate | Median step | Conclusion |
+| --- | --- | ---: | ---: | ---: | --- |
+| Native rows=6 full attention, no rowchunk, forced full-attention O projection batch GEMV | Red | token 9 | `108.525 tok/s` | `52.264 ms` | O projection alone is not the native c6 divergence. |
+| Same plus dense-context batch-gate override on `3,7,11,15,19,23,27,31` | Red | token 2 | `102.893 tok/s` | `55.530 ms` | Dense-context batch-gate override is slower and correctness-worse. |
+
+These rejects keep the selected full-attention rowchunk2 bridge as the only
+known generated-token-green c6 shape. The next useful isolation step is a
+full-attention substage hidden-bisect around the selected producer layers,
+especially row interaction or scratch/state aliasing in native rows=6 context
+construction, rather than more O-projection-only probes.
+
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c8 all-layer full-attention
