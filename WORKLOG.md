@@ -148027,3 +148027,33 @@ graphless decode launch-collapse path without regressing target/serial parity.
   by the server-visible c6 correctness path.
 - Compact summary:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-no-rowchunk-substage-followup-summary.json`.
+
+## 2026-07-09 - PARO c6 selected-c1 staged full-attention diagnostics
+
+- Updated `run_full_attention_moe_decode_batch_layer_fp16()` so the staged
+  full-attention diagnostic branch can run under the selected-c1 MoE bridge
+  used by the server-visible rows=6 path. Previously the branch required
+  `Qwen35ParoGroupedMoeScratch` and raised before the probe could run. The
+  selected-c1 branch now requires `Qwen35ParoMoeScratch` and finishes through
+  `run_moe_c1_fp16(... force_small_batch_shared_expert=...)`.
+- Added
+  `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe`.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context tests/test_qwen35_decode_state.py::test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe`.
+- Ran three selected-c1 short c6 staged probes on gfx1151/Radeon 8060S:
+  - Per-row pre-QKV+append with batch context/O/post/selected-c1 MoE:
+    rejected at token 9, `108.209 tok/s`, median `52.714 ms`.
+  - Per-row pre-QKV+append+context with batch gate/O/post/selected-c1 MoE:
+    rejected at token 2, `100.095 tok/s`, median `57.137 ms`.
+  - Per-row pre-QKV+append+context+gate with batch O/post/selected-c1 MoE:
+    rejected at token 2, `100.707 tok/s`, median `56.905 ms`.
+- Conclusion: staged selected-c1 diagnostics now run, but no-rowchunk c6 is
+  still not repaired. Pre-QKV and append are not enough; moving context per-row
+  changes the failure earlier and slows the path, and batch gate is not the
+  token-2 shift. Keep the current selected full-attention rowchunk bridge and
+  next instrument native batch full-attention context vs rowchunked context on
+  the selected producer layers.
+- Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selectedc1-staged-substage-summary.json`.
