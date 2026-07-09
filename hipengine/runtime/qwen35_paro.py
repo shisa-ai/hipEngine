@@ -4782,7 +4782,10 @@ class Qwen35ParoDecodeState:
                 raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
             if dense_mlp:
                 raise NotImplementedError("per-row attention / batch-MoE diagnostic is currently wired for MoE layers")
-            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            if force_selected_c1_moe:
+                if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                    raise ValueError("per-row attention / selected-c1 MoE diagnostic requires token-row MoE scratch")
+            elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 raise ValueError("per-row attention / batch-MoE diagnostic requires grouped MoE scratch")
             for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
                 zip(per_row_append_contexts, per_row_contexts, strict=True)
@@ -4964,6 +4967,17 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+            if force_selected_c1_moe:
+                return self.run_moe_c1_fp16(
+                    mlp_input,
+                    residual,
+                    scratch=moe_scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    force_small_batch_shared_expert=_force_small_batch_shared_expert(force_small_batch_shared_expert),
+                    library=library,
+                    stream=stream,
+                )
             return self.run_moe_grouped_compact_fp16(
                 mlp_input,
                 residual,
