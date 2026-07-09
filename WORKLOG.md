@@ -148475,3 +148475,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   exact-burst validation, both v2 comparisons emitted a GPU ratio and rejected
   a host-wall ratio. The observed tiny-shape timings are diagnostic smoke only,
   not retained performance claims; artifacts are under `/tmp/geometry-*-v2.json`.
+
+## 2026-07-10 - Sampler timing contract v2
+
+- Converted deterministic sampler top-1/top-k to the v2 timing contract. HIP
+  uses ordered or nonblocking multi-stream launches; Vulkan uses one
+  pre-recorded command buffer with serial WAW barriers or independent disjoint
+  index/value slices. Both emit reps=1 and burst GPU/host distributions.
+- Fixed two review issues before landing: warmup now means exactly the requested
+  number of logical iterations rather than `warmup * (1 + reps)`, and a
+  per-repetition value tag makes the final shared serial output sensitive to
+  execution order while leaving selected indices and scan/reduction work
+  unchanged. Independent mode validates every tagged output slice. Allocation
+  covers `max(reps, warmup)` independent slices.
+- Focused validation:
+  `python3 -m pytest -q tests/test_micro_sampler_argmax.py
+  tests/test_micro_timing_contract.py` (`15 passed`); `python3 -m compileall -q
+  benchmarks/micro/runners/sampler_argmax.py`; native HIP/Vulkan builds and
+  `git diff --check` passed.
+- gfx1151 correctness smoke used rows=1, vocab=256, fixed wg64, top-k1, reps=3,
+  samples=3 in both modes, including independent warmup=4 to cover allocation
+  beyond the measured burst. All four rows passed exact-burst validation; both
+  comparisons emitted GPU ratios and marked host wall
+  `not_comparable_submission_contract`. Tiny-shape timings are diagnostic smoke
+  only; artifacts are under `/tmp/sampler-*-v2.json`.

@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "micro_timing_hip.hpp"
+
 #ifndef HIPENGINE_ARGMAX_WG
 #define HIPENGINE_ARGMAX_WG 256
 #endif
@@ -34,6 +36,8 @@ struct Args {
   uint32_t reps = 50;
   uint32_t warmup = 10;
   uint32_t samples = 9;
+  std::string timing_mode = "serial_latency";
+  uint32_t independent_streams = 4;
   int device_index = 0;
 };
 
@@ -51,9 +55,15 @@ struct Row {
   double max_us;
   double bandwidth_gbps;
   double gcomparisons_per_s;
-  uint32_t mismatches;
+  std::vector<double> single_gpu_samples_us;
+  std::vector<double> single_host_samples_us;
+  std::vector<double> burst_gpu_samples_us;
+  std::vector<double> burst_host_samples_us;
+  uint32_t single_mismatches;
+  uint32_t burst_mismatches;
   float max_abs;
   bool correctness_pass;
+  uint32_t stream_count;
 };
 
 struct Pair {
@@ -97,15 +107,22 @@ Args parse_args(int argc, char** argv) {
       args.warmup = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--samples") {
       args.samples = static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
+    } else if (flag == "--timing-mode") {
+      args.timing_mode = require_value(i, argc, argv, flag);
+    } else if (flag == "--independent-streams") {
+      args.independent_streams =
+          static_cast<uint32_t>(std::stoul(require_value(i, argc, argv, flag)));
     } else if (flag == "--device-index") {
       args.device_index = std::stoi(require_value(i, argc, argv, flag));
     } else {
       fail("unknown argument: " + flag);
     }
   }
-  if (args.rows == 0 || args.vocab == 0 || args.reps == 0 || args.samples == 0) {
-    fail("--rows, --vocab, --reps, and --samples must be positive");
+  if (args.rows == 0 || args.vocab == 0 || args.reps == 0 || args.samples == 0 ||
+      args.independent_streams == 0) {
+    fail("--rows, --vocab, --reps, --samples, and --independent-streams must be positive");
   }
+  (void)hipengine::micro::parse_timing_mode(args.timing_mode);
   return args;
 }
 
@@ -169,7 +186,9 @@ __global__ __launch_bounds__(kWorkgroupSize) void sampler_argmax_kernel(
     uint32_t* __restrict__ out_indices,
     float* __restrict__ out_values,
     uint32_t rows,
-    uint32_t vocab) {
+    uint32_t vocab,
+    size_t output_base,
+    uint32_t sequence_id) {
   uint32_t row = blockIdx.x;
   uint32_t tid = threadIdx.x;
   if (row >= rows) {
@@ -231,8 +250,10 @@ __global__ __launch_bounds__(kWorkgroupSize) void sampler_argmax_kernel(
   }
 
   if (tid < kTopK) {
-    out_indices[static_cast<size_t>(row) * kTopK + tid] = selected_indices[tid];
-    out_values[static_cast<size_t>(row) * kTopK + tid] = selected_values[tid];
+    size_t output_index = output_base + static_cast<size_t>(row) * kTopK + tid;
+    out_indices[output_index] = selected_indices[tid];
+    out_values[output_index] =
+        selected_values[tid] + static_cast<float>(sequence_id) * 0.125f;
   }
 }
 
@@ -251,21 +272,66 @@ double percentile(std::vector<double> values, double q) {
   return values[lo] * (1.0 - t) + values[hi] * t;
 }
 
+struct CorrectnessResult {
+  uint32_t mismatches = 0;
+  float max_abs = 0.0f;
+};
+
+CorrectnessResult validate_outputs(
+    const std::vector<float>& logits,
+    const std::vector<uint32_t>& actual_indices,
+    const std::vector<float>& actual_values,
+    uint32_t rows,
+    uint32_t vocab,
+    uint32_t copies,
+    bool independent,
+    uint32_t final_sequence_id) {
+  CorrectnessResult result;
+  std::vector<Pair> expected;
+  const size_t output_elems = static_cast<size_t>(rows) * kTopK;
+  for (uint32_t copy = 0; copy < copies; ++copy) {
+    for (uint32_t row = 0; row < rows; ++row) {
+      cpu_topk(logits, row, vocab, expected);
+      for (uint32_t i = 0; i < kTopK; ++i) {
+        size_t offset = static_cast<size_t>(copy) * output_elems +
+                        static_cast<size_t>(row) * kTopK + i;
+        uint32_t sequence_id = independent ? copy : final_sequence_id;
+        float tagged_expected =
+            expected[i].value + static_cast<float>(sequence_id) * 0.125f;
+        float diff = std::abs(actual_values[offset] - tagged_expected);
+        result.max_abs = std::max(result.max_abs, diff);
+        if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
+          ++result.mismatches;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 Row run_config(const Args& args) {
   if (kTopK > args.vocab) {
     fail("top-k must be <= vocab");
   }
+  const auto timing_mode = hipengine::micro::parse_timing_mode(args.timing_mode);
+  const bool independent =
+      timing_mode == hipengine::micro::TimingMode::IndependentThroughput;
   std::vector<float> logits;
   fill_logits(logits, args.rows, args.vocab);
-  std::vector<uint32_t> actual_indices(static_cast<size_t>(args.rows) * kTopK, 0);
-  std::vector<float> actual_values(static_cast<size_t>(args.rows) * kTopK, 0.0f);
+  const size_t output_elems = static_cast<size_t>(args.rows) * kTopK;
+  const uint32_t output_copies = independent ? args.reps : 1u;
+  const uint32_t allocation_copies =
+      independent ? std::max(args.reps, args.warmup) : 1u;
+  const size_t allocation_elems = output_elems * allocation_copies;
+  std::vector<uint32_t> actual_indices(allocation_elems, 0);
+  std::vector<float> actual_values(allocation_elems, 0.0f);
 
   float* d_logits = nullptr;
   uint32_t* d_indices = nullptr;
   float* d_values = nullptr;
   size_t logits_bytes = sizeof(float) * logits.size();
-  size_t index_bytes = sizeof(uint32_t) * actual_indices.size();
-  size_t value_bytes = sizeof(float) * actual_values.size();
+  size_t index_bytes = sizeof(uint32_t) * allocation_elems;
+  size_t value_bytes = sizeof(float) * allocation_elems;
 
   check(hipMalloc(&d_logits, logits_bytes), "hipMalloc logits");
   check(hipMalloc(&d_indices, index_bytes), "hipMalloc indices");
@@ -276,63 +342,63 @@ Row run_config(const Args& args) {
 
   dim3 block(kWorkgroupSize);
   dim3 grid(args.rows);
-  sampler_argmax_kernel<<<grid, block>>>(d_logits, d_indices, d_values, args.rows, args.vocab);
-  check(hipGetLastError(), "correctness launch");
-  check(hipDeviceSynchronize(), "correctness sync");
-  check(hipMemcpy(actual_indices.data(), d_indices, index_bytes, hipMemcpyDeviceToHost), "copy indices");
-  check(hipMemcpy(actual_values.data(), d_values, value_bytes, hipMemcpyDeviceToHost), "copy values");
+  hipengine::micro::HipSequenceTimer timer(timing_mode, args.independent_streams);
+  auto launch = [&](uint32_t rep, hipStream_t stream) {
+    size_t output_base = independent ? static_cast<size_t>(rep) * output_elems : 0u;
+    sampler_argmax_kernel<<<grid, block, 0, stream>>>(
+        d_logits, d_indices, d_values, args.rows, args.vocab, output_base, rep);
+    check(hipGetLastError(), "sampler launch");
+  };
 
-  uint32_t mismatches = 0;
-  float max_abs = 0.0f;
-  std::vector<Pair> expected;
-  for (uint32_t row = 0; row < args.rows; ++row) {
-    cpu_topk(logits, row, args.vocab, expected);
-    for (uint32_t i = 0; i < kTopK; ++i) {
-      size_t offset = static_cast<size_t>(row) * kTopK + i;
-      float diff = std::abs(actual_values[offset] - expected[i].value);
-      max_abs = std::max(max_abs, diff);
-      if (actual_indices[offset] != expected[i].index || diff > 0.0f) {
-        ++mismatches;
-      }
-    }
+  check(hipMemset(d_indices, 0, index_bytes), "reset indices for single correctness");
+  check(hipMemset(d_values, 0, value_bytes), "reset values for single correctness");
+  timer.run_and_wait(1, launch);
+  check(
+      hipMemcpy(actual_indices.data(), d_indices, sizeof(uint32_t) * output_elems, hipMemcpyDeviceToHost),
+      "copy single indices");
+  check(
+      hipMemcpy(actual_values.data(), d_values, sizeof(float) * output_elems, hipMemcpyDeviceToHost),
+      "copy single values");
+  CorrectnessResult single_correctness =
+      validate_outputs(logits, actual_indices, actual_values, args.rows, args.vocab, 1, independent, 0);
+
+  check(hipMemset(d_indices, 0, index_bytes), "reset indices for burst correctness");
+  check(hipMemset(d_values, 0, value_bytes), "reset values for burst correctness");
+  timer.run_and_wait(args.reps, launch);
+  check(hipMemcpy(actual_indices.data(), d_indices, index_bytes, hipMemcpyDeviceToHost), "copy burst indices");
+  check(hipMemcpy(actual_values.data(), d_values, value_bytes, hipMemcpyDeviceToHost), "copy burst values");
+  CorrectnessResult burst_correctness = validate_outputs(
+      logits,
+      actual_indices,
+      actual_values,
+      args.rows,
+      args.vocab,
+      output_copies,
+      independent,
+      args.reps - 1);
+
+  if (args.warmup > 0) {
+    timer.run_and_wait(args.warmup, launch);
   }
-  bool pass = mismatches == 0;
+  auto single_timing = timer.measure(1, args.samples, launch);
+  auto burst_timing = timer.measure(args.reps, args.samples, launch);
 
-  for (uint32_t i = 0; i < args.warmup; ++i) {
-    sampler_argmax_kernel<<<grid, block>>>(d_logits, d_indices, d_values, args.rows, args.vocab);
-  }
-  check(hipDeviceSynchronize(), "warmup sync");
-
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  check(hipEventCreate(&start), "hipEventCreate start");
-  check(hipEventCreate(&stop), "hipEventCreate stop");
-  std::vector<double> samples;
-  samples.reserve(args.samples);
-  for (uint32_t sample = 0; sample < args.samples; ++sample) {
-    check(hipEventRecord(start, 0), "hipEventRecord start");
-    for (uint32_t rep = 0; rep < args.reps; ++rep) {
-      sampler_argmax_kernel<<<grid, block>>>(d_logits, d_indices, d_values, args.rows, args.vocab);
-    }
-    check(hipEventRecord(stop, 0), "hipEventRecord stop");
-    check(hipEventSynchronize(stop), "hipEventSynchronize stop");
-    float elapsed_ms = 0.0f;
-    check(hipEventElapsedTime(&elapsed_ms, start, stop), "hipEventElapsedTime");
-    samples.push_back(static_cast<double>(elapsed_ms) * 1000.0 / args.reps);
-  }
-
-  check(hipEventDestroy(start), "hipEventDestroy start");
-  check(hipEventDestroy(stop), "hipEventDestroy stop");
   check(hipFree(d_logits), "hipFree logits");
   check(hipFree(d_indices), "hipFree indices");
   check(hipFree(d_values), "hipFree values");
 
-  double median_us = percentile(samples, 0.5);
+  std::vector<double> burst_per_iteration_us;
+  burst_per_iteration_us.reserve(burst_timing.gpu_sequence_us.size());
+  for (double value : burst_timing.gpu_sequence_us) {
+    burst_per_iteration_us.push_back(value / args.reps);
+  }
+  double median_us = percentile(burst_per_iteration_us, 0.5);
   double scanned_values =
       static_cast<double>(args.rows) *
       (static_cast<double>(kTopK) * args.vocab - static_cast<double>(kTopK * (kTopK - 1)) / 2.0);
   double bytes = scanned_values * sizeof(float);
   double comparisons = scanned_values;
+  bool pass = single_correctness.mismatches == 0 && burst_correctness.mismatches == 0;
   return Row{
       args.rows,
       args.vocab,
@@ -341,15 +407,21 @@ Row run_config(const Args& args) {
       bytes,
       comparisons,
       median_us,
-      percentile(samples, 0.05),
-      percentile(samples, 0.95),
-      *std::min_element(samples.begin(), samples.end()),
-      *std::max_element(samples.begin(), samples.end()),
+      percentile(burst_per_iteration_us, 0.05),
+      percentile(burst_per_iteration_us, 0.95),
+      *std::min_element(burst_per_iteration_us.begin(), burst_per_iteration_us.end()),
+      *std::max_element(burst_per_iteration_us.begin(), burst_per_iteration_us.end()),
       bytes / median_us / 1000.0,
       comparisons / median_us / 1000.0,
-      mismatches,
-      max_abs,
+      std::move(single_timing.gpu_sequence_us),
+      std::move(single_timing.host_sequence_us),
+      std::move(burst_timing.gpu_sequence_us),
+      std::move(burst_timing.host_sequence_us),
+      single_correctness.mismatches,
+      burst_correctness.mismatches,
+      std::max(single_correctness.max_abs, burst_correctness.max_abs),
       pass,
+      timer.stream_count(),
   };
 }
 
@@ -380,6 +452,14 @@ std::string json_escape(const std::string& text) {
   return out.str();
 }
 
+void write_samples(std::ostream& out, const std::vector<double>& samples) {
+  out << "[";
+  for (size_t i = 0; i < samples.size(); ++i) {
+    out << (i == 0 ? "" : ", ") << samples[i];
+  }
+  out << "]";
+}
+
 void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   std::ostream* out = &std::cout;
   std::ofstream file;
@@ -408,7 +488,10 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
-  *out << "    \"method\": \"one workgroup per row deterministic top-k argmax reduction; CPU oracle\"\n";
+  *out << "    \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  *out << "    \"independent_streams\": " << args.independent_streams << ",\n";
+  *out << "    \"actual_streams\": " << row.stream_count << ",\n";
+  *out << "    \"method\": \"HIP events and host wall for one-dispatch and exact-burst controls; CPU oracle validates the timed burst\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
   *out << "    {\n";
@@ -425,7 +508,20 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "      \"max_us\": " << row.max_us << ",\n";
   *out << "      \"bandwidth_gbps\": " << row.bandwidth_gbps << ",\n";
   *out << "      \"gcomparisons_per_s\": " << row.gcomparisons_per_s << ",\n";
-  *out << "      \"mismatches\": " << row.mismatches << ",\n";
+  *out << "      \"timing_mode\": \"" << json_escape(args.timing_mode) << "\",\n";
+  *out << "      \"stream_count\": " << row.stream_count << ",\n";
+  *out << "      \"single_gpu_samples_us\": ";
+  write_samples(*out, row.single_gpu_samples_us);
+  *out << ",\n      \"single_host_samples_us\": ";
+  write_samples(*out, row.single_host_samples_us);
+  *out << ",\n      \"burst_gpu_samples_us\": ";
+  write_samples(*out, row.burst_gpu_samples_us);
+  *out << ",\n      \"burst_host_samples_us\": ";
+  write_samples(*out, row.burst_host_samples_us);
+  *out << ",\n";
+  *out << "      \"single_mismatches\": " << row.single_mismatches << ",\n";
+  *out << "      \"burst_mismatches\": " << row.burst_mismatches << ",\n";
+  *out << "      \"mismatches\": " << (row.single_mismatches + row.burst_mismatches) << ",\n";
   *out << "      \"max_abs\": " << row.max_abs << ",\n";
   *out << "      \"correctness_pass\": " << (row.correctness_pass ? "true" : "false") << "\n";
   *out << "    }\n";

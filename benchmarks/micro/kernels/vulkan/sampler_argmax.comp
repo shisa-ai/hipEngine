@@ -13,8 +13,8 @@ layout(local_size_x = HIPENGINE_ARGMAX_WG, local_size_y = 1, local_size_z = 1) i
 layout(push_constant) uniform PushConstants {
     uint rows;
     uint vocab;
-    uint reserved0;
-    uint reserved1;
+    uint output_base;
+    uint sequence_id;
 } pc;
 
 layout(set = 0, binding = 0) readonly buffer LogitBuffer {
@@ -96,7 +96,9 @@ void main() {
     }
 
     if (tid < HIPENGINE_ARGMAX_TOPK) {
-        out_indices[row * HIPENGINE_ARGMAX_TOPK + tid] = selected_indices[tid];
-        out_values[row * HIPENGINE_ARGMAX_TOPK + tid] = selected_values[tid];
+        uint output_index = pc.output_base + row * HIPENGINE_ARGMAX_TOPK + tid;
+        out_indices[output_index] = selected_indices[tid];
+        out_values[output_index] =
+            selected_values[tid] + float(pc.sequence_id) * 0.125;
     }
 }
