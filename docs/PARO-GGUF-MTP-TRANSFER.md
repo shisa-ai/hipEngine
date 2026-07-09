@@ -11,6 +11,20 @@ lessons to PARO. The key split is:
   scheduler telemetry, and verifier lifecycle ideas do apply and need PARO
   evidence before promotion.
 
+## Active Optimization Queue
+
+Current order, based on `docs/HIP-vs-VULKAN.md` plus the PARO c6 evidence
+below:
+
+| Order | Item | Status | Gate |
+| ---: | --- | --- | --- |
+| 1 | PARO server grouping policy for c6 | In progress: retained-defaults mode should avoid accidental c6 live-row groups by splitting exactly six greedy rows into c4+c2. Disable with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. | Focused server batcher tests, then natural c=8/c6-forced server rerun. |
+| 2 | PARO MTP/DFlash bucket instrumentation | Queued. | Add draft, verifier, LM-head/top1, accept, commit/scatter, host sync, and scheduler buckets before porting GGUF verifier mechanics. |
+| 3 | LM-head + top1/top-k fusion | Queued. | Production bucket must show LM-head/sample remains exposed after instrumentation; benchmark as fused wall-time, not standalone sampler only. |
+| 4 | Q4_K selected-dual HIP recovery | Queued GGUF-specific narrow experiment. | Same retained real-slice oracle; only continue if disassembly shows reduced instruction, waitcnt, or address overhead. |
+| 5 | Shape-keyed HIP graph/fusion buckets | Queued. | Bucket by active rows, context, verifier mode, and replay shape; prove launch-wall reduction. |
+| 6 | q8_1/dp4a activation reuse audit | Queued low-risk cleanup. | Only retain where exact and where profiling shows duplicated q8_1 staging. |
+
 ## Current Evidence Split
 
 | Scope | Current status | Evidence |
@@ -485,6 +499,15 @@ Next repair order:
 5. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
    explicit scheduler grouping policy, because the current server path naturally
    admits c6 live-row groups.
+
+Scheduler policy implementation note: retained-defaults mode now has a narrow
+server-side c6 avoidance policy for deterministic greedy default-route batches.
+Exactly six prompt rows are split into `4+2`, so the backend uses the
+generated-token-green c4 and c2 shapes instead of the slower c6 rowchunk bridge.
+The policy is enabled by `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` and can
+be disabled with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. It does not alter
+sampling/logprob/processed-generator rows; those need row-seed and telemetry
+offset plumbing before they can be safely split.
 
 ## PARO MTP/DFlash Buckets To Add Next
 
