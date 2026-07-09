@@ -65,7 +65,7 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_full_attention_row_chunk_layers(3) == {3, 7, 11, 15}
     assert runner_module._retained_full_attention_row_chunk_layers(4) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(5) == {3, 7, 11, 15}
-    assert runner_module._retained_full_attention_row_chunk_layers(6) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(6) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(7) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(8) == set()
 

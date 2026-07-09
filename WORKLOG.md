@@ -147707,3 +147707,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   for c6, all-layer full-attention rowchunk2 for c6, and linear rowchunk2 for
   c6. This is a diagnostic correctness bridge, not a retained/default throughput
   claim; primitive/profiler/baseline gates and c6 projection dispatch remain.
+
+## 2026-07-09 - PARO c6 projection dispatch evidence
+
+- Added local gfx1151/Radeon 8060S shisa PARO c6 projection-dispatch evidence
+  on clean commit `56c6313f`, shape c6 prompt 512 / decode 128, selected-c1
+  MoE, all-layer full-attention rowchunk2, linear rowchunk2, serial LM-head.
+- Native/batch projection is generated-token green with prefix lengths
+  `[129,129,129,129,129,129]` and measured `87.612 tok/s`, median step
+  `68.282 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json`.
+- The selected-c1 row-GEMV projection fallback is also generated-token green
+  with the same prefix lengths and measured `84.709 tok/s`, median step
+  `70.580 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-selectedproj-serial-sampler-local-equality.json`.
+- Compact projection evidence:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json`
+  records native/batch projection at `1.0343x` over the row-GEMV fallback.
+- Updated the default projection dispatch artifact to
+  `benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json`
+  so retained-default diagnostics can select
+  `gemv_awq_selected_dual_pack8_strided_c6` for rows=6. This is projection
+  evidence only, not a retained/default throughput claim for the whole c6 path;
+  selected-c1 MoE, rowchunked full/linear attention, profiler, primitive, and
+  baseline gates still block promotion.

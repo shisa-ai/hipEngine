@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-09
+
+- [diagnostic catalog] Qwen3.6-35B-A3B PARO / w4_paro / gfx1151 c6 512/128 local generated-token equality: c6 projection dispatch fallback `84.709 -> 87.612 tok/s` (+3.4%) due to adding `gemv_awq_selected_dual_pack8_strided_c6` to the c-aware projection catalog; status remains diagnostic/performance_claim=false because selected-c1 MoE, rowchunked full/linear attention, primitive/profiler/baseline retained gates, and server recheck are still pending. `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json`, `benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json`.
+
 ## 2026-07-08
 
 - [micro real-slice retained] gfx1151 / Radeon 8060S / HIP vs Vulkan Q6_K lm-head rowtile diagnostic: HIP BF16 x Q6_K T16 rowtile chunks and Vulkan Q6_K X8 q8_1+dp4a full-output rows both passed their own correctness gates (`6/6` HIP, `18/18` Vulkan). Status old->new: `decision-gated -> covered diagnostic`. Across shapes `2048x32768` and `2048x152064`, rows=`1/4/8`, and Vulkan local_size=`64/128/256`, Vulkan/HIP speedup measured **0.367x-1.058x** for quantize+dot and **0.367x-1.112x** for prequantized dot. Vulkan only wins the smaller `2048x32768` rows=1 case; full-vocab rows=1 is near parity/slower and rows=4/8 strongly favor HIP. Classified `real_slice_probe`; closes q6 lm-head as mostly negative for the current Vulkan X8 target on gfx1151. `benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`.
