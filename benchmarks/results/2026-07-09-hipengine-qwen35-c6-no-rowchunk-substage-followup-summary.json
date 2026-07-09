@@ -1,0 +1,100 @@
+{
+  "schema": "hipengine.benchmark.summary.v1",
+  "timestamp": "2026-07-09T15:20:00+09:00",
+  "hardware": {
+    "gpu": "gfx1151/Radeon 8060S",
+    "host": "local hipEngine-main worktree"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "quant": "w4_paro",
+    "path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "workload": {
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "batch_size": 6,
+    "decode_tokens": 16,
+    "warmup_decode_tokens": 0,
+    "max_layers": 40,
+    "correctness_gate": "generated-token equality vs independent c1 resident runs"
+  },
+  "baseline_context": {
+    "retained_c6_default": {
+      "shape": "selected full-attention rowchunk2 layers 3,7,11,15,19,23,27,31; native rows=6 linear attention; selected-c1 MoE; forced small-batch shared expert; serial LM-head",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-smallbatch-shared-selected-full-rowchunks-local-equality.json",
+      "status": "generated-token green",
+      "decode_tok_s": 109.205,
+      "median_step_ms": 54.610
+    },
+    "native_full_attention_no_rowchunk": {
+      "shape": "native rows=6 full attention with no full-attention rowchunk",
+      "status": "rejected correctness",
+      "known_failure": "token 7 to 9 depending probe",
+      "best_observed_decode_tok_s": 114.329,
+      "best_observed_median_step_ms": 52.140
+    }
+  },
+  "probes": [
+    {
+      "name": "full-attention input per-row",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-attninput-perrow-output-gemv-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 9,
+      "decode_tok_s": 108.465,
+      "median_step_ms": 52.851,
+      "conclusion": "Per-row input/RMSNorm does not repair the native c6 no-rowchunk divergence."
+    },
+    {
+      "name": "full-attention scratch per-row",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-attnscratch-perrow-output-gemv-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 2,
+      "decode_tok_s": 93.031,
+      "median_step_ms": 61.943,
+      "conclusion": "Whole-layer c1-like scratch fallback is correctness-worse and too slow."
+    },
+    {
+      "name": "full-attention context per-row only",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-context-perrow-only-output-gemv-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 2,
+      "decode_tok_s": 100.940,
+      "median_step_ms": 56.668,
+      "conclusion": "Per-row context replay does not repair the native c6 no-rowchunk divergence."
+    },
+    {
+      "name": "full-attention KV append per-row",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-kvappend-perrow-output-gemv-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 9,
+      "decode_tok_s": 107.954,
+      "median_step_ms": 52.424,
+      "conclusion": "Append mechanics alone are not the repair."
+    },
+    {
+      "name": "rowchunk layer 7 only",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-rowchunk7-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 7,
+      "decode_tok_s": 108.616,
+      "median_step_ms": 52.486,
+      "conclusion": "Layer 7 rowchunking alone is insufficient."
+    },
+    {
+      "name": "rowchunk layers 3,7,11,15, short full model",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-full-rowchunk3-7-11-15-smallbatch-shared-fullmodel-local-equality.json",
+      "status": "blocked",
+      "generated_token_equality": "pass",
+      "first_mismatch_token": null,
+      "decode_tok_s": 107.413,
+      "median_step_ms": 53.301,
+      "conclusion": "Early rowchunks are enough for the short 16-token generated-token probe, but the retained 128-token gate still needs 3,7,11,15,19,23,27,31."
+    }
+  ],
+  "decision": {
+    "performance_claim": false,
+    "retain_default": "Keep the existing generated-token-green selected full-attention rowchunk bridge for rows=6.",
+    "next_step": "Make staged full-attention substage diagnostics work with selected-c1 MoE, because the existing staged diagnostic path requires grouped MoE scratch and cannot test the server-visible c6 bridge."
+  }
+}

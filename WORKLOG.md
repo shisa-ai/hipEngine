@@ -147994,3 +147994,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Next c6 probes: full-attention input path, scratch path, context path, then
   KV append path, using short generated-token probes before another large hidden
   trace.
+
+## 2026-07-09 - PARO c6 no-rowchunk substage follow-up probes
+
+- Ran the planned short c6 no-rowchunk full-attention substage probes on
+  gfx1151/Radeon 8060S with the same `Qwen3.6-35B-A3B-PARO-packed`, 512 prompt,
+  rows=6, 16 decode-token retained diagnostic protocol.
+- Results:
+  - Full-attention input forced per-row: rejected at token 9, `108.465 tok/s`,
+    median `52.851 ms`. Per-row input/RMSNorm does not repair the native c6
+    divergence.
+  - Full-attention scratch forced per-row: rejected at token 2, `93.031 tok/s`,
+    median `61.943 ms`. Whole-layer c1-like scratch fallback is correctness-worse
+    and too slow.
+  - Full-attention context forced per-row only: rejected at token 2,
+    `100.940 tok/s`, median `56.668 ms`. Per-row context replay does not repair
+    the divergence.
+  - Full-attention KV append forced per-row: rejected at token 9,
+    `107.954 tok/s`, median `52.424 ms`. Append mechanics alone are not the
+    repair.
+  - Full-attention rowchunk only on layer 7: rejected at token 7,
+    `108.616 tok/s`, median `52.486 ms`. Layer 7 alone is insufficient.
+  - Full-attention rowchunk on layers `3,7,11,15`, short 16-token full model:
+    generated-token equality passed, `107.413 tok/s`, median `53.301 ms`, but
+    remains diagnostic/blocked because primitive/profiler gates are missing and
+    the 128-token retained gate still needs the eight-layer set
+    `3,7,11,15,19,23,27,31`.
+- Tried the staged `per_row_preqkv_append_batch_context_o_post_moe` diagnostic,
+  but it currently raises `ValueError` with selected-c1 MoE because the staged
+  branch requires grouped MoE scratch. Next useful code change is to make the
+  staged full-attention diagnostics work under the selected-c1 MoE bridge used
+  by the server-visible c6 correctness path.
+- Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-no-rowchunk-substage-followup-summary.json`.
