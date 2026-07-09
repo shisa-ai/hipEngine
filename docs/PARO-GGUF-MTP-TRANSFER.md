@@ -419,10 +419,19 @@ question is hidden/token/KV source equality.
 | Full-native no-rowchunk hidden-bisect, L8-L12, trace generated index 9 | hidden red, token green | first full KV sample mismatch at layer 7 key, row 0, sample positions `[0,255,256,519,520]`; positions match; current `batch_source_vs_c1_source` fails at `key_after_prepare` while cache-vs-source is clean | Cache placement/page boundaries are not the lead; layer-7 K/V source production differs before append. |
 | Rowchunk layer 7 only hidden-bisect | hidden red, token green | same layer-7 class of mismatch remains in the shallow trace | Rowchunking layer 7 alone is not enough; the known green bridge still needs selected rowchunks `3,7,11,15,19,23,27,31`. |
 | No-rowchunk generated-token probe with full-attention QKV forced per-row | generated-token red at token 9 | `107.578 tok/s`, median `53.022 ms`; batch token `12` vs c1 token `27` on all rows | Per-row QKV scratch alone is not the repair. |
+| No-rowchunk generated-token probe with full-attention input forced per-row | generated-token red at token 9 | `108.465 tok/s`, median `52.851 ms`; batch token `12` vs c1 token `27` | Per-row input/RMSNorm does not repair the native c6 divergence. |
+| No-rowchunk generated-token probe with full-attention scratch forced per-row | generated-token red at token 2 | `93.031 tok/s`, median `61.943 ms` | Whole-layer c1-like scratch fallback is correctness-worse and too slow. |
+| No-rowchunk generated-token probe with context forced per-row only | generated-token red at token 2 | `100.940 tok/s`, median `56.668 ms` | Per-row context replay does not repair the native c6 divergence. |
+| No-rowchunk generated-token probe with KV append forced per-row | generated-token red at token 9 | `107.954 tok/s`, median `52.424 ms`; same failure shape as baseline | Append mechanics alone are not the repair. |
+| Full-attention rowchunk only on layer 7 | generated-token red at token 7 | `108.616 tok/s`, median `52.486 ms` | Layer 7 rowchunking alone is insufficient. |
+| Full-attention rowchunk on layers `3,7,11,15`, short 16-token full model | generated-token green, diagnostic blocked by missing primitive/profiler gates | `107.413 tok/s`, median `53.301 ms` | Early rowchunks are enough for the short probe, but the 128-token retained gate still requires the eight-layer set `3,7,11,15,19,23,27,31`. |
 
-Next useful c6 isolation should move through full-attention substages in order:
-input path, scratch path, context path, then KV append path. Short
-generated-token probes should come before another large hidden trace.
+The next useful c6 isolation step is to make the staged full-attention substage
+diagnostics work with the selected-c1 MoE bridge. The current staged
+`per_row_preqkv_append...` diagnostic path requires grouped MoE scratch, but the
+server-visible c6 correctness bridge uses selected-c1 MoE plus the small-batch
+shared-expert path. Until those staged probes can run under that bridge, they
+cannot localize the remaining rowchunk tax without also changing the MoE shape.
 
 Next repair order:
 
