@@ -428,15 +428,22 @@ question is hidden/token/KV source equality.
 | Selected-c1 staged diagnostic: per-row pre-QKV+append, batch context/O/post/MoE | generated-token red at token 9 | `108.209 tok/s`, median `52.714 ms` | Pre-QKV and append are not sufficient; keeping batch context preserves the original failure shape. |
 | Selected-c1 staged diagnostic: per-row pre-QKV+append+context, batch gate/O/post/MoE | generated-token red at token 2 | `100.095 tok/s`, median `57.137 ms` | Moving context per-row changes the failure earlier and is slower. |
 | Selected-c1 staged diagnostic: per-row pre-QKV+append+context+gate, batch O/post/MoE | generated-token red at token 2 | `100.707 tok/s`, median `56.905 ms` | Batch gate is not the token-2 shift; per-row context/gate remains worse than batch context. |
+| Context-only native rowchunk2 on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 2 | `106.596 tok/s`, median `53.834 ms`; batch token `220` vs c1 token `17` | Splitting only the native context kernel is not a substitute for the green full-layer rowchunk bridge. |
+| Context-only native rowchunk2 on all full-attention layers | generated-token red at token 2 | `106.543 tok/s`, median `53.757 ms`; same token `220` vs `17` failure | The context-only split is not just missing a selected layer; the branch is correctness-red in the same way when applied everywhere. |
 
 The staged full-attention substage diagnostics now work with the selected-c1 MoE
 bridge used by the server-visible c6 path. They did not repair no-rowchunk c6:
 pre-QKV+append per-row preserves the token-9 failure, while per-row context
-moves the failure to token 2. The remaining full-attention rowchunk tax is not
-explained by O projection, input/RMSNorm, QKV scratch, KV append, or batch gate
-in isolation. The next useful split is lower-level timing/correctness
-instrumentation around the native batch full-attention context kernel and the
-rowchunked context kernel on the selected producer layers.
+moves the failure to token 2. The context-only native rowchunk diagnostic also
+rejects at token 2 for both selected-layer and all-layer scopes; compact summary
+artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-context-rowchunk-rejects-summary.json`.
+The remaining full-attention rowchunk tax is not explained by O projection,
+input/RMSNorm, QKV scratch, KV append, batch gate, or context-kernel row
+chunking in isolation. The next useful split is lower-level hidden/KV source
+instrumentation across the full native rowchunk boundary: identify which
+non-context substage changes when the entire layer is executed as rowchunk2
+versus a single rows=6 native pass.
 
 Next repair order:
 

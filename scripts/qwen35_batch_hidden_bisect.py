@@ -5768,6 +5768,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
     )
     parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention context-only native row chunk size for hidden-bisect probes; positive values below batch size keep native kernels but split only the context rows and block native-caware claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
         "--batch-decode-attn-input-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5906,10 +5917,20 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     full_attention_row_chunk_size = int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
     if full_attention_row_chunk_size < 0:
         raise ValueError("batch-decode-full-attn-row-chunk-size must be non-negative")
+    full_attention_context_row_chunk_size = int(
+        getattr(args, "batch_decode_full_attn_context_row_chunk_size", 0) or 0
+    )
+    if full_attention_context_row_chunk_size < 0:
+        raise ValueError("batch-decode-full-attn-context-row-chunk-size must be non-negative")
     force_full_attention_row_chunks = (
         args.batch_decode_full_attn_path == "native_batch"
         and args.batch_size > 1
         and 0 < full_attention_row_chunk_size < args.batch_size
+    )
+    force_full_attention_context_row_chunks = (
+        args.batch_decode_full_attn_path == "native_batch"
+        and args.batch_size > 1
+        and 0 < full_attention_context_row_chunk_size < args.batch_size
     )
     payload: dict[str, Any] = {
         "schema": 1,
@@ -5956,6 +5977,10 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_full_attention_row_chunk_layers": str(
                 getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
             ).strip(),
+            "batch_decode_full_attention_context_row_chunk_size": int(full_attention_context_row_chunk_size),
+            "batch_decode_full_attention_context_row_chunk_layers": str(
+                getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
+            ).strip(),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
             "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
@@ -5983,6 +6008,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and linear_row_chunk_size == 0
                 and args.batch_decode_full_attn_path == "native_batch"
                 and not force_full_attention_row_chunks
+                and not force_full_attention_context_row_chunks
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_scratch_path == "batch"
@@ -6003,6 +6029,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 if args.batch_decode_full_attn_path == "per_row" and args.prompt_length + args.decode_tokens < 1024
                 else "native_batch_row_chunks"
                 if force_full_attention_row_chunks and args.prompt_length + args.decode_tokens < 1024
+                else "native_context_row_chunks"
+                if force_full_attention_context_row_chunks and args.prompt_length + args.decode_tokens < 1024
                 else "batch_context"
                 if args.prompt_length + args.decode_tokens < 1024
                 else "per_row_splitk_fallback"
@@ -6088,6 +6116,12 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(full_attention_row_chunk_size)
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = str(
         getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
+    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE"] = str(
+        full_attention_context_row_chunk_size
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = str(
+        getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
     ).strip()
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if args.batch_decode_attn_input_path == "per_row" else "0"

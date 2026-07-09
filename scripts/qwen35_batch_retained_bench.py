@@ -4199,6 +4199,14 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     return ""
 
 
+def _resolved_batch_decode_full_attn_context_row_chunk_size(args: argparse.Namespace) -> int:
+    return int(getattr(args, "batch_decode_full_attn_context_row_chunk_size", 0) or 0)
+
+
+def _resolved_batch_decode_full_attn_context_row_chunk_layers(args: argparse.Namespace) -> str:
+    return str(getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or "").strip()
+
+
 def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_full_attn_output_path", "batch"))
     if path != "batch":
@@ -4283,6 +4291,12 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         _resolved_batch_decode_full_attn_row_chunk_size(args)
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = _resolved_batch_decode_full_attn_row_chunk_layers(args)
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_full_attn_context_row_chunk_size(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = (
+        _resolved_batch_decode_full_attn_context_row_chunk_layers(args)
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
@@ -4885,6 +4899,8 @@ def _build_payload(
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
             "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
             "batch_decode_full_attention_row_chunk_layers": _resolved_batch_decode_full_attn_row_chunk_layers(args),
+            "batch_decode_full_attention_context_row_chunk_size": _resolved_batch_decode_full_attn_context_row_chunk_size(args),
+            "batch_decode_full_attention_context_row_chunk_layers": _resolved_batch_decode_full_attn_context_row_chunk_layers(args),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -5080,6 +5096,17 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-row-chunk-layers",
         default="",
         help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention context-only native row chunk size for c>N batch decode; a positive value below batch size splits only the context kernel rows and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -5312,6 +5339,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--max-layers must be positive")
     if _resolved_batch_decode_linear_row_chunk_size(args) < 0:
         raise ValueError("--batch-decode-linear-row-chunk-size must be non-negative")
+    if _resolved_batch_decode_full_attn_context_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-full-attn-context-row-chunk-size must be non-negative")
     if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
         raise ValueError("--batch-sample-eq-rows must be positive")
 
