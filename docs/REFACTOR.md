@@ -809,3 +809,25 @@ should be boring.
 - Remove when: c6 full-attention rowchunk isolation moves to lower-level
   hidden/KV source tracing or a retained green non-rowchunk c6 path exists.
   Keep the flags default-off and do not use them for retained timing claims.
+
+## `scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`
+- Added 2026-07-09 as a default-off PARO c>N diagnostic mode. It compares two
+  native rows=6 batch variants directly: no-rowchunk full attention versus the
+  selected full-layer rowchunk repair, using the existing hidden-bisect summary
+  machinery but labelling the rowchunk repair as the comparison peer instead of
+  an independent c1 oracle.
+- Purpose: isolate whether the remaining c6 full-attention rowchunk tax comes
+  from KV append/page placement, context-only work, suffix work, or from a
+  whole-layer numerical boundary introduced by rowchunking.
+- Result: the L8 trace showed layer 3 full-layer rowchunk output drift still
+  under tolerance (`0.000122 max_abs`), layer 4 `attn_input` first over
+  tolerance (`0.001953`), and layer 7 `attn_input_pre_qkv` at `0.0078125`.
+  The corrected combined context+suffix rowchunk probe records both
+  `native_context_row_chunks` and `native_suffix_row_chunks_include_gate` on
+  layers `3,7,11,15,19,23,27,31`, but remains generated-token red at token 2
+  (`220` vs c1 `17`) and slower than the current green selected full-layer
+  rowchunk bridge (`103.998 tok/s`, median `54.865 ms`). Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`.
+- Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
+  avoids live c6 groups in retained/default operation. Do not use this
+  comparison mode for throughput claims.

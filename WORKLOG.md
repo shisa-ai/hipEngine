@@ -148126,3 +148126,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   hidden/KV source state across the full-layer rowchunk boundary.
 - Compact summary:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.
+
+## 2026-07-09 - PARO c6 rowchunk boundary and combined split diagnostic
+
+- Added `scripts/qwen35_batch_hidden_bisect.py
+  --compare-full-attn-rowchunk-boundary`, a default-off diagnostic that compares
+  native rows=6 no-rowchunk full attention against the selected full-layer
+  rowchunk repair in the same c>N batch shape instead of comparing to
+  independent c1 sessions.
+- Fixed the resident runner diagnostic plumbing so context row chunks and suffix
+  row chunks can both apply to the same selected full-attention layer. The
+  decode state already supports the combined path; the runner previously made
+  suffix rowchunking mutually exclusive with context rowchunking and therefore
+  hid the suffix half in metadata.
+- Added tests:
+  `tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands`;
+  `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_can_rowchunk_context_and_suffix_together`;
+  `tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_and_suffix_rowchunk_forwards_chunks`.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_qwen35_decode_state.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_suffix tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_suffix_rowchunk_can_include_gate tests/test_qwen35_decode_state.py::test_qwen35_decode_state_can_rowchunk_context_and_suffix_together tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_rowchunk_forwards_chunks tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_suffix_rowchunk_forwards_chunks tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_and_suffix_rowchunk_forwards_chunks`.
+- Ran c6 boundary diagnostics on gfx1151/Radeon 8060S with
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, prompt 512, rows=6:
+  - Native no-rowchunk vs selected full-layer rowchunk boundary, L8 trace
+    generated index 8: layer 3 full-attention output drift is still
+    sub-tolerance (`0.000122 max_abs`), layer 4 `attn_input` is the first stage
+    over tolerance (`0.001953`), and layer 7 `attn_input_pre_qkv` reaches
+    `0.0078125`. This says the layer-7 QKV/KV mismatch is downstream of
+    rowchunk/no-rowchunk numerical drift, not an isolated KV append or page
+    placement bug.
+  - Combined context rowchunk2 plus suffix rowchunk2 including gate on selected
+    layers `3,7,11,15,19,23,27,31`: now correctly records both
+    `native_context_row_chunks` and `native_suffix_row_chunks_include_gate`, but
+    remains generated-token red at token 2 (`220` vs `17`) and slower than the
+    green selected full-layer rowchunk bridge: `103.998 tok/s`, median
+    `54.865 ms`.
+- Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`.
+- Conclusion: the current green c6 bridge remains selected full-layer rowchunk2
+  on `3,7,11,15,19,23,27,31` plus native rows=6 linear attention, selected-c1
+  MoE, and forced small-batch shared expert. The next c6 work should either
+  reduce the full-layer rowchunk tax directly or avoid live c6 groups in the
+  scheduler when faster green c2/c4/c8 groups are available.

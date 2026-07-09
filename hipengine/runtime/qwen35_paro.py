@@ -5700,6 +5700,60 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
                 gated = attention_scratch.gated_attn
+            elif (
+                context_row_chunks is not None
+                and suffix_row_chunks is not None
+                and suffix_row_chunk_include_gate
+                and tokens > 1
+            ):
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("context/suffix row-chunk full-attention diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("context/suffix row-chunk full-attention diagnostic does not cover split-K decode")
+                q_heads = self.config.num_attention_heads
+                head_dim = self.config.head_dim
+                q_width = q_heads * head_dim
+                query_row_nbytes = q_width * attention_scratch.query.dtype.itemsize
+                context_row_nbytes = q_width * DType.FP32.itemsize
+                for chunk_start, chunk_rows, chunk_decode_spans in context_row_chunks:
+                    if chunk_rows <= 0:
+                        raise ValueError("context row chunks must have positive rows")
+                    if chunk_start < 0 or chunk_start + chunk_rows > tokens:
+                        raise ValueError("context row chunk outside active decode rows")
+                    if chunk_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("context/suffix row-chunk full-attention diagnostic currently requires BF16 KV")
+                    if chunk_decode_spans.max_live_count >= 1024:
+                        raise NotImplementedError("context/suffix row-chunk full-attention diagnostic does not cover split-K decode")
+                    chunk_query = Tensor.from_handle(
+                        attention_scratch.query.ptr + int(chunk_start) * query_row_nbytes,
+                        (int(chunk_rows), q_heads, head_dim),
+                        attention_scratch.query.dtype,
+                        attention_scratch.query.device,
+                    )
+                    chunk_context = Tensor.from_handle(
+                        attention_scratch.query_raw.ptr + int(chunk_start) * context_row_nbytes,
+                        (int(chunk_rows), q_heads, head_dim),
+                        DType.FP32,
+                        attention_scratch.query_raw.device,
+                    )
+                    qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                        chunk_query.ptr,
+                        key_cache.ptr,
+                        value_cache.ptr,
+                        chunk_context.ptr,
+                        chunk_decode_spans,
+                        int(chunk_rows),
+                        chunk_decode_spans.max_live_count,
+                        block_size,
+                        q_heads,
+                        self.config.num_key_value_heads,
+                        head_dim,
+                        self.config.head_dim ** -0.5,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                gated = attention_scratch.gated_attn
             elif suffix_row_chunks is not None and suffix_row_chunk_include_gate and tokens > 1:
                 if decode_spans.storage_dtype != DType.BF16:
                     raise NotImplementedError("suffix row-chunk full-attention diagnostic currently requires BF16 KV")

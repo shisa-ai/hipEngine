@@ -5768,6 +5768,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
     )
     parser.add_argument(
+        "--compare-full-attn-rowchunk-boundary",
+        action="store_true",
+        help="Run two c>N batch variants and compare native no-rowchunk full-attention against the rowchunk repair instead of comparing the batch run to independent c=1 sessions.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-context-row-chunk-size",
         type=int,
         default=0,
@@ -5958,11 +5963,26 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         and args.batch_size > 1
         and 0 < full_attention_suffix_row_chunk_size < args.batch_size
     )
+    compare_full_attention_rowchunk_boundary = bool(
+        getattr(args, "compare_full_attn_rowchunk_boundary", False)
+    )
+    if compare_full_attention_rowchunk_boundary:
+        if not force_full_attention_row_chunks:
+            raise ValueError(
+                "compare-full-attn-rowchunk-boundary requires native_batch full-attention "
+                "and 0 < --batch-decode-full-attn-row-chunk-size < --batch-size"
+            )
+        if force_full_attention_context_row_chunks or force_full_attention_suffix_row_chunks:
+            raise ValueError("compare-full-attn-rowchunk-boundary cannot be combined with context/suffix rowchunk diagnostics")
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "mode": "qwen35_paro_native_hidden_bisect",
+        "mode": (
+            "qwen35_paro_native_hidden_bisect_rowchunk_boundary"
+            if compare_full_attention_rowchunk_boundary
+            else "qwen35_paro_native_hidden_bisect"
+        ),
         "command": _command(argv),
         "performance_claim": False,
         "workload": {
@@ -5987,6 +6007,12 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "trace_decode_window": [int(trace_decode_start), int(trace_decode_end)],
             "skip_full_context_oracle": bool(args.skip_full_context_oracle),
             "skip_linear_state_summary": bool(args.skip_linear_state_summary),
+            "compare_full_attention_rowchunk_boundary": bool(compare_full_attention_rowchunk_boundary),
+            "comparison_variant_labels": (
+                {"batch": "native_no_rowchunk", "c1": "native_full_attention_rowchunk_repair"}
+                if compare_full_attention_rowchunk_boundary
+                else {"batch": "native_batch", "c1": "independent_c1"}
+            ),
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
@@ -6059,6 +6085,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_post_attn_path == "batch"
             ),
             "full_attention_decode_path": (
+                "native_batch_vs_row_chunks"
+                if compare_full_attention_rowchunk_boundary
+                else
                 "per_row_context_fallback"
                 if args.batch_decode_full_attn_path == "per_row" and args.prompt_length + args.decode_tokens < 1024
                 else "native_batch_row_chunks"
@@ -6079,7 +6108,11 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             ),
         },
         "correctness": {
-            "oracle": "hidden tensors and generated-token IDs vs independent c=1 resident sessions",
+            "oracle": (
+                "hidden tensors and generated-token IDs for native no-rowchunk c>N batch vs rowchunk-repair c>N batch"
+                if compare_full_attention_rowchunk_boundary
+                else "hidden tensors and generated-token IDs vs independent c=1 resident sessions"
+            ),
             "hidden_atol": float(args.hidden_atol),
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
@@ -6274,36 +6307,42 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     layer_types = tuple(str(layer_type) for layer_type in getattr(runner.config, "layer_types", ()))
     compiler_version = _compiler_version(args.compiler_version_file)
     layer_summaries: list[dict[str, Any]] = []
-    for layer_limit in layer_limits:
-        batch = _run_batch_hidden(
-            runner,
-            prompts,
-            layer_limit=layer_limit,
-            decode_tokens=total_decode_tokens,
-            max_sequence_length=args.max_sequence_length,
-            compiler_version=compiler_version,
-            require_cached_build=args.require_cached_build,
-            trace_decode_start=trace_decode_start,
-            trace_decode_end=trace_decode_end,
-            collect_full_context_oracle=not bool(args.skip_full_context_oracle),
-        )
-        c1 = _run_c1_hidden(
-            runner,
-            prompts,
-            layer_limit=layer_limit,
-            decode_tokens=total_decode_tokens,
-            max_sequence_length=args.max_sequence_length,
-            compiler_version=compiler_version,
-            require_cached_build=args.require_cached_build,
-            trace_decode_start=trace_decode_start,
-            trace_decode_end=trace_decode_end,
-            c1_decode_path=str(args.c1_decode_path),
-            collect_full_context_oracle=not bool(args.skip_full_context_oracle),
-        )
-        layer_summaries.append(
-            _summarize_layer_limit(
-                batch,
-                c1,
+    if compare_full_attention_rowchunk_boundary:
+        rowchunk_layers_env = str(getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or "").strip()
+        for layer_limit in layer_limits:
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = "0"
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = ""
+            native_no_rowchunk = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
+                full_attention_row_chunk_size
+            )
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = rowchunk_layers_env
+            rowchunk_repair = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            summary = _summarize_layer_limit(
+                native_no_rowchunk,
+                rowchunk_repair,
                 layer_limit=layer_limit,
                 atol=args.hidden_atol,
                 state_atol=args.state_atol,
@@ -6312,7 +6351,54 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 focus_hidden_flat_indices=focus_hidden_flat_indices,
                 summarize_linear_states=not bool(args.skip_linear_state_summary),
             )
-        )
+            summary["comparison_kind"] = "full_attention_rowchunk_boundary"
+            summary["variant_labels"] = {
+                "batch": "native_no_rowchunk",
+                "c1": "native_full_attention_rowchunk_repair",
+            }
+            layer_summaries.append(summary)
+        os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(full_attention_row_chunk_size)
+        os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = rowchunk_layers_env
+    else:
+        for layer_limit in layer_limits:
+            batch = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            c1 = _run_c1_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                c1_decode_path=str(args.c1_decode_path),
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            layer_summaries.append(
+                _summarize_layer_limit(
+                    batch,
+                    c1,
+                    layer_limit=layer_limit,
+                    atol=args.hidden_atol,
+                    state_atol=args.state_atol,
+                    state_focus_atol=args.state_focus_atol,
+                    layer_types=layer_types,
+                    focus_hidden_flat_indices=focus_hidden_flat_indices,
+                    summarize_linear_states=not bool(args.skip_linear_state_summary),
+                )
+            )
 
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)
     hidden_bit_drift = _first_hidden_bit_drift(layer_summaries)
