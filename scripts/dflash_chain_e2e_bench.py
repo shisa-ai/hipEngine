@@ -79,6 +79,19 @@ _ADAPTIVE_AR_GUARD_REASONS = {"remaining_tokens_guard", "probe_amortization_guar
 _PROFILE_ROUTE_VALUES = {"ar", "chain", "tree", "spec"}
 
 
+def _add_seconds_bucket(buckets: dict[str, float], name: str, seconds: float) -> None:
+    value = float(seconds)
+    if value > 0.0 and math.isfinite(value):
+        buckets[name] = buckets.get(name, 0.0) + value
+
+
+def _merge_seconds_buckets(dst: dict[str, float], src: dict[str, float] | None) -> None:
+    if not src:
+        return
+    for name, seconds in src.items():
+        _add_seconds_bucket(dst, str(name), float(seconds))
+
+
 class _Roctx:
     """Minimal ROCTX range helper for rocprof marker slicing."""
 
@@ -1805,6 +1818,7 @@ def run_dflash_tokens(
             accepted_lengths: list[int] = []
             draft_seconds_total = 0.0
             verify_seconds_total = 0.0
+            target_verify_bucket_seconds: dict[str, float] = {}
             commit_seconds_total = 0.0
             d2h_vector_reads = 0
             d2h_vector_values = 0
@@ -1838,7 +1852,9 @@ def run_dflash_tokens(
                         drafter=None if terminal_ar_bypass else drafter,
                         capture_row=None if terminal_ar_bypass else context_tokens,
                     )
-                    verify_seconds_total += time.perf_counter() - t_verify
+                    verify_elapsed = time.perf_counter() - t_verify
+                    verify_seconds_total += verify_elapsed
+                    _add_seconds_bucket(target_verify_bucket_seconds, "target_verify_ar_step", verify_elapsed)
                     if not terminal_ar_bypass:
                         t_commit = time.perf_counter()
                         drafter.commit_context_rows(start=context_tokens, count=1)
@@ -1897,6 +1913,7 @@ def run_dflash_tokens(
                     bonus = int(result.token_id)
                 verify_elapsed = time.perf_counter() - t_verify
                 verify_seconds_total += verify_elapsed
+                _add_seconds_bucket(target_verify_bucket_seconds, "target_verify_serial_step", verify_elapsed)
                 accepted_lengths.append(accepted)
                 committed = [root_token, *candidates[:accepted]]
                 t_commit = time.perf_counter()
@@ -1924,6 +1941,7 @@ def run_dflash_tokens(
                 "decode_seconds": decode_seconds,
                 "draft_seconds": draft_seconds_total,
                 "target_verify_seconds": verify_seconds_total,
+                "target_verify_bucket_seconds": target_verify_bucket_seconds,
                 "commit_seconds": commit_seconds_total,
                 "accepted_lengths": accepted_lengths,
                 "target_verify_rows": verify_rows_total,
@@ -1996,6 +2014,7 @@ def _run_profile_ar_on_session(
         "decode_seconds": decode_seconds,
         "draft_seconds": 0.0,
         "target_verify_seconds": decode_seconds,
+        "target_verify_bucket_seconds": {"target_verify_ar_step": decode_seconds},
         "commit_seconds": 0.0,
         "accepted_lengths": [],
         "target_verify_rows": decode_tokens,
@@ -2319,6 +2338,7 @@ def _run_dflash_chain_on_session(
     confidence_trace: list[dict[str, Any]] = []
     draft_seconds_total = 0.0
     verify_seconds_total = 0.0
+    target_verify_bucket_seconds: dict[str, float] = {}
     commit_seconds_total = 0.0
     d2h_vector_reads = 0
     d2h_vector_values = 0
@@ -2389,7 +2409,9 @@ def _run_dflash_chain_on_session(
                 drafter=None if terminal_ar_bypass else drafter,
                 capture_row=None if terminal_ar_bypass else context_tokens,
             )
-            verify_seconds_total += time.perf_counter() - t_verify
+            verify_elapsed = time.perf_counter() - t_verify
+            verify_seconds_total += verify_elapsed
+            _add_seconds_bucket(target_verify_bucket_seconds, "target_verify_ar_step", verify_elapsed)
             target_serial_forward_calls += 1
             finite_verify = finite_verify and math.isfinite(float(result.logit))
             bonus = int(result.token_id)
@@ -2481,6 +2503,7 @@ def _run_dflash_chain_on_session(
                 roctx.profiler_resume()
             roctx.push(f"dflash_verify_pass_{draft_calls}")
         t_verify = time.perf_counter()
+        cycle_verify_bucket_seconds: dict[str, float] = {}
         verify_result = None
         target_batch = None
         if active_budget <= 0:
@@ -2501,12 +2524,18 @@ def _run_dflash_chain_on_session(
             finite_verify = finite_verify and math.isfinite(float(result.logit))
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
+            _add_seconds_bucket(cycle_verify_bucket_seconds, "target_verify_ar_step", verify_elapsed)
+            _add_seconds_bucket(target_verify_bucket_seconds, "target_verify_ar_step", verify_elapsed)
         elif verifier_mode == "native_bulk_bplus1":
             verifier_slot = base_slot
             use_branch_slot = tree_mode == "chain" and canonical_commit_mode in {"replay", "branch_copy"}
             if use_branch_slot:
                 verifier_slot = branch_slot_start
+                t_copy = time.perf_counter()
                 session.copy_slot_state(base_slot, verifier_slot, kv_rows=context_tokens)
+                copy_elapsed = time.perf_counter() - t_copy
+                _add_seconds_bucket(cycle_verify_bucket_seconds, "state_copy_pre_verify", copy_elapsed)
+                _add_seconds_bucket(target_verify_bucket_seconds, "state_copy_pre_verify", copy_elapsed)
                 state_copies += 1
             if tree_mode == "branching_topk":
                 if compiled_tree is None:
@@ -2572,6 +2601,8 @@ def _run_dflash_chain_on_session(
             target_bulk_rows_total += int(verify_result.rows)
             target_accept_scalar_reads += 7
             target_accept_scalar_values += 7
+            _merge_seconds_buckets(cycle_verify_bucket_seconds, verify_result.bucket_seconds)
+            _merge_seconds_buckets(target_verify_bucket_seconds, verify_result.bucket_seconds)
         elif verifier_mode == "serial_in_place_single_slot":
             # In-place verify on base_slot: every forward advances state to the
             # committed prefix.  No per-candidate state copies because the loop never
@@ -2618,6 +2649,7 @@ def _run_dflash_chain_on_session(
                 and tree_mode == "chain"
                 and canonical_commit_mode == "replay"
             ):
+                t_replay = time.perf_counter()
                 target_top1 = []
                 accepted = 0
                 accepted_tokens = []
@@ -2645,6 +2677,9 @@ def _run_dflash_chain_on_session(
                             break
                         accepted += 1
                         accepted_tokens.append(next_candidate)
+                replay_elapsed = time.perf_counter() - t_replay
+                _add_seconds_bucket(cycle_verify_bucket_seconds, "canonical_commit_replay", replay_elapsed)
+                _add_seconds_bucket(target_verify_bucket_seconds, "canonical_commit_replay", replay_elapsed)
             elif (
                 verify_result is not None
                 and verifier_mode == "native_bulk_bplus1"
@@ -2652,10 +2687,21 @@ def _run_dflash_chain_on_session(
                 and canonical_commit_mode == "branch_copy"
                 and verifier_slot != base_slot
             ):
+                t_copy = time.perf_counter()
                 session.copy_slot_state(verifier_slot, base_slot, kv_rows=context_tokens + 1 + accepted)
+                copy_elapsed = time.perf_counter() - t_copy
+                _add_seconds_bucket(cycle_verify_bucket_seconds, "state_copy_commit", copy_elapsed)
+                _add_seconds_bucket(target_verify_bucket_seconds, "state_copy_commit", copy_elapsed)
                 state_copies += 1
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
+            if verifier_mode == "serial_in_place_single_slot":
+                _add_seconds_bucket(cycle_verify_bucket_seconds, "target_verify_serial_step", verify_elapsed)
+                _add_seconds_bucket(target_verify_bucket_seconds, "target_verify_serial_step", verify_elapsed)
+            else:
+                residual = verify_elapsed - sum(cycle_verify_bucket_seconds.values())
+                _add_seconds_bucket(cycle_verify_bucket_seconds, "host_orchestration_unbucketed", residual)
+                _add_seconds_bucket(target_verify_bucket_seconds, "host_orchestration_unbucketed", residual)
         if roctx is not None:
             roctx.pop()
             if rocprof_selected_region == "dflash_verify":
@@ -2714,6 +2760,10 @@ def _run_dflash_chain_on_session(
                 "tree_mode": tree_mode,
                 "drafter_graph_status": graph_status,
                 "drafter_graph_bucket": draft.graph.get("bucket_key"),
+                "target_verify_bucket_ms": {
+                    name: float(seconds) * 1000.0
+                    for name, seconds in sorted(cycle_verify_bucket_seconds.items())
+                },
             }
             if verify_result is not None and target_batch is not None and verifier_mode == "native_bulk_bplus1":
                 trace_row["commit_row"] = int(verify_result.commit_row)
@@ -2784,6 +2834,7 @@ def _run_dflash_chain_on_session(
         "decode_seconds": decode_seconds,
         "draft_seconds": draft_seconds_total,
         "target_verify_seconds": verify_seconds_total,
+        "target_verify_bucket_seconds": dict(sorted(target_verify_bucket_seconds.items())),
         "commit_seconds": commit_seconds_total,
         "accepted_lengths": accepted_lengths,
         "target_verify_rows": verify_rows_total,
@@ -3006,6 +3057,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
             "proposal_trace_count": spec_meta.get("proposal_trace_count", spec_meta["draft_calls"]),
             "target_verify_seconds": spec_meta["target_verify_seconds"],
+            "target_verify_bucket_seconds": spec_meta.get("target_verify_bucket_seconds", {}),
             "commit_seconds": spec_meta["commit_seconds"],
             "target_verify_rows": spec_meta["target_verify_rows"],
             "target_forward_calls": spec_meta.get("target_forward_calls"),

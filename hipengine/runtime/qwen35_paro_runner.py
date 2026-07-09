@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import math
@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+import time
 
 import numpy as np
 from safetensors import safe_open
@@ -1448,6 +1449,7 @@ class Qwen35ParoBulkVerifyResult:
     rows: int
     target_forward_calls: int = 1
     graph: dict[str, Any] | None = None
+    bucket_seconds: dict[str, float] = field(default_factory=dict)
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -1465,6 +1467,7 @@ class Qwen35ParoBulkVerifyResult:
             "rows": self.rows,
             "target_forward_calls": self.target_forward_calls,
             "graph": self.graph,
+            "bucket_seconds": dict(self.bucket_seconds),
         }
 
 
@@ -10042,15 +10045,29 @@ class Qwen35ParoResidentSession:
         if graph_mode not in {"off", "auto", "validate"}:
             raise ValueError("graph_mode must be off, auto, or validate")
 
+        bucket_seconds: dict[str, float] = {}
+
+        def _add_bucket(name: str, seconds: float) -> None:
+            if seconds > 0.0 and math.isfinite(seconds):
+                bucket_seconds[name] = bucket_seconds.get(name, 0.0) + seconds
+
+        def _mark_bucket(name: str, started: float) -> float:
+            now = time.perf_counter()
+            _add_bucket(name, now - started)
+            return now
+
         capture_target = capture_hidden_concat
         capture_target_start = capture_row_start
         if graph_mode != "off":
             capture_target = self._verify_capture_staging_tensor(rows=rows, width=int(capture_hidden_concat.shape[1]))
             capture_target_start = 0
 
+        t_bucket = time.perf_counter()
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        _mark_bucket("metadata_upload", t_bucket)
         linear_attn_mode = "chain_tloop" if self._should_use_chain_tloop_linear_verify(batch, rows=rows, graph_mode=graph_mode) else "tree_tloop"
         try:
+            t_bucket = time.perf_counter()
             if graph_mode == "off":
                 graph_info: dict[str, Any] = {
                     "mode": "off",
@@ -10088,6 +10105,9 @@ class Qwen35ParoResidentSession:
                 graph_info["chain_attn_mode"] = chain_attn_mode
                 graph_info["linear_attn_mode"] = linear_attn_mode
                 graph_info["linear_attn_fallback"] = False
+            forward_bucket = "graph_replay" if str(graph_info.get("status")) == "replayed" else "target_verify_forward"
+            _mark_bucket(forward_bucket, t_bucket)
+            t_bucket = time.perf_counter()
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             if self._verify_gpu_accept_enabled():
                 # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
@@ -10113,7 +10133,9 @@ class Qwen35ParoResidentSession:
                 gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
                 summary = cpu_summary
                 selected_row = int(cpu_summary.commit_rows[0])
+            _mark_bucket("accept_summary", t_bucket)
             if graph_mode != "off":
+                t_bucket = time.perf_counter()
                 self._copy_verify_capture_prefix(
                     capture_target,
                     capture_hidden_concat,
@@ -10121,6 +10143,8 @@ class Qwen35ParoResidentSession:
                     rows=int(summary.accepted_counts[0]) + 1,
                     stream=stream,
                 )
+                _mark_bucket("capture_prefix_copy", t_bucket)
+            t_bucket = time.perf_counter()
             self._commit_bulk_linear_states(
                 selected_row,
                 base_slot=base_slot,
@@ -10131,6 +10155,7 @@ class Qwen35ParoResidentSession:
                 self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
             else:
                 self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+            _mark_bucket("commit_scatter", t_bucket)
             # Re-pointing the scratch maps to rows=1 decode views re-reserves
             # workspace names with a different shape, which frees the rows=B+1
             # buffers the captured verifier graph holds raw pointers to.
@@ -10138,9 +10163,13 @@ class Qwen35ParoResidentSession:
             # Keep the verifier-shaped scratch alive while any graph is cached;
             # decode steps lazily re-reserve canonical c=1 views on demand.
             if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
+                t_bucket = time.perf_counter()
                 self._canonicalize_decode_scratch()
+                _mark_bucket("canonicalize_scratch", t_bucket)
             if bool(synchronize_after_commit):
+                t_bucket = time.perf_counter()
                 self.runtime.stream_synchronize(stream)
+                _mark_bucket("host_sync_after_commit", t_bucket)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             return Qwen35ParoBulkVerifyResult(
                 target_top1=tuple(int(token) for token in target_top1) if target_top1 else (),
@@ -10156,6 +10185,7 @@ class Qwen35ParoResidentSession:
                 gpu_accept_match_cpu=bool(gpu_accept_match),
                 rows=rows,
                 graph=graph_info,
+                bucket_seconds=bucket_seconds,
             )
         finally:
             # Keep verifier-sized scratch live between cycles; c=1 decode kernels
@@ -10227,13 +10257,27 @@ class Qwen35ParoResidentSession:
             raise ValueError("graph_mode must be off, auto, or validate")
         if graph_mode != "off" and capture_hidden_concat.shape[1] != 0:
             raise NotImplementedError("verify_tree graph replay currently requires capture width 0 (persistent proposer)")
+        bucket_seconds: dict[str, float] = {}
+
+        def _add_bucket(name: str, seconds: float) -> None:
+            if seconds > 0.0 and math.isfinite(seconds):
+                bucket_seconds[name] = bucket_seconds.get(name, 0.0) + seconds
+
+        def _mark_bucket(name: str, started: float) -> float:
+            now = time.perf_counter()
+            _add_bucket(name, now - started)
+            return now
+
         capture_target = capture_hidden_concat
         capture_target_start = capture_row_start
         if graph_mode != "off":
             capture_target = self._verify_capture_staging_tensor(rows=rows, width=int(capture_hidden_concat.shape[1]))
             capture_target_start = 0
 
+        t_bucket = time.perf_counter()
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        _mark_bucket("metadata_upload", t_bucket)
+        t_bucket = time.perf_counter()
         if graph_mode == "off":
             graph_info: dict[str, Any] = {
                 "mode": "off",
@@ -10274,6 +10318,9 @@ class Qwen35ParoResidentSession:
                 stream=stream,
             )
             graph_info["verifier_mode"] = "verify_tree"
+        forward_bucket = "graph_replay" if str(graph_info.get("status")) == "replayed" else "target_verify_forward"
+        _mark_bucket(forward_bucket, t_bucket)
+        t_bucket = time.perf_counter()
         gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
         if self._verify_gpu_accept_enabled():
             # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
@@ -10299,11 +10346,13 @@ class Qwen35ParoResidentSession:
             gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
             summary = cpu_summary
             selected_row = int(cpu_summary.commit_rows[0])
+        _mark_bucket("accept_summary", t_bucket)
         # Compact accepted-path K/V cells from their sparse verifier-row
         # slots back to canonical dense slots, so the next decode cycle
         # reads the correct context.  Skipped (no-op) when the accepted
         # path is already in canonical layout (e.g. a degenerate tree
         # that is a chain).
+        t_bucket = time.perf_counter()
         self._commit_tree_full_attention_kv(
             batch,
             selected_row,
@@ -10330,11 +10379,16 @@ class Qwen35ParoResidentSession:
             self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
         else:
             self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+        _mark_bucket("commit_scatter", t_bucket)
         # Same #107 keepalive as chain: canonicalizing decode scratch frees the
         # rows=B+1 buffers any cached verifier graph holds raw pointers to.
         if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
+            t_bucket = time.perf_counter()
             self._canonicalize_decode_scratch()
+            _mark_bucket("canonicalize_scratch", t_bucket)
+        t_bucket = time.perf_counter()
         self.runtime.stream_synchronize(stream)
+        _mark_bucket("host_sync_after_commit", t_bucket)
         next_token = None if summary.next_tokens is None else summary.next_tokens[0]
         return Qwen35ParoBulkVerifyResult(
             target_top1=tuple(int(token) for token in target_top1) if target_top1 else (),
@@ -10350,6 +10404,7 @@ class Qwen35ParoResidentSession:
             gpu_accept_match_cpu=bool(gpu_accept_match),
             rows=rows,
             graph=graph_info,
+            bucket_seconds=bucket_seconds,
         )
 
     def _verify_capture_staging_tensor(self, *, rows: int, width: int) -> Tensor:
