@@ -148450,3 +148450,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `python3 -m pytest -q tests/test_micro_timing_contract.py`
   (`9 passed`); `python3 -m compileall -q
   benchmarks/micro/timing_contract.py`; `git diff --check`.
+
+## 2026-07-10 - Geometry timing contract v2
+
+- Converted the matched f32 geometry harness to timing contract v2. HIP uses
+  fixed-workgroup builds for cross-backend rows, one ordered stream for
+  `serial_latency`, and disjoint outputs over nonblocking streams for
+  `independent_throughput`. Vulkan uses specialization-constant workgroups, WAW
+  compute barriers in serial mode, and disjoint output slices without barriers
+  in independent mode.
+- Both backends now emit reps=1 and burst GPU/host distributions and validate
+  the exact timed sequence. A per-repetition output tag makes final serial state
+  sensitive to execution order; independent mode checks every output slice.
+  Comparisons use the GPU burst metric explicitly. Direct-HIP versus Vulkan
+  command-buffer host walls are retained but marked
+  `not_comparable_submission_contract` without a ratio.
+- Focused validation:
+  `python3 -m pytest -q tests/test_micro_geometry_sweep.py
+  tests/test_micro_timing_contract.py` (`14 passed`); `python3 -m compileall -q
+  benchmarks/micro/runners/geometry_sweep.py`; native HIP/Vulkan builds through
+  the wrapper; `git diff --check`.
+- gfx1151 correctness smoke used K=128, rows=1, fixed wg64, body-repeats=4,
+  reps=3, warmup=1, samples=3. HIP and Vulkan passed serial and independent
+  exact-burst validation, both v2 comparisons emitted a GPU ratio and rejected
+  a host-wall ratio. The observed tiny-shape timings are diagnostic smoke only,
+  not retained performance claims; artifacts are under `/tmp/geometry-*-v2.json`.

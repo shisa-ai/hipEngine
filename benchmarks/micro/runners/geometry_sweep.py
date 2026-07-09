@@ -23,7 +23,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 HIP_HARNESS = REPO_ROOT / "benchmarks" / "micro" / "runners" / "hip_geometry_sweep.hip"
 VULKAN_HARNESS = REPO_ROOT / "benchmarks" / "micro" / "runners" / "vulkan_geometry_sweep.cpp"
 VULKAN_SHADER = REPO_ROOT / "benchmarks" / "micro" / "kernels" / "vulkan" / "geometry_sweep.comp"
+HIP_TIMING_HEADER = REPO_ROOT / "benchmarks" / "micro" / "runners" / "micro_timing_hip.hpp"
+VULKAN_TIMING_HEADER = REPO_ROOT / "benchmarks" / "micro" / "runners" / "micro_timing_vulkan.hpp"
 COLLECT_ENV = Path(__file__).resolve().parents[1] / "collect_env.py"
+TIMING_CONTRACT = Path(__file__).resolve().parents[1] / "timing_contract.py"
 BENCH_NAME = "f32_gemv_geometry_sweep"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-geometry-build")
 
@@ -32,6 +35,15 @@ def _load_collect_env_module():
     spec = importlib.util.spec_from_file_location("micro_collect_env", COLLECT_ENV)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load environment collector: {COLLECT_ENV}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_timing_contract_module():
+    spec = importlib.util.spec_from_file_location("micro_timing_contract", TIMING_CONTRACT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load timing contract: {TIMING_CONTRACT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -176,6 +188,7 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
@@ -277,13 +290,27 @@ def normalize_raw_result(
 ) -> dict[str, Any]:
     config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
     rows = raw.get("rows") if isinstance(raw.get("rows"), list) else []
+    timing_contract = _load_timing_contract_module()
+    timing_mode = timing_contract.parse_timing_mode(str(config.get("timing_mode")))
+    repetitions = int(config.get("reps", 0))
+    if repetitions <= 0:
+        raise ValueError("raw geometry result has invalid repetitions")
+    if backend == "hip" and config.get("hip_workgroup_specialization") != "fixed":
+        raise ValueError("v2 HIP geometry rows require fixed workgroup specialization")
+    for row in rows:
+        if row.get("timing_mode") != timing_mode:
+            raise ValueError("raw geometry row timing mode disagrees with config")
+        timing_contract.validate_timed_row(row, expected_repetitions=repetitions)
+        row["workgroup_specialization"] = (
+            "fixed" if backend == "hip" else "specialization_constant"
+        )
     reference = _reference_row(rows)
     max_abs = max((float(row.get("max_abs", 0.0)) for row in rows), default=0.0)
     max_rel = max((float(row.get("max_rel", 0.0)) for row in rows), default=0.0)
     correctness_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
     hardware = raw.get("hardware") if isinstance(raw.get("hardware"), dict) else {}
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": BENCH_NAME,
         "backend": backend,
@@ -308,15 +335,15 @@ def normalize_raw_result(
                 if backend == "hip"
                 else None,
                 "raw_config": config,
+                "timing_mode": timing_mode,
+                "independent_streams": config.get("independent_streams")
+                if backend == "hip"
+                else None,
                 "harness_command": harness_command,
                 "build_command": build_command,
                 "shader_command": shader_command,
                 "hardware": hardware,
-                "timing_method": (
-                    "HIP events around repeated launches"
-                    if backend == "hip"
-                    else "pre-recorded Vulkan command buffer submit+fence replay"
-                ),
+                "timing_method": "v2 single+burst GPU elapsed and host wall",
             }
         ),
         "correctness": {
@@ -328,6 +355,7 @@ def normalize_raw_result(
         "timing": _json_safe(
             {
                 "unit": "us_per_dispatch",
+                "primary_domain": "gpu_elapsed",
                 "median": reference.get("median_us"),
                 "p05": reference.get("p05_us"),
                 "p95": reference.get("p95_us"),
@@ -377,13 +405,22 @@ def normalize_raw_result(
     return result
 
 
-def _shape_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
+def _shape_key(row: dict[str, Any]) -> tuple[int, int, int, int, str]:
     return (
         int(row["k"]),
         int(row["rows"]),
         int(row["workgroup_size"]),
         int(row["body_repeats"]),
+        str(row["timing_mode"]),
     )
+
+
+def _metric_median(row: dict[str, Any], control: str, domain: str) -> float | None:
+    metric = row.get("timing", {}).get(control, {}).get(domain, {})
+    if metric.get("status") != "ok":
+        return None
+    value = metric.get("per_iteration_us", {}).get("median")
+    return float(value) if value is not None else None
 
 
 def build_comparison(
@@ -393,61 +430,138 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
+    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
+        raise ValueError("geometry comparisons require v2 result artifacts")
     hip_rows = hip_result.get("measurements", {}).get("rows", [])
     vulkan_rows = vulkan_result.get("measurements", {}).get("rows", [])
+    if any(row.get("workgroup_specialization") != "fixed" for row in hip_rows):
+        raise ValueError("HIP geometry comparison rows must use fixed workgroups")
+    hip_modes = {row.get("timing_mode") for row in hip_rows}
+    vulkan_modes = {row.get("timing_mode") for row in vulkan_rows}
+    if len(hip_modes) != 1 or hip_modes != vulkan_modes:
+        raise ValueError("HIP and Vulkan geometry timing modes do not match")
+    timing_contract = _load_timing_contract_module()
     hip_by_key = {_shape_key(row): row for row in hip_rows}
     vulkan_by_key = {_shape_key(row): row for row in vulkan_rows}
     matched = []
+    comparisons = []
     for key in sorted(set(hip_by_key) & set(vulkan_by_key)):
         hip_row = hip_by_key[key]
         vulkan_row = vulkan_by_key[key]
-        hip_us = float(hip_row["median_us"])
-        vulkan_us = float(vulkan_row["median_us"])
+        timing_contract.validate_timed_row(hip_row)
+        timing_contract.validate_timed_row(vulkan_row)
+        hip_us = _metric_median(hip_row, "burst", "gpu_elapsed")
+        vulkan_us = _metric_median(vulkan_row, "burst", "gpu_elapsed")
         matched.append(
             {
                 "k": key[0],
                 "rows": key[1],
                 "workgroup_size": key[2],
                 "body_repeats": key[3],
-                "hip_median_us": hip_us,
-                "vulkan_median_us": vulkan_us,
-                "vulkan_vs_hip_speedup": hip_us / vulkan_us if vulkan_us > 0 else None,
+                "timing_mode": key[4],
+                "hip_gpu_burst_median_us": hip_us,
+                "vulkan_gpu_burst_median_us": vulkan_us,
+                "vulkan_vs_hip_gpu_burst_speedup": (
+                    hip_us / vulkan_us
+                    if hip_us is not None and vulkan_us is not None and vulkan_us > 0
+                    else None
+                ),
                 "hip_gflops": hip_row.get("gflops"),
                 "vulkan_gflops": vulkan_row.get("gflops"),
                 "hip_correctness_pass": hip_row.get("correctness_pass"),
                 "vulkan_correctness_pass": vulkan_row.get("correctness_pass"),
             }
         )
+        for control in ("single", "burst"):
+            domain_results: dict[str, Any] = {}
+            for domain in ("gpu_elapsed", "host_wall"):
+                hip_metric = hip_row["timing"][control][domain]
+                vulkan_metric = vulkan_row["timing"][control][domain]
+                if hip_metric.get("status") != "ok" or vulkan_metric.get("status") != "ok":
+                    domain_results[domain] = {
+                        "status": "unavailable",
+                        "hip_status": hip_metric.get("status"),
+                        "vulkan_status": vulkan_metric.get("status"),
+                    }
+                else:
+                    try:
+                        ratio = timing_contract.comparison_ratio(
+                            hip_row,
+                            vulkan_row,
+                            control=control,
+                            domain=domain,
+                        )
+                    except ValueError as exc:
+                        domain_results[domain] = {
+                            "status": "not_comparable_submission_contract",
+                            "reason": str(exc),
+                            "hip_metric": hip_metric,
+                            "vulkan_metric": vulkan_metric,
+                        }
+                        continue
+                    domain_results[domain] = {
+                        "status": "ok",
+                        **ratio,
+                    }
+            comparisons.append(
+                {
+                    "k": key[0],
+                    "rows": key[1],
+                    "workgroup_size": key[2],
+                    "body_repeats": key[3],
+                    "timing_mode": key[4],
+                    "control": control,
+                    **domain_results,
+                }
+            )
 
     by_shape: dict[tuple[int, int], list[dict[str, Any]]] = {}
     for row in matched:
         by_shape.setdefault((int(row["k"]), int(row["rows"])), []).append(row)
     shape_summary = []
     for (k, rows), shape_rows in sorted(by_shape.items()):
-        best_hip = min(shape_rows, key=lambda row: float(row["hip_median_us"]))
-        best_vulkan = min(shape_rows, key=lambda row: float(row["vulkan_median_us"]))
-        best_speedup = max(shape_rows, key=lambda row: float(row["vulkan_vs_hip_speedup"] or 0.0))
+        comparable = [
+            row
+            for row in shape_rows
+            if row["hip_gpu_burst_median_us"] is not None
+            and row["vulkan_gpu_burst_median_us"] is not None
+        ]
+        if not comparable:
+            continue
+        best_hip = min(comparable, key=lambda row: float(row["hip_gpu_burst_median_us"]))
+        best_vulkan = min(
+            comparable, key=lambda row: float(row["vulkan_gpu_burst_median_us"])
+        )
+        best_speedup = max(
+            comparable,
+            key=lambda row: float(row["vulkan_vs_hip_gpu_burst_speedup"] or 0.0),
+        )
         shape_summary.append(
             {
                 "k": k,
                 "rows": rows,
                 "best_hip_workgroup": best_hip["workgroup_size"],
-                "best_hip_median_us": best_hip["hip_median_us"],
+                "best_hip_gpu_burst_median_us": best_hip["hip_gpu_burst_median_us"],
                 "best_vulkan_workgroup": best_vulkan["workgroup_size"],
-                "best_vulkan_median_us": best_vulkan["vulkan_median_us"],
-                "best_native_vulkan_vs_hip_speedup": (
-                    best_hip["hip_median_us"] / best_vulkan["vulkan_median_us"]
-                    if best_vulkan["vulkan_median_us"] > 0
+                "best_vulkan_gpu_burst_median_us": best_vulkan[
+                    "vulkan_gpu_burst_median_us"
+                ],
+                "best_native_vulkan_vs_hip_gpu_burst_speedup": (
+                    best_hip["hip_gpu_burst_median_us"]
+                    / best_vulkan["vulkan_gpu_burst_median_us"]
+                    if best_vulkan["vulkan_gpu_burst_median_us"] > 0
                     else None
                 ),
-                "largest_matched_vulkan_vs_hip_speedup": best_speedup["vulkan_vs_hip_speedup"],
+                "largest_matched_vulkan_vs_hip_gpu_burst_speedup": best_speedup[
+                    "vulkan_vs_hip_gpu_burst_speedup"
+                ],
                 "largest_matched_speedup_workgroup": best_speedup["workgroup_size"],
             }
         )
 
     source = hip_result.get("source", {})
     comparison = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "hipengine_micro_comparison",
         "bench": BENCH_NAME,
         "classification": "diagnostic_unclassified",
@@ -467,6 +581,7 @@ def build_comparison(
             "vulkan": vulkan_result.get("correctness", {}),
         },
         "matched_rows": matched,
+        "comparisons": comparisons,
         "shape_summary": shape_summary,
         "interpretation": (
             "Matched f32 GEMV/reduction workgroup sweep. This artifact can "
@@ -554,6 +669,10 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
                     str(args.warmup),
                     "--samples",
                     str(args.samples),
+                    "--timing-mode",
+                    args.timing_mode,
+                    "--independent-streams",
+                    str(args.independent_streams),
                     "--device-index",
                     str(args.device_index),
                 ]
@@ -592,6 +711,10 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
                 str(args.warmup),
                 "--samples",
                 str(args.samples),
+                "--timing-mode",
+                args.timing_mode,
+                "--independent-streams",
+                str(args.independent_streams),
                 "--device-index",
                 str(args.device_index),
             ]
@@ -601,7 +724,9 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
             raw.setdefault("config", {})["hip_wavefront_size_request"] = args.hip_wavefront_size
         shader_command = None
-        source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
+        source_hash = _hash_files(
+            [Path(__file__).resolve(), HIP_HARNESS, HIP_TIMING_HEADER, TIMING_CONTRACT]
+        )
     else:
         spirv, shader_command = _compile_vulkan_shader(build_dir)
         exe, build_command = _compile_vulkan_harness(build_dir)
@@ -625,10 +750,20 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
             str(args.warmup),
             "--samples",
             str(args.samples),
+            "--timing-mode",
+            args.timing_mode,
             "--device-index",
             str(args.device_index),
         ]
-        source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_SHADER])
+        source_hash = _hash_files(
+            [
+                Path(__file__).resolve(),
+                VULKAN_HARNESS,
+                VULKAN_SHADER,
+                VULKAN_TIMING_HEADER,
+                TIMING_CONTRACT,
+            ]
+        )
 
         completed = _run_command(harness_command, cwd=REPO_ROOT)
         if completed.returncode != 0:
@@ -666,7 +801,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--hip-workgroup-specialization",
         choices=["runtime", "fixed"],
-        default="runtime",
+        default="fixed",
         help="For HIP, compile runtime blockDim code or one fixed-workgroup binary per requested workgroup",
     )
     parser.add_argument("--hip-wavefront-size", choices=["default", "32", "64"], default="default")
@@ -677,6 +812,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--samples", type=int, default=11)
+    parser.add_argument(
+        "--timing-mode",
+        choices=["serial_latency", "independent_throughput"],
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--skip-device-probes", action="store_true")
     parser.add_argument("--env-timeout-s", type=float, default=8.0)
@@ -687,14 +828,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--compare and --backend are mutually exclusive")
     if not args.compare and not args.backend:
         parser.error("one of --backend or --compare is required")
-    if args.backend != "hip" and args.hip_workgroup_specialization != "runtime":
-        parser.error("--hip-workgroup-specialization=fixed only applies to --backend hip")
+    if args.backend == "vulkan" and args.hip_workgroup_specialization != "fixed":
+        parser.error("corrected Vulkan comparisons require fixed HIP workgroup artifacts")
+    if args.backend is None and args.hip_workgroup_specialization != "fixed":
+        parser.error("comparison mode does not accept runtime HIP workgroup specialization")
     if args.backend != "hip" and args.hip_wavefront_size != "default":
         parser.error("--hip-wavefront-size only applies to --backend hip")
     for name in ("k_list", "rows_list", "workgroups"):
         values = _list_arg(getattr(args, name))
         if not values or any(not value.isdigit() or int(value) <= 0 for value in values):
             parser.error(f"--{name.replace('_', '-')} must be a comma-separated positive integer list")
+    if args.independent_streams <= 0:
+        parser.error("--independent-streams must be positive")
     return args
 
 
