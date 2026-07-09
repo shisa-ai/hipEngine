@@ -148436,3 +148436,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   each timing header from stdin with `hipcc --offload-arch=gfx1151` or `c++
   -std=c++17`; ran `git diff --check`. No GPU performance row was run for this
   documentation/infrastructure unit.
+
+## 2026-07-10 - Host-wall submission comparability gate
+
+- Tightened the v2 comparator so GPU elapsed ratios depend on matching work and
+  dependency contracts, while host-wall ratios additionally require a matching
+  submission class. HIP graph replay is comparable with Vulkan command-buffer
+  replay; a host-enqueued HIP loop is not a host-overhead peer of one Vulkan
+  command-buffer submission.
+- Unmatched host walls remain required backend-specific measurements but do not
+  produce a speed ratio. Added a focused rejection test and documented the gate
+  in `docs/HIP-vs-VULKAN.md`.
+- Validation: `python3 -m pytest -q tests/test_micro_timing_contract.py`
+  (`9 passed`); `python3 -m compileall -q
+  benchmarks/micro/timing_contract.py`; `git diff --check`.
