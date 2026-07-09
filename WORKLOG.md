@@ -148685,3 +148685,59 @@ graphless decode launch-collapse path without regressing target/serial parity.
   each artifact contained five matched cross-backend rows with valid GPU
   ratios and rejected direct/multi-stream versus command-buffer host ratios.
   `/tmp/reduction-*-v2.json` is smoke evidence only.
+
+## 2026-07-10 - Q4 selected-dual timing contract v2
+
+- Converted the paired production Q4_K selected-dual q8_1+dp4a probe to v2.
+  The HIP side invokes the production quantize and selected-dual kernels
+  directly. Vulkan now uses the same ten-uint q8_1 push ABI, packed BF16
+  activation input, native 16-bit BF16 dual outputs, and explicitly enabled
+  `storageBuffer16BitAccess`.
+- Serial mode preserves quantize-to-dot, dot-to-next-quantize, and shared
+  dual-output ordering. Independent mode partitions activation, q8_1, and both
+  outputs over `max(reps, warmup, 1)` and uses one slice-scoped Vulkan event
+  dependency from each quantize to only its matching dot. Single and exact
+  burst validation cover quantize-only, prequantized dot, and combined work.
+- The comparator rejects v1 data, backend/arch/parameter/mode mismatches,
+  duplicate rows, and unequal exact workgroup row sets. It emits GPU ratios
+  for single and burst controls and rejects HIP host-enqueued versus Vulkan
+  command-buffer host ratios. A regression assertion covers the matched-row
+  shape metadata mapping.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_q4_selected_dual_real_slice.py
+  tests/test_micro_timing_contract.py` (`27 passed`); Python compile,
+  warning-clean Vulkan C++ syntax, and wg64 GLSL compile passed. gfx1151 paired
+  smokes used wg64, reps=2, warmup=3, samples=3 in both modes. All three
+  operations passed exact correctness, producing three matched rows and six
+  timing controls per comparison. `/tmp/q4-v2-*.json` is smoke evidence only.
+
+## 2026-07-10 - Vulkan event-scope correction and multi-queue timing
+
+- Independent review against the Vulkan synchronization specification found
+  that `vkCmdSetEvent` has a cumulative first synchronization scope over prior
+  qualifying commands in submission order. Recording all quantize/set-event
+  commands before all wait/dot commands therefore makes later dots depend on
+  earlier iterations even with distinct events and slice-scoped memory
+  barriers. The Q4, dense-Q8, and two-stage combined independent event trials
+  are withdrawn; their serial rows and one-stage disjoint throughput rows are
+  unaffected.
+- Added `VulkanMultiQueueTimer` and compute-queue-family selection to the
+  shared timing header. Multi-stage independent work can now be distributed
+  round-robin over timestamp-capable queues, analogous to HIP worker streams.
+  A host-signaled timeline semaphore releases all lanes after submission;
+  per-lane query pairs report the minimum-start to maximum-end GPU span, while
+  host wall covers all queue submissions, the signal, and all fence waits.
+- Core Vulkan timestamps are not comparable across queues. The helper therefore
+  refuses cross-queue GPU spans unless `VK_KHR_calibrated_timestamps` or
+  `VK_EXT_calibrated_timestamps` is supported and explicitly enabled; it also
+  retains every per-lane duration alongside the calibrated makespan.
+- Validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_vulkan_multi_queue_timing.py
+  tests/test_micro_timing_contract.py` (`11 passed`); warning-clean syntax
+  checks passed for the Q4, Q8, and two-stage Vulkan harnesses. The gfx1151
+  runtime probe selected compute-only queue family 1 with four queues and
+  exercised two coordinated lanes twice with calibrated timestamps (`10.3797
+  us` GPU span, `92.343 us` host wall on the final timestamp-only sample). No
+  performance claim is made from that plumbing smoke. Next, each multi-stage
+  harness must replace its cumulative
+  event path with queue lanes before its throughput row can be retained.
