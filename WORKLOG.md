@@ -148258,3 +148258,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py`;
   `PYTHONPATH=. uv run --extra dev pytest -q tests/test_qwen35_resident_batch_layout.py::test_dflash_verify_sync_phases_env`.
   Pycompile passed; focused env test passed (`1 passed`).
+
+## 2026-07-09 - PARO/GGUF queue applicability split
+
+- Reviewed the queued Q4_K selected-dual HIP recovery item against the active
+  PARO recovery path. It is a GGUF-only optimization: the retained
+  HIP/Vulkan evidence is for GGUF Q4_K selected-dual gate/up q8_1+dp4a slices,
+  while PARO uses `w4_paro` AWQ/WMMA selected-dual paths and has no Q*_K block
+  layout in the runtime hot path.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to park Q4_K selected-dual recovery
+  for the GGUF queue and keep PARO work focused on DFlash buckets, server
+  grouping/shape, graph/fusion launch reduction, and PARO-native AWQ/MoE paths.
+- Validation: re-read the changed `docs/PARO-GGUF-MTP-TRANSFER.md` section and
+  ran `git diff --check`.

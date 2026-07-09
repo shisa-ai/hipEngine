@@ -21,7 +21,7 @@ below:
 | 1 | PARO server grouping policy for c6 | Done in `a1c048d2`: retained-defaults mode avoids accidental c6 live-row groups by splitting exactly six greedy rows into c4+c2. Disable with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. | Focused server batcher tests passed; natural c=8/c6-forced server rerun remains the perf gate. |
 | 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
 | 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
-| 4 | Q4_K selected-dual HIP recovery | Queued GGUF-specific narrow experiment. | Same retained real-slice oracle; only continue if disassembly shows reduced instruction, waitcnt, or address overhead. |
+| 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
 | 5 | Shape-keyed HIP graph/fusion buckets | Queued. | Bucket by active rows, context, verifier mode, and replay shape; prove launch-wall reduction. |
 | 6 | q8_1/dp4a activation reuse audit | Queued low-risk cleanup. | Only retain where exact and where profiling shows duplicated q8_1 staging. |
 
@@ -43,6 +43,12 @@ synchronizations and reports `target_verify_embedding`,
 `lm_head_top1`, `accept_summary_enqueue`, and `accept_readback`. Do not use
 sync-phase rows as production throughput claims; use them to decide where the
 next kernel work should land.
+
+The Q4_K selected-dual HIP recovery item remains valid for GGUF because the
+retained HIP/Vulkan microbench matrix showed a Q4_K-specific Vulkan lead. It is
+not a PARO transfer item: no `Q*_K` block layout is present in the PARO
+`w4_paro` runtime path, and copying that work into PARO would be a category
+error unless a PARO AWQ selected-dual slice shows the same bottleneck.
 
 ## Current Evidence Split
 
