@@ -3756,9 +3756,11 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     assert retained_bench._resolved_batch_decode_full_attn_output_path(c2) == "batch"
 
     # c=4/c=8 generated-token equality is green locally only when every
-    # full-attention layer uses <=2-row chunks. Keep those defaults explicit so
-    # future retained-bench refactors do not silently fall back to the red
-    # selected-layer scopes or rows>=4 context launches.
+    # full-attention layer uses <=2-row chunks. c=6 is green with native linear
+    # attention and the selected early full-attention rowchunks below. Keep
+    # those defaults explicit so future retained-bench refactors do not
+    # silently fall back to red selected-layer scopes or rows>=4 context
+    # launches.
     c4 = args_for(4)
     assert retained_bench._resolved_batch_decode_full_attn_path(c4) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c4) == 2
@@ -3769,9 +3771,9 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     c6 = args_for(6)
     assert retained_bench._resolved_batch_decode_full_attn_path(c6) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c6) == 2
-    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c6) == 2
-    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c6) == ""
-    assert retained_bench._resolved_batch_decode_full_attn_output_path(c6) == "batch"
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c6) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c6) == "3,7,11,15,19,23,27,31"
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c6) == "batch_gemv"
 
     c8 = args_for(8)
     assert retained_bench._resolved_batch_decode_full_attn_path(c8) == "native_batch"
@@ -3899,9 +3901,9 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7,11,15,19,23,27,31"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=4)
     )

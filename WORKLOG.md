@@ -147887,3 +147887,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   throughput. Status remains diagnostic because full-attention rowchunking is
   still the active blocker. Compact summary:
   `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-smallbatch-shared-summary.json`.
+
+## 2026-07-09 - PARO c6 selected full-rowchunk repair
+
+- Narrowed the c6 retained full-attention rowchunk default from every
+  full-attention layer to layers `3,7,11,15,19,23,27,31`; kept native rows=6
+  linear attention, selected-c1 batch MoE, and forced small-batch shared expert.
+  Also fixed retained-bench auto c6 linear rowchunk resolution from stale
+  rowchunk2 to `0`.
+- Key diagnostics:
+  - no full-attention rowchunk is faster but rejected:
+    `114.329 tok/s`, median `52.140 ms`, generated-token equality failed at
+    token 7; artifact
+    `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-full-no-rowchunk-smallbatch-shared-local-equality.json`.
+  - selected full-rowchunk layers `3,7,11,15,19,23,27,31` passed full 512/128
+    generated-token equality: explicit run `109.122 tok/s`, median `54.640 ms`;
+    auto-default run `108.929 tok/s`, median `54.716 ms`; artifact
+    `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json`.
+  - previous all-full-layer rowchunk bridge was `107.891 tok/s`, median
+    `55.293 ms`, so auto selected-rowchunk is `+0.96%` and `-0.577 ms/step`.
+- Forced server `n=6` rerun after restarting the patched server on port `18086`:
+  `PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18086 --model llama --prompt-names code_python --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency 1 --extra-payload '{"n":6}' --out benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-selected-full-rowchunks.json`.
+- Server result: `9.26 backend generated tok/s`, `50.434 ms/step`,
+  `243.541 ms` batch prefill, `6405.172 ms` batch decode. Metadata confirms
+  rows=6, `moe_decode_path=selected_c1_batch`,
+  `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk,
+  and `full_attention_row_chunk_layers=[3,7,11,15,19,23,27,31]`. This improves
+  the prior server bridge `51.053 -> 50.434 ms/step` and `9.16 -> 9.26 tok/s`
+  (+1.09%). Status remains diagnostic/performance_claim=false because selected
+  MoE/full-rowchunk and retained primitive/profiler/scaling gates remain.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers tests/test_generation_batch_scheduler.py::test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontier tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env`.
+- Summary artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selected-full-rowchunks-summary.json`.

@@ -235,9 +235,9 @@ Interpretation:
 Follow-up full 512/128 probes refined this repair order: c2 no longer needs a
 per-row full-attention fallback when the global selected-c1 MoE discriminator is
 enabled, c4/c8 need all full-attention producer layers split into rowchunk2
-groups, and c6 needs both all-layer full-attention rowchunk2 and linear-attention
-rowchunk2. c6 rowchunk3 is hidden-red, so the current safe c6 row group cap is
-two rows.
+groups, and c6 needs selected early full-attention producer layers split into
+rowchunk2 groups. c6 rowchunk3 is hidden-red, so the current safe c6 row group
+cap is two rows.
 
 ## Local c>N Recovery Frontier
 
@@ -255,6 +255,7 @@ missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
 | 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on full-attention layers `3,7,11,15,19,23,27,31`, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `108.929 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `107.891 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, native linear attention, per-row c1 MoE on linear layers, serial LM-head, native/batch projection | Pass | `92.800 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, native/batch projection | Pass | `87.612 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json` |
@@ -294,11 +295,14 @@ Compact summary artifact:
 | --- | --- | ---: | ---: | --- |
 | old c6 bridge: full rowchunk2 + linear rowchunk2 + selected-c1 MoE | Pass | `87.612 tok/s` | `68.282 ms` | diagnostic correctness bridge |
 | new c6 repair: full rowchunk2 + native rows=6 linear + per-row c1 MoE on linear layers | Pass | `92.800 tok/s` | `64.335 ms` | diagnostic correctness bridge |
-| current c6 repair: full rowchunk2 + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert | Pass | `107.891 tok/s` | `55.293 ms` | diagnostic correctness bridge |
+| current c6 repair: selected full rowchunk2 layers `3,7,11,15,19,23,27,31` + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert | Pass | `108.929 tok/s` | `54.716 ms` | diagnostic correctness bridge |
+| previous c6 repair: full rowchunk2 on every full-attention layer + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert | Pass | `107.891 tok/s` | `55.293 ms` | diagnostic correctness bridge |
 
-Delta: the current small-batch shared-expert repair is `+23.15%` aggregate
-decode and `-12.989 ms` median decode step versus the linear-rowchunk bridge,
-and `+16.26%` / `-9.042 ms` versus the per-row-linear-MoE repair. The
+Delta: the current selected-full-rowchunk repair is `+24.33%` aggregate
+decode and `-13.566 ms` median decode step versus the linear-rowchunk bridge,
+and `+17.38%` / `-9.619 ms` versus the per-row-linear-MoE repair. It also
+beats the previous all-full-layer rowchunk repair by `+0.96%` and
+`-0.577 ms/step`. The
 hidden-bisect says the native rows=6 linear layer is bit-clean through
 `mlp_input`; the first drift in the old native-linear probe was the batched
 selected-c1 MoE output, specifically the multi-row packed shared-expert path.
@@ -313,8 +317,11 @@ green local frontier:
 - c2/c4/c6/c8: auto-select selected-c1 MoE.
 - c2/c4/c6/c8: load the c-aware projection dispatch catalog; c6 now has a
   generated-token-green projection candidate.
-- c4/c6/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
+- c4/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
   every full-attention layer is rowchunked.
+- c6: auto-select full-attention rowchunk2 only on layers
+  `3,7,11,15,19,23,27,31`; no-rowchunk is faster but rejected at token 7, while
+  all-layer rowchunk is green but slower.
 - c6: auto-select native rows=6 linear-attention segments, selected-c1 batch
   MoE, and forced small-batch shared expert. Explicit
   `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE=1` keeps the older
@@ -327,7 +334,7 @@ Server relevance: the natural c=8 server diagnostic previously split into a
 fast c2 group and a slow c6 group. Recovering c2/c4/c8 direct diagnostics helps,
 and the c6 direct diagnostic now has a correct fallback shape. It is still a
 diagnostic fallback, not a retained/default throughput claim, because it relies
-on selected-c1 MoE and rowchunked linear/full attention and is missing the
+on selected-c1 MoE and rowchunked full attention and is missing the
 primitive/profiler/baseline retained gates.
 
 Runtime retained-default recheck:
@@ -336,8 +343,10 @@ Runtime retained-default recheck:
 | --- | --- |
 | Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults, before the per-row-linear-MoE repair | rows=6 used `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
 | Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
-| Runtime default after the small-batch shared-expert repair | `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now selects selected-c1 batch MoE plus `moe_c1_shared_expert_decode_path=small_batch_forced` for rows=6 when selected-c1 MoE is active and the shared-expert env override is blank. Direct retained-bench generated-token equality passed at `107.891 tok/s`, median `55.293 ms`; artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json`. A server rerun is still pending. |
+| Runtime default after the small-batch shared-expert repair | `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now selects selected-c1 batch MoE plus `moe_c1_shared_expert_decode_path=small_batch_forced` for rows=6 when selected-c1 MoE is active and the shared-expert env override is blank. The first direct retained-bench generated-token equality bridge passed at `107.891 tok/s`, median `55.293 ms`; artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json`. |
 | Forced OpenAI `n=6` server request after the small-batch shared-expert repair | rows=6 used `moe_decode_path=selected_c1_batch`, `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk, `full_attention_decode_path=native_batch_row_chunks`, and `full_attention_row_chunk_size=2`; backend generated throughput `9.16 tok/s`, decode step `51.053 ms`. Compact summary `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-smallbatch-shared-summary.json`; raw artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json`. |
+| Runtime default after the selected-full-rowchunk repair | rows=6 now uses full-attention rowchunk2 only on `3,7,11,15,19,23,27,31`, native rows=6 linear attention, selected-c1 batch MoE, and forced small-batch shared expert. Direct generated-token equality passed at `108.929 tok/s`, median `54.716 ms`; no-rowchunk is faster (`114.329 tok/s`, median `52.140 ms`) but rejected at token 7. Summary `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selected-full-rowchunks-summary.json`; direct artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json`. |
+| Forced OpenAI `n=6` server request after the selected-full-rowchunk repair | rows=6 used `moe_decode_path=selected_c1_batch`, `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `full_attention_row_chunk_layers=[3,7,11,15,19,23,27,31]`; backend generated throughput `9.26 tok/s`, decode step `50.434 ms`. Raw artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-selected-full-rowchunks.json`. |
 
 c6 server splitter:
 
@@ -350,27 +359,30 @@ Compact summary artifact:
 | selected rowchunk repair | selected-c1 | rowchunk2 | `64.101 ms` | `8.14 tok/s` | current server-visible correctness bridge |
 | selected native-linear | selected-c1 batch | native segments | `51.619 ms` | `9.01 tok/s` | fastest prior timing, but hidden-red because rows=6 selected-c1 batch MoE drifts |
 | selected native-linear + per-row linear MoE | per-row c1 on linear layers | native segments | pending server rerun | pending | direct retained-bench generated-token green at `92.800 tok/s` |
-| selected native-linear + small-batch shared expert | selected-c1 batch with small-batch shared expert | native segments | `51.053 ms` | `9.16 tok/s` | server-visible; full-attention rowchunk diagnostic remains |
+| selected native-linear + small-batch shared expert + selected full rowchunks | selected-c1 batch with small-batch shared expert | native segments | `50.434 ms` | `9.26 tok/s` | server-visible; full-attention rowchunk diagnostic remains |
+| selected native-linear + small-batch shared expert + all full rowchunks | selected-c1 batch with small-batch shared expert | native segments | `51.053 ms` | `9.16 tok/s` | prior server-visible bridge |
 | grouped rowchunk | grouped-compact | rowchunk2 | `71.877 ms` | `7.59 tok/s` | hidden-red and slower |
 
 This split says the biggest c6 tax was linear rowchunk2, not projection. The
 direct repair shows native rows=6 linear-attention segments are correctness-clean
 when the selected-c1 shared expert uses the small-batch path. The remaining
-server rerun confirms the new default is visible and recovers the c6 server
-timing to `51.053 ms/step`; the remaining work is to decide whether to keep the
-shared-expert small-batch bypass, fold it into the bundled C dispatcher, remove
-the remaining full-attention rowchunk blocker, or avoid live c6 groups in
+server rerun confirms the selected-rowchunk default is visible and recovers the
+c6 server timing to `50.434 ms/step`; the remaining work is to decide whether to
+keep the shared-expert small-batch bypass, fold it into the bundled C dispatcher,
+remove the remaining full-attention rowchunk blocker, or avoid live c6 groups in
 scheduling.
 
 Next repair order:
 
-1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c6/c8 all-layer full-attention
-   rowchunk2, and c6 native-linear plus forced small-batch shared expert, as the local
-   equality starting point for direct retained sweeps and the opt-in runtime
-   retained-default bridge.
-2. Re-run natural c=8 server traffic with the server-visible c6 small-batch
-   shared-expert repair; forced `n=6` now measures `51.053 ms/step` and
-   `9.16 backend generated tok/s`.
+1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c8 all-layer full-attention
+   rowchunk2, and c6 selected full-attention rowchunks
+   `3,7,11,15,19,23,27,31` plus native-linear and forced small-batch shared
+   expert, as the local equality starting point for direct retained sweeps and
+   the opt-in runtime retained-default bridge.
+2. Re-run natural c=8 server traffic after the selected-rowchunk repair if the
+   scheduler forms c6 groups; the latest natural c=8 probe formed two c4 groups,
+   so it did not exercise c6. Forced `n=6` now measures `50.434 ms/step` and
+   `9.26 backend generated tok/s`.
 3. Fold the small-batch shared-expert route into the c1 C dispatcher or add a
    dispatcher variant for it; the current runtime bypass is correct but loses
    the bundled-launch path.

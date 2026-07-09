@@ -231,6 +231,8 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
 
     if rows in {3, 5}:
         return {3, 7, 11, 15}
+    if rows == 6:
+        return {3, 7, 11, 15, 19, 23, 27, 31}
     return set()
 
 
