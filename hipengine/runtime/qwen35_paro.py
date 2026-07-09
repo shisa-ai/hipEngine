@@ -9667,17 +9667,17 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        if not force_small_batch_shared_expert:
-            if self._try_moe_c1_c_dispatch(
-                hidden=hidden,
-                residual=residual,
-                out=out,
-                scratch=scratch,
-                tokens=tokens,
-                group_size=group_size,
-                stream=stream,
-            ) is not None:
-                return out or scratch.moe_out
+        if self._try_moe_c1_c_dispatch(
+            hidden=hidden,
+            residual=residual,
+            out=out,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            force_small_batch_shared_expert=force_small_batch_shared_expert,
+            stream=stream,
+        ) is not None:
+            return out or scratch.moe_out
         self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         if tokens > 1 and _selected_moe_down_staged_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
@@ -9713,6 +9713,7 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoMoeScratch,
         tokens: int,
         group_size: int,
+        force_small_batch_shared_expert: bool,
         stream: int,
     ) -> Tensor | None:
         """Return ``out`` if the C dispatcher was used, else None for fallback.
@@ -9810,6 +9811,7 @@ class Qwen35ParoDecodeState:
             selected_rotate_barrier_epoch=selected_barrier_epoch,
             selected_down_barrier_target=selected_down_barrier_target,
             selected_down_barrier_epoch=selected_down_barrier_epoch,
+            force_small_batch_shared_expert=force_small_batch_shared_expert,
         )
         return target_out
 

@@ -147921,3 +147921,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers tests/test_generation_batch_scheduler.py::test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontier tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env`.
 - Summary artifact:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selected-full-rowchunks-summary.json`.
+
+## 2026-07-09 - PARO c6 small-batch shared-expert C dispatch
+
+- Folded the rows=6 forced small-batch shared-expert route into the MoE C1 C
+  dispatcher instead of bypassing the bundled dispatcher when
+  `force_small_batch_shared_expert=True`.
+  - Added a `force_small_batch_shared_expert` field to `MoeC1Args`.
+  - For linear-attention dispatcher calls with that flag, use the same
+    decode-style packed shared expert as
+    `shared_expert_paro_w4_fp16(force_small_batch=True)`: packed gate/up GEMV,
+    fused SiLU/down-rotate, shared-down GEMV, then normal combine.
+  - Kept the Python pipeline as fallback when dispatcher preconditions fail.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/moe_c1_dispatch.py hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py tests/test_qwen35_decode_state.py tests/test_moe_c1_dispatch.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_uses_c_dispatch tests/test_qwen35_decode_state.py::test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_falls_back tests/test_moe_c1_dispatch.py`.
+- GPU diagnostic, c6 retained default selected full-rowchunk path:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 128 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path auto --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-smallbatch-shared-selected-full-rowchunks-local-equality.json`.
+- Result: generated-token equality stayed green. Decode measured
+  `109.205 tok/s`, median `54.610 ms`, versus the prior runtime-bypass artifact
+  `108.929 tok/s`, median `54.716 ms`.
+- Same-session fallback comparison with `HIPENGINE_MOE_C1_C_DISPATCH=0`:
+  generated-token equality green, `109.123 tok/s`, median `54.672 ms`.
+  C-dispatch-on is only `+0.075%` vs off, so this is structural cleanup rather
+  than a meaningful c6 speed win. The remaining c6 target is the selected
+  full-attention rowchunk blocker or a scheduler policy that avoids live c6
+  groups.
+- Summary artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-cdispatch-smallbatch-shared-summary.json`.

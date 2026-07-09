@@ -3178,7 +3178,7 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     ]
 
 
-def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_bypasses_c_dispatch(monkeypatch) -> None:
+def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_uses_c_dispatch(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=6, activation_dtype="fp16")
@@ -3186,7 +3186,37 @@ def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_bypasses_c_d
     residual = _tensor(0xCC00, (6, 4096), "fp16")
     calls = []
 
-    monkeypatch.setattr(state, "_try_moe_c1_c_dispatch", lambda **_kwargs: calls.append("c_dispatch") or scratch.moe_out)
+    def fake_c_dispatch(**kwargs):
+        calls.append(("c_dispatch", bool(kwargs["force_small_batch_shared_expert"]), int(kwargs["tokens"])))
+        return scratch.moe_out
+
+    monkeypatch.setattr(state, "_try_moe_c1_c_dispatch", fake_c_dispatch)
+
+    out = state.run_moe_c1_fp16(
+        hidden,
+        residual,
+        scratch=scratch,
+        tokens=6,
+        force_small_batch_shared_expert=True,
+    )
+
+    assert out is scratch.moe_out
+    assert calls == [("c_dispatch", True, 6)]
+
+
+def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_falls_back(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=6, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (6, 4096), "fp16")
+    residual = _tensor(0xCC00, (6, 4096), "fp16")
+    calls = []
+
+    def fake_c_dispatch(**kwargs):
+        calls.append(("c_dispatch", bool(kwargs["force_small_batch_shared_expert"]), int(kwargs["tokens"])))
+        return None
+
+    monkeypatch.setattr(state, "_try_moe_c1_c_dispatch", fake_c_dispatch)
     monkeypatch.setattr(state, "route_moe_topk_shared_fp16", lambda *args, **kwargs: calls.append("router"))
     monkeypatch.setattr(state, "selected_moe_gate_up_pack8_fp16", lambda *args, **kwargs: calls.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "_selected_moe_down_staged_enabled", lambda: False)
@@ -3214,8 +3244,8 @@ def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_bypasses_c_d
     )
 
     assert out is scratch.moe_out
-    assert "c_dispatch" not in calls
     assert calls == [
+        ("c_dispatch", True, 6),
         "router",
         "gate_up",
         "activate_down",
