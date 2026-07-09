@@ -148386,3 +148386,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_micro_hip_timing.py` (`6 passed`); `python3 -m compileall -q
   hipengine/core/hip.py benchmarks/micro/hip_timing.py`; `git diff --check` on
   the runtime/helper/tests.
+
+## 2026-07-10 - Q6 lm-head cross-backend ratio retired
+
+- Removed timing ratios from the Q6 lm-head diagnostic join. The HIP side uses
+  BF16 x Q6_K T16 rowtile chunking while the Vulkan side uses q8_1 x Q6_K X8
+  full-output math/layout, and correctness was only established separately
+  within each backend. Matching dimensions do not make these algorithms a
+  valid backend comparison.
+- The join now emits schema v2 with `performance_claim=false`, an empty
+  `comparisons` list, and `blocked_unmatched_math_layout` per matched shape.
+  Separate shape diagnostics remain available until a same-algorithm pair is
+  implemented.
+- Validation: `python3 -m pytest -q
+  tests/test_micro_q6_lm_head_rowtile_probe.py` (`1 passed`);
+  `python3 -m compileall -q
+  benchmarks/micro/runners/q6_lm_head_rowtile_probe.py`; `git diff --check`.

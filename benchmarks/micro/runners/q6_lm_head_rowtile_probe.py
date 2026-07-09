@@ -531,9 +531,6 @@ def build_comparison(
         hip = hip_rows.get(key)
         if hip is None:
             continue
-        hip_us = float(hip["q6_lm_head_median_us"])
-        vk_dot_us = float(row["q6_x8_dot_median_us"])
-        vk_combined_us = float(row["q6_x8_quantize_plus_dot_median_us"])
         matched.append(
             {
                 "in_features": key[0],
@@ -542,25 +539,18 @@ def build_comparison(
                 "vulkan_local_size": row.get("local_size"),
                 "hip_variant": hip.get("variant"),
                 "vulkan_variant": row.get("variant"),
-                "hip_q6_t16_rowtile_median_us": hip_us,
-                "vulkan_q6_x8_dot_median_us": vk_dot_us,
-                "vulkan_q6_x8_quantize_plus_dot_median_us": vk_combined_us,
-                "vulkan_vs_hip_dot_speedup": hip_us / vk_dot_us if vk_dot_us > 0 else None,
-                "vulkan_vs_hip_quantize_plus_dot_speedup": hip_us / vk_combined_us
-                if vk_combined_us > 0
-                else None,
                 "hip_correctness_pass": hip.get("correctness_pass"),
                 "vulkan_correctness_pass": row.get("correctness_pass"),
+                "comparison_status": "blocked_unmatched_math_layout",
             }
         )
-    combined_speedups = [float(row["vulkan_vs_hip_quantize_plus_dot_speedup"]) for row in matched]
-    dot_speedups = [float(row["vulkan_vs_hip_dot_speedup"]) for row in matched]
     return _json_safe(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
-            "classification": "real_slice_probe",
+            "classification": "not_reproducible",
+            "performance_claim": False,
             "source": hip_result.get("source", {}),
             "command": command,
             "hardware": {
@@ -576,18 +566,17 @@ def build_comparison(
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
             },
+            "comparisons": [],
             "matched_rows": matched,
             "summary": {
                 "matched_rows": len(matched),
-                "combined_speedup_min": min(combined_speedups) if combined_speedups else None,
-                "combined_speedup_max": max(combined_speedups) if combined_speedups else None,
-                "dot_speedup_min": min(dot_speedups) if dot_speedups else None,
-                "dot_speedup_max": max(dot_speedups) if dot_speedups else None,
+                "comparison_status": "blocked_unmatched_math_layout",
             },
             "interpretation": (
-                "Large Q6_K lm-head-shaped diagnostic. HIP uses production-style BF16 x Q6_K "
-                "T16 rowtile chunking; Vulkan uses the existing q8_1+dp4a Q6_K X8 full-output "
-                "shader. Correctness is gated within each backend, not cross-backend bit identity."
+                "No HIP/Vulkan timing ratio is valid for this join. HIP uses BF16 x Q6_K T16 "
+                "rowtile chunking while Vulkan uses q8_1 x Q6_K X8 full-output math and layout. "
+                "Correctness is gated only within each backend. Retain the rows as separate "
+                "shape diagnostics until both backends execute the same algorithm and contract."
             ),
         }
     )
