@@ -148521,3 +148521,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   exact-burst gate; comparisons emitted GPU ratios and rejected host-wall
   ratios as unmatched submission contracts. These tiny rows are diagnostic
   smoke only; artifacts are under `/tmp/dot-*-v2.json`.
+
+## 2026-07-10 - Memory/waitcnt timing contract v2
+
+- Converted the paired memory/waitcnt diagnostic to timing contract v2 with
+  matched wg64/128/256 builds. Serial mode performs a real read-modify-write
+  into shared output and inserts Vulkan write-to-read/write compute barriers;
+  independent mode assigns every repetition a disjoint output slice.
+- Both backends now emit single and burst GPU/host distributions and validate
+  the exact sequence against the sampled CPU oracle. Warmup is exactly the
+  requested number of logical iterations. Source hashes include the shared
+  timing helpers and executable Python contract.
+- Focused validation: `PYTHONPATH=. pytest -q
+  tests/test_micro_memory_waitcnt.py tests/test_micro_timing_contract.py`
+  (`17 passed`); full HIP and Vulkan wrapper builds/runs on gfx1151 for
+  coalesced:1, wg128, n=1024, body-iters=8, reps=3, warmup=2, samples=2 in
+  both timing modes (with independent warmup=4 to cover warmup beyond reps).
+  All four outputs passed exact-burst correctness; both
+  comparisons emitted GPU ratios and marked host wall
+  `not_comparable_submission_contract`. These are diagnostic smokes only;
+  artifacts are under `/tmp/memory-*-serial.json` and
+  `/tmp/memory-*-independent.json`.
