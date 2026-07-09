@@ -148292,3 +148292,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. uv run --extra dev pytest -q tests/test_speculative_benchmark.py`.
   Pycompile passed; focused helper test passed; speculative schema file passed
   (`7 passed`).
+
+## 2026-07-09 - PARO q8_1/dp4a reuse audit
+
+- Audited the queued q8_1/dp4a activation reuse item against PARO and GGUF.
+  Focused searches found no q8_1/dp4a staging in the PARO runner,
+  server/generation path, DFlash harness, or PARO AWQ/WMMA kernels. PARO uses
+  `w4_paro` pack8/WMMA kernels with FP16/BF16 activations, so there is no
+  current PARO reuse cleanup to implement.
+- Checked the GGUF MTP resident draft path: `_try_dense_q8_dp4a_f32`,
+  `_try_dense_q8_dp4a_dual_f32`, and `_try_dense_q8_dp4a_triple_f32` each
+  quantize once and reuse the q8_1 activation buffer for their single/dual/triple
+  Q8_0 dp4a dot. The Q6 top-1 path quantizes `head_normed_bf16` once before its
+  selected stage1/gather path. No duplicated q8_1 staging was identified from
+  code inspection.
+- Updated `docs/PARO-GGUF-MTP-TRANSFER.md` to close the item as audited/no-PARO
+  transfer and keep it as a GGUF profiling watch item only.
+- Validation:
+  `rg -n "q8_1|Q8_1|dp4a|DP4A|q8_dp4a|gguf_q4_k_quantize|gguf_q6_k.*dp4a|gguf_q8_0_dp4a" hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py hipengine/generation/qwen35_paro.py hipengine/server/api.py scripts/dflash_chain_e2e_bench.py hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.py hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip`
+  returned no matches; the matching GGUF search showed the expected
+  `mtp_resident_draft.py` q8 helpers and GGUF q8 wrapper files;
+  `git diff --check` passed; re-read the changed transfer-doc section.
