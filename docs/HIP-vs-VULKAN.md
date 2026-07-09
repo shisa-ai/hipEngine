@@ -93,7 +93,7 @@ Last updated: 2026-07-10.
 | Reduction | Pending v2 repair/rerun | Pending v2 repair/rerun | Static ISA evidence remains valid. |
 | Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; gfx1151 correctness smoke passed both modes. |
 | Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Matched wg64/128/256 and sequence-tagged gfx1151 smoke passed; static dot4 evidence remains valid. |
-| VOPD | Pending v2 rerun | Pending v2 rerun | Static VOPD evidence remains valid. |
+| VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; static VOPD evidence remains valid. |
 | Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
 | Two-stage reduction | Pending v2 rerun | Diagnostic only | Existing barriers make this the strongest legacy control, but clocks still differed. |
 | Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
