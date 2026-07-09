@@ -22,7 +22,8 @@ layout(push_constant) uniform PushConstants {
     uint k;
     uint rows;
     uint body_repeats;
-    uint reserved;
+    uint output_slice;
+    uint sequence_id;
 } pc;
 
 shared float scratch[256];
@@ -64,6 +65,7 @@ void main() {
     }
 
     if (lid == 0u) {
-        out_values[row] = scratch[0];
+        out_values[pc.output_slice * pc.rows + row] =
+            scratch[0] + float(pc.sequence_id) * 0.125;
     }
 }

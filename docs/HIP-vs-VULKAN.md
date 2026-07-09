@@ -90,7 +90,7 @@ Last updated: 2026-07-10.
 | --- | --- | --- | --- |
 | Dispatch/grid floor | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | HIP graph/Vulkan command-buffer host wall is matched only in serial mode; independent host wall remains unpaired. |
 | Geometry | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Fixed HIP workgroups match Vulkan specialization; gfx1151 correctness smoke passed both modes. |
-| Reduction | Pending v2 repair/rerun | Pending v2 repair/rerun | Static ISA evidence remains valid. |
+| Reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | LDS, extra-barrier, shuffle/subgroup, and 4/8/16-accumulator variants use fixed HIP workgroups, sequence-tagged shared output, or disjoint throughput slices; gfx1151 correctness smoke passed both modes. |
 | Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; gfx1151 correctness smoke passed both modes. |
 | Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Matched wg64/128/256 and sequence-tagged gfx1151 smoke passed; static dot4 evidence remains valid. |
 | VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; static VOPD evidence remains valid. |

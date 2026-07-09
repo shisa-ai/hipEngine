@@ -28,6 +28,7 @@ VULKAN_SHADERS = {
     "multi_accum": MICRO_ROOT / "kernels" / "vulkan" / "reduction_multi_accum.comp",
 }
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
+TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-reduction-sweep")
 
 HIP_VARIANTS = {
@@ -52,6 +53,15 @@ def _load_collect_env_module():
     spec = importlib.util.spec_from_file_location("micro_collect_env", COLLECT_ENV)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load environment collector: {COLLECT_ENV}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_timing_contract_module():
+    spec = importlib.util.spec_from_file_location("micro_timing_contract", TIMING_CONTRACT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load timing contract: {TIMING_CONTRACT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -120,11 +130,16 @@ def _vulkan_cflags_libs() -> list[str]:
     return shlex.split(completed.stdout.strip()) or ["-lvulkan"]
 
 
-def _compile_hip(args: argparse.Namespace, variant: str, variant_id: int) -> tuple[Path, list[str]]:
+def _compile_hip(
+    args: argparse.Namespace,
+    variant: str,
+    variant_id: int,
+    workgroup: int,
+) -> tuple[Path, list[str]]:
     hipcc = shutil.which("hipcc")
     if not hipcc:
         raise RuntimeError("hipcc is not available")
-    exe = args.build_dir / f"hip_reduction_{variant}"
+    exe = args.build_dir / f"hip_reduction_{variant}_wg{workgroup}"
     command = [hipcc]
     if args.gfx_arch:
         command.append(f"--offload-arch={args.gfx_arch}")
@@ -133,6 +148,7 @@ def _compile_hip(args: argparse.Namespace, variant: str, variant_id: int) -> tup
             "-O3",
             "-std=c++17",
             f"-DHIPENGINE_REDUCTION_VARIANT={variant_id}",
+            f"-DHIPENGINE_FIXED_WORKGROUP_SIZE={workgroup}",
             str(HIP_HARNESS),
             "-o",
             str(exe),
@@ -189,6 +205,7 @@ def _run_raw(
     args: argparse.Namespace,
     *,
     spirv: Path | None = None,
+    workgroups: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     command = [str(exe)]
     if spirv is not None:
@@ -202,7 +219,7 @@ def _run_raw(
             "--rows-list",
             args.rows_list,
             "--workgroups",
-            args.workgroups,
+            workgroups or args.workgroups,
             "--body-repeats",
             str(args.body_repeats),
             "--reps",
@@ -211,6 +228,13 @@ def _run_raw(
             str(args.warmup),
             "--samples",
             str(args.samples),
+            "--timing-mode",
+            args.timing_mode,
+            *(
+                ["--independent-streams", str(args.independent_streams)]
+                if spirv is None
+                else []
+            ),
             "--device-index",
             str(args.device_index),
         ]
@@ -228,17 +252,60 @@ def _collect_environment(args: argparse.Namespace) -> dict[str, Any]:
     return collector.collect_environment(
         repo_root=REPO_ROOT,
         include_device_probes=not args.skip_device_probes,
+        include_privileged=False,
         timeout_s=args.env_timeout_s,
         max_output_chars=args.env_max_output_chars,
     )
 
 
+def _source_record(environment: dict[str, Any], source_hash: str) -> dict[str, Any]:
+    repo = environment.get("repo")
+    if not isinstance(repo, dict):
+        repo = {}
+    return {
+        "repo": str(repo.get("root") or REPO_ROOT),
+        "branch": str(repo.get("branch") or ""),
+        "commit": str(repo.get("commit") or ""),
+        "dirty": bool(repo.get("dirty")),
+        "source_hash": source_hash,
+    }
+
+
+def _validate_raw_config(
+    raw: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    backend: str,
+) -> None:
+    config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
+    expected = {
+        "k_list": _parse_csv_u32(args.k_list),
+        "rows_list": _parse_csv_u32(args.rows_list),
+        "body_repeats": args.body_repeats,
+        "reps": args.reps,
+        "warmup": args.warmup,
+        "samples": args.samples,
+        "timing_mode": args.timing_mode,
+    }
+    for field, value in expected.items():
+        if config.get(field) != value:
+            raise ValueError(
+                f"{backend} reduction raw config {field} does not match invocation"
+            )
+
+
 def _annotate_rows(raw: dict[str, Any], *, backend: str, variant: str) -> list[dict[str, Any]]:
+    timing_contract = _load_timing_contract_module()
+    repetitions = int(raw.get("config", {}).get("reps", 0))
     out = []
     for row in raw.get("rows", []):
         item = dict(row)
+        timing_contract.validate_timed_row(item, expected_repetitions=repetitions)
         item["backend"] = backend
         item["variant"] = variant
+        item["workgroup_specialization"] = (
+            "fixed" if backend == "hip" else "specialization_constant"
+        )
         item["row_key"] = {
             "k": item.get("k"),
             "rows": item.get("rows"),
@@ -248,7 +315,7 @@ def _annotate_rows(raw: dict[str, Any], *, backend: str, variant: str) -> list[d
     return out
 
 
-def _row_index(rows: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, str, str], dict[str, Any]]:
+def _row_index(rows: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, str, str, str], dict[str, Any]]:
     indexed = {}
     for row in rows:
         key = (
@@ -257,7 +324,10 @@ def _row_index(rows: list[dict[str, Any]]) -> dict[tuple[Any, Any, Any, str, str
             row.get("workgroup_size"),
             row.get("backend"),
             row.get("variant"),
+            row.get("timing_mode"),
         )
+        if key in indexed:
+            raise ValueError(f"duplicate reduction result row: {key}")
         indexed[key] = row
     return indexed
 
@@ -273,9 +343,53 @@ def _ratio(a: Any, b: Any) -> float | None:
     return af / bf
 
 
+def _timing_median(row: dict[str, Any], control: str, domain: str) -> float | None:
+    metric = row.get("timing", {}).get(control, {}).get(domain, {})
+    if metric.get("status") != "ok":
+        return None
+    value = metric.get("per_iteration_us", {}).get("median")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _backend_timing_ratios(
+    hip: dict[str, Any],
+    vulkan: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    timing_contract = _load_timing_contract_module()
+    ratios: dict[str, dict[str, Any]] = {}
+    for control in timing_contract.TIMING_CONTROLS:
+        domains: dict[str, Any] = {}
+        for domain in timing_contract.TIMING_DOMAINS:
+            try:
+                domains[domain] = {
+                    "status": "ok",
+                    **timing_contract.comparison_ratio(
+                        hip,
+                        vulkan,
+                        control=control,
+                        domain=domain,
+                    ),
+                }
+            except ValueError as exc:
+                domains[domain] = {
+                    "status": (
+                        "not_comparable_submission_contract"
+                        if domain == "host_wall"
+                        else "not_comparable"
+                    ),
+                    "reason": str(exc),
+                }
+        ratios[control] = domains
+    return ratios
+
+
 def _comparisons(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    timing_contract = _load_timing_contract_module()
     index = _row_index(rows)
-    keys = sorted({(row.get("k"), row.get("rows"), row.get("workgroup_size")) for row in rows})
+    keys = sorted({
+        (row.get("k"), row.get("rows"), row.get("workgroup_size"), row.get("timing_mode"))
+        for row in rows
+    })
     backend_pairs = [
         ("lds_tree", "hip", "vulkan", "vulkan_lds_vs_hip_lds"),
         ("extra_barrier", "hip", "vulkan", "vulkan_extra_barrier_vs_hip_extra_barrier"),
@@ -297,11 +411,15 @@ def _comparisons(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         ("mixed", "vulkan_subgroup", "hip_wave_shuffle", "vulkan_subgroup_vs_hip_wave_shuffle"),
     ]
     out: dict[str, list[dict[str, Any]]] = {"backend": [], "variant": []}
-    for k, rows_count, wg in keys:
+    for k, rows_count, wg, timing_mode in keys:
         for variant, lhs_backend, rhs_backend, label in backend_pairs:
-            lhs = index.get((k, rows_count, wg, lhs_backend, variant))
-            rhs = index.get((k, rows_count, wg, rhs_backend, variant))
+            lhs = index.get((k, rows_count, wg, lhs_backend, variant, timing_mode))
+            rhs = index.get((k, rows_count, wg, rhs_backend, variant, timing_mode))
             if lhs and rhs:
+                if timing_contract.dependency_signature(lhs) != timing_contract.dependency_signature(rhs):
+                    raise ValueError("reduction backend dependency contracts do not match")
+                ratios = _backend_timing_ratios(lhs, rhs)
+                burst_gpu = ratios["burst"]["gpu_elapsed"]
                 out["backend"].append(
                     {
                         "comparison": label,
@@ -311,21 +429,33 @@ def _comparisons(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                         "lhs_backend": lhs_backend,
                         "rhs_backend": rhs_backend,
                         "variant": variant,
-                        "lhs_median_us": lhs.get("median_us"),
-                        "rhs_median_us": rhs.get("median_us"),
-                        "rhs_over_lhs": _ratio(rhs.get("median_us"), lhs.get("median_us")),
+                        "timing_mode": timing_mode,
+                        "ratios": ratios,
+                        "hip_gpu_burst_median_us": burst_gpu.get(
+                            "hip_us_per_iteration"
+                        ),
+                        "vulkan_gpu_burst_median_us": burst_gpu.get(
+                            "vulkan_us_per_iteration"
+                        ),
+                        "vulkan_vs_hip_gpu_burst_speedup": burst_gpu.get(
+                            "vulkan_vs_hip_speedup"
+                        ),
                         "lhs_correctness_pass": lhs.get("correctness_pass"),
                         "rhs_correctness_pass": rhs.get("correctness_pass"),
                     }
                 )
         for backend, lhs_variant, rhs_variant, label in variant_pairs:
             if backend == "mixed":
-                lhs = index.get((k, rows_count, wg, "vulkan", "subgroup"))
-                rhs = index.get((k, rows_count, wg, "hip", "wave_shuffle"))
+                lhs = index.get((k, rows_count, wg, "vulkan", "subgroup", timing_mode))
+                rhs = index.get((k, rows_count, wg, "hip", "wave_shuffle", timing_mode))
             else:
-                lhs = index.get((k, rows_count, wg, backend, lhs_variant))
-                rhs = index.get((k, rows_count, wg, backend, rhs_variant))
+                lhs = index.get((k, rows_count, wg, backend, lhs_variant, timing_mode))
+                rhs = index.get((k, rows_count, wg, backend, rhs_variant, timing_mode))
             if lhs and rhs:
+                if timing_contract.dependency_signature(lhs) != timing_contract.dependency_signature(rhs):
+                    raise ValueError("reduction variant dependency contracts do not match")
+                lhs_gpu = _timing_median(lhs, "burst", "gpu_elapsed")
+                rhs_gpu = _timing_median(rhs, "burst", "gpu_elapsed")
                 out["variant"].append(
                     {
                         "comparison": label,
@@ -336,9 +466,12 @@ def _comparisons(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                         "lhs_variant": lhs.get("variant"),
                         "rhs_backend": rhs.get("backend"),
                         "rhs_variant": rhs.get("variant"),
-                        "lhs_median_us": lhs.get("median_us"),
-                        "rhs_median_us": rhs.get("median_us"),
-                        "lhs_over_rhs": _ratio(lhs.get("median_us"), rhs.get("median_us")),
+                        "timing_mode": timing_mode,
+                        "timing_domain": "gpu_elapsed",
+                        "control": "burst",
+                        "lhs_gpu_burst_median_us": lhs_gpu,
+                        "rhs_gpu_burst_median_us": rhs_gpu,
+                        "rhs_over_lhs_time_ratio": _ratio(rhs_gpu, lhs_gpu),
                         "lhs_correctness_pass": lhs.get("correctness_pass"),
                         "rhs_correctness_pass": rhs.get("correctness_pass"),
                     }
@@ -382,9 +515,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--samples", type=int, default=7)
+    parser.add_argument(
+        "--timing-mode",
+        choices=("serial_latency", "independent_throughput"),
+        default="serial_latency",
+    )
+    parser.add_argument("--independent-streams", type=int, default=4)
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--pretty", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.independent_streams <= 0:
+        parser.error("--independent-streams must be positive")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -400,19 +542,27 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.backend in ("both", "hip"):
         for variant, variant_id in HIP_VARIANTS.items():
-            exe, build_command = _compile_hip(args, variant, variant_id)
-            raw_json = args.build_dir / f"hip-{variant}.json"
-            raw, run_command = _run_raw(exe, raw_json, args)
-            raw_results[f"hip:{variant}"] = raw
-            rows.extend(_annotate_rows(raw, backend="hip", variant=variant))
-            commands.append(
-                {
-                    "kind": "hip",
-                    "variant": variant,
-                    "build_command": build_command,
-                    "run_command": run_command,
-                }
-            )
+            for workgroup in _parse_csv_u32(args.workgroups):
+                exe, build_command = _compile_hip(args, variant, variant_id, workgroup)
+                raw_json = args.build_dir / f"hip-{variant}-wg{workgroup}.json"
+                raw, run_command = _run_raw(
+                    exe,
+                    raw_json,
+                    args,
+                    workgroups=str(workgroup),
+                )
+                _validate_raw_config(raw, args, backend="hip")
+                raw_results[f"hip:{variant}:wg{workgroup}"] = raw
+                rows.extend(_annotate_rows(raw, backend="hip", variant=variant))
+                commands.append(
+                    {
+                        "kind": "hip",
+                        "variant": variant,
+                        "workgroup": workgroup,
+                        "build_command": build_command,
+                        "run_command": run_command,
+                    }
+                )
 
     if args.backend in ("both", "vulkan"):
         vulkan_exe, harness_command = _compile_vulkan_harness(args)
@@ -421,6 +571,7 @@ def main(argv: list[str] | None = None) -> None:
             spirv, shader_command = _compile_vulkan_shader(args, variant)
             raw_json = args.build_dir / f"vulkan-{variant}.json"
             raw, run_command = _run_raw(vulkan_exe, raw_json, args, spirv=spirv)
+            _validate_raw_config(raw, args, backend="vulkan")
             raw_results[f"vulkan:{variant}"] = raw
             rows.extend(_annotate_rows(raw, backend="vulkan", variant=variant))
             commands.append(
@@ -433,14 +584,37 @@ def main(argv: list[str] | None = None) -> None:
             )
 
     comparisons = _comparisons(rows)
+    shape_count = (
+        len(_parse_csv_u32(args.k_list))
+        * len(_parse_csv_u32(args.rows_list))
+        * len(_parse_csv_u32(args.workgroups))
+    )
+    if args.backend == "both":
+        expected_rows = shape_count * (len(HIP_VARIANTS) + len(VULKAN_VARIANTS))
+        if len(rows) != expected_rows:
+            raise ValueError(
+                "HIP and Vulkan reduction row sets do not match the requested matrix: "
+                f"expected {expected_rows}, got {len(rows)}"
+            )
+        expected_backend_pairs = shape_count * 5
+        if len(comparisons["backend"]) != expected_backend_pairs:
+            raise ValueError(
+                "HIP and Vulkan matched reduction row sets are incomplete: "
+                f"expected {expected_backend_pairs}, got {len(comparisons['backend'])}"
+            )
     source_paths = [
         Path(__file__).resolve(),
         HIP_HARNESS,
         VULKAN_HARNESS,
         *VULKAN_SHADERS.values(),
+        MICRO_ROOT / "runners" / "micro_timing_hip.hpp",
+        MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp",
+        TIMING_CONTRACT,
     ]
+    source_hash = _hash_files(source_paths)
     result = {
-        "schema": "hipengine.micro.reduction_sweep.v1",
+        "schema": "hipengine.micro.reduction_sweep.v2",
+        "schema_version": 2,
         "kind": "hipengine_micro_result",
         "bench": "reduction_sweep",
         "classification": "diagnostic_unclassified",
@@ -457,6 +631,8 @@ def main(argv: list[str] | None = None) -> None:
             "reps": args.reps,
             "warmup": args.warmup,
             "samples": args.samples,
+            "timing_mode": args.timing_mode,
+            "independent_streams": args.independent_streams,
             "variants": {
                 "hip": list(HIP_VARIANTS),
                 "vulkan": list(VULKAN_VARIANTS),
@@ -466,23 +642,29 @@ def main(argv: list[str] | None = None) -> None:
             "ref": args.environment_ref,
             "captured": environment if not args.environment_ref else None,
         },
-        "source": {
-            "repo": str(REPO_ROOT),
-            "source_hash": _hash_files(source_paths),
-        },
+        "source": _source_record(environment, source_hash),
         "commands": _json_safe(commands),
         "rows": rows,
         "comparisons": comparisons,
         "summary": {
-            "backend_ratio_summary": _summarize_ratios(comparisons["backend"], "rhs_over_lhs"),
-            "variant_ratio_summary": _summarize_ratios(comparisons["variant"], "lhs_over_rhs"),
+            "backend_ratio_summary": _summarize_ratios(
+                comparisons["backend"], "vulkan_vs_hip_gpu_burst_speedup"
+            ),
+            "variant_ratio_summary": _summarize_ratios(
+                comparisons["variant"], "rhs_over_lhs_time_ratio"
+            ),
             "all_correctness_pass": all(bool(row.get("correctness_pass")) for row in rows),
+            "primary_domain": "gpu_elapsed",
+            "host_wall_status": "not_comparable_direct_vs_command_buffer",
         },
+        "artifact_ref": str(args.out),
         "interpretation": (
             "Reduction-shape control for LDS tree, extra barrier, HIP wave-shuffle, "
             "Vulkan subgroup reductions, and 4/8/16-way lane-local accumulators. "
-            "This isolates whether the geometry gap is better explained by reduction "
-            "algorithm/barrier/accumulator topology than by generic compiler scheduling."
+            "serial_latency orders shared-output iterations; independent_throughput "
+            "uses disjoint output slices. Cross-backend GPU ratios use equal dependency "
+            "contracts, while direct/multi-stream HIP and Vulkan command-buffer host "
+            "walls are intentionally not ratioed."
         ),
         "wrapper": {
             "command": [Path(sys.executable).name, *sys.argv],
