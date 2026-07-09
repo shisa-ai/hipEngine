@@ -148182,3 +148182,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Conclusion: rowchunk4 is not a shortcut for the selected full-layer c6 bridge.
   It is correctness-red and slower than the green rowchunk2 bridge, so the
   current only-green c6 grouping remains rowchunk2.
+
+## 2026-07-09 - PARO c6 grouped-MoE shortcut reject
+
+- Tested whether grouped-compact MoE can replace selected-c1 MoE after the
+  selected full-attention rowchunk2 bridge is active on layers
+  `3,7,11,15,19,23,27,31`.
+- Command:
+  `python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15,19,23,27,31 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-selected-full-rowchunk-grouped-moe-local-equality.json`.
+- Result on gfx1151/Radeon 8060S, `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`,
+  prompt 512, rows=6, decode=16: generated-token red at token 4 (`17` vs c1
+  `95744`), `95.345 tok/s`, median `60.251 ms`.
+- Conclusion: selected-c1 MoE is still required for the only green c6 bridge.
+  Grouped-compact MoE is both correctness-red and slower on this shape.
