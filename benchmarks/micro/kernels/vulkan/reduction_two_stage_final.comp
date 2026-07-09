@@ -23,6 +23,8 @@ layout(push_constant) uniform PushConstants {
     uint rows;
     uint body_repeats;
     uint split_count;
+    uint output_slice;
+    uint sequence_id;
 } pc;
 
 shared float scratch[256];
@@ -34,7 +36,8 @@ void main() {
     float sum = 0.0;
 
     for (uint i = lid; i < pc.split_count; i += wg) {
-        sum += partials[row * pc.split_count + i];
+        uint slice_stride = pc.rows * pc.split_count;
+        sum += partials[pc.output_slice * slice_stride + row * pc.split_count + i];
     }
 
     scratch[lid] = sum;
@@ -48,6 +51,7 @@ void main() {
     }
 
     if (lid == 0u) {
-        out_values[row] = scratch[0];
+        out_values[pc.output_slice * pc.rows + row] =
+            scratch[0] + float(pc.sequence_id) * 0.125;
     }
 }

@@ -95,7 +95,7 @@ Last updated: 2026-07-10.
 | Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Matched wg64/128/256 and sequence-tagged gfx1151 smoke passed; static dot4 evidence remains valid. |
 | VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; static VOPD evidence remains valid. |
 | Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
-| Two-stage reduction | Pending v2 rerun | Diagnostic only | Existing barriers make this the strongest legacy control, but clocks still differed. |
+| Two-stage reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Each logical operation preserves partial-to-final ordering; independent Vulkan uses per-operation events and disjoint partial/output slices rather than a phase-wide barrier. gfx1151 correctness smoke passed both modes. |
 | Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
 | Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
 | Dense Q8_0 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Packed-BF16 I/O, exact wave32/rowtile matches, and per-iteration Vulkan event dependencies passed on gfx1151. |
