@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "summary_type": "diagnostic_comparison",
+  "status": "blocked",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-packed",
+  "quant": "w4_paro",
+  "workload": "c=6 prompt=512 decode=128",
+  "comparison": [
+    {
+      "name": "old_c6_bridge_linear_rowchunk2_selected_c1",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 87.612,
+      "median_step_ms": 68.282,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json"
+    },
+    {
+      "name": "native_linear_per_row_linear_moe",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 92.8,
+      "median_step_ms": 64.335,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json"
+    },
+    {
+      "name": "native_linear_selected_c1_smallbatch_shared",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 107.89108672102992,
+      "median_step_ms": 55.29264360666275,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json",
+      "decode_execution": {
+        "moe_decode_path": "selected_c1_batch",
+        "moe_c1_shared_expert_decode_path": "small_batch_forced",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_decode_path": "native_batch_segments"
+      }
+    }
+  ],
+  "deltas": {
+    "smallbatch_shared_vs_old_bridge_decode_tok_s_ratio": 1.2314658140526453,
+    "smallbatch_shared_vs_old_bridge_decode_tok_s_percent": 23.14658140526453,
+    "smallbatch_shared_vs_old_bridge_median_step_ms_delta": -12.989356393337257,
+    "smallbatch_shared_vs_per_row_linear_moe_decode_tok_s_ratio": 1.1626194689766155,
+    "smallbatch_shared_vs_per_row_linear_moe_decode_tok_s_percent": 16.26194689766156,
+    "smallbatch_shared_vs_per_row_linear_moe_median_step_ms_delta": -9.042356393337246
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "generated-token equality is green, but the path remains diagnostic because full-attention rowchunking is still active and retained primitive/profiler/scaling gates are missing"
+  }
+}

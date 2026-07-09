@@ -147829,3 +147829,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE=2` keeps the old
   rowchunk bridge available for bisection. Next: rerun forced `n=6` server and
   natural c=8 server diagnostics with the new default.
+
+## 2026-07-09 - PARO c6 small-batch shared-expert repair
+
+- Replaced the rows=6 retained default from "native linear + per-row linear
+  MoE" to "native linear + selected-c1 batch MoE + forced small-batch shared
+  expert." The underlying issue was narrower than linear-layer MoE as a whole:
+  rows=6 selected-c1 drift came from the packed shared-expert multi-row W4 path.
+  Forcing only the shared expert back to the small-batch/GEMV route restores
+  generated-token equality without replaying every linear-layer MoE row.
+- Code changes:
+  `Qwen35ParoDecodeState.run_*_decode_batch_layer_fp16` now accepts
+  `force_small_batch_shared_expert`; `run_moe_c1_fp16` bypasses the bundled C
+  dispatcher only when that flag is active so the shared expert can use the
+  small-batch route. `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now
+  auto-enables this for rows=6 selected-c1 MoE, while
+  `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE=1` remains available
+  as the older diagnostic bridge.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_bypasses_c_dispatch tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_retained_c6_defaults`.
+- Full c6 local generated-token equality/perf without the old shared-expert env:
+  `PYTHONPATH=. HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 128 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json`.
+- Result: generated-token equality passed for all six rows. Diagnostic artifact
+  status remains `blocked`/`performance_claim=false` because full-attention
+  rowchunking is still active and primitive/profiler/scaling gates are missing.
+  Decode measured `107.891 tok/s` aggregate, median step `55.293 ms`, with
+  metadata `moe_decode_path=selected_c1_batch`,
+  `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk,
+  and full-attention rowchunk2 as the only decode blocker. Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-smallbatch-shared-repair-summary.json`.
+- Artifact caveat: the retained-bench script still hardcodes
+  `hardware.arch=gfx1100`; `rocminfo` in the same artifact shows
+  `gfx1151` / Radeon 8060S. The compact summary records the measured hardware
+  as gfx1151. Clean up the script metadata separately.

@@ -3178,6 +3178,53 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     ]
 
 
+def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_bypasses_c_dispatch(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=6, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (6, 4096), "fp16")
+    residual = _tensor(0xCC00, (6, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(state, "_try_moe_c1_c_dispatch", lambda **_kwargs: calls.append("c_dispatch") or scratch.moe_out)
+    monkeypatch.setattr(state, "route_moe_topk_shared_fp16", lambda *args, **kwargs: calls.append("router"))
+    monkeypatch.setattr(state, "selected_moe_gate_up_pack8_fp16", lambda *args, **kwargs: calls.append("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "_selected_moe_down_staged_enabled", lambda: False)
+    monkeypatch.setattr(state, "activate_rotate_moe_down_fp16", lambda *args, **kwargs: calls.append("activate_down"))
+    monkeypatch.setattr(state, "selected_moe_down_pack8_fp16", lambda *args, **kwargs: calls.append("down"))
+
+    def fake_shared_expert(_hidden, _scratch, *, force_small_batch=False, **_kwargs):
+        calls.append(("shared", bool(force_small_batch)))
+        return scratch.shared_out
+
+    monkeypatch.setattr(state, "shared_expert_fp16", fake_shared_expert)
+
+    def fake_combine(_scratch, *, shared, residual, out=None, tokens=1, **_kwargs):
+        calls.append(("combine", int(tokens), shared is scratch.shared_out))
+        return out or scratch.moe_out
+
+    monkeypatch.setattr(state, "combine_moe_c1_shared_residual_fp16", fake_combine)
+
+    out = state.run_moe_c1_fp16(
+        hidden,
+        residual,
+        scratch=scratch,
+        tokens=6,
+        force_small_batch_shared_expert=True,
+    )
+
+    assert out is scratch.moe_out
+    assert "c_dispatch" not in calls
+    assert calls == [
+        "router",
+        "gate_up",
+        "activate_down",
+        "down",
+        ("shared", True),
+        ("combine", 6, True),
+    ]
+
+
 def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch) -> None:
     runtime = FakeRuntime()
     weights = DeviceWeightMap({**_full_attention_weights().tensors, **_prepared_moe_weights().tensors})

@@ -137,6 +137,7 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIV
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
     "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
 )
@@ -238,6 +239,10 @@ def _retained_selected_c1_moe_rows(rows: int) -> bool:
 
 
 def _retained_per_row_linear_moe_rows(rows: int) -> bool:
+    return False
+
+
+def _retained_force_small_batch_shared_expert_rows(rows: int) -> bool:
     return int(rows) == 6
 
 
@@ -5041,6 +5046,19 @@ class Qwen35ParoResidentSession:
                 )
             )
         )
+        force_small_batch_shared_expert = (
+            (not dense_mlp)
+            and rows > 1
+            and (
+                _env_flag(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
+                or (
+                    force_selected_c1_moe
+                    and _retained_batch_defaults_enabled()
+                    and _env_is_blank(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
+                    and _retained_force_small_batch_shared_expert_rows(rows)
+                )
+            )
+        )
         force_selected_c1_linear_projections = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"
         )
@@ -5517,6 +5535,7 @@ class Qwen35ParoResidentSession:
                                 force_selected_c1_linear_out=force_selected_c1_linear_out,
                                 force_batch_gemv_linear_out=force_batch_gemv_linear_out,
                                 force_per_row_moe=force_per_row_linear_moe,
+                                force_small_batch_shared_expert=force_small_batch_shared_expert,
                                 library=self.libraries,
                                 stream=stream,
                             )
@@ -5612,6 +5631,7 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_linear_out=force_selected_c1_linear_out,
                             force_batch_gemv_linear_out=force_batch_gemv_linear_out,
                             force_per_row_moe=force_per_row_linear_moe,
+                            force_small_batch_shared_expert=force_small_batch_shared_expert,
                             library=self.libraries,
                             stream=stream,
                         )
@@ -6015,6 +6035,7 @@ class Qwen35ParoResidentSession:
                                     force_batch_gemv_output=chunk_force_batch_gemv_output,
                                     force_per_row_post_attention=force_per_row_post_attention,
                                     force_per_row_moe=force_per_row_full_attention_moe,
+                                    force_small_batch_shared_expert=force_small_batch_shared_expert,
                                     post_input_rmsnorm_trace=chunk_post_input_rmsnorm_trace,
                                     input_scratch_trace=chunk_input_scratch_trace,
                                     qkv_tensor_trace=chunk_qkv_tensor_trace,
@@ -6168,6 +6189,7 @@ class Qwen35ParoResidentSession:
                                 force_batch_gemv_output=use_batch_gemv_full_attention_output,
                                 force_per_row_post_attention=force_per_row_post_attention,
                                 force_per_row_moe=force_per_row_full_attention_moe,
+                                force_small_batch_shared_expert=force_small_batch_shared_expert,
                                 post_input_rmsnorm_trace=post_input_rmsnorm_trace,
                                 input_scratch_trace=input_scratch_trace,
                                 qkv_tensor_trace=qkv_tensor_trace,
@@ -6308,6 +6330,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
+                        if force_small_batch_shared_expert and layer_moe_path == "selected_c1_batch":
+                            layer_execution["moe_c1_shared_expert_decode_path"] = "small_batch_forced"
                         if force_per_row_full_attention_skip_batch_setup:
                             layer_execution["full_attention_batch_setup_decode_path"] = "skipped_for_persistent_c1"
                         full_spans_metadata = batch_full_spans_metadata
@@ -6587,6 +6611,8 @@ class Qwen35ParoResidentSession:
                 self.last_batch_decode_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
                 self.last_batch_decode_execution["full_attention_row_chunk_source"] = full_attention_row_chunk_source
                 self.last_batch_decode_execution["full_attention_row_chunked_layers"] = row_chunked_full_attention_layers
+            if force_small_batch_shared_expert:
+                self.last_batch_decode_execution["moe_c1_shared_expert_decode_path"] = "small_batch_forced"
             if full_attention_row_chunk_layers:
                 self.last_batch_decode_execution["full_attention_row_chunk_layers"] = sorted(
                     int(layer) for layer in full_attention_row_chunk_layers

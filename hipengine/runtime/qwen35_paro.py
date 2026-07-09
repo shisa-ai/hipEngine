@@ -4696,6 +4696,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         block_size: int = 256,
         force_selected_c1_moe: bool = False,
+        force_small_batch_shared_expert: bool = False,
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_qkv_scratch: bool = False,
         force_per_row_layer_scratch: bool = False,
@@ -5719,6 +5720,7 @@ class Qwen35ParoDecodeState:
             scratch=moe_scratch,
             tokens=tokens,
             group_size=group_size,
+            force_small_batch_shared_expert=_force_small_batch_shared_expert(force_small_batch_shared_expert),
             library=library,
             stream=stream,
         )
@@ -5971,6 +5973,7 @@ class Qwen35ParoDecodeState:
             scratch=moe_scratch,
             tokens=tokens,
             group_size=group_size,
+            force_small_batch_shared_expert=_force_small_batch_shared_expert(),
             library=library,
             stream=stream,
         )
@@ -7916,6 +7919,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_linear_out: bool | None = None,
         force_batch_gemv_linear_out: bool = False,
         force_per_row_moe: bool = False,
+        force_small_batch_shared_expert: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -8003,6 +8007,7 @@ class Qwen35ParoDecodeState:
             scratch=moe_scratch,
             tokens=tokens,
             group_size=group_size,
+            force_small_batch_shared_expert=_force_small_batch_shared_expert(force_small_batch_shared_expert),
             library=library,
             stream=stream,
         )
@@ -8579,6 +8584,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_small_batch: bool = False,
         threads: int = 128,
         library=None,
         stream: int = 0,
@@ -8613,7 +8619,11 @@ class Qwen35ParoDecodeState:
         # prefill overhead mainly in the 10 full-attention layers that c1_loop
         # used to run as tokens=1.  This site has no view aliasing, so use GEMV
         # only for tokens==1 or small full-attention verifier batches.
-        small_batch = tokens == 1 or (layer_type == "full_attention" and tokens <= _small_batch_decode_threshold())
+        small_batch = (
+            tokens == 1
+            or force_small_batch
+            or (layer_type == "full_attention" and tokens <= _small_batch_decode_threshold())
+        )
         # M13.B.2: in the small-batch path, replace `paro_rotate2 +
         # gemv_awq_dual_pack8_transposed` with the HBM-staged fused kernel
         # when gate_krot == up_krot (the kernel takes a single krot).  The
@@ -9233,6 +9243,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_small_batch: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -9244,6 +9255,7 @@ class Qwen35ParoDecodeState:
                 scratch,
                 tokens=tokens,
                 group_size=group_size,
+                force_small_batch=force_small_batch,
                 library=library,
                 stream=stream,
             )
@@ -9606,6 +9618,7 @@ class Qwen35ParoDecodeState:
         out: Tensor | None = None,
         tokens: int = 1,
         group_size: int = 128,
+        force_small_batch_shared_expert: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -9636,7 +9649,15 @@ class Qwen35ParoDecodeState:
             # their own kernels.  Bypasses the C dispatcher.
             self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
             self.selected_moe_ffn_megakernel_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-            shared = self.shared_expert_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            shared = self.shared_expert_fp16(
+                hidden,
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                force_small_batch=force_small_batch_shared_expert,
+                library=library,
+                stream=stream,
+            )
             return self.combine_moe_c1_shared_residual_fp16(
                 scratch,
                 shared=shared,
@@ -9646,16 +9667,17 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        if self._try_moe_c1_c_dispatch(
-            hidden=hidden,
-            residual=residual,
-            out=out,
-            scratch=scratch,
-            tokens=tokens,
-            group_size=group_size,
-            stream=stream,
-        ) is not None:
-            return out or scratch.moe_out
+        if not force_small_batch_shared_expert:
+            if self._try_moe_c1_c_dispatch(
+                hidden=hidden,
+                residual=residual,
+                out=out,
+                scratch=scratch,
+                tokens=tokens,
+                group_size=group_size,
+                stream=stream,
+            ) is not None:
+                return out or scratch.moe_out
         self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         if tokens > 1 and _selected_moe_down_staged_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
@@ -9663,7 +9685,15 @@ class Qwen35ParoDecodeState:
         else:
             self.activate_rotate_moe_down_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
             self.selected_moe_down_pack8_fp16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        shared = self.shared_expert_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        shared = self.shared_expert_fp16(
+            hidden,
+            scratch,
+            tokens=tokens,
+            group_size=group_size,
+            force_small_batch=force_small_batch_shared_expert,
+            library=library,
+            stream=stream,
+        )
         return self.combine_moe_c1_shared_residual_fp16(
             scratch,
             shared=shared,
@@ -10687,6 +10717,13 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if value is None:
         return default
     return value.lower() not in {"0", "false", "off", "no"}
+
+
+_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
+
+
+def _force_small_batch_shared_expert(force: bool = False) -> bool:
+    return bool(force) or _env_flag(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV, False)
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
