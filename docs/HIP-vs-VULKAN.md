@@ -19,13 +19,111 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
-## Retained Results Index
+## Measurement Reset: 2026-07-10
 
-Last updated: 2026-07-08.
+**Current status:** there is no retained HIP/Vulkan timing ratio from the
+pre-v2 microbenchmark suite. Treat every cross-backend number in the dated lab
+notebook below as `legacy_overlap_hypothesis` with
+`performance_claim=false` until it is reproduced under the contract in this
+section.
 
-New retained runs should update this index first, then the detailed retained
-evidence section, coverage audit, and benchmark rollups. This keeps the numeric
-results visible while the longer attribution narrative evolves.
+The reset is required for four independent reasons:
+
+- most Vulkan command buffers recorded `N` dispatches without an
+  inter-repetition compute dependency while HIP launched into one ordered
+  stream;
+- those Vulkan dispatches reused writable buffers, creating WAW hazards and,
+  for quantize-plus-dot, a dot-read-to-next-quantize-write WAR hazard;
+- Vulkan generally reported host submit-plus-fence wall while HIP generally
+  reported GPU-event elapsed time;
+- correctness usually covered a one-dispatch command, not the exact timed
+  `N`-repetition command.
+
+The routing conclusions and exact ratios derived from those rows are reopened.
+In particular, the old dispatch, geometry, memory, packed-dot, sampler, Q4,
+Q6, Q8, reduction, and lm-head ratios cannot decide whether HIP or Vulkan is
+faster. The Q4 steady-state amortization count is also withdrawn because its
+per-call delta came from the invalid timing contract; the measured standalone
+setup wall remains a valid setup observation.
+
+### Timing Contract V2
+
+Each timed row must use exactly one of these modes:
+
+| Mode | Work dependency | Writable storage | Backend-native efficient submission |
+| --- | --- | --- | --- |
+| `serial_latency` | Every logical iteration is ordered after the preceding iteration. | A shared output is allowed only with an explicit dependency; the timed sequence carries a synchronization validation. | HIP uses an ordered stream. Vulkan pre-records one command buffer with compute-to-compute execution and memory barriers between logical iterations. |
+| `independent_throughput` | No dependency exists between logical iterations. | Every concurrently eligible iteration has a disjoint writable slice; inputs are immutable. | HIP distributes repetitions over nonblocking streams with event fan-out/fan-in. Vulkan pre-records independent dispatches without inter-repetition barriers. |
+
+Both modes report two clocks for the same sequence:
+
+- `gpu_elapsed`: HIP events or Vulkan timestamp queries;
+- `host_wall`: host time from submission/enqueue start through completion.
+
+Every row also includes a `single` (`reps=1`) control and a `burst` control,
+normalizes warmup in logical iterations, records whether command recording is
+inside or outside host wall, and validates the actual burst. Independent mode
+validates every disjoint output. Serial mode validates the final chained state
+plus a synchronization-sensitive sequence tag or equivalent litmus. An
+unsupported or below-resolution GPU clock is recorded as such, never as zero.
+
+Comparators key on workload shape, timing mode, dependency signature, and
+control. They emit GPU and host ratios separately and reject v1, missing, or
+mismatched contracts. Static ISA extractors declare
+`measurement_scope=isa_only` and cannot emit a timing claim.
+
+The executable contract is in:
+
+- `benchmarks/micro/timing_contract.py`;
+- `benchmarks/micro/schemas/result.schema.json` (schema v2);
+- `benchmarks/micro/runners/micro_timing_hip.hpp`;
+- `benchmarks/micro/runners/micro_timing_vulkan.hpp`.
+
+### Current Corrected Dashboard
+
+Last updated: 2026-07-10.
+
+| Family | `serial_latency` | `independent_throughput` | Current status |
+| --- | --- | --- | --- |
+| Dispatch/grid floor | Pending v2 rerun | Pending v2 rerun | Narrow matched dispatch only; HIP wide argument-marshalling remains HIP-only. |
+| Geometry/reduction | Pending v2 rerun | Pending v2 rerun | Static ISA evidence remains valid. |
+| Memory/waitcnt | Pending v2 rerun | Pending v2 rerun | Static ISA evidence remains valid. |
+| Packed dot | Pending v2 rerun | Pending v2 rerun | Static dot4 evidence remains valid. |
+| VOPD | Pending v2 rerun | Pending v2 rerun | Static VOPD evidence remains valid. |
+| Sampler | Pending v2 rerun | Pending v2 rerun | Correctness remains deterministic top-1/top-k; old timing is legacy. |
+| Two-stage reduction | Pending v2 rerun | Diagnostic only | Existing barriers make this the strongest legacy control, but clocks still differed. |
+| Q4 selected-dual | Pending v2 rerun | Pending v2 rerun | Must match 64/128/256 workgroups and partition both q8_1/output storage. |
+| Q6 selected-down X8 | Pending v2 rerun | Pending v2 rerun | Must partition both q8_1/output storage. |
+| Dense Q8_0 | Pending v2 rerun | Pending v2 rerun | Matched rowtile/workgroup rows only. |
+| Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 are different math/layouts; no ratio is permitted. |
+
+### Evidence That Still Stands
+
+The timing reset does not invalidate:
+
+- environment, hardware, compiler, driver, source-hash, and command
+  provenance;
+- CPU-oracle results for the exact single-dispatch commands that were checked;
+- static HIP/RADV instruction, register, spill, LDS, dot4, VOPD, and waitcnt
+  observations;
+- within-HIP wave32/wave64, fixed/runtime-shape, and q8_1 layout controls whose
+  compared rows used the same HIP timing method;
+- the qualitative fact that the legacy two-stage Vulkan runner contains
+  partial-to-final and repetition-to-repetition barriers.
+
+These facts may guide the bounded rerun, but they do not restore a
+cross-backend performance claim.
+
+## Legacy Results Index (Pre-v2)
+
+Last measured: 2026-07-08. Invalidated for cross-backend timing claims on
+2026-07-10.
+
+New v2 runs update the corrected dashboard first. This index changes only when
+the dated legacy notebook itself needs an annotation.
+
+The table below is a dated lab notebook. Its cross-backend numeric rows are not
+the current dashboard and must not be cited as latency or throughput evidence.
 
 Hardware/software for the retained local rows: gfx1151, `AMD Radeon 8060S
 Graphics (RADV STRIX_HALO)`, Mesa `26.1.2-arch2.1`, Arch Linux. Cross-GPU
@@ -127,7 +225,11 @@ Device/power state:
 | Dense Q8_0 real slice | `q8-0-dense-real-slice-comparison.json` | Across 54 rows, Vulkan/HIP is `0.279x-1.120x` combined and `0.238x-1.169x` on dot; useful wins are limited to smaller `768x2048` cases. | Mostly negative for making dense Q8_0 a near-term Vulkan target. |
 | Q6_K lm-head rowtile diagnostic | `q6-lm-head-rowtile-comparison.json` | Across 18 matched rows, Vulkan/HIP is `0.367x-1.058x` combined and `0.367x-1.112x` on dot; only `2048x32768`, rows=1 wins. | Mostly negative for the current Vulkan X8 lm-head target; diagnostic is not bit-identical cross-backend math/layout. |
 
-## Current Conclusion
+## Legacy Conclusion (Pre-v2, Not Current)
+
+This section preserves the decision record made from the old measurements. It
+is superseded by the 2026-07-10 measurement reset and is not a current
+engineering conclusion.
 
 As of the retained gfx1151/STRIX_HALO runs on 2026-07-08, the retained
 conclusion is split. The short answer is **no**: the evidence does not support
@@ -487,7 +589,7 @@ kernels for narrow cases. But normal HIP source is ultimately relying on
 LLVM-AMDGPU codegen, so confirmed compiler misses become either LLVM roadmap
 items or carefully scoped hand-ISA candidates.
 
-## What To Test Next
+## Legacy Worklist (Pre-v2)
 
 The broad attribution phase is done for gfx1151. The answer to "is there
 anything else we should test?" is: yes, but only tests that can change an
@@ -570,7 +672,7 @@ Priority summary:
 | P3 | Narrow Q4_K HIP recovery experiment | Decide whether the one positive Vulkan slice can be recovered without a Vulkan backend |
 | P3 | True production-registry Vulkan Q4 probe | Decide whether a persistent Vulkan path moves real hipEngine wall time |
 
-## Coverage Audit
+## Legacy Coverage Audit (Pre-v2)
 
 Current local hardware coverage is gfx1151/RADV STRIX_HALO only. The retained
 local results cover the gfx1151 decision-grade attribution list currently
@@ -687,7 +789,7 @@ slice, a production-registry Vulkan probe only if product work is justified, or
 new production slices only when fresh profiling identifies them as exposed hot
 buckets.
 
-## Current Retained Evidence
+## Legacy Retained Evidence (Pre-v2)
 
 ### gfx1151 Dispatch/Grid Floor
 
@@ -1687,7 +1789,7 @@ diagnostic on gfx1151. Another lm-head Vulkan test should wait for a different
 shader/layout candidate or profiling evidence that a different shape is the
 backend-deciding hot bucket.
 
-## Answered Questions And Remaining Gates
+## Legacy Answered Questions And Gates (Pre-v2)
 
 The original questions now have a useful gfx1151 checkpoint answer:
 
@@ -1757,7 +1859,7 @@ Remaining gates:
 - Treat all Vulkan/RADV diagnostics as platform-specific unless rerun on both
   W7900/gfx1100 and gfx1151.
 
-## Measurement Harness Shape
+## Timing Harness Shape V2
 
 Build one harness that can generate paired HIP and Vulkan kernels from the same
 benchmark descriptor:
@@ -1775,17 +1877,46 @@ benchmark descriptor:
   "k": 2048,
   "n": 8192,
   "quant": "q4_k",
-  "iters": 1000,
-  "warmup": 100,
+  "timing_mode": "serial_latency|independent_throughput",
+  "dependency_contract": {
+    "work_dependency": "chained|independent",
+    "inter_dispatch_ordering": "hip_stream_order|vulkan_compute_barrier|none",
+    "output_partitioning": "chained_shared|disjoint",
+    "validation_status": "pass"
+  },
+  "submission": {
+    "strategy": "direct|multi_stream|vulkan_command_buffer",
+    "recording_in_timed_region": false,
+    "submit_in_host_wall": true,
+    "completion_in_host_wall": true,
+    "queue_or_stream_count": 1
+  },
   "correctness": {
-    "max_abs": 0.0,
-    "kl": 0.0,
-    "top1": 1.0
+    "single_dispatch": {"status": "pass"},
+    "timed_sequence": {
+      "status": "pass",
+      "logical_iterations": 20,
+      "coverage": "all_dispatches|chained_final_state"
+    },
+    "synchronization": {
+      "status": "pass",
+      "method": "ordered_stream|compute_barrier|disjoint_outputs",
+      "barrier_count": 19
+    }
   },
   "timing": {
-    "median_ns": 0,
-    "p05_ns": 0,
-    "p95_ns": 0
+    "single": {
+      "logical_iterations": 1,
+      "dispatches_per_iteration": 1,
+      "gpu_elapsed": {"status": "ok", "clock": "hip_event|vulkan_timestamp"},
+      "host_wall": {"status": "ok", "clock": "steady_clock"}
+    },
+    "burst": {
+      "logical_iterations": 20,
+      "dispatches_per_iteration": 1,
+      "gpu_elapsed": {"status": "ok", "clock": "hip_event|vulkan_timestamp"},
+      "host_wall": {"status": "ok", "clock": "steady_clock"}
+    }
   },
   "isa": {
     "vgpr": 0,

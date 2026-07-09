@@ -148415,3 +148415,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the ISA extractor.
 - Validation: `python3 -m pytest -q tests/test_micro_isa_stats.py` (`3 passed`);
   `python3 -m compileall -q` on all three ISA runners; `git diff --check`.
+
+## 2026-07-10 - HIP/Vulkan documentation measurement reset
+
+- Updated `docs/HIP-vs-VULKAN.md` to withdraw every pre-v2 cross-backend timing
+  ratio. The old dispatch/geometry/memory/dot/sampler/reduction/Q4/Q6/Q8 rows
+  are retained only as a dated `legacy_overlap_hypothesis` notebook. The Q4
+  amortization count is also withdrawn because its per-call delta used the old
+  contract; standalone setup wall remains setup evidence.
+- Added the current timing-contract dashboard, precise serialized-latency and
+  independent-throughput semantics, separate GPU/host clock requirements,
+  reps=1 and burst controls, timed-sequence correctness requirements, and the
+  list of static/same-backend evidence that remains valid. The unmatched Q6
+  lm-head row is explicitly blocked.
+- Added shared C++ timing support. `micro_timing_hip.hpp` measures ordered or
+  event-fanned multi-stream sequences. `micro_timing_vulkan.hpp` provides
+  timestamp-query measurement and compute-buffer barriers. Family runners own
+  output partitioning and their CPU/synchronization oracles.
+- Validation: re-read the new front matter and updated v2 harness shape; compiled
+  each timing header from stdin with `hipcc --offload-arch=gfx1151` or `c++
+  -std=c++17`; ran `git diff --check`. No GPU performance row was run for this
+  documentation/infrastructure unit.
