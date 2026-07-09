@@ -147731,3 +147731,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   evidence only, not a retained/default throughput claim for the whole c6 path;
   selected-c1 MoE, rowchunked full/linear attention, profiler, primitive, and
   baseline gates still block promotion.
+
+## 2026-07-09 - PARO runtime retained c6 repair bridge
+
+- Wired `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` into the runtime server
+  decode decisions, not just the retained-bench CLI wrapper: when explicit env
+  overrides are blank, c2/c4/c6/c8 now select selected-c1 MoE and c6 selects
+  linear-attention rowchunk2. Explicit `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=0`
+  and `HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE=0` still override the
+  retained bridge.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_can_force_native_row_chunks tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_retained_c6_defaults`;
+  `PYTHONPATH=. uv run pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontier tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env tests/test_generation_batch_scheduler.py::test_retained_bench_defaults_to_committed_projection_dispatch_artifact`.
+- Restarted the gfx1151/Radeon 8060S shisa PARO server on port 18085 with
+  `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`,
+  `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1`, and
+  `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`; `/ready` passed and startup
+  diagnostics reported native-batch decode warmup widths `[2,4,8]`.
+- Forced a true rows=6 server path with:
+  `PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18085 --model llama --prompt-names code_python --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency 1 --extra-payload '{"n":6}' --out benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`.
+- Result: server diagnostics now show rows=6 with `moe_decode_path=selected_c1_batch`,
+  `linear_attention_decode_path=native_batch_row_chunks`,
+  `linear_attention_row_chunk_size=2`,
+  `full_attention_decode_path=native_batch_row_chunks`,
+  `full_attention_row_chunk_size=2`, and
+  `linear_attention_projection_path=native_batch`.
+- Timing is diagnostic and not a speed win: prior unrepaired c6 server probe was
+  `56.873 ms/step` and `8.67 backend generated tok/s`; repaired c6 bridge is
+  `64.101 ms/step` and `8.14 backend generated tok/s`. Next c6 work is removing
+  selected-c1/rowchunk overhead or avoiding live c6 groups, not merely making
+  the repair server-visible.

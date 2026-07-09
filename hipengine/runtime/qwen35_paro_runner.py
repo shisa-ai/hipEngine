@@ -163,6 +163,11 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() not in {"0", "false", "off", "no"}
 
 
+def _env_is_blank(name: str) -> bool:
+    value = os.environ.get(name)
+    return value is None or value.strip() == ""
+
+
 def _retained_batch_defaults_enabled() -> bool:
     return _env_flag(_RETAINED_BATCH_DEFAULTS_ENV, default=False)
 
@@ -226,6 +231,14 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     if rows in {3, 5}:
         return {3, 7, 11, 15}
     return set()
+
+
+def _retained_selected_c1_moe_rows(rows: int) -> bool:
+    return int(rows) in {2, 4, 6, 8}
+
+
+def _retained_linear_row_chunk_size(rows: int) -> int:
+    return 2 if int(rows) == 6 else 0
 
 
 def _default_projection_dispatch_artifact() -> str | None:
@@ -4995,7 +5008,19 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         row_chunked_full_attention_layers: list[int] = []
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
+        force_selected_c1_moe_env = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
+        force_selected_c1_moe = (
+            (not dense_mlp)
+            and rows > 1
+            and (
+                _env_flag(force_selected_c1_moe_env)
+                or (
+                    _retained_batch_defaults_enabled()
+                    and _env_is_blank(force_selected_c1_moe_env)
+                    and _retained_selected_c1_moe_rows(rows)
+                )
+            )
+        )
         force_per_row_linear_moe = (not dense_mlp) and rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"
         )
@@ -5310,6 +5335,12 @@ class Qwen35ParoResidentSession:
         row_chunk_native_full_attention_output = False
         linear_row_chunk_env = "HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"
         linear_row_chunk_size = _env_int(linear_row_chunk_env, 0)
+        if (
+            linear_row_chunk_size == 0
+            and _retained_batch_defaults_enabled()
+            and _env_is_blank(linear_row_chunk_env)
+        ):
+            linear_row_chunk_size = _retained_linear_row_chunk_size(rows)
         if linear_row_chunk_size < 0:
             raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE must be non-negative")
         full_attention_layer_copy_decode_path = (

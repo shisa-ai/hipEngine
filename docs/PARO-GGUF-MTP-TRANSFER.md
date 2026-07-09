@@ -300,16 +300,25 @@ diagnostic fallback, not a retained/default throughput claim, because it relies
 on selected-c1 MoE and rowchunked linear/full attention and is missing the
 primitive/profiler/baseline retained gates.
 
+Runtime retained-default recheck:
+
+| Probe | Result |
+| --- | --- |
+| Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults | rows=6 now uses `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
+| Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
+
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c6/c8 all-layer full-attention
    rowchunk2, and c6 linear rowchunk2, as the local equality starting point for
-   direct retained sweeps.
+   direct retained sweeps and the opt-in runtime retained-default bridge.
 2. Recover c6 throughput next: rowchunk2 correctness costs about `19.1 tok/s`
    vs the invalid native-linear c6 diagnostic, batched LM-head is correctness
    green but neutral/slightly slower, and c6 projection dispatch now recovers
    only `+3.43%` over the row-GEMV fallback. The larger remaining c6 work is
-   removing selected-c1 MoE/rowchunk fallbacks or avoiding c6 live groups.
+   removing selected-c1 MoE/rowchunk fallbacks or avoiding c6 live groups; the
+   server-visible repaired c6 shape currently adds `+7.228 ms/step` over the
+   unrepaired grouped/native-linear c6 probe.
 3. Add primitive correctness/profiler/baseline gates for any recovered shape
    before promoting a retained/default throughput claim.
 4. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
