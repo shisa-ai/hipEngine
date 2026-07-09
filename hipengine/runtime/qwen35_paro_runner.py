@@ -4812,38 +4812,40 @@ class Qwen35ParoResidentSession:
     ) -> tuple[Tensor, Tensor, tuple[DeviceBuffer, ...]]:
         # cu_seqlens (arange(rows+1)) and state_indices (physical slot ids)
         # depend only on (rows, slots) and are identical across every decode
-        # step for a fixed active batch.  Persist them in dedicated device
-        # buffers and skip the per-step malloc/free + host->device copies when
-        # the (rows, slots) key is unchanged.  This removes the last per-step
-        # device allocation from the batch layer pass -- a capture-safety
-        # prerequisite for c>1 decode graph replay (C3.0b) and an eager
-        # host-overhead trim -- mirroring the cached full-attention block table
-        # in _batch_full_spans.  The third return element is retained as an
-        # (empty) buffer tuple so the call site's release loop is a no-op.
+        # step for a fixed active batch. Persist one device-buffer pair per
+        # key, mirroring _batch_full_spans: row-chunked decode can use several
+        # keys in one step, and a single scratch pair would be overwritten while
+        # earlier chunk kernels are still queued. The third return element is
+        # retained as an (empty) buffer tuple so the release loop is a no-op.
         seg_key = (int(rows),) + tuple(int(slot) for slot in slots)
-        if getattr(self, "_decode_segment_metadata_key", None) != seg_key:
+        segment_cache = getattr(self, "_decode_segment_metadata_cache", None)
+        if segment_cache is None:
+            segment_cache = {}
+            self._decode_segment_metadata_cache = segment_cache
+        entry = segment_cache.get(seg_key)
+        if entry is None:
             cu_arr = np.arange(rows + 1, dtype=np.int32)
             state_arr = np.asarray(slots, dtype=np.int64)
-            cu_capacity = int(self.max_batch_size + 1) * DType.INT32.itemsize
-            cu_buf = getattr(self, "_decode_segment_cu_buf", None)
-            if cu_buf is None or cu_buf.nbytes < cu_capacity:
-                cu_buf = malloc(cu_capacity, runtime=self.runtime)
-                self.buffers.append(cu_buf)
-                self._decode_segment_cu_buf = cu_buf
-            state_capacity = int(self.max_batch_size) * DType.INT64.itemsize
-            state_buf = getattr(self, "_decode_segment_state_buf", None)
-            if state_buf is None or state_buf.nbytes < state_capacity:
-                state_buf = malloc(state_capacity, runtime=self.runtime)
-                self.buffers.append(state_buf)
-                self._decode_segment_state_buf = state_buf
+            cu_buf = malloc(int(cu_arr.nbytes), runtime=self.runtime)
+            state_buf = malloc(int(state_arr.nbytes), runtime=self.runtime)
+            self.buffers.extend((cu_buf, state_buf))
             copy_host_to_device(cu_buf, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=self.runtime)
             copy_host_to_device(state_buf, host_array_ptr(state_arr), state_arr.nbytes, runtime=self.runtime)
-            self._decode_segment_cu_tensor = Tensor.from_handle(cu_buf.ptr, cu_arr.shape, DType.INT32, self.device)
-            self._decode_segment_state_tensor = Tensor.from_handle(
-                state_buf.ptr, state_arr.shape, DType.INT64, self.device
-            )
-            self._decode_segment_metadata_key = seg_key
-        return self._decode_segment_cu_tensor, self._decode_segment_state_tensor, ()
+            entry = {
+                "cu_buf": cu_buf,
+                "state_buf": state_buf,
+                "cu_tensor": Tensor.from_handle(cu_buf.ptr, cu_arr.shape, DType.INT32, self.device),
+                "state_tensor": Tensor.from_handle(state_buf.ptr, state_arr.shape, DType.INT64, self.device),
+            }
+            segment_cache[seg_key] = entry
+        # Keep the last-entry attributes for diagnostics that inspect the old
+        # single-key cache fields, but correctness relies on the keyed cache.
+        self._decode_segment_metadata_key = seg_key
+        self._decode_segment_cu_buf = entry["cu_buf"]
+        self._decode_segment_state_buf = entry["state_buf"]
+        self._decode_segment_cu_tensor = entry["cu_tensor"]
+        self._decode_segment_state_tensor = entry["state_tensor"]
+        return entry["cu_tensor"], entry["state_tensor"], ()
 
     def _batch_full_spans(
         self,
@@ -5306,12 +5308,17 @@ class Qwen35ParoResidentSession:
         )
         row_chunk_batch_gemv_full_attention_output = False
         row_chunk_native_full_attention_output = False
+        linear_row_chunk_env = "HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"
+        linear_row_chunk_size = _env_int(linear_row_chunk_env, 0)
+        if linear_row_chunk_size < 0:
+            raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE must be non-negative")
         full_attention_layer_copy_decode_path = (
             "per_row_layer_copy_fallback" if force_per_row_full_attention_layer_copy else "batch_copy"
         )
         post_attention_decode_path = "per_row_add_rmsnorm_fallback" if force_per_row_post_attention else "native_batch"
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
         use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
+        force_linear_row_chunks = rows > 1 and not use_per_row_linear and 0 < linear_row_chunk_size < rows
         moe_decode_path = "dense_mlp" if dense_mlp else (
             "selected_c1"
             if rows == 1
@@ -5328,6 +5335,7 @@ class Qwen35ParoResidentSession:
         )
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
+        row_chunked_linear_attention_layers: list[int] = []
         layer_executions: list[dict[str, Any]] = []
         try:
             for layer_id, state in enumerate(self.states):
@@ -5399,6 +5407,126 @@ class Qwen35ParoResidentSession:
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": False,
                                 "moe_decode_path": row_moe_path,
+                            }
+                        )
+                    elif force_linear_row_chunks:
+                        row_chunked_linear_attention_layers.append(int(layer_id))
+                        conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                        chunk_records: list[dict[str, Any]] = []
+                        chunk_size = int(linear_row_chunk_size)
+                        for chunk_start in range(0, rows, chunk_size):
+                            chunk_end = min(rows, chunk_start + chunk_size)
+                            chunk_rows = int(chunk_end - chunk_start)
+                            chunk_slots = tuple(int(slot) for slot in slots[chunk_start:chunk_end])
+                            chunk_hidden = Tensor.from_handle(
+                                hidden.ptr + chunk_start * self.hidden_nbytes,
+                                (chunk_rows, self.config.hidden_size),
+                                hidden.dtype,
+                                hidden.device,
+                            )
+                            chunk_cu_seqlens, chunk_state_indices, _chunk_temp_buffers = self._batch_decode_segment_metadata(
+                                rows=chunk_rows,
+                                slots=chunk_slots,
+                            )
+                            chunk_metadata = {
+                                "cu_seqlens": [int(value) for value in range(chunk_rows + 1)],
+                                "state_indices": [int(slot) for slot in chunk_slots],
+                            }
+                            chunk_linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, chunk_rows)
+                            if force_selected_c1_moe or force_per_row_linear_moe:
+                                chunk_moe_scratch = self._ensure_moe_decode_batch_scratch(
+                                    layer_id,
+                                    chunk_rows,
+                                    force_selected_c1_moe=True,
+                                )
+                            else:
+                                chunk_moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, chunk_rows)
+                            chunk_selected_c1_linear_state_pairs = (
+                                tuple(self._slot_linear_state(layer_id, slot) for slot in chunk_slots)
+                                if force_selected_c1_linear_state
+                                else None
+                            )
+                            chunk_out = state.run_linear_attention_moe_decode_batch_layer_fp16(
+                                chunk_hidden,
+                                conv_state=conv_state,
+                                recurrent_state=recurrent_state,
+                                cu_seqlens=chunk_cu_seqlens,
+                                state_indices=chunk_state_indices,
+                                segments=chunk_rows,
+                                linear_scratch=chunk_linear_scratch,
+                                moe_scratch=chunk_moe_scratch,
+                                tokens=chunk_rows,
+                                force_selected_c1_moe=force_selected_c1_moe,
+                                force_selected_c1_linear_projections=force_selected_c1_linear_projections,
+                                force_selected_c1_qkv_z_linear_projections=force_selected_c1_qkv_z_linear_projections,
+                                force_selected_c1_qkv_z_linear_input=force_selected_c1_qkv_z_linear_input,
+                                force_selected_c1_qkv_linear_projections=force_selected_c1_qkv_linear_projections,
+                                force_selected_c1_z_linear_projections=force_selected_c1_z_linear_projections,
+                                force_selected_c1_ab_linear_projections=force_selected_c1_ab_linear_projections,
+                                force_batch_gemv_linear_projections=use_batch_gemv_linear_projections,
+                                force_selected_c1_linear_state=force_selected_c1_linear_state,
+                                selected_c1_linear_state_pairs=chunk_selected_c1_linear_state_pairs,
+                                force_selected_c1_linear_out=force_selected_c1_linear_out,
+                                force_batch_gemv_linear_out=force_batch_gemv_linear_out,
+                                force_per_row_moe=force_per_row_linear_moe,
+                                library=self.libraries,
+                                stream=stream,
+                            )
+                            self._trace_decode_linear_stages(
+                                layer_id=layer_id,
+                                linear_scratch=chunk_linear_scratch,
+                                moe_scratch=chunk_moe_scratch,
+                                output=chunk_out,
+                                rows=chunk_rows,
+                                stream=stream,
+                            )
+                            self.runtime.memcpy_async(
+                                next_hidden.ptr + chunk_start * self.hidden_nbytes,
+                                chunk_out.ptr,
+                                chunk_rows * self.hidden_nbytes,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                            chunk_records.append(
+                                {
+                                    "row_start": int(chunk_start),
+                                    "rows": int(chunk_rows),
+                                    "slots": [int(slot) for slot in chunk_slots],
+                                    "segment_metadata": chunk_metadata,
+                                }
+                            )
+                        copied_layer_output = True
+                        self._trace_decode_linear_output(layer_id=layer_id, hidden=next_hidden, rows=rows, stream=stream)
+                        layer_moe_path = "dense_mlp" if dense_mlp else (
+                            "selected_c1"
+                            if rows == 1
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                        )
+                        if not dense_mlp and rows > 1:
+                            if force_per_row_linear_moe:
+                                moe_selected_c1_fallback_layers += 1
+                            elif not force_selected_c1_moe:
+                                moe_grouped_compact_layers += 1
+                        layer_executions.append(
+                            {
+                                "layer_index": int(layer_id),
+                                "layer_type": "linear_attention",
+                                "rows": int(rows),
+                                "slots": [int(slot) for slot in slots],
+                                "linear_attention_decode_path": "native_batch_row_chunks",
+                                "linear_attention_row_chunk_size": int(linear_row_chunk_size),
+                                "linear_attention_row_chunks": chunk_records,
+                                "linear_attention_segment_metadata": linear_segment_metadata,
+                                "linear_attention_row_state_map": [
+                                    {"row": int(row), "slot": int(slot), "state_index": int(slot)}
+                                    for row, slot in enumerate(slots)
+                                ],
+                                "full_attention_decode_path": "not_applicable",
+                                "native_caware_decode": False,
+                                "linear_attention_projection_path": linear_attention_projection_path,
+                                "linear_attention_state_path": linear_attention_state_path,
+                                "linear_attention_output_path": linear_attention_output_path,
+                                "moe_decode_path": layer_moe_path,
                             }
                         )
                     else:
@@ -6257,6 +6385,8 @@ class Qwen35ParoResidentSession:
                         if force_selected_c1_moe or force_per_row_linear_moe
                         else "mixed_grouped_compact_with_per_row_linear_attention_fallback"
                     )
+            if row_chunked_linear_attention_layers:
+                decode_blockers.append("linear-attention decode forced to native row-chunk diagnostic path")
             if force_per_row_full_attention_input:
                 decode_blockers.append("full-attention input RMSNorm forced to per-row diagnostic path")
             if force_per_row_full_attention_moe:
@@ -6349,6 +6479,7 @@ class Qwen35ParoResidentSession:
                 "post_attention_decode_path": post_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not row_chunked_full_attention_layers
+                and not row_chunked_linear_attention_layers
                 and not force_per_row_linear_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections
@@ -6400,6 +6531,10 @@ class Qwen35ParoResidentSession:
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
             }
+            if row_chunked_linear_attention_layers:
+                self.last_batch_decode_execution["linear_attention_decode_path"] = "native_batch_row_chunks"
+                self.last_batch_decode_execution["linear_attention_row_chunk_size"] = int(linear_row_chunk_size)
+                self.last_batch_decode_execution["linear_attention_row_chunked_layers"] = row_chunked_linear_attention_layers
             if row_chunked_full_attention_layers:
                 self.last_batch_decode_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
                 self.last_batch_decode_execution["full_attention_row_chunk_source"] = full_attention_row_chunk_source

@@ -4123,10 +4123,10 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Local gfx1151/shisa generated-token equality is green for c=2/c=4/c=8 only
+    # Local gfx1151/shisa generated-token equality is green for c=2/c=4/c=6/c=8 only
     # when grouped-compact MoE is replaced by selected-c1 MoE. This remains a
     # diagnostic correctness bridge, not a retained throughput claim.
-    return "selected_c1" if int(batch_size) in {2, 4, 8} else "grouped_compact"
+    return "selected_c1" if int(batch_size) in {2, 4, 6, 8} else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4160,6 +4160,23 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     return 2 if int(batch_size) in {3, 4, 5, 6, 7, 8} else 0
 
 
+def _resolved_batch_decode_linear_row_chunk_size(args: argparse.Namespace) -> int:
+    explicit = int(getattr(args, "batch_decode_linear_row_chunk_size", 0) or 0)
+    if explicit != 0:
+        return explicit
+    if str(getattr(args, "batch_decode_linear_path", "batch_segments")) != "batch_segments":
+        return 0
+    if str(getattr(args, "batch_decode_full_attn_path", "native_batch")) != "auto":
+        return 0
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # c6 native segmented linear attention is hidden-red as one 6-row group and
+    # as two 3-row chunks; rowchunk2 is generated-token green with selected-c1
+    # MoE and all-layer full-attention rowchunk2.
+    return 2 if int(batch_size) == 6 else 0
+
+
 def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) -> str:
     explicit = str(getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or "").strip()
     if explicit:
@@ -4169,11 +4186,11 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c3/c5/c6 keep the older selected-layer diagnostic scope. Local gfx1151
-    # shisa c4/c8 only recovered full 512/128 generated-token equality with
+    # c3/c5 keep the older selected-layer diagnostic scope. Local gfx1151
+    # shisa c4/c6/c8 recovered full 512/128 generated-token equality with
     # rowchunk2 on every full-attention layer plus selected-c1 MoE, so empty
     # deliberately means all full-attention layers for those row counts.
-    if int(batch_size) in {3, 5, 6}:
+    if int(batch_size) in {3, 5}:
         return "3,7,11,15"
     return ""
 
@@ -4252,6 +4269,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         getattr(args, "batch_decode_linear_output_path", "batch_gemv")
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_linear_row_chunk_size(args)
     )
     batch_decode_full_attn_path = _resolved_batch_decode_full_attn_path(args)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = "0" if batch_decode_full_attn_path == "per_row" else "1"
@@ -4857,6 +4877,7 @@ def _build_payload(
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
+            "batch_decode_linear_row_chunk_size": _resolved_batch_decode_linear_row_chunk_size(args),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
             "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
             "batch_decode_full_attention_row_chunk_layers": _resolved_batch_decode_full_attn_row_chunk_layers(args),
@@ -5032,6 +5053,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
         default="batch_gemv",
         help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
+    )
+    parser.add_argument(
+        "--batch-decode-linear-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic native linear-attention row chunk size for c>N batch decode; a positive value below batch size runs native segmented linear attention in row sub-batches and blocks native-caware claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-path",
@@ -5279,6 +5306,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("decode token counts must be positive/non-negative")
     if args.max_layers <= 0:
         raise ValueError("--max-layers must be positive")
+    if _resolved_batch_decode_linear_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-linear-row-chunk-size must be non-negative")
     if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
         raise ValueError("--batch-sample-eq-rows must be positive")
 

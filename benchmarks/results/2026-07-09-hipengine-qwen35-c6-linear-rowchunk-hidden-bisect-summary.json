@@ -1,0 +1,232 @@
+{
+  "conclusion": {
+    "linear_rowchunk2_grouped_compact_moe": "hidden_red",
+    "linear_rowchunk2_selected_c1_moe": "eq_ok",
+    "linear_rowchunk3": "hidden_red",
+    "native_linear_segments": "hidden_red",
+    "requires_selected_c1_moe_for_this_probe": true,
+    "safe_c6_linear_row_group_cap": 2
+  },
+  "mode": "qwen35_paro_c6_linear_rowchunk_hidden_bisect_summary",
+  "performance_claim": false,
+  "probes": [
+    {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-output-path batch_gemv --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native.json",
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "first_mismatch": {
+          "bit_mismatch": 603,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 2,
+          "elements_over_atol": 0,
+          "generated_index": 3,
+          "layer_index": 0,
+          "layer_limit": 1,
+          "max_abs": 3.0517578125e-05,
+          "max_abs_flat_index": 143,
+          "max_abs_index": [
+            0,
+            143
+          ],
+          "passed_under_atol": true,
+          "row": 0,
+          "stage": "output"
+        },
+        "hidden_failure_rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "name": "native_linear_segments",
+      "source_artifact_committed": false,
+      "source_artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native.json",
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_linear_path": "batch_segments",
+        "batch_decode_linear_row_chunk_size": null,
+        "batch_decode_moe_path": "selected_c1",
+        "batch_size": 6,
+        "decode_tokens": 4,
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "layer_limits": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "prompt_length": 512,
+        "warmup_decode_tokens": 0
+      }
+    },
+    {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-row-chunk-size 2 --batch-decode-linear-output-path batch_gemv --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk2.json",
+      "correctness": {
+        "failure_modes": [],
+        "first_mismatch": null,
+        "hidden_failure_rows": [],
+        "hidden_passed": true,
+        "passed": true,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "name": "linear_rowchunk2",
+      "source_artifact_committed": false,
+      "source_artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk2.json",
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_linear_path": "batch_segments",
+        "batch_decode_linear_row_chunk_size": 2,
+        "batch_decode_moe_path": "selected_c1",
+        "batch_size": 6,
+        "decode_tokens": 4,
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "layer_limits": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "prompt_length": 512,
+        "warmup_decode_tokens": 0
+      }
+    },
+    {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-row-chunk-size 3 --batch-decode-linear-output-path batch_gemv --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk3.json",
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "first_mismatch": {
+          "bit_mismatch": 603,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 2,
+          "elements_over_atol": 0,
+          "generated_index": 3,
+          "layer_index": 0,
+          "layer_limit": 1,
+          "max_abs": 3.0517578125e-05,
+          "max_abs_flat_index": 143,
+          "max_abs_index": [
+            0,
+            143
+          ],
+          "passed_under_atol": true,
+          "row": 0,
+          "stage": "output"
+        },
+        "hidden_failure_rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "name": "linear_rowchunk3",
+      "source_artifact_committed": false,
+      "source_artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk3.json",
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_linear_path": "batch_segments",
+        "batch_decode_linear_row_chunk_size": 3,
+        "batch_decode_moe_path": "selected_c1",
+        "batch_size": 6,
+        "decode_tokens": 4,
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "layer_limits": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "prompt_length": 512,
+        "warmup_decode_tokens": 0
+      }
+    },
+    {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 1-4 --trace-decode-start 2 --trace-decode-end 3 --batch-decode-moe-path grouped_compact --batch-decode-full-attn-path per_row --batch-decode-linear-path batch_segments --batch-decode-linear-row-chunk-size 2 --batch-decode-linear-output-path batch_gemv --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk2-moe-grouped.json",
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "first_mismatch": {
+          "bit_mismatch": 12,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 2,
+          "elements_over_atol": 0,
+          "generated_index": 3,
+          "layer_index": 0,
+          "layer_limit": 1,
+          "max_abs": 7.62939453125e-06,
+          "max_abs_flat_index": 1425,
+          "max_abs_index": [
+            0,
+            1425
+          ],
+          "passed_under_atol": true,
+          "row": 0,
+          "stage": "output"
+        },
+        "hidden_failure_rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "name": "linear_rowchunk2_grouped_moe",
+      "source_artifact_committed": false,
+      "source_artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-rowchunk2-moe-grouped.json",
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_linear_path": "batch_segments",
+        "batch_decode_linear_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_size": 6,
+        "decode_tokens": 4,
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "layer_limits": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "prompt_length": 512,
+        "warmup_decode_tokens": 0
+      }
+    }
+  ],
+  "schema": 1,
+  "status": "diagnostic_summary",
+  "summary": "c6 hidden-bisect controls for native segmented linear-attention rowchunk sizing and MoE path",
+  "timestamp": "2026-07-09T02:50:00+00:00"
+}

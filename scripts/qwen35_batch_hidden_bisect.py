@@ -5724,6 +5724,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
     )
     parser.add_argument(
+        "--batch-decode-linear-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic native linear-attention row chunk size for hidden-bisect probes; positive values below batch size keep native segmented kernels but split linear-attention rows and block native-caware claims.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
         default="native_batch",
@@ -5873,6 +5879,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         if args.max_sequence_length < max(prompt_lengths) + total_decode_tokens + 1:
             raise ValueError("max_sequence_length must cover prompt_length + warmup_decode_tokens + decode_tokens + 1")
     resolved_linear_projection_path = _resolved_batch_decode_linear_projection_path(args)
+    linear_row_chunk_size = int(getattr(args, "batch_decode_linear_row_chunk_size", 0) or 0)
+    if linear_row_chunk_size < 0:
+        raise ValueError("batch-decode-linear-row-chunk-size must be non-negative")
     full_attention_row_chunk_size = int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
     if full_attention_row_chunk_size < 0:
         raise ValueError("batch-decode-full-attn-row-chunk-size must be non-negative")
@@ -5918,6 +5927,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
             "batch_decode_linear_moe_path": str(args.batch_decode_linear_moe_path),
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
+            "batch_decode_linear_row_chunk_size": int(linear_row_chunk_size),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
             "batch_decode_full_attention_row_chunk_size": full_attention_row_chunk_size,
             "batch_decode_full_attention_row_chunk_layers": str(
@@ -5947,6 +5957,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_state_path == "batch_segments"
                 and args.batch_decode_linear_moe_path == "grouped_compact"
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
+                and linear_row_chunk_size == 0
                 and args.batch_decode_full_attn_path == "native_batch"
                 and not force_full_attention_row_chunks
                 and args.batch_decode_attn_input_path == "batch"
@@ -6047,6 +6058,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         args.batch_decode_linear_output_path
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] = str(linear_row_chunk_size)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if args.batch_decode_full_attn_path == "per_row" else "1"
     )

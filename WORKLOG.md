@@ -147681,3 +147681,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Left the remaining untracked benchmark/probe artifact pile local: the current
   retained cN frontier artifacts are already committed, and the other untracked
   files are superseded probes or sidecars without live doc references.
+
+## 2026-07-09 - PARO c6 linear rowchunk repair
+
+- Implemented a keyed `_batch_decode_segment_metadata` cache so rowchunked
+  decode can keep multiple `(rows, slots)` segment metadata buffers resident in
+  one step instead of overwriting a single scratch pair.
+- Added `HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE` plus retained-bench
+  and hidden-bisect CLI plumbing for native segmented linear-attention row
+  chunks.
+- Short c6 hidden-bisect on gfx1151/Radeon 8060S, local shisa
+  `Qwen3.6-35B-A3B-PARO-packed`, prompt 512, decode 4, full-attention per-row:
+  native linear segments are red; linear rowchunk2 is `eq_ok`; linear rowchunk3
+  is hidden-red; linear rowchunk2 plus grouped-compact MoE is hidden-red.
+  Compact summary artifact:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json`.
+- Full c6 512/128 generated-token equality is now green with all-layer
+  full-attention rowchunk2, linear rowchunk2, selected-c1 MoE, and serial
+  LM-head: `87.782 tok/s`, median step `68.151 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-serial-sampler-local-equality.json`.
+- Batched LM-head is also generated-token green for that c6 shape but is neutral
+  to slightly slower here: `87.519 tok/s`, median step `68.355 ms`, artifact
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-batched-lmhead-local-equality.json`.
+- Updated the retained-bench diagnostic auto resolver to select selected-c1 MoE
+  for c6, all-layer full-attention rowchunk2 for c6, and linear rowchunk2 for
+  c6. This is a diagnostic correctness bridge, not a retained/default throughput
+  claim; primitive/profiler/baseline gates and c6 projection dispatch remain.
