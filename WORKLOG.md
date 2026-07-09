@@ -148090,3 +148090,39 @@ graphless decode launch-collapse path without regressing target/serial parity.
   across non-context substages at the layer boundary.
 - Compact summary:
   `benchmarks/results/2026-07-09-hipengine-qwen35-c6-context-rowchunk-rejects-summary.json`.
+
+## 2026-07-09 - PARO c6 suffix rowchunk diagnostic
+
+- Added a default-off full-attention suffix rowchunk diagnostic:
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE`,
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS`, and
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE`. The
+  runtime keeps batch QKV/append/context, then rowchunks O/post/MoE or
+  gate/O/post/MoE. The runner records suffix rowchunk metadata and blocks
+  native-caware claims.
+- Added CLI plumbing in `scripts/qwen35_batch_retained_bench.py` and
+  `scripts/qwen35_batch_hidden_bisect.py`.
+- Added tests:
+  `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_suffix`;
+  `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_suffix_rowchunk_can_include_gate`;
+  `tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_suffix_rowchunk_forwards_chunks`.
+- Validation:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py`;
+  `PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_context tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_rowchunk_suffix tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_suffix_rowchunk_can_include_gate tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_context_rowchunk_forwards_chunks tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_suffix_rowchunk_forwards_chunks`;
+  `PYTHONPATH=. python3 scripts/qwen35_batch_hidden_bisect.py --model /tmp/nonexistent-model --fixture /tmp/nonexistent-fixture.json --prompt-length 512 --batch-size 6 --decode-tokens 10 --warmup-decode-tokens 0 --max-layers 12 --layer-limits 8,9,10,11,12 --trace-decode-start 8 --trace-decode-end 9 --skip-full-context-oracle --skip-linear-state-summary --batch-decode-full-attn-suffix-row-chunk-size 2 --batch-decode-full-attn-suffix-row-chunk-layers 3,7,11 --batch-decode-full-attn-suffix-row-chunk-include-gate --dry-run`.
+- Ran two short c6 retained diagnostics on gfx1151/Radeon 8060S with
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, prompt 512, rows=6, decode=16,
+  `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1`, selected-c1 MoE, forced
+  small-batch shared expert, native rows=6 linear attention, batch GEMV
+  full-attention O projection, and suffix rowchunk2 on layers
+  `3,7,11,15,19,23,27,31`:
+  - Suffix rowchunk after batch context+gate: rejected at token 9,
+    `106.864 tok/s`, median `53.609 ms`; batch token `12` vs c1 token `27`.
+  - Suffix rowchunk including gate: rejected at token 9, `107.508 tok/s`,
+    median `53.189 ms`; same token `12` vs `27` failure.
+- Conclusion: post-context suffix chunking is not the c6 repair. The known
+  green bridge remains selected full-layer rowchunk2 on layers
+  `3,7,11,15,19,23,27,31`. Next c6 split should instrument lower-level
+  hidden/KV source state across the full-layer rowchunk boundary.
+- Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.

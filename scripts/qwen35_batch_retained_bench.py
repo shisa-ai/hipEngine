@@ -4207,6 +4207,18 @@ def _resolved_batch_decode_full_attn_context_row_chunk_layers(args: argparse.Nam
     return str(getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or "").strip()
 
 
+def _resolved_batch_decode_full_attn_suffix_row_chunk_size(args: argparse.Namespace) -> int:
+    return int(getattr(args, "batch_decode_full_attn_suffix_row_chunk_size", 0) or 0)
+
+
+def _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args: argparse.Namespace) -> str:
+    return str(getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or "").strip()
+
+
+def _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False))
+
+
 def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_full_attn_output_path", "batch"))
     if path != "batch":
@@ -4296,6 +4308,15 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = (
         _resolved_batch_decode_full_attn_context_row_chunk_layers(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_full_attn_suffix_row_chunk_size(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS"] = (
+        _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE"] = (
+        "1" if _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args) else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
@@ -4901,6 +4922,9 @@ def _build_payload(
             "batch_decode_full_attention_row_chunk_layers": _resolved_batch_decode_full_attn_row_chunk_layers(args),
             "batch_decode_full_attention_context_row_chunk_size": _resolved_batch_decode_full_attn_context_row_chunk_size(args),
             "batch_decode_full_attention_context_row_chunk_layers": _resolved_batch_decode_full_attn_context_row_chunk_layers(args),
+            "batch_decode_full_attention_suffix_row_chunk_size": _resolved_batch_decode_full_attn_suffix_row_chunk_size(args),
+            "batch_decode_full_attention_suffix_row_chunk_layers": _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args),
+            "batch_decode_full_attention_suffix_row_chunk_include_gate": _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -5107,6 +5131,22 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-context-row-chunk-layers",
         default="",
         help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention suffix native row chunk size for c>N batch decode; a positive value below batch size keeps batch QKV/append/context and splits only gate/O/post/MoE suffix work.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the suffix row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-include-gate",
+        action="store_true",
+        help="For suffix row chunks, compute batch context only and include the attention gate in each row chunk instead of using batch context+gate.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -5341,6 +5381,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--batch-decode-linear-row-chunk-size must be non-negative")
     if _resolved_batch_decode_full_attn_context_row_chunk_size(args) < 0:
         raise ValueError("--batch-decode-full-attn-context-row-chunk-size must be non-negative")
+    if _resolved_batch_decode_full_attn_suffix_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-full-attn-suffix-row-chunk-size must be non-negative")
     if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
         raise ValueError("--batch-sample-eq-rows must be positive")
 

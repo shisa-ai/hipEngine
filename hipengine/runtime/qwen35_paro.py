@@ -2946,6 +2946,25 @@ class Qwen35ParoDecodeState:
             tensor.device,
         )
 
+    @staticmethod
+    def _row_slice_tensor_view(tensor: Tensor, row_start: int, rows: int) -> Tensor:
+        if not tensor.shape:
+            raise ValueError("cannot row-slice a scalar tensor")
+        total_rows = int(tensor.shape[0])
+        if rows <= 0:
+            raise ValueError("row-slice rows must be positive")
+        if row_start < 0 or row_start + rows > total_rows:
+            raise ValueError(f"row slice {row_start}:{row_start + rows} outside tensor shape {tensor.shape}")
+        row_elements = 1
+        for dim in tensor.shape[1:]:
+            row_elements *= int(dim)
+        return Tensor.from_handle(
+            tensor.ptr + int(row_start) * row_elements * tensor.dtype.itemsize,
+            (int(rows), *tuple(int(dim) for dim in tensor.shape[1:])),
+            tensor.dtype,
+            tensor.device,
+        )
+
     def _decode_row_linear_attention_projection_scratch(
         self,
         hidden: Tensor,
@@ -3488,6 +3507,67 @@ class Qwen35ParoDecodeState:
             gated_attn=self._row_tensor_view(scratch.gated_attn, row),
             o_rot=self._row_tensor_view(scratch.o_rot, row),
             o_proj=self._row_tensor_view(scratch.o_proj, row),
+        )
+
+    def _decode_suffix_full_attention_scratch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        row_start: int,
+        rows: int,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return row-chunk scratch views for post-context full-attention suffix diagnostics."""
+
+        return Qwen35ParoAttentionScratch(
+            attn_input=self._row_slice_tensor_view(scratch.attn_input, row_start, rows),
+            q_rot=self._row_slice_tensor_view(scratch.q_rot, row_start, rows),
+            k_rot=self._row_slice_tensor_view(scratch.k_rot, row_start, rows),
+            v_rot=self._row_slice_tensor_view(scratch.v_rot, row_start, rows),
+            rotate_fuse_barrier=scratch.rotate_fuse_barrier,
+            q_proj_key=scratch.q_proj_key,
+            q_proj=self._row_slice_tensor_view(scratch.q_proj, row_start, rows),
+            key_bf16=self._row_slice_tensor_view(scratch.key_bf16, row_start, rows),
+            query_raw=self._row_slice_tensor_view(scratch.query_raw, row_start, rows),
+            key_raw=self._row_slice_tensor_view(scratch.key_raw, row_start, rows),
+            query=self._row_slice_tensor_view(scratch.query, row_start, rows),
+            key=self._row_slice_tensor_view(scratch.key, row_start, rows),
+            value=self._row_slice_tensor_view(scratch.value, row_start, rows),
+            kv_proj=None if scratch.kv_proj is None else self._row_slice_tensor_view(scratch.kv_proj, row_start, rows),
+            gate=self._row_slice_tensor_view(scratch.gate, row_start, rows),
+            partial_out=scratch.partial_out,
+            partial_m=scratch.partial_m,
+            partial_l=scratch.partial_l,
+            attn_out=scratch.attn_out,
+            gated_attn=self._row_slice_tensor_view(scratch.gated_attn, row_start, rows),
+            o_rot=self._row_slice_tensor_view(scratch.o_rot, row_start, rows),
+            o_proj=self._row_slice_tensor_view(scratch.o_proj, row_start, rows),
+        )
+
+    def _moe_c1_scratch_slice(
+        self,
+        scratch: Qwen35ParoMoeScratch,
+        row_start: int,
+        rows: int,
+    ) -> Qwen35ParoMoeScratch:
+        return Qwen35ParoMoeScratch(
+            normed=self._row_slice_tensor_view(scratch.normed, row_start, rows),
+            residual=self._row_slice_tensor_view(scratch.residual, row_start, rows),
+            gate_up_input=self._row_slice_tensor_view(scratch.gate_up_input, row_start, rows),
+            router_logits=self._row_slice_tensor_view(scratch.router_logits, row_start, rows),
+            routing_weights=self._row_slice_tensor_view(scratch.routing_weights, row_start, rows),
+            selected_experts=self._row_slice_tensor_view(scratch.selected_experts, row_start, rows),
+            gate_up=self._row_slice_tensor_view(scratch.gate_up, row_start, rows),
+            down_input=self._row_slice_tensor_view(scratch.down_input, row_start, rows),
+            down_out=self._row_slice_tensor_view(scratch.down_out, row_start, rows),
+            shared_gate_input=self._row_slice_tensor_view(scratch.shared_gate_input, row_start, rows),
+            shared_up_input=self._row_slice_tensor_view(scratch.shared_up_input, row_start, rows),
+            shared_gate_out=self._row_slice_tensor_view(scratch.shared_gate_out, row_start, rows),
+            shared_up_out=self._row_slice_tensor_view(scratch.shared_up_out, row_start, rows),
+            shared_up=self._row_slice_tensor_view(scratch.shared_up, row_start, rows),
+            shared_intermediate=self._row_slice_tensor_view(scratch.shared_intermediate, row_start, rows),
+            shared_down_input=self._row_slice_tensor_view(scratch.shared_down_input, row_start, rows),
+            shared_out=self._row_slice_tensor_view(scratch.shared_out, row_start, rows),
+            moe_out=self._row_slice_tensor_view(scratch.moe_out, row_start, rows),
+            shared_rotate_fuse_barrier=scratch.shared_rotate_fuse_barrier,
         )
 
     def prepare_full_attention_qkv_fp16_decode_rows(
@@ -4715,6 +4795,8 @@ class Qwen35ParoDecodeState:
         force_batch_temp_context: bool = False,
         force_batch_compact_context: bool = False,
         context_row_chunks: Sequence[tuple[int, int, KVLiveSpans]] | None = None,
+        suffix_row_chunks: Sequence[tuple[int, int]] | None = None,
+        suffix_row_chunk_include_gate: bool = False,
         force_per_row_gate: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
@@ -5618,6 +5700,29 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
                 gated = attention_scratch.gated_attn
+            elif suffix_row_chunks is not None and suffix_row_chunk_include_gate and tokens > 1:
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("suffix row-chunk full-attention diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("suffix row-chunk full-attention diagnostic does not cover split-K decode")
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    attention_scratch.query_raw.ptr,
+                    decode_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
             elif context_row_chunks is not None and tokens > 1:
                 if decode_spans.storage_dtype != DType.BF16:
                     raise NotImplementedError("context row-chunk full-attention diagnostic currently requires BF16 KV")
@@ -5725,6 +5830,93 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
+        if suffix_row_chunks is not None and tokens > 1:
+            if dense_mlp:
+                raise NotImplementedError("suffix row-chunk full-attention diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                raise ValueError("suffix row-chunk full-attention diagnostic requires token-row MoE scratch")
+            q_width = self.config.num_attention_heads * self.config.head_dim
+            for chunk_start, chunk_rows in suffix_row_chunks:
+                if chunk_rows <= 0:
+                    raise ValueError("suffix row chunks must have positive rows")
+                if chunk_start < 0 or chunk_start + chunk_rows > tokens:
+                    raise ValueError("suffix row chunk outside active decode rows")
+                chunk_hidden = self._row_slice_tensor_view(hidden, chunk_start, chunk_rows)
+                chunk_attention_scratch = self._decode_suffix_full_attention_scratch(
+                    attention_scratch,
+                    chunk_start,
+                    chunk_rows,
+                )
+                chunk_moe_scratch = self._moe_c1_scratch_slice(moe_scratch, chunk_start, chunk_rows)
+                if suffix_row_chunk_include_gate:
+                    qwen35_full_attn_gate_mul_fp16(
+                        chunk_attention_scratch.query_raw.ptr,
+                        chunk_attention_scratch.gate.ptr,
+                        chunk_attention_scratch.gated_attn.ptr,
+                        int(chunk_rows) * q_width,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                    chunk_gated = chunk_attention_scratch.gated_attn
+                else:
+                    chunk_gated = self._row_slice_tensor_view(gated, chunk_start, chunk_rows)
+                if force_per_row_output and chunk_rows > 1:
+                    chunk_attn_out = self.project_full_attention_o_rows_fp16(
+                        chunk_gated,
+                        chunk_attention_scratch,
+                        tokens=chunk_rows,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
+                else:
+                    chunk_attn_out = self.project_full_attention_o_fp16(
+                        chunk_gated,
+                        chunk_attention_scratch,
+                        tokens=chunk_rows,
+                        group_size=group_size,
+                        force_pack8_gemv=force_batch_gemv_output,
+                        library=library,
+                        stream=stream,
+                    )
+                post_attention_fn = (
+                    self.post_attention_add_rmsnorm_fp16_per_row
+                    if force_per_row_post_attention and chunk_rows > 1
+                    else self.post_attention_add_rmsnorm_fp16
+                )
+                chunk_mlp_input, chunk_residual = post_attention_fn(
+                    chunk_hidden,
+                    chunk_attn_out,
+                    chunk_moe_scratch,
+                    tokens=chunk_rows,
+                    library=library,
+                    stream=stream,
+                )
+                if force_per_row_moe and chunk_rows > 1:
+                    self.run_moe_c1_rows_fp16(
+                        chunk_mlp_input,
+                        chunk_residual,
+                        scratch=chunk_moe_scratch,
+                        tokens=chunk_rows,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
+                else:
+                    self.run_moe_c1_fp16(
+                        chunk_mlp_input,
+                        chunk_residual,
+                        scratch=chunk_moe_scratch,
+                        tokens=chunk_rows,
+                        group_size=group_size,
+                        force_small_batch_shared_expert=_force_small_batch_shared_expert(
+                            force_small_batch_shared_expert
+                        ),
+                        library=library,
+                        stream=stream,
+                    )
+            return moe_scratch.moe_out
         if force_per_row_output and tokens > 1:
             attn_out = self.project_full_attention_o_rows_fp16(
                 gated,

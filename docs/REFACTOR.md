@@ -784,3 +784,28 @@ should be boring.
   without exposing slot-open/prefill wall, or after the next c>N MTP scheduler
   direction supersedes it. The flag must stay default-off and must not be used
   for retained timing claims.
+
+## `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_*`
+- Added 2026-07-09 as a default-off PARO c>N diagnostic:
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE`,
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS`, and
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE`.
+  The path keeps batch full-attention QKV/append/context, then chunks either
+  O/post/MoE or gate/O/post/MoE over row sub-batches. It is exposed through
+  `scripts/qwen35_batch_retained_bench.py` and
+  `scripts/qwen35_batch_hidden_bisect.py`, records suffix-rowchunk metadata in
+  `last_batch_decode_execution`, and blocks native-caware claims.
+- Purpose: isolate the remaining gfx1151 c6 full-attention rowchunk tax after
+  context-only rowchunking rejected. It tests whether the green selected
+  full-layer rowchunk bridge is paying for post-context suffix work.
+- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
+  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, rows=6, prompt=512,
+  decode=16, selected-c1 MoE, forced small-batch shared expert, and suffix
+  rowchunk2 on layers `3,7,11,15,19,23,27,31`. After batch context+gate:
+  **106.864 tok/s**, median **53.609 ms**, generated-token red at token 9
+  (`12` vs c1 `27`). Including gate in the suffix chunks: **107.508 tok/s**,
+  median **53.189 ms**, same token-9 failure. Compact summary:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.
+- Remove when: c6 full-attention rowchunk isolation moves to lower-level
+  hidden/KV source tracing or a retained green non-rowchunk c6 path exists.
+  Keep the flags default-off and do not use them for retained timing claims.
