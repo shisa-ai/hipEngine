@@ -1,0 +1,454 @@
+# gfx1151 PARO/GGUF Optimization Ledger
+
+Last updated: 2026-07-10.
+
+Status: planning baseline at hipEngine `4e4e935ca021`. The repository,
+retained artifacts, relevant runtime/server code, and recent `WORKLOG.md`
+entries were reviewed for this baseline. No GPU benchmark was rerun while
+writing this plan.
+
+This is the active coordinator for making the PARO and GGUF paths correct,
+fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
+consolidates the next work from:
+
+- `MTP-LLAMACPP-PARITY.md`, the GGUF MTP experiment history;
+- `PARO-GGUF-MTP-TRANSFER.md`, the PARO transfer queue;
+- `HIP-vs-VULKAN.md`, the compiler/runtime microbenchmark investigation;
+- `TUNING-gfx1151.md`, `TUNING-gguf.md`, and `CONCURRENCY.md`;
+- the 2026-07-10 current-HEAD code and evidence audit.
+
+`PLAN.md` remains the architecture source of truth. `BENCHMARK.md`
+and `TESTING.md` remain the promotion contracts. The long-form documents
+above remain dated lab notebooks and implementation references; this file owns
+the current ordering, prerequisites, and completion state.
+
+## Scope And Completion
+
+In scope:
+
+- PARO and GGUF AR prefill/decode on gfx1151 and gfx1100;
+- HTTP concurrency, true backend row width, continuous shrinking, and sparse
+  resident slots;
+- GGUF MTP and PARO MTP/DFlash routing, verifier economics, and commit paths;
+- architecture-specific tuning through registry/config profiles;
+- a bounded, corrected HIP/Vulkan comparison that can guide production work;
+- memory residency, launch/synchronization, and host/device transfer costs.
+
+Out of scope until a retained profile activates them:
+
+- a broad Vulkan backend;
+- generic hand-written ISA;
+- speculative kernel rewrites without an exposed end-to-end bucket;
+- new approximation modes or accuracy trades;
+- prompt-specific acceptance tuning of any kind.
+
+"Tried everything" has a bounded meaning: every unconditional item in this
+ledger is accepted, rejected, or blocked with evidence, and every conditional
+item is either run because its activation trigger fired or parked with that
+trigger recorded. It does not mean enumerating arbitrary kernel variants.
+
+Status values:
+
+| Status | Meaning |
+| --- | --- |
+| `open` | Ready once its dependencies are satisfied. |
+| `blocked` | A named prerequisite prevents useful work. |
+| `conditional` | Run only when its activation trigger is present in a corrected profile. |
+| `in_progress` | The current logical unit; name it in `WORKLOG.md`. |
+| `accepted` | Correctness, end-to-end, artifact, rollup, and commit gates passed. |
+| `rejected` | The premise was tested and did not pass; preserve the artifact and reason. |
+| `parked` | Do not retry until the stated premise changes. |
+
+Landing instrumentation is not `accepted` for a performance item.
+"Done" means the exit gate in this document passed.
+
+## Current Evidence Snapshot
+
+These are document/artifact results at `4e4e935`, not measurements
+made while writing this plan.
+
+| Area | Current defensible result | Qualification / immediate consequence |
+| --- | --- | --- |
+| GGUF MTP on gfx1151 | `llama-compat` B2 reports `71.52 tok/s` versus llama.cpp HIP `71.91 tok/s`, with hipEngine stage wall `14.005` versus `14.269 ms/output`. | This is an opt-in direct-commit/dp4a compatibility contract, not exact/default semantics. Keep it as a replication lane, not the production default. |
+| Exact/default GGUF MTP | Fixed 10-cycle B5 reports `61.98` versus AR `54.79 tok/s`. | Natural `max_tokens=24` loses at B1/B2/B5: `52.13/52.04/50.65` versus AR `54.80`. Fixed-cycle rows do not close production MTP economics. |
+| MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | Absolute server rates are not valid until all-choice token accounting and batch-timing ownership are fixed. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
+| PARO c>N | Retained gfx1100 direct rows exist for c4/c8; current gfx1151 c6 selected-rowchunk diagnostics reach about `109.2 tok/s`. | Architecture/model evidence is mixed. Odd widths, c6 fallbacks, sparse slots, and shrinking groups are not retained-safe. |
+| gfx1100 GGUF AR | Current W7900 diagnostic is about `654 prefill / 35.8 decode tok/s` at 512/128. | It emits repeated token `9707`, is marked `performance_claim=false`, and sits in "Current fastest." Treat it as a P0 correctness/recovery problem, not a clean 66% regression claim. |
+| HIP versus Vulkan | ISA facts, HIP-only A/B controls, environment snapshots, and the serialized two-stage reduction remain useful. | Most Vulkan timing loops have no inter-repetition dependency. Their ratios are independent-throughput hypotheses, not matched latency results. |
+
+The first sprint is therefore measurement and routing correctness, followed by
+GGUF recovery and PARO shape safety. New speculative kernels come later.
+
+## Non-Negotiable Gates
+
+Every optimization unit must satisfy all applicable gates:
+
+1. **Exact workload identity.** Record model fingerprint/revision, quant, KV
+   dtype, prompt token IDs or prompt-suite hash, context/generation lengths,
+   concurrency, choices, sampling mode, and speculative mode.
+2. **Exact runtime identity.** Record configured and resolved backend, target
+   arch, GPU, ROCm/HIP/compiler versions, build profile, hipEngine commit, and
+   full dirty state including staged and untracked files.
+3. **Correct denominators.** Count generated token IDs across every choice.
+   Keep visible-text re-tokenization only as a separately named compatibility
+   diagnostic. Never use it as backend throughput.
+4. **Owned timing.** Every timing payload declares `timing_scope`,
+   stable `batch_id` where applicable, and `group_rows`.
+   Batch timing is counted once, never once per choice.
+5. **Correctness before speed.** Math/kernel changes need RED coverage where
+   practical, the relevant CPU/reference or generated-token oracle, finite
+   outputs, and the documented KL/top-1 gate. State/KV/graph changes also need
+   multi-step state equality, not only final top-1.
+6. **End-to-end before promotion.** A microbenchmark or profiler sub-window may
+   justify keeping an exact low-level win, but it does not support a server or
+   engine throughput claim without the matching end-to-end gate.
+7. **Architecture isolation.** A gfx1100 result cannot select a gfx1151 default,
+   or vice versa. Unverified architecture rows are explicit.
+8. **No hidden fallback.** Artifacts record requested and effective attention,
+   linear-attention, MoE, projection, sampler, graph, and speculative modes.
+9. **No benchmark gaming.** MTP/acceptance work uses the complete
+   `mtpbench-code-general-ja.jsonl` category suite plus held-outs and
+   a true same-protocol AR baseline.
+10. **Atomic retention.** Accepted performance work updates the compact artifact,
+    `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+    `WORKLOG.md`, and default route in the same logical unit unless a
+    concrete blocker is logged.
+
+## Canonical Accounting Contract
+
+The server and benchmark harnesses must distinguish four shapes:
+
+- HTTP concurrency: number of simultaneous client requests;
+- choices `n`: outputs requested by one HTTP request;
+- backend group width `C`: live requests advanced together;
+- verifier rows `V`: flattened speculative rows processed by the target.
+
+Required generated-work fields:
+
+| Field | Definition |
+| --- | --- |
+| `choice_generated_token_ids` | Exact token IDs emitted by each choice. |
+| `choice_generated_tokens` | Length of that choice's exact ID list. |
+| `total_generated_tokens` | Sum across all choices and requests. |
+| `draft_tokens` / `accepted_draft_tokens` | Speculative work only; never substituted for visible output. |
+| `target_rows` | Target model rows actually evaluated. |
+| `retokenized_visible_tokens` | Optional decoded-text diagnostic, clearly non-authoritative. |
+
+Required timing scopes:
+
+| Scope | Examples | Aggregation |
+| --- | --- | --- |
+| `choice` | Per-choice stop/sample/output handling | Sum only when measuring total per-choice work. |
+| `batch` | Packed prefill, native decode step, draft/verify/commit phase | Deduplicate by `batch_id`. |
+| `request` | Queue delay, TTFT, request wall | Report distribution; do not sum into GPU work. |
+| `client` | Whole benchmark wall/makespan | Denominator for aggregate server generated tok/s. |
+
+Primary server metrics:
+
+```text
+aggregate_generated_tok_s = total_generated_tokens / client_makespan_seconds
+per_request_generated_tok_s = request_generated_tokens / request_wall_seconds
+backend_batch_decode_tok_s = dedup_batch_generated_tokens / dedup_batch_decode_seconds
+```
+
+Also report TTFT, inter-token latency, completion latency, makespan, and
+p50/p95. A batch-wide timing copied to six choices must still contribute once.
+
+Required provenance:
+
+```text
+configured_backend, resolved_backend, target_arch, device_name
+model_path, model_revision, model_fingerprint, quant, kv_dtype
+hipengine_commit, staged_dirty, unstaged_dirty, untracked_dirty
+rocm_version, hipcc_version, build_profile, exact command and env
+timing_protocol, warmups, repetitions, profiler identity/status
+```
+
+The existing stronger dirty-tree handling in
+`scripts/gguf_mtp_category_bench.py` should become shared
+infrastructure rather than being reimplemented inconsistently.
+
+## Architecture And Shape Identity
+
+gfx1151 may reuse gfx1100 source bodies, but it must not reuse gfx1100 semantic
+identity. The resolved backend and target arch must flow through generator,
+runner/session, build, registry resolve, tuning selection, telemetry, and
+artifact creation.
+
+Do not mechanically relocate every physical import from
+`hipengine.kernels.hip_gfx1100`. Those modules are the shared source
+lineage used by the gfx1151 alias layer. Remove semantic hard-codes instead:
+
+- generator registry keys fixed to `hip_gfx1100`;
+- model defaults fixed to `hip_gfx1100`;
+- registry `resolve()` calls fixed to `hip_gfx1100`;
+- wrapper/build defaults that ignore the resolved target;
+- capability/provenance surfaces that report configured `auto` instead
+  of the resolved backend.
+
+Use one immutable architecture tuning profile selected at model/session build
+time. It may contain chunk sizes, workgroups, rowtile limits, route caps,
+attention splits, and graph policies. It must be keyed through registry/config
+composition, not hot-path `if backend == ...` branches.
+
+Any c>N algorithm decision uses at least:
+
+```text
+resolved backend + target arch + model fingerprint + quant + KV dtype
++ rows + context bucket + mode + active-mask shape
++ attention + linear-attention + MoE + projection + sampler + graph variants
+```
+
+An unknown key falls back to the serial/exact route and reports why.
+
+## PARO/GGUF Parity Audit
+
+This table prevents a win in one path from being forgotten in the other while
+also preventing incompatible quant kernels from being copied blindly.
+
+| Surface | PARO today | GGUF today | Required comparison / transfer |
+| --- | --- | --- | --- |
+| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | GGUF generation/model/dispatch remains semantically gfx1100-only. | Complete `SOL-B1` before gfx1151 GGUF tuning. |
+| Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | GGUF chunking exists, but GDN always selects the slow fused decode-order fallback when registered. | Re-certify GGUF GDN chain, then retune chunks by arch and context. |
+| Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption. | Establish correct eager oracle, then recapture by full shape/state key. |
+| c>N decode | PARO has native multi-row paths and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work, but route width is capped and identity/accounting is incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
+| Sparse slots | Runtime accepts sorted sparse physical slots. | Resident MTP slots are tracked, but actual group width must be exposed. | Remove generator compact-from-zero gating and test holes/reclaim. |
+| Full attention | PARO uses shape-specific native/rowchunk bridges; several widths remain diagnostic. | GGUF AR/verify paths have separate packed behavior. | Bucket context, row width, reducer, KV ABI, and fallback separately. |
+| GDN/linear state | PARO has segmented multi-row state work plus shape-specific fallbacks. | GGUF prefill chain is registered but shadowed; old decode graph corrupted state. | Use teacher-forced recurrent-state comparisons across multiple steps. |
+| MoE | Selected-c1 is already a true multi-row algorithm for even widths; grouped compact covers other diagnostics. | GGUF uses Q*_K/T16/X8 and dp4a-specific selected paths. | Transfer row/group policy and measurement, not quant kernel bodies. |
+| Projection | PARO catalogs candidates, but evidence mixes architectures and row-only bounds. | GGUF replacement layouts and selected/dense paths are quant-specific. | Key catalogs by full identity; compare true weight reuse versus row-GEMV. |
+| LM-head/sampler | PARO has batched LM-head evidence at some widths and serial fallback elsewhere. | GGUF uses Q6 rowtile/chunks; large rowtiles collapse. | Profile full lm-head + reduction + readback before new fusion. |
+| Speculative lifecycle | PARO DFlash has coarse timing and graph-shape telemetry, not a current real GPU row. | GGUF has packed verify and deferred scatter work, but duplicated timings. | Fix scope first; then compare accepted-row scatter, tail discard, commit, and sync. |
+| Startup/cache | PARO/GGUF both contain warmup and resident-cache ideas. | Coverage and artifact identity differ. | Record cold, warmed, cache-hit, and shape-miss behavior explicitly. |
+| Memory residency | PARO packed rows are near the consumer-card target. | Current GGUF W7900 rows are about 25.5 GiB and raw/repacked replacement coverage needs audit. | Census raw, packed, scratch, graph, and KV bytes by path. |
+
+GGUF Q*_K, T16/X8, q8_1/dp4a, and Q6 LM-head kernels are not PARO
+`w4_paro` kernels. Transfer scheduler, lifecycle, shape, graph,
+warmup, and accounting lessons. Transfer device math only after matching the
+layout and profiled bottleneck.
+
+## P0 Foundation Punchlist
+
+| ID | Work | Status | Dependencies | Exit gate |
+| --- | --- | --- | --- | --- |
+| `SOL-E1` | Carry exact generated IDs/counts through `GenerationOutput` and OpenAI responses; aggregate every choice in `mtp-bench.py`. | `open` | none | Retokenization-mismatch and `n=6` regressions prove exact all-choice totals; usage semantics are documented. |
+| `SOL-E2` | Add `batch_id`, `group_rows`, `timing_scope`, and timing owner; deduplicate batch metrics in harnesses. | `open` | none | Synthetic duplicate payload and live PARO/GGUF group tests count batch wall once. |
+| `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `open` | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
+| `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `blocked` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
+| `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `open` | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
+| `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open` | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
+| `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
+| `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `blocked` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
+| `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `blocked` | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
+
+P0 implementation should land as small validated commits: E1, E2, E3, E5,
+B1, then M1/E4. Do not combine backend plumbing with kernel tuning.
+
+## Baseline Matrix
+
+Run the first baseline immediately after the P0 foundation is green and before
+performance or routing changes. gfx1151 is local first; gfx1100/W7900 is a
+separate rerun when that hardware is available. Never merge the architectures
+into one dispatch decision.
+
+### AR Correctness And Throughput
+
+| Matrix | Required rows | Purpose |
+| --- | --- | --- |
+| Short concurrency | c1-c8, prompt 512 / decode 128, every integer width | Find odd-width/c6 holes and record the actual backend group. |
+| Mid-context concurrency | c1/c2/c4/c8, prompt 4K / decode 128 | Exercise attention/context buckets without exploding matrix cost. |
+| Long context | c1 first at 32K/64K/128K; c2/c4 only after c1 is green and memory-safe | Validate chunk/KV policy and architecture-specific memory limits. |
+| Dynamic shrink | Start c8 and force completion/cancel transitions through c7...c1 | Prove state/KV/slot correctness under live shape changes. |
+| Sparse slots | Holes at front/middle/tail with sorted physical slots | Prove native decode is not accidentally compact-from-zero only. |
+| Ragged context | Mixed prompt lengths within one group | Exercise per-row positions, spans, attention, and graph keys. |
+| Sampling | Greedy first; then supported per-row normal sampling | Keep sampler correctness separate from core AR bring-up. |
+
+For every c>N row report aggregate/c1, per-request/c1, native/serial, actual
+group histogram, active occupancy, TTFT, inter-token latency, completion
+p50/p95, makespan, memory, and exact generated-ID equality versus independent
+c1.
+
+### Speculative Economics
+
+Use all categories in
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl` plus held-outs.
+
+| Matrix | Required rows | Purpose |
+| --- | --- | --- |
+| Natural short horizon | c1/c2/c3/c4/c8, `max_tokens=24`, true AR and MTP | Establish immediate auto-routing policy with actual backend group widths. |
+| Longer horizon | At least `max_tokens=64/128` for routes that survive natural24 | Measure setup amortization and avoid fixed-cycle conclusions. |
+| Context buckets | Short and 4K first; longer only if route remains positive | Decide whether routing depends on attention/context cost. |
+| Budget | Exact/default budgets first; compat is a separately labeled lane | Never merge accuracy-traded and exact economics. |
+| PARO DFlash | Same prompt categories, same target AR protocol | Compare verifier/drafter lifecycle rather than headline from another path. |
+
+Required speculative metrics include visible outputs/cycle, accepted/output,
+target rows/output, draft/verify/commit wall, group width, route decision reason,
+and a true no-spec AR baseline.
+
+## GGUF Recovery And Optimization
+
+| ID | Work | Status | Dependencies | Exit gate |
+| --- | --- | --- | --- | --- |
+| `SOL-G1` | Build a teacher-forced token, hidden, recurrent-state, and KV oracle for eager GGUF decode across at least four steps. | `open` | E3, B1 | Repeated-token/current eager behavior is classified as correct or localized to the first divergent layer/state. |
+| `SOL-G2` | Add explicit GDN prefill `fused|chain|auto` diagnostic selection. Reproduce the 17-token mismatch and bisect first hidden/recurrent divergence. | `open` | G1 | Chain matches target tokens/state at short, 512, 4K, segment, and chunk boundaries. |
+| `SOL-G3` | Promote the split prepare + segmented-k2 + RMSNorm chain only if same-run wall wins. | `blocked` | G2 | Exact state/tokens plus prefill wall win on both primary contexts; expected kernel trace present. |
+| `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `blocked` | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
+| `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `blocked` | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
+| `SOL-G6` | Audit replacement layout residency and eliminate raw+packed duplicates where the replacement path is complete. | `open` | E3 | Allocation census names raw/packed/KV/scratch/graph bytes; 24 GiB-class goals are checked without speed regression. |
+| `SOL-G7` | Tune gfx1151 chunk, workgroup, rowtile, attention split, and route thresholds. | `blocked` | B1-B2, G2-G4, matrix | Same-device exact A/B selects profile values; gfx1100 remains unchanged. |
+| `SOL-G8` | Replace GGUF serial/row-replay concurrency with a true resident multi-row AR path across c1-c8 and sparse slots. | `blocked` | G4, baseline matrix | Exact c1-c8, shrink, sparse-slot, and profiler gates pass with aggregate scaling. |
+| `SOL-G9` | Narrow HIP Q4 selected-dual recovery using source/layout/reduction/waitcnt changes. | `conditional` | corrected V6 result and real profile | Activate only if serialized matched Q4 still favors Vulkan and Q4 is material in production wall. |
+| `SOL-G10` | Four-wave Q6 verifier LM-head rowtile: each wave owns four output columns to reduce accumulators. | `conditional` | E2, corrected profile | Activate only if Q6 head remains dominant; R6/R8/R12 show no spills, exact output, lower GPU event time, and server wall win. |
+
+Do not restore the old GGUF graph as a shortcut. Do not optimize the repeated
+`9707` stream until G1 proves it is a valid teacher-forced result.
+
+## PARO Concurrency And Optimization
+
+| ID | Work | Status | Dependencies | Exit gate |
+| --- | --- | --- | --- | --- |
+| `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `blocked` | P0 foundation | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
+| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `blocked` | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
+| `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `blocked` | P2 RED tests | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
+| `SOL-P4` | Make selected-c1 MoE a named multi-row algorithm and compare it with grouped-compact at every supported width. | `blocked` | P1, scoped profiler | Full-layer/server wall, routed-lane counts, and correctness select the mode; c6's current advantage is rechecked. |
+| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `blocked` | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
+| `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `blocked` | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
+| `SOL-P7` | Capture/replay decode buckets keyed by active rows, context, mask, variants, and replay length. | `blocked` | P1-P5 | Cache hit/miss/fallback telemetry is complete; exact replay improves server wall for retained shapes. |
+| `SOL-P8` | Retune gfx1151 prefill chunks, AOTriton threshold, projection, and sampler modes after the route is shape-safe. | `blocked` | B2, P1-P5 | Same-device profile and end-to-end matrix select values without gfx1100 regression. |
+| `SOL-P9` | Replace row-parallel GEMV with weight-reusing MMQ/GEMM/WMMA/grouped algorithms where c>N profiles justify it. | `conditional` | P1 profiler | Activate per family when weight reload/occupancy is material; prove c1 non-regression and c>N aggregate wall win. |
+
+The current c6 splitter is an opt-in diagnostic policy, not a completed
+throughput optimization. The direct-rate estimate favors unsplit c6, but only
+correct all-choice server measurements may decide the policy.
+
+## MTP, DFlash, And Routing
+
+| ID | Work | Status | Dependencies | Exit gate |
+| --- | --- | --- | --- | --- |
+| `SOL-S1` | Move `auto` MTP choice from per-request eligibility to the realized backend group. | `blocked` | E1-E2, natural matrix | Initial policy is c1/c2 MTP, c4+ AR, c3 measured; explicit opt-in always requests MTP. Policy records reason/group/horizon. |
+| `SOL-S2` | Record route cap, actual backend group, queue grouping, and verifier rows separately. | `open` | E2 | A c8 client row cannot be mistaken for a width-8 verifier row. |
+| `SOL-S3` | Add context/output-length buckets and EWMA hysteresis only after static policy is stable. | `blocked` | S1 retained | Online policy beats/equals static on held-out full-suite traffic without prompt-conditioned branches. |
+| `SOL-S4` | Run a real PARO DFlash row using the landed coarse phase and graph-shape telemetry. | `blocked` | E1-E3 | Same-session AR, exact output, phase coverage, and shape hit/miss data identify the dominant parent bucket. |
+| `SOL-S5` | Compare GGUF deferred accepted-row scatter/tail discard with PARO verifier commit/canonicalization. | `conditional` | S4 profile | Activate only if commit/scatter/sync is material; exact state/KV and cycle/server wall must improve. |
+| `SOL-S6` | Add true draft-side batching and/or wider verifier groups. | `conditional` | S1-S4 profile | Activate only if current phase serialization/group caps dominate; retain on full suite and server wall. |
+| `SOL-S7` | Re-evaluate LM-head/top1 fusion, readback, and sampler boundaries. | `conditional` | corrected scoped profile | Existing generic fusion/readback probes stay rejected unless a changed shape exposes the bucket again. |
+
+Do not retry generic LM-head fusion, deferred readback, rowtile+top1, broad
+route-cap increases, or confidence policies merely because attribution moved.
+Require a changed premise and name it in the new artifact.
+
+## HIP/Vulkan Measurement Repair
+
+### Current Claim Classification
+
+| Evidence | Current use |
+| --- | --- |
+| Vulkan 43x dispatch, 5.8-16x geometry/reduction, 13-27x sampler | Invalid as matched latency; preserve as independent-throughput hypotheses. |
+| Packed dot, memory/waitcnt, Q4/Q6/Q8 slices, current Q6 LM-head ratios | Diagnostic throughput only until serialized rerun. |
+| Q4 `1.18x` | Additionally mismatched to the shipped HIP workgroup/path; cannot choose a backend or kernel. |
+| Q6 LM-head HIP T16 versus Vulkan q8_1/X8 | Algorithm/layout evidence only, not bit-identical backend math. |
+| ISA dot4/VOPD/waitcnt/spill counts | Structural evidence remains valid. |
+| HIP-only wave/fixed-shape/q8_1 A/B tests | Retain within their stated HIP scope. |
+| True two-stage reduction | Current serialized control; rerun beside repaired rows. |
+
+### Required Harness Contract
+
+1. Add `serial_latency` and `independent_throughput` modes.
+2. In serial mode, add compute-to-compute execution and memory dependencies
+   between every Vulkan repetition, including WAW and read-to-next-write hazards.
+3. In independent mode, use disjoint outputs and compare with a HIP
+   multi-stream/independent-graph path.
+4. Record Vulkan GPU timestamps and host submit-to-fence wall separately.
+   Record HIP event time and equivalent host wall.
+5. Include `reps=1` plus a burst, and equalize warmup by dispatch count.
+6. Validate the actual timed N-repetition command, not a separate one-dispatch
+   command. Run Vulkan synchronization validation outside timing.
+7. Match input bytes, selected IDs, algorithm/layout, output dtype, workgroup,
+   cache state, and hot versus rotating working sets.
+8. Extend the micro result schema with timing mode, dependency contract,
+   timestamp metadata, memory flags, commit/dirty state, and claim eligibility.
+
+### Bounded Rerun
+
+| ID | Family | Corrected gfx1151 anchors | Status |
+| --- | --- | --- | --- |
+| `SOL-V1` | Harness/schema | Implement the contract above and a dependency litmus test. | `open` |
+| `SOL-V2` | Dispatch | counts 1/50/941, grids 1/8192, reps 1 and burst, both modes/timings. | `blocked` on V1 |
+| `SOL-V3` | Geometry | K 512/8192, rows 1/8, wg 64/128/256. | `blocked` on V1 |
+| `SOL-V4` | Sampler | top-1/top-k8, rows 1/8, vocab 32768, wg 64/128/256. | `blocked` on V1 |
+| `SOL-V5` | Dot/memory | q8/q4 N=32768; coalesced-4 plus gather control; wg 64/128/256. | `blocked` on V1 |
+| `SOL-V6` | Q4 selected-dual | Active production layout, 4x32, 2048->512, HIP/Vulkan wg 64/128/256. | `blocked` on V1 |
+| `SOL-V7` | Q6 selected-down | rows 8, 512->2048, wg 64/128/256. | `blocked` on V1 |
+| `SOL-V8` | Two-stage control | K 32768, rows 1/8, wg 128/256, split 4, serialized. | `blocked` on V1 |
+| `SOL-V9` | HIP independent control | Multi-stream/disjoint-output throughput against Vulkan independent mode. | `blocked` on V1 |
+| `SOL-V10` | gfx1100 portability | Repeat corrected anchors and every gfx1151 delta above 5%. | `blocked` on V2-V9 and hardware |
+| `SOL-V11` | Q6 LM-head | Same math/layout at rows 1/8, 2048->152064. | `conditional` on production profile and matched implementation |
+| `SOL-V12` | Production Vulkan probe | Persistent registry Q4/sampler object and real engine wall. | `conditional` on corrected serialized win plus product decision |
+
+Run gfx1151 first. Do not start the W7900 matrix, LLVM issue, inline ISA, or
+Vulkan registry work until the corrected gfx1151 result says the answer could
+change a production decision.
+
+## Profiling And Optimization Loop
+
+For every performance item:
+
+1. Select the highest actionable end-to-end or verified sub-window bucket.
+2. State the hypothesis, affected shape keys, baseline artifact, expected
+   movement, and stop condition in `WORKLOG.md`.
+3. Add the narrow RED oracle before math/state changes, or log why RED-first is
+   impractical.
+4. Make one logical change. Keep a registered unfused/exact fallback.
+5. Run the narrow correctness gate, expected-kernel trace, and same-suite A/B.
+6. Use at least three timing samples for retention and apply variance rules.
+7. If exact and non-regressive, promote the default and commit the artifact and
+   rollups. If rejected, record the measured reason and remove or ledger the
+   temporary path in `REFACTOR.md`.
+8. Refresh this ledger status/result link before taking the next item.
+
+Prioritize by wall reduction, but retain exact cycle-wall, verified sub-window,
+launch-count, and H2D/D2H improvements even when aggregate variance hides a
+small compounding win, as required by the project evidence policy.
+
+## Execution Order
+
+| Order | Work package | Items | Why now |
+| ---: | --- | --- | --- |
+| 1 | Exact accounting and provenance | E1-E3, S2 | All later routing and wall decisions depend on correct denominators. |
+| 2 | Exact server route and backend identity | E5, B1 | Makes gfx1151 GGUF and direct/server comparisons real. |
+| 3 | Harness/report and evidence cleanup | M1, E4, D1 | Establishes one trustworthy dashboard. |
+| 4 | Current-HEAD baseline matrix | P1-P2 plus GGUF AR/spec matrices | Separates architecture, row, context, and lifecycle failures. |
+| 5 | gfx1100 GGUF recovery | G1-G6 | Largest plausible performance recovery; correctness first. |
+| 6 | PARO shape-safe native batching | P3-P8, then P9 if activated | Converts diagnostics into deployable c>N behavior. |
+| 7 | Batch-aware speculative routing | S1-S4, then conditional S5-S7 | Uses corrected economics rather than per-request guesses. |
+| 8 | Targeted non-backend kernel work | G10 and activated P9/S items | Only profiled, production-shaped kernels enter here. |
+| 9 | HIP/Vulkan repair and bounded rerun | V1-V10 | Re-establishes what is compiler, runtime, or overlap. |
+| 10 | Backend/ISA decision | G9 and V11-V12 if activated | Broad backend work requires a corrected production gate. |
+
+Cross-GPU work is not allowed to block useful local gfx1151 progress, but no
+gfx1100/gfx1151 shared default is promoted without both architectures or an
+explicit architecture-specific profile.
+
+## Definition Of Sprint Closure
+
+The optimization ledger can be called complete only when:
+
+- all P0 accounting, provenance, backend identity, and dashboard items pass;
+- PARO and GGUF have exact current-HEAD baselines with trustworthy denominators;
+- every PARO c1-c8 width and c8->c1 transition is retained-safe or explicitly
+  serial with a named blocker;
+- gfx1100 GGUF repeated-token/state behavior is resolved and the correct eager
+  path is profiled; GDN chain and graph are accepted or rejected with evidence;
+- MTP `auto` uses actual group/horizon economics and explicit opt-in
+  remains available;
+- a real PARO DFlash profile either activates or parks each transfer candidate;
+- every currently relevant conditional kernel is accepted, rejected, or parked
+  by its trigger;
+- HIP/Vulkan retained timing language is rebuilt from synchronized measurements,
+  with throughput and latency kept separate;
+- current dashboards contain only eligible claims, while rejected/diagnostic
+  history remains discoverable.
+
+The immediate next logical unit after this planning commit is `SOL-E1`:
+exact generated-token plumbing and all-choice aggregation, with
+`SOL-E2` following before any new server performance measurement.
