@@ -307,6 +307,25 @@ Runtime retained-default recheck:
 | Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults | rows=6 now uses `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
 | Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
 
+c6 server splitter:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-linear-moe-split-summary.json`.
+
+| c6 server shape | MoE | Linear attention | Decode step | Backend generated | Status |
+| --- | --- | --- | ---: | ---: | --- |
+| grouped native-linear | grouped-compact | native segments | `56.873 ms` | `8.67 tok/s` | hidden-red timing diagnostic |
+| selected rowchunk repair | selected-c1 | rowchunk2 | `64.101 ms` | `8.14 tok/s` | current server-visible correctness bridge |
+| selected native-linear | selected-c1 | native segments | `51.619 ms` | `9.01 tok/s` | fastest timing, but hidden-red; next repair target |
+| grouped rowchunk | grouped-compact | rowchunk2 | `71.877 ms` | `7.59 tok/s` | hidden-red and slower |
+
+This split says the biggest c6 tax is linear rowchunk2, not projection. If
+native rows=6 linear-attention segments can be made correctness-clean, the
+forced `n=6` server probe should recover about `12.482 ms/step` versus the
+current selected-c1 rowchunk bridge (`64.101 - 51.619 ms`). Grouped MoE still
+needs a separate correctness repair; selected-c1 MoE is the faster green
+starting point for native-linear work.
+
 Next repair order:
 
 1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c6/c8 all-layer full-attention
