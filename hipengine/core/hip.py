@@ -115,6 +115,15 @@ class HipRuntime:
     def stream_synchronize(self, stream: int) -> None:
         self.check(self.library.hipStreamSynchronize(ctypes.c_void_p(stream)))
 
+    def stream_wait_event(self, stream: int, event: int, *, flags: int = 0) -> None:
+        self.check(
+            self.library.hipStreamWaitEvent(
+                ctypes.c_void_p(stream),
+                ctypes.c_void_p(event),
+                ctypes.c_uint(flags),
+            )
+        )
+
     def stream_begin_capture(self, stream: int, mode: int = 2) -> None:
         self.check(self.library.hipStreamBeginCapture(ctypes.c_void_p(stream), ctypes.c_int(mode)))
 
@@ -217,6 +226,8 @@ class HipRuntime:
         self.library.hipStreamDestroy.restype = ctypes.c_int
         self.library.hipStreamSynchronize.argtypes = [ctypes.c_void_p]
         self.library.hipStreamSynchronize.restype = ctypes.c_int
+        self.library.hipStreamWaitEvent.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+        self.library.hipStreamWaitEvent.restype = ctypes.c_int
         self.library.hipStreamBeginCapture.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.library.hipStreamBeginCapture.restype = ctypes.c_int
         self.library.hipStreamEndCapture.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
