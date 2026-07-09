@@ -23,7 +23,7 @@ below:
 | 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
 | 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
 | 5 | Shape-keyed HIP graph/fusion buckets | Implemented for PARO DFlash verifier artifacts: runtime graph events now report the full verifier cache key, and `verifier_graph.shape_stats` aggregates status/timing by that shape. Drafter graph status and QKV fusion counts were already present. | Run with `--verifier-graph auto` or `validate`; only change graph replay/fusion semantics after shape stats show cache hits, misses, fallbacks, and `graph_replay`/`target_verify_forward` wall by shape. |
-| 6 | q8_1/dp4a activation reuse audit | Queued low-risk cleanup. | Only retain where exact and where profiling shows duplicated q8_1 staging. |
+| 6 | q8_1/dp4a activation reuse audit | Audited, no PARO transfer: PARO server/DFlash hot paths have no q8_1/dp4a staging and use `w4_paro` AWQ pack8/WMMA FP16/BF16 activation kernels. GGUF MTP q8_1 helpers already quantize once per single/dual/triple dense consumer group and once for Q6 top-1. | Keep as a GGUF profiling watch item only; add code only if a real profile shows duplicated q8_1 staging or a new PARO sidecar path adopts q8_1 activations. |
 
 The verifier bucket contract is intentionally coarse first-pass instrumentation:
 `metadata_upload`, `target_verify_forward` or `graph_replay`,
@@ -59,6 +59,17 @@ cycles, validation state, fallback reasons, context-token min/max/sample,
 active-budget counts, replay-count max, and summed target verify buckets. This
 is intentionally observability first: it tells us whether a graph bucket is
 amortizing and where launch wall remains before changing graph replay semantics.
+
+The q8_1/dp4a reuse item also stays outside PARO for now. A focused search over
+the PARO runner, server/generation path, DFlash harness, and PARO AWQ/WMMA
+kernels found no q8_1/dp4a activation staging; those paths use `w4_paro`
+pack8/WMMA kernels with FP16/BF16 activation inputs. In the GGUF MTP draft path,
+`_try_dense_q8_dp4a_f32`, `_try_dense_q8_dp4a_dual_f32`, and
+`_try_dense_q8_dp4a_triple_f32` quantize one activation buffer and reuse it for
+the associated single/dual/triple Q8_0 dp4a dot, while the Q6 top-1 path
+quantizes `head_normed_bf16` once before stage1/gather. There is no current
+PARO code change to retain unless future profiling identifies duplicated q8_1
+staging or a PARO sidecar path starts using q8_1 activations.
 
 ## Current Evidence Split
 
