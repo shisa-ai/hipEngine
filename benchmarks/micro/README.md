@@ -86,7 +86,7 @@ backends do not execute the same math/layout.
 | `comparison_claim.py` | Shared source, device, raw-identity, and matrix claim gate for joint wrappers |
 | `runners/micro_timing_hip.hpp` | HIP event and multi-stream timing helpers |
 | `runners/micro_timing_vulkan.hpp` | Vulkan timestamp, barrier, calibrated multi-queue timing helpers |
-| `collect_env.py` | Dependency-free environment and device provenance capture |
+| `collect_env.py` | Dependency-free environment/device capture with the shared `hipengine_artifact_provenance` v1 block |
 | `schemas/result.schema.json` | v1 legacy plus v2 result/comparison artifact schema |
 | `schemas/environment.schema.json` | Environment artifact schema |
 | `results/` | Retained compact artifacts, separated by architecture and device |

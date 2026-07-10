@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-10**
+Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
 `0c1845170955af48fd52413228d1699dcf72364c`
@@ -42,6 +42,15 @@ workload + concurrency + sampling/speculative policy + timing scope
 Documentation-only commits do not make a row stale. Changes to a measured
 runtime path, model, quant, KV policy, compiler/runtime, benchmark timing scope,
 correctness gate, or comparison engine do.
+
+New server, retained PARO, GGUF, and micro artifacts must embed a valid
+`hipengine_artifact_provenance` v1 block. The canonical schema is
+[`schemas/artifact-provenance.schema.json`](schemas/artifact-provenance.schema.json).
+For retained model-performance rows, the resolved backend must be concrete,
+the selected target/device must be recorded, the model fingerprint must refer
+to existing content, and staged/unstaged/untracked dirtiness must all be false.
+Legacy provenance fields remain useful diagnostics but do not satisfy this
+contract for a new row.
 
 ## Platform Index
 
@@ -523,9 +532,11 @@ timing contract and exact bounded rerun commands are in
 
 1. Choose one protocol tuple and record the old artifact before running.
 2. Create a clean detached worktree at the revision being measured.
-3. Capture GPU identity, target arch, VBIOS, power/clock state, kernel, Python,
-   ROCm/HIP compiler, Vulkan driver, comparison-engine commit, model fingerprint,
-   command line, and dirty state.
+3. Capture the canonical provenance block: GPU identity, configured/resolved
+   backend, target arch, VBIOS, power/clock state, kernel, Python, ROCm/HIP
+   compiler, Vulkan driver, comparison-engine commit, existing model
+   fingerprint, exact argv/environment, and separate staged, unstaged, and
+   untracked source state.
 4. Run the named warmup, repetition, correctness, and memory protocol. Store raw
    logs outside git and a compact artifact under `benchmarks/results/`.
 5. Reject artifacts with missing provenance or failed correctness. A diagnostic
@@ -554,10 +565,12 @@ untracked experiment files as part of the rollup gate.
 - **W7900 GGUF Q4_K_M:** the 2026-07-07 eager run is the last measured path but
   has repeated token `9707` output and `performance_claim=false`. Restore target
   and recurrent-state correctness before using its throughput as a baseline.
-- **OpenAI MTP server c=1/2/4/8:** the retained 2026-07-06 artifacts use decoded
-  text re-tokenization for completion counts and repeat one batch-scoped timing
-  payload per choice. They do not support a topline throughput claim until token
-  IDs are counted across all choices and batch timings are deduplicated.
+- **OpenAI MTP server c=1/2/4/8:** the 2026-07-06 artifacts use decoded-text
+  re-tokenization for completion counts and repeat one batch-scoped timing
+  payload per choice. The current harness now counts exact IDs across every
+  choice, deduplicates owned batch timing, and emits canonical provenance, but
+  those historical rows predate all three contracts. They remain ineligible
+  until the same protocol is rerun.
 - **gfx1151 PARO native batching:** the 2026-07-10 primitive gate passes c2-c8,
   but the direct timing matrix used a batch-shaped width-1 oracle. At
   `0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate rejects native c8

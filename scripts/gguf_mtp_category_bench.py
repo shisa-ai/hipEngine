@@ -29,6 +29,11 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.benchmark.provenance import collect_artifact_provenance
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 DEFAULT_BUDGETS = "1,2,3,4,5"
@@ -186,6 +191,24 @@ def repo_provenance() -> dict[str, Any]:
         "git_tracked_dirty": tracked_dirty,
         "git_untracked_count": untracked_count,
     }
+
+
+def artifact_provenance(args: argparse.Namespace) -> dict[str, Any]:
+    """Return the canonical provenance block for a GGUF category artifact."""
+
+    return collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=os.environ.get("HIPENGINE_BACKEND", "auto"),
+        target_arch=(os.environ.get("HIPENGINE_HIP_ARCH") or "").strip() or None,
+        model_path=getattr(args, "model", None),
+        quant="gguf_q4_k_m",
+        kv_dtype="bf16",
+        command=(sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]),
+        build_profile="gguf_mtp_category",
+        timing_protocol="child_cycle_stage_wall",
+        warmups=None,
+        repetitions=1,
+    )
 
 
 def validate_artifact_schema(payload: dict[str, Any], *, label: str, kind: str, schema: int) -> dict[str, Any]:
@@ -2447,6 +2470,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "repo": repo_provenance(),
+        "provenance": artifact_provenance(args),
         "model": model_arg,
         "quant": "UD-Q4_K_M GGUF with MTP blocks",
         "prompt_file": prompts_arg,

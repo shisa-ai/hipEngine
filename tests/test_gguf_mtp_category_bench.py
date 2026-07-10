@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
+
 from scripts.gguf_mtp_category_bench import (
     DEFAULT_FULL_PROMPT_IDS,
     DEFAULT_HELDOUT_PROMPT_IDS,
@@ -270,6 +272,11 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["status"] == "diagnostic_retained"
     assert summary["repo"]["repo_root"]
     assert set(summary["repo"]) == {"repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count"}
+    provenance = validate_artifact_provenance(summary["provenance"])
+    assert provenance["resolved_backend"] != "auto"
+    assert provenance["model_path"] == str(Path(args.model).resolve())
+    assert isinstance(provenance["model_fingerprint"]["exists"], bool)
+    assert provenance["quant"] == "gguf_q4_k_m"
     assert summary["performance_claim"] is False
     assert summary["speed_claim_eligible"] is False
     assert summary["true_ar_comparison_available"] is False
@@ -3695,6 +3702,10 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     assert artifact["kind"] == "hipengine_gguf_true_ar_category_baseline"
     assert artifact["repo"]["repo_root"]
     assert set(artifact["repo"]) == {"repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count"}
+    provenance = validate_artifact_provenance(artifact["provenance"])
+    assert provenance["model_path"] == str(Path(args.model).resolve())
+    assert provenance["quant"] == "gguf_q4_k_m"
+    assert provenance["timing_protocol"] == "eager_decode_loop"
     assert artifact["performance_claim"] is False
     assert artifact["true_autoregressive_path"] is True
     assert artifact["same_timing_protocol"] is True

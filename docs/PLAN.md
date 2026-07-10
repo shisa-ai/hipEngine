@@ -1365,15 +1365,24 @@ These are deliberately deferred. Each has a `rocprofv3` or benchmarking prerequi
 ## Evidence Policy
 
 Every performance claim in hipEngine must include:
-- **Model**: exact checkpoint name
+- **Model**: exact checkpoint name, immutable revision, and content fingerprint
 - **Quantization**: FP16, W8A16, W4, etc.
 - **Workload**: prompt length, generation length, batch size
-- **Hardware**: W7900/gfx1100, ROCm version, PyTorch version
+- **Hardware**: selected GPU, configured/resolved backend, target arch, ROCm and compiler versions
+- **Source**: hipEngine commit plus separate staged, unstaged, and untracked state
 - **Command**: exact benchmark invocation
 - **Result**: tok/s prefill, tok/s decode, peak GiB
 - **Correctness**: KL divergence ≤ 0.05, top-1 agreement ≥ 90%
 
 This policy is inherited from the `LESSONS-LEARNED.md` discipline: fast rows are invalid until output sanity proves they are real.
+
+Server, retained PARO, GGUF, and microbenchmark harnesses share the stdlib-only,
+torch-free `hipengine_artifact_provenance` v1 collector and the formal
+`benchmarks/schemas/artifact-provenance.schema.json` contract. It resolves
+`backend="auto"` to a concrete backend/target/device, fingerprints model
+content, and preserves staged, unstaged, and untracked dirtiness separately.
+Legacy artifact-specific provenance fields remain readable but are not a
+substitute for this canonical block on new retained rows.
 
 ## License
 

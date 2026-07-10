@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
@@ -18920,11 +18921,6 @@ def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch
 
 
 def test_qwen35_c1_baseline_software_context_records_git_dirty_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeProc:
-        def __init__(self, returncode: int) -> None:
-            self.returncode = returncode
-            self.stdout = ""
-
     monkeypatch.setattr(
         paro_bench,
         "_run_capture",
@@ -18934,13 +18930,28 @@ def test_qwen35_c1_baseline_software_context_records_git_dirty_state(monkeypatch
             "output": "abc123" if command[:2] == ["git", "rev-parse"] else "hipcc 6.2",
         },
     )
-    monkeypatch.setattr(paro_bench.subprocess, "run", lambda *args, **kwargs: FakeProc(1))
+    monkeypatch.setattr(
+        paro_bench,
+        "collect_repo_state",
+        lambda _root: {
+            "hipengine_commit": "abc123",
+            "dirty": True,
+            "staged_dirty": True,
+            "unstaged_dirty": False,
+            "untracked_dirty": True,
+            "untracked_count": 3,
+        },
+    )
 
     software = paro_bench._software_context()
 
     assert software["hipengine_commit"] == "abc123"
     assert software["hipcc_version"] == "hipcc 6.2"
     assert software["hipengine_dirty"] is True
+    assert software["staged_dirty"] is True
+    assert software["unstaged_dirty"] is False
+    assert software["untracked_dirty"] is True
+    assert software["untracked_count"] == 3
     assert software["python"]
 
 
@@ -19726,6 +19737,10 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
 
     assert payload["status"] == "blocked"
     assert payload["performance_claim"] is False
+    provenance = validate_artifact_provenance(payload["provenance"])
+    assert provenance["model_path"] == str(Path(args.model).resolve())
+    assert provenance["quant"] == "w4_paro"
+    assert provenance["kv_dtype"] == "bf16"
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"

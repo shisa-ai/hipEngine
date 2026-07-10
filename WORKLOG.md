@@ -149674,3 +149674,59 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Historical server artifacts still contain the old duplicated payloads and
   remain ineligible until rerun; no metric, compact artifact, benchmark
   scoreboard row, or benchmark changelog entry changed in this unit.
+
+## 2026-07-11 - SOL-E3 canonical benchmark artifact provenance
+
+- RED introduced `tests/test_benchmark_provenance.py` against the intended
+  shared collector and failed collection with
+  `ModuleNotFoundError: hipengine.benchmark.provenance`, proving that server,
+  PARO, GGUF, and micro harnesses had no common provenance implementation.
+  The audit also found that existing paths collapsed dirty state differently,
+  used configured rather than resolved backend identity, and often recorded a
+  model path without a content fingerprint.
+- Added the stdlib-only, torch-free
+  `hipengine.benchmark.provenance` collector and formal
+  `benchmarks/schemas/artifact-provenance.schema.json` v1 contract. It records
+  repository/commit/branch, staged/unstaged/untracked axes and count, dynamic
+  configured/resolved backend plus target/device, model revision/content
+  fingerprint, quant/KV dtype, exact argv/environment, ROCm/hipcc, build and
+  timing protocol, warmups/repetitions, and profiler metadata. Files up to
+  8 MiB use full SHA-256; larger files use size-bound deterministic
+  head/middle/tail samples; directories use a deterministic per-file manifest;
+  missing paths are explicit diagnostics and cannot satisfy `require_model`.
+- Integrated the canonical block into `scripts/mtp-bench.py` server output,
+  `scripts/qwen35_paro_bench.py`, retained batch artifacts from
+  `scripts/qwen35_batch_retained_bench.py`, GGUF MTP category and true-AR
+  artifacts, and HIP/Vulkan micro environment artifacts. Legacy repo/software
+  fields remain readable for older schemas. Server artifact warmups must be
+  non-negative and measured repetitions positive before any request runs.
+- GREEN focused gates:
+  `uv run pytest -q tests/test_benchmark_provenance.py
+  tests/test_micro_collect_env.py tests/test_mtp_bench_tool.py
+  tests/test_gguf_mtp_category_bench.py` and
+  `uv run pytest -q tests/test_generation_batch_scheduler.py -k
+  'software_context or retained_payload'`. Coverage includes clean, staged,
+  unstaged, and untracked temporary repositories; snapshot revision and
+  file/directory/missing model identities; dynamic `auto -> hip_gfx1151`;
+  schema rejection; and generated artifacts for all four required families.
+- Guard bundle passes: `python3 -m compileall -q hipengine tests scripts`,
+  `python3 scripts/smoke.py --mode registry`, `--mode cpu-fixtures`,
+  `--mode smoke-add-plan`, canonical schema `json.tool`, benchmark/root README
+  sync check, and `git diff --check`. The explicit top-level CPU fixture gate
+  `python3 scripts/check_fixtures.py tests/fixtures/cpu_reference/*.json`
+  passes 7/7. The default recursive `python3 scripts/check_fixtures.py` still
+  reaches four passes and then hits the known mixed-schema nested
+  `cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json` (`KeyError: expected`);
+  this pre-existing release-gate blocker is unrelated to provenance and no
+  full-suite pass is claimed.
+- A live torch-free probe on this Radeon 8060S resolved configured `auto` to
+  `hip_gfx1151`, target `gfx1151`, and device `Radeon 8060S Graphics`; it also
+  separately reported staged=false, unstaged=true, untracked=true, with 258
+  paths (255 pre-existing benchmark outputs plus the three task-owned E3
+  files). The unrelated benchmark outputs remain untouched.
+- Updated the evidence contract and status in `docs/BENCHMARK.md`,
+  `docs/PLAN.md`, `docs/SOL-OPTIMIZATION.md`, root/benchmark/micro READMEs, and
+  `benchmarks/CHANGELOG.md`. `SOL-E3` is accepted, `SOL-E4` and `SOL-S4` are
+  unblocked, and `SOL-S2` is next. This is a measurement-contract change only:
+  no metric or compact result artifact was superseded, and historical rows
+  retain their existing eligibility until rerun.

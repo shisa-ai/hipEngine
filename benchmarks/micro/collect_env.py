@@ -15,7 +15,22 @@ from pathlib import Path
 from typing import Any
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.benchmark.provenance import collect_artifact_provenance
+
+
 DEFAULT_MAX_OUTPUT_CHARS = 20000
+_MICRO_PROVENANCE_ENV_KEYS = (
+    "HIPENGINE_BACKEND",
+    "HIPENGINE_HIP_ARCH",
+    "HIP_VISIBLE_DEVICES",
+    "ROCR_VISIBLE_DEVICES",
+    "VK_ICD_FILENAMES",
+    "RADV_PERFTEST",
+)
 
 
 def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
@@ -351,6 +366,23 @@ def collect_environment(
                 max_output_chars=max_output_chars,
             )
 
+    hipcc_command = commands.get("hipcc_version", {})
+    hipcc_version = (
+        str(hipcc_command.get("stdout") or "").strip()
+        if hipcc_command.get("returncode") == 0
+        else None
+    )
+    provenance = collect_artifact_provenance(
+        repo_root=repo_root,
+        configured_backend=os.environ.get("HIPENGINE_BACKEND", "auto"),
+        detected_arches=None if include_device_probes else (),
+        command=tuple(sys.argv),
+        environment={key: os.environ.get(key) for key in _MICRO_PROVENANCE_ENV_KEYS},
+        build_profile="micro_environment",
+        timing_protocol=None,
+        rocm_version=None,
+        hipcc_version=hipcc_version,
+    )
     return {
         "schema_version": 1,
         "kind": "hipengine_micro_environment",
@@ -364,6 +396,7 @@ def collect_environment(
             "include_privileged": include_privileged,
         },
         "repo": collect_git(repo_root),
+        "provenance": provenance,
         "host": {
             "platform": platform.platform(),
             "python": sys.version,

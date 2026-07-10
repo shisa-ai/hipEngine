@@ -408,6 +408,38 @@ Allowed artifact statuses:
 
 A JSON artifact with `status != "accepted"` is still useful evidence, but it is not a retained performance number.
 
+### Canonical artifact provenance
+
+New server, retained PARO, GGUF, and microbenchmark artifacts embed one
+top-level `provenance` object produced by
+`hipengine.benchmark.provenance.collect_artifact_provenance()`. Its formal
+contract is
+[`benchmarks/schemas/artifact-provenance.schema.json`](../benchmarks/schemas/artifact-provenance.schema.json):
+
+- `kind="hipengine_artifact_provenance"` and `schema_version=1`;
+- repository root, commit, branch, and separate `staged_dirty`,
+  `unstaged_dirty`, `untracked_dirty`, and `untracked_count` fields;
+- configured and concrete resolved backend, target architecture, and selected
+  device name;
+- model path/revision plus a content-derived fingerprint, quant, and KV dtype;
+- exact argv and relevant environment, ROCm/HIP compiler identity, build
+  profile, timing protocol, warmups/repetitions, and profiler status.
+
+The collector is stdlib-only and torch-free. It hashes model files in full up
+to 8 MiB and otherwise hashes deterministic head/middle/tail samples together
+with file size. Model directories use a deterministic manifest of relative
+paths and per-file fingerprints. Hugging Face `snapshots/<revision>` paths
+infer the revision automatically. A missing path is recorded explicitly for
+diagnostics; it is not an existing model fingerprint and cannot support a
+retained model-performance claim.
+
+The aggregate `dirty` field must equal the OR of the three dirty axes. A new
+retained performance row requires all three axes false and, when a model ran,
+an existing content fingerprint. Legacy `software`, `repo`, or environment
+fields may remain for backward compatibility, but they do not replace the
+canonical block. Older artifacts without this block keep their documented
+legacy/diagnostic status until rerun.
+
 ## Human-readable Rollup
 
 `benchmarks/README.md` is the scoreboard. A reader must be able to identify the
@@ -766,6 +798,45 @@ Schema `2` is the benchmark-output contract:
   "timestamp": "2026-05-12T18:30:00+09:00",
   "run_tag": "qwen06-c1-short-baseline",
   "summary": "Qwen3-0.6B fp16 c1-short baseline",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T12:00:00+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "<sha>",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/Qwen3-0.6B",
+    "model_revision": "<immutable revision>",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "<sha256>",
+      "size_bytes": 123,
+      "sampled_bytes": 123,
+      "exists": true,
+      "path_type": "directory",
+      "file_count": 1
+    },
+    "quant": "fp16",
+    "kv_dtype": "bf16",
+    "command": ["python3", "scripts/bench.py", "--shape", "c1-short"],
+    "environment": {"HIP_VISIBLE_DEVICES": "0"},
+    "rocm_version": "7.13.x",
+    "hipcc_version": "<hipcc --version>",
+    "build_profile": "release",
+    "timing_protocol": "median-of-3-after-1-warmup",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {"status": "captured"}
+  },
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
@@ -872,7 +943,10 @@ Schema `2` is the benchmark-output contract:
 
 If a benchmark is blocked or rejected, keep the same schema but set `status` and `decision.accepted=false`, then fill `decision.reason`, the exact failing command, and any symptom fields (`oom_bytes`, `signal`, `exception`, `profiler_status`, etc.).
 
-Fields marked with `<...>` are filled at runtime by `scripts/bench.py` (to be written during Phase 0 scaffold). The `hipengine_commit` + `hipengine_dirty` pair means a dirty-tree number can be recorded but is visibly flagged.
+Fields marked with `<...>` are filled at runtime by the applicable benchmark
+harness. The legacy `software.hipengine_commit` +
+`software.hipengine_dirty` pair may remain in older schemas, but new claim
+eligibility uses the canonical provenance block and all three dirty axes.
 
 ## Playbook: Running a Benchmark
 
