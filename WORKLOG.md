@@ -149927,3 +149927,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   rows (three retained rows; zero `performance_claim=false` rows), and
   `git diff --check` pass. Updated the benchmark changelog and SOL punchlist;
   `SOL-E4` is accepted and `SOL-D1` is unblocked.
+
+## 2026-07-11 - SOL-D1 current dashboards and verbatim history
+
+- Split the three optimization source documents without rewriting their lab
+  records. `docs/MTP-LLAMACPP-PARITY.md` (6,812 lines),
+  `docs/PARO-GGUF-MTP-TRANSFER.md` (597 lines), and
+  `docs/HIP-vs-VULKAN.md` (2,602 lines) moved byte-for-byte to matching
+  `*-HISTORY.md` paths. Their post-move Git blob hashes are respectively
+  `07bf098f840b48f9050d2f98a1426ff0b46d282d`,
+  `b695078d28e6cb9430b2a7eb2328bbf757a3f3a8`, and
+  `d81a5ef0a88c46e33319ef860b524cb1192d2d18`, exactly matching the originals.
+- Replaced the stable source paths with 94/87/87-line current dashboards. The
+  MTP page exposes only the retained exact/default and explicitly qualified
+  `llama-compat` rows, with all historical OpenAI concurrency rates awaiting an
+  exact-ID/scoped-timing rerun. The PARO page makes width-1 production routing,
+  the native c8 correctness blocker, `SOL-P1`, and `SOL-M1` explicit. The
+  HIP/Vulkan page retains only the clean timing-contract v2 gfx1151 matrix,
+  keeps HIP as the production decision, and marks the W7900 rerun and Q6
+  comparable-layout work blocked/open rather than using stale completion words.
+- Every dashboard links its verbatim history, the canonical scoreboard, the
+  governing punchlist, and its primary artifacts. Updated the root
+  documentation index and SOL coordinator language; `SOL-D1` is accepted and
+  `SOL-M1` is the remaining open P0 foundation unit.
