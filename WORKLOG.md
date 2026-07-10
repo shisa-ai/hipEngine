@@ -149240,3 +149240,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   relative Markdown links, and `git diff --check` passed. `PYTHONPATH=. uv run
   pytest -q tests/test_benchmark_readme_sync.py` passed (`2 passed`). Reviewed
   the edited text against `/home/lhl/devstack/docs/ANTI-SLOP-INSTRUCTIONS.md`.
+
+## 2026-07-10 - PARO exact batch-width partition router
+
+- Hypothesis: unsupported live widths can remain exact and outperform the
+  all-row serial bridge by covering them with measured native c8/c6/c4/c2
+  subgroups plus serial remainder rows. The router must fail closed on backend,
+  target arch, model snapshot, quant, KV dtype, and context mismatch.
+- RED: added planner/profile tests before implementation. Collection failed on
+  the missing `NativeBatchWidthProfile` API; generator integration then showed
+  the old c3 direct-native call and the old sparse `[0,2]` serial fallback;
+  retained-default server testing showed the old implicit c6-to-c4+c2 split.
+- Added `hipengine.dispatch.batch_width`: a deterministic minimum-cost exact
+  cover planner with explicit native/serial groups, context bounds, blockers,
+  and JSON telemetry. The 2026-07-10 gfx1151 costs choose c3=`2+1`, c5=`4+1`,
+  c7=`6+1`, c9=`8+1`, c12=`6+6`, and c16=`8+8`.
+- Added `hipengine.runtime.qwen35_paro_batch_width`: it accepts only regular
+  JSON artifacts under `benchmarks/results` and validates an embedded,
+  backend-neutral profile against the surrounding backend, target arch, model
+  snapshot, quant, BF16 KV, green primitive/generated-token rows, and evidenced
+  decode positions. Missing or mismatched evidence returns a blocked profile.
+- The greedy PARO generator sorts live work by physical slot, partitions
+  each step, executes supported native groups, and completes uncovered rows
+  through `step_batch_serial`. Telemetry records the profile, partition
+  histogram, native group calls, serial rows, and partitioned steps. The old
+  compact-from-zero gate is removed; CPU integration proves live slots `[0,2]`
+  remain on native c2.
+- Direct c6 remains the retained-default diagnostic route. The older server
+  c4+c2 split requires `HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`; retained
+  defaults alone keep c6 direct. The flag stays in `docs/REFACTOR.md` until
+  exact all-choice latency accounting decides removal.
+- Extended
+  `benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json`
+  with the embedded profile: backend `hip_gfx1151`, target `gfx1151`, model
+  snapshot `437eba06...`, W4 PARO, BF16 KV, native widths c2/c4/c6/c8, and
+  decode positions 512-647. This is a correctness/dispatch gate, not a retained
+  throughput promotion.
+- Validation: planner/profile/generator targeted suite `25 passed`; sparse-slot
+  runner tests `2 passed`; c6 server policy tests `3 passed`; README/registry
+  tests `9 passed`; compileall, JSON parse, README sync, and `git diff --check`
+  passed. The full `tests/test_generation_qwen35_paro.py` run has one unrelated
+  native-sampler fake failure; the same isolated test fails unchanged in the
+  clean detached `4175dabf` worktree.

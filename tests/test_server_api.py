@@ -4291,8 +4291,31 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_retained_defaults_split_c6_into_green_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generation_batcher_retained_defaults_keep_c6_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
+        assert fake.calls == [(tuple(f"prompt-{index}" for index in range(6)), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_retained_c6_split_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
 
     async def run() -> None:
         fake = FakeLLM()
@@ -4316,31 +4339,9 @@ def test_generation_batcher_retained_defaults_split_c6_into_green_groups(monkeyp
     asyncio.run(run())
 
 
-def test_generation_batcher_retained_c6_split_has_disable_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "0")
-
-    async def run() -> None:
-        fake = FakeLLM()
-        sampling = SamplingParams(max_tokens=2)
-        batcher = _GenerationBatcher(
-            engine_factory=lambda: fake,
-            batch_window_seconds=0.01,
-            max_active_requests=8,
-        )
-
-        results = await asyncio.gather(
-            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
-        )
-
-        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
-        assert fake.calls == [(tuple(f"prompt-{index}" for index in range(6)), sampling)]
-
-    asyncio.run(run())
-
-
 def test_generation_batcher_retained_c6_split_remaps_scheduler_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
 
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
