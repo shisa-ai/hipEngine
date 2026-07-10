@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,46 @@ def _load_runner_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _assert_v2_comparison_schema_shape(artifact: dict) -> None:
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "micro"
+        / "schemas"
+        / "result.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    definition = schema["$defs"]["v2Comparison"]
+    assert set(definition["required"]) <= set(artifact)
+    assert artifact["schema_version"] == definition["properties"]["schema_version"]["const"]
+    assert artifact["kind"] == definition["properties"]["kind"]["const"]
+    assert artifact["classification"] in schema["$defs"]["classification"]["enum"]
+    assert isinstance(artifact["command"], list)
+    assert all(isinstance(item, str) for item in artifact["command"])
+    assert isinstance(artifact["inputs"], dict)
+    assert isinstance(artifact["correctness"], dict)
+
+    hardware_definition = schema["$defs"]["hardware"]
+    for backend in ("hip", "vulkan"):
+        hardware = artifact["hardware"][backend]
+        assert set(hardware_definition["required"]) <= set(hardware)
+    source_definition = schema["$defs"]["source"]
+    assert set(source_definition["required"]) <= set(artifact["source"])
+
+    comparison_definition = definition["properties"]["comparisons"]["items"]
+    assert isinstance(artifact["comparisons"], list)
+    for comparison in artifact["comparisons"]:
+        assert set(comparison_definition["required"]) <= set(comparison)
+        assert comparison["timing_mode"] in comparison_definition["properties"][
+            "timing_mode"
+        ]["enum"]
+        assert comparison["control"] in comparison_definition["properties"]["control"][
+            "enum"
+        ]
+        assert isinstance(comparison["gpu_elapsed"], dict)
+        assert isinstance(comparison["host_wall"], dict)
 
 
 def _stats(value: float) -> dict:
@@ -174,3 +215,55 @@ def test_two_stage_vulkan_uses_calibrated_queue_lanes_not_events() -> None:
     assert "vulkan_round_robin_queue_order" in source
     assert "vkCmdSetEvent" not in source
     assert "vkCmdWaitEvents" not in source
+
+
+@pytest.mark.parametrize("mode", ["serial_latency", "independent_throughput"])
+def test_two_stage_joint_artifact_matches_v2_comparison_schema(mode: str) -> None:
+    module = _load_runner_module()
+    args = module.parse_args(
+        [
+            "--out",
+            "/tmp/two-stage-comparison.json",
+            "--k-list",
+            "512",
+            "--rows-list",
+            "1",
+            "--workgroups",
+            "64",
+            "--split-counts",
+            "4",
+            "--timing-mode",
+            mode,
+            "--hardware-gpu",
+            "test-gpu",
+            "--gfx-arch",
+            "gfx-test",
+        ]
+    )
+    rows = [_row("hip", mode, 10.0), _row("vulkan", mode, 5.0)]
+    matched = module._matched_rows(rows)
+    artifact = module._build_comparison_artifact(
+        args=args,
+        environment={
+            "repo": {
+                "root": "/repo",
+                "branch": "main",
+                "commit": "abc123",
+                "dirty": False,
+            }
+        },
+        source_hash="sha256:test",
+        commands=[{"kind": "test"}],
+        raw_results={"hip": {}, "vulkan": {}},
+        rows=rows,
+        matched=matched,
+        wrapper_command=["python3", "two_stage_reduction.py"],
+    )
+
+    _assert_v2_comparison_schema_shape(artifact)
+    assert len(artifact["comparisons"]) == 2
+    assert {row["control"] for row in artifact["comparisons"]} == {"single", "burst"}
+    assert all(row["timing_mode"] == mode for row in artifact["comparisons"])
+    assert artifact["matched_rows"] == matched
+    assert artifact["raw_results"] == {"hip": {}, "vulkan": {}}
+    assert artifact["correctness"]["status"] == "pass"

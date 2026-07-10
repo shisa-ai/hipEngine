@@ -399,6 +399,133 @@ def _summary(matched: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _schema_comparisons(matched: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    timing_contract = _load_timing_contract_module()
+    out: list[dict[str, Any]] = []
+    for item in matched:
+        ratios = item.get("ratios")
+        if not isinstance(ratios, dict):
+            raise ValueError("two-stage matched row is missing timing ratios")
+        for control in timing_contract.TIMING_CONTROLS:
+            domains = ratios.get(control)
+            if not isinstance(domains, dict):
+                raise ValueError(f"two-stage matched row is missing {control} ratios")
+            gpu_elapsed = domains.get("gpu_elapsed")
+            host_wall = domains.get("host_wall")
+            if not isinstance(gpu_elapsed, dict) or not isinstance(host_wall, dict):
+                raise ValueError(
+                    f"two-stage matched row has incomplete {control} domains"
+                )
+            out.append(
+                {
+                    "k": item.get("k"),
+                    "rows": item.get("rows"),
+                    "workgroup_size": item.get("workgroup_size"),
+                    "split_count": item.get("split_count"),
+                    "worker_lanes": item.get("worker_lanes"),
+                    "timing_mode": item.get("timing_mode"),
+                    "control": control,
+                    "gpu_elapsed": gpu_elapsed,
+                    "host_wall": host_wall,
+                    "hip_correctness_pass": item.get("hip_correctness_pass"),
+                    "vulkan_correctness_pass": item.get("vulkan_correctness_pass"),
+                }
+            )
+    return out
+
+
+def _correctness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def backend_summary(backend: str) -> dict[str, Any]:
+        backend_rows = [row for row in rows if row.get("backend") == backend]
+        if not backend_rows:
+            return {"status": "not_run", "row_count": 0}
+        all_pass = all(bool(row.get("correctness_pass")) for row in backend_rows)
+        return {
+            "status": "pass" if all_pass else "fail",
+            "row_count": len(backend_rows),
+            "all_rows_pass": all_pass,
+        }
+
+    all_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
+    return {
+        "status": "pass" if all_pass else "fail" if rows else "not_run",
+        "row_count": len(rows),
+        "all_rows_pass": all_pass,
+        "hip": backend_summary("hip"),
+        "vulkan": backend_summary("vulkan"),
+    }
+
+
+def _build_comparison_artifact(
+    *,
+    args: argparse.Namespace,
+    environment: dict[str, Any],
+    source_hash: str,
+    commands: list[dict[str, Any]],
+    raw_results: dict[str, Any],
+    rows: list[dict[str, Any]],
+    matched: list[dict[str, Any]],
+    wrapper_command: list[str],
+) -> dict[str, Any]:
+    config = {
+        "backend": args.backend,
+        "k_list": _parse_csv_u32(args.k_list),
+        "rows_list": _parse_csv_u32(args.rows_list),
+        "workgroups": _parse_csv_u32(args.workgroups),
+        "split_counts": _parse_csv_u32(args.split_counts),
+        "body_repeats": args.body_repeats,
+        "reps": args.reps,
+        "warmup": args.warmup,
+        "samples": args.samples,
+        "timing_mode": args.timing_mode,
+        "independent_streams": args.independent_streams,
+        "independent_queues": args.independent_streams,
+    }
+    hardware = {
+        "gfx_arch": args.gfx_arch or "unknown",
+        "gpu_name": args.hardware_gpu or "unknown",
+    }
+    correctness = _correctness_summary(rows)
+    return {
+        "schema": "hipengine.micro.two_stage_reduction.v2",
+        "schema_version": 2,
+        "kind": "hipengine_micro_comparison",
+        "bench": "two_stage_reduction",
+        "classification": "diagnostic_unclassified",
+        "hardware": {"hip": dict(hardware), "vulkan": dict(hardware)},
+        "source": _source_record(environment, source_hash),
+        "command": wrapper_command,
+        "inputs": config,
+        "correctness": correctness,
+        "comparisons": _schema_comparisons(matched),
+        "environment": {
+            "ref": args.environment_ref,
+            "captured": environment if not args.environment_ref else None,
+        },
+        "config": config,
+        "commands": _json_safe(commands),
+        "raw_results": raw_results,
+        "rows": rows,
+        "matched_rows": matched,
+        "summary": _summary(matched),
+        "artifact_ref": str(args.out),
+        "interpretation": (
+            "True two-stage f32 reduction control. serial_latency orders each partial "
+            "and final dispatch and reuses shared state. independent_throughput uses "
+            "disjoint slices with one intra-operation partial-to-final dependency per "
+            "logical operation, distributed over matched HIP stream and Vulkan queue "
+            "lanes. Vulkan cross-queue GPU span uses calibrated timestamps. GPU ratios "
+            "are comparable; unlike host submission classes are intentionally not "
+            "compared."
+        ),
+        "wrapper": {
+            "command": wrapper_command,
+            "cwd": str(REPO_ROOT),
+            "build_dir": str(args.build_dir),
+        },
+    }
+
+
 def _validate_raw_config(
     raw: dict[str, Any],
     args: argparse.Namespace,
@@ -534,56 +661,16 @@ def main(argv: list[str] | None = None) -> None:
         TIMING_CONTRACT,
     ]
     source_hash = _hash_files(source_paths)
-    result = {
-        "schema": "hipengine.micro.two_stage_reduction.v2",
-        "schema_version": 2,
-        "kind": "hipengine_micro_result",
-        "bench": "two_stage_reduction",
-        "classification": "diagnostic_unclassified",
-        "hardware": {
-            "gfx_arch": args.gfx_arch or "unknown",
-            "gpu_name": args.hardware_gpu or "unknown",
-        },
-        "config": {
-            "backend": args.backend,
-            "k_list": _parse_csv_u32(args.k_list),
-            "rows_list": _parse_csv_u32(args.rows_list),
-            "workgroups": _parse_csv_u32(args.workgroups),
-            "split_counts": _parse_csv_u32(args.split_counts),
-            "body_repeats": args.body_repeats,
-            "reps": args.reps,
-            "warmup": args.warmup,
-            "samples": args.samples,
-            "timing_mode": args.timing_mode,
-            "independent_streams": args.independent_streams,
-            "independent_queues": args.independent_streams,
-        },
-        "environment": {
-            "ref": args.environment_ref,
-            "captured": environment if not args.environment_ref else None,
-        },
-        "source": _source_record(environment, source_hash),
-        "commands": _json_safe(commands),
-        "raw_results": raw_results,
-        "rows": rows,
-        "matched_rows": matched,
-        "summary": _summary(matched),
-        "artifact_ref": str(args.out),
-        "interpretation": (
-            "True two-stage f32 reduction control. serial_latency orders each partial "
-            "and final dispatch and reuses shared state. independent_throughput uses "
-            "disjoint slices with one intra-operation partial-to-final dependency per "
-            "logical operation, distributed over matched HIP stream and Vulkan queue "
-            "lanes. Vulkan cross-queue GPU span uses calibrated timestamps. GPU ratios "
-            "are comparable; unlike host submission classes are intentionally not "
-            "compared."
-        ),
-        "wrapper": {
-            "command": [Path(sys.executable).name, *sys.argv],
-            "cwd": str(REPO_ROOT),
-            "build_dir": str(args.build_dir),
-        },
-    }
+    result = _build_comparison_artifact(
+        args=args,
+        environment=environment,
+        source_hash=source_hash,
+        commands=commands,
+        raw_results=raw_results,
+        rows=rows,
+        matched=matched,
+        wrapper_command=[Path(sys.executable).name, *sys.argv],
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     indent = 2 if args.pretty else None
     args.out.write_text(json.dumps(_json_safe(result), indent=indent, sort_keys=True) + "\n", encoding="utf-8")

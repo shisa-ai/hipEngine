@@ -148856,3 +148856,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   emitted an invalid negative event sample and was rejected by the finite-
   sample gate; an immediate clean rerun passed. `/tmp/q4-*-mq-*.json` is smoke
   evidence only and correctly remains non-claiming on the dirty worktree.
+
+## 2026-07-10 - Reduction comparison artifact schema v2
+
+- Corrected the reduction and true two-stage reduction wrappers to emit
+  `hipengine_micro_comparison` artifacts. The previous top-level
+  `hipengine_micro_result` label was invalid because these joint artifacts have
+  paired hardware, ratios, and no single backend `measurements` object.
+- The schema-facing comparison rows now flatten both `single` and `burst`
+  clocks while the artifacts retain raw backend payloads, annotated rows,
+  matched rows, commands, and ratio diagnostics for auditability. Correctness
+  summaries remain backend-specific as well as aggregate.
+- Validation: `uv run pytest -q tests/test_micro_reduction_sweep.py
+  tests/test_micro_two_stage_reduction.py tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`26 passed`). The focused
+  tests exercise both timing modes and assert every required schema-v2
+  comparison field. No timing run was needed for this evidence-format-only
+  change.
