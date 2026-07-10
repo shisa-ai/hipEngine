@@ -149150,3 +149150,54 @@ graphless decode launch-collapse path without regressing target/serial parity.
   batch_correctness_fill_context_cache_rows_crosses_page_boundary'` (`4
   passed`); Python compilation; c2-c8 live GPU primitive commands; scoped
   `git diff --check`.
+
+## 2026-07-10 - gfx1151 PARO README shape diagnostic
+
+- Ran a bounded direct PARO concurrency refresh on Radeon 8060S/gfx1151 at
+  tracked-clean hipEngine `4175dabf145d2054ff751c56bf019febd03ced65`,
+  Python 3.12.13, and TheRock HIP `7.13.60980-c76140fa27`. Both detected and
+  requested target architecture were `gfx1151`; unrelated untracked files were
+  present and are recorded as a promotion blocker.
+- Protocol: shisa `Qwen3.6-35B-A3B-PARO-packed` snapshot
+  `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV, 40 layers,
+  fixed 512-token prompt slices, 8 warmup decode steps, 128 measured steps,
+  greedy sampling, cached builds required, and opt-in retained-default recovery
+  routing. Each c2-c8 width passed the seed-1234 KV/attention primitive before
+  the full run and compared 137 token IDs per row against independent c1
+  resident sessions.
+- Command template:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3
+  scripts/qwen35_batch_retained_bench.py --model <snapshot> --fixture
+  /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json
+  --prompt-length 512 --batch-size <rows> --decode-tokens 128
+  --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file
+  <outdir>/hipcc-version.txt --require-cached-build --batch-decode-moe-path
+  auto --batch-decode-linear-path batch_segments
+  --batch-decode-full-attn-path auto --primitive-correctness-json
+  <outdir>/primitive-c<rows>.json --json <outdir>/c<rows>-r<rep>.json`.
+- Generated-token equality passed c2/c4/c6/c8 and failed c3/c5 at token index
+  4 and c7 at index 2 for one row (the other six c7 rows failed at index 4).
+  Rejected-width timing is withheld. c1 and dynamic c8-to-c1 shrinking were not
+  run.
+- Three-run aggregate decode medians for green widths: c2 `78.578 tok/s`
+  (`39.289` per sequence, `25.465 ms` median step), c4 `99.616`
+  (`24.904`, `40.158 ms`), c6 `109.909` (`18.318`, `54.568 ms`), and c8
+  `115.515` (`14.439`, `69.254 ms`). c4/c8 use all-layer full-attention
+  rowchunk2; c6 uses selected-layer rowchunk2 plus serial LM-head; every green
+  row uses selected-c1 MoE.
+- Added compact artifact
+  `benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json`
+  with the exact protocol, commands, raw SHA-256 bindings, row routes, gates,
+  and blockers. Raw per-token artifacts remain under
+  `/tmp/hipengine-gfx1151-readme-clean4175`.
+- Added the dated diagnostic to the platform index and canonical
+  `benchmarks/README.md`, then exported the marked block to `README.md` with
+  `scripts/sync_benchmark_readme.py`. The prior June mixed-engine table remains
+  a separate historical snapshot.
+- Validation: compact JSON parsed; a local assertion matched all displayed
+  medians and 22 SHA-256 bindings to raw artifacts; every changed relative
+  Markdown link resolves; the pre-write sync check failed only for
+  `GFX1151_PARO_CURRENT`, then `--write` and `--check` passed; `PYTHONPATH=. uv
+  run pytest -q tests/test_benchmark_readme_sync.py` (`2 passed`); `git diff
+  --check`.

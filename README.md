@@ -289,7 +289,35 @@ Source artifacts:
 [`full W7900 refresh summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 
-### gfx1151 / Radeon 8060S decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
+### gfx1151 / Radeon 8060S PARO shape diagnostic (2026-07-10, Qwen3.6 35B-A3B, 512/128)
+
+**Status: diagnostic, not retained.** This direct PARO batch measurement ran at
+tracked-clean hipEngine `4175dabf` with detected and target arch gfx1151. It
+uses opt-in retained-default recovery routes; the production server default
+uses different routing. Odd widths fail generated-token equality; c1, dynamic
+shrinking, profiler, and scaling gates are missing. Red-width timing is
+withheld.
+
+<!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
+| Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Exact gate | Measured route |
+| ---: | ---: | ---: | ---: | --- | --- |
+| 1 | Not rerun | Not rerun | Not rerun | Same-fixture timing missing | Single-sequence control required |
+| 2 | 78.578 | 39.289 | 25.465 | Primitive pass; generated IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
+| 3 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
+| 4 | 99.616 | 24.904 | 40.158 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
+| 5 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
+| 6 | 109.909 | 18.318 | 54.568 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; selected-layer rowchunk2; serial LM-head |
+| 7 | Withheld | Withheld | Withheld | Rejected at token index 2 | Grouped-compact MoE; all-layer rowchunk2 |
+| 8 | 115.515 | 14.439 | 69.254 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
+<!-- END TOPLINE:GFX1151_PARO_CURRENT -->
+
+Protocol: W4 PARO/BF16 KV, 40 layers, fixed 512-token slices, 8 warmup decode
+steps, 128 measured decode steps, and greedy sampling. Green widths report the
+median of three direct backend runs and pass primitive plus 137-token generated
+equality. See the [compact artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json)
+and [canonical run record](benchmarks/README.md#gfx1151-paro-direct-exact-shape-diagnostic-2026-07-10).
+
+### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)
 
 **Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV; llama.cpp uses
 Vulkan Q4_K_S/f16 KV. vLLM did not produce a healthy server. The summary lacks
