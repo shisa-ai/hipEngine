@@ -169,6 +169,10 @@ def _default_context_lens(rows: int, max_context_len: int) -> np.ndarray:
     return np.asarray([(idx % max_context_len) + 1 for idx in range(rows)], dtype=np.int64)
 
 
+def _shared_physical_block_table(rows: int, blocks_per_row: int) -> np.ndarray:
+    return np.arange(rows * blocks_per_row, dtype=np.int32).reshape(rows, blocks_per_row)
+
+
 def _parse_context_lens(text: str, *, rows: int, max_context_len: int) -> np.ndarray:
     values = [int(part) for part in text.split(",") if part.strip()]
     if len(values) != rows:
@@ -244,7 +248,8 @@ def run(
         if np.any(context_lens <= 0) or np.any(context_lens > max_context_len):
             raise ValueError("context_lens values must be in 1..max_context_len")
     positions = context_lens - 1
-    block_table = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+    row_local_block_table = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+    shared_block_table = _shared_physical_block_table(rows, blocks)
 
     # Append smoke: batch append should match independent c1 append into the same row-major layout.
     append_key = rng.normal(0.0, 0.25, size=(rows, num_kv_heads, head_dim)).astype(np.float32)
@@ -259,7 +264,8 @@ def run(
     kv_lib = build_qwen35_paged_kv_write(load=True)
     attn_lib = build_qwen35_paged_attn_decode(load=True)
     try:
-        bt = arena.dev(block_table)
+        row_local_bt = arena.dev(row_local_block_table)
+        shared_bt = arena.dev(shared_block_table)
         pos = arena.dev(positions)
         key = arena.dev(append_key)
         value = arena.dev(append_value)
@@ -272,7 +278,7 @@ def run(
         ckc = arena.dev(c1_key_cache)
         cvc = arena.dev(c1_value_cache)
         write_spans = KVLiveSpans.paged_uniform(
-            block_table=_device_tensor(bt.ptr, block_table.shape, "int32"),
+            block_table=_device_tensor(row_local_bt.ptr, row_local_block_table.shape, "int32"),
             live_counts=_device_tensor(pos.ptr, positions.shape, "int64"),
             max_live_count=int(positions.max()),
             storage_dtype="bf16",
@@ -310,7 +316,7 @@ def run(
         pos_bytes = np.dtype(np.int64).itemsize
         for row in range(rows):
             row_spans = KVLiveSpans.paged_uniform(
-                block_table=_device_tensor(bt.ptr + row * row_table_bytes, (blocks,), "int32"),
+                block_table=_device_tensor(row_local_bt.ptr + row * row_table_bytes, (blocks,), "int32"),
                 live_counts=_device_tensor(pos.ptr + row * pos_bytes, (1,), "int64"),
                 max_live_count=int(positions[row]),
                 storage_dtype="bf16",
@@ -358,7 +364,7 @@ def run(
         c1_out_b = arena.dev(c1_out)
         dense_c1_out_b = arena.dev(dense_c1_out) if dense_c1_out is not None else None
         decode_spans = KVLiveSpans.paged_uniform(
-            block_table=_device_tensor(bt.ptr, block_table.shape, "int32"),
+            block_table=_device_tensor(shared_bt.ptr, shared_block_table.shape, "int32"),
             live_counts=_device_tensor(live_b.ptr, context_lens.shape, "int64"),
             max_live_count=max_context_len,
             storage_dtype="bf16",
@@ -400,7 +406,7 @@ def run(
         live_bytes = np.dtype(np.int64).itemsize
         for row in range(rows):
             row_spans = KVLiveSpans.paged_uniform(
-                block_table=_device_tensor(bt.ptr + row * row_table_bytes, (blocks,), "int32"),
+                block_table=_device_tensor(row_local_bt.ptr + row * row_table_bytes, (blocks,), "int32"),
                 live_counts=_device_tensor(live_b.ptr + row * live_bytes, (1,), "int64"),
                 max_live_count=max_context_len,
                 storage_dtype="bf16",

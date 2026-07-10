@@ -18686,6 +18686,13 @@ def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None
     assert float(out[0, 0, 0]) == pytest.approx(3.0)
 
 
+def test_qwen35_batch_correctness_shared_block_table_uses_global_physical_ids() -> None:
+    table = batch_correctness._shared_physical_block_table(3, 2)
+
+    assert table.dtype == np.int32
+    assert table.tolist() == [[0, 1], [2, 3], [4, 5]]
+
+
 def test_qwen35_batch_correctness_fill_context_cache_rows_crosses_page_boundary() -> None:
     key_cache = np.zeros((1, 2, 2, 1, 1), dtype=np.uint16)
     value_cache = np.zeros_like(key_cache)
