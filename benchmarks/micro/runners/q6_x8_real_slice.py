@@ -1040,6 +1040,48 @@ def _row_key(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _device_fingerprint(name: Any) -> str:
+    text = str(name).lower()
+    match = re.search(r"radeon\s+(\d+s)", text)
+    if match:
+        return f"radeon_{match.group(1)}"
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _expected_row_keys(parameters: dict[str, Any]) -> set[tuple[Any, ...]]:
+    common = (
+        str(parameters["quant"]),
+        str(parameters["activation_quant"]),
+        str(parameters["weight_layout"]),
+        str(parameters["selected_dtype"]),
+        str(parameters["output_dtype"]),
+        str(parameters["kv_type"]),
+        str(parameters["model_fingerprint"]),
+        int(parameters["rows"]),
+        int(parameters["experts"]),
+        int(parameters["in_features"]),
+        int(parameters["out_features"]),
+    )
+    timing_mode = str(parameters["timing_mode"])
+    return {
+        ("q8_1_quantize", *common, 0, 32, timing_mode),
+        (
+            "x8_selected_dp4a_dot_prequantized",
+            *common,
+            int(parameters["row_tile"]),
+            int(parameters["local_size"]),
+            timing_mode,
+        ),
+        (
+            "x8_selected_dp4a_quantize_plus_dot",
+            *common,
+            int(parameters["row_tile"]),
+            int(parameters["local_size"]),
+            timing_mode,
+        ),
+    }
+
+
 def build_comparison(
     hip_result: dict[str, Any],
     vulkan_result: dict[str, Any],
@@ -1054,10 +1096,35 @@ def build_comparison(
             raise ValueError("Q6 X8 comparison inputs must be micro results")
         if result.get("bench") != BENCH_NAME or result.get("backend") != backend:
             raise ValueError("Q6 X8 comparison inputs must be matching HIP then Vulkan results")
+        if result.get("classification") != "real_slice_probe":
+            raise ValueError("Q6 X8 comparison inputs must be real-slice probes")
+        correctness = result.get("correctness", {})
+        if (
+            correctness.get("status") != "pass"
+            or not correctness.get("all_pass")
+            or correctness.get("rows") != 3
+        ):
+            raise ValueError(f"{backend} Q6 X8 correctness gate did not pass")
+        source = result.get("source", {})
+        for field in ("repo", "commit", "source_hash"):
+            if not isinstance(source.get(field), str) or not source[field]:
+                raise ValueError(f"{backend} Q6 X8 source {field} is missing")
+        if not isinstance(source.get("dirty"), bool):
+            raise ValueError(f"{backend} Q6 X8 source dirty is missing")
     hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
     vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
     if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
         raise ValueError("HIP and Vulkan Q6 X8 gfx architectures do not match")
+    hip_device = _device_fingerprint(hip_result.get("hardware", {}).get("gpu_name", ""))
+    vulkan_device = _device_fingerprint(
+        vulkan_result.get("hardware", {}).get("gpu_name", "")
+    )
+    if (
+        not hip_device
+        or hip_device == "unknown"
+        or hip_device != vulkan_device
+    ):
+        raise ValueError("HIP and Vulkan Q6 X8 device identities do not match")
     for field in ("repo", "branch", "commit", "dirty"):
         if hip_result.get("source", {}).get(field) != vulkan_result.get("source", {}).get(field):
             raise ValueError(f"HIP and Vulkan Q6 X8 source {field} values do not match")
@@ -1089,14 +1156,61 @@ def build_comparison(
         raise ValueError("Q6 X8 comparison parameter schema is incomplete or unexpected")
     hip_rows_list = hip_result.get("measurements", {}).get("rows", [])
     vulkan_rows_list = vulkan_result.get("measurements", {}).get("rows", [])
-    hip_rows = {_row_key(row): row for row in hip_rows_list if isinstance(row, dict)}
-    vulkan_rows = {
-        _row_key(row): row for row in vulkan_rows_list if isinstance(row, dict)
-    }
+    if (
+        not isinstance(hip_rows_list, list)
+        or not isinstance(vulkan_rows_list, list)
+        or not all(isinstance(row, dict) for row in hip_rows_list)
+        or not all(isinstance(row, dict) for row in vulkan_rows_list)
+    ):
+        raise ValueError("Q6 X8 comparison inputs contain invalid rows")
+    hip_rows = {_row_key(row): row for row in hip_rows_list}
+    vulkan_rows = {_row_key(row): row for row in vulkan_rows_list}
     if len(hip_rows) != len(hip_rows_list) or len(vulkan_rows) != len(vulkan_rows_list):
         raise ValueError("Q6 X8 comparison inputs contain duplicate or invalid rows")
-    if not hip_rows or set(hip_rows) != set(vulkan_rows):
-        raise ValueError("HIP and Vulkan Q6 X8 row sets are not identical")
+    expected_rows = _expected_row_keys(parameters)
+    if set(hip_rows) != expected_rows or set(vulkan_rows) != expected_rows:
+        raise ValueError(
+            "Q6 X8 results must contain the exact quantize/dot/combined row triplet"
+        )
+    expected_dispatches = {
+        "q8_1_quantize": 1,
+        "x8_selected_dp4a_dot_prequantized": 1,
+        "x8_selected_dp4a_quantize_plus_dot": 2,
+    }
+    expected_variant = {
+        "q8_1_quantize": "quantize",
+        "x8_selected_dp4a_dot_prequantized": "q6_x8_selected_down",
+        "x8_selected_dp4a_quantize_plus_dot": "q6_x8_selected_down",
+    }
+    expected_shape_metadata = {
+        "q8_blocks_per_row": int(parameters["in_features"]) // 32,
+        "blocks_per_row": int(parameters["in_features"]) // 256,
+        "out_packed": int(parameters["out_features"]) // 8,
+    }
+    for backend, rows in (("hip", hip_rows), ("vulkan", vulkan_rows)):
+        for key, row in rows.items():
+            operation = key[0]
+            if row.get("backend") != backend:
+                raise ValueError(f"{backend} Q6 X8 row backend metadata does not match")
+            if row.get("workgroup_match") != "exact":
+                raise ValueError(f"{backend} Q6 X8 row workgroup metadata does not match")
+            if row.get("variant") != expected_variant[operation]:
+                raise ValueError(f"{backend} Q6 X8 row variant metadata does not match")
+            if not row.get("correctness_pass"):
+                raise ValueError(f"{backend} Q6 X8 row correctness did not pass")
+            for field, value in expected_shape_metadata.items():
+                if row.get(field) != value:
+                    raise ValueError(
+                        f"{backend} Q6 X8 row {field} metadata does not match"
+                    )
+            for control in timing_contract.TIMING_CONTROLS:
+                if (
+                    row.get("timing", {}).get(control, {}).get("dispatches_per_iteration")
+                    != expected_dispatches[operation]
+                ):
+                    raise ValueError(
+                        f"{backend} Q6 X8 row dispatch metadata does not match"
+                    )
     expected_lanes = int(parameters["independent_lanes"])
     combined_keys = [
         key
@@ -1120,11 +1234,20 @@ def build_comparison(
             "HIP and Vulkan Q6 X8 combined lane counts do not match the parameter contract"
         )
     if parameters["timing_mode"] == "independent_throughput" and expected_lanes > 1:
-        vulkan_device = vulkan_result.get("hardware", {}).get("device", {})
+        if hip_rows[combined_key].get("submission", {}).get("strategy") != "multi_stream":
+            raise ValueError("HIP Q6 X8 combined throughput requires multi-stream submission")
         if (
-            int(vulkan_device.get("active_queue_count", 0)) != expected_lanes
-            or not vulkan_device.get("calibrated_timestamps_extension")
-            or not bool(vulkan_device.get("cross_queue_gpu_timing_calibrated"))
+            vulkan_rows[combined_key].get("submission", {}).get("strategy")
+            != "vulkan_multi_queue"
+        ):
+            raise ValueError("Vulkan Q6 X8 combined throughput requires multi-queue submission")
+        vulkan_device_metadata = vulkan_result.get("hardware", {}).get("device", {})
+        if (
+            int(vulkan_device_metadata.get("active_queue_count", 0)) != expected_lanes
+            or not vulkan_device_metadata.get("calibrated_timestamps_extension")
+            or not bool(
+                vulkan_device_metadata.get("cross_queue_gpu_timing_calibrated")
+            )
         ):
             raise ValueError(
                 "Vulkan Q6 X8 combined lane metadata is missing or uncalibrated"
@@ -1208,16 +1331,41 @@ def build_comparison(
         for row in matched
         if row["ratios"]["burst"]["gpu_elapsed"]["status"] == "ok"
     ]
+    hip_source = hip_result["source"]
+    vulkan_source = vulkan_result["source"]
+    commit_match = (
+        bool(hip_source["commit"])
+        and hip_source["commit"] == vulkan_source["commit"]
+    )
+    dirty = bool(hip_source["dirty"]) or bool(vulkan_source["dirty"])
+    device_match = bool(hip_device) and hip_device == vulkan_device
+    correctness_pass = (
+        hip_result["correctness"].get("status") == "pass"
+        and bool(hip_result["correctness"].get("all_pass"))
+        and vulkan_result["correctness"].get("status") == "pass"
+        and bool(vulkan_result["correctness"].get("all_pass"))
+    )
+    performance_claim = commit_match and not dirty and device_match and correctness_pass
+    blocking_reasons = []
+    if not commit_match:
+        blocking_reasons.append("commit_mismatch_or_missing")
+    if dirty:
+        blocking_reasons.append("dirty_source")
+    if not device_match:
+        blocking_reasons.append("device_identity_mismatch_or_missing")
+    if not correctness_pass:
+        blocking_reasons.append("correctness_not_passed")
     return _json_safe(
         {
             "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "real_slice_probe",
-            "source": hip_result["source"],
+            "performance_claim": performance_claim,
+            "source": hip_source,
             "sources": {
-                "hip": hip_result["source"],
-                "vulkan": vulkan_result["source"],
+                "hip": hip_source,
+                "vulkan": vulkan_source,
             },
             "command": command,
             "hardware": {
@@ -1233,6 +1381,18 @@ def build_comparison(
                 "hip": hip_result["correctness"],
                 "vulkan": vulkan_result["correctness"],
             },
+            "provenance": {
+                "commit_match": commit_match,
+                "dirty": dirty,
+                "device_match": device_match,
+                "hip_device_fingerprint": hip_device,
+                "vulkan_device_fingerprint": vulkan_device,
+                "hip_source_hash": hip_source["source_hash"],
+                "vulkan_source_hash": vulkan_source["source_hash"],
+                "correctness_pass": correctness_pass,
+                "performance_claim": performance_claim,
+                "blocking_reasons": blocking_reasons,
+            },
             "comparisons": comparisons,
             "matched_rows": matched,
             "summary": {
@@ -1241,6 +1401,7 @@ def build_comparison(
                 "burst_gpu_speedup_min": min(speedups) if speedups else None,
                 "burst_gpu_speedup_max": max(speedups) if speedups else None,
                 "host_wall_status": "not_comparable_submission_contract",
+                "performance_claim": performance_claim,
             },
             "interpretation": (
                 "Strictly paired Q6_K X8 selected-down q8_1+dp4a rows. GPU ratios "

@@ -148888,3 +148888,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `uv run pytest -q tests/test_micro_hip_dispatch_floor.py
   tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_timing_contract.py`
   (`31 passed`), plus Python compilation and scoped diff checks.
+
+## 2026-07-10 - Strict Q6 X8 comparison evidence gate
+
+- Closed the remaining Q6 selected-down comparator loopholes. Paired inputs
+  must now be real-slice v2 results for the same gfx architecture, normalized
+  device identity, source revision/state, and complete parameter schema, with
+  exactly one quantize, one prequantized dot, and one combined row.
+- Each row is checked for backend, variant, workgroup, packed-shape,
+  dispatch-count, lane/submission, and correctness metadata. The comparison
+  preserves both backend source hashes and permits a performance claim only
+  for clean, same-commit, same-device, fully correct evidence. Existing dirty
+  gfx1151 smoke artifacts still compare, but correctly report
+  `performance_claim=false` with `dirty_source`.
+- Validation: `uv run pytest -q tests/test_micro_q6_x8_real_slice.py
+  tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`34 passed`), plus Python
+  compilation and scoped diff checks. Both existing timing-mode smoke pairs
+  replayed through the strict comparator with three matched rows and six
+  clock/control comparisons each.

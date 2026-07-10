@@ -110,12 +110,12 @@ def _result(module, backend: str, timing_mode: str = "serial_latency") -> dict:
             "repo": str(REPO_ROOT),
             "branch": "main",
             "commit": "abc123",
-            "dirty": True,
+            "dirty": False,
             "source_hash": f"sha256:{backend}",
         },
         "command": ["q6-test"],
         "parameters": module._common_parameters(args),
-        "correctness": {"status": "pass"},
+        "correctness": {"status": "pass", "all_pass": True, "rows": 3},
         "measurements": {"rows": rows},
         "environment": {},
     }
@@ -180,6 +180,10 @@ def test_q6_strict_comparison_emits_gpu_ratios_and_rejects_host_wall(mode: str) 
     assert comparison["schema_version"] == 2
     assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
     assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+    assert comparison["performance_claim"] is True
+    assert comparison["provenance"]["hip_source_hash"] == "sha256:hip"
+    assert comparison["provenance"]["vulkan_source_hash"] == "sha256:vulkan"
+    assert comparison["provenance"]["blocking_reasons"] == []
     assert comparison["summary"]["matched_rows"] == 3
     assert len(comparison["comparisons"]) == 6
     for row in comparison["matched_rows"]:
@@ -198,7 +202,17 @@ def test_q6_strict_comparison_emits_gpu_ratios_and_rejects_host_wall(mode: str) 
         (lambda result: result["parameters"].update(kv_type="bf16"), "parameters"),
         (
             lambda result: result["measurements"]["rows"].pop(),
-            "row sets",
+            "exact quantize/dot/combined row triplet",
+        ),
+        (lambda result: result["hardware"].update(gpu_name="different"), "device identities"),
+        (lambda result: result.update(classification="geometry"), "real-slice probes"),
+        (
+            lambda result: result["correctness"].update(all_pass=False),
+            "correctness gate",
+        ),
+        (
+            lambda result: result["correctness"].update(rows=2),
+            "correctness gate",
         ),
     ],
 )
@@ -209,6 +223,79 @@ def test_q6_strict_comparison_rejects_identity_mismatches(mutation, message: str
     mutation(vulkan)
 
     with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+
+def test_q6_comparison_requires_exact_operation_triplet_and_rejects_duplicates() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    duplicate = copy.deepcopy(vulkan["measurements"]["rows"][0])
+    vulkan["measurements"]["rows"].append(duplicate)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+    vulkan = _result(module, "vulkan")
+    vulkan["measurements"]["rows"][0]["operation"] = "unexpected_operation"
+    with pytest.raises(ValueError, match="exact quantize/dot/combined row triplet"):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("backend", "hip", "backend metadata"),
+        ("workgroup_match", "unmatched", "workgroup metadata"),
+        ("variant", "wrong", "variant metadata"),
+        ("q8_blocks_per_row", 999, "q8_blocks_per_row metadata"),
+    ],
+)
+def test_q6_comparison_rejects_row_metadata_mismatches(
+    field: str, value, message: str
+) -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    vulkan["measurements"]["rows"][0][field] = value
+
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+
+def test_q6_comparison_marks_cleanliness_without_losing_backend_sources() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    hip["source"]["dirty"] = True
+    vulkan["source"]["dirty"] = True
+
+    comparison = module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+    assert comparison["performance_claim"] is False
+    assert comparison["provenance"]["dirty"] is True
+    assert comparison["provenance"]["blocking_reasons"] == ["dirty_source"]
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+
+
+def test_q6_comparison_rejects_missing_source_hash_and_dirty_mismatch() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    vulkan["source"]["source_hash"] = ""
+
+    with pytest.raises(ValueError, match="source source_hash is missing"):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+    vulkan = _result(module, "vulkan")
+    del vulkan["source"]["dirty"]
+    with pytest.raises(ValueError, match="source dirty is missing"):
+        module.build_comparison(hip, vulkan, command=["q6-compare"])
+
+    vulkan = _result(module, "vulkan")
+    vulkan["source"]["dirty"] = True
+    with pytest.raises(ValueError, match="source dirty values do not match"):
         module.build_comparison(hip, vulkan, command=["q6-compare"])
 
 
