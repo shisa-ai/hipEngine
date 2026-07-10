@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 from typing import Any, ClassVar
+import uuid
 
 from hipengine.dispatch import NativeBatchWidthProfile, plan_batch_width_partition
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
@@ -47,6 +48,11 @@ from hipengine.runtime.qwen35_paro_batch_width import (
     QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV,
     load_qwen35_paro_native_batch_width_profile,
 )
+
+
+def _new_timing_batch_id(kind: str) -> str:
+    return f"paro-{str(kind)}-{uuid.uuid4().hex}"
+
 
 @dataclass
 class Qwen35ParoOneTokenGenerator:
@@ -244,6 +250,7 @@ class Qwen35ParoOneTokenGenerator:
         output_parts: dict[int, list[str]] = {}
         groups: list[dict[str, Any]] = []
         started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("true-c1")
         for row_index, prompt in enumerate(prompts):
             _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
             prompt_row = [int(token) for token in prompt_ids]
@@ -297,6 +304,9 @@ class Qwen35ParoOneTokenGenerator:
         prompt_rows_by_request = dict(zip(request_ids, prompt_rows, strict=True))
         self.last_batch_generation = {
             "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
             "batch_size": len(prompts),
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
@@ -353,6 +363,7 @@ class Qwen35ParoOneTokenGenerator:
         scheduler_chunks: list[dict[str, Any]] = []
         native_sampler_rows = plan.mode is SamplingMode.GPU_SAMPLE
         started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("sampled-true-c1")
         for row_index, prompt in enumerate(prompts):
             _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
             prompt_row = [int(token) for token in prompt_ids]
@@ -455,6 +466,9 @@ class Qwen35ParoOneTokenGenerator:
         ]
         self.last_batch_generation = {
             "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
             "batch_size": len(prompts),
             "request_ids": list(range(len(prompts))),
             "prompt_lengths": [len(row) for row in prompt_rows],
@@ -534,6 +548,7 @@ class Qwen35ParoOneTokenGenerator:
         scheduler_chunks: list[dict[str, Any]] = []
         cursor = 0
         started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("isolated-width-groups")
         for group_index, (planned_mode, width) in enumerate(execution_groups):
             group_prompts = prompts[cursor : cursor + width]
             group_offset = cursor
@@ -624,6 +639,9 @@ class Qwen35ParoOneTokenGenerator:
         )
         self.last_batch_generation = {
             "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
             "batch_size": len(prompts),
             "request_ids": list(range(len(prompts))),
             "prompt_lengths": [len(row) for row in prompt_rows],
@@ -1068,6 +1086,7 @@ class Qwen35ParoOneTokenGenerator:
         generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
         next_token_by_request: dict[int, int] = {}
         batch_started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("decode")
         prefill_wall_s = 0.0
         decode_wall_s = 0.0
         packed_slabs = scheduler.next_compact_prefill_slabs(
@@ -1269,6 +1288,10 @@ class Qwen35ParoOneTokenGenerator:
             execution_path = "scheduler_native_packed_prefill_serial_decode"
         self.last_batch_generation = {
             "path": execution_path,
+            "batch_id": batch_id,
+            "group_rows": batch_size,
+            "timing_scope": "batch",
+            "timing_owner": True,
             "batch_size": batch_size,
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
@@ -1331,6 +1354,10 @@ class Qwen35ParoOneTokenGenerator:
                     native_caware_decode=self.last_batch_generation["native_caware_decode"],
                     serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
                     timing=batch_timing,
+                    timing_scope="batch",
+                    batch_id=batch_id,
+                    group_rows=batch_size,
+                    timing_owner=request_id == request_ids[0],
                     diagnostics={"batch_execution": batch_execution_payload}
                     if batch_execution_payload is not None
                     else None,
@@ -2271,10 +2298,18 @@ def _telemetry_for_tokens(
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool | None = None,
     timing: dict[str, float] | None = None,
+    timing_scope: str | None = None,
+    batch_id: str | None = None,
+    group_rows: int | None = None,
+    timing_owner: bool | None = None,
     diagnostics: dict[str, Any] | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
+    if timing is not None and timing_scope is None:
+        timing_scope = "choice"
+        group_rows = 1 if group_rows is None else int(group_rows)
+        timing_owner = True if timing_owner is None else bool(timing_owner)
     return GenerationTelemetry.from_decode_counts(
         request_id=request_id,
         row_index=row_index,
@@ -2307,6 +2342,10 @@ def _telemetry_for_tokens(
         serial_decode_fallback=serial_decode_fallback,
         native_sampler_rows=native_sampler_rows,
         timing=timing,
+        timing_scope=timing_scope,
+        batch_id=batch_id,
+        group_rows=group_rows,
+        timing_owner=timing_owner,
         diagnostics=diagnostics,
     )
 

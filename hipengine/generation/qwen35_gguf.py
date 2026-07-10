@@ -6,6 +6,7 @@ import concurrent.futures
 import os
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import wraps
@@ -69,6 +70,11 @@ _GGUF_MTP_REQUIRED_TENSORS = (
     "blk.40.ffn_up_shexp.weight",
     "blk.40.ffn_down_shexp.weight",
 )
+
+
+def _new_gguf_timing_batch_id(kind: str) -> str:
+    return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
+
 
 _LLAMA_COMPAT_MTP_ENV = {
     "HIPENGINE_GGUF_DECODE_REPACK": "1",
@@ -1188,6 +1194,8 @@ class Qwen35GGUFBringupGenerator:
                         ),
                     )
                 )
+            batch_id = _new_gguf_timing_batch_id("ar")
+            outputs = _with_batch_timing_ownership(outputs, batch_id=batch_id)
             self.last_generation_outputs = tuple(outputs)
             native_decode_steps = max((slot.native_decode_steps for slot in slots), default=0)
             serial_decode_fallback = any(slot.serial_decode_steps > 0 for slot in slots)
@@ -1203,6 +1211,14 @@ class Qwen35GGUFBringupGenerator:
                 native_decode_steps=native_decode_steps,
                 native_caware_decode=native_decode_steps > 0,
                 serial_decode_fallback=serial_decode_fallback,
+            )
+            self.last_batch_generation.update(
+                {
+                    "batch_id": batch_id,
+                    "group_rows": len(outputs),
+                    "timing_scope": "batch",
+                    "timing_owner": True,
+                }
             )
             self._close_ar_serving_slots(slots, reuse=True)
             slots = []
@@ -1798,6 +1814,10 @@ class Qwen35GGUFBringupGenerator:
                         outputs=outputs,
                     )
 
+        timing_batch_id: str | None = None
+        if len(outputs) > 1:
+            timing_batch_id = _new_gguf_timing_batch_id("mtp")
+            outputs = _with_batch_timing_ownership(outputs, batch_id=timing_batch_id)
         self.last_generation_outputs = tuple(outputs)
         self.last_batch_generation = _gguf_mtp_last_batch_generation(
             self.tokenizer,
@@ -1811,6 +1831,15 @@ class Qwen35GGUFBringupGenerator:
             resident_slot_count=resident_slot_count,
             target_verify_batching=target_verify_batching,
         )
+        if timing_batch_id is not None:
+            self.last_batch_generation.update(
+                {
+                    "batch_id": timing_batch_id,
+                    "group_rows": len(outputs),
+                    "timing_scope": "batch",
+                    "timing_owner": True,
+                }
+            )
         return outputs
 
     def _generate_prepared_mtp_serving_slots(
@@ -3740,6 +3769,35 @@ def _gguf_generation_output(
     )
 
 
+def _with_batch_timing_ownership(
+    outputs: list[GenerationOutput],
+    *,
+    batch_id: str,
+) -> list[GenerationOutput]:
+    """Mark copied group timing once while preserving every row's decode state."""
+
+    group_rows = len(outputs)
+    owned_outputs: list[GenerationOutput] = []
+    for output_index, output in enumerate(outputs):
+        telemetry = output.telemetry
+        if telemetry is None or telemetry.timing is None:
+            owned_outputs.append(output)
+            continue
+        owned_outputs.append(
+            replace(
+                output,
+                telemetry=replace(
+                    telemetry,
+                    timing_scope="batch",
+                    batch_id=batch_id,
+                    group_rows=group_rows,
+                    timing_owner=output_index == 0,
+                ),
+            )
+        )
+    return owned_outputs
+
+
 def _gguf_stream_token_logprobs(
     tokenizer: Qwen35GGUFTokenizer,
     sample: Any,
@@ -4058,7 +4116,15 @@ def _gguf_telemetry(
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool | None = None,
     timing: dict[str, float] | None = None,
+    timing_scope: str | None = None,
+    batch_id: str | None = None,
+    group_rows: int | None = None,
+    timing_owner: bool | None = None,
 ) -> GenerationTelemetry:
+    if timing is not None and timing_scope is None:
+        timing_scope = "choice"
+        group_rows = 1 if group_rows is None else int(group_rows)
+        timing_owner = True if timing_owner is None else bool(timing_owner)
     plan = _gguf_sampler_plan(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _gguf_forced_token_metadata(forced_sample)
@@ -4094,6 +4160,10 @@ def _gguf_telemetry(
         serial_decode_fallback=serial_decode_fallback,
         native_sampler_rows=native_sampler_rows,
         timing=timing,
+        timing_scope=timing_scope,
+        batch_id=batch_id,
+        group_rows=group_rows,
+        timing_owner=timing_owner,
     )
 
 

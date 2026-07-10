@@ -399,6 +399,16 @@ Exact-ID-only choices contain `generated_token_ids` and `generated_tokens`; the
 field is omitted when the backend or fake engine provides neither telemetry nor
 IDs.
 
+Every emitted `timing` map also declares `timing_scope`, `group_rows`, and
+`timing_owner`. Unscoped backend timing is normalized to a one-row `choice`
+payload owned by that choice. A copied packed/group wall uses
+`timing_scope="batch"`, a stable `batch_id` shared by every participating
+choice, the number of rows covered by that wall, and exactly one
+`timing_owner: true`; consumers must deduplicate batch timing by `batch_id` and
+ignore non-owner copies. These
+fields describe timing ownership, not HTTP concurrency or speculative verifier
+width; those shapes are reported separately when available.
+
 ### Finish details
 
 Completion and chat choices include a hipEngine extension field,

@@ -1662,6 +1662,18 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
     assert generator.last_batch_generation["serial_decode_fallback"] is False
     assert generator.last_batch_generation["native_decode_steps"] == 2
     assert all(_decode_state(output)["native_caware_decode"] is True for output in outputs)
+    telemetry = [output.telemetry for output in outputs]
+    assert all(item is not None for item in telemetry)
+    assert [item.timing_scope for item in telemetry if item is not None] == ["batch", "batch"]
+    assert len({item.batch_id for item in telemetry if item is not None}) == 1
+    assert [item.group_rows for item in telemetry if item is not None] == [2, 2]
+    assert [item.timing_owner for item in telemetry if item is not None] == [True, False]
+    owned_timing = [item for item in telemetry if item is not None and item.timing_owner]
+    assert len(owned_timing) == 1
+    assert sum(float(item.timing["decode_batch_ms"]) for item in owned_timing if item.timing) == float(
+        telemetry[0].timing["decode_batch_ms"]
+    )
+    assert generator.last_batch_generation["batch_id"] == telemetry[0].batch_id
 
 
 def test_gguf_ar_packed_decode_can_be_disabled(monkeypatch) -> None:
