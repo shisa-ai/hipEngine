@@ -150206,3 +150206,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   copied or changed. Updated the kernel catalog, env/testing contracts,
   refactor ledger, and SOL coordinator. G2 remains open for the clean
   short/512/4K/segment/chunk matrix.
+
+## 2026-07-11 - SOL-G2 accepted exact context/boundary matrix
+
+- Ran committed `332f01f8` with
+  `uv run python scripts/gguf_gdn_prefill_compare.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached-build ...` for the exact 17-token greeting and repeated
+  token `9707` at 512, 1024, 1025, 4095, and 4096 rows. Greeting and 512 kept
+  the all-layer bisect; longer cases used `--skip-layer-bisect` while retaining
+  production token, FP32 hidden-seed, and all resident Conv/GDN comparisons.
+- All 6/6 cases pass byte-for-byte. Greeting samples `9419` in both modes; all
+  repeated cases sample `9707`. Every final FP32 hidden seed and all 30
+  Conv/GDN pairs are exact. Greeting and 512 also have no divergent captured
+  layer output. The 1024/1025 pair crosses non-segment to segment recurrence;
+  4095 uses chunks `[1024,1024,1024,1023]` and 4096 uses four exact 1024-row
+  chunks.
+- A 4097-row extension stopped before either mode ran because the comparator's
+  optional hidden-seed capture is unsupported after outer scratch chunking.
+  This is recorded as a non-acceptance harness diagnostic, not a GDN mismatch;
+  the accepted 4095/4096 pair covers the retained four-chunk boundary.
+- Consolidated the clean child results into
+  `benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json`.
+  The compact 18,061-byte artifact records all commands, prompt hashes, exact
+  classifications, effective chunks, child SHA-256 values, valid narrow trace
+  summary, exact model fingerprint `936659d6...c89fb`, TheRock HIP
+  `7.13.60980-c76140fa27`, concrete gfx1151 identity, no staged/unstaged
+  changes, and the 255 disclosed unrelated untracked files.
+- Single-order wall fields vary from `1.008x` fused/chain at 512 to `0.974x` at
+  4096 and remain explicitly non-performance diagnostics. No throughput
+  topline changed. G2 is accepted; G3 is open for repeated/interleaved 512 and
+  4K same-session walls before default selection. Updated the benchmark/root
+  README, benchmark changelog, SOL coordinator, kernel/testing docs, env
+  contract, and refactor ledger. The dashboard gate initially exposed a stale
+  test that still required the E4-removed `performance_claim=false` PARO
+  numeric table; updated it to require the diagnostic link while forbidding
+  those ineligible numbers. The sync/provenance gate then passes `2/2`.

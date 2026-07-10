@@ -18,7 +18,7 @@ def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_gfx1151_legacy_paro_table_matches_compact_artifacts() -> None:
+def test_gfx1151_legacy_paro_diagnostic_is_linked_but_not_published() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     artifact = json.loads(
         (
@@ -35,7 +35,9 @@ def test_gfx1151_legacy_paro_table_matches_compact_artifacts() -> None:
         f"{reference['decode_tok_s_per_request_median']:.3f} | "
         f"{reference['decode_step_ms_median_of_run_medians']:.3f} |"
     )
-    assert expected_reference in scoreboard
+    assert expected_reference not in scoreboard
+    assert "No eligible native-batch timing row" in scoreboard
+    assert "2026-07-10...current-diagnostic-summary.json" in scoreboard
     assert reference["status"] == "diagnostic_reference"
     assert reference["same_fixture_as_cn"] is False
     assert reference["source"]["hipengine_commit"].startswith("4175dabf")
@@ -49,7 +51,7 @@ def test_gfx1151_legacy_paro_table_matches_compact_artifacts() -> None:
             f"{result['decode_tok_s_per_request_median']:.3f} | "
             f"{result['decode_step_ms_median_of_run_medians']:.3f} |"
         )
-        assert expected in scoreboard
+        assert expected not in scoreboard
         assert result["status"] == "diagnostic_legacy_batch_oracle"
         assert result["generated_token_equality"] is True
         assert result["primitive_correctness"] is True

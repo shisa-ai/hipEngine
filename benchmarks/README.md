@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`104fad870cd1f8ec3b3cab81052dacd28eab85c0`
+`332f01f8941de47c28d9d2e755666c2644b7c16f`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -88,15 +88,18 @@ layer outputs, 30 Conv/GDN state pairs, and 10 live K/V layer pairs. This
 classifies the repeated stream as valid model behavior on gfx1151; it is a
 correctness artifact with `performance_claim=false`, not a throughput row.
 
-The current SOL-G2 fused/chain prefill diagnostic is
-[`2026-07-11-sol-g2-gfx1151-gdn-prefill-greeting-prefix.json`](results/2026-07-11-sol-g2-gfx1151-gdn-prefill-greeting-prefix.json).
-On the exact 17-token reasoning-off greeting, both production modes now sample
-llama.cpp token `9419`, so the historical visible-token mismatch is resolved.
-The split chain is still correctness-blocked: production first differs in
-layer-0 recurrent state, the all-layer bisect first differs after layer 1, and
-all 2,048 final hidden-seed elements differ. This is a diagnostic artifact with
-`performance_claim=false`; its single-order wall observations are not a speed
-claim.
+The accepted SOL-G2 fused/chain prefill gate is
+[`2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json`](results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json).
+At committed revision `332f01f8`, the GGUF-only raw-Q/K-plus-scale split chain
+matches fused production prefill in all 6/6 clean gfx1151 cases: the exact
+17-token greeting, repeated-token 512, the 1024/1025 segment threshold, and the
+4095/4096 four-chunk boundary. Sampled tokens, FP32 hidden seeds, and all 30
+resident Conv/GDN state pairs are byte-exact; greeting and 512 also match every
+captured layer output. The earlier
+[`104fad87` prefix artifact](results/2026-07-11-sol-g2-gfx1151-gdn-prefill-greeting-prefix.json)
+preserves the normalized-Q/K layer-0 recurrent RED. Both artifacts set
+`performance_claim=false`; G3 must use a repeated, interleaved wall protocol
+before selecting a default.
 
 ## Platform Index
 
@@ -108,7 +111,7 @@ claim.
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-06-15 | hipEngine `64b86b9a`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp `6e9007ae6` build 9641 | **Stale diagnostic**: one measured run, no measured warmup, and commit/environment live only in WORKLOG rather than the summary artifact | Diagnostic link only | Add a committed gfx1151 refresh runner, emit full provenance in the artifact, and rerun the repeated protocol |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-11 | hipEngine `c941c158`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: external and production tokens match; four hidden/layer/Conv/GDN/KV checkpoints are finite and byte-exact. `performance_claim=false`; unrelated untracked files are disclosed. | Diagnostic link only | Rerun after eager math/state/KV changes; run separately on W7900 before using it to refresh gfx1100 performance. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill state comparison | 2026-07-11 | clean tracked hipEngine `104fad87`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Blocked diagnostic**: fused/chain both sample `9419`, but layer-0 recurrent state is the first resident mismatch, layer 1 is the first hidden-output mismatch, and the final FP32 seed differs in 2,048/2,048 elements. `performance_claim=false`. | Diagnostic link only | Make prepare/recurrent arithmetic exact, then rerun short/512/4K plus segment/chunk boundaries before any chain promotion. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill state comparison | 2026-07-11 | clean tracked hipEngine `332f01f8`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness-only gate**: raw-Q/K exact chain passes 6/6 short/512/segment/4K/chunk cases with byte-exact sampled tokens, FP32 hidden seeds, and resident Conv/GDN state. `performance_claim=false`. | Diagnostic link only | Rerun after GDN math/chunk changes; use a repeated interleaved G3 protocol before changing the fused-first default. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c1-c8 shape matrix | 2026-07-10 | timing rows: tracked files matched hipEngine `4175dabf` and `02aec604`, with unrelated untracked files present; true-c1 shrink gate: `0c184517`, `hipengine_dirty=false`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c2-c8 timing rows used a batch-shaped width-1 oracle and cannot select routing. At `0c184517`, serial c8-to-c1 passes all rows against independent c1; native c8 fails every row at generated token index 2. Production uses width-1 sessions. | Diagnostic link only | Localize the native c8 divergence, then rerun c1-c8, sparse, ragged, and shrinking gates against independent single-request prefill/decode before collecting retained timings |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |

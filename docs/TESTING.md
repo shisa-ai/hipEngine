@@ -153,6 +153,14 @@ uv run python scripts/gguf_gdn_prefill_compare.py \
   --require-cached-build --json /tmp/sol-g2-gfx1151-greeting.json
 ```
 
+Acceptance also runs repeated token `9707` at 512, 1024, 1025, 4095, and 4096
+rows. The 1024/1025 pair crosses the exact recurrent-segment threshold; the
+4095/4096 pair exercises the retained 1024-row layer-chunk tail/exact boundary.
+Greeting and 512 retain the all-layer bisect; longer cases may use
+`--skip-layer-bisect` because production hidden seed and all resident Conv/GDN
+states are still compared exactly. Single-order wall fields from this driver
+are correctness diagnostics only and cannot select the G3 default.
+
 ### 2. CPU deterministic bundle
 
 Use for ordinary non-GPU code changes before commit:
