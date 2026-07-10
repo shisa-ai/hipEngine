@@ -148873,3 +148873,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests exercise both timing modes and assert every required schema-v2
   comparison field. No timing run was needed for this evidence-format-only
   change.
+
+## 2026-07-10 - Strict dispatch comparison identity
+
+- Hardened the dispatch/grid-floor comparator so identical truncation can no
+  longer pass as a matched run. It now rejects duplicate rows, requires the
+  exact count plus grid-sweep matrix implied by the artifact parameters, and
+  checks result kind, benchmark, backend, classification, architecture, timing
+  mode, and every shared workload parameter before producing ratios.
+- The comparison retains both backend source hashes and exposes an explicit
+  `performance_claim` gate over matching commits, clean inputs, and all timed
+  correctness rows. Dirty or commit-mismatched inputs remain inspectable but
+  non-claiming.
+- Validation: `uv run pytest -q tests/test_micro_hip_dispatch_floor.py
+  tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_timing_contract.py`
+  (`31 passed`), plus Python compilation and scoped diff checks.

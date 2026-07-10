@@ -187,6 +187,9 @@ def test_serial_comparison_allows_pre_recorded_host_wall() -> None:
         row["host_wall"]["status"] == "ok"
         for row in comparison["comparisons"]
     )
+    assert comparison["performance_claim"] is True
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:test"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:test"
 
 
 def test_independent_comparison_rejects_unmatched_host_submission() -> None:
@@ -225,6 +228,76 @@ def test_comparison_rejects_unmatched_row_shapes() -> None:
 
     with pytest.raises(ValueError, match="row shapes"):
         module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_comparison_rejects_identically_truncated_requested_matrix() -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    hip["measurements"]["rows"].pop()
+    vulkan["measurements"]["rows"].pop()
+
+    with pytest.raises(ValueError, match="requested matrix"):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_comparison_rejects_duplicate_rows() -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    hip["measurements"]["rows"].append(
+        copy.deepcopy(hip["measurements"]["rows"][0])
+    )
+
+    with pytest.raises(ValueError, match="duplicate hip"):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("kind", "legacy_result", "result kind"),
+        ("bench", "other", "benchmark identity"),
+        ("classification", "compiler_aco", "classification"),
+    ],
+)
+def test_comparison_rejects_wrong_result_identity(
+    field: str, value: str, message: str
+) -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    vulkan[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_comparison_rejects_unmatched_workload_parameters() -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    vulkan["parameters"]["counts"] = [1]
+
+    with pytest.raises(ValueError, match="counts"):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_comparison_records_nonclaiming_dirty_and_commit_mismatch() -> None:
+    module = _load_runner_module()
+    hip = _normalize(module)
+    vulkan = _vulkan_result_from_hip(module, hip)
+    hip["source"]["dirty"] = True
+    vulkan["source"]["commit"] = "b" * 40
+
+    comparison = module.build_comparison(hip, vulkan, command=["compare"])
+
+    assert comparison["performance_claim"] is False
+    assert comparison["claim_gate"] == {
+        "commit_match": False,
+        "clean_sources": False,
+        "correctness_pass": True,
+    }
 
 
 def test_normalize_rejects_stale_artifact_without_timing_mode() -> None:
