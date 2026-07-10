@@ -71,16 +71,22 @@ def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, obj
 
 def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_full_attention_row_chunk_layers(2) == set()
-    assert runner_module._retained_full_attention_row_chunk_layers(3) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(3) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(4) == set()
-    assert runner_module._retained_full_attention_row_chunk_layers(5) == {3, 7, 11, 15}
+    assert runner_module._retained_full_attention_row_chunk_layers(5) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(6) == {3, 7, 11, 15, 19, 23, 27, 31}
     assert runner_module._retained_full_attention_row_chunk_layers(7) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(8) == set()
-    assert not runner_module._retained_selected_c1_moe_rows(3)
-    assert runner_module._retained_selected_c1_moe_rows(6)
+    assert all(runner_module._retained_selected_c1_moe_rows(rows) for rows in range(2, 9))
+    assert not runner_module._retained_selected_c1_moe_rows(9)
     assert not runner_module._retained_per_row_linear_moe_rows(6)
-    assert runner_module._retained_force_small_batch_shared_expert_rows(6)
+    assert all(
+        runner_module._retained_force_small_batch_shared_expert_rows(rows)
+        for rows in (3, 5, 6, 7)
+    )
+    assert not runner_module._retained_force_small_batch_shared_expert_rows(2)
+    assert not runner_module._retained_force_small_batch_shared_expert_rows(4)
+    assert not runner_module._retained_force_small_batch_shared_expert_rows(8)
     assert runner_module._retained_linear_row_chunk_size(4) == 0
     assert runner_module._retained_linear_row_chunk_size(6) == 0
 

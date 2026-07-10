@@ -149282,3 +149282,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passed. The full `tests/test_generation_qwen35_paro.py` run has one unrelated
   native-sampler fake failure; the same isolated test fails unchanged in the
   clean detached `4175dabf` worktree.
+
+## 2026-07-10 - gfx1151 PARO direct odd-width repair
+
+- Hypothesis: c3/c5/c7 failures come from grouped-compact MoE and the normal
+  shared-expert route. RED policy tests proved retained defaults selected
+  selected-c1 MoE only at c2/c4/c6/c8 and the small-batch shared expert only at
+  c6.
+- Bounded 512/16 diagnostics used model snapshot `437eba06...`, W4 PARO, BF16
+  KV, 40 layers, four warmup decode tokens, compiler version file
+  `/tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt`, cached builds,
+  and the first rows of
+  `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`.
+  Selected-c1 MoE plus the small-batch shared expert passed all 21 seed/warmup/
+  measured tokens: c3 `89.839`, c5 `106.842`, c7 `110.387` aggregate tok/s.
+- The full 512/128 gate rejected the older c3/c5 rowchunk scope
+  `3,7,11,15`: every row first diverged at token 40. Rowchunk2 across all ten
+  full-attention layers passed 137/137 tokens on every row: c3 `87.516`, c5
+  `102.142`, and c7 `109.412` aggregate tok/s. These are dirty, single-run
+  diagnostics and are not retained performance claims.
+- The retained-default selectors use selected-c1 MoE for c2-c8, the
+  small-batch shared expert for c3/c5/c6/c7, all-layer rowchunk2 for c3/c5/c7,
+  and the existing selected-layer c6 scope. The retained benchmark `auto` route
+  mirrors those choices. Unknown widths remain excluded by the identity-matched
+  width profile and therefore use the exact partition/serial path in generation.
+- RED/GREEN:
+  `tests/test_qwen35_resident_batch_layout.py::test_qwen35_retained_batch_defaults_select_rowchunk_layers`
+  and
+  `tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env`
+  failed on the old even-only/four-layer policy and pass after the routing
+  change (`2 passed`).
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
+  because the manifest points at missing read-only reference checkout
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd`. No kernel source changed in this
+  unit.
