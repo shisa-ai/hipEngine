@@ -149898,3 +149898,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   rather than a completion blocker. Updated `docs/KERNELS.md` and
   `docs/SOL-OPTIMIZATION.md`; SOL-B1 is accepted, SOL-M1 is unblocked, and
   SOL-M1/E4 are the next foundation units.
+
+## 2026-07-11 - SOL-E4 dashboard eligibility repair
+
+- Audited every canonical/root `TOPLINE` export against its evidence status.
+  The live dashboard was still publishing six stale or diagnostic numeric
+  blocks: W7900 capacity/model/concurrency, gfx1151 model/concurrency, and the
+  gfx1151 schema-1 PARO shape timings. The W7900 refresh summary, gfx1151
+  concurrency summary, and schema-1 shape summary explicitly carry
+  `performance_claim=false`; the other rows lack the current repetition,
+  provenance, or correctness contract.
+- `benchmarks/README.md` now has an explicit `Current Eligible Toplines`
+  section containing only the three retained speculative contracts. Every
+  ineligible export block contains a non-numeric rerun notice, while the
+  separate diagnostics section retains each protocol, run record, compact
+  artifact link, blocker, and refresh command. The platform index now says
+  `Diagnostic link only` instead of implying those rows remain root toplines.
+  Root `README.md` exports are synchronized and label memory, model throughput,
+  and concurrency as diagnostics awaiting rerun.
+- Corrected the server headline distinction: exact raw generated IDs, all-choice
+  counts, owned batch timing, canonical provenance, and route/queue/backend/
+  verifier shapes now exist, but the 2026-07-06 OpenAI MTP timings predate those
+  contracts. They remain withheld until the same protocol is rerun; no old rate
+  was relabeled or recomputed. This documentation-only repair creates no new
+  benchmark artifact or performance claim.
+- GREEN: `python3 scripts/sync_benchmark_readme.py --write`, its `--check`
+  mode, a marker audit confirming only `SPECULATIVE` has numeric performance
+  rows (three retained rows; zero `performance_claim=false` rows), and
+  `git diff --check` pass. Updated the benchmark changelog and SOL punchlist;
+  `SOL-E4` is accepted and `SOL-D1` is unblocked.

@@ -27,7 +27,7 @@ The previous experiment notebook is preserved in
 | Status | Meaning | May appear as a repository topline? |
 | --- | --- | --- |
 | **Retained** | The artifact passes the protocol's correctness, provenance, and performance gates. | Yes, for the named protocol only. |
-| **Diagnostic** | The run is useful but has a known comparability, correctness, repetition, or provenance limitation. | Only when the limitation is printed next to the table. Do not describe it as retained or fastest. |
+| **Diagnostic** | The run is useful but has a known comparability, correctness, repetition, or provenance limitation. | No. Link it from the separate diagnostic section; do not place its numbers in a current table. |
 | **Stale** | A measured path, dependency, or required evidence contract changed after the run. | No. It may remain as the last dated snapshot while a refresh is pending. |
 | **Blocked** | No row satisfies the protocol. | No numeric topline. Record the blocker and the next command. |
 
@@ -72,24 +72,51 @@ throughput row and changes no topline.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Dated diagnostic | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
-| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`; GGUF emits repeated token `9707` and is not correctness-certified | Dated diagnostic | Rerun after GGUF target/state correctness is restored, then pass the normal repeated-run gate on a clean revision |
-| Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Dated diagnostic | Rerun one timing scope with exact generated-token accounting across all engines |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Diagnostic link only | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
+| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`; GGUF emits repeated token `9707` and is not correctness-certified | Diagnostic link only | Rerun after GGUF target/state correctness is restored, then pass the normal repeated-run gate on a clean revision |
+| Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-06-15 | hipEngine `64b86b9a`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp `6e9007ae6` build 9641 | **Stale diagnostic**: one measured run, no measured warmup, and commit/environment live only in WORKLOG rather than the summary artifact | Dated diagnostic | Add a committed gfx1151 refresh runner, emit full provenance in the artifact, and rerun the repeated protocol |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c1-c8 shape matrix | 2026-07-10 | timing rows: tracked files matched hipEngine `4175dabf` and `02aec604`, with unrelated untracked files present; true-c1 shrink gate: `0c184517`, `hipengine_dirty=false`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c2-c8 timing rows used a batch-shaped width-1 oracle and cannot select routing. At `0c184517`, serial c8-to-c1 passes all rows against independent c1; native c8 fails every row at generated token index 2. Production uses width-1 sessions. | Dated diagnostic | Localize the native c8 divergence, then rerun c1-c8, sparse, ragged, and shrinking gates against independent single-request prefill/decode before collecting retained timings |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Dated diagnostic | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-06-15 | hipEngine `64b86b9a`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp `6e9007ae6` build 9641 | **Stale diagnostic**: one measured run, no measured warmup, and commit/environment live only in WORKLOG rather than the summary artifact | Diagnostic link only | Add a committed gfx1151 refresh runner, emit full provenance in the artifact, and rerun the repeated protocol |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c1-c8 shape matrix | 2026-07-10 | timing rows: tracked files matched hipEngine `4175dabf` and `02aec604`, with unrelated untracked files present; true-c1 shrink gate: `0c184517`, `hipengine_dirty=false`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c2-c8 timing rows used a batch-shaped width-1 oracle and cannot select routing. At `0c184517`, serial c8-to-c1 passes all rows against independent c1; native c8 fails every row at generated token index 2. Production uses width-1 sessions. | Diagnostic link only | Localize the native c8 divergence, then rerun c1-c8, sparse, ragged, and shrinking gates against independent single-request prefill/decode before collecting retained timings |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-10 | clean detached hipEngine `ca241dae`; TheRock ROCm `7.13.0a20260411`; RADV/Mesa `26.1.2` | **Retained**, 22/22 comparisons pass provenance, correctness, and exact-matrix gates | Linked, not copied here | Rerun the bounded matrix after a timed kernel/harness change |
 | Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | Not run | None | **Blocked** | No | Run the same bounded v2 matrix used on gfx1151 |
 
-## Public Snapshot Tables
+## Current Eligible Toplines
 
-These marked blocks are the public performance and capacity tables managed by
-this scoreboard. The sync script compares their contents byte-for-byte. Status
-and protocol text is maintained in both files because relative links and
-section context differ.
+Only rows with an eligible evidence status appear in this section. The sync
+script copies this marked block into the root README byte-for-byte.
+
+### Speculative decode
+
+The public table includes only contracts with a true same-protocol AR control.
+The MTP exact and `llama-compat` rows have different state semantics and output
+horizons; they must not be compared as two implementations of one contract.
+
+<!-- BEGIN TOPLINE:SPECULATIVE -->
+| Path | Platform and protocol | Result | Evidence status |
+| --- | --- | ---: | --- |
+| DFlash B=4 online-gated | W7900/gfx1100; Qwen3.6-27B PARO target plus Qwen3.6-27B DFlash drafter; 9 prompts; 64 decode tokens | 40.10 vs 32.57 AR tok/s, **1.231x** | Retained under the recorded DFlash gate; source tree was dirty and must be refreshed before changing the claim |
+| GGUF MTP exact B5 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B Q4_K_M; 10-prompt category suite; fixed 10 cycles; exact/default state semantics | 61.98 vs 54.79 AR tok/s, **1.1312x** | Retained for this fixed-cycle contract |
+| GGUF MTP `llama-compat` B2 | Radeon 8060S/gfx1151; same GGUF and prompt suite; natural24/cyclecap24; direct-commit/dp4a compatibility semantics | 71.52 vs 54.79 AR tok/s, **1.3055x** | Retained for this compatibility contract; accuracy-traded and not serial-prefix-equivalent |
+<!-- END TOPLINE:SPECULATIVE -->
+
+Artifacts: [DFlash](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
+[exact MTP](results/2026-07-02-ar-mtp-default-parallelattn-full.json), and
+[`llama-compat` MTP](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
+
+The retained gfx1151 HIP/Vulkan timing-contract v2 micro matrix is linked from
+the platform index and [`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); it
+is not a model-throughput topline.
+
+## Diagnostics Awaiting Rerun
+
+The dated records below preserve protocols, blockers, commands, and artifact
+links without publishing their numeric rows as current results. Their removed
+tables remain recoverable from the linked compact artifacts, changelog, and
+[`benchmarks/HISTORY.md`](HISTORY.md).
 
 ### W7900 PARO context capacity, 2026-05-19
 
@@ -100,11 +127,7 @@ and its correctness gate uses a deterministic Qwen3.5 fixture rather than a
 Qwen3.6 long-rollout evaluation.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
-| Model | Context | KV cache | Sampled HIP peak | Allocator peak | Retained KV | Prefill | Decode |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6 35B-A3B PARO | 128K | BF16 | 21.04 GiB | 21.88 GiB | 2.69 GB | 1091.9 tok/s | 62.2 tok/s |
-| Qwen3.6 35B-A3B PARO | 128K | INT8 per token/head | 19.80 GiB | 20.89 GiB | 1.36 GB | 1076.5 tok/s | 60.0 tok/s |
-| Qwen3.6 35B-A3B PARO | 256K | INT8 per token/head | 21.96 GiB | 23.71 GiB | 2.71 GB | 670.2 tok/s | 40.3 tok/s |
+No eligible capacity row; the dated artifact remains linked below pending rerun.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 Run record:
@@ -144,8 +167,8 @@ exact command, whole-card sampling method, and compact artifact.
 
 ### W7900 model sweep, 2026-07-07
 
-**Status: stale diagnostic.** These values show the last complete same-host
-sweep. They are not retained performance claims. hipEngine PARO is W4 PARO with
+**Status: stale diagnostic.** The linked artifact records the last complete
+same-host sweep. It is not a retained performance claim. hipEngine PARO is W4 PARO with
 BF16 KV; the other three columns use Q4_K_M GGUF with BF16/f16 KV. The PARO
 column is therefore not a same-quant comparison. The GGUF column uses the
 correctness-first eager route whose generated output repeatedly selected token
@@ -153,38 +176,7 @@ correctness-first eager route whose generated output repeatedly selected token
 passes.
 
 <!-- BEGIN TOPLINE:W7900_SWEEP -->
-#### Prefill tok/s
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | 2796.853 | 653.979 | 2502.690 | 2731.086 |
-| 1K/128 | 2917.115 | 664.564 | 2423.728 | 2642.684 |
-| 4K/128 | 2904.920 | 668.125 | 2294.828 | 2539.920 |
-| 32K/128 | 2103.724 | 635.321 | 1680.677 | 1950.575 |
-| 64K/128 | 1575.284 | 578.702 | 1319.054 | 1417.008 |
-| 128K/128 | 1063.951 | 490.289 | 913.108 | 1075.764 |
-
-#### Decode tok/s
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | 112.207 | 35.838 | 79.603 | 107.216 |
-| 1K/128 | 102.458 | 35.610 | 79.498 | 106.851 |
-| 4K/128 | 102.918 | 34.836 | 78.627 | 102.677 |
-| 32K/128 | 91.745 | 35.162 | 72.228 | 91.480 |
-| 64K/128 | 77.213 | 35.592 | 66.437 | 83.106 |
-| 128K/128 | 59.999 | 35.426 | 57.712 | 70.479 |
-
-#### Peak GiB
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | 21.029 | 25.492 | 21.598 | 21.260 |
-| 1K/128 | 21.241 | 25.492 | 21.610 | 21.220 |
-| 4K/128 | 21.973 | 25.492 | 21.666 | 21.278 |
-| 32K/128 | 22.082 | 25.492 | 22.208 | 21.855 |
-| 64K/128 | 22.082 | 25.492 | 22.887 | 22.512 |
-| 128K/128 | 22.124 | 25.492 | 24.080 | 23.824 |
+No eligible model-throughput row; the `performance_claim=false` sweep remains linked below pending correctness rerun.
 <!-- END TOPLINE:W7900_SWEEP -->
 
 Run record:
@@ -210,42 +202,11 @@ Component artifacts: [hipEngine PARO](results/2026-07-07-w7900-gpu0-readme-refre
 
 **Status: stale diagnostic.** This was one measured run per shape with no
 measured warmup. The summary artifact omits the source revision and build
-environment; the values below use the run record recovered from `WORKLOG.md`.
+environment; the run record below recovers those fields from `WORKLOG.md`.
 The next refresh must put those fields in the artifact.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
-#### Prefill tok/s
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | 956.666 | 833.366 | 1016.696 | 1043.209 |
-| 1K/128 | 1067.175 | 854.308 | 1069.681 | 1055.050 |
-| 4K/128 | 1062.248 | 729.117 | 1021.186 | 1027.069 |
-| 32K/128 | 822.255 | 619.570 | 742.869 | 809.619 |
-| 64K/128 | 622.752 | 522.872 | 569.611 | 658.399 |
-| 128K/128 | 425.727 | 384.011 | 384.959 | 473.651 |
-
-#### Decode tok/s
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | 66.967 | 56.581 | 51.640 | 62.434 |
-| 1K/128 | 61.768 | 52.832 | 51.446 | 61.572 |
-| 4K/128 | 62.910 | 53.638 | 49.581 | 60.012 |
-| 32K/128 | 50.368 | 44.383 | 43.628 | 50.911 |
-| 64K/128 | 41.966 | 37.741 | 38.604 | 44.010 |
-| 128K/128 | 30.286 | 28.043 | 31.598 | 34.714 |
-
-#### hipEngine tracked allocator peak GiB
-
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M |
-| --- | ---: | ---: |
-| 512/128 | 20.924 | 26.264 |
-| 1K/128 | 20.926 | 26.264 |
-| 4K/128 | 20.937 | 26.264 |
-| 32K/128 | 21.047 | 26.264 |
-| 64K/128 | 21.047 | 26.264 |
-| 128K/128 | 21.248 | 26.264 |
+No eligible model-throughput row; the one-repetition sweep remains linked below pending a provenance-complete rerun.
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 Run record:
@@ -266,38 +227,15 @@ Component artifacts: [hipEngine PARO](results/2026-06-15-gfx1151-readme-udq4km-2
 [llama.cpp HIP](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
 [llama.cpp Vulkan](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json).
 
-### Speculative decode
-
-The public table includes only contracts with a true same-protocol AR control.
-The MTP exact and `llama-compat` rows have different state semantics and output
-horizons; they must not be compared as two implementations of one contract.
-
-<!-- BEGIN TOPLINE:SPECULATIVE -->
-| Path | Platform and protocol | Result | Evidence status |
-| --- | --- | ---: | --- |
-| DFlash B=4 online-gated | W7900/gfx1100; Qwen3.6-27B PARO target plus Qwen3.6-27B DFlash drafter; 9 prompts; 64 decode tokens | 40.10 vs 32.57 AR tok/s, **1.231x** | Retained under the recorded DFlash gate; source tree was dirty and must be refreshed before changing the claim |
-| GGUF MTP exact B5 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B Q4_K_M; 10-prompt category suite; fixed 10 cycles; exact/default state semantics | 61.98 vs 54.79 AR tok/s, **1.1312x** | Retained for this fixed-cycle contract |
-| GGUF MTP `llama-compat` B2 | Radeon 8060S/gfx1151; same GGUF and prompt suite; natural24/cyclecap24; direct-commit/dp4a compatibility semantics | 71.52 vs 54.79 AR tok/s, **1.3055x** | Retained for this compatibility contract; accuracy-traded and not serial-prefix-equivalent |
-<!-- END TOPLINE:SPECULATIVE -->
-
-Artifacts: [DFlash](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
-[exact MTP](results/2026-07-02-ar-mtp-default-parallelattn-full.json), and
-[`llama-compat` MTP](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
-
 ### W7900 concurrency, 2026-07-07
 
 **Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV, llama.cpp uses Vulkan
 Q4_K_M/f16 KV, and vLLM uses GPTQ Int4. hipEngine and llama.cpp report backend
-decode timing; vLLM reports OpenAI client wall throughput. The numbers expose
+decode timing; vLLM reports OpenAI client wall throughput. The artifact exposes
 scaling behavior within each column, not an apples-to-apples engine ranking.
 
 <!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
-| Concurrency | hipEngine PARO decode aggregate | hipEngine per sequence | llama.cpp Vulkan decode aggregate | llama.cpp per sequence | vLLM OpenAI wall aggregate | vLLM per sequence |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 114.98 | 114.98 | 105.63 | 105.63 | 21.32 | 21.32 |
-| 2 | 113.34 | 56.67 | 156.06 | 78.03 | 40.61 | 20.31 |
-| 4 | 158.25 | 39.56 | 76.52 | 19.13 | 78.41 | 19.60 |
-| 8 | 189.59 | 23.70 | 26.47 | 3.31 | 116.44 | 14.55 |
+No eligible concurrency row; the mixed-quant, mixed-timing sweep remains linked below pending rerun.
 <!-- END TOPLINE:W7900_CONCURRENCY -->
 
 Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. hipEngine
@@ -329,16 +267,7 @@ multi-request generation use exact width-1 sessions until a schema-2 profile
 passes packed-prefill, sparse-slot, and shrinking gates.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
-| Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Legacy diagnostic gate | Measured route |
-| ---: | ---: | ---: | ---: | --- | --- |
-| 1 | 66.806 | 66.806 | 14.969 | Three-run reference; different prompt | Single-sequence graph replay; repeated token 9707 |
-| 2 | 78.578 | 39.289 | 25.465 | Primitive pass; batch-shaped IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
-| 3 | 87.488 | 29.163 | 34.310 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 4 | 99.616 | 24.904 | 40.158 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
-| 5 | 102.137 | 20.427 | 48.927 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 6 | 109.909 | 18.318 | 54.568 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; selected-layer rowchunk2; serial LM-head |
-| 7 | 109.596 | 15.657 | 63.905 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 8 | 115.515 | 14.439 | 69.254 | Primitive pass; batch-shaped IDs 3/3; true-c1 red | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
+No eligible native-batch timing row; schema-1 timings remain linked below pending independent-c1 gates and rerun.
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
 Protocol: Qwen3.6-35B-A3B PARO snapshot
@@ -347,8 +276,8 @@ Protocol: Qwen3.6-35B-A3B PARO snapshot
 reference repeats token `9707` for 512 prompt positions and uses the
 single-sequence graph-replay path. Widths c2-c8 use fixed prompt slices and ran
 the seed-1234 KV/attention primitive gate. Their three-run generated-token
-field compares against the legacy batch-shaped width-1 route. Every displayed
-width has three measured repetitions; displayed values are medians and are not
+field compares against the legacy batch-shaped width-1 route. Every archived
+width has three measured repetitions; the archived values are medians and are not
 production performance claims.
 
 Run record:
@@ -379,12 +308,7 @@ the measured hipEngine commit, and the then-used per-run device properties could
 report gfx1100 even though the run forced `HIPENGINE_HIP_ARCH=gfx1151`.
 
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
-| Concurrency | hipEngine PARO decode aggregate | hipEngine per sequence | llama.cpp Vulkan decode aggregate | llama.cpp per sequence | vLLM OpenAI |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 1 | 66.62 | 66.62 | 62.16 | 62.16 | Blocked: server unhealthy |
-| 2 | 69.54 | 34.77 | 94.12 | 47.06 | Blocked |
-| 4 | 88.39 | 22.10 | 119.51 | 29.88 | Blocked |
-| 8 | 100.68 | 12.59 | 119.94 | 14.99 | Blocked |
+No eligible concurrency row; the `performance_claim=false` snapshot remains linked below pending rerun.
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
 Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. Primitive
@@ -437,8 +361,8 @@ Required W7900 settings:
 | llama.cpp | Same GGUF; `-ngl 99 -fa 1 -ctk f16 -ctv f16`; split prefill/decode; one repetition per phase |
 | Concurrency | prompt 512; decode 128; warmup 8; c=1,2,4,8; 3 repetitions; fixed token-id fixture |
 
-Do not replace the table if the combined summary has
-`performance_claim=false` unless the table remains labeled diagnostic. A
+Never add a combined summary with `performance_claim=false` to the current
+topline table. Keep its artifact linked in the diagnostic section instead. A
 retained refresh also needs the correctness and repetition gates from
 [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
 
@@ -578,24 +502,25 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
-- **W7900 GGUF Q4_K_M:** the 2026-07-07 eager run is the last measured path but
+- **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path but
   has repeated token `9707` output and `performance_claim=false`. Restore target
   and recurrent-state correctness before using its throughput as a baseline.
-- **OpenAI MTP server c=1/2/4/8:** the 2026-07-06 artifacts use decoded-text
+- **OpenAI MTP server c=1/2/4/8:** the [2026-07-06 notebook rows](HISTORY.md#natural24-mtp-vs-ar-concurrency-diagnostic) use decoded-text
   re-tokenization for completion counts and repeat one batch-scoped timing
   payload per choice. The current harness now counts exact IDs across every
   choice, deduplicates owned batch timing, emits canonical provenance, and
   validates route-cap/queue/backend/verifier shape independently, but those
-  historical rows predate all four contracts. They remain ineligible until the
+  historical rows predate all four contracts. Raw IDs now suffice for the
+  completion-token headline, but no corrected timing headline exists until the
   same protocol is rerun.
-- **gfx1151 PARO native batching:** the 2026-07-10 primitive gate passes c2-c8,
+- **gfx1151 PARO native batching:** the [2026-07-10 timing artifact](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json) passes the primitive c2-c8 gate,
   but the direct timing matrix used a batch-shaped width-1 oracle. At
   `0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate rejects native c8
   on all rows at generated token index 2 and accepts the serial bridge through
   every width. No native width is routing-eligible until the direct, sparse,
   ragged, and shrinking matrix passes against independent single-request
   prefill/decode.
-- **gfx1151 model sweep:** the committed summary omits source/build provenance
+- **gfx1151 model sweep:** the [committed summary](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json) omits source/build provenance
   and contains one measured repetition. Its values remain a dated diagnostic.
 - **llama.cpp 24 GiB Q8_0 memory:** the former root README tables had no compact
   artifact, model fingerprint, llama.cpp revision, or run date. The numbers were
