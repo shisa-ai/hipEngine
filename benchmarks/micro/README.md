@@ -54,6 +54,7 @@ oracle alone is not sufficient for either mode.
 | Path | Purpose |
 | --- | --- |
 | `timing_contract.py` | Shared mode, control, metric, correctness, and comparison gates |
+| `comparison_claim.py` | Shared source, device, raw-identity, and matrix claim gate for joint wrappers |
 | `runners/micro_timing_hip.hpp` | HIP event and multi-stream timing helpers |
 | `runners/micro_timing_vulkan.hpp` | Vulkan timestamp, barrier, calibrated multi-queue timing helpers |
 | `collect_env.py` | Dependency-free environment and device provenance capture |
@@ -86,6 +87,10 @@ Multi-stage independent-throughput paths use matched HIP stream lanes and
 Vulkan compute-queue lanes where a single queue would introduce an unintended
 cross-operation dependency. Single-stage Vulkan paths may use independent,
 disjoint dispatches in one pre-recorded command buffer.
+
+Joint wrappers derive backend device identity from the raw HIP and Vulkan
+harness outputs. Their one combined source hash covers both backend sources;
+any backend-specific raw hashes are retained separately when available.
 
 Packed-dot, memory/waitcnt, and VOPD timed-sequence checks cover the first 64
 outputs from every logical repetition. That is a repeated sampled oracle, not

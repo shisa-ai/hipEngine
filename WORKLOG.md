@@ -148964,3 +148964,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: re-read all `393` lines, verified every named runner accepts
   `--help`, checked every Bash template with `bash -n`, and passed scoped
   `git diff --check`.
+
+## 2026-07-10 - Joint reduction provenance and claim gates
+
+- Added a shared joint-wrapper evidence helper and applied it to the reduction
+  and true two-stage reduction runners. Claims now require a nonempty combined
+  source hash/commit, clean source, valid raw HIP/Vulkan run identities,
+  normalized same-device identity, matching gfx target, all-row correctness,
+  and an exact requested row/raw-result/comparison matrix.
+- Hardware identity now comes from each backend's raw harness output instead
+  of copying CLI labels to both sides. The combined source hash explicitly
+  covers both backend implementations and timing helpers; optional raw backend
+  hashes remain visible when a harness provides them.
+- Validation: `uv run pytest -q tests/test_micro_reduction_sweep.py
+  tests/test_micro_two_stage_reduction.py tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`31 passed`), Python
+  compilation, and scoped diff checks. Actual gfx1151 smokes used K=512,
+  rows=1, wg64, body-repeats=8, reps=2, warmup=1, samples=2 in both modes.
+  Each mode produced 12 correct rows and five matched backend variants; HIP
+  and RADV both normalized to `radeon_8060s`. The artifacts are correctly
+  non-claiming only because the recorded worktree is dirty.
