@@ -148984,3 +148984,74 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Each mode produced 12 correct rows and five matched backend variants; HIP
   and RADV both normalized to `radeon_8060s`. The artifacts are correctly
   non-claiming only because the recorded worktree is dirty.
+
+## 2026-07-10 - Retained gfx1151 HIP/Vulkan timing-contract v2 matrix
+
+- Ran the complete bounded matrix first under
+  `/tmp/hipengine-micro-v2-gfx1151-20260710`. All 22 comparisons (11 families
+  x two timing modes) passed correctness, device, commit, and exact-matrix
+  gates, but all were non-claiming because unrelated untracked files made the
+  source snapshot dirty. `dirty_source` was the sole blocker.
+- Created a detached clean worktree with
+  `git worktree add --detach /tmp/hipengine-clean-ca241dae
+  ca241dae795d1252303c801f30e5db54a79eeb96`, captured the environment with
+  `python3 benchmarks/micro/collect_env.py --out
+  /tmp/hipengine-micro-v2-gfx1151-clean-20260710/environment.json --pretty`,
+  and reran the same matrix. The environment records Radeon 8060S/gfx1151,
+  ROCm `7.13.0a20260411`, and RADV/Mesa `26.1.2`; source is clean and detached
+  at `ca241dae`.
+- Dispatch used counts `1,50,200,941`, grid blocks `1,128,1024,8192`,
+  reps/warmup `20/5`, and four independent streams. Synthetic rows used
+  reps/warmup/samples `10/3/5`: geometry K `512/2048`, rows `1/4`, wg
+  `64/256`, body `32`; memory coalesced4/strided4/gather1/interleave4 at
+  n=`32768`, body `64`, wg `64/256`; packed q8/q4/q6/scalar dot at n=`32768`,
+  body `64`, wg `64/256`; VOPD variants at n=`65536`, body `512`, wg
+  `64/256`; sampler rows `1/4/8`, top-k `1/8`, vocab `32768`, wg `64/256`.
+- Joint reduction used K `512/2048`, rows `1`, wg `64/256`, body `32`.
+  Two-stage used K `8192/32768`, rows `1/4`, wg `128/256`, splits `2/4`,
+  body `16`. Production slices were Q4 selected-dual x_rows=`4`, rows=`32`,
+  experts=`256`, `2048x512`, wg `64/128`; Q6 X8 selected-down rows=`8`,
+  experts=`256`, `512x2048`, local size `64`; dense Q8 shapes `768x2048` and
+  `2048x2048`, rows `1/4`, local sizes `32/64/128`, row tiles `1/4` with
+  exact comparison at local size 32. Exact command arrays, clean working
+  directory, Python interpreter, and argv replay rule are retained in the
+  compact artifact.
+- Every clean comparison reports `performance_claim=true`, clean same-commit
+  source, complete requested matrix, matched gfx/device identity, passing
+  timed-command correctness, and burst GPU timing status `ok`. Q4 is a
+  tolerance-gate result rather than bit-exact: KL `0.012451 <= 0.05`, top-1
+  `1.0 >= 0.9`.
+- Retained burst GPU Vulkan/HIP ranges (`HIP time / Vulkan time`, so above one
+  favors Vulkan), serial then independent: dispatch
+  `1.162-16.789x / 1.116-150.459x`; geometry
+  `0.677-0.988x / 4.133-7.708x`; reduction
+  `0.689-0.981x / 4.246-7.502x`; memory
+  `0.869-1.071x / 1.077-1.370x`; packed dot
+  `3.052-3.243x / 3.840-4.272x`; VOPD
+  `1.031-1.200x / 1.040-1.110x`; sampler
+  `0.507-1.134x / 2.461-5.646x`; two-stage reduction
+  `0.682-0.934x / 1.087-1.466x`.
+- Production combined quantize+dot ranges, serial then independent: Q4
+  `0.922-0.973x / 0.911-0.978x`; Q6 `0.549x / 0.587x`; dense Q8
+  `0.540-0.903x / 0.558-1.144x`. HIP wins every serialized production row;
+  Vulkan wins only three small `768x2048` dense-Q8 independent rows. Q6
+  lm-head remains blocked because HIP T16 BF16 and Vulkan X8 q8_1 are not the
+  same math/layout.
+- Only serialized dispatch has a matched cross-backend host submission class;
+  its burst host-wall V/H range is `1.106-3.677x`. Independent dispatch and all
+  direct/multi-stream HIP versus command-buffer Vulkan host walls remain
+  intentionally unratioed.
+- Revised conclusion: timing mode is part of the workload. Geometry,
+  reduction, sampler, and two-stage throughput wins do not describe dependent
+  inference latency. The synthetic packed-dot win survives both modes but does
+  not transfer to the matched Q4/Q6/dense-Q8 combined slices. Withdraw the old
+  Q4 Vulkan win/amortization target and do not start a broad Vulkan backend,
+  LLVM/ACO claim, or hand-ISA program from this matrix. Next work is the exact
+  gfx1100 rerun plus production profiling that identifies a newly matched hot
+  slice.
+- Retained compact artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json`.
+  Updated `docs/HIP-vs-VULKAN.md`, both benchmark READMEs, and the benchmark
+  changelog; pre-v2 numeric rows remain explicitly labeled legacy/withdrawn.
+- Validation: `uv run pytest -q tests/test_micro_*.py` passed all `214` tests;
+  `git diff --check` passed before staging.

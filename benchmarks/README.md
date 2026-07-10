@@ -1,16 +1,42 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
-Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
-ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
-dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
-shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
-q8_1 real-slice layout controls, LDS/barrier/subgroup/accumulator reduction
-controls, true two-stage reduction controls, sampler top-1/top-k8 argmax
-diagnostics, plus a matched Vulkan Q6_K X8 selected-down real-slice probe and
-matched Vulkan Q4_K selected-dual gate/up real-slice probe with targeted
-HIP/RADV ISA comparisons, a bounded Q4 setup/amortization probe, and a dense
-Q8_0 real-slice probe plus Q6_K lm-head rowtile-shaped diagnostic.
+Last updated: 2026-07-10 (gfx1151 HIP/Vulkan timing-contract v2 bounded matrix).
+
+The clean `ca241dae` rerun on Radeon 8060S, ROCm `7.13.0a20260411`, and
+RADV/Mesa `26.1.2` retains 22 comparisons: 11 families in both
+`serial_latency` and `independent_throughput`. Every exact requested matrix and
+timed sequence passes correctness and has `performance_claim=true`. Ratios are
+Vulkan/HIP burst GPU speedup (`HIP time / Vulkan time`); above `1.0x` favors
+Vulkan.
+
+| Family | Serial V/H | Independent V/H |
+| --- | ---: | ---: |
+| Dispatch/grid | `1.162x-16.789x` | `1.116x-150.459x` |
+| Geometry | `0.677x-0.988x` | `4.133x-7.708x` |
+| Reduction | `0.689x-0.981x` | `4.246x-7.502x` |
+| Memory/waitcnt | `0.869x-1.071x` | `1.077x-1.370x` |
+| Packed dot | `3.052x-3.243x` | `3.840x-4.272x` |
+| VOPD | `1.031x-1.200x` | `1.040x-1.110x` |
+| Sampler top-1/top-k8 | `0.507x-1.134x` | `2.461x-5.646x` |
+| Two-stage reduction | `0.682x-0.934x` | `1.087x-1.466x` |
+
+Production combined paths favor HIP in every serialized row: Q4 selected-dual
+is `0.922x-0.973x`, Q6 selected-down X8 is `0.549x`, and dense Q8_0 is
+`0.540x-0.903x`. Independent combined rows are Q4 `0.911x-0.978x`, Q6
+`0.587x`, and dense Q8_0 `0.558x-1.144x`, with only three small `768x2048`
+dense rows favoring Vulkan. The pre-v2 Q4 Vulkan win, Q4 amortization count,
+geometry/reduction latency magnitudes, and sampler `12.75x-26.94x` headline are
+withdrawn. Q6 lm-head remains unratioed because the HIP and Vulkan paths use
+different math/layouts. Current artifact:
+[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+Interpretation and exact matrices are in
+[`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md).
+
+### Withdrawn Pre-v2 HIP/Vulkan Rollup
+
+The following block preserves the 2026-07-08 notebook. Its cross-backend timing
+ratios are legacy overlap hypotheses and are not current benchmark evidence.
+
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -213,6 +239,8 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`](micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-dispatch-floor.json`](micro/results/gfx1151/strix-halo/hip-dispatch-floor.json),
 [`micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json`](micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json).)
+
+### Other Recent Benchmark Notes
 
 Prior 2026-07-07 note: W7900/GPU0 README refresh `20260707-104756`:
 current PARO 5-run medians are stable-to-slightly-up versus the prior refresh,

@@ -70,8 +70,9 @@ unsupported or below-resolution GPU clock is recorded as such, never as zero.
 Comparators key on the complete requested workload matrix, timing mode,
 dependency signature, control, architecture, device identity, and source
 provenance. They reject duplicates, incomplete matrices, v1 inputs, and
-mismatched contracts while retaining both backend source hashes. A host-wall
-ratio additionally requires a matched
+mismatched contracts. Separate-backend comparators retain both backend source
+hashes; joint wrappers retain one combined hash with explicit HIP and Vulkan
+source coverage. A host-wall ratio additionally requires a matched
 submission class: HIP graph replay can compare with Vulkan command-buffer
 replay, while an eager HIP launch loop cannot. Unmatched host walls remain
 visible as backend-specific measurements without a ratio. Static ISA extractors declare
@@ -88,20 +89,65 @@ The executable contract is in:
 
 Last updated: 2026-07-10.
 
-| Family | `serial_latency` | `independent_throughput` | Current status |
-| --- | --- | --- | --- |
-| Dispatch/grid floor | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact requested row matrices and source provenance are gated; HIP graph/Vulkan command-buffer host wall is matched only in serial mode, while independent host wall remains unpaired. |
-| Geometry | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Fixed HIP workgroups match Vulkan specialization; exact K/rows/workgroup/body matrix and provenance are gated. gfx1151 correctness smoke passed both modes. |
-| Reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact variant/shape/raw-result matrices and actual HIP/RADV device identities are claim-gated; variants use fixed HIP workgroups, sequence-tagged shared output, or disjoint throughput slices. gfx1151 smoke passed both modes. |
-| Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix, accumulating serial litmus, and disjoint throughput outputs; correctness samples the first 64 outputs of every timed repetition. gfx1151 smoke passed both modes. |
-| Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix and sequence tags are gated; correctness samples the first 64 outputs of every timed repetition. Static dot4 evidence remains valid. |
-| VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix, accumulating serial litmus, and disjoint throughput outputs; correctness samples the first 64 outputs of every timed repetition. Static VOPD evidence remains valid. |
-| Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact rows/workgroup/top-k/vocab matrix and deterministic timed-burst oracle are gated; old timing remains legacy. |
-| Two-stage reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact shape/raw-result and device provenance are claim-gated. Work is round-robin over matched HIP streams and Vulkan compute queues with calibrated cross-queue timestamps and one partial-to-final barrier. gfx1151 exact-burst smoke passed both modes. |
-| Q4 selected-dual | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full expected workgroup matrix, backend-specific ABI labels, calibrated combined queue lanes, downstream quantize oracle, and KL/top-1 gate. Production-shaped gfx1151 smoke passed both modes. |
-| Q6 selected-down X8 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Shared int64/BF16 ABI, exact quantize/dot/combined triplet, disjoint q8_1/output slices, calibrated queue lanes for combined throughput, KL/top-1 gate, and clean same-device provenance gate. Production-shaped gfx1151 smoke passed both modes. |
-| Dense Q8_0 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact wave32 keys require the full implied matrix and packed-shape metadata; combined throughput uses calibrated matched lanes, one-stage throughput uses one disjoint command buffer, and claims require clean same-device provenance. KL/top-1 gfx1151 smoke passed both modes. |
-| Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 are different math/layouts; no ratio is permitted. |
+The retained bounded run used a clean detached worktree at
+`ca241dae795d1252303c801f30e5db54a79eeb96` on the gfx1151 Radeon 8060S,
+ROCm `7.13.0a20260411`, and RADV/Mesa `26.1.2`. All 22 comparison artifacts
+(11 families x 2 modes) have complete requested matrices, passing timed-command
+correctness, clean same-commit provenance, and `performance_claim=true`.
+The compact artifact is
+`benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json`.
+
+The tables report **Vulkan/HIP speedup = HIP GPU time / Vulkan GPU time** for
+the burst control. Values above `1.0x` favor Vulkan; values below `1.0x` favor
+HIP. A range covers every requested row, not only each backend's best row.
+
+| Family | `serial_latency` V/H | `independent_throughput` V/H | Current read |
+| --- | ---: | ---: | --- |
+| Dispatch/grid floor | `1.162x-16.789x` | `1.116x-150.459x` | Vulkan command replay has a real runtime advantage, especially when independent tiny dispatches overlap. This is not compiler evidence. |
+| Geometry | `0.677x-0.988x` | `4.133x-7.708x` | HIP wins required ordering; Vulkan wins independent occupancy/overlap. The pre-v2 `5.79x-14.03x` latency claim is withdrawn. |
+| Reduction | `0.689x-0.981x` | `4.246x-7.502x` | Same mode split as geometry; no broad serialized Vulkan reduction win. |
+| Memory/waitcnt | `0.869x-1.071x` | `1.077x-1.370x` | Serialized rows are mixed near parity; independent work gives Vulkan a modest lead. |
+| Packed dot | `3.052x-3.243x` | `3.840x-4.272x` | The synthetic dot lead survives both correct modes and remains the strongest compiler/layout diagnostic. |
+| VOPD | `1.031x-1.200x` | `1.040x-1.110x` | Small Vulkan lead; static evidence still shows HIP, not RADV, emitting VOPD. |
+| Sampler top-1/top-k8 | `0.507x-1.134x` | `2.461x-5.646x` | Serialized sampling is HIP-favored or mixed; Vulkan's advantage is an independent-throughput result, not the old `12.75x-26.94x` latency claim. |
+| Two-stage reduction | `0.682x-0.934x` | `1.087x-1.466x` | HIP wins serialized chains; Vulkan has a limited multi-queue throughput lead. |
+| Q6 lm-head rowtile | Blocked | Blocked | HIP T16 BF16 and Vulkan X8 q8_1 use different math/layouts, so no ratio is permitted. |
+
+Production-shaped slices narrow the result further:
+
+| Slice/stage | `serial_latency` V/H | `independent_throughput` V/H | Current read |
+| --- | ---: | ---: | --- |
+| Q4 selected-dual dot | `0.941x-1.002x` | `0.824x-0.905x` | Serialized parity; HIP wins independent throughput. |
+| Q4 selected-dual quantize+dot | `0.922x-0.973x` | `0.911x-0.978x` | Every tested combined row favors HIP. The pre-v2 Vulkan Q4 lead is withdrawn. |
+| Q6 selected-down X8 dot | `0.514x` | `0.520x` | HIP is about `1.95x`/`1.92x` faster. |
+| Q6 selected-down X8 quantize+dot | `0.549x` | `0.587x` | HIP is about `1.82x`/`1.70x` faster. |
+| Dense Q8_0 dot | `0.436x-0.800x` | `0.527x-1.192x` | HIP wins every serialized row; only one small independent row favors Vulkan. |
+| Dense Q8_0 quantize+dot | `0.540x-0.903x` | `0.558x-1.144x` | HIP wins every serialized row; three `768x2048` independent rows favor Vulkan modestly. |
+
+Standalone q8_1 quantization favors Vulkan in this run, but it does not predict
+the combined Q4/Q6/Q8 result and is too small a stage to justify a backend by
+itself. Dispatch is the only family with a matched cross-backend host-wall
+contract: serialized burst host-wall V/H is `1.106x-3.677x`. Independent
+dispatch host wall and every direct/multi-stream HIP versus pre-recorded Vulkan
+host wall remain visible but intentionally unratioed.
+
+### Current Conclusions
+
+- Timing mode is part of the workload. Geometry, reduction, sampler, and
+  two-stage conclusions reverse or change magnitude when independent work is
+  allowed to overlap; those throughput rows cannot be cited as serialized
+  inference latency.
+- Packed dot is the one broad synthetic Vulkan lead that survives both modes.
+  Its transfer is layout- and slice-dependent: the matched Q4, Q6, and dense-Q8
+  production slices are mostly HIP-favored.
+- The corrected Q4 result removes the only pre-v2 positive production-slice
+  rationale for a Vulkan backend and invalidates the old Q4 amortization count,
+  which used the withdrawn per-call delta.
+- The data does not justify a broad Vulkan backend, a broad LLVM/ACO claim, or a
+  hand-ISA program. Keep HIP as the production path and require a newly profiled,
+  matched hot slice before adding Vulkan kernel work.
+- gfx1100/W7900 remains a required portability rerun. These magnitudes are
+  retained only for gfx1151/STRIX_HALO.
 
 ### Evidence That Still Stands
 
@@ -117,8 +163,8 @@ The timing reset does not invalidate:
 - the qualitative fact that the legacy two-stage Vulkan runner contains
   partial-to-final and repetition-to-repetition barriers.
 
-These facts may guide the bounded rerun, but they do not restore a
-cross-backend performance claim.
+These facts remain useful context, but only the v2 dashboard above is current
+cross-backend timing evidence.
 
 ## Legacy Results Index (Pre-v2)
 
@@ -1941,7 +1987,51 @@ The first implementation can use separate HIP and Vulkan source templates. A
 later version can auto-generate both from a small DSL, but that is not required
 for the first attribution pass.
 
-## Microbenchmark Matrix
+## Current Decision And Next Runs
+
+The corrected gfx1151 matrix is sufficient to stop broad local attribution
+work. The next work must either test portability or answer a production routing
+decision:
+
+1. Rerun the exact clean v2 matrix on gfx1100/W7900. Do not mix that run with
+   the gfx1151 ranges or infer portability before it exists.
+2. Profile current PARO and GGUF server paths by layer family and submission
+   behavior. Add a new HIP/Vulkan slice only when that profile identifies an
+   exposed hot bucket and the two backends can execute identical math, layout,
+   data movement, and dependency contracts.
+3. Use the dispatch result to prioritize fewer launches, HIP graph replay, and
+   fused boundaries. Compare host wall only when the HIP and Vulkan submission
+   classes match.
+4. Use `independent_throughput` only for work the scheduler can actually keep
+   independent with disjoint outputs, such as genuinely concurrent request
+   rows. It is not a proxy for one request's dependent decode chain.
+5. Keep packed-dot as a compiler/layout diagnostic, but require production-slice
+   transfer before acting. Current Q4, Q6, and dense-Q8 slices do not transfer
+   the broad synthetic Vulkan advantage.
+6. Leave Q6 lm-head unratioed until HIP and Vulkan use the same quantization,
+   activation layout, output coverage, and rowtile algorithm.
+
+For PARO, this means HIP-first concurrency work: shape-safe native rows,
+shrinking-batch transitions, graph/fusion opportunities, and profiling of actual
+c=N bottlenecks. Independent-mode Vulkan wins are relevant only if those rows
+remain concurrently executable in the real server schedule.
+
+For GGUF, keep the Q4 selected-dual, Q6 selected-down X8, and dense-Q8 tested
+shapes on HIP. The corrected Q4 combined result removes the old Vulkan recovery
+target. Focus on correct eager/graph routing, GDN, row-aware verifier work, and
+fused lm-head/sampling boundaries; open another Vulkan slice only from a new
+production profile.
+
+Production Vulkan and hand ISA remain decision-gated. A candidate now needs a
+matched, clean, current production slice where Vulkan wins both the relevant
+mode and final combined operation, followed by end-to-end wall and memory proof.
+
+## Legacy Planning Matrix (Pre-v2)
+
+Everything from this heading through the end of the file preserves the planning
+record written from pre-v2 timings. It is superseded by the retained v2
+dashboard and current decision above. Numeric cross-backend claims below are
+historical hypotheses, not current evidence.
 
 ### 1. Dispatch And Grid Floor
 
@@ -2116,7 +2206,7 @@ integration rows.
 This split result is why production backend work needs true registry/end-to-end
 or cross-GPU confirmation instead of more generic microbenchmarks.
 
-## Result Classification
+## Legacy Result Classification (Pre-v2)
 
 Each retained result should classify the win into exactly one primary bucket:
 
@@ -2131,7 +2221,7 @@ Each retained result should classify the win into exactly one primary bucket:
 | `not_reproducible` | Difference disappears under controlled harness | Do not roadmap work from the old observation |
 | `diagnostic_unclassified` | Gap remains but evidence is insufficient for one primary cause | Add the missing control or ISA/stat evidence |
 
-## LLVM Improvement Map
+## Legacy LLVM Improvement Map (Pre-v2)
 
 If a row lands in `compiler_aco`, map it to an LLVM-facing request:
 
@@ -2155,7 +2245,7 @@ target the measured instruction count, waitcnt placement, memory/address
 structure, or reduction/LDS shape and prove a real-slice speedup under the same
 oracle.
 
-## Vulkan Backend Effort Scale
+## Legacy Vulkan Backend Effort Scale (Pre-v2)
 
 There are two distinct scopes. The retained evidence supports the first scope
 as an attribution tool. It does **not** yet support the second scope as product
@@ -2258,7 +2348,7 @@ another retained hot-slice win or a true production-registry/end-to-end Q4 probe
 showing that persistent residency and registry costs still move wall time, and
 that HIP cannot recover the delta with a narrower geometry/codegen/hand-ISA fix.
 
-## Hand-ISA / Inline Assembly Candidates
+## Legacy Hand-ISA Candidates (Pre-v2)
 
 Hand-ISA is narrower than a Vulkan backend. It is justified when a hot HIP
 kernel is stable, isolated, and blocked by LLVM codegen rather than algorithm.
@@ -2322,7 +2412,7 @@ Do not use hand-ISA to address launch overhead, backend command replay, or
 generic geometry gaps. Those need launch fusion, backend scheduling, or HIP
 kernel-shape work, not inline assembly.
 
-## Initial Execution Order
+## Legacy Initial Execution Order (Pre-v2)
 
 1. Implement dispatch/grid floor rows for HIP and Vulkan. Status: retained on
    gfx1151; rerun on gfx1100/W7900 when that machine is available.
@@ -2407,7 +2497,7 @@ ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
 geometry, Z% is ACO waitcnt/VGPR quality, remaining is dispatch." That is the
 level of evidence needed to guide LLVM work or justify a backend investment.
 
-## PARO / GGUF Gap-Closing Roadmap
+## Legacy PARO / GGUF Roadmap (Pre-v2)
 
 The retained gfx1151 result changes the implementation plan in an important
 way: do not treat the llama.cpp Vulkan ceiling as a generic backend mandate.
