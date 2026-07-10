@@ -35,6 +35,7 @@ from hipengine.dispatch import (
     ProjectionDispatchEvidence,
     batch_sampler_equality_payload_blockers,
     plan_batch_sampler_dispatch,
+    plan_batch_width_partition,
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
@@ -3738,7 +3739,12 @@ def _decode_scheduler_step_native(
     layer_plan: str = "all",
     scheduler_metadata: dict[str, Any] | None = None,
     device_resident: bool = False,
-) -> tuple[int, bool]:
+    execution_mode: str = "direct_native",
+) -> tuple[int, bool, dict[str, Any]]:
+    if execution_mode not in {"direct_native", "profile_partitioned", "serial"}:
+        raise ValueError(f"unsupported batch decode execution mode {execution_mode!r}")
+    if device_resident and execution_mode != "direct_native":
+        raise ValueError("device-resident decode requires direct_native execution")
     work = scheduler.next_decode_work(
         kv_storage_dtype=kv_storage_dtype,
         layer_plan=layer_plan,
@@ -3758,15 +3764,87 @@ def _decode_scheduler_step_native(
             observed_shapes.append(shape_payload)
     request_ids = tuple(request_id for request_id in work.request_ids if request_id in next_token_by_request)
     slots = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids]
-    if tuple(slots) != tuple(range(len(slots))):
+    positions = [scheduler.active_batch.requests[request_id].context_len for request_id in request_ids]
+    token_ids = [next_token_by_request[request_id] for request_id in request_ids]
+    if execution_mode == "direct_native" and tuple(slots) != tuple(range(len(slots))):
         raise RuntimeError(f"native retained benchmark requires compact slots, got {slots!r}")
-    results = session.step_batch_native(
-        [next_token_by_request[request_id] for request_id in request_ids],
-        positions=[scheduler.active_batch.requests[request_id].context_len for request_id in request_ids],
-        slots=slots,
-        sample=True,
-        device_resident=device_resident,
+
+    sorted_rows = sorted(
+        zip(slots, request_ids, token_ids, positions, strict=True),
+        key=lambda item: item[0],
     )
+    if execution_mode == "profile_partitioned":
+        profile_provider = getattr(session, "native_batch_width_profile", None)
+        profile = profile_provider() if callable(profile_provider) else None
+        plan = plan_batch_width_partition(
+            len(sorted_rows),
+            profile=profile,
+            positions=tuple(int(item[3]) for item in sorted_rows),
+        )
+        requested_plan = plan.to_json_dict()
+        requested_groups = tuple((group.mode, group.width) for group in plan.groups)
+    else:
+        mode = "native" if execution_mode == "direct_native" else "serial"
+        requested_groups = ((mode, len(sorted_rows)),)
+        requested_plan = {
+            "requested_rows": len(sorted_rows),
+            "path": execution_mode,
+            "groups": [{"mode": mode, "width": len(sorted_rows)}],
+            "group_widths": [len(sorted_rows)],
+            "profile_source": None,
+            "blockers": [],
+        }
+
+    result_by_request: dict[int, Any] = {}
+    effective_groups: list[tuple[str, int]] = []
+    native_group_calls = 0
+    serial_rows = 0
+    cursor = 0
+    for requested_mode, width in requested_groups:
+        group_rows = sorted_rows[cursor : cursor + width]
+        cursor += width
+        group_slots = [int(item[0]) for item in group_rows]
+        group_request_ids = [int(item[1]) for item in group_rows]
+        group_token_ids = [int(item[2]) for item in group_rows]
+        group_positions = [int(item[3]) for item in group_rows]
+        effective_mode = requested_mode
+        if requested_mode == "native":
+            try:
+                group_results = session.step_batch_native(
+                    group_token_ids,
+                    positions=group_positions,
+                    slots=group_slots,
+                    sample=True,
+                    device_resident=device_resident,
+                )
+                native_group_calls += 1
+            except NotImplementedError:
+                effective_mode = "serial"
+                group_results = session.step_batch_serial(
+                    group_token_ids,
+                    positions=group_positions,
+                    slots=group_slots,
+                    sample=True,
+                )
+                serial_rows += width
+        else:
+            group_results = session.step_batch_serial(
+                group_token_ids,
+                positions=group_positions,
+                slots=group_slots,
+                sample=True,
+            )
+            serial_rows += width
+        if len(group_results) != len(group_request_ids):
+            raise RuntimeError(
+                f"decode group returned {len(group_results)} results for "
+                f"{len(group_request_ids)} requests"
+            )
+        result_by_request.update(zip(group_request_ids, group_results, strict=True))
+        effective_groups.append((effective_mode, width))
+    if cursor != len(sorted_rows):
+        raise RuntimeError("decode width partition did not consume every live row")
+    results = tuple(result_by_request[request_id] for request_id in request_ids)
     generated: list[GeneratedToken] = []
     for request_id, result in zip(request_ids, results, strict=True):
         if result is None:
@@ -3776,7 +3854,20 @@ def _decode_scheduler_step_native(
             generated_by_request[request_id].append(_result_payload(result))
         generated.append(GeneratedToken(request_id, result.token_id))
     scheduler.record_generated(generated)
-    return len(results), True
+    signature = "+".join(f"{mode}:{width}" for mode, width in effective_groups)
+    metadata = {
+        "execution_mode": execution_mode,
+        "requested_plan": requested_plan,
+        "effective_groups": [
+            {"mode": mode, "width": width}
+            for mode, width in effective_groups
+        ],
+        "signature": signature,
+        "native_group_calls": native_group_calls,
+        "serial_rows": serial_rows,
+    }
+    native_complete = bool(effective_groups) and all(mode == "native" for mode, _width in effective_groups)
+    return len(results), native_complete, metadata
 
 
 def _run_native_bench(
@@ -3790,6 +3881,7 @@ def _run_native_bench(
     require_cached_build: bool,
     kv_policy: ResolvedKVPolicy,
     device_resident: bool = False,
+    decode_execution_mode: str = "direct_native",
 ) -> dict[str, Any]:
     batch_size = len(prompts)
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -3814,6 +3906,12 @@ def _run_native_bench(
         "active_count_after_admit": scheduler.active_count,
         "prefill_slabs": [],
         "decode_native_steps": 0,
+        "decode_execution_mode": decode_execution_mode,
+        "decode_partition_histogram": {},
+        "decode_native_group_calls": 0,
+        "decode_serial_rows": 0,
+        "decode_partitioned_steps": 0,
+        "decode_plans_observed": [],
     }
 
     load_start = time.perf_counter()
@@ -3862,7 +3960,7 @@ def _run_native_bench(
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
             step_start = time.perf_counter()
-            _count, native = _decode_scheduler_step_native(
+            _count, native, step_metadata = _decode_scheduler_step_native(
                 session,
                 scheduler,
                 next_token_by_request,
@@ -3872,15 +3970,24 @@ def _run_native_bench(
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
                 device_resident=device_resident,
+                execution_mode=decode_execution_mode,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
+            signature = step_metadata["signature"]
+            histogram = scheduler_metadata["decode_partition_histogram"]
+            histogram[signature] = int(histogram.get(signature, 0)) + 1
+            scheduler_metadata["decode_native_group_calls"] += int(step_metadata["native_group_calls"])
+            scheduler_metadata["decode_serial_rows"] += int(step_metadata["serial_rows"])
+            scheduler_metadata["decode_partitioned_steps"] += int(len(step_metadata["effective_groups"]) > 1)
+            if step_metadata["requested_plan"] not in scheduler_metadata["decode_plans_observed"]:
+                scheduler_metadata["decode_plans_observed"].append(step_metadata["requested_plan"])
             warmup_step_seconds.append(time.perf_counter() - step_start)
         warmup_seconds = time.perf_counter() - warmup_start
 
         decode_start = time.perf_counter()
         for _ in range(decode_tokens):
             step_start = time.perf_counter()
-            _count, native = _decode_scheduler_step_native(
+            _count, native, step_metadata = _decode_scheduler_step_native(
                 session,
                 scheduler,
                 next_token_by_request,
@@ -3890,8 +3997,17 @@ def _run_native_bench(
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
                 device_resident=device_resident,
+                execution_mode=decode_execution_mode,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
+            signature = step_metadata["signature"]
+            histogram = scheduler_metadata["decode_partition_histogram"]
+            histogram[signature] = int(histogram.get(signature, 0)) + 1
+            scheduler_metadata["decode_native_group_calls"] += int(step_metadata["native_group_calls"])
+            scheduler_metadata["decode_serial_rows"] += int(step_metadata["serial_rows"])
+            scheduler_metadata["decode_partitioned_steps"] += int(len(step_metadata["effective_groups"]) > 1)
+            if step_metadata["requested_plan"] not in scheduler_metadata["decode_plans_observed"]:
+                scheduler_metadata["decode_plans_observed"].append(step_metadata["requested_plan"])
             measured_step_seconds.append(time.perf_counter() - step_start)
         decode_seconds = time.perf_counter() - decode_start
         completed = list(scheduler.completed.values())
@@ -3900,7 +4016,10 @@ def _run_native_bench(
         scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
         batch_execution = session.batch_execution_metadata(
             scheduler_owned=True,
-            native_decode=True,
+            native_decode=(
+                scheduler_metadata["decode_native_steps"]
+                == warmup_decode_tokens + decode_tokens
+            ),
             active_rows=batch_size,
         ).to_json_dict()
 
@@ -4917,6 +5036,7 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
+            "batch_decode_execution": str(getattr(args, "batch_decode_execution", "direct_native")),
             "batch_decode_moe_path": _resolved_batch_decode_moe_path(args),
             "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
             "batch_decode_linear_projection_path": _resolved_batch_decode_linear_projection_path(args),
@@ -5064,6 +5184,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--batch-decode-execution",
+        choices=("direct_native", "profile_partitioned", "serial"),
+        default="direct_native",
+        help=(
+            "Decode-call policy: one direct native group, the identity-matched "
+            "minimum-cost exact partition, or the all-row serial bridge."
+        ),
+    )
+    parser.add_argument(
         "--batch-prefill-linear-path",
         choices=("packed_segments", "per_segment"),
         default="packed_segments",
@@ -5073,7 +5202,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects the local generated-token equality frontier (selected_c1 for c=2/c=4/c=8, grouped_compact elsewhere).",
+        help="Global MoE path for c>N batch decode; auto selects the local generated-token equality frontier (selected_c1 for c=2..c=8, grouped_compact elsewhere).",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
@@ -5392,6 +5521,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--batch-decode-full-attn-suffix-row-chunk-size must be non-negative")
     if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
         raise ValueError("--batch-sample-eq-rows must be positive")
+    if args.device_resident_decode and args.batch_decode_execution != "direct_native":
+        raise ValueError("--device-resident-decode requires --batch-decode-execution=direct_native")
 
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
@@ -5409,6 +5540,7 @@ def main(argv: list[str] | None = None) -> int:
         require_cached_build=args.require_cached_build,
         kv_policy=kv_policy,
         device_resident=bool(getattr(args, "device_resident_decode", False)),
+        decode_execution_mode=str(getattr(args, "batch_decode_execution", "direct_native")),
     )
     if projection_dispatch_candidates is not None:
         bench["projection_dispatch_candidates"] = projection_dispatch_candidates

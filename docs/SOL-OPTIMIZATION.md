@@ -319,8 +319,14 @@ Do not restore the old GGUF graph as a shortcut. Do not optimize the repeated
 
 The c6 splitter is an opt-in diagnostic policy. The exact width planner uses
 the lower-cost direct c6 profile, while unknown/red widths use a minimum-cost
-cover of c8/c6/c4/c2 plus serial rows. Only correct all-choice server
+cover of profiled c2-c8 widths plus serial rows. Only correct all-choice server
 measurements may remove the splitter or assign it a latency objective.
+
+For c9-c16, `scripts/qwen35_batch_retained_bench.py
+--batch-decode-execution=profile_partitioned` measures the same packed prefill,
+independent-c1 equality, and decode wall as the direct rows. Use
+`--batch-decode-execution=serial` for the matched fallback control and
+`direct_native` only as a correctness diagnostic for unprofiled widths.
 
 ## MTP, DFlash, And Routing
 
