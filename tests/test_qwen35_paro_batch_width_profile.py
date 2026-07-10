@@ -19,7 +19,7 @@ def _profile_payload() -> dict[str, object]:
             "model_snapshot": "model-snapshot",
             "quant": "w4_paro",
             "kv_storage": "bf16",
-            "native_widths": [2, 4, 6, 8],
+            "native_widths": [2, 3, 4, 5, 6, 7, 8],
             "min_position": 512,
             "max_position": 647,
         },
@@ -33,7 +33,7 @@ def _profile_payload() -> dict[str, object]:
             "kv_storage": "bf16",
         },
         "protocol": {
-            "native_partition_widths": [2, 4, 6, 8],
+            "native_partition_widths": [2, 3, 4, 5, 6, 7, 8],
             "evidenced_decode_position_range": {"min": 512, "max": 647},
         },
         "rows": {
@@ -48,7 +48,7 @@ def _profile_payload() -> dict[str, object]:
                     "primitive_correctness": True,
                     "decode_step_ms_median_of_run_medians": float(rows * 10),
                 }
-                for rows in (2, 4, 6, 8)
+                for rows in range(2, 9)
             },
         },
     }
@@ -78,7 +78,7 @@ def test_qwen35_paro_batch_width_profile_requires_matching_full_identity(
     )
 
     assert profile.blockers == ()
-    assert profile.native_step_ms == ((2, 20.0), (4, 40.0), (6, 60.0), (8, 80.0))
+    assert profile.native_step_ms == tuple((rows, float(rows * 10)) for rows in range(2, 9))
     assert profile.serial_row_step_ms == 15.0
     assert profile.min_position == 512
     assert profile.max_position == 647
