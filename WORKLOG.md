@@ -149316,3 +149316,33 @@ graphless decode launch-collapse path without regressing target/serial parity.
   because the manifest points at missing read-only reference checkout
   `/home/lhl/amd-gpu-tuning/nano-vllm-amd`. No kernel source changed in this
   unit.
+
+## 2026-07-10 - gfx1151 PARO odd-width clean repeat gate
+
+- Committed and pushed the routing repair as `02aec604`, then ran nine fresh
+  processes with:
+  `env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3
+  scripts/qwen35_batch_equality_matrix.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --fixture
+  /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8
+  --max-layers 40 --batch-sizes 3,5,7 --repeat-runs 3
+  --compiler-version-file
+  /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt
+  --require-cached-build --output-dir
+  /tmp/hipengine-gfx1151-odd-clean02ae/artifacts --json
+  /tmp/hipengine-gfx1151-odd-clean02ae/summary.json`.
+- All nine artifacts passed 137-token generated equality on every row and
+  record commit `02aec6043c73171df5747034f01f2f46a22152b6` with
+  `hipengine_dirty=false`. Aggregate decode runs/medians were c3
+  `87.549/87.488/87.406 -> 87.488 tok/s`, c5
+  `102.137/102.125/102.246 -> 102.137 tok/s`, and c7
+  `109.611/109.565/109.596 -> 109.596 tok/s`. Median-of-run median steps were
+  `34.310/48.927/63.905 ms`.
+- Extended the compact 2026-07-10 gfx1151 shape artifact with the nine SHA-256
+  bindings, row-level `02aec604` provenance, repaired route descriptions, and
+  native profile widths c2-c8. The artifact remains diagnostic because its c1
+  prompt differs, dynamic shrinking and ragged contexts are untested, and
+  profiler/serial-scaling gates are absent.

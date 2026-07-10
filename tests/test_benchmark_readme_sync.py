@@ -42,7 +42,7 @@ def test_gfx1151_current_paro_table_matches_compact_artifact() -> None:
     assert reference["source"]["tracked_source_dirty"] is False
     assert reference["source"]["untracked_files_present"] is False
 
-    for rows in (2, 4, 6, 8):
+    for rows in range(2, 9):
         result = artifact["rows"][str(rows)]
         expected = (
             f"| {rows} | {result['decode_tok_s_aggregate_median']:.3f} | "
@@ -50,11 +50,13 @@ def test_gfx1151_current_paro_table_matches_compact_artifact() -> None:
             f"{result['decode_step_ms_median_of_run_medians']:.3f} |"
         )
         assert expected in scoreboard
+        assert result["status"] == "diagnostic_exact"
         assert result["generated_token_equality"] is True
         assert result["primitive_correctness"] is True
 
     for rows in (3, 5, 7):
         result = artifact["rows"][str(rows)]
-        assert f"| {rows} | Withheld | Withheld | Withheld |" in scoreboard
-        assert result["status"] == "rejected_correctness"
-        assert result["timing_withheld"] is True
+        assert result["source"]["hipengine_commit"].startswith("02aec604")
+        assert result["source"]["tracked_source_dirty"] is False
+
+    assert artifact["native_batch_width_profile"]["native_widths"] == list(range(2, 9))

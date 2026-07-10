@@ -9,7 +9,15 @@ from hipengine.dispatch import NativeBatchWidthProfile, plan_batch_width_partiti
 def gfx1151_profile() -> NativeBatchWidthProfile:
     return NativeBatchWidthProfile(
         source_artifact="benchmarks/results/gfx1151-paro-shapes.json",
-        native_step_ms=((2, 25.465), (4, 40.158), (6, 54.568), (8, 69.254)),
+        native_step_ms=(
+            (2, 25.465),
+            (3, 34.310),
+            (4, 40.158),
+            (5, 48.927),
+            (6, 54.568),
+            (7, 63.905),
+            (8, 69.254),
+        ),
         serial_row_step_ms=14.969,
         min_position=512,
         max_position=647,
@@ -21,9 +29,9 @@ def gfx1151_profile() -> NativeBatchWidthProfile:
     [
         (1, (1,), "serial_exact"),
         (2, (2,), "direct_native"),
-        (3, (2, 1), "partitioned_native"),
-        (5, (4, 1), "partitioned_native"),
-        (7, (6, 1), "partitioned_native"),
+        (3, (3,), "direct_native"),
+        (5, (5,), "direct_native"),
+        (7, (7,), "direct_native"),
         (9, (8, 1), "partitioned_native"),
         (12, (6, 6), "partitioned_native"),
         (16, (8, 8), "partitioned_native"),

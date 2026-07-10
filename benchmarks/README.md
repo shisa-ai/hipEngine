@@ -288,24 +288,24 @@ Artifacts: [hipEngine](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104
 ### gfx1151 PARO direct exact-shape diagnostic, 2026-07-10
 
 **Status: diagnostic, not retained.** This direct PARO batch measurement ran on
-the Radeon 8060S at tracked-clean hipEngine `4175dabf`; detected and requested
-target architecture are both gfx1151. It measures the opt-in retained-default
-recovery routes; the production server default uses different routing. The
-artifact sets `performance_claim=false`: odd widths fail generated-token
-equality, c1 uses a separate repeated-token reference, dynamic shrinking was
-not run, and the retained profiler/scaling gates are absent. Red-width timing
-is withheld.
+the Radeon 8060S at tracked-clean hipEngine `4175dabf` for c1/c2/c4/c6/c8 and
+`02aec604` for repaired c3/c5/c7; detected and requested target architecture
+are both gfx1151. It measures the opt-in retained-default recovery routes; the
+production server default uses different routing. The artifact sets
+`performance_claim=false`: c1 uses a separate repeated-token reference,
+dynamic shrinking was not run, and the retained profiler/scaling gates are
+absent.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Exact gate | Measured route |
 | ---: | ---: | ---: | ---: | --- | --- |
 | 1 | 66.806 | 66.806 | 14.969 | Three-run reference; different prompt | Single-sequence graph replay; repeated token 9707 |
 | 2 | 78.578 | 39.289 | 25.465 | Primitive pass; generated IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
-| 3 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
+| 3 | 87.488 | 29.163 | 34.310 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
 | 4 | 99.616 | 24.904 | 40.158 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
-| 5 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
+| 5 | 102.137 | 20.427 | 48.927 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
 | 6 | 109.909 | 18.318 | 54.568 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; selected-layer rowchunk2; serial LM-head |
-| 7 | Withheld | Withheld | Withheld | Rejected at token index 2 | Grouped-compact MoE; all-layer rowchunk2 |
+| 7 | 109.596 | 15.657 | 63.905 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
 | 8 | 115.515 | 14.439 | 69.254 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
@@ -314,21 +314,20 @@ Protocol: Qwen3.6-35B-A3B PARO snapshot
 8 warmup decode steps, 128 measured decode steps, and greedy sampling. The c1
 reference repeats token `9707` for 512 prompt positions and uses the best
 single-sequence graph-replay path. Widths c2-c8 use fixed prompt slices; each
-ran the seed-1234 KV/attention primitive gate and one generated-token comparison
-against independent c1 sessions. c1 and the four green even widths have three
-measured repetitions; displayed values are medians. The odd-width probe stopped
-after one correctness-red run.
+ran the seed-1234 KV/attention primitive gate and generated-token comparisons
+against independent c1 sessions. Every displayed width has three measured
+repetitions; displayed values are medians.
 
 Run record:
 
 | Field | Value |
 | --- | --- |
 | GPU/backend | AMD Ryzen AI MAX+ 395 / Radeon 8060S, detected gfx1151, target gfx1151 |
-| Source/build | hipEngine `4175dabf145d2054ff751c56bf019febd03ced65`; tracked source clean; unrelated untracked files present; Python 3.12.13; TheRock HIP `7.13.60980-c76140fa27` |
+| Source/build | hipEngine `4175dabf145d2054ff751c56bf019febd03ced65` for c1/c2/c4/c6/c8 and `02aec6043c73171df5747034f01f2f46a22152b6` for c3/c5/c7; tracked source clean; unrelated untracked files present; Python 3.12.13; TheRock HIP `7.13.60980-c76140fa27` |
 | Timing scope | Direct retained-batch backend decode wall; aggregate generated tokens divided by measured decode wall |
-| Correctness | Primitive c2-c8 exact vs c1 and within `5.961e-8` of NumPy; 137-token generated equality green only at c2/c4/c6/c8 |
-| Partition profile | Opt-in retained/native decode may use c2/c4/c6/c8 only for matching gfx1151/model/quant/BF16-KV identity at decode positions 512-647; every mismatch falls back to serial |
-| Missing gates | Same-fixture c1, serial scaling bridge, rocprof trace, odd-width equality, and dynamic c8-to-c1 shrinking |
+| Correctness | Primitive c2-c8 exact vs c1 and within `5.961e-8` of NumPy; 137-token generated equality green at every width c2-c8 |
+| Partition profile | Opt-in retained/native decode may use every width c2-c8 only for matching gfx1151/model/quant/BF16-KV identity at decode positions 512-647; every mismatch falls back to serial |
+| Missing gates | Same-fixture c1, serial scaling bridge, rocprof trace, and dynamic c8-to-c1 shrinking |
 | Artifact | [`2026-07-10...current-diagnostic-summary.json`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json) |
 
 Reproduce one width by replacing `<rows>`, `<rep>`, and `<outdir>` in the

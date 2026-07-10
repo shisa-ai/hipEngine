@@ -2,6 +2,7 @@
   "schema": 1,
   "kind": "gfx1151_paro_cn_readme_diagnostic_summary",
   "created_at": "2026-07-10T04:30:06Z",
+  "updated_at": "2026-07-10T06:38:14Z",
   "status": "diagnostic",
   "performance_claim": false,
   "retained_ready": false,
@@ -14,8 +15,11 @@
     "kv_storage": "bf16",
     "native_widths": [
       2,
+      3,
       4,
+      5,
       6,
+      7,
       8
     ],
     "min_position": 512,
@@ -32,8 +36,9 @@
     "target_arch": "gfx1151"
   },
   "source": {
-    "scope": "c2-c8 same-fixture runs; c1 provenance is recorded in rows.1.source",
-    "hipengine_commit": "4175dabf145d2054ff751c56bf019febd03ced65",
+    "scope": "c2-c8 same-fixture runs across the base and odd-width repair revisions; c1 provenance is recorded in rows.1.source",
+    "base_hipengine_commit": "4175dabf145d2054ff751c56bf019febd03ced65",
+    "odd_width_repair_commit": "02aec6043c73171df5747034f01f2f46a22152b6",
     "tracked_source_dirty": false,
     "untracked_files_present": true,
     "python": "3.12.13",
@@ -78,8 +83,11 @@
     ],
     "native_partition_widths": [
       2,
+      3,
       4,
+      5,
       6,
+      7,
       8
     ],
     "evidenced_decode_position_range": {
@@ -89,12 +97,15 @@
     "repeated_widths": [
       1,
       2,
+      3,
       4,
+      5,
       6,
+      7,
       8
     ],
     "measured_repetitions_per_green_width": 3,
-    "failed_width_repetitions": 1,
+    "superseded_failed_width_repetitions": 1,
     "c1_reference_prompt": "token 9707 repeated 512 times; separate from the fixed prompt slices used by c2-c8",
     "primitive_gate": "batch KV append and attention vs independent c1 plus NumPy, seed 1234",
     "generated_token_gate": "native batch token IDs vs independent c1 resident sessions",
@@ -156,17 +167,33 @@
       }
     },
     "3": {
-      "status": "rejected_correctness",
+      "status": "diagnostic_exact",
       "performance_claim": false,
-      "generated_token_equality": false,
+      "generated_token_equality": true,
       "primitive_correctness": true,
-      "equal_prefix_tokens_by_row": [
-        4,
-        4,
-        4
+      "decode_tok_s_aggregate_runs": [
+        87.54902381295173,
+        87.48820334188177,
+        87.40571458802921
       ],
-      "first_mismatch_index": 4,
-      "timing_withheld": true
+      "decode_tok_s_aggregate_median": 87.48820334188177,
+      "decode_tok_s_per_request_median": 29.162734447293922,
+      "decode_step_ms_median_of_run_medians": 34.30978721007705,
+      "prefill_tok_s_median": 751.9182286201312,
+      "decode_path": {
+        "moe": "selected_c1_with_small_batch_shared_expert",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": "all",
+        "sampler": "serial_lm_head"
+      },
+      "source": {
+        "hipengine_commit": "02aec6043c73171df5747034f01f2f46a22152b6",
+        "tracked_source_dirty": false,
+        "untracked_files_present": true,
+        "worktree": "main"
+      }
     },
     "4": {
       "status": "diagnostic_exact",
@@ -192,19 +219,33 @@
       }
     },
     "5": {
-      "status": "rejected_correctness",
+      "status": "diagnostic_exact",
       "performance_claim": false,
-      "generated_token_equality": false,
+      "generated_token_equality": true,
       "primitive_correctness": true,
-      "equal_prefix_tokens_by_row": [
-        4,
-        4,
-        4,
-        4,
-        4
+      "decode_tok_s_aggregate_runs": [
+        102.13664161446303,
+        102.12504597599585,
+        102.246010802717
       ],
-      "first_mismatch_index": 4,
-      "timing_withheld": true
+      "decode_tok_s_aggregate_median": 102.13664161446303,
+      "decode_tok_s_per_request_median": 20.427328322892606,
+      "decode_step_ms_median_of_run_medians": 48.92668128013611,
+      "prefill_tok_s_median": 648.2794771436162,
+      "decode_path": {
+        "moe": "selected_c1_with_small_batch_shared_expert",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": "all",
+        "sampler": "serial_lm_head"
+      },
+      "source": {
+        "hipengine_commit": "02aec6043c73171df5747034f01f2f46a22152b6",
+        "tracked_source_dirty": false,
+        "untracked_files_present": true,
+        "worktree": "main"
+      }
     },
     "6": {
       "status": "diagnostic_exact",
@@ -239,21 +280,33 @@
       }
     },
     "7": {
-      "status": "rejected_correctness",
+      "status": "diagnostic_exact",
       "performance_claim": false,
-      "generated_token_equality": false,
+      "generated_token_equality": true,
       "primitive_correctness": true,
-      "equal_prefix_tokens_by_row": [
-        4,
-        4,
-        4,
-        4,
-        4,
-        4,
-        2
+      "decode_tok_s_aggregate_runs": [
+        109.61139231502369,
+        109.56468459715062,
+        109.59580515553525
       ],
-      "first_mismatch_index": 2,
-      "timing_withheld": true
+      "decode_tok_s_aggregate_median": 109.59580515553525,
+      "decode_tok_s_per_request_median": 15.656543593647893,
+      "decode_step_ms_median_of_run_medians": 63.90476692467928,
+      "prefill_tok_s_median": 543.7517036150629,
+      "decode_path": {
+        "moe": "selected_c1_with_small_batch_shared_expert",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": "all",
+        "sampler": "serial_lm_head"
+      },
+      "source": {
+        "hipengine_commit": "02aec6043c73171df5747034f01f2f46a22152b6",
+        "tracked_source_dirty": false,
+        "untracked_files_present": true,
+        "worktree": "main"
+      }
     },
     "8": {
       "status": "diagnostic_exact",
@@ -289,7 +342,10 @@
     "8": 5.960464477539063e-08
   },
   "raw_artifacts": {
-    "directory": "/tmp/hipengine-gfx1151-readme-clean4175",
+    "directories": {
+      "base": "/tmp/hipengine-gfx1151-readme-clean4175",
+      "odd_width_repair": "/tmp/hipengine-gfx1151-odd-clean02ae/artifacts"
+    },
     "committed": false,
     "policy": "Raw per-token artifacts remain outside git; this compact summary retains the measurements, gates, commands, provenance, and SHA-256 bindings.",
     "sha256": {
@@ -299,15 +355,24 @@
       "c1-reference/c1-r0.json": "84828d4ff88d1467740b7a397464ba362d25adabf58173b3c077982a18794dad",
       "c1-reference/c1-r1.json": "4c1204c9d950e441db3feaa7623804873a8edd44c6335651bdea8c126ee85600",
       "c1-reference/c1-r2.json": "f19f13db8c57fa8513f22aa1b98982ce5091ccdc530226097980a74392f9b205",
-      "c3-r0.json": "4c73ba1b8d55024a28f8e44ae5c64c8f230a90aad821c04ebc62a7dba9384eae",
+      "pre-repair/c3-r0.json": "4c73ba1b8d55024a28f8e44ae5c64c8f230a90aad821c04ebc62a7dba9384eae",
+      "odd-width-repair/native-equality-c3-p512-d128-r0.json": "e1e80c855fa7a0f8b509b88c5ea6bac80353d09f8f1b419a1d490a0827a112fe",
+      "odd-width-repair/native-equality-c3-p512-d128-r1.json": "6ebee8a6fa27e50781e4538dd906d5e6b3606852c4a0a5e62906629d9f47d514",
+      "odd-width-repair/native-equality-c3-p512-d128-r2.json": "f1b21ba01c7104f3c8657e31e3d3c3e579e17131b07d6ca052e3d58eaf9327e3",
       "c4-r0.json": "6772497646da845b088dd471d1b1c049c3b07c6f71b77e8cbed5160085332de7",
       "c4-r1.json": "411d7817a0dcd5bf34cee44f615dddb05c365fea46484d0768911518d05a25d1",
       "c4-r2.json": "8034ba9d9ee833de4496ffa218a697dbb99b7bcecbb76a083078f36b782a85fa",
-      "c5-r0.json": "5f7d52381267b687da30ebb5f8792ef658afe52fda089d97f314b7b1c850b2a9",
+      "pre-repair/c5-r0.json": "5f7d52381267b687da30ebb5f8792ef658afe52fda089d97f314b7b1c850b2a9",
+      "odd-width-repair/native-equality-c5-p512-d128-r0.json": "29cd6fd9b0c665ac668dbd52ddfa5aceb7218cb6c053056f07867b6331dd04a3",
+      "odd-width-repair/native-equality-c5-p512-d128-r1.json": "5c81fd46cc28e7597800d8625abe27e9a21fdbf6c6f9865a359efa6337123070",
+      "odd-width-repair/native-equality-c5-p512-d128-r2.json": "e9e0199090870a8a6a8dd90b31b7a879ebda94704ec0b82ced4510641cd2bca0",
       "c6-r0.json": "b8b348abbbacf1254f6c001fc9e9b61aecfbb6320c19895d38b6cf5f8db69e08",
       "c6-r1.json": "ec4b5c52b3bf22c8171de1845a3a11aa31a09934756a3f399c0269ec0e89c7d9",
       "c6-r2.json": "071a8738da5b6a2b46fb46fabc49700865727d50ae292a890d6cbbe92b8f09a3",
-      "c7-r0.json": "4c7732a78acbcaa51b1b9a8a2b76de2b3578445ba9f5dea4c15dfa33708ebed1",
+      "pre-repair/c7-r0.json": "4c7732a78acbcaa51b1b9a8a2b76de2b3578445ba9f5dea4c15dfa33708ebed1",
+      "odd-width-repair/native-equality-c7-p512-d128-r0.json": "60cb1859c886f4e079f2732ac77b2097bdc610f5fe642b14b632f0745ce8f26a",
+      "odd-width-repair/native-equality-c7-p512-d128-r1.json": "265cc18659a4af94714ed6c6778a4e58d6d9018f8f2d90c732e50238921d3661",
+      "odd-width-repair/native-equality-c7-p512-d128-r2.json": "b8a45b6451815517907f2312496066ca98396278fffd9016a9352d85f37d3077",
       "c8-r0.json": "9753b3926350416f4df3b640635c03bf57d64915b33a41109cc22812cd261507",
       "c8-r1.json": "ed830101ed756e9045aae3abc82d897a9e844a3b5efc3e08cabeeef40c51796f",
       "c8-r2.json": "389aec254b1548c3605243b0eaa9c0ea0b91f60a3f8b9abe06742f1fc12f704e",
@@ -322,12 +387,12 @@
   },
   "blockers": [
     "c1 uses the established repeated-token graph-replay reference rather than the fixed prompt slices used by c2-c8; no same-fixture c1 timing was captured",
-    "c3, c5, and c7 fail generated-token equality and their timing is withheld",
     "dynamic shrinking from c8 through c1 was not exercised",
-    "c4 and c8 require all-layer full-attention rowchunk2; c6 requires selected-layer rowchunk2 and a serial LM-head",
+    "c3, c4, c5, c7, and c8 require all-layer full-attention rowchunk2; c6 requires selected-layer rowchunk2 and a serial LM-head",
+    "c3, c5, c6, and c7 require the small-batch shared expert",
     "selected-c1 MoE recovery paths do not satisfy the retained grouped-compact execution contract",
     "no retained c1/serial scaling baselines or rocprof kernel trace were captured",
-    "c2-c8 raw runs came from a tracked-clean source revision but a worktree containing unrelated untracked files"
+    "c2-c8 raw runs came from tracked-clean source revisions but worktrees containing unrelated untracked files"
   ],
-  "decision": "Publish as a diagnostic measured on 2026-07-10 at hipEngine 4175dabf. Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
+  "decision": "Publish as a diagnostic measured on 2026-07-10 at hipEngine 4175dabf (c1/c2/c4/c6/c8) and 02aec604 (c3/c5/c7). Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
 }
