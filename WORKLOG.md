@@ -149346,3 +149346,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   native profile widths c2-c8. The artifact remains diagnostic because its c1
   prompt differs, dynamic shrinking and ragged contexts are untested, and
   profiler/serial-scaling gates are absent.
+
+## 2026-07-10 - PARO matched c9-c16 partition benchmark driver
+
+- RED: `tests/test_qwen35_batch_partition_bench.py` failed because the retained
+  benchmark decode helper had no execution-mode parameter and always issued one
+  direct native call.
+- Added `--batch-decode-execution=direct_native|profile_partitioned|serial` to
+  `scripts/qwen35_batch_retained_bench.py`. The partitioned mode loads the
+  session's identity-matched width profile, executes the minimum-cost exact
+  cover, falls back per native group on `NotImplementedError`, and records the
+  requested plan, effective groups, histogram, native call count, serial rows,
+  and partitioned steps. Packed prefill, timing, generated-token evidence, c1
+  oracle, hardware, and source provenance remain shared across all modes.
+- GREEN: five focused tests prove c9=`native:8+serial:1`,
+  c10=`native:8+native:2`, c16=`native:8+native:8`, plus single-call direct and
+  serial controls. The retained-benchmark regression subset passed (`7 passed`),
+  and compileall plus `git diff --check` passed.
+- Added refactor debt for the duplicated generator/benchmark group-execution
+  loops. Consolidation waits for the sparse-slot and shrinking-batch telemetry
+  ABI to settle.
