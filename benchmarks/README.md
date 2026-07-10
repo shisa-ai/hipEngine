@@ -52,6 +52,12 @@ to existing content, and staged/unstaged/untracked dirtiness must all be false.
 Legacy provenance fields remain useful diagnostics but do not satisfy this
 contract for a new row.
 
+New non-streaming hipEngine server rows also require a complete
+`hipengine.generation_shape` v1 rollup. Route caps retain their
+`queue_requests` scope; queue request/prompt counts, actual backend calls and
+widths, and verifier rows remain separate and are deduplicated by queue-group
+ID. Client concurrency is never substituted for backend or verifier width.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
@@ -568,9 +574,10 @@ untracked experiment files as part of the rollup gate.
 - **OpenAI MTP server c=1/2/4/8:** the 2026-07-06 artifacts use decoded-text
   re-tokenization for completion counts and repeat one batch-scoped timing
   payload per choice. The current harness now counts exact IDs across every
-  choice, deduplicates owned batch timing, and emits canonical provenance, but
-  those historical rows predate all three contracts. They remain ineligible
-  until the same protocol is rerun.
+  choice, deduplicates owned batch timing, emits canonical provenance, and
+  validates route-cap/queue/backend/verifier shape independently, but those
+  historical rows predate all four contracts. They remain ineligible until the
+  same protocol is rerun.
 - **gfx1151 PARO native batching:** the 2026-07-10 primitive gate passes c2-c8,
   but the direct timing matrix used a batch-shaped width-1 oracle. At
   `0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate rejects native c8

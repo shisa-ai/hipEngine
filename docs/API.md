@@ -409,6 +409,55 @@ ignore non-owner copies. These
 fields describe timing ownership, not HTTP concurrency or speculative verifier
 width; those shapes are reported separately when available.
 
+### Generation shape telemetry
+
+Successful non-streaming completion and chat responses include
+`hipengine.generation_shape` schema v1. It keeps queue admission and model work
+as separate dimensions:
+
+```json
+{
+  "schema_version": 1,
+  "route": "speculative_mtp",
+  "route_cap": {"scope": "queue_requests", "value": 4, "applied": true},
+  "queue_group": {
+    "id": "queue-...",
+    "request_count": 4,
+    "prompt_rows": 4,
+    "item_index": 0,
+    "item_prompt_offset": 0,
+    "item_prompt_rows": 1
+  },
+  "backend_groups": [
+    {
+      "id": "backend-...",
+      "call_index": 0,
+      "prompt_offset": 0,
+      "input_rows": 4,
+      "actual_group_rows": [4],
+      "max_actual_group_rows": 4,
+      "verifier_rows": 12
+    }
+  ],
+  "verifier_rows": 12
+}
+```
+
+`route_cap.value` limits compatible queued HTTP requests, not choices, prompt
+rows, backend width, or verifier rows. `queue_group` identifies the coalesced
+request group and this response's prompt slice. `backend_groups` records every
+actual generator call; for example, the opt-in c6 splitter reports separate
+c4 and c2 calls. `verifier_rows` counts target-model verification rows and is
+zero for non-speculative work. A c8 client benchmark under a four-request route
+cap therefore reports two queue groups with backend widths `[4, 4]`, not a
+width-8 verifier.
+
+The object is repeated on every response participating in one queue group so a
+client harness can validate complete item indices/slices and deduplicate by
+`queue_group.id`. Direct logprob requests bypass queue coalescing and report
+`route_cap.applied=false`. Streaming does not yet emit this group-level object;
+the capabilities manifest reports that limitation explicitly.
+
 ### Finish details
 
 Completion and chat choices include a hipEngine extension field,

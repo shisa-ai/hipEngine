@@ -273,6 +273,250 @@ def numeric_mapping(value: Any) -> dict[str, float]:
     return out
 
 
+def _shape_int(value: Any, *, label: str, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise BenchError(f"{label} must be an integer >= {minimum}")
+    return int(value)
+
+
+def generation_shape_from_response(response: dict[str, Any]) -> dict[str, Any] | None:
+    root = response.get("hipengine")
+    if not isinstance(root, dict) or "generation_shape" not in root:
+        return None
+    raw = root.get("generation_shape")
+    if not isinstance(raw, dict):
+        raise BenchError("hipengine.generation_shape must be an object")
+    if raw.get("schema_version") != 1:
+        raise BenchError("hipengine.generation_shape.schema_version must be 1")
+    route = raw.get("route")
+    if not isinstance(route, str) or not route.strip():
+        raise BenchError("hipengine.generation_shape.route must be a non-empty string")
+
+    raw_cap = raw.get("route_cap")
+    if not isinstance(raw_cap, dict) or raw_cap.get("scope") != "queue_requests":
+        raise BenchError("hipengine.generation_shape.route_cap must use queue_requests scope")
+    cap_value = raw_cap.get("value")
+    if cap_value is not None:
+        cap_value = _shape_int(cap_value, label="route_cap.value", minimum=1)
+    if not isinstance(raw_cap.get("applied"), bool):
+        raise BenchError("hipengine.generation_shape.route_cap.applied must be a bool")
+    route_cap = {
+        "scope": "queue_requests",
+        "value": cap_value,
+        "applied": raw_cap["applied"],
+    }
+
+    raw_queue = raw.get("queue_group")
+    if not isinstance(raw_queue, dict):
+        raise BenchError("hipengine.generation_shape.queue_group must be an object")
+    queue_id = raw_queue.get("id")
+    if not isinstance(queue_id, str) or not queue_id.strip():
+        raise BenchError("hipengine.generation_shape.queue_group.id must be non-empty")
+    request_count = _shape_int(
+        raw_queue.get("request_count"),
+        label="queue_group.request_count",
+        minimum=1,
+    )
+    prompt_rows = _shape_int(
+        raw_queue.get("prompt_rows"),
+        label="queue_group.prompt_rows",
+        minimum=1,
+    )
+    item_index = _shape_int(
+        raw_queue.get("item_index"),
+        label="queue_group.item_index",
+    )
+    item_prompt_offset = _shape_int(
+        raw_queue.get("item_prompt_offset"),
+        label="queue_group.item_prompt_offset",
+    )
+    item_prompt_rows = _shape_int(
+        raw_queue.get("item_prompt_rows"),
+        label="queue_group.item_prompt_rows",
+        minimum=1,
+    )
+    if item_index >= request_count:
+        raise BenchError("queue_group.item_index must be smaller than request_count")
+    if item_prompt_offset + item_prompt_rows > prompt_rows:
+        raise BenchError("queue_group item prompt slice exceeds prompt_rows")
+
+    raw_backend_groups = raw.get("backend_groups")
+    if not isinstance(raw_backend_groups, list) or not raw_backend_groups:
+        raise BenchError("hipengine.generation_shape.backend_groups must be non-empty")
+    backend_groups: list[dict[str, Any]] = []
+    for group_index, raw_group in enumerate(raw_backend_groups):
+        if not isinstance(raw_group, dict):
+            raise BenchError(f"backend_groups[{group_index}] must be an object")
+        group_id = raw_group.get("id")
+        if not isinstance(group_id, str) or not group_id.strip():
+            raise BenchError(f"backend_groups[{group_index}].id must be non-empty")
+        call_index = _shape_int(
+            raw_group.get("call_index"),
+            label=f"backend_groups[{group_index}].call_index",
+        )
+        prompt_offset = _shape_int(
+            raw_group.get("prompt_offset"),
+            label=f"backend_groups[{group_index}].prompt_offset",
+        )
+        input_rows = _shape_int(
+            raw_group.get("input_rows"),
+            label=f"backend_groups[{group_index}].input_rows",
+            minimum=1,
+        )
+        raw_actual_rows = raw_group.get("actual_group_rows")
+        if not isinstance(raw_actual_rows, list) or not raw_actual_rows:
+            raise BenchError(f"backend_groups[{group_index}].actual_group_rows must be non-empty")
+        actual_rows = [
+            _shape_int(
+                value,
+                label=f"backend_groups[{group_index}].actual_group_rows",
+                minimum=1,
+            )
+            for value in raw_actual_rows
+        ]
+        if sum(actual_rows) != input_rows:
+            raise BenchError(f"backend_groups[{group_index}] actual rows must sum to input_rows")
+        max_actual_rows = _shape_int(
+            raw_group.get("max_actual_group_rows"),
+            label=f"backend_groups[{group_index}].max_actual_group_rows",
+            minimum=1,
+        )
+        if max_actual_rows != max(actual_rows):
+            raise BenchError(f"backend_groups[{group_index}] max_actual_group_rows is inconsistent")
+        verifier_rows = _shape_int(
+            raw_group.get("verifier_rows"),
+            label=f"backend_groups[{group_index}].verifier_rows",
+        )
+        backend_groups.append(
+            {
+                "id": group_id,
+                "call_index": call_index,
+                "prompt_offset": prompt_offset,
+                "input_rows": input_rows,
+                "actual_group_rows": actual_rows,
+                "max_actual_group_rows": max_actual_rows,
+                "verifier_rows": verifier_rows,
+            }
+        )
+    if sorted(group["call_index"] for group in backend_groups) != list(range(len(backend_groups))):
+        raise BenchError("backend group call_index values must be contiguous from zero")
+    if len({group["id"] for group in backend_groups}) != len(backend_groups):
+        raise BenchError("backend group ids must be unique within a queue group")
+    backend_cursor = 0
+    for group in sorted(backend_groups, key=lambda item: item["call_index"]):
+        if group["prompt_offset"] != backend_cursor:
+            raise BenchError("backend group prompt slices must be contiguous from zero")
+        backend_cursor += group["input_rows"]
+    if backend_cursor != prompt_rows:
+        raise BenchError("backend group prompt slices must cover queue_group.prompt_rows")
+    verifier_rows = _shape_int(raw.get("verifier_rows"), label="generation_shape.verifier_rows")
+    if verifier_rows != sum(group["verifier_rows"] for group in backend_groups):
+        raise BenchError("generation_shape.verifier_rows must equal the backend-group sum")
+    return {
+        "schema_version": 1,
+        "route": route,
+        "route_cap": route_cap,
+        "queue_group": {
+            "id": queue_id,
+            "request_count": request_count,
+            "prompt_rows": prompt_rows,
+            "item_index": item_index,
+            "item_prompt_offset": item_prompt_offset,
+            "item_prompt_rows": item_prompt_rows,
+        },
+        "backend_groups": backend_groups,
+        "verifier_rows": verifier_rows,
+    }
+
+
+def aggregate_generation_shapes(results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    shapes = [row.get("generation_shape") for row in results]
+    present = [shape for shape in shapes if isinstance(shape, dict)]
+    if not present:
+        return None
+    if len(present) != len(results):
+        raise BenchError("generation_shape is missing from part of a shaped server run")
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for shape in present:
+        queue = shape["queue_group"]
+        grouped.setdefault(str(queue["id"]), []).append(shape)
+
+    summaries: list[dict[str, Any]] = []
+    backend_group_rows: list[int] = []
+    route_cap_values: set[int] = set()
+    for queue_id, group_shapes in sorted(grouped.items()):
+        first = group_shapes[0]
+        first_queue = first["queue_group"]
+        request_count = int(first_queue["request_count"])
+        prompt_rows = int(first_queue["prompt_rows"])
+        invariant = {
+            "route": first["route"],
+            "route_cap": first["route_cap"],
+            "backend_groups": first["backend_groups"],
+            "verifier_rows": first["verifier_rows"],
+        }
+        for shape in group_shapes[1:]:
+            queue = shape["queue_group"]
+            if int(queue["request_count"]) != request_count or int(queue["prompt_rows"]) != prompt_rows:
+                raise BenchError(f"queue group {queue_id!r} has inconsistent counts")
+            candidate = {
+                "route": shape["route"],
+                "route_cap": shape["route_cap"],
+                "backend_groups": shape["backend_groups"],
+                "verifier_rows": shape["verifier_rows"],
+            }
+            if candidate != invariant:
+                raise BenchError(f"queue group {queue_id!r} has inconsistent backend shape")
+        if len(group_shapes) != request_count:
+            raise BenchError(
+                f"queue group {queue_id!r} expected {request_count} response items; found {len(group_shapes)}"
+            )
+        item_indices = sorted(int(shape["queue_group"]["item_index"]) for shape in group_shapes)
+        if item_indices != list(range(request_count)):
+            raise BenchError(f"queue group {queue_id!r} item indices are incomplete or duplicated")
+        slices = sorted(
+            (
+                int(shape["queue_group"]["item_prompt_offset"]),
+                int(shape["queue_group"]["item_prompt_rows"]),
+            )
+            for shape in group_shapes
+        )
+        cursor = 0
+        for offset, rows in slices:
+            if offset != cursor:
+                raise BenchError(f"queue group {queue_id!r} prompt slices are not contiguous")
+            cursor += rows
+        if cursor != prompt_rows:
+            raise BenchError(f"queue group {queue_id!r} prompt slices do not cover prompt_rows")
+        cap_value = first["route_cap"]["value"]
+        if cap_value is not None:
+            route_cap_values.add(int(cap_value))
+        for backend_group in first["backend_groups"]:
+            backend_group_rows.extend(int(rows) for rows in backend_group["actual_group_rows"])
+        summaries.append(
+            {
+                "id": queue_id,
+                "route": first["route"],
+                "route_cap": first["route_cap"],
+                "request_count": request_count,
+                "prompt_rows": prompt_rows,
+                "backend_groups": first["backend_groups"],
+                "verifier_rows": int(first["verifier_rows"]),
+            }
+        )
+    return {
+        "queue_group_count": len(summaries),
+        "queue_group_request_counts": [row["request_count"] for row in summaries],
+        "queue_group_prompt_rows": [row["prompt_rows"] for row in summaries],
+        "route_cap_values": sorted(route_cap_values),
+        "backend_group_rows": backend_group_rows,
+        "max_backend_group_rows": max(backend_group_rows),
+        "verifier_rows_total": sum(row["verifier_rows"] for row in summaries),
+        "queue_groups": summaries,
+    }
+
+
 def backend_timing_records(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Normalize per-choice timing payloads without losing batch ownership."""
 
@@ -384,6 +628,9 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
     }
     if token_accounting is not None:
         record.update(token_accounting)
+    generation_shape = generation_shape_from_response(response)
+    if generation_shape is not None:
+        record["generation_shape"] = generation_shape
     hipengine_payloads = choice_hipengine_payloads(response)
     if hipengine_payloads:
         record["hipengine"] = hipengine_payloads
@@ -549,6 +796,9 @@ def aggregate(
             "choice_payloads_counted": choice_payloads_counted,
             "non_owner_copies_ignored": non_owner_copies_ignored,
         }
+    generation_shape = aggregate_generation_shapes(results)
+    if generation_shape is not None:
+        payload["generation_shape"] = generation_shape
     return payload
 
 

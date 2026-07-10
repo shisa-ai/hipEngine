@@ -3941,6 +3941,7 @@ def _gguf_mtp_last_batch_generation(
             "total_accepted_draft_tokens": total_accepted,
             "accept_per_draft": (total_accepted / total_drafts if total_drafts > 0 else 0.0),
             "visible_output_tokens_from_cycles": visible_from_cycles,
+            "target_verify_rows": mtp_summary["linear_state_captured_rows"],
             "direct_cycles": mtp_summary["direct_cycles"],
             "full_accept_cycles": mtp_summary["full_accept_cycles"],
             "partial_accept_cycles": mtp_summary["partial_accept_cycles"],

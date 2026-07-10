@@ -46,6 +46,13 @@ Hard rules:
   `batch_id`, require exactly one owner for each observed batch, and fail the
   artifact if ownership or row metadata is missing/inconsistent. A timing map
   copied to multiple choices contributes once.
+- **Exact server shape identity.** Retain `hipengine.generation_shape` v1 for
+  every non-streaming hipEngine response. Keep the request-scoped route cap,
+  queue-group request/prompt counts, actual backend calls/widths, and verifier
+  rows separate. Deduplicate by `queue_group.id`, require all item indices and
+  prompt slices exactly once, and sum verifier rows once per queue group. A c8
+  client workload capped into two c4 groups is not a width-8 backend/verifier
+  result.
 - **No input-conditioned shortcuts.** Do not add code that detects the prompt,
   token sequence, candidate-id pattern, logits shape, or any fixture-specific
   signal and changes the output to make a metric look better. Examples that are
@@ -396,6 +403,12 @@ A benchmark artifact must answer five questions without rereading raw logs:
 3. **How stable is the number?** Warmup count, measured repetitions, per-phase samples, median/p95/min/max/stdev where applicable.
 4. **What did the GPU actually execute?** Profiler trace status, expected kernel names, time-share summary, and any profiler blocker. Raw traces stay outside git; compact summaries go in JSON.
 5. **Should we keep this number?** Baseline reference, delta, acceptance decision, and rejection/blocker reason if not retained.
+
+For non-streaming server rows, the compact artifact also retains the harness's
+validated `generation_shape` rollup: queue-group count and request/prompt rows,
+request-scoped route-cap values, flattened actual backend-group widths, maximum
+backend width, per-group details, and total verifier rows. Missing or partial
+shape metadata makes a new hipEngine server row diagnostic rather than retained.
 
 Allowed artifact statuses:
 

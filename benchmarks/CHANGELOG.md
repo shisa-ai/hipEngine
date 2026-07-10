@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-11
 
+- [measurement contract] OpenAI server rows now retain `generation_shape` v1: request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and verifier rows; `mtp-bench.py` validates complete queue groups and deduplicates them by ID. No metric was superseded; the 2026-07-06 rows remain ineligible until rerun. Source: `hipengine/server/api.py`, `scripts/mtp-bench.py`.
 - [measurement contract] Server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts moved from inconsistent repo/model identity fields to the shared `hipengine_artifact_provenance` v1 contract: dynamic resolved backend/target/device, separate staged/unstaged/untracked state, content-derived model fingerprint, exact command/environment, toolchain, timing, and profiler metadata. No metric was superseded; historical rows keep their existing status until rerun. Source: `hipengine/benchmark/provenance.py`, `benchmarks/schemas/artifact-provenance.schema.json`.
 
 ## 2026-07-10

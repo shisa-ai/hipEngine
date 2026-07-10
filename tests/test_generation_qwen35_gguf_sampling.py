@@ -1522,6 +1522,7 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
 
     mtp = payload["speculative_mtp"]
     assert mtp["target_verify_batching"] == "packed_slot_batch"
+    assert mtp["target_verify_rows"] == 9
     assert mtp["accepted_draft_tokens_histogram"] == {"0": 1, "1": 1, "2": 1}
     assert mtp["cycle_shape_histogram"] == {
         "draft2_accept0": 1,
