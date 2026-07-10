@@ -149373,3 +149373,39 @@ graphless decode launch-collapse path without regressing target/serial parity.
   batch-decode and batch-sampler overrides before session construction while
   preserving packed-prefill and profile configuration. The partition/retained
   subset passes (`11 passed`).
+
+## 2026-07-10 - PARO exact serial bridge and sparse position repair
+
+- A full c9 `profile_partitioned` preflight invalidated the one-session
+  c8+serial-c1 design. The run used the 512/8/128 protocol on gfx1151 and
+  executed `native:8+serial:1` for all 136 steps, but row 8 diverged on the
+  first decode token and rows 0-7 on the second. Its `88.790 tok/s` result is
+  rejected and is not performance evidence.
+- Isolation showed the existing serial bridge was independently incorrect:
+  c2 with two measured decode tokens emitted `[17,17,220]` for both rows versus
+  the c1 oracle `[17,17,17]`. Forcing packed prefill's linear and full-attention
+  work per segment did not change the mismatch.
+- RED: `tests/test_qwen35_paro_serial_bridge.py` required serial fallback rows
+  to execute the row-aware batch decode engine at `rows=1` with their explicit
+  physical slots. Replaced the divergent `_run_layers()` bridge with that path,
+  retaining per-slot sampling. Position upload, sparse graph reset, and graph
+  counter advance now address the supplied physical slots instead of assuming
+  compact slot IDs.
+- GREEN: the focused serial/partition/sparse generation subset passes
+  (`10 passed`). The old c2 two-token reproducer is exact after the repair. A
+  full dirty-worktree gfx1151 512/8/128 run then matched all 137 tokens on both
+  rows at `60.075 tok/s` aggregate with a `33.296 ms` median step. Command:
+  `env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3
+  scripts/qwen35_batch_retained_bench.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json
+  --prompt-length 512 --batch-size 2 --decode-tokens 128
+  --warmup-decode-tokens 8 --compiler-version-file
+  /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt
+  --require-cached-build --batch-decode-execution serial --json
+  /tmp/hipengine-prebench/paro-c9-c16/c2-serial-rowaware-p512-d128.json`.
+- c9 still diverges when a single resident session is sized above the certified
+  c8 maximum, including with the repaired serial row. The next route must cap
+  each session lifetime at an evidence-backed width; interleaving subgroups in
+  one c>8 session remains rejected.
