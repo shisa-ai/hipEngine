@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 
 
 def _load_runner_module():
@@ -146,6 +149,20 @@ def _raw_artifact(backend: str) -> dict:
             {
                 "k": 2048,
                 "rows": 1,
+                "workgroup_size": 32,
+                "body_repeats": 8,
+                "median_us": 24.0 if backend == "hip" else 18.0,
+                "p05_us": 23.0,
+                "p95_us": 25.0,
+                "gflops": 2.5,
+                "max_abs": 0.001,
+                "max_rel": 0.0,
+                "correctness_pass": True,
+                **_timed_contract(backend, 24.0 if backend == "hip" else 18.0),
+            },
+            {
+                "k": 2048,
+                "rows": 1,
                 "workgroup_size": 64,
                 "body_repeats": 8,
                 "median_us": 20.0 if backend == "hip" else 15.0,
@@ -225,7 +242,7 @@ def test_geometry_fixed_workgroup_merge_and_schema() -> None:
     merged = module._merge_fixed_hip_raw_results([raw32, raw64], workgroups=[32, 64])
     assert merged["config"]["hip_workgroup_specialization"] == "fixed"
     assert merged["config"]["hip_fixed_workgroup_sizes"] == [32, 64]
-    assert [row["workgroup_size"] for row in merged["rows"]] == [32, 64, 64]
+    assert [row["workgroup_size"] for row in merged["rows"]] == [32, 32, 64, 64]
 
     result = module.normalize_raw_result(
         merged,
@@ -290,7 +307,11 @@ def test_geometry_comparison_matches_rows() -> None:
 
     assert comparison["kind"] == "hipengine_micro_comparison"
     assert comparison["classification"] == "diagnostic_unclassified"
-    assert len(comparison["matched_rows"]) == 3
+    assert len(comparison["matched_rows"]) == 4
+    assert comparison["source"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+    assert comparison["performance_claim"] is True
     reference = [
         row
         for row in comparison["matched_rows"]
@@ -352,3 +373,93 @@ def test_geometry_comparison_rejects_cross_mode_rows() -> None:
         assert "timing modes do not match" in str(exc)
     else:
         raise AssertionError("expected cross-mode comparison rejection")
+
+
+def _normalized_pair(module):
+    env = _environment()
+    hip = module.normalize_raw_result(
+        _raw_artifact("hip"),
+        backend="hip",
+        environment=env,
+        wrapper_command=["geometry_sweep.py"],
+        harness_command=None,
+        build_command=None,
+        shader_command=None,
+        source_hash="sha256:hip",
+    )
+    vulkan = module.normalize_raw_result(
+        _raw_artifact("vulkan"),
+        backend="vulkan",
+        environment=env,
+        wrapper_command=["geometry_sweep.py"],
+        harness_command=None,
+        build_command=None,
+        shader_command=None,
+        source_hash="sha256:vulkan",
+    )
+    return hip, vulkan
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda result: result.update(schema_version=1), "v2"),
+        (lambda result: result.update(kind="wrong"), "micro result"),
+        (lambda result: result.update(bench="wrong"), "bench"),
+        (lambda result: result.update(backend="hip"), "HIP then Vulkan"),
+        (lambda result: result.update(classification="wrong"), "classification"),
+        (lambda result: result["hardware"].update(gfx_arch="gfx1100x"), "architectures"),
+        (lambda result: result["hardware"].update(gpu_name="different"), "device identities"),
+        (lambda result: result["source"].update(commit="d" * 40), "commit"),
+        (lambda result: result["source"].update(dirty=True), "dirty"),
+        (lambda result: result["source"].pop("source_hash"), "source hash"),
+    ],
+)
+def test_geometry_comparison_rejects_identity_or_provenance_mismatch(
+    mutation, message: str
+) -> None:
+    module = _load_runner_module()
+    hip, vulkan = _normalized_pair(module)
+    mutation(vulkan)
+
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_geometry_comparison_requires_exact_unique_requested_rows() -> None:
+    module = _load_runner_module()
+    hip, vulkan = _normalized_pair(module)
+    missing = deepcopy(vulkan)
+    missing["measurements"]["rows"].pop()
+    with pytest.raises(ValueError, match="exact requested"):
+        module.build_comparison(hip, missing, command=["compare"])
+
+    duplicate = deepcopy(vulkan)
+    duplicate["measurements"]["rows"].append(
+        deepcopy(duplicate["measurements"]["rows"][0])
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        module.build_comparison(hip, duplicate, command=["compare"])
+
+    bad_expected_count = deepcopy(vulkan)
+    bad_expected_count["parameters"]["expected_row_count"] += 1
+    with pytest.raises(ValueError, match="expected_row_count"):
+        module.build_comparison(hip, bad_expected_count, command=["compare"])
+
+
+def test_geometry_comparison_marks_dirty_or_incorrect_inputs_non_claiming() -> None:
+    module = _load_runner_module()
+    hip, vulkan = _normalized_pair(module)
+    hip["source"]["dirty"] = True
+    vulkan["source"]["dirty"] = True
+    dirty = module.build_comparison(hip, vulkan, command=["compare"])
+    assert dirty["performance_claim"] is False
+    assert dirty["provenance"]["blocking_reasons"] == ["dirty_source"]
+
+    hip, vulkan = _normalized_pair(module)
+    vulkan["correctness"]["status"] = "fail"
+    incorrect = module.build_comparison(hip, vulkan, command=["compare"])
+    assert incorrect["performance_claim"] is False
+    assert incorrect["provenance"]["blocking_reasons"] == [
+        "correctness_not_passed"
+    ]
