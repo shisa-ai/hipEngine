@@ -15,6 +15,8 @@ DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE = (
     "benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json"
 )
 QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV = "HIPENGINE_QWEN35_NATIVE_BATCH_WIDTH_PROFILE"
+QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA = 2
+QWEN35_PARO_NATIVE_BATCH_WIDTH_ORACLE = "independent_single_request_prefill_decode"
 
 
 def _is_positive_finite(value: object) -> bool:
@@ -93,12 +95,17 @@ def load_qwen35_paro_native_batch_width_profile(
         return _blocked_profile(artifact_path, ["native batch width profile must contain a JSON object"])
 
     blockers: list[str] = []
+    if payload.get("performance_claim") is not True:
+        blockers.append("native batch width profile is not an accepted performance claim")
     embedded = payload.get("native_batch_width_profile")
     if not isinstance(embedded, Mapping):
         blockers.append("native batch width profile must contain an embedded profile object")
         embedded = {}
-    elif embedded.get("schema") != 1:
-        blockers.append("native batch width profile embedded schema must equal 1")
+    elif embedded.get("schema") != QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA:
+        blockers.append(
+            "native batch width profile embedded schema must equal "
+            f"{QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA}"
+        )
     if embedded.get("backend") != str(backend):
         blockers.append("native batch width profile embedded backend does not match the resolved backend")
     if embedded.get("target_arch") != str(target_arch):
@@ -168,6 +175,15 @@ def load_qwen35_paro_native_batch_width_profile(
         "max": max_position,
     }:
         blockers.append("native batch width profile protocol position range does not match the embedded profile")
+    if protocol.get("correctness_oracle") != QWEN35_PARO_NATIVE_BATCH_WIDTH_ORACLE:
+        blockers.append("native batch width profile does not use the independent single-request oracle")
+    for field, label in (
+        ("packed_prefill_generated_token_equality", "packed prefill"),
+        ("sparse_slot_generated_token_equality", "sparse-slot decode"),
+        ("shrinking_batch_generated_token_equality", "shrinking-batch decode"),
+    ):
+        if protocol.get(field) is not True:
+            blockers.append(f"native batch width profile lacks green {label} evidence")
 
     rows_payload = payload.get("rows")
     if not isinstance(rows_payload, Mapping):
@@ -179,6 +195,8 @@ def load_qwen35_paro_native_batch_width_profile(
         blockers.append("native batch width profile c1 serial step cost is missing or invalid")
     else:
         serial_row_step_ms = float(c1["decode_step_ms_median_of_run_medians"])
+        if c1.get("status") != "accepted_reference":
+            blockers.append("native batch width profile c1 is not an accepted independent reference")
 
     native_step_ms: list[tuple[int, float]] = []
     for width in widths:
@@ -186,8 +204,8 @@ def load_qwen35_paro_native_batch_width_profile(
         if not isinstance(row, Mapping):
             blockers.append(f"native batch width profile c{width} row is missing")
             continue
-        if row.get("status") != "diagnostic_exact":
-            blockers.append(f"native batch width profile c{width} is not diagnostic_exact")
+        if row.get("status") != "accepted_exact":
+            blockers.append(f"native batch width profile c{width} is not accepted_exact")
         if row.get("generated_token_equality") is not True:
             blockers.append(f"native batch width profile c{width} generated-token equality is not green")
         if row.get("primitive_correctness") is not True:
@@ -215,6 +233,8 @@ def load_qwen35_paro_native_batch_width_profile(
 
 __all__ = [
     "DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE",
+    "QWEN35_PARO_NATIVE_BATCH_WIDTH_ORACLE",
+    "QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA",
     "QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV",
     "load_qwen35_paro_native_batch_width_profile",
 ]

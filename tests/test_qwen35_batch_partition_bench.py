@@ -74,6 +74,8 @@ class _FakeSession:
 def test_profile_partitioned_bench_leaves_subgroup_route_env_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", raising=False)
     route_env = (
         "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
         "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
@@ -97,6 +99,87 @@ def test_profile_partitioned_bench_leaves_subgroup_route_env_unset(
     assert os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] == "0"
     assert all(name not in os.environ for name in route_env)
+
+
+def test_c1_reference_temporarily_clears_parent_batch_route_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route_env = {
+        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE": "1",
+        "HIPENGINE_QWEN35_BATCH_SAMPLE_MODE": "batched_lm_head",
+        "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS": "8",
+        "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE": "1",
+        "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR": "1",
+    }
+    for name, value in route_env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+
+    with retained_bench._isolated_c1_route_env():
+        assert all(name not in os.environ for name in route_env)
+        assert os.environ["HIPENGINE_HIP_ARCH"] == "gfx1151"
+
+    assert {name: os.environ[name] for name in route_env} == route_env
+
+
+def test_c1_reference_uses_true_single_request_prefill_and_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class FakeC1Session:
+        def __init__(self, runner, **kwargs):
+            calls.append(("init", runner, kwargs["max_batch_size"]))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def prefill_native(self, prompt, *, sample):
+            calls.append(("prefill_native", tuple(prompt), sample))
+            return SimpleNamespace(token_id=10)
+
+        def step(self, token_id, *, position, sample):
+            calls.append(("step", token_id, position, sample))
+            return SimpleNamespace(token_id=token_id + 1)
+
+        def reset(self):
+            calls.append(("reset",))
+
+        def prefill_native_packed(self, *args, **kwargs):
+            raise AssertionError("c1 oracle must not use batch-shaped prefill")
+
+        def step_batch_native(self, *args, **kwargs):
+            raise AssertionError("c1 oracle must not use batch-shaped decode")
+
+    monkeypatch.setattr(retained_bench, "Qwen35ParoResidentSession", FakeC1Session)
+    kv_policy = SimpleNamespace(
+        create_policy=lambda: object(),
+        scale_dtype="fp16",
+        scale_granularity="per_token_head",
+    )
+
+    sequences = retained_bench._run_c1_reference_tokens(
+        "runner",
+        [[1, 2]],
+        total_decode_tokens=2,
+        max_layers=40,
+        max_sequence_length=16,
+        compiler_version="hipcc",
+        require_cached_build=True,
+        kv_policy=kv_policy,
+    )
+
+    assert sequences == [[10, 11, 12]]
+    assert calls == [
+        ("init", "runner", 1),
+        ("prefill_native", (1, 2), True),
+        ("step", 10, 2, True),
+        ("step", 11, 3, True),
+        ("reset",),
+    ]
 
 
 @pytest.mark.parametrize(

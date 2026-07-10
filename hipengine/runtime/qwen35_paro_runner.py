@@ -257,6 +257,21 @@ def _retained_linear_row_chunk_size(rows: int) -> int:
     return 0
 
 
+def _batch_decode_linear_out_flags(rows: int) -> tuple[bool | None, bool]:
+    env_name = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"
+    mode = (os.environ.get(env_name, "auto").strip() or "auto").lower()
+    if mode == "auto":
+        return None, bool(_retained_batch_defaults_enabled() and 2 <= int(rows) <= 8)
+    if mode in {"1", "true", "on", "yes", "selected_c1"}:
+        return int(rows) > 1, False
+    if mode in {"0", "false", "off", "no", "batch"}:
+        return False, False
+    if mode in {"batch_gemv", "gemv"}:
+        return False, int(rows) > 1
+    raise ValueError(
+        f"{env_name} must be auto, batch, batch_gemv, or selected_c1"
+    )
+
 
 def _default_projection_dispatch_artifact() -> str | None:
     path = Path.cwd() / _DEFAULT_PROJECTION_DISPATCH_ARTIFACT
@@ -1782,10 +1797,10 @@ class Qwen35ParoResidentSession:
         slots: list[int] | tuple[int, ...] | None = None,
         sample: bool = True,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
-        """Run one decode token per physical batch slot through exact row-aware decode.
+        """Run one decode token per physical batch slot using the resident c=1 layer path.
 
-        This is a correctness-first c>N bridge: it executes the certified
-        row-aware decode path with ``rows=1`` for each physical slot. Use
+        This is a correctness-first c>N bridge: it consumes batch-shaped hidden,
+        linear-state, and KV-cache rows but executes active rows serially. Use
         :meth:`batch_execution_metadata` to label artifacts from this path so the
         serial bridge cannot be mistaken for native compact c>N throughput.
         """
@@ -1804,25 +1819,24 @@ class Qwen35ParoResidentSession:
         if len(set(slot_ids)) != len(slot_ids):
             raise ValueError("slots must be unique")
 
+        saved_hidden, saved_next_hidden = self.hidden, self.next_hidden
         results: list[Qwen35ParoAutoregressiveStepResult | None] = []
-        for token_id, position, slot in zip(tokens, pos, slot_ids, strict=True):
-            self._check_slot(slot)
-            self._check_position(position)
-            self._set_batch_token_embeddings((token_id,), stream=0)
-            self._set_batch_positions((position,), slots=(slot,), stream=0)
-            hidden = self._run_layers_batch_decode(
-                rows=1,
-                positions=(position,),
-                slots=(slot,),
-                stream=0,
-            )
-            if sample:
-                results.append(self._sample_from_hidden_for_slot(hidden, slot))
-            else:
-                results.append(None)
-        if not sample:
-            self.runtime.device_synchronize()
-        return tuple(results)
+        try:
+            for token_id, position, slot in zip(tokens, pos, slot_ids, strict=True):
+                self._check_slot(slot)
+                self._check_position(position)
+                self._set_slot_token_embedding(token_id, slot=slot)
+                self._set_slot_position(position, slot=slot)
+                hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
+                if sample:
+                    results.append(self._sample_from_hidden_for_slot(hidden, slot))
+                else:
+                    results.append(None)
+            if not sample:
+                self.runtime.device_synchronize()
+            return tuple(results)
+        finally:
+            self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
 
     def step_batch_native(
         self,
@@ -5150,22 +5164,7 @@ class Qwen35ParoResidentSession:
         force_selected_c1_linear_state = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
         )
-        linear_out_env = os.environ.get("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT", "auto")
-        linear_out_mode = linear_out_env.strip().lower()
-        force_batch_gemv_linear_out = False
-        if linear_out_mode in {"", "auto"}:
-            force_selected_c1_linear_out: bool | None = None
-        elif linear_out_mode in {"1", "true", "on", "yes", "selected_c1"}:
-            force_selected_c1_linear_out = rows > 1
-        elif linear_out_mode in {"0", "false", "off", "no", "batch"}:
-            force_selected_c1_linear_out = False
-        elif linear_out_mode in {"batch_gemv", "gemv"}:
-            force_selected_c1_linear_out = False
-            force_batch_gemv_linear_out = rows > 1
-        else:
-            raise ValueError(
-                "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT must be auto, batch, batch_gemv, or selected_c1"
-            )
+        force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(rows)
         linear_attention_projection_path = (
             "selected_c1_forced"
             if force_selected_c1_linear_projections

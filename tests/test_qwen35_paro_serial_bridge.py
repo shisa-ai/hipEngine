@@ -6,6 +6,11 @@ import numpy as np
 
 from hipengine.runtime import qwen35_paro_runner
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+from scripts.qwen35_batch_shrinking_correctness import (
+    _cancellation_order,
+    build_parser as build_shrinking_parser,
+)
+from scripts.qwen35_batch_sparse_slot_correctness import build_parser as build_sparse_parser
 
 
 class _FakeSession:
@@ -13,6 +18,11 @@ class _FakeSession:
 
     def __init__(self) -> None:
         self.calls: list[tuple[object, ...]] = []
+        self.hidden = "saved-hidden"
+        self.next_hidden = "saved-next-hidden"
+        self.runtime = SimpleNamespace(
+            device_synchronize=lambda: self.calls.append(("synchronize",))
+        )
 
     def _check_slot(self, slot: int) -> None:
         self.calls.append(("check_slot", slot))
@@ -20,15 +30,15 @@ class _FakeSession:
     def _check_position(self, position: int) -> None:
         self.calls.append(("check_position", position))
 
-    def _set_batch_token_embeddings(self, token_ids, *, stream: int = 0):
-        self.calls.append(("embedding", tuple(token_ids), stream))
+    def _set_slot_token_embedding(self, token_id: int, *, slot: int) -> None:
+        self.calls.append(("embedding", token_id, slot))
 
-    def _set_batch_positions(self, positions, *, slots, stream: int = 0) -> None:
-        self.calls.append(("position", tuple(positions), tuple(slots), stream))
+    def _set_slot_position(self, position: int, *, slot: int) -> None:
+        self.calls.append(("position", position, slot))
 
-    def _run_layers_batch_decode(self, *, rows: int, positions, slots, stream: int = 0):
-        hidden = f"hidden-for-slot-{slots[0]}"
-        self.calls.append(("decode", rows, tuple(positions), tuple(slots), stream))
+    def _run_layers(self, *, position: int, slot: int, persist_aliases: bool, stream: int = 0):
+        hidden = f"hidden-for-slot-{slot}"
+        self.calls.append(("decode", position, slot, persist_aliases, stream))
         return hidden
 
     def _sample_from_hidden_for_slot(self, hidden, slot: int):
@@ -36,7 +46,7 @@ class _FakeSession:
         return SimpleNamespace(token_id=1000 + slot)
 
 
-def test_serial_bridge_uses_exact_row_aware_decode_per_physical_slot() -> None:
+def test_serial_bridge_uses_true_c1_decode_per_physical_slot() -> None:
     session = _FakeSession()
 
     results = Qwen35ParoResidentSession.step_batch_serial(
@@ -51,17 +61,34 @@ def test_serial_bridge_uses_exact_row_aware_decode_per_physical_slot() -> None:
     assert session.calls == [
         ("check_slot", 2),
         ("check_position", 512),
-        ("embedding", (11,), 0),
-        ("position", (512,), (2,), 0),
-        ("decode", 1, (512,), (2,), 0),
+        ("embedding", 11, 2),
+        ("position", 512, 2),
+        ("decode", 512, 2, False, 0),
         ("sample", "hidden-for-slot-2", 2),
         ("check_slot", 5),
         ("check_position", 513),
-        ("embedding", (22,), 0),
-        ("position", (513,), (5,), 0),
-        ("decode", 1, (513,), (5,), 0),
+        ("embedding", 22, 5),
+        ("position", 513, 5),
+        ("decode", 513, 5, False, 0),
         ("sample", "hidden-for-slot-5", 5),
     ]
+    assert session.hidden == "saved-hidden"
+    assert session.next_hidden == "saved-next-hidden"
+
+
+def test_serial_bridge_synchronizes_when_sampling_is_disabled() -> None:
+    session = _FakeSession()
+
+    results = Qwen35ParoResidentSession.step_batch_serial(
+        session,
+        [11],
+        positions=[512],
+        slots=[2],
+        sample=False,
+    )
+
+    assert results == (None,)
+    assert session.calls[-1] == ("synchronize",)
 
 
 def test_batch_position_upload_addresses_sparse_physical_slots(monkeypatch) -> None:
@@ -98,3 +125,16 @@ def test_batch_position_upload_addresses_sparse_physical_slots(monkeypatch) -> N
         (1000 + 2 * 8, 2000 + 2 * 8, 512, 3),
         (1000 + 5 * 8, 2000 + 5 * 8, 513, 3),
     ]
+
+
+def test_sparse_slot_correctness_defaults_to_true_c1_fallback() -> None:
+    assert build_sparse_parser().parse_args([]).decode_execution == "serial"
+
+
+def test_shrinking_correctness_defaults_cover_c8_to_c1_with_holes() -> None:
+    args = build_shrinking_parser().parse_args([])
+
+    assert args.batch_size == 8
+    assert args.decode_execution == "serial"
+    assert sorted(_cancellation_order(args.batch_size)) == list(range(1, 8))
+    assert _cancellation_order(args.batch_size)[0] not in {0, 7}

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Qwen3.5/PARO sparse-slot native decode correctness smoke.
+"""Qwen3.5/PARO sparse-slot decode correctness smoke.
 
 The diagnostic pre-fills three requests, cancels the middle request, then runs
-native c>N decode over the remaining sparse physical slots (0 and 2).  It
+the serial c1 decode bridge or diagnostic native decode over sparse physical
+slots (0 and 2). It
 compares generated-token IDs with independent c=1 resident sessions and emits a
 correctness-only JSON artifact.
 """
@@ -26,7 +27,15 @@ from hipengine.core.dtype import DType
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
-from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, _compiler_version, _load_prompt_slices
+from scripts.qwen35_batch_retained_bench import (
+    DEFAULT_FIXTURE,
+    DEFAULT_MODEL,
+    _compiler_version,
+    _hardware_context,
+    _isolated_c1_route_env,
+    _load_prompt_slices,
+    _software_context,
+)
 
 
 def _payload_json(payload: Any) -> str:
@@ -50,15 +59,18 @@ def _run_c1_reference(
     require_cached_build: bool,
 ) -> list[list[int]]:
     rows: list[list[int]] = []
-    with Qwen35ParoResidentSession(
-        runner,
-        max_sequence_length=max_sequence_length,
-        max_layers=max_layers,
-        max_batch_size=1,
-        compiler_version=compiler_version,
-        require_cached_build=require_cached_build,
-        kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=DType.BF16),
-    ) as session:
+    with (
+        _isolated_c1_route_env(),
+        Qwen35ParoResidentSession(
+            runner,
+            max_sequence_length=max_sequence_length,
+            max_layers=max_layers,
+            max_batch_size=1,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+            kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=DType.BF16),
+        ) as session,
+    ):
         for prompt in prompts:
             seed = session.prefill_native(prompt, sample=True)
             if seed is None:
@@ -129,7 +141,12 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             slots = [scheduler.active_batch.slot_for(request_id) for request_id in active_ids]
             positions = [scheduler.active_batch.requests[request_id].context_len for request_id in active_ids]
             slot_history.append(slots)
-            results = session.step_batch_native(
+            step = (
+                session.step_batch_native
+                if args.decode_execution == "native"
+                else session.step_batch_serial
+            )
+            results = step(
                 [next_token_by_request[request_id] for request_id in active_ids],
                 positions=positions,
                 slots=slots,
@@ -160,9 +177,11 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         "schema": 1,
         "status": "eq_ok" if passed else "mismatch_found",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "mode": "qwen35_paro_sparse_slot_native_decode_smoke",
+        "mode": f"qwen35_paro_sparse_slot_{args.decode_execution}_decode_smoke",
         "command": _command(argv),
         "performance_claim": False,
+        "hardware": _hardware_context(),
+        "software": _software_context(),
         "workload": {
             "model": str(args.model),
             "fixture": str(args.fixture),
@@ -174,7 +193,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "active_slots_history": slot_history,
             "cancelled_slot": 1,
             "native_compact_prefill": True,
-            "native_caware_decode": True,
+            "decode_execution": str(args.decode_execution),
+            "native_caware_decode": args.decode_execution == "native",
+            "serial_c1_decode_bridge": args.decode_execution == "serial",
         },
         "correctness": {
             "oracle": "generated-token equality vs independent c=1",
@@ -197,6 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-tokens", type=int, default=2)
     parser.add_argument("--max-layers", type=int, default=1)
     parser.add_argument("--max-sequence-length", type=int, default=64)
+    parser.add_argument(
+        "--decode-execution",
+        choices=("serial", "native"),
+        default="serial",
+        help="Use the serial c1 decode bridge or the explicit native-width diagnostic.",
+    )
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)

@@ -10,6 +10,7 @@ resident runs before marking a row accepted.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import ctypes
 import json
@@ -4061,38 +4062,28 @@ def _run_c1_reference_tokens(
     kv_policy: ResolvedKVPolicy,
 ) -> list[list[int]]:
     rows: list[list[int]] = []
-    with Qwen35ParoResidentSession(
-        runner,
-        max_sequence_length=max_sequence_length,
-        max_layers=max_layers,
-        max_batch_size=1,
-        compiler_version=compiler_version,
-        require_cached_build=require_cached_build,
-        kv_policy=kv_policy.create_policy(),
-        kv_scale_dtype=kv_policy.scale_dtype,
-        kv_scale_granularity=kv_policy.scale_granularity,
-    ) as session:
+    with (
+        _isolated_c1_route_env(),
+        Qwen35ParoResidentSession(
+            runner,
+            max_sequence_length=max_sequence_length,
+            max_layers=max_layers,
+            max_batch_size=1,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
+        ) as session,
+    ):
         for prompt in prompts:
-            scheduler = ResidentBatchScheduler(capacity=1)
-            request_id = scheduler.submit(prompt, max_new_tokens=total_decode_tokens)
-            admitted = scheduler.admit_pending()
-            if admitted != (request_id,):
-                raise RuntimeError(f"unexpected c=1 admitted request ids {admitted!r}")
-            slabs = scheduler.next_compact_prefill_slabs(chunk_size=len(prompt), block_size=session.block_size)
-            if len(slabs) != 1:
-                raise RuntimeError("c=1 reference expected one compact prefill slab")
-            seed = session.prefill_native_packed(slabs[0], sample=True)[0]
+            seed = session.prefill_native(prompt, sample=True)
             if seed is None:
                 raise RuntimeError("c=1 prefill did not produce a seed token")
             token_ids = [int(seed.token_id)]
             next_token = int(seed.token_id)
             for offset in range(total_decode_tokens):
-                result = session.step_batch_native(
-                    [next_token],
-                    positions=[len(prompt) + offset],
-                    slots=[0],
-                    sample=True,
-                )[0]
+                result = session.step(next_token, position=len(prompt) + offset, sample=True)
                 if result is None:
                     raise RuntimeError("c=1 decode did not produce a token")
                 next_token = int(result.token_id)
@@ -4377,19 +4368,42 @@ def _resolved_batch_decode_attn_dense_context_batch_gate_layers(args: argparse.N
     return ""
 
 
-def _clear_profile_partitioned_group_env() -> None:
+def _is_batch_route_env(name: str) -> bool:
     exact_keys = {
         "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE",
         "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
+        "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN",
+        "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR",
         "HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV",
     }
+    return (
+        name in exact_keys
+        or name.startswith("HIPENGINE_QWEN35_BATCH_DECODE_")
+        or name.startswith("HIPENGINE_QWEN35_BATCH_SAMPLE_")
+    )
+
+
+def _clear_profile_partitioned_group_env() -> None:
     for name in tuple(os.environ):
-        if (
-            name in exact_keys
-            or name.startswith("HIPENGINE_QWEN35_BATCH_DECODE_")
-            or name.startswith("HIPENGINE_QWEN35_BATCH_SAMPLE_")
-        ):
+        if _is_batch_route_env(name):
             os.environ.pop(name, None)
+
+
+@contextmanager
+def _isolated_c1_route_env():
+    saved = {
+        name: value
+        for name, value in os.environ.items()
+        if _is_batch_route_env(name)
+    }
+    _clear_profile_partitioned_group_env()
+    try:
+        yield
+    finally:
+        for name in tuple(os.environ):
+            if _is_batch_route_env(name):
+                os.environ.pop(name, None)
+        os.environ.update(saved)
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
