@@ -250,11 +250,12 @@ canonical [`benchmarks/README.md`](benchmarks/README.md#blocked-and-diagnostic-b
 
 ## Concurrency (batched decode)
 
-hipEngine has a native `c>1` decode path: a scheduler-owned compact prefill plus
-a device-resident batched decode step (token feedback through `batch_lm_out_index`,
-device batched LM-head argmax, on-stream position advance) that can be captured
-and replayed as a single HIP graph. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
-for the design and the C3.0a/b/c decode-throughput work.
+hipEngine contains an opt-in native `c>1` diagnostic path: scheduler-owned
+compact prefill plus device-resident batched decode. The gfx1151 path is not
+routing-eligible because it fails the independent c1 oracle. Production PARO
+batches use width-1 sessions until a schema-2 profile passes direct, sparse,
+ragged, and shrinking gates. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
+for the design and C3.0a/b/c history.
 
 The snapshots below keep gfx1100 and gfx1151 separate because the model files,
 ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
@@ -289,34 +290,34 @@ Source artifacts:
 [`full W7900 refresh summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 
-### gfx1151 / Radeon 8060S PARO shape diagnostic (2026-07-10, Qwen3.6 35B-A3B, 512/128)
+### gfx1151 / Radeon 8060S PARO legacy shape-timing diagnostic (2026-07-10, Qwen3.6 35B-A3B, 512/128)
 
-**Status: diagnostic, not retained.** This direct PARO batch measurement ran at
-tracked-clean hipEngine `4175dabf` for c1/c2/c4/c6/c8 and `02aec604` for
-c3/c5/c7, with detected and target arch gfx1151. It uses opt-in
-retained-default recovery routes; the production server default uses different
-routing. c1 is a separate repeated-token reference; same-fixture c1, dynamic
-shrinking, profiler, and scaling gates are missing.
+**Status: diagnostic, not routing-eligible.** The displayed timings were
+measured at `4175dabf`/`02aec604` against a batch-shaped width-1 oracle. At
+`0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate accepts the serial
+bridge on all eight rows and rejects native c8 on all eight rows at generated
+token index 2. Production greedy and sampled batches use width-1 sessions.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
-| Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Exact gate | Measured route |
+| Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Legacy diagnostic gate | Measured route |
 | ---: | ---: | ---: | ---: | --- | --- |
 | 1 | 66.806 | 66.806 | 14.969 | Three-run reference; different prompt | Single-sequence graph replay; repeated token 9707 |
-| 2 | 78.578 | 39.289 | 25.465 | Primitive pass; generated IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
-| 3 | 87.488 | 29.163 | 34.310 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 4 | 99.616 | 24.904 | 40.158 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
-| 5 | 102.137 | 20.427 | 48.927 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 6 | 109.909 | 18.318 | 54.568 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; selected-layer rowchunk2; serial LM-head |
-| 7 | 109.596 | 15.657 | 63.905 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
-| 8 | 115.515 | 14.439 | 69.254 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
+| 2 | 78.578 | 39.289 | 25.465 | Primitive pass; batch-shaped IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
+| 3 | 87.488 | 29.163 | 34.310 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
+| 4 | 99.616 | 24.904 | 40.158 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
+| 5 | 102.137 | 20.427 | 48.927 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
+| 6 | 109.909 | 18.318 | 54.568 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; selected-layer rowchunk2; serial LM-head |
+| 7 | 109.596 | 15.657 | 63.905 | Primitive pass; batch-shaped IDs 3/3 | Selected-c1 MoE; small-batch shared expert; all-layer rowchunk2; serial LM-head |
+| 8 | 115.515 | 14.439 | 69.254 | Primitive pass; batch-shaped IDs 3/3; true-c1 red | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
 Protocol: W4 PARO/BF16 KV, 40 layers, 8 warmup decode steps, 128 measured
-decode steps, and greedy sampling. The c1 reference repeats token `9707` for
-512 prompt positions; c2-c8 use fixed 512-token slices. c1 and every c2-c8
-width report the median of three direct backend runs; every c2-c8 width passes
-primitive plus 137-token generated equality. See the [compact artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json)
-and [canonical run record](benchmarks/README.md#gfx1151-paro-direct-exact-shape-diagnostic-2026-07-10).
+decode steps, and greedy sampling. The c1 timing repeats token `9707`; c2-c8
+use fixed 512-token slices. Each timing is a three-run median. The old c2-c8
+generated-ID field is a legacy batch-shaped comparison, not independent-c1
+evidence. See the [timing artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json),
+[true-c1 gate](benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json),
+and [canonical run record](benchmarks/README.md#gfx1151-paro-legacy-shape-timing-diagnostic-2026-07-10).
 
 ### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)
 
@@ -335,8 +336,9 @@ report gfx1100 even though the run forced `HIPENGINE_HIP_ARCH=gfx1151`.
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
 Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. Primitive
-c>1 attention/KV checks and generated-token equality passed, but the retained
-profiler, scaling, and provenance gates did not.
+c>1 attention/KV checks passed. The generated-token field used the older
+batch-shaped reference and is not independent-c1 evidence. Profiler, scaling,
+and provenance gates also did not pass.
 
 Source artifacts: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
 [`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),

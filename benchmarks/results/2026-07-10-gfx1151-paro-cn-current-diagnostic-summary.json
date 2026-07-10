@@ -2,12 +2,14 @@
   "schema": 1,
   "kind": "gfx1151_paro_cn_readme_diagnostic_summary",
   "created_at": "2026-07-10T04:30:06Z",
-  "updated_at": "2026-07-10T06:38:14Z",
+  "updated_at": "2026-07-10T08:15:12Z",
   "status": "diagnostic",
   "performance_claim": false,
   "retained_ready": false,
   "native_batch_width_profile": {
     "schema": 1,
+    "routing_eligible": false,
+    "oracle_status": "invalid_batch_shaped_c1_reference",
     "backend": "hip_gfx1151",
     "target_arch": "gfx1151",
     "model_snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
@@ -108,7 +110,7 @@
     "superseded_failed_width_repetitions": 1,
     "c1_reference_prompt": "token 9707 repeated 512 times; separate from the fixed prompt slices used by c2-c8",
     "primitive_gate": "batch KV append and attention vs independent c1 plus NumPy, seed 1234",
-    "generated_token_gate": "native batch token IDs vs independent c1 resident sessions",
+    "generated_token_gate": "legacy batch-shaped comparison: prefill_native_packed plus step_batch_native(rows=1); invalidated by the independent single-request oracle at hipEngine 0c184517",
     "compiler_cache": "precomputed compiler version plus --require-cached-build"
   },
   "commands": {
@@ -145,7 +147,7 @@
       "reason": "Best measured single-sequence reference at hipEngine 4175dabf under the established concurrency protocol; prompt tokens differ from the c2-c8 fixture."
     },
     "2": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -167,7 +169,7 @@
       }
     },
     "3": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -196,7 +198,7 @@
       }
     },
     "4": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -219,7 +221,7 @@
       }
     },
     "5": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -248,7 +250,7 @@
       }
     },
     "6": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -280,7 +282,7 @@
       }
     },
     "7": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -309,7 +311,7 @@
       }
     },
     "8": {
-      "status": "diagnostic_exact",
+      "status": "diagnostic_legacy_batch_oracle",
       "performance_claim": false,
       "generated_token_equality": true,
       "primitive_correctness": true,
@@ -386,13 +388,15 @@
     }
   },
   "blockers": [
+    "the c2-c8 generated-token gate used prefill_native_packed plus step_batch_native(rows=1) as its c1 reference; this is batch-shaped and not the independent single-request contract",
+    "at hipEngine 0c184517 with hipengine_dirty=false, a c8-to-c1 gate fails native decode on every row at generated token index 2 while the serial c1 bridge passes all rows",
     "c1 uses the established repeated-token graph-replay reference rather than the fixed prompt slices used by c2-c8; no same-fixture c1 timing was captured",
-    "dynamic shrinking from c8 through c1 was not exercised",
+    "the c2-c8 timing runs did not exercise dynamic shrinking; the separate hipEngine 0c184517 correctness artifact covers c8 through c1",
     "c3, c4, c5, c7, and c8 require all-layer full-attention rowchunk2; c6 requires selected-layer rowchunk2 and a serial LM-head",
     "c3, c5, c6, and c7 require the small-batch shared expert",
     "selected-c1 MoE recovery paths do not satisfy the retained grouped-compact execution contract",
     "no retained c1/serial scaling baselines or rocprof kernel trace were captured",
-    "c2-c8 raw runs came from tracked-clean source revisions but worktrees containing unrelated untracked files"
+    "c2-c8 raw runs had tracked files matching their source revisions, but unrelated untracked files were present"
   ],
-  "decision": "Publish as a diagnostic measured on 2026-07-10 at hipEngine 4175dabf (c1/c2/c4/c6/c8) and 02aec604 (c3/c5/c7). Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
+  "decision": "Preserve the numeric rows as legacy batch-shaped-oracle diagnostics measured on 2026-07-10. Do not use this schema-1 profile for routing or describe any c2-c8 row as exact against the independent single-request contract. See benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json."
 }
