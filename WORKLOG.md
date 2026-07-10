@@ -149123,3 +149123,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   retained_command_preserves_target_arch_and_defaults or
   batch_benchmarks_omit_blank_visible_device_env'` (`6 passed`); scoped
   `git diff --check`.
+
+## 2026-07-10 - PARO primitive block-table ABI repair
+
+- Reproduced a current gfx1151 primitive-gate failure before refreshing the
+  README concurrency snapshot. KV append remained exact, but batched attention
+  missed both independent c1 and NumPy by `0.494496` max absolute at c2; c3-c8
+  were also red at `0.401864` to `0.739258`.
+- Root cause: the June 29 shared-KV fix made batched attention consume global
+  physical block IDs, while `scripts/qwen35_batch_correctness.py` still passed
+  the row-local block table used by the row-major append primitive. This made
+  every attention row read physical block zero even though the production
+  scheduler used shared global block IDs.
+- Split the fixture metadata by ABI: row-local block IDs remain in the append
+  and independent-c1 paths, while batched attention receives a contiguous
+  global physical-block table. Added a CPU test for the global mapping.
+- GREEN on Radeon 8060S/gfx1151 for c2-c8 at seed 1234: zero append mismatches,
+  exact batch-vs-c1 attention (`0.0` max absolute), A/A exact, and NumPy max
+  absolute error `2.235e-8` to `5.960e-8`. The c2 dense-c1 control also matched
+  batch and paged c1 exactly.
+- Validation: `PYTHONPATH=. uv run pytest -q
+  tests/test_generation_batch_scheduler.py -k
+  'primitive_correctness_passed_matches_retained_bounds or
+  batch_correctness_shared_block_table_uses_global_physical_ids or
+  batch_correctness_numpy_attention_handles_paged_blocks or
+  batch_correctness_fill_context_cache_rows_crosses_page_boundary'` (`4
+  passed`); Python compilation; c2-c8 live GPU primitive commands; scoped
+  `git diff --check`.
