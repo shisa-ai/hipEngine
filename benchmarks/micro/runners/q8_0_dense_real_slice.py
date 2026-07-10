@@ -1168,6 +1168,61 @@ def _row_key(row: dict[str, Any]) -> tuple[str, str, int, int, int, int, int]:
     )
 
 
+def _device_fingerprint(name: Any) -> str:
+    text = str(name).lower()
+    match = re.search(r"radeon\s+(\d+s)", text)
+    if match:
+        return f"radeon_{match.group(1)}"
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _expected_row_keys(
+    parameters: dict[str, Any],
+) -> set[tuple[str, str, int, int, int, int, int]]:
+    shapes = _parse_shapes(str(parameters["shapes"]))
+    row_counts = _parse_csv_u32(str(parameters["rows_list"]))
+    row_tiles = [
+        value
+        for value in _parse_csv_u32(str(parameters["row_tiles"]))
+        if value in (1, 4)
+    ]
+    if not row_tiles:
+        raise ValueError("Q8 comparison parameters contain no supported row tiles")
+    local_size = int(parameters["exact_local_size"])
+    expected: set[tuple[str, str, int, int, int, int, int]] = set()
+    for in_features, out_features in shapes:
+        for rows in row_counts:
+            expected.add(
+                (
+                    "q8_1_quantize",
+                    "quantize",
+                    in_features,
+                    out_features,
+                    rows,
+                    0,
+                    local_size,
+                )
+            )
+            for row_tile in row_tiles:
+                variant = "single" if row_tile == 1 else f"rowtile{row_tile}"
+                for operation in (
+                    "q8_0_dense_dp4a_dot_prequantized",
+                    "q8_0_dense_dp4a_quantize_plus_dot",
+                ):
+                    expected.add(
+                        (
+                            operation,
+                            variant,
+                            in_features,
+                            out_features,
+                            rows,
+                            row_tile,
+                            local_size,
+                        )
+                    )
+    return expected
+
+
 def build_comparison(
     hip_result: dict[str, Any],
     vulkan_result: dict[str, Any],
@@ -1187,10 +1242,22 @@ def build_comparison(
         correctness = result.get("correctness", {})
         if correctness.get("status") != "pass" or not correctness.get("all_pass"):
             raise ValueError(f"{backend} Q8 correctness gate did not pass")
+        source = result.get("source", {})
+        for field in ("repo", "commit", "source_hash"):
+            if not isinstance(source.get(field), str) or not source[field]:
+                raise ValueError(f"{backend} Q8 source {field} is missing")
+        if not isinstance(source.get("dirty"), bool):
+            raise ValueError(f"{backend} Q8 source dirty is missing")
     hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
     vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
     if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
         raise ValueError("HIP and Vulkan Q8 gfx architectures do not match")
+    hip_device = _device_fingerprint(hip_result.get("hardware", {}).get("gpu_name", ""))
+    vulkan_device = _device_fingerprint(
+        vulkan_result.get("hardware", {}).get("gpu_name", "")
+    )
+    if not hip_device or hip_device == "unknown" or hip_device != vulkan_device:
+        raise ValueError("HIP and Vulkan Q8 device identities do not match")
     for field in ("repo", "branch", "commit", "dirty"):
         if hip_result.get("source", {}).get(field) != vulkan_result.get("source", {}).get(field):
             raise ValueError(f"HIP and Vulkan Q8 source {field} values do not match")
@@ -1223,16 +1290,7 @@ def build_comparison(
     }
     if len(hip_modes) != 1 or hip_modes != vulkan_modes:
         raise ValueError("HIP and Vulkan Q8 results must use the same single timing mode")
-    shapes = _parse_shapes(str(hip_parameters["shapes"]))
-    row_counts = _parse_csv_u32(str(hip_parameters["rows_list"]))
-    row_tiles = [
-        value
-        for value in _parse_csv_u32(str(hip_parameters["row_tiles"]))
-        if value in (1, 4)
-    ]
-    if not row_tiles:
-        raise ValueError("Q8 comparison parameters contain no supported row tiles")
-    expected_rows = len(shapes) * len(row_counts) * (1 + 2 * len(row_tiles))
+    expected_row_keys = _expected_row_keys(hip_parameters)
     vulkan_local_sizes = _parse_csv_u32(str(vulkan_parameters.get("local_sizes", "")))
     if int(hip_parameters["exact_local_size"]) not in vulkan_local_sizes:
         raise ValueError("Vulkan Q8 local sizes omit the exact HIP wave32 control")
@@ -1253,12 +1311,33 @@ def build_comparison(
     vulkan_rows = {_row_key(row): row for row in vulkan_comparable}
     if len(hip_rows) != len(hip_comparable) or len(vulkan_rows) != len(vulkan_comparable):
         raise ValueError("Q8 comparison inputs contain duplicate comparable rows")
-    if not hip_rows or set(hip_rows) != set(vulkan_rows):
-        raise ValueError("HIP and Vulkan Q8 comparable row sets do not match")
-    if len(hip_rows) != expected_rows:
-        raise ValueError(
-            f"Q8 comparison row set is incomplete: expected {expected_rows}, got {len(hip_rows)}"
-        )
+    if set(hip_rows) != expected_row_keys or set(vulkan_rows) != expected_row_keys:
+        raise ValueError("Q8 comparison row set does not match the exact requested matrix")
+    expected_dispatches = {
+        "q8_1_quantize": 1,
+        "q8_0_dense_dp4a_dot_prequantized": 1,
+        "q8_0_dense_dp4a_quantize_plus_dot": 2,
+    }
+    for backend, rows in (("hip", hip_rows), ("vulkan", vulkan_rows)):
+        for key, row in rows.items():
+            if row.get("backend") != backend:
+                raise ValueError(f"{backend} Q8 row backend metadata does not match")
+            if row.get("workgroup_match") != "exact_hip_wave32":
+                raise ValueError(f"{backend} Q8 row workgroup metadata does not match")
+            if not row.get("correctness_pass"):
+                raise ValueError(f"{backend} Q8 row correctness did not pass")
+            expected_blocks = key[2] // Q8_0_BLOCK
+            expected_weight_bytes = key[3] * expected_blocks * Q8_0_BLOCK_BYTES
+            if row.get("q8_blocks_per_row") != expected_blocks:
+                raise ValueError(f"{backend} Q8 row block metadata does not match")
+            if row.get("q8_0_weight_bytes") != expected_weight_bytes:
+                raise ValueError(f"{backend} Q8 row weight metadata does not match")
+            for control in timing_contract.TIMING_CONTROLS:
+                if (
+                    row.get("timing", {}).get(control, {}).get("dispatches_per_iteration")
+                    != expected_dispatches[key[0]]
+                ):
+                    raise ValueError(f"{backend} Q8 row dispatch metadata does not match")
     matched = []
     for key in sorted(hip_rows):
         hip = hip_rows[key]
@@ -1360,16 +1439,41 @@ def build_comparison(
         for row in matched
         for control in timing_contract.TIMING_CONTROLS
     ]
+    hip_source = hip_result["source"]
+    vulkan_source = vulkan_result["source"]
+    commit_match = (
+        bool(hip_source["commit"])
+        and hip_source["commit"] == vulkan_source["commit"]
+    )
+    dirty = bool(hip_source["dirty"]) or bool(vulkan_source["dirty"])
+    device_match = bool(hip_device) and hip_device == vulkan_device
+    correctness_pass = (
+        hip_result["correctness"].get("status") == "pass"
+        and bool(hip_result["correctness"].get("all_pass"))
+        and vulkan_result["correctness"].get("status") == "pass"
+        and bool(vulkan_result["correctness"].get("all_pass"))
+    )
+    performance_claim = commit_match and not dirty and device_match and correctness_pass
+    blocking_reasons = []
+    if not commit_match:
+        blocking_reasons.append("commit_mismatch_or_missing")
+    if dirty:
+        blocking_reasons.append("dirty_source")
+    if not device_match:
+        blocking_reasons.append("device_identity_mismatch_or_missing")
+    if not correctness_pass:
+        blocking_reasons.append("correctness_not_passed")
     return _json_safe(
         {
             "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "real_slice_probe",
-            "source": hip_result.get("source", {}),
+            "performance_claim": performance_claim,
+            "source": hip_source,
             "sources": {
-                "hip": hip_result.get("source", {}),
-                "vulkan": vulkan_result.get("source", {}),
+                "hip": hip_source,
+                "vulkan": vulkan_source,
             },
             "command": command,
             "hardware": {
@@ -1385,6 +1489,18 @@ def build_comparison(
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
             },
+            "provenance": {
+                "commit_match": commit_match,
+                "dirty": dirty,
+                "device_match": device_match,
+                "hip_device_fingerprint": hip_device,
+                "vulkan_device_fingerprint": vulkan_device,
+                "hip_source_hash": hip_source["source_hash"],
+                "vulkan_source_hash": vulkan_source["source_hash"],
+                "correctness_pass": correctness_pass,
+                "performance_claim": performance_claim,
+                "blocking_reasons": blocking_reasons,
+            },
             "matched_rows": matched,
             "comparisons": comparisons,
             "summary": {
@@ -1393,6 +1509,7 @@ def build_comparison(
                 "burst_gpu_speedup_min": min(speedups) if speedups else None,
                 "burst_gpu_speedup_max": max(speedups) if speedups else None,
                 "host_wall_status": "not_comparable_submission_contract",
+                "performance_claim": performance_claim,
             },
             "interpretation": (
                 "Matched wave32/rowtile raw Q8_0 dense q8_1+dp4a probe. GPU timestamp "

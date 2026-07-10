@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +84,8 @@ def _result(module, backend: str, timing_mode: str = "serial_latency"):
                     "out_features": 64,
                     "local_size": 32,
                     "workgroup_match": "exact_hip_wave32",
+                    "q8_blocks_per_row": 2,
+                    "q8_0_weight_bytes": 64 * 2 * module.Q8_0_BLOCK_BYTES,
                 },
             )
         )
@@ -110,7 +115,7 @@ def _result(module, backend: str, timing_mode: str = "serial_latency"):
             "repo": str(REPO_ROOT),
             "branch": "main",
             "commit": "abc123",
-            "dirty": True,
+            "dirty": False,
             "source_hash": f"sha256:{backend}",
         },
         "parameters": parameters,
@@ -172,6 +177,10 @@ def test_q8_comparison_uses_gpu_ratios_and_marks_host_wall_not_comparable() -> N
     )
 
     assert comparison["schema_version"] == 2
+    assert comparison["performance_claim"] is True
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+    assert comparison["provenance"]["blocking_reasons"] == []
     assert comparison["summary"]["matched_rows"] == 3
     row = next(
         item
@@ -237,7 +246,7 @@ def test_q8_comparison_rejects_mismatched_provenance_and_rows() -> None:
     try:
         module.build_comparison(hip, vulkan, command=["q8-test"])
     except ValueError as exc:
-        assert "row sets" in str(exc)
+        assert "exact requested matrix" in str(exc)
     else:
         raise AssertionError("expected a comparable-row mismatch rejection")
 
@@ -249,6 +258,72 @@ def test_q8_comparison_rejects_mismatched_provenance_and_rows() -> None:
         assert "source commit" in str(exc)
     else:
         raise AssertionError("expected a source-provenance mismatch rejection")
+
+
+def test_q8_comparison_rejects_identically_wrong_or_duplicate_row_matrices() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    for result in (hip, vulkan):
+        result["measurements"]["rows"][0]["operation"] = "unexpected"
+
+    with pytest.raises(ValueError, match="exact requested matrix"):
+        module.build_comparison(hip, vulkan, command=["q8-test"])
+
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    vulkan["measurements"]["rows"].append(
+        copy.deepcopy(vulkan["measurements"]["rows"][0])
+    )
+    with pytest.raises(ValueError, match="duplicate comparable rows"):
+        module.build_comparison(hip, vulkan, command=["q8-test"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("backend", "hip", "backend metadata"),
+        ("q8_blocks_per_row", 999, "block metadata"),
+        ("q8_0_weight_bytes", 999, "weight metadata"),
+    ],
+)
+def test_q8_comparison_rejects_row_metadata_drift(
+    field: str, value, message: str
+) -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    vulkan["measurements"]["rows"][0][field] = value
+
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["q8-test"])
+
+
+def test_q8_comparison_gates_dirty_sources_and_device_identity() -> None:
+    module = _load_runner()
+    hip = _result(module, "hip")
+    vulkan = _result(module, "vulkan")
+    hip["source"]["dirty"] = True
+    vulkan["source"]["dirty"] = True
+
+    comparison = module.build_comparison(hip, vulkan, command=["q8-test"])
+
+    assert comparison["performance_claim"] is False
+    assert comparison["provenance"]["blocking_reasons"] == ["dirty_source"]
+
+    vulkan = _result(module, "vulkan")
+    vulkan["hardware"]["gpu_name"] = "different"
+    with pytest.raises(ValueError, match="device identities"):
+        module.build_comparison(_result(module, "hip"), vulkan, command=["q8-test"])
+
+
+def test_q8_comparison_requires_source_hash() -> None:
+    module = _load_runner()
+    vulkan = _result(module, "vulkan")
+    vulkan["source"]["source_hash"] = ""
+
+    with pytest.raises(ValueError, match="source source_hash is missing"):
+        module.build_comparison(_result(module, "hip"), vulkan, command=["q8-test"])
 
 
 def test_q8_independent_comparison_requires_matched_calibrated_lanes() -> None:
