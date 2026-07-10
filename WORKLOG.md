@@ -150133,3 +150133,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   audit was attempted but cannot inspect its configured parent because
   `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent; no external source was
   copied or modified.
+
+## 2026-07-11 - SOL-G2 clean pre-fix greeting artifact
+
+- Ran committed `104fad87` with `uv run python
+  scripts/gguf_gdn_prefill_compare.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompt-kind greeting --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --require-cached-build --allow-mismatch
+  --json
+  benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-greeting-prefix.json`.
+- Both production bulk-prefill modes sample token `9419`, matching the current
+  llama.cpp greeting result and proving the old `9`/`271` visible mismatch is
+  stale. This does not clear state correctness: the first production and
+  row-bulk state mismatch is layer-0 recurrent while layer-0 Conv is exact.
+  Layer-0 BF16 output remains exact; layer 1 is the first hidden-output mismatch
+  (`880/2048` elements, max abs `0.000244140625`). The final FP32 hidden seed
+  differs in `2048/2048` elements with max abs `0.2977227` and RMS difference
+  `0.0390128`.
+- The artifact is 180 KiB, parses as JSON, contains no raw tensor payloads, and
+  records concrete `hip_gfx1151/gfx1151/Radeon 8060S`, exact-model fingerprint
+  `936659d6...c89fb`, TheRock HIP `7.13.60980-c76140fa27`, no staged/unstaged
+  changes, and the 255 unrelated pre-existing untracked files. Its fused-first
+  and chain-second wall observations are explicitly single-order diagnostics;
+  `performance_claim=false` and no throughput topline changes.
+- This result replaces the ambiguous G2 reproduction step with a precise RED:
+  make the split prepare/recurrent arithmetic byte-exact at layer 0, then rerun
+  the greeting, 512, 4K, segment-threshold, and chunk-boundary matrix before
+  considering G3 performance promotion.
