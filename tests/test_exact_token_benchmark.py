@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from hipengine.generation import GenerationOutput, GenerationTelemetry
 from hipengine.benchmark.exact_tokens import (
     ExactTokenOracle,
     load_exact_token_fixture,
@@ -120,6 +121,39 @@ def test_exact_token_tool_validates_http_prompt_and_generated_accounting() -> No
         tool.parse_http_response(response, prompt_rows=prompt_rows, max_tokens=2)
 
 
+def test_exact_token_tool_preserves_http_choice_telemetry() -> None:
+    tool = _load_tool()
+    response = {
+        "choices": [
+            {
+                "text": "a",
+                "hipengine": {
+                    "timing": {"batch_decode_ms": 8.0},
+                    "timing_scope": "batch",
+                    "batch_id": "batch-1",
+                    "group_rows": 2,
+                    "timing_owner": True,
+                },
+            },
+            {
+                "text": "b",
+                "hipengine": {
+                    "timing": {"batch_decode_ms": 8.0},
+                    "timing_scope": "batch",
+                    "batch_id": "batch-1",
+                    "group_rows": 2,
+                    "timing_owner": False,
+                },
+            },
+        ]
+    }
+
+    assert tool._http_choice_telemetry(response) == [
+        response["choices"][0]["hipengine"],
+        response["choices"][1]["hipengine"],
+    ]
+
+
 def test_openai_concurrency_sweep_uses_same_committed_fixture() -> None:
     spec = importlib.util.spec_from_file_location(
         "hipengine_vllm_openai_concurrency_sweep",
@@ -134,3 +168,96 @@ def test_openai_concurrency_sweep_uses_same_committed_fixture() -> None:
     assert tool.DEFAULT_FIXTURE == REPO_FIXTURE
     assert len(rows) == 8
     assert all(row == rows[0] for row in rows)
+
+
+def test_exact_token_direct_artifact_carries_scoped_timing_and_memory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tool = _load_tool()
+
+    class _FakeLLM:
+        resolved_backend = "hip_gfx1151"
+        resolved_quant = "w4_paro"
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def generate_detailed(self, prompts, _sampling):
+            return [
+                GenerationOutput(
+                    text="x",
+                    generated_token_ids=(101, 102),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=len(prompt),
+                        generated_tokens=2,
+                        timing={"decode_ms": 5.0},
+                        timing_scope="choice",
+                    ),
+                )
+                for prompt in prompts
+            ]
+
+    monkeypatch.setattr(tool, "LLM", _FakeLLM)
+    monkeypatch.setattr(
+        tool,
+        "memory_stats",
+        lambda: {
+            "current_allocated_bytes": 10,
+            "peak_allocated_bytes": 20,
+            "total_allocated_bytes": 30,
+            "total_freed_bytes": 20,
+            "active_allocations": 1,
+            "peak_allocations": 2,
+        },
+    )
+    monkeypatch.setattr(
+        tool,
+        "collect_artifact_provenance",
+        lambda **_kwargs: {"kind": "hipengine_artifact_provenance"},
+    )
+    args = tool.build_parser().parse_args(
+        [
+            "direct",
+            "--model-path",
+            str(tmp_path / "model"),
+            "--prompt-length",
+            "512",
+            "--prompt-count",
+            "1",
+            "--max-tokens",
+            "2",
+            "--json",
+            str(tmp_path / "out.json"),
+        ]
+    )
+    args.model = str(args.model_path)
+    fixture = load_exact_token_fixture(REPO_FIXTURE, prompt_length=512, prompt_count=1)
+
+    artifact = tool.run_direct(args, fixture)
+
+    assert artifact["generation_telemetry"] == [
+        {
+            "decode_state": {
+                "row_index": 0,
+                "step_index": 2,
+                "prompt_tokens": 512,
+                "generated_tokens": 2,
+                "phase": "done",
+                "continuation_eligible": False,
+            },
+            "timing": {"decode_ms": 5.0},
+            "timing_scope": "choice",
+            "group_rows": 1,
+            "timing_owner": True,
+        }
+    ]
+    assert artifact["memory"] == {
+        "scope": "hipengine_tracked_process",
+        "current_allocated_bytes": 10,
+        "peak_allocated_bytes": 20,
+        "total_allocated_bytes": 30,
+        "total_freed_bytes": 20,
+        "active_allocations": 1,
+        "peak_allocations": 2,
+    }

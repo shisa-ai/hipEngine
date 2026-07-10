@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/benchmark-matrix-manifest.schema.json",
+  "title": "hipEngine exact-token benchmark matrix manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schema_version",
+    "name",
+    "required_engines",
+    "required_surfaces",
+    "requirements",
+    "rows"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_benchmark_matrix_manifest"},
+    "schema_version": {"const": 1},
+    "name": {"type": "string", "minLength": 1},
+    "workdir": {"type": "string", "minLength": 1},
+    "required_engines": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["paro", "gguf"]}
+    },
+    "required_surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["direct", "server"]}
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "performance_claim": {"type": "boolean"},
+        "clean_provenance": {"type": "boolean"},
+        "scoped_timing": {"type": "boolean"},
+        "memory": {"type": "boolean"},
+        "profiler": {"type": "boolean"},
+        "server_generation_shape": {"type": "boolean"}
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "case_id", "engine", "surface", "path_variant", "artifact"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "case_id": {"type": "string", "minLength": 1},
+          "engine": {"enum": ["paro", "gguf"]},
+          "surface": {"enum": ["direct", "server"]},
+          "path_variant": {"type": "string", "minLength": 1},
+          "artifact": {"type": "string", "minLength": 1},
+          "memory": {"$ref": "#/$defs/attachment"},
+          "profiler": {"$ref": "#/$defs/attachment"},
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "pointer"],
+      "properties": {
+        "artifact": {"type": "string", "minLength": 1},
+        "pointer": {"type": "string"}
+      }
+    }
+  }
+}

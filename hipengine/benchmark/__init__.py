@@ -10,6 +10,14 @@ from hipengine.benchmark.exact_tokens import (
     load_exact_token_fixture,
     validate_exact_token_parity,
 )
+from hipengine.benchmark.matrix import (
+    BENCHMARK_MATRIX_KIND,
+    BENCHMARK_MATRIX_MANIFEST_KIND,
+    BENCHMARK_MATRIX_SCHEMA_VERSION,
+    MatrixError,
+    build_benchmark_matrix,
+    validate_benchmark_matrix,
+)
 from hipengine.benchmark.prompts import (
     DEFAULT_STABLE_PROMPT_FIXTURE,
     STABLE_PROMPT_SPECS,
@@ -40,6 +48,9 @@ from hipengine.benchmark.speculative import (
 __all__ = [
     "ARTIFACT_PROVENANCE_KIND",
     "ARTIFACT_PROVENANCE_SCHEMA_VERSION",
+    "BENCHMARK_MATRIX_KIND",
+    "BENCHMARK_MATRIX_MANIFEST_KIND",
+    "BENCHMARK_MATRIX_SCHEMA_VERSION",
     "DEFAULT_STABLE_PROMPT_FIXTURE",
     "DEFAULT_EXACT_TOKEN_FIXTURE",
     "D2HCounts",
@@ -48,6 +59,7 @@ __all__ = [
     "ExactTokenFixture",
     "ExactTokenOracle",
     "LogitCorrectness",
+    "MatrixError",
     "STABLE_PROMPT_SPECS",
     "SpeculativeBenchmarkModels",
     "SpeculativeGraphStatus",
@@ -55,6 +67,7 @@ __all__ = [
     "acceptance_summary",
     "aggregate_speculative_rows",
     "build_prompt_records",
+    "build_benchmark_matrix",
     "build_speculative_artifact",
     "collect_artifact_provenance",
     "collect_model_identity",
@@ -66,5 +79,6 @@ __all__ = [
     "load_exact_token_fixture",
     "validate_exact_token_parity",
     "validate_artifact_provenance",
+    "validate_benchmark_matrix",
     "validate_prompt_records",
 ]

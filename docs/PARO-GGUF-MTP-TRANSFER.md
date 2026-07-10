@@ -29,8 +29,8 @@ The native-batch blocker is recorded in
 | Order | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
 | 1 | Localize the gfx1151 native c8 divergence (`SOL-P1`) | Open, highest priority | Teacher-forced hidden, linear-state, KV, and token comparisons identify the first mismatching layer/substage at token index 2. |
-| 2 | Build the unified exact direct/server matrix (`SOL-M1`) | Open | One artifact joins exact tokens, scoped timings, route/backend/verifier shapes, request latency, memory, and profiler summaries for PARO/GGUF. |
-| 3 | Rerun PARO server c1/c2/c4/c8 with raw IDs | Awaiting M1; width-1 production route is safe | Same fixture/model/quant/target, all-choice exact output, clean provenance, owned timing, and explicit width/queue shapes. |
+| 2 | Build the unified exact direct/server matrix (`SOL-M1`) | Accepted | Manifest/schema v1 joins exact tokens, scoped timings, route/backend/verifier shapes, request latency, memory, and profiler summaries for PARO/GGUF without manual denominators. |
+| 3 | Rerun PARO server c1/c2/c4/c8 with raw IDs | Awaiting the first clean matrix run; width-1 production route is safe | Same fixture/model/quant/target, all-choice exact output, clean provenance, owned timing, and explicit width/queue shapes. |
 | 4 | Reopen native c1-c8, sparse, ragged, and shrinking gates | Blocked on item 1 | Every row matches independent `prefill_native()+step()`; profiler proves the intended native kernels ran. |
 | 5 | Profile PARO DFlash verifier buckets | Open | A clean real-model artifact ranks draft, target attention/MoE, LM-head/top1, accept, commit/scatter, graph, sync, and scheduler wall. |
 | 6 | Revisit LM-head/sample fusion or graph shapes | Evidence-gated | The current profile identifies a material bucket and the replacement passes exactness plus end-to-end A/B. |
