@@ -244,6 +244,83 @@ def numeric_mapping(value: Any) -> dict[str, float]:
     return out
 
 
+def backend_timing_records(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize per-choice timing payloads without losing batch ownership."""
+
+    records: list[dict[str, Any]] = []
+    for choice_index, payload in enumerate(payloads):
+        timing = numeric_mapping(payload.get("timing"))
+        if not timing:
+            continue
+        scope_explicit = "timing_scope" in payload
+        scope = payload.get("timing_scope", "choice")
+        if not isinstance(scope, str) or scope not in {"choice", "batch", "request", "client"}:
+            raise BenchError(f"choice {choice_index} has invalid timing_scope {scope!r}")
+        raw_group_rows = payload.get("group_rows", 1)
+        if isinstance(raw_group_rows, bool) or not isinstance(raw_group_rows, int) or raw_group_rows <= 0:
+            raise BenchError(f"choice {choice_index} has invalid group_rows {raw_group_rows!r}")
+        raw_owner = payload.get("timing_owner", True)
+        if not isinstance(raw_owner, bool):
+            raise BenchError(f"choice {choice_index} has invalid timing_owner {raw_owner!r}")
+        raw_batch_id = payload.get("batch_id")
+        batch_id = None if raw_batch_id is None else str(raw_batch_id).strip()
+        if raw_batch_id is not None and not batch_id:
+            raise BenchError(f"choice {choice_index} has an empty batch_id")
+        if scope == "batch":
+            if not batch_id:
+                raise BenchError(f"choice {choice_index} has batch timing without batch_id")
+            if scope_explicit and "timing_owner" not in payload:
+                raise BenchError(f"choice {choice_index} has batch timing without timing_owner")
+            if scope_explicit and "group_rows" not in payload:
+                raise BenchError(f"choice {choice_index} has batch timing without group_rows")
+
+        record: dict[str, Any] = {
+            "choice_index": choice_index,
+            "timing": timing,
+            "timing_scope": scope,
+            "group_rows": int(raw_group_rows),
+            "timing_owner": raw_owner,
+        }
+        if batch_id is not None:
+            record["batch_id"] = batch_id
+        if not scope_explicit:
+            record["legacy_scope_defaulted"] = True
+        records.append(record)
+    return records
+
+
+def selected_timing_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Select locally owned records; cross-response batch validation is aggregate's job."""
+
+    selected: list[dict[str, Any]] = []
+    seen_owned_batch_ids: set[str] = set()
+    for record in records:
+        if record.get("timing_scope") != "batch":
+            selected.append(record)
+            continue
+        if not record.get("timing_owner"):
+            continue
+        batch_id = str(record["batch_id"])
+        if batch_id in seen_owned_batch_ids:
+            raise BenchError(f"multiple timing owners for batch_id {batch_id!r} in one response")
+        seen_owned_batch_ids.add(batch_id)
+        selected.append(record)
+    return selected
+
+
+def merged_timing(records: list[dict[str, Any]]) -> dict[str, float]:
+    merged: dict[str, float] = {}
+    for record in records:
+        timing = record.get("timing")
+        if not isinstance(timing, dict):
+            continue
+        for key, value in timing.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            merged[str(key)] = merged.get(str(key), 0.0) + float(value)
+    return merged
+
+
 def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> dict[str, Any]:
     usage = response.get("usage") or {}
     timings = response.get("timings") or {}
@@ -281,7 +358,10 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
     hipengine_payloads = choice_hipengine_payloads(response)
     if hipengine_payloads:
         record["hipengine"] = hipengine_payloads
-        timing = numeric_mapping(hipengine_payloads[0].get("timing"))
+        timing_records = backend_timing_records(hipengine_payloads)
+        if timing_records:
+            record["backend_timing_records"] = timing_records
+        timing = merged_timing(selected_timing_records(timing_records))
         if timing:
             record["backend_timing_ms"] = {key: round(value, 3) for key, value in timing.items()}
             if record["draft_n"] == 0 and "mtp_generated_draft_tokens" in timing:
@@ -350,16 +430,56 @@ def aggregate(
     total_backend_generated = sum(int(x.get("backend_generated_tokens") or 0) for x in results)
     request_wall = sum(float(x.get("wall_s") or 0.0) for x in results)
     aggregate_wall = float(client_wall_s) if client_wall_s is not None else request_wall
+    timing_records: list[dict[str, Any]] = []
+    for row in results:
+        row_records = row.get("backend_timing_records")
+        if isinstance(row_records, list):
+            timing_records.extend(record for record in row_records if isinstance(record, dict))
+            continue
+        timing = numeric_mapping(row.get("backend_timing_ms"))
+        if timing:
+            timing_records.append(
+                {
+                    "timing": timing,
+                    "timing_scope": "choice",
+                    "group_rows": 1,
+                    "timing_owner": True,
+                    "legacy_scope_defaulted": True,
+                }
+            )
+
+    selected_records: list[dict[str, Any]] = []
+    batch_records: dict[str, list[dict[str, Any]]] = {}
+    choice_payloads_counted = 0
+    non_owner_copies_ignored = 0
+    for timing_record in timing_records:
+        if timing_record.get("timing_scope") != "batch":
+            selected_records.append(timing_record)
+            choice_payloads_counted += 1
+            continue
+        batch_id = str(timing_record.get("batch_id") or "").strip()
+        if not batch_id:
+            raise BenchError("batch timing record is missing batch_id")
+        batch_records.setdefault(batch_id, []).append(timing_record)
+
+    for batch_id, records in sorted(batch_records.items()):
+        group_rows = {int(record.get("group_rows", 0)) for record in records}
+        if len(group_rows) != 1 or next(iter(group_rows)) <= 0:
+            raise BenchError(f"inconsistent group_rows for batch_id {batch_id!r}")
+        owners = [record for record in records if record.get("timing_owner") is True]
+        if len(owners) != 1:
+            raise BenchError(
+                f"batch_id {batch_id!r} requires exactly one timing owner; found {len(owners)}"
+            )
+        selected_records.append(owners[0])
+        non_owner_copies_ignored += len(records) - 1
+
     backend_timing_totals: dict[str, float] = {}
     backend_timing_counts: dict[str, int] = {}
-    for row in results:
-        timing = row.get("backend_timing_ms")
-        if not isinstance(timing, dict):
-            continue
+    for timing_record in selected_records:
+        timing = numeric_mapping(timing_record.get("timing"))
         for key, raw_value in timing.items():
-            if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-                continue
-            backend_timing_totals[key] = backend_timing_totals.get(key, 0.0) + float(raw_value)
+            backend_timing_totals[key] = backend_timing_totals.get(key, 0.0) + raw_value
             backend_timing_counts[key] = backend_timing_counts.get(key, 0) + 1
     payload = {
         "n_requests": len(results),
@@ -393,6 +513,12 @@ def aggregate(
         payload["backend_timing_mean_ms"] = {
             key: round(backend_timing_totals[key] / max(1, backend_timing_counts[key]), 3)
             for key in sorted(backend_timing_totals)
+        }
+        payload["backend_timing_dedup"] = {
+            "batch_ids": sorted(batch_records),
+            "batch_payloads_counted": len(batch_records),
+            "choice_payloads_counted": choice_payloads_counted,
+            "non_owner_copies_ignored": non_owner_copies_ignored,
         }
     return payload
 

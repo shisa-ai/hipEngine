@@ -474,6 +474,10 @@ class GenerationTelemetry:
     decode_state: DecodeState
     event: str | None = None
     timing: Mapping[str, float] | None = None
+    timing_scope: str | None = None
+    batch_id: str | None = None
+    group_rows: int | None = None
+    timing_owner: bool | None = None
     usage: Mapping[str, int] | None = None
     diagnostics: Mapping[str, Any] | None = None
 
@@ -481,6 +485,32 @@ class GenerationTelemetry:
         object.__setattr__(self, "decode_state", DecodeState.from_value(self.decode_state))
         object.__setattr__(self, "event", None if self.event is None else str(self.event))
         timing = None if self.timing is None else {str(key): float(value) for key, value in self.timing.items()}
+        timing_scope = None if self.timing_scope is None else str(self.timing_scope)
+        if timing is not None and timing_scope is None:
+            timing_scope = "choice"
+        if timing_scope is not None and timing_scope not in {"choice", "batch", "request", "client"}:
+            raise ValueError("timing_scope must be choice, batch, request, or client")
+        batch_id = None if self.batch_id is None else str(self.batch_id).strip()
+        if batch_id == "":
+            raise ValueError("batch_id must be non-empty when provided")
+        group_rows = None if self.group_rows is None else int(self.group_rows)
+        if timing is not None and timing_scope != "batch" and group_rows is None:
+            group_rows = 1
+        if group_rows is not None and group_rows <= 0:
+            raise ValueError("group_rows must be positive when provided")
+        timing_owner = None if self.timing_owner is None else bool(self.timing_owner)
+        if timing is not None and timing_scope != "batch" and timing_owner is None:
+            timing_owner = True
+        if timing is None and any(
+            value is not None for value in (timing_scope, batch_id, group_rows, timing_owner)
+        ):
+            raise ValueError("timing ownership metadata requires a timing payload")
+        if timing_scope == "batch" and batch_id is None:
+            raise ValueError("batch-scoped timing requires batch_id")
+        if timing_scope == "batch" and group_rows is None:
+            raise ValueError("batch-scoped timing requires group_rows")
+        if timing_scope == "batch" and timing_owner is None:
+            raise ValueError("batch-scoped timing requires timing_owner")
         usage = None if self.usage is None else {str(key): max(0, int(value)) for key, value in self.usage.items()}
         diagnostics = (
             None
@@ -488,6 +518,10 @@ class GenerationTelemetry:
             else {str(key): value for key, value in self.diagnostics.items()}
         )
         object.__setattr__(self, "timing", timing)
+        object.__setattr__(self, "timing_scope", timing_scope)
+        object.__setattr__(self, "batch_id", batch_id)
+        object.__setattr__(self, "group_rows", group_rows)
+        object.__setattr__(self, "timing_owner", timing_owner)
         object.__setattr__(self, "usage", usage)
         object.__setattr__(self, "diagnostics", diagnostics)
 
@@ -500,6 +534,10 @@ class GenerationTelemetry:
                 decode_state=value.get("decode_state", value),
                 event=value.get("event"),
                 timing=value.get("timing"),
+                timing_scope=value.get("timing_scope"),
+                batch_id=value.get("batch_id"),
+                group_rows=value.get("group_rows"),
+                timing_owner=value.get("timing_owner"),
                 usage=value.get("usage"),
                 diagnostics=value.get("diagnostics"),
             )
@@ -507,6 +545,10 @@ class GenerationTelemetry:
             decode_state=getattr(value, "decode_state", value),
             event=getattr(value, "event", None),
             timing=getattr(value, "timing", None),
+            timing_scope=getattr(value, "timing_scope", None),
+            batch_id=getattr(value, "batch_id", None),
+            group_rows=getattr(value, "group_rows", None),
+            timing_owner=getattr(value, "timing_owner", None),
             usage=getattr(value, "usage", None),
             diagnostics=getattr(value, "diagnostics", None),
         )
@@ -548,6 +590,10 @@ class GenerationTelemetry:
         continuation_eligible: bool = False,
         event: str | None = None,
         timing: Mapping[str, float] | None = None,
+        timing_scope: str | None = None,
+        batch_id: str | None = None,
+        group_rows: int | None = None,
+        timing_owner: bool | None = None,
         usage: Mapping[str, int] | None = None,
         diagnostics: Mapping[str, Any] | None = None,
     ) -> "GenerationTelemetry":
@@ -588,6 +634,10 @@ class GenerationTelemetry:
             ),
             event=event,
             timing=timing,
+            timing_scope=timing_scope,
+            batch_id=batch_id,
+            group_rows=group_rows,
+            timing_owner=timing_owner,
             usage=usage,
             diagnostics=diagnostics,
         )
@@ -598,6 +648,14 @@ class GenerationTelemetry:
             payload["event"] = self.event
         if self.timing is not None:
             payload["timing"] = dict(self.timing)
+        if self.timing_scope is not None:
+            payload["timing_scope"] = self.timing_scope
+        if self.batch_id is not None:
+            payload["batch_id"] = self.batch_id
+        if self.group_rows is not None:
+            payload["group_rows"] = self.group_rows
+        if self.timing_owner is not None:
+            payload["timing_owner"] = self.timing_owner
         if self.usage is not None:
             payload["usage"] = dict(self.usage)
         if self.diagnostics is not None:

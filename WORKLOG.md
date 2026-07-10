@@ -149634,3 +149634,43 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and `docs/SOL-OPTIMIZATION.md`. `SOL-E1` is accepted; the next foundation
   unit is `SOL-E2`. No performance number changed, so no benchmark result,
   scoreboard row, or benchmark changelog entry is warranted for this unit.
+
+## 2026-07-11 - SOL-E2 owned batch timing and harness deduplication
+
+- RED captured the copied-wall defect in three places: `GenerationTelemetry`
+  had no ownership fields, PARO/GGUF c2 result rows could not identify one
+  timing owner, and two HTTP records carrying the same batch wall summed it
+  twice in `scripts/mtp-bench.py`. The initial focused GGUF assertion failed on
+  the missing `timing_scope`, as expected.
+- `GenerationTelemetry` now serializes `timing_scope`, `batch_id`,
+  `group_rows`, and `timing_owner`. A timing map without an explicit scope is
+  normalized to `choice`, one row, one owner. Batch scope fails closed unless
+  all batch ID, positive row count, and owner fields are supplied.
+- PARO packed generation assigns one UUID-backed ID to the full prefill/decode
+  group and marks only its first result as owner; parent true-c1, sampled-c1,
+  and isolated-width summaries also identify their batch timing. GGUF packed
+  AR and multi-slot MTP results share one stable group ID and one owner while
+  preserving each row's decode state. Live PARO and GGUF c2 regressions verify
+  that selecting owners counts the copied decode wall once.
+- `scripts/mtp-bench.py` parses every choice timing payload, validates scoped
+  metadata, preserves normalized records, ignores non-owner copies, and
+  deduplicates batch totals/means by ID. It fails on missing batch metadata,
+  inconsistent row counts, missing owners, or duplicate owners. Legacy
+  unscoped payloads remain explicitly normalized as choice timing.
+- GREEN: `uv run pytest -q tests/test_generation_registry.py
+  tests/test_mtp_bench_tool.py tests/test_generation_qwen35_paro.py
+  tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py`
+  passes all affected runtime, harness, generator, and OpenAI server tests. A
+  preliminary plain `python3 -m pytest` invocation could not collect the server
+  module because that interpreter lacks FastAPI; the project `uv` environment
+  is the validated dependency environment.
+- Guard bundle: `uv run python -m compileall -q hipengine tests scripts`, all
+  three CPU smoke modes (`registry`, `cpu-fixtures`, `smoke-add-plan`),
+  `uv run python scripts/sync_benchmark_readme.py --check`, and
+  `git diff --check` pass. The fixture smoke reports 7/7 CPU fixtures; the HIP
+  add command remains a dry-run plan with no GPU access.
+- Updated `docs/API.md`, `docs/BENCHMARK.md`, `docs/PLAN.md`, root `README.md`,
+  and `docs/SOL-OPTIMIZATION.md`. `SOL-E2` is accepted and `SOL-E3` is next.
+  Historical server artifacts still contain the old duplicated payloads and
+  remain ineligible until rerun; no metric, compact artifact, benchmark
+  scoreboard row, or benchmark changelog entry changed in this unit.

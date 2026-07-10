@@ -172,7 +172,42 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "native_sampler_rows": True,
     }
     assert payload["timing"] == {"prefill_ms": 12.5, "decode_ms": 3.0}
+    assert payload["timing_scope"] == "choice"
+    assert payload["group_rows"] == 1
+    assert payload["timing_owner"] is True
     assert payload["usage"] == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
+
+
+def test_generation_telemetry_serializes_batch_timing_ownership() -> None:
+    telemetry = GenerationTelemetry.from_decode_counts(
+        prompt_tokens=8,
+        generated_tokens=4,
+        timing={"batch_decode_ms": 12.5},
+        timing_scope="batch",
+        batch_id="paro-batch-17",
+        group_rows=6,
+        timing_owner=False,
+    )
+
+    assert telemetry.timing_scope == "batch"
+    assert telemetry.batch_id == "paro-batch-17"
+    assert telemetry.group_rows == 6
+    assert telemetry.timing_owner is False
+    assert telemetry.to_json_dict() == {
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 8,
+            "generated_tokens": 4,
+            "phase": "done",
+            "continuation_eligible": False,
+        },
+        "timing": {"batch_decode_ms": 12.5},
+        "timing_scope": "batch",
+        "batch_id": "paro-batch-17",
+        "group_rows": 6,
+        "timing_owner": False,
+    }
 
 
 def test_generation_output_accepts_finish_details_mapping() -> None:

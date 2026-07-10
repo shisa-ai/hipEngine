@@ -103,6 +103,130 @@ def test_concurrent_aggregate_preserves_exact_generated_total() -> None:
     assert agg["aggregate_backend_generated_per_second"] == 7.5
 
 
+def test_concurrent_aggregate_deduplicates_copied_batch_timing_by_owner() -> None:
+    tool = _load_tool()
+    owner = tool.record_from_response(
+        "request_0",
+        {
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 12.5},
+                        "timing_scope": "batch",
+                        "batch_id": "shared-batch-7",
+                        "group_rows": 2,
+                        "timing_owner": True,
+                    }
+                }
+            ]
+        },
+        wall_s=0.4,
+    )
+    copied = tool.record_from_response(
+        "request_1",
+        {
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 12.5},
+                        "timing_scope": "batch",
+                        "batch_id": "shared-batch-7",
+                        "group_rows": 2,
+                        "timing_owner": False,
+                    }
+                }
+            ]
+        },
+        wall_s=0.4,
+    )
+
+    agg = tool.aggregate([owner, copied], client_wall_s=0.4, concurrency=2)
+
+    assert owner["backend_timing_ms"] == {"batch_decode_ms": 12.5}
+    assert "backend_timing_ms" not in copied
+    assert agg["backend_timing_totals_ms"] == {"batch_decode_ms": 12.5}
+    assert agg["backend_timing_mean_ms"] == {"batch_decode_ms": 12.5}
+    assert agg["backend_timing_dedup"] == {
+        "batch_ids": ["shared-batch-7"],
+        "batch_payloads_counted": 1,
+        "choice_payloads_counted": 0,
+        "non_owner_copies_ignored": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "group_rows": 2,
+                "timing_owner": True,
+            },
+            "without batch_id",
+        ),
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "batch_id": "batch-1",
+                "timing_owner": True,
+            },
+            "without group_rows",
+        ),
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "batch_id": "batch-1",
+                "group_rows": 2,
+            },
+            "without timing_owner",
+        ),
+    ],
+)
+def test_record_rejects_incomplete_batch_timing_ownership(
+    payload: dict[str, object],
+    message: str,
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(tool.BenchError, match=message):
+        tool.record_from_response(
+            "request_0",
+            {"choices": [{"hipengine": payload}]},
+            wall_s=0.1,
+        )
+
+
+def test_concurrent_aggregate_rejects_duplicate_batch_timing_owners() -> None:
+    tool = _load_tool()
+    rows = [
+        tool.record_from_response(
+            f"request_{index}",
+            {
+                "choices": [
+                    {
+                        "hipengine": {
+                            "timing": {"batch_decode_ms": 1.0},
+                            "timing_scope": "batch",
+                            "batch_id": "batch-1",
+                            "group_rows": 2,
+                            "timing_owner": True,
+                        }
+                    }
+                ]
+            },
+            wall_s=0.1,
+        )
+        for index in range(2)
+    ]
+
+    with pytest.raises(tool.BenchError, match="exactly one timing owner"):
+        tool.aggregate(rows, client_wall_s=0.1, concurrency=2)
+
+
 def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None:
     tool = _load_tool()
 

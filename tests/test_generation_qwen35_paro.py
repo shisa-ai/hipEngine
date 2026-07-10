@@ -1820,8 +1820,16 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
     batch_generation = generator.last_batch_generation
     assert batch_generation is not None
     scheduler_chunks = batch_generation["scheduler_token_chunks"]
-    assert {key: value for key, value in batch_generation.items() if key != "scheduler_token_chunks"} == {
+    assert batch_generation["batch_id"].startswith("paro-decode-")
+    assert {
+        key: value
+        for key, value in batch_generation.items()
+        if key not in {"batch_id", "scheduler_token_chunks"}
+    } == {
         "path": "scheduler_native_packed_prefill_serial_decode",
+        "group_rows": 2,
+        "timing_scope": "batch",
+        "timing_owner": True,
         "batch_size": 2,
         "request_ids": [0, 1],
         "prompt_lengths": [2, 1],
@@ -1898,6 +1906,18 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         True,
         True,
     ]
+    telemetry = [output.telemetry for output in generator.last_generation_outputs]
+    assert all(item is not None for item in telemetry)
+    assert [item.timing_scope for item in telemetry if item is not None] == ["batch", "batch"]
+    assert len({item.batch_id for item in telemetry if item is not None}) == 1
+    assert [item.group_rows for item in telemetry if item is not None] == [2, 2]
+    assert [item.timing_owner for item in telemetry if item is not None] == [True, False]
+    owned_timing = [item for item in telemetry if item is not None and item.timing_owner]
+    assert len(owned_timing) == 1
+    assert sum(float(item.timing["batch_decode_ms"]) for item in owned_timing if item.timing) == float(
+        telemetry[0].timing["batch_decode_ms"]
+    )
+    assert batch_generation["batch_id"] == telemetry[0].batch_id
 
 
 def test_qwen35_paro_generator_partitions_unsupported_native_width(monkeypatch) -> None:

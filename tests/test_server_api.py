@@ -4822,6 +4822,9 @@ def test_completions_expose_backend_generation_telemetry() -> None:
             "sampler_mode": "greedy_fast",
         },
         "timing": {"prefill_ms": 2.5, "decode_ms": 1.25},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
         "diagnostics": {"batch_execution": {"path": "scheduler_native_compact_batch"}},
         "finish_details": _stateless_finish_details(
@@ -9045,6 +9048,9 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
             "native_sampler_rows": True,
         },
         "timing": {"prefill_ms": 3.5, "decode_ms": 1.25},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
     }
     assert done["hipengine"]["timing"]["backend_prefill_ms"] == 3.5
@@ -10314,6 +10320,9 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "processed_argmax",
         },
         "timing": {"prefill_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
@@ -10334,6 +10343,9 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "host_logits_sample",
         },
         "timing": {"prefill_ms": 2.5},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
@@ -15688,6 +15700,9 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_mode": "processed_argmax",
         },
         "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "tokens": {
             "streamed_tokens": 2,
             "delta_tokens": 2,
@@ -15939,6 +15954,9 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_mode": "host_logits_sample",
         },
         "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "usage": {"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
         "tokens": {
             "streamed_tokens": 1,

@@ -486,6 +486,9 @@ Why the design is better positioned:
 - `GenerationOutput` carries exact generated token IDs, and non-streaming OpenAI
   completion/chat responses expose validated per-choice and all-choice totals;
   decoded-text re-tokenization is diagnostic only.
+- Generation timing is explicitly scoped and owned: choice timing normalizes to
+  one row/one owner, packed PARO/GGUF groups share a stable batch ID, and server
+  benchmark aggregation counts one timing owner per batch.
 - The hot path owns raw HIP pointers and `hipGraph` replay directly instead of depending on torch tensors or PyTorch graph wrappers.
 - Many wrappers already expose `tokens`, `rows`, or row-shaped grids, so partial batching can be tested without changing the public API.
 - `KVLiveSpans` and `KVPolicy.batch_spans(...)` are intended to represent per-sequence KV state rather than a single scalar `(block_table, context_len)` pair.
@@ -512,8 +515,8 @@ Current blockers that keep c>N diagnostic rather than retained:
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
   commit. Target verify is packed up to four slots; draft-side batching, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
-- Exact all-choice generated-token accounting is available for non-streaming
-  responses. Benchmark coverage still needs timing ownership/deduplication,
+- Exact all-choice generated-token accounting and batch timing ownership are
+  available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,
   generated-token equality, graph/profiler provenance, and same-quant external
   baselines before promoting c>N claims.

@@ -40,6 +40,12 @@ Hard rules:
   when that exact accounting object is present. Decoded-text re-tokenization is
   recorded only as `retokenized_visible_tokens`; it cannot support a throughput
   or MTP economics claim. Multi-choice requests aggregate every choice.
+- **Owned server timing.** Retain `timing_scope`, `group_rows`, `timing_owner`,
+  and `batch_id` for batch-scoped payloads. Sum choice timing only for an
+  explicitly named per-choice-work metric. Deduplicate batch timing by
+  `batch_id`, require exactly one owner for each observed batch, and fail the
+  artifact if ownership or row metadata is missing/inconsistent. A timing map
+  copied to multiple choices contributes once.
 - **No input-conditioned shortcuts.** Do not add code that detects the prompt,
   token sequence, candidate-id pattern, logits shape, or any fixture-specific
   signal and changes the output to make a metric look better. Examples that are
