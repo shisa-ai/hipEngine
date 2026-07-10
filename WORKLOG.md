@@ -150047,3 +150047,39 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `set_position` keyword arguments. The live smoke exercises the real API and
   passes. SOL-G1 remains `in_progress` until the committed driver produces the
   exact 512-token/four-step artifact.
+
+## 2026-07-11 - SOL-G1 exact gfx1151 eager exit gate
+
+- Ran the committed oracle at `c941c158` with
+  `uv run python scripts/gguf_eager_teacher_forced_oracle.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 4
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached-build --json
+  benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json`.
+  This is a correctness-only run with no timing or performance claim.
+- The llama.cpp HIP tokenizer proves the `.Q`-repeated input is exactly 512
+  token IDs `9707`; its prompt-text SHA-256 is
+  `0b535ed1a78e15ab80587337d3e6b1e6a969d8a2bf5bfc8f13f42ea705c71621`.
+  The non-interactive completion and hipEngine production bulk-prefill/eager
+  lane both emit `[9707, 9707, 9707, 9707, 9707]`. The artifact records SHA-256
+  identities for both llama binaries and the sampled exact-model fingerprint
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`.
+- Positions 513, 514, 515, and 516 each pass with no mismatch. On every step,
+  the eager and fresh serial-prefix paths are finite and byte-identical for the
+  FP32 hidden seed, all 40 post-layer rows, all 30 linear-attention Conv/GDN
+  state pairs, and all 10 live full-attention key/value pairs. There is no
+  first divergent layer or component. The retained JSON is 307,211 bytes and
+  contains fingerprints/summaries only, not raw state payloads.
+- Canonical provenance records concrete
+  `hip_gfx1151/gfx1151/Radeon 8060S Graphics`, TheRock HIP
+  `7.13.60980-c76140fa27`, base commit `c941c158`, no staged or unstaged
+  changes, and all 255 unrelated pre-existing untracked files. The artifact is
+  `performance_claim=false`; no throughput row or numeric topline changes.
+- `python3 -m json.tool`, the focused 5-test oracle contract, Python
+  compilation, raw-payload absence check, benchmark/root README sync, and
+  `git diff --check` pass. Updated the SOL coordinator, GGUF MTP dashboard,
+  canonical/root benchmark language, and changelog. SOL-G1 is accepted on
+  gfx1151. The old W7900 throughput diagnostic remains stale until the same
+  oracle and performance protocol run on that hardware; SOL-G2 is the next
+  local GGUF correctness unit, and SOL-G4 is now open locally.
