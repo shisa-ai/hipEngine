@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -68,6 +69,34 @@ class _FakeSession:
             SimpleNamespace(token_id=token_id + 1, token_text=str(token_id + 1), logit=1.0)
             for token_id in token_ids
         )
+
+
+def test_profile_partitioned_bench_leaves_subgroup_route_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route_env = (
+        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
+        "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE",
+        "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS",
+        "HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
+        "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT",
+        "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS",
+    )
+    for name in route_env:
+        monkeypatch.setenv(name, "forced-parent-shape-value")
+
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            batch_decode_execution="profile_partitioned",
+            batch_prefill_linear_path="packed_segments",
+            projection_dispatch_artifact=None,
+        )
+    )
+
+    assert os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] == "0"
+    assert all(name not in os.environ for name in route_env)
 
 
 @pytest.mark.parametrize(
