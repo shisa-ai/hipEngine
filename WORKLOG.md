@@ -150083,3 +150083,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   gfx1151. The old W7900 throughput diagnostic remains stale until the same
   oracle and performance protocol run on that hardware; SOL-G2 is the next
   local GGUF correctness unit, and SOL-G4 is now open locally.
+
+## 2026-07-11 - SOL-G2 explicit GGUF GDN prefill selection
+
+- Recovered the original June 19 correctness blocker: on the exact 17-token
+  reasoning-off greeting, the split `prepare + k2 recurrent + rmsnorm_gate`
+  bulk-prefill route produced `*` then `A`, while the legacy fused
+  decode-order route restored the token-serial/native stream `\n\n` then
+  `This`. The runtime has therefore remained fused-first whenever both kernel
+  families are registered.
+- RED added explicit selection contracts before changing runtime dispatch. The
+  focused suite failed four cases: `chain` could not override available fused,
+  unavailable explicit modes silently selected the other implementation, and
+  no selector parser existed.
+- Added fail-closed `HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|fused|chain` routing.
+  `auto` preserves the certified fused-first default and chain fallback;
+  explicit modes override the other registered implementation, missing
+  required kernels raise `RuntimeError`, and invalid values raise `ValueError`.
+  The selector is evaluated at dispatch time so one diagnostic process can
+  create fresh sessions under controlled modes without registry monkeypatches.
+- GREEN: `uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_routing.py`
+  passes `13/13`. The environment-variable contract and removal condition are
+  recorded in `docs/ENVS.md` and `docs/REFACTOR.md`. SOL-G2 remains in progress
+  until the real fused/chain driver localizes the first hidden/recurrent
+  divergence and closes the short/512/4K/segment/chunk matrix.

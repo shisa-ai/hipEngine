@@ -34,6 +34,7 @@ from hipengine.runtime import qwen35_gguf_runner as qgr
 @pytest.fixture(autouse=True)
 def _reset_segment_threshold(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
 
 
 def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
@@ -76,6 +77,111 @@ def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
     assert fused_args[1] == scratch.linear_z.ptr
     assert fused_args[8] == scratch.recurrent_bf16.ptr
     assert fused_args[10] == 64
+
+
+def test_run_gdn_prefill_explicit_chain_overrides_available_fused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == ["prepare", "recurrent_k2", "rmsnorm_gate"]
+
+
+def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "fused")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == ["fused_decode_order"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "plan", "message"),
+    [
+        (
+            "chain",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain' is unavailable",
+        ),
+        (
+            "fused",
+            qgr._GGUFGDNPrefillPlan(
+                lambda *args, **kwargs: None,
+                lambda *args, **kwargs: None,
+                None,
+                lambda *args, **kwargs: None,
+                None,
+            ),
+            "explicit GGUF GDN prefill mode 'fused' is unavailable",
+        ),
+    ],
+)
+def test_run_gdn_prefill_explicit_unavailable_mode_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    plan: qgr._GGUFGDNPrefillPlan,
+    message: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
+    runner = _new_runner()
+    runner._gguf_gdn_prefill_plan_cache = plan
+
+    with pytest.raises(RuntimeError, match=message):
+        runner._run_gdn_prefill(
+            layer=_make_layer(),
+            scratch=_make_scratch(),
+            cfg=_make_cfg(),
+            rows=64,
+            recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+
+
+def test_gdn_prefill_mode_rejects_invalid_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "maybe")
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_GDN_PREFILL_MODE"):
+        qgr._gguf_gdn_prefill_mode()
 
 
 def test_run_gdn_prefill_uses_chain_under_threshold_when_fused_missing() -> None:
