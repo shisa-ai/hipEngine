@@ -150008,3 +150008,42 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the P0 foundation. The next measurement work is a clean repeated
   PARO/GGUF matrix; the next code-localization units remain `SOL-P1` and
   `SOL-G1`.
+
+## 2026-07-11 - SOL-G1 eager GGUF oracle infrastructure
+
+- The current correctness ambiguity is resolved at the token level before any
+  kernel change: llama.cpp HIP on the exact local
+  `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` consumes text `.Q` repeated 512 times as
+  exactly `[9707] * 512` and greedily emits `.Q.Q.Q.Q`, which re-tokenizes to
+  `[9707, 9707, 9707, 9707]`. The old W7900 repeated-9707 diagnostic is
+  therefore plausible model behavior, not itself evidence of a broken eager
+  engine. A separate `Hello` check also agrees on the first raw token (`11`).
+- RED added a pure checkpoint contract before the driver existed; collection
+  failed with `ModuleNotFoundError` for
+  `scripts.gguf_eager_teacher_forced_oracle`. The tests require exact
+  checkpoint acceptance, first-layer/component localization across layer
+  output, Conv/GDN, and KV state, external-token mismatch rejection, strict
+  token-list parsing, and exact prompt/trajectory lengths.
+- Added `scripts/gguf_eager_teacher_forced_oracle.py`. Its production lane
+  checks bulk-prefill plus eager-step token IDs against a non-interactive
+  llama.cpp trajectory. Its state lane teacher-forces those IDs for at least
+  four eager transitions and compares each checkpoint to a fresh token-serial
+  prefix recomputation. It copies no raw state into the artifact: compact
+  fingerprints cover the FP32 hidden seed, every post-layer FP32 row, every
+  FP32 Conv/GDN resident buffer, and each live BF16 full-attention K/V prefix;
+  finiteness, byte count, digest, RMS, and max-absolute value are retained.
+  Any mismatch fails closed and identifies the first layer/component.
+- Live gfx1151 smoke used prompt `[9707] * 8`, four transitions, BF16 KV,
+  `hip_gfx1151`, the cached compiler-version contract, and the local llama.cpp
+  HIP completion/tokenizer binaries. llama.cpp and the production bulk/eager
+  lane both emitted five `9707` IDs. All four serial-prefix comparisons were
+  byte-exact with no hidden, layer-output, linear-state, or ten-layer KV
+  mismatch; `/tmp/sol-g1-smoke-p8-d4.json` is diagnostic only and is not
+  retained.
+- GREEN: the new focused suite passes `5/5`; Python compilation and
+  `git diff --check` pass. A neighboring 29-test bundle has four existing
+  failures in `tests/test_qwen35_gguf_hidden_seed_contract.py`: legacy
+  `zero_states` lambdas do not accept the runtime's current `stream` and
+  `set_position` keyword arguments. The live smoke exercises the real API and
+  passes. SOL-G1 remains `in_progress` until the committed driver produces the
+  exact 512-token/four-step artifact.

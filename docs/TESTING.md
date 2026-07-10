@@ -121,6 +121,22 @@ uv run python scripts/benchmark_matrix.py validate \
   --json /tmp/sol-m1-paro-e5-diagnostic.json
 ```
 
+For `SOL-G1` and any eager GGUF state/lifecycle change, run the four-step
+teacher-forced oracle. It first proves the exact repeated-token prompt and
+greedy trajectory with llama.cpp, then compares every eager checkpoint against
+a fresh token-serial prefix recomputation. Hidden rows, all Conv/GDN state, and
+the live full-attention K/V prefixes must be byte exact; any failure reports the
+first layer/component:
+
+```bash
+uv run python scripts/gguf_eager_teacher_forced_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 \
+  --decode-steps 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/sol-g1-gfx1151-p512-d4.json
+```
+
 ### 2. CPU deterministic bundle
 
 Use for ordinary non-GPU code changes before commit:

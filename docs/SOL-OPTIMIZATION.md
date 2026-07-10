@@ -309,7 +309,7 @@ and a true no-spec AR baseline.
 
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
-| `SOL-G1` | Build a teacher-forced token, hidden, recurrent-state, and KV oracle for eager GGUF decode across at least four steps. | `open` | E3, B1 | Repeated-token/current eager behavior is classified as correct or localized to the first divergent layer/state. |
+| `SOL-G1` | Build a teacher-forced token, hidden, recurrent-state, and KV oracle for eager GGUF decode across at least four steps. | `in_progress`: the fail-closed oracle and RED coverage are implemented; an 8-token live smoke matches llama.cpp and is byte-exact through four hidden/Conv/GDN/KV checkpoints. The exact 512-token exit artifact is next. | E3, B1 | Repeated-token/current eager behavior is classified as correct or localized to the first divergent layer/state. |
 | `SOL-G2` | Add explicit GDN prefill `fused|chain|auto` diagnostic selection. Reproduce the 17-token mismatch and bisect first hidden/recurrent divergence. | `open` | G1 | Chain matches target tokens/state at short, 512, 4K, segment, and chunk boundaries. |
 | `SOL-G3` | Promote the split prepare + segmented-k2 + RMSNorm chain only if same-run wall wins. | `blocked` | G2 | Exact state/tokens plus prefill wall win on both primary contexts; expected kernel trace present. |
 | `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `blocked` | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
