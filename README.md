@@ -55,6 +55,7 @@ numbers below.
 - Choice telemetry declares timing scope, covered rows, and ownership; packed PARO/GGUF timing shares a stable batch ID so benchmark consumers count copied group walls once.
 - Non-streaming server responses expose request-scoped route caps, queue request/prompt groups, actual backend call widths, and speculative verifier rows independently; the benchmark harness deduplicates the shape by queue-group ID, so client c8 cannot be mislabeled as a width-8 verifier run.
 - New server, retained PARO, GGUF, and HIP/Vulkan micro artifacts share one torch-free provenance contract with a concrete resolved backend/arch/device, content-derived model fingerprint, exact command/toolchain, and separate staged, unstaged, and untracked source state.
+- The gfx1151 GGUF eager gate proves that `[9707] * 512` legitimately continues with token `9707` in both llama.cpp and hipEngine; four teacher-forced transitions match fresh serial-prefix hidden, Conv/GDN, and live KV state byte-for-byte. This is a [correctness artifact](benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json), not a throughput claim.
 - `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
 - Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M/Q4_K_S sweeps are in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). The Q4_K_M link points at Unsloth's MTP-bearing GGUF repo so the same filename also works for llama.cpp draft-MTP comparisons. GGUF uses a substantial GGUF-specific runtime path with bulk prefill, eager resident decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is the lower-memory secondary file; Q4_K_M is the active 1:1 llama.cpp comparison target and current 24 GiB BF16-KV support is mid-context unless a lower-memory KV/weight policy is enabled. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
@@ -134,10 +135,11 @@ commit/build, GPU, full command, and whole-card sampling artifact.
 **Status: stale diagnostic.** The linked record is the last complete same-host sweep,
 measured on 2026-07-07 at hipEngine `b4edca09` with TheRock HIP
 `7.13.26162-1140233ffe`. Its top-level artifact sets
-`performance_claim=false`. The GGUF path repeatedly selected token `9707` and
-is not a correctness-certified performance baseline. hipEngine PARO uses W4
-PARO/BF16 KV; the other columns use Q4_K_M GGUF with BF16/f16 KV, so maxima are
-not same-quant wins.
+`performance_claim=false`. The GGUF path repeatedly selected token `9707`;
+that stream is externally and state-certified on gfx1151, but this old gfx1100
+run predates the hardware-local oracle and current provenance contract.
+hipEngine PARO uses W4 PARO/BF16 KV; the other columns use Q4_K_M GGUF with
+BF16/f16 KV, so maxima are not same-quant wins.
 
 <!-- BEGIN TOPLINE:W7900_SWEEP -->
 No eligible model-throughput row; the `performance_claim=false` sweep remains linked below pending correctness rerun.

@@ -25,6 +25,13 @@ opt-in replication lane, not the production default. The historical llama.cpp
 HIP/Vulkan rates and stage traces are external/diagnostic comparators, not
 hipEngine toplines.
 
+The underlying gfx1151 eager target control is now correctness-certified by
+[`SOL-G1`](SOL-OPTIMIZATION.md): for the exact Q4_K_M model and
+`[9707] * 512`, llama.cpp and hipEngine emit the same five-token repeated
+trajectory, and four teacher-forced transitions match fresh serial prefixes
+byte-for-byte across hidden rows, Conv/GDN state, and live K/V. This validates
+the repeated stream; it does not refresh any MTP or AR speed row.
+
 ## Server And Concurrency Status
 
 There is no eligible OpenAI MTP server timing row.
