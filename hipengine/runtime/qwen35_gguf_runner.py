@@ -1496,10 +1496,11 @@ class Qwen35GGUFFullStackRunner:
         keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``.
         ``HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|fused|chain`` selects the
         implementation; ``auto`` preserves the correctness-certified
-        fused-first fallback. Whether the single-segment k2 or multi-segment
-        k2_segments recurrent kernel runs is a perf-tuning decision controlled
-        by ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025),
-        not a per-quant/per-backend branch.
+        fused-first fallback. The exact chain keeps raw Q/K and normalization
+        scales separate so its recurrent kernel preserves fused decode-order
+        arithmetic. Whether its single-sequence or segment-aware recurrence
+        runs is controlled by ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD``
+        (default 1025), not a per-quant/per-backend branch.
         """
 
         plan = self._gdn_prefill_plan()
@@ -1517,12 +1518,9 @@ class Qwen35GGUFFullStackRunner:
         use_fused = plan.has_fused and mode in {"auto", "fused"}
         use_chain = plan.has_chain and (mode == "chain" or not use_fused)
         if use_fused:
-            # Correctness-first fallback: the split prepare+k2+rmsnorm chain is
-            # still registered for tests and future perf work, but real GGUF
-            # prompt parity currently matches the token-serial path only through
-            # the legacy decode-order fused kernel.  Keep bulk prefill on that
-            # path until the chain is re-certified against the same target AR
-            # trace.
+            # Keep auto on the established fused route until the exact split
+            # chain clears the complete SOL-G2 context/boundary matrix and the
+            # same-run SOL-G3 wall gate selects a default.
             plan.fused_decode_order(
                 scratch.conv_out.ptr,
                 scratch.linear_z.ptr,
@@ -1544,6 +1542,87 @@ class Qwen35GGUFFullStackRunner:
             )
             return
         if use_chain:
+            if plan.has_exact_chain:
+                plan.exact_prepare(
+                    scratch.conv_out.ptr,
+                    scratch.linear_alpha.ptr,
+                    scratch.linear_beta.ptr,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    scratch.prefill_query.ptr,
+                    scratch.prefill_key.ptr,
+                    scratch.prefill_value.ptr,
+                    scratch.prefill_beta.ptr,
+                    scratch.prefill_decay.ptr,
+                    scratch.prefill_query_scale.ptr,
+                    scratch.prefill_key_scale.ptr,
+                    rows,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                segment_threshold = _gguf_gdn_prefill_segment_threshold()
+                use_exact_segments = (
+                    plan.exact_recurrent_segments is not None
+                    and rows >= segment_threshold
+                    and getattr(scratch, "gdn_cu_seqlens", None) is not None
+                    and getattr(scratch, "gdn_state_indices", None) is not None
+                )
+                if use_exact_segments:
+                    plan.exact_recurrent_segments(
+                        scratch.prefill_query.ptr,
+                        scratch.prefill_key.ptr,
+                        scratch.prefill_value.ptr,
+                        scratch.prefill_beta.ptr,
+                        scratch.prefill_decay.ptr,
+                        scratch.prefill_query_scale.ptr,
+                        scratch.prefill_key_scale.ptr,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr,
+                        scratch.gdn_cu_seqlens.ptr,
+                        scratch.gdn_state_indices.ptr,
+                        rows,
+                        1,
+                        cfg.ssm_time_step_rank,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                else:
+                    plan.exact_recurrent(
+                        scratch.prefill_query.ptr,
+                        scratch.prefill_key.ptr,
+                        scratch.prefill_value.ptr,
+                        scratch.prefill_beta.ptr,
+                        scratch.prefill_decay.ptr,
+                        scratch.prefill_query_scale.ptr,
+                        scratch.prefill_key_scale.ptr,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr,
+                        rows,
+                        cfg.ssm_time_step_rank,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                plan.rmsnorm_gate(
+                    scratch.recurrent_out.ptr,
+                    scratch.linear_z.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
+                    scratch.recurrent_bf16.ptr,
+                    cfg.rms_norm_eps,
+                    rows,
+                    cfg.ssm_time_step_rank,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             plan.prepare(
                 scratch.conv_out.ptr,
                 scratch.linear_alpha.ptr,
@@ -12153,6 +12232,8 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_value: object
     prefill_beta: object
     prefill_decay: object
+    prefill_query_scale: object
+    prefill_key_scale: object
     recurrent_out: object
     recurrent_bf16: object
     linear_conv_state_tmp: object
@@ -12328,6 +12409,8 @@ class _GGUFFullAttentionPrefillScratch:
             "prefill_value": buf(recurrent_f32_bytes),
             "prefill_beta": buf(prefill_scalar_bytes),
             "prefill_decay": buf(prefill_scalar_bytes),
+            "prefill_query_scale": buf(prefill_scalar_bytes),
+            "prefill_key_scale": buf(prefill_scalar_bytes),
             "recurrent_out": buf(recurrent_f32_bytes),
             "recurrent_bf16": buf(linear_z_bytes),
             "linear_conv_state_tmp": buf(conv_state_bytes),
@@ -13253,6 +13336,24 @@ _GDN_PREFILL_RMSNORM_GATE_BF16_KEY = KernelKey(
 _GDN_PREFILL_DECODE_ORDER_BF16_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"
 )
+_GDN_PREFILL_EXACT_PREPARE_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_prefill_prepare",
+    "gguf_qwen35",
+    "f32_bf16_raw_scales",
+)
+_GDN_PREFILL_EXACT_RECURRENT_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments",
+)
 _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 1025
 _GGUF_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
 _GGUF_GDN_PREFILL_MODES = frozenset({"auto", "fused", "chain"})
@@ -13281,12 +13382,13 @@ class _CompactMoeWmmaPlan:
 class _GGUFGDNPrefillPlan:
     """Resolved kernel set for the qwen35 GGUF GDN prefill path.
 
-    ``recurrent_segments`` is optional and only consulted when the runtime
-    decides the prefill row count meets the multi-segment threshold; for the
-    current single-sequence prefill it is always called with ``segments=1``,
-    so the parent ``segments_k2`` kernel is only useful for batched prefill.
-    ``auto`` dispatch remains fused-first; explicit diagnostic selections fail
-    closed when their required members are not registered.
+    The segment-aware members are optional and only consulted when the runtime
+    decides the prefill row count meets the threshold. For the current
+    single-sequence prefill they are called with ``segments=1``; the same ABI
+    also supports future packed segments. ``auto`` remains fused-first;
+    explicit diagnostic selections fail closed when their required members
+    are not registered. When present, the raw-scale exact members supersede the
+    legacy normalized-Q/K k2 members for explicit ``chain`` dispatch.
     """
 
     prepare: object | None
@@ -13294,10 +13396,13 @@ class _GGUFGDNPrefillPlan:
     recurrent_segments: object | None
     rmsnorm_gate: object | None
     fused_decode_order: object | None
+    exact_prepare: object | None = None
+    exact_recurrent: object | None = None
+    exact_recurrent_segments: object | None = None
 
     @property
     def has_chain(self) -> bool:
-        return (
+        return self.has_exact_chain or (
             self.prepare is not None
             and self.recurrent is not None
             and self.rmsnorm_gate is not None
@@ -13306,6 +13411,14 @@ class _GGUFGDNPrefillPlan:
     @property
     def has_fused(self) -> bool:
         return self.fused_decode_order is not None
+
+    @property
+    def has_exact_chain(self) -> bool:
+        return (
+            self.exact_prepare is not None
+            and self.exact_recurrent is not None
+            and self.rmsnorm_gate is not None
+        )
 
 
 def _gguf_gdn_prefill_segment_threshold() -> int:
@@ -13426,6 +13539,9 @@ def _resolve_gguf_gdn_prefill_plan(
         recurrent_segments=_resolve(_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY),
         rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
         fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
+        exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
+        exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
+        exact_recurrent_segments=_resolve(_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_KEY),
     )
 
 

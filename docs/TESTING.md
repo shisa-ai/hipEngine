@@ -139,9 +139,11 @@ uv run python scripts/gguf_eager_teacher_forced_oracle.py \
 
 For `SOL-G2` and any GGUF GDN prefill math/routing change, compare explicit
 `fused` and `chain` production bulk prefill on the exact 17-token greeting.
-The all-layer diagnostic lane identifies the first hidden-output and resident
-Conv/GDN divergence. A mismatch exits nonzero unless `--allow-mismatch` is used
-to retain a pre-fix diagnostic artifact; such an artifact is not an acceptance:
+The exact split chain keeps raw Q/K and their normalization scales separate so
+the recurrence can preserve the fused decode-order arithmetic. The all-layer
+diagnostic lane identifies the first hidden-output and resident Conv/GDN
+divergence. A mismatch exits nonzero unless `--allow-mismatch` is used to
+retain a pre-fix diagnostic artifact; such an artifact is not an acceptance:
 
 ```bash
 uv run python scripts/gguf_gdn_prefill_compare.py \

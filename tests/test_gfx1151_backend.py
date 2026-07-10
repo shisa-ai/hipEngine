@@ -256,8 +256,9 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     plan = runner._gdn_prefill_plan()
 
     assert plan.has_chain
+    assert plan.has_exact_chain
     assert plan.has_fused
-    assert resolved == ["hip_gfx1151"] * 5
+    assert resolved == ["hip_gfx1151"] * 8
 
 
 def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(

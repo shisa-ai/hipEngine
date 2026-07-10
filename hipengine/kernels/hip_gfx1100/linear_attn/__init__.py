@@ -19,6 +19,8 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
     plan_qwen35_linear_attn_gdn_build,
     qwen35_gdn_prefill_recurrent_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
@@ -34,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_fp16,
+    qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
 
@@ -43,6 +46,8 @@ __all__ = [
     "plan_qwen35_linear_attn_conv_build",
     "plan_qwen35_linear_attn_gdn_build",
     "qwen35_gdn_prefill_recurrent_f32",
+    "qwen35_gdn_prefill_recurrent_decode_order_exact_f32",
+    "qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32",
     "qwen35_gdn_prefill_recurrent_k2_f32",
     "qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments",
     "qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy",
@@ -56,6 +61,7 @@ __all__ = [
     "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16",
     "qwen35_linear_attn_prefill_prepare_f32_bf16",
     "qwen35_linear_attn_prefill_prepare_f32_fp16",
+    "qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16",
     "qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16",
     "qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16",
     "qwen35_linear_attn_conv_decode_bf16",

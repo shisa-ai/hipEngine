@@ -21,11 +21,14 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
+    qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.runtime import qwen35_gguf_runner as qgr
@@ -47,6 +50,13 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert plan.recurrent_segments is qwen35_gdn_prefill_recurrent_segments_k2_f32
     assert plan.rmsnorm_gate is qwen35_gdn_prefill_rmsnorm_gate_bf16
     assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
+    assert plan.exact_prepare is qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16
+    assert plan.exact_recurrent is qwen35_gdn_prefill_recurrent_decode_order_exact_f32
+    assert (
+        plan.exact_recurrent_segments
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32
+    )
+    assert plan.has_exact_chain
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
@@ -104,6 +114,40 @@ def test_run_gdn_prefill_explicit_chain_overrides_available_fused(
     )
 
     assert [name for name, _ in calls] == ["prepare", "recurrent_k2", "rmsnorm_gate"]
+
+
+def test_run_gdn_prefill_explicit_chain_prefers_exact_split(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "legacy_prepare"),
+        recurrent=_recorder(calls, "legacy_recurrent"),
+        recurrent_segments=_recorder(calls, "legacy_segments"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare=_recorder(calls, "exact_prepare"),
+        exact_recurrent=_recorder(calls, "exact_recurrent"),
+        exact_recurrent_segments=_recorder(calls, "exact_segments"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare",
+        "exact_recurrent",
+        "rmsnorm_gate",
+    ]
 
 
 def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
@@ -393,6 +437,8 @@ def _make_scratch(*, include_gdn_segment_fields: bool = True) -> SimpleNamespace
         "prefill_value": SimpleNamespace(ptr=0xD2),
         "prefill_beta": SimpleNamespace(ptr=0xD3),
         "prefill_decay": SimpleNamespace(ptr=0xD4),
+        "prefill_query_scale": SimpleNamespace(ptr=0xD5),
+        "prefill_key_scale": SimpleNamespace(ptr=0xD6),
         "recurrent_out": SimpleNamespace(ptr=0xE0),
         "recurrent_bf16": SimpleNamespace(ptr=0xE1),
     }
