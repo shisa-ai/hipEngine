@@ -51,6 +51,20 @@ def test_dflash_verify_sync_phases_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert runner_module._dflash_verify_sync_phases_enabled() is False
 
 
+def test_retained_batch_defaults_select_certified_linear_output_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env_name = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"
+    monkeypatch.delenv(env_name, raising=False)
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    assert runner_module._batch_decode_linear_out_flags(1) == (None, False)
+    assert runner_module._batch_decode_linear_out_flags(8) == (None, True)
+
+    monkeypatch.setenv(env_name, "batch")
+    assert runner_module._batch_decode_linear_out_flags(8) == (False, False)
+
+
 def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, object]:
     sequences = [[row, row + 10] for row in range(rows)]
     return {
@@ -1561,7 +1575,11 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     assert payload["blockers"] == list(metadata.blockers)
 
 
-def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineligible() -> None:
+def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineligible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT", raising=False)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.layer_limit = 3
     session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
@@ -1817,8 +1835,8 @@ def test_qwen35_resident_step_batch_native_accepts_sparse_slots(monkeypatch) -> 
     def fake_set_tokens(tokens, *, stream=0):
         calls.append(("tokens", (tuple(tokens), stream)))
 
-    def fake_set_positions(positions, *, stream=0):
-        calls.append(("positions", (tuple(positions), stream)))
+    def fake_set_positions(positions, *, slots=None, stream=0):
+        calls.append(("positions", (tuple(positions), tuple(slots or ()), stream)))
 
     def fake_run_layers(*, rows, positions, slots, stream=0):
         calls.append(("run", (rows, tuple(positions), tuple(slots), stream)))
@@ -1834,7 +1852,7 @@ def test_qwen35_resident_step_batch_native_accepts_sparse_slots(monkeypatch) -> 
     assert results == (None, None)
     assert calls == [
         ("tokens", ((10, 20), 0)),
-        ("positions", ((5, 6), 0)),
+        ("positions", ((5, 6), (0, 2), 0)),
         ("run", (2, (5, 6), (0, 2), 0)),
         ("sync", None),
     ]
@@ -4417,7 +4435,9 @@ def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallb
 
     session.runtime = FakeRuntime()
     session._set_batch_token_embeddings = lambda tokens, *, stream=0: calls.append(("tokens", (tuple(tokens), stream)))
-    session._set_batch_positions = lambda positions, *, stream=0: calls.append(("positions", (tuple(positions), stream)))
+    session._set_batch_positions = lambda positions, *, slots=None, stream=0: calls.append(
+        ("positions", (tuple(positions), tuple(slots or ()), stream))
+    )
 
     def fake_run_layers(*, rows, positions, slots, stream=0):
         calls.append(("run", (rows, tuple(positions), tuple(slots), stream)))
@@ -4430,7 +4450,7 @@ def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallb
     assert results == (None, None)
     assert calls == [
         ("tokens", ((1, 2), 0)),
-        ("positions", ((1023, 1023), 0)),
+        ("positions", ((1023, 1023), (0, 1), 0)),
         ("run", (2, (1023, 1023), (0, 1), 0)),
         ("sync", None),
     ]

@@ -149409,3 +149409,89 @@ graphless decode launch-collapse path without regressing target/serial parity.
   c8 maximum, including with the repaired serial row. The next route must cap
   each session lifetime at an evidence-backed width; interleaving subgroups in
   one c>8 session remains rejected.
+
+## 2026-07-10 - PARO true-c1 oracle correction and fail-closed routing
+
+- **Correction to the preceding serial-bridge entry:** the retained harness's
+  supposed independent c1 oracle used `prefill_native_packed()` plus
+  `step_batch_native(rows=1)`. It therefore compared the batch path with another
+  batch-shaped path. The original serial bridge output `[17,17,220]` was not
+  wrong: the true single-request `prefill_native()+step()` oracle emits that
+  sequence, while the batch-shaped oracle emitted `[17,17,17]`.
+- Changed the retained c1 oracle to the real single-request prefill/decode path
+  and isolated it from parent-width decode, prefill, and sampler environment
+  overrides. Restored `step_batch_serial()` to `_run_layers()` c1 replay per
+  physical slot. Kept the physical-slot position upload and sparse graph
+  reset/advance repair from `736a90cc`.
+- A full gfx1151 sparse transition now distinguishes the routes. Starting from
+  c3, cancelling slot 1, and decoding 128 tokens on physical slots `[0,2]`:
+  native c2 fails true-c1 equality, while serial c1 passes both 129-token rows.
+  Commands differ only by `--decode-execution native|serial` in
+  `scripts/qwen35_batch_sparse_slot_correctness.py --prompt-length 512
+  --decode-tokens 128 --max-layers 40 --max-sequence-length 1024`. The native
+  artifact is `/tmp/hipengine-prebench/paro-c9-c16/sparse-c3-cancel-middle-p512-d128.json`;
+  the serial artifact is `/tmp/hipengine-prebench/paro-c9-c16/sparse-c3-cancel-middle-serial-p512-d128.json`.
+- A second 512-token prompt (`token 23066` repeated) exposed two more contract
+  gaps. The benchmark's explicit c8 route used the certified batch-GEMV linear
+  output, but the runtime blank default used `native_batch` and produced token
+  `3966` instead of `87383`; retained c2-c8 defaults now select batch-GEMV unless
+  explicitly overridden. More importantly, even packed prefill plus serial c1
+  later diverged from the true single-request graph on this prompt, so packed
+  batch prefill is not a generally exact fallback yet.
+- The current gfx1151 width artifact has `performance_claim=false`. The profile
+  loader now rejects any artifact without `performance_claim=true`; this blocks
+  the diagnostic c2-c8 profile from automatic routing. Missing, blocked, or
+  out-of-position-range profiles route every prompt through the current
+  single-request prefill plus graph contract using one reused width-1 session.
+  Generated token IDs are retained in telemetry and parent request IDs remain
+  global.
+- GPU gates for the production fallback used the 512-token repeated-hello
+  prompt that exposed the packed path. c9/max_tokens=4 matches a fresh c1 on all
+  rows (`" dI\\u"`) and reports `scheduler_true_c1_fallback`, nine width-1
+  graph groups, and the rejected-profile blocker. c9/max_tokens=137 emits 137
+  identical tokens on all nine rows. Its single dirty-worktree end-to-end run
+  took `44.532 s` (`27.688 generated tok/s` including model load and nine
+  prefills); this is correctness-only, not a retained performance claim.
+- Focused unit coverage passes (`33 passed`), the full
+  `tests/test_generation_qwen35_paro.py` module passes (`46 passed`), compileall
+  passes for all changed runtime/scripts, and `git diff --check` is clean.
+
+## 2026-07-10 - PARO shrinking gate and schema-v2 promotion contract
+
+- Tightened the fail-closed route after reviewing the full generator surface.
+  Sampled multi-request generation also used uncertified packed prefill, so it
+  now executes independent width-1 sessions with per-row sampler state and
+  scheduler-token telemetry. Resident session reuse requires an exact batch
+  width; an isolated c1 remainder can no longer reuse a wider allocation.
+- Accepted width profiles now use schema 2. Promotion requires
+  `performance_claim=true`, an independent single-request prefill/decode c1
+  oracle, accepted exact direct rows, and explicit green packed-prefill,
+  sparse-slot, and shrinking-batch generated-token gates. The current schema-1
+  diagnostic artifact therefore remains blocked even if its top-level claim is
+  edited incorrectly.
+- Added `scripts/qwen35_batch_shrinking_correctness.py`. It begins at c8, runs
+  two decode steps at each width through c1, and cancels physical slots in the
+  hole-producing order `[4,5,3,6,2,7,1]`. Every row is compared over its full
+  lifetime with a true c1 session using the same prompt and decode horizon.
+- The dirty-worktree gfx1151 serial run passed all eight rows at 40 layers,
+  prompt 512, and c8->c1. The same native run failed all eight rows; native c8
+  already emitted `[17,17,17]` where true c1 emitted `[17,17,220]`. Commands
+  were identical except `--decode-execution serial|native`:
+  `env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3
+  scripts/qwen35_batch_shrinking_correctness.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json
+  --prompt-length 512 --batch-size 8 --steps-per-width 2 --max-layers 40
+  --max-sequence-length 1024 --compiler-version-file
+  /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt
+  --require-cached-build --decode-execution serial|native --json <artifact>`.
+  Raw artifacts are
+  `/tmp/hipengine-prebench/paro-c9-c16/shrinking-c8-c1-serial-true-c1.json`
+  and `.../shrinking-c8-c1-native-true-c1.json`; both report base commit
+  `736a90cc` with `hipengine_dirty=true`, so they are correctness diagnostics,
+  not retained performance rows.
+- The focused generator/profile/partition/serial/layout gate passes all 206
+  collected tests. Nine scheduler/server chunk and c6 grouping tests pass under
+  `uv run pytest`. Compileall for the changed runtime and scripts plus
+  `git diff --check` also pass.

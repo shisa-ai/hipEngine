@@ -12,8 +12,9 @@ def _profile_payload() -> dict[str, object]:
     return {
         "schema": 1,
         "kind": "gfx1151_paro_cn_readme_diagnostic_summary",
+        "performance_claim": True,
         "native_batch_width_profile": {
-            "schema": 1,
+            "schema": 2,
             "backend": "hip_gfx1151",
             "target_arch": "gfx1151",
             "model_snapshot": "model-snapshot",
@@ -35,15 +36,19 @@ def _profile_payload() -> dict[str, object]:
         "protocol": {
             "native_partition_widths": [2, 3, 4, 5, 6, 7, 8],
             "evidenced_decode_position_range": {"min": 512, "max": 647},
+            "correctness_oracle": "independent_single_request_prefill_decode",
+            "packed_prefill_generated_token_equality": True,
+            "sparse_slot_generated_token_equality": True,
+            "shrinking_batch_generated_token_equality": True,
         },
         "rows": {
             "1": {
-                "status": "diagnostic_reference",
+                "status": "accepted_reference",
                 "decode_step_ms_median_of_run_medians": 15.0,
             },
             **{
                 str(rows): {
-                    "status": "diagnostic_exact",
+                    "status": "accepted_exact",
                     "generated_token_equality": True,
                     "primitive_correctness": True,
                     "decode_step_ms_median_of_run_medians": float(rows * 10),
@@ -148,4 +153,57 @@ def test_qwen35_paro_batch_width_profile_blocks_embedded_identity_disagreement(
     )
 
     assert any("embedded backend" in reason for reason in profile.blockers)
+    assert profile.native_step_ms == ()
+
+
+def test_qwen35_paro_batch_width_profile_blocks_diagnostic_only_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _profile_payload()
+    payload["performance_claim"] = False
+    relative = _write_profile(tmp_path, payload)
+    monkeypatch.chdir(tmp_path)
+
+    profile = load_qwen35_paro_native_batch_width_profile(
+        relative,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model_path=Path("/models/model-snapshot"),
+        kv_dtype="bf16",
+    )
+
+    assert any("accepted performance claim" in reason for reason in profile.blockers)
+    assert profile.native_step_ms == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "blocker"),
+    [
+        ("correctness_oracle", "independent single-request oracle"),
+        ("packed_prefill_generated_token_equality", "packed prefill"),
+        ("sparse_slot_generated_token_equality", "sparse-slot decode"),
+        ("shrinking_batch_generated_token_equality", "shrinking-batch decode"),
+    ],
+)
+def test_qwen35_paro_batch_width_profile_requires_end_to_end_correctness_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    blocker: str,
+) -> None:
+    payload = _profile_payload()
+    payload["protocol"].pop(field)
+    relative = _write_profile(tmp_path, payload)
+    monkeypatch.chdir(tmp_path)
+
+    profile = load_qwen35_paro_native_batch_width_profile(
+        relative,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model_path=Path("/models/model-snapshot"),
+        kv_dtype="bf16",
+    )
+
+    assert any(blocker in reason for reason in profile.blockers)
     assert profile.native_step_ms == ()
