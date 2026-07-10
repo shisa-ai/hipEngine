@@ -150243,3 +150243,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   test that still required the E4-removed `performance_claim=false` PARO
   numeric table; updated it to require the diagnostic link while forbidding
   those ineligible numbers. The sync/provenance gate then passes `2/2`.
+
+## 2026-07-11 - SOL-G3 balanced GDN prefill A/B harness
+
+- Added `scripts/gguf_gdn_prefill_ab.py` for the G3 default-selection gate. It
+  loads one resident GGUF session, runs production bulk prefill at the 512 and
+  4096 primary contexts, performs explicit warmups, and balances four measured
+  repetitions between `fused -> chain` and `chain -> fused` order. Model load,
+  artifact I/O, and correctness-artifact reads stay outside the synchronized
+  `time.perf_counter_ns` windows.
+- The artifact records every sample/order/token, per-mode median/mean/min/max/
+  stdev, paired deltas, chain speedup and percentage wall delta, exact prompt
+  hashes, production WMMA selector, the accepted G2 artifact SHA-256, and
+  canonical provenance. Promotion requires clean provenance, exact expected
+  tokens on every timed pair, and a lower chain median at both contexts. A
+  valid loss explicitly retains fused rather than failing the benchmark.
+- RED/GREEN contract coverage validates context parsing, G2 context coverage,
+  balanced median/paired accounting, and clean/win-all promotion semantics.
+  `uv run pytest -q tests/test_gguf_gdn_prefill_ab.py
+  tests/test_gguf_gdn_prefill_compare.py` passes `9/9`; Python compilation and
+  `git diff --check` pass. `ruff` is not installed in the current uv
+  environment, so no ruff claim is made. The next action is a detached clean
+  worktree run at this committed revision.

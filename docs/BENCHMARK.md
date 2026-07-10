@@ -26,6 +26,35 @@ Every retained performance number must carry:
 
 Claims without a correctness gate are disallowed. A perf win that regresses correctness is reverted. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
 
+### GGUF GDN prefill default-selection gate
+
+`SOL-G3` uses `scripts/gguf_gdn_prefill_ab.py` after the exact SOL-G2 matrix is
+accepted. The driver loads one resident model/session, runs the production bulk
+prefill route at 512 and 4096 prompt tokens, warms each context, and balances
+measured `fused -> chain` with `chain -> fused` order. Every measured call must
+return the expected exact token, the linked SOL-G2 artifact must cover both
+contexts, and performance provenance must have no staged, unstaged, or
+untracked files. Median synchronized host wall selects the result: the chain is
+promotable only if it wins both contexts. A valid loss rejects chain promotion
+and retains fused; it is not a failed benchmark.
+
+```bash
+python3 scripts/gguf_gdn_prefill_ab.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --contexts 512,4096 \
+  --prompt-token-id 9707 --expected-token-id 9707 \
+  --warmups 1 --repetitions 4 --use-wmma-prefill \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/sol-g3-gfx1151-gdn-prefill-ab.json
+```
+
+Run from a clean worktree when the shared development tree contains unrelated
+untracked artifacts. Model/session construction, JIT preparation, artifact
+writing, and correctness-artifact reads are outside measured regions. The
+result is a full-prefill wall comparison, while the separate cached-only G2
+kernel trace proves the expected exact split kernels executed.
+
 ## Anti-gaming
 
 A benchmark measures the model/kernels. Tuning a number to the specific inputs
