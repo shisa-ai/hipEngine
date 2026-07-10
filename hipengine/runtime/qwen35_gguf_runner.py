@@ -1468,8 +1468,9 @@ class Qwen35GGUFFullStackRunner:
     def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
         """Return the cached qwen35 GGUF GDN prefill plan.
 
-        Resolved once per runner via the kernel registry. Falls back to the
-        legacy fused decode-order kernel when the chained path is incomplete.
+        Resolved once per runner via the kernel registry. The runtime selector
+        chooses the fused or chained implementation independently of registry
+        resolution.
         """
 
         plan = getattr(self, "_gguf_gdn_prefill_plan_cache", None)
@@ -1489,18 +1490,33 @@ class Qwen35GGUFFullStackRunner:
         stream: int,
         runtime: HipRuntime,
     ) -> None:
-        """Dispatch the qwen35 GGUF GDN prefill chain (or fused fallback).
+        """Dispatch the selected qwen35 GGUF GDN prefill implementation.
 
         Plugin-style: the kernel chain is resolved via the kernel registry
-        keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``. Whether the
-        single-segment k2 or multi-segment k2_segments recurrent kernel runs
-        is a perf-tuning decision controlled by
-        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
-        per-quant/per-backend branch.
+        keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``.
+        ``HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|fused|chain`` selects the
+        implementation; ``auto`` preserves the correctness-certified
+        fused-first fallback. Whether the single-segment k2 or multi-segment
+        k2_segments recurrent kernel runs is a perf-tuning decision controlled
+        by ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025),
+        not a per-quant/per-backend branch.
         """
 
         plan = self._gdn_prefill_plan()
-        if plan.has_fused:
+        mode = _gguf_gdn_prefill_mode()
+        if mode == "fused" and not plan.has_fused:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'fused' is unavailable; "
+                "the fused decode-order kernel is not registered"
+            )
+        if mode == "chain" and not plan.has_chain:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain' is unavailable; "
+                "the prepare, recurrent, and RMSNorm-gate kernels must all be registered"
+            )
+        use_fused = plan.has_fused and mode in {"auto", "fused"}
+        use_chain = plan.has_chain and (mode == "chain" or not use_fused)
+        if use_fused:
             # Correctness-first fallback: the split prepare+k2+rmsnorm chain is
             # still registered for tests and future perf work, but real GGUF
             # prompt parity currently matches the token-serial path only through
@@ -1527,7 +1543,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
             return
-        if plan.has_chain:
+        if use_chain:
             plan.prepare(
                 scratch.conv_out.ptr,
                 scratch.linear_alpha.ptr,
@@ -13238,6 +13254,8 @@ _GDN_PREFILL_DECODE_ORDER_BF16_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"
 )
 _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 1025
+_GGUF_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+_GGUF_GDN_PREFILL_MODES = frozenset({"auto", "fused", "chain"})
 
 
 @dataclass(frozen=True)
@@ -13267,8 +13285,8 @@ class _GGUFGDNPrefillPlan:
     decides the prefill row count meets the multi-segment threshold; for the
     current single-sequence prefill it is always called with ``segments=1``,
     so the parent ``segments_k2`` kernel is only useful for batched prefill.
-    The chain falls back to ``fused_decode_order`` when any of the chain
-    members is not registered.
+    ``auto`` dispatch remains fused-first; explicit diagnostic selections fail
+    closed when their required members are not registered.
     """
 
     prepare: object | None
@@ -13299,6 +13317,20 @@ def _gguf_gdn_prefill_segment_threshold() -> int:
     except ValueError:
         return _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT
     return max(1, value)
+
+
+def _gguf_gdn_prefill_mode() -> str:
+    """Return the fail-closed GGUF GDN prefill diagnostic selection."""
+
+    mode = os.environ.get(_GGUF_GDN_PREFILL_MODE_ENV, "auto").strip().lower()
+    if not mode:
+        mode = "auto"
+    if mode not in _GGUF_GDN_PREFILL_MODES:
+        choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES))
+        raise ValueError(
+            f"{_GGUF_GDN_PREFILL_MODE_ENV} must be one of {choices}, got {mode!r}"
+        )
+    return mode
 
 
 def _gguf_full_attention_split_decode_min_context() -> int:
