@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-11.
 
-Status: active ledger. `SOL-E1` and `SOL-E2` are accepted on top of the
+Status: active ledger. `SOL-E1` through `SOL-E3` are accepted on top of the
 `7ea21e98b097` release-default baseline. The gfx1151 HIP/Vulkan v2 matrix was
 measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO true-c1
 shrinking gate was measured at `0c1845170955` with `hipengine_dirty=false`.
@@ -72,6 +72,7 @@ The table names the source revision for each result.
 | Exact/default GGUF MTP | Fixed 10-cycle B5 reports `61.98` versus AR `54.79 tok/s`. | Natural `max_tokens=24` loses at B1/B2/B5: `52.13/52.04/50.65` versus AR `54.80`. Fixed-cycle rows do not close production MTP economics. |
 | MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | `SOL-E1`/`SOL-E2` fix future all-choice denominators and copied batch timing, but prior absolute server rates remain invalid and need a rerun under the new contract. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
 | Exact server accounting | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata and makes `mtp-bench.py` count each batch owner once. | Retokenized visible text remains a non-authoritative diagnostic. Prior server rates predate both contracts and remain ineligible until rerun. |
+| Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
 | PARO c>N | Retained gfx1100 direct rows exist for c4/c8. The gfx1151 c1-c8 timing rows at `4175dabf`/`02aec604` used a batch-shaped width-1 oracle and cannot select routing. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native decode fails 0/8, first mismatch at c8 generated token index 2. | Production greedy and sampled batches use exact width-1 sessions. Reopen every gfx1151 native width; localize the common c8 divergence before width-specific tuning. |
 | gfx1100 GGUF AR | Current W7900 diagnostic is about `654 prefill / 35.8 decode tok/s` at 512/128. | It emits repeated token `9707`, is marked `performance_claim=false`, and sits in "Current fastest." Treat it as a P0 correctness/recovery problem, not a clean 66% regression claim. |
 | HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
@@ -233,8 +234,8 @@ layout and profiled bottleneck.
 | --- | --- | --- | --- | --- |
 | `SOL-E1` | Carry exact generated IDs/counts through `GenerationOutput` and OpenAI responses; aggregate every choice in `mtp-bench.py`. | `accepted`: PARO/GGUF outputs carry exact IDs; completion/chat `n=6` and retokenization-mismatch regressions pass; `mtp-bench.py` validates and aggregates all rows; API/benchmark semantics are documented. | none | Retokenization-mismatch and `n=6` regressions prove exact all-choice totals; usage semantics are documented. |
 | `SOL-E2` | Add `batch_id`, `group_rows`, `timing_scope`, and timing owner; deduplicate batch metrics in harnesses. | `accepted`: the telemetry contract defaults unscoped timing to explicit choice ownership and requires complete batch ownership; PARO/GGUF live c2 groups expose one owner; `mtp-bench.py` rejects malformed ownership and deduplicates copied batch walls by ID. | none | Synthetic duplicate payload and live PARO/GGUF group tests count batch wall once. |
-| `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `open` | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
-| `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `blocked` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
+| `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `accepted`: the stdlib/torch-free collector emits `hipengine_artifact_provenance` v1 for server, retained PARO, GGUF category/true-AR, and micro artifacts; dynamic gfx1151 identity resolves from `auto`; staged, unstaged, untracked, snapshot-revision, file, directory, and missing-model cases have regressions. | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
+| `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `open` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
 | `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `open` | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
 | `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open`: public factory, runner/session target, JIT build, capabilities, and installed-wheel route landed at `7ea21e98`; internal semantic `hip_gfx1100` resolver keys remain. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
 | `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
@@ -336,7 +337,7 @@ reused width-1 sessions until an accepted schema-2 profile exists.
 | `SOL-S1` | Move `auto` MTP choice from per-request eligibility to the realized backend group. | `blocked` | E1-E2, natural matrix | Initial policy is c1/c2 MTP, c4+ AR, c3 measured; explicit opt-in always requests MTP. Policy records reason/group/horizon. |
 | `SOL-S2` | Record route cap, actual backend group, queue grouping, and verifier rows separately. | `open` | E2 | A c8 client row cannot be mistaken for a width-8 verifier row. |
 | `SOL-S3` | Add context/output-length buckets and EWMA hysteresis only after static policy is stable. | `blocked` | S1 retained | Online policy beats/equals static on held-out full-suite traffic without prompt-conditioned branches. |
-| `SOL-S4` | Run a real PARO DFlash row using the landed coarse phase and graph-shape telemetry. | `blocked` | E1-E3 | Same-session AR, exact output, phase coverage, and shape hit/miss data identify the dominant parent bucket. |
+| `SOL-S4` | Run a real PARO DFlash row using the landed coarse phase and graph-shape telemetry. | `open` | E1-E3 | Same-session AR, exact output, phase coverage, and shape hit/miss data identify the dominant parent bucket. |
 | `SOL-S5` | Compare GGUF deferred accepted-row scatter/tail discard with PARO verifier commit/canonicalization. | `conditional` | S4 profile | Activate only if commit/scatter/sync is material; exact state/KV and cycle/server wall must improve. |
 | `SOL-S6` | Add true draft-side batching and/or wider verifier groups. | `conditional` | S1-S4 profile | Activate only if current phase serialization/group caps dominate; retain on full suite and server wall. |
 | `SOL-S7` | Re-evaluate LM-head/top1 fusion, readback, and sampler boundaries. | `conditional` | corrected scoped profile | Existing generic fusion/readback probes stay rejected unless a changed shape exposes the bucket again. |
@@ -466,7 +467,7 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next overall foundation unit is `SOL-E3`: consolidate artifact/provenance
-capture with dynamic backend/architecture identity and full dirty-state/model
-fingerprint coverage. `SOL-S2` can then add route-cap, realized-group,
-queue-grouping, and verifier-row fields on top of the owned timing contract.
+The next overall foundation unit is `SOL-S2`: add route-cap, realized-group,
+queue-grouping, and verifier-row fields on top of the owned timing and canonical
+provenance contracts. `SOL-E5` and `SOL-B1` follow once shape identity is no
+longer ambiguous.

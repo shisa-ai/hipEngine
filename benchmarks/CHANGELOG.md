@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-11
+
+- [measurement contract] Server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts moved from inconsistent repo/model identity fields to the shared `hipengine_artifact_provenance` v1 contract: dynamic resolved backend/target/device, separate staged/unstaged/untracked state, content-derived model fingerprint, exact command/environment, toolchain, timing, and profiler metadata. No metric was superseded; historical rows keep their existing status until rerun. Source: `hipengine/benchmark/provenance.py`, `benchmarks/schemas/artifact-provenance.schema.json`.
+
 ## 2026-07-10
 
 - [evidence correction] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / gfx1151 c1-c8 512/128: c2-c8 `diagnostic_exact` -> `diagnostic_legacy_batch_oracle` (no valid performance delta) because the harness reference used `prefill_native_packed()` plus `step_batch_native(rows=1)`. At `0c184517` with `hipengine_dirty=false`, c8-to-c1 serial passes 8/8 rows against independent single-request c1; native passes 0/8 and first diverges at c8 generated token index 2 (`17` vs `220`). Production uses width-1 sessions. `benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json`, `benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json`.

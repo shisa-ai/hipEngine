@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, repo_provenance, safe_name, validate_command_provenance
 
@@ -81,6 +82,19 @@ def build_true_ar_artifact(
         "same_prompt_suite": True,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "repo": repo_provenance(),
+        "provenance": collect_artifact_provenance(
+            repo_root=REPO_ROOT,
+            configured_backend=os.environ.get("HIPENGINE_BACKEND", "auto"),
+            target_arch=(os.environ.get("HIPENGINE_HIP_ARCH") or "").strip() or None,
+            model_path=args.model,
+            quant="gguf_q4_k_m",
+            kv_dtype="bf16",
+            command=(sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]),
+            build_profile="gguf_true_ar",
+            timing_protocol="eager_decode_loop",
+            warmups=None,
+            repetitions=1,
+        ),
         "model": str(args.model),
         "quant": "UD-Q4_K_M GGUF",
         "prompt_file": str(args.prompts),

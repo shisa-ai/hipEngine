@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
+
 
 def _load_collect_env_module():
     path = Path(__file__).resolve().parents[1] / "benchmarks" / "micro" / "collect_env.py"
@@ -38,5 +40,9 @@ def test_collect_environment_without_device_probes() -> None:
     assert data["schema_version"] == 1
     assert data["kind"] == "hipengine_micro_environment"
     assert data["repo"]["commit"]
+    provenance = validate_artifact_provenance(data["provenance"])
+    assert provenance["hipengine_commit"] == data["repo"]["commit"]
+    assert isinstance(provenance["staged_dirty"], bool)
+    assert isinstance(provenance["untracked_dirty"], bool)
     assert "hipcc_version" in data["commands"]
     assert "rocminfo" not in data["commands"]

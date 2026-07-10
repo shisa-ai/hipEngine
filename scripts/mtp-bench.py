@@ -39,6 +39,11 @@ from typing import Any
 from urllib import error, request
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.benchmark.provenance import collect_artifact_provenance
+
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "fixtures" / "llamacpp_mtp_bench_prompts.json"
 DEFAULT_ENDPOINT = "/v1/chat/completions"
 DEFAULT_ENGINE_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
@@ -52,6 +57,30 @@ SOURCE_RAW = (
 
 class BenchError(RuntimeError):
     """Raised for benchmark setup or response-shape errors."""
+
+
+def server_artifact_provenance(args: argparse.Namespace) -> dict[str, Any]:
+    """Collect canonical identity for a server-mode benchmark artifact."""
+
+    explicit_model_path = getattr(args, "artifact_model_path", None)
+    request_model_path = Path(str(getattr(args, "model", ""))).expanduser()
+    model_path = explicit_model_path if explicit_model_path is not None else request_model_path
+    return collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=str(getattr(args, "artifact_configured_backend", "auto")),
+        resolved_backend=getattr(args, "artifact_resolved_backend", None),
+        target_arch=getattr(args, "artifact_target_arch", None),
+        device_name=getattr(args, "artifact_device_name", None),
+        model_path=model_path,
+        model_revision=getattr(args, "artifact_model_revision", None),
+        quant=getattr(args, "artifact_quant", None),
+        kv_dtype=getattr(args, "artifact_kv_dtype", None),
+        command=(sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]),
+        build_profile=getattr(args, "artifact_build_profile", None),
+        timing_protocol="client_makespan",
+        warmups=int(getattr(args, "artifact_warmups", 0)),
+        repetitions=int(getattr(args, "artifact_repetitions", 1)),
+    )
 
 
 def load_prompt_suite(path: Path) -> dict[str, Any]:
@@ -553,6 +582,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     if args.concurrency < 1:
         raise BenchError("--concurrency must be >= 1")
+    if args.artifact_warmups < 0:
+        raise BenchError("--artifact-warmups must be >= 0")
+    if args.artifact_repetitions < 1:
+        raise BenchError("--artifact-repetitions must be >= 1")
 
     out: dict[str, Any] = {"results": [], "concurrency": int(args.concurrency)}
     if args.print_payload:
@@ -560,6 +593,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             payload = make_payload(prompt["prompt"], args)
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         return out
+
+    out["provenance"] = server_artifact_provenance(args)
 
     client_wall_s = 0.0
     for batch in iter_batches(prompts, args.concurrency):
@@ -789,6 +824,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=300.0, help="per-request timeout in seconds")
     parser.add_argument("--concurrency", type=int, default=1, help="server-mode concurrent request count")
     parser.add_argument("--print-payload", action="store_true", help="print server request payloads instead of posting")
+    parser.add_argument("--artifact-model-path", type=Path, help="local served-model path used for canonical artifact fingerprinting")
+    parser.add_argument("--artifact-model-revision", help="served-model revision when it cannot be inferred from a snapshots/<revision> path")
+    parser.add_argument("--artifact-quant", help="resolved server quant recorded in canonical provenance")
+    parser.add_argument("--artifact-kv-dtype", help="resolved server KV dtype recorded in canonical provenance")
+    parser.add_argument("--artifact-configured-backend", default="auto", help="configured server backend selector")
+    parser.add_argument("--artifact-resolved-backend", help="resolved server backend; auto-detected locally when omitted")
+    parser.add_argument("--artifact-target-arch", help="resolved target architecture; auto-detected locally when omitted")
+    parser.add_argument("--artifact-device-name", help="selected device name; queried from the local HIP runtime when omitted")
+    parser.add_argument("--artifact-build-profile", help="build profile name recorded in canonical provenance")
+    parser.add_argument("--artifact-warmups", type=int, default=0, help="discarded server warmup repetitions")
+    parser.add_argument("--artifact-repetitions", type=int, default=1, help="measured server repetitions")
 
     # hipEngine current verifier-economics mode.  Defaults are the W7900/gfx1100
     # path used by current local M12 artifacts.

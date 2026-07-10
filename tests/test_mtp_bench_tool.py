@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
+
 
 TOOL_PATH = Path("scripts/mtp-bench.py")
 
@@ -48,6 +50,58 @@ def test_record_from_llamacpp_timing_payload_matches_pr_columns() -> None:
     assert tool.format_result_line(record) == (
         "  code_python        pred= 192 draft= 177 acc= 131 rate=0.740 tok/s=303.7"
     )
+
+
+def test_server_artifact_uses_canonical_provenance_schema(tmp_path: Path) -> None:
+    tool = _load_tool()
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"server-model")
+    args = tool.build_parser().parse_args(
+        [
+            "--artifact-model-path",
+            str(model),
+            "--artifact-quant",
+            "gguf_q4_k_m",
+            "--artifact-kv-dtype",
+            "bf16",
+            "--artifact-resolved-backend",
+            "hip_gfx1151",
+            "--artifact-target-arch",
+            "gfx1151",
+            "--artifact-device-name",
+            "AMD Radeon 8060S",
+        ]
+    )
+
+    provenance = validate_artifact_provenance(
+        tool.server_artifact_provenance(args),
+        require_model=True,
+    )
+
+    assert provenance["model_path"] == str(model.resolve())
+    assert provenance["model_fingerprint"]["exists"] is True
+    assert provenance["resolved_backend"] == "hip_gfx1151"
+    assert provenance["target_arch"] == "gfx1151"
+    assert provenance["timing_protocol"] == "client_makespan"
+
+
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--artifact-warmups", "-1", "--artifact-warmups must be >= 0"),
+        ("--artifact-repetitions", "0", "--artifact-repetitions must be >= 1"),
+    ],
+)
+def test_server_artifact_rejects_invalid_repetition_counts(
+    flag: str,
+    value: str,
+    message: str,
+) -> None:
+    tool = _load_tool()
+    args = tool.build_parser().parse_args([flag, value])
+
+    with pytest.raises(tool.BenchError, match=message):
+        tool.run(args)
 
 
 def test_concurrent_aggregate_uses_client_wall_not_request_wall_sum() -> None:

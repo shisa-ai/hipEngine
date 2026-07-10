@@ -30,6 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance, collect_repo_state
 from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
     BatchSamplerMode,
@@ -42,7 +43,7 @@ from hipengine.dispatch import (
 )
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
-from hipengine.kernels.backends import detect_hip_target_arches
+from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
@@ -3620,13 +3621,16 @@ def _run_capture(command: Sequence[str], *, timeout: float = 5.0) -> dict[str, A
 
 
 def _software_context() -> dict[str, Any]:
-    commit = _run_capture(["git", "rev-parse", "HEAD"])
-    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
+    repo = collect_repo_state(REPO_ROOT)
     return {
         "python": sys.version.split()[0],
         "hipcc_version": _run_capture(["hipcc", "--version"], timeout=10.0)["output"],
-        "hipengine_commit": commit["output"],
-        "hipengine_dirty": dirty,
+        "hipengine_commit": repo["hipengine_commit"],
+        "hipengine_dirty": repo["dirty"],
+        "staged_dirty": repo["staged_dirty"],
+        "unstaged_dirty": repo["unstaged_dirty"],
+        "untracked_dirty": repo["untracked_dirty"],
+        "untracked_count": repo["untracked_count"],
         "torch_rocm": _run_capture(
             ["python3", "-c", "import torch; print(torch.__version__, torch.version.hip)"],
             timeout=10.0,
@@ -3706,6 +3710,35 @@ def _command(argv: Sequence[str] | None) -> str:
     parts = [*_command_env_prefix_parts(), "python3", _RETAINED_BENCH_SCRIPT]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _artifact_provenance(
+    args: argparse.Namespace,
+    argv: Sequence[str] | None,
+    *,
+    hardware: Mapping[str, Any],
+    kv_policy: ResolvedKVPolicy,
+    profiler: Mapping[str, Any],
+) -> dict[str, Any]:
+    arch = str(hardware.get("arch") or "").strip()
+    resolved_backend = HIP_TARGET_ARCH_BACKEND.get(arch)
+    return collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=os.environ.get("HIPENGINE_BACKEND", "auto"),
+        resolved_backend=resolved_backend,
+        detected_arches=tuple(str(item) for item in hardware.get("detected_arches", ())),
+        target_arch=str(hardware.get("target_arch") or arch).strip() or None,
+        device_name=str(hardware.get("gpu") or "").strip() or None,
+        model_path=args.model,
+        quant="w4_paro",
+        kv_dtype=kv_policy.storage_dtype.value,
+        command=tuple(shlex.split(_command(argv))),
+        build_profile="decode",
+        timing_protocol="scheduler_batch_wall",
+        warmups=None,
+        repetitions=1,
+        profiler=profiler,
+    )
 
 
 def _primitive_correctness_command(path: Path | None, *, rows: int, seed: int = 1234) -> str:
@@ -5042,6 +5075,8 @@ def _build_payload(
             if latency > 0.0:
                 request_latencies.append(latency)
     latency_summary = _summarize_samples(request_latencies)
+    hardware_context = _hardware_context()
+    software_context = _software_context()
     payload = {
         "schema": 3,
         "mode": _ACCEPTED_MODE,
@@ -5052,8 +5087,15 @@ def _build_payload(
         "run_tag": f"qwen35-paro-c{args.batch_size}-native-retained",
         "summary": _ACCEPTED_SUMMARY,
         "performance_claim": accepted,
-        "hardware": _hardware_context(),
-        "software": _software_context(),
+        "hardware": hardware_context,
+        "software": software_context,
+        "provenance": _artifact_provenance(
+            args,
+            argv,
+            hardware=hardware_context,
+            kv_policy=kv_policy,
+            profiler=profiler,
+        ),
         "workload": {
             "shape": f"c={args.batch_size} prompt={args.prompt_length} decode={args.decode_tokens}",
             "model": "Qwen3.5/3.6-35B-A3B-PARO",

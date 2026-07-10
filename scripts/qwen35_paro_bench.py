@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance, collect_repo_state
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime import PrefillConfig
@@ -113,13 +114,16 @@ def _run_capture(command: list[str], *, timeout: float = 5.0) -> dict[str, Any]:
 
 
 def _software_context() -> dict[str, Any]:
-    commit = _run_capture(["git", "rev-parse", "--short", "HEAD"])
-    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
+    repo = collect_repo_state(REPO_ROOT)
     return {
         "python": sys.version.split()[0],
         "hipcc_version": _run_capture(["hipcc", "--version"], timeout=10.0)["output"],
-        "hipengine_commit": commit["output"],
-        "hipengine_dirty": dirty,
+        "hipengine_commit": repo["hipengine_commit"],
+        "hipengine_dirty": repo["dirty"],
+        "staged_dirty": repo["staged_dirty"],
+        "unstaged_dirty": repo["unstaged_dirty"],
+        "untracked_dirty": repo["untracked_dirty"],
+        "untracked_count": repo["untracked_count"],
     }
 
 
@@ -407,6 +411,8 @@ def main() -> int:
         session.close()
         memory_snapshots["after_close"] = _memory_snapshot("after_close", runner.runtime)
 
+    hardware_context = _hardware_context()
+    software_context = _software_context()
     output = {
         "schema": 1,
         "artifact_path": _artifact_path(args.json),
@@ -415,8 +421,24 @@ def main() -> int:
         "backend": runner.backend,
         "requested_backend": args.backend,
         "target_arch": runner.target_arch,
-        "hardware": _hardware_context(),
-        "software": _software_context(),
+        "hardware": hardware_context,
+        "software": software_context,
+        "provenance": collect_artifact_provenance(
+            repo_root=REPO_ROOT,
+            configured_backend=args.backend,
+            resolved_backend=runner.backend,
+            detected_arches=tuple(str(item) for item in hardware_context.get("detected_arches", ())),
+            target_arch=runner.target_arch,
+            device_name=str(hardware_context.get("gpu") or "").strip() or None,
+            model_path=model,
+            quant="w4_paro",
+            kv_dtype=kv_policy.storage_dtype.value,
+            command=tuple(shlex.split(_command(None))),
+            build_profile="decode",
+            timing_protocol="autoregressive_decode_wall",
+            warmups=None,
+            repetitions=1,
+        ),
         "commands": {"benchmark": _command(None)},
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
