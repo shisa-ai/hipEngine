@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -54,7 +55,16 @@ def _raw_row(*, backend: str, timing_mode: str) -> dict:
         "max_abs": 0.0,
         "correctness_pass": True,
         "gpu_timestamps_supported": backend == "vulkan",
-        "raw_config": {"reps": 4, "warmup": 2, "timing_mode": timing_mode},
+        "raw_config": {
+            "rows": 1,
+            "vocab": 256,
+            "workgroup_size": 64,
+            "top_k": 1,
+            "reps": 4,
+            "warmup": 2,
+            "samples": 2,
+            "timing_mode": timing_mode,
+        },
         "hardware": {"device_name": "Radeon 8060S Graphics", "gcn_arch_name": "gfx1151"},
     }
 
@@ -65,9 +75,9 @@ def _result(module, *, backend: str, timing_mode: str) -> dict:
         raw_rows=[_raw_row(backend=backend, timing_mode=timing_mode)],
         isa_by_variant={(64, 1): {"instruction_count": 10, "waitcnt_count": 2}},
         environment=_environment(),
-        source_hash="sha256:test",
+        source_hash=f"sha256:{backend}",
         wrapper_command=["sampler_argmax.py", "--backend", backend],
-        commands=[],
+        commands=[{"rows": 1, "workgroup_size": 64, "top_k": 1}],
         hardware_gpu="Radeon 8060S Graphics",
         gfx_arch="gfx1151",
         environment_ref=None,
@@ -103,6 +113,10 @@ def test_comparison_separates_gpu_ratio_and_unmatched_host_wall() -> None:
     assert comparison["comparisons"][1]["host_wall"]["status"] == (
         "not_comparable_submission_contract"
     )
+    assert comparison["source"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+    assert comparison["performance_claim"] is True
 
 
 def test_serial_barrier_count_is_backend_specific() -> None:
@@ -133,3 +147,84 @@ def test_default_timing_mode_is_serial_latency() -> None:
 
     assert args.timing_mode == "serial_latency"
     assert args.independent_streams == 4
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda result: result.update(schema_version=1), "v2"),
+        (lambda result: result.update(kind="wrong"), "micro result"),
+        (lambda result: result.update(bench="wrong"), "bench"),
+        (lambda result: result.update(backend="hip"), "HIP then Vulkan"),
+        (lambda result: result.update(classification="wrong"), "classification"),
+        (lambda result: result["hardware"].update(gfx_arch="gfx1100"), "architectures"),
+        (lambda result: result["hardware"].update(gpu_name="different"), "device identities"),
+        (lambda result: result["source"].update(commit="b" * 40), "commit"),
+        (lambda result: result["source"].update(dirty=True), "dirty"),
+        (lambda result: result["source"].pop("source_hash"), "source hash"),
+    ],
+)
+def test_sampler_comparison_rejects_identity_or_provenance_mismatch(
+    mutation, message: str
+) -> None:
+    module = _load_runner_module()
+    hip = _result(module, backend="hip", timing_mode="serial_latency")
+    vulkan = _result(module, backend="vulkan", timing_mode="serial_latency")
+    mutation(vulkan)
+
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_sampler_comparison_requires_exact_unique_vocab_rows() -> None:
+    module = _load_runner_module()
+    hip = _result(module, backend="hip", timing_mode="serial_latency")
+    vulkan = _result(module, backend="vulkan", timing_mode="serial_latency")
+
+    duplicate = deepcopy(vulkan)
+    duplicate["measurements"]["rows"].append(
+        deepcopy(duplicate["measurements"]["rows"][0])
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        module.build_comparison(hip, duplicate, command=["compare"])
+
+    different_vocab = deepcopy(vulkan)
+    different_vocab["measurements"]["rows"][0]["vocab"] = 512
+    with pytest.raises(ValueError, match="exact requested"):
+        module.build_comparison(hip, different_vocab, command=["compare"])
+
+    bad_expected_count = deepcopy(vulkan)
+    bad_expected_count["parameters"]["expected_row_count"] = 2
+    with pytest.raises(ValueError, match="expected_row_count"):
+        module.build_comparison(hip, bad_expected_count, command=["compare"])
+
+    duplicate_parameters_hip = deepcopy(hip)
+    duplicate_parameters_vulkan = deepcopy(vulkan)
+    duplicate_parameters_hip["parameters"]["rows_list"].append(1)
+    duplicate_parameters_vulkan["parameters"]["rows_list"].append(1)
+    with pytest.raises(ValueError, match="duplicate requested"):
+        module.build_comparison(
+            duplicate_parameters_hip,
+            duplicate_parameters_vulkan,
+            command=["compare"],
+        )
+
+
+def test_sampler_comparison_marks_dirty_or_incorrect_inputs_non_claiming() -> None:
+    module = _load_runner_module()
+    hip = _result(module, backend="hip", timing_mode="serial_latency")
+    vulkan = _result(module, backend="vulkan", timing_mode="serial_latency")
+    hip["source"]["dirty"] = True
+    vulkan["source"]["dirty"] = True
+    dirty = module.build_comparison(hip, vulkan, command=["compare"])
+    assert dirty["performance_claim"] is False
+    assert dirty["provenance"]["blocking_reasons"] == ["dirty_source"]
+
+    hip["source"]["dirty"] = False
+    vulkan["source"]["dirty"] = False
+    vulkan["correctness"]["status"] = "fail"
+    incorrect = module.build_comparison(hip, vulkan, command=["compare"])
+    assert incorrect["performance_claim"] is False
+    assert incorrect["provenance"]["blocking_reasons"] == [
+        "correctness_not_passed"
+    ]

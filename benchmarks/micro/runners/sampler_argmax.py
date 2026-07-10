@@ -9,6 +9,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -398,10 +399,15 @@ def _normalize_result(
     gfx_arch: str | None,
     environment_ref: str | None,
 ) -> dict[str, Any]:
+    if not raw_rows or len(raw_rows) != len(commands):
+        raise ValueError("sampler result rows and requested commands must align")
     rows: list[dict[str, Any]] = []
     for raw in raw_rows:
         isa = isa_by_variant[(int(raw["workgroup_size"]), int(raw.get("top_k", 1)))]
         config = raw.get("raw_config") if isinstance(raw.get("raw_config"), dict) else {}
+        for field in ("rows", "vocab", "workgroup_size", "top_k", "timing_mode"):
+            if config.get(field) != raw.get(field):
+                raise ValueError(f"sampler raw row disagrees with config field {field}")
         repetitions = int(config.get("reps", 0))
         timing_mode = timing_contract.parse_timing_mode(str(raw.get("timing_mode")))
         gpu_supported = backend == "hip" or bool(raw.get("gpu_timestamps_supported"))
@@ -511,6 +517,32 @@ def _normalize_result(
         )
         rows.append(row)
 
+    rows_list = sorted({int(row["rows"]) for row in rows})
+    workgroups = sorted({int(row["workgroup_size"]) for row in rows})
+    top_k_list = sorted({int(row.get("top_k", 1)) for row in rows})
+    vocabs = {int(row["vocab"]) for row in rows}
+    timing_modes = {str(row["timing_mode"]) for row in rows}
+    repetitions = {int(raw["raw_config"]["reps"]) for raw in raw_rows}
+    warmups = {int(raw["raw_config"]["warmup"]) for raw in raw_rows}
+    sample_counts = {int(raw["raw_config"]["samples"]) for raw in raw_rows}
+    if any(len(values) != 1 for values in (vocabs, timing_modes, repetitions, warmups, sample_counts)):
+        raise ValueError("sampler requested rows do not share one workload contract")
+    vocab = next(iter(vocabs))
+    timing_mode = next(iter(timing_modes))
+    expected_keys = {
+        (timing_mode, top_k, row_count, workgroup, vocab)
+        for top_k in top_k_list
+        for row_count in rows_list
+        for workgroup in workgroups
+    }
+    row_keys = [_row_key(row) for row in rows]
+    if len(set(row_keys)) != len(row_keys):
+        raise ValueError("sampler result contains duplicate requested rows")
+    if set(row_keys) != expected_keys:
+        raise ValueError(
+            "sampler result does not contain the complete requested matrix: "
+            f"expected {len(expected_keys)}, got {len(row_keys)}"
+        )
     primary = min(rows, key=lambda row: float(row["median_us"])) if rows else {}
     correctness_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
     raw0 = raw_rows[0] if raw_rows else {}
@@ -528,17 +560,15 @@ def _normalize_result(
         "cwd": str(REPO_ROOT),
         "parameters": {
             "benchmark_family": "sampler_argmax",
-            "rows_list": sorted({int(row["rows"]) for row in rows}),
-            "workgroups": sorted({int(row["workgroup_size"]) for row in rows}),
-            "top_k_list": sorted({int(row.get("top_k", 1)) for row in rows}),
-            "vocab": primary.get("vocab"),
-            "timing_mode": primary.get("timing_mode"),
-            "repetitions": int(
-                (raw_rows[0].get("raw_config") or {}).get("reps", 0)
-            ) if raw_rows else 0,
-            "warmup_logical_iterations": int(
-                (raw_rows[0].get("raw_config") or {}).get("warmup", 0)
-            ) if raw_rows else 0,
+            "rows_list": rows_list,
+            "workgroups": workgroups,
+            "top_k_list": top_k_list,
+            "vocab": vocab,
+            "timing_mode": timing_mode,
+            "repetitions": next(iter(repetitions)),
+            "warmup_logical_iterations": next(iter(warmups)),
+            "samples": next(iter(sample_counts)),
+            "expected_row_count": len(expected_keys),
             "commands": commands,
         },
         "correctness": {
@@ -693,13 +723,106 @@ def _run_vulkan(
     )
 
 
-def _row_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
+def _row_key(row: dict[str, Any]) -> tuple[str, int, int, int, int]:
     return (
         str(row.get("timing_mode")),
         int(row.get("top_k", 1)),
         int(row["rows"]),
         int(row["workgroup_size"]),
+        int(row["vocab"]),
     )
+
+
+def _device_fingerprint(name: Any) -> str:
+    text = str(name).lower()
+    match = re.search(r"radeon\s+(\d+s)", text)
+    if match:
+        return f"radeon_{match.group(1)}"
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _validate_comparison_inputs(
+    hip_result: dict[str, Any], vulkan_result: dict[str, Any]
+) -> None:
+    for label, result, backend in (
+        ("HIP", hip_result, "hip"),
+        ("Vulkan", vulkan_result, "vulkan"),
+    ):
+        if result.get("schema_version") != 2:
+            raise ValueError("sampler comparison requires v2 timing-contract results")
+        if result.get("kind") != "hipengine_micro_result":
+            raise ValueError(f"{label} sampler input must be a micro result")
+        if result.get("bench") != BENCH_NAME:
+            raise ValueError(f"{label} sampler input bench does not match {BENCH_NAME}")
+        if result.get("backend") != backend:
+            raise ValueError("sampler comparison inputs must be HIP then Vulkan")
+        if result.get("classification") != "diagnostic_unclassified":
+            raise ValueError(f"{label} sampler input classification is invalid")
+    hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
+    vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
+    if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
+        raise ValueError("HIP and Vulkan sampler gfx architectures do not match")
+    hip_device = _device_fingerprint(hip_result.get("hardware", {}).get("gpu_name", ""))
+    vulkan_device = _device_fingerprint(
+        vulkan_result.get("hardware", {}).get("gpu_name", "")
+    )
+    if not hip_device or hip_device == "unknown" or hip_device != vulkan_device:
+        raise ValueError("HIP and Vulkan sampler device identities do not match")
+    hip_source = hip_result.get("source", {})
+    vulkan_source = vulkan_result.get("source", {})
+    if not isinstance(hip_source, dict) or not isinstance(vulkan_source, dict):
+        raise ValueError("HIP and Vulkan sampler source provenance must be objects")
+    for field in ("repo", "branch", "commit", "dirty"):
+        if field not in hip_source or field not in vulkan_source:
+            raise ValueError(f"HIP and Vulkan sampler source {field} is required")
+        if hip_source[field] != vulkan_source[field]:
+            raise ValueError(f"HIP and Vulkan sampler source {field} values do not match")
+    if not str(hip_source.get("repo", "")) or not str(hip_source.get("commit", "")):
+        raise ValueError("HIP and Vulkan sampler source repo/commit must not be empty")
+    if not isinstance(hip_source.get("dirty"), bool):
+        raise ValueError("HIP and Vulkan sampler source dirty must be boolean")
+    for label, source in (("HIP", hip_source), ("Vulkan", vulkan_source)):
+        if not str(source.get("source_hash", "")):
+            raise ValueError(f"{label} sampler source hash must not be empty")
+
+
+def _expected_row_keys(parameters: dict[str, Any]) -> set[tuple[str, int, int, int, int]]:
+    rows_list = parameters.get("rows_list")
+    workgroups = parameters.get("workgroups")
+    top_k_list = parameters.get("top_k_list")
+    if (
+        not isinstance(rows_list, list)
+        or not rows_list
+        or not isinstance(workgroups, list)
+        or not workgroups
+        or not isinstance(top_k_list, list)
+        or not top_k_list
+    ):
+        raise ValueError("sampler parameters do not describe the requested matrix")
+    try:
+        row_values = [int(rows) for rows in rows_list]
+        workgroup_values = [int(workgroup) for workgroup in workgroups]
+        top_k_values = [int(top_k) for top_k in top_k_list]
+        vocab = int(parameters["vocab"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("sampler parameters contain an invalid requested matrix") from exc
+    if any(
+        len(set(values)) != len(values)
+        for values in (row_values, workgroup_values, top_k_values)
+    ):
+        raise ValueError("sampler parameters contain duplicate requested rows")
+    return {
+        (
+            str(parameters["timing_mode"]),
+            int(top_k),
+            int(rows),
+            int(workgroup),
+            vocab,
+        )
+        for top_k in top_k_values
+        for rows in row_values
+        for workgroup in workgroup_values
+    }
 
 
 def _domain_comparison(
@@ -743,28 +866,63 @@ def build_comparison(
     vulkan_ref: str | None = None,
     out_ref: str | None = None,
 ) -> dict[str, Any]:
-    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
-        raise ValueError("sampler comparison requires v2 timing-contract results")
-    hip_rows = {
-        _row_key(row): row
-        for row in hip_result.get("measurements", {}).get("rows", [])
-        if isinstance(row, dict)
-    }
-    vulkan_rows = {
-        _row_key(row): row
-        for row in vulkan_result.get("measurements", {}).get("rows", [])
-        if isinstance(row, dict)
-    }
+    _validate_comparison_inputs(hip_result, vulkan_result)
+    hip_parameters = hip_result.get("parameters", {})
+    vulkan_parameters = vulkan_result.get("parameters", {})
+    for field in (
+        "rows_list",
+        "workgroups",
+        "top_k_list",
+        "vocab",
+        "timing_mode",
+        "repetitions",
+        "warmup_logical_iterations",
+        "samples",
+        "expected_row_count",
+    ):
+        if field not in hip_parameters or field not in vulkan_parameters:
+            raise ValueError(f"HIP and Vulkan sampler parameter {field} is required")
+        if hip_parameters[field] != vulkan_parameters[field]:
+            if field == "timing_mode":
+                raise ValueError("HIP and Vulkan sampler timing modes do not match (timing_mode)")
+            raise ValueError(f"HIP and Vulkan sampler parameter {field} values do not match")
+    hip_input_rows = hip_result.get("measurements", {}).get("rows", [])
+    vulkan_input_rows = vulkan_result.get("measurements", {}).get("rows", [])
+    if (
+        not isinstance(hip_input_rows, list)
+        or not isinstance(vulkan_input_rows, list)
+        or not hip_input_rows
+        or not vulkan_input_rows
+        or not all(isinstance(row, dict) for row in hip_input_rows)
+        or not all(isinstance(row, dict) for row in vulkan_input_rows)
+    ):
+        raise ValueError("sampler comparison requires non-empty object rows")
+    hip_rows = {_row_key(row): row for row in hip_input_rows}
+    vulkan_rows = {_row_key(row): row for row in vulkan_input_rows}
+    if len(hip_rows) != len(hip_input_rows) or len(vulkan_rows) != len(vulkan_input_rows):
+        raise ValueError("sampler comparison inputs contain duplicate rows")
     hip_modes = {key[0] for key in hip_rows}
     vulkan_modes = {key[0] for key in vulkan_rows}
     if hip_modes != vulkan_modes:
         raise ValueError("HIP and Vulkan timing modes do not match")
+    expected_rows = _expected_row_keys(hip_parameters)
+    if int(hip_parameters["expected_row_count"]) != len(expected_rows):
+        raise ValueError("sampler expected row count does not match its matrix")
+    if set(hip_rows) != expected_rows or set(vulkan_rows) != expected_rows:
+        raise ValueError(
+            "HIP and Vulkan sampler results must contain the exact requested "
+            f"{len(expected_rows)}-row matrix"
+        )
     comparisons: list[dict[str, Any]] = []
-    for key in sorted(set(hip_rows) & set(vulkan_rows)):
+    for key in sorted(hip_rows):
         hip = hip_rows[key]
         vulkan = vulkan_rows[key]
-        timing_contract.dependency_signature(hip)
-        timing_contract.dependency_signature(vulkan)
+        timing_contract.validate_timed_row(
+            hip, expected_repetitions=int(hip_parameters["repetitions"])
+        )
+        timing_contract.validate_timed_row(
+            vulkan, expected_repetitions=int(hip_parameters["repetitions"])
+        )
         for control in timing_contract.TIMING_CONTROLS:
             comparisons.append(
                 {
@@ -773,7 +931,7 @@ def build_comparison(
                     "top_k": key[1],
                     "rows": key[2],
                     "workgroup_size": key[3],
-                    "vocab": hip.get("vocab"),
+                    "vocab": key[4],
                     "gpu_elapsed": _domain_comparison(
                         hip, vulkan, control=control, domain="gpu_elapsed"
                     ),
@@ -800,13 +958,31 @@ def build_comparison(
         key=lambda row: float(row["gpu_elapsed"]["vulkan_vs_hip_speedup"]),
         default={},
     )
+    dirty = bool(hip_result["source"]["dirty"])
+    correctness_pass = (
+        hip_result.get("correctness", {}).get("status") == "pass"
+        and vulkan_result.get("correctness", {}).get("status") == "pass"
+        and all(bool(row.get("correctness_pass")) for row in hip_input_rows)
+        and all(bool(row.get("correctness_pass")) for row in vulkan_input_rows)
+    )
+    performance_claim = not dirty and correctness_pass
+    blocking_reasons = []
+    if dirty:
+        blocking_reasons.append("dirty_source")
+    if not correctness_pass:
+        blocking_reasons.append("correctness_not_passed")
     return _json_safe(
         {
             "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "diagnostic_unclassified",
+            "performance_claim": performance_claim,
             "source": hip_result.get("source", {}),
+            "sources": {
+                "hip": hip_result.get("source", {}),
+                "vulkan": vulkan_result.get("source", {}),
+            },
             "command": command,
             "hardware": {
                 "hip": hip_result.get("hardware", {}),
@@ -816,6 +992,15 @@ def build_comparison(
             "correctness": {
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
+            },
+            "provenance": {
+                "commit_match": True,
+                "dirty": dirty,
+                "gfx_arch_match": True,
+                "device_match": True,
+                "source_hashes_present": True,
+                "performance_claim": performance_claim,
+                "blocking_reasons": blocking_reasons,
             },
             "comparisons": comparisons,
             "summary": {

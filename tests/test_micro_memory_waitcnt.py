@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,8 @@ def _timed_row(
                     "mode": "coalesced",
                     "param": 4,
                     "block_size": 128,
+                    "n": 4096,
+                    "body_iters": 16,
                     "median_us": median_us,
                     "bandwidth_gbps": 1000.0 / median_us,
                     "correctness_pass": True,
@@ -66,6 +69,38 @@ def _timed_row(
         },
         backend=backend,
     )
+
+
+def _result(module, *, backend: str, row: dict) -> dict:
+    timing_mode = str(row["timing_mode"])
+    return {
+        "schema_version": 2,
+        "kind": "hipengine_micro_result",
+        "bench": module.BENCH_NAME,
+        "backend": backend,
+        "classification": "diagnostic_unclassified",
+        "source": {
+            "repo": "/repo",
+            "branch": "main",
+            "commit": "c" * 40,
+            "dirty": False,
+            "source_hash": f"sha256:{backend}",
+        },
+        "hardware": {"gpu_name": "Radeon 8060S Graphics", "gfx_arch": "gfx1151"},
+        "parameters": {
+            "variants": [{"mode": "coalesced", "param": 4}],
+            "n": 4096,
+            "body_iters": 16,
+            "workgroup_sizes": [128],
+            "timing_mode": timing_mode,
+            "repetitions": 8,
+            "warmup_logical_iterations": 2,
+            "samples": 3,
+            "expected_row_count": 1,
+        },
+        "correctness": {"status": "pass"},
+        "measurements": {"rows": [row]},
+    }
 
 
 def test_parse_memory_waitcnt_variants() -> None:
@@ -146,12 +181,7 @@ def test_build_memory_waitcnt_comparison() -> None:
         scratch_bytes=0,
         vopd_count=1,
     )
-    hip = {
-        "source": {"commit": "c" * 40},
-        "hardware": {"gfx_arch": "gfx1151"},
-        "correctness": {"status": "pass"},
-        "measurements": {"rows": [hip_row]},
-    }
+    hip = _result(module, backend="hip", row=hip_row)
     vulkan_row = _timed_row(module, backend="vulkan", median_us=5.0)
     vulkan_row.update(
         instruction_count=30,
@@ -163,11 +193,7 @@ def test_build_memory_waitcnt_comparison() -> None:
         estimated_sgpr_span=16,
         vopd_count=0,
     )
-    vulkan = {
-        "hardware": {"gfx_arch": "gfx1151"},
-        "correctness": {"status": "pass"},
-        "measurements": {"rows": [vulkan_row]},
-    }
+    vulkan = _result(module, backend="vulkan", row=vulkan_row)
 
     comparison = module.build_comparison(
         hip,
@@ -188,23 +214,127 @@ def test_build_memory_waitcnt_comparison() -> None:
     assert row["host_wall"]["status"] == "not_comparable_submission_contract"
     assert row["hip_waitcnt_count"] == 4
     assert row["vulkan_waitcnt_count"] == 1
+    assert comparison["source"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["hip"]["source_hash"] == "sha256:hip"
+    assert comparison["sources"]["vulkan"]["source_hash"] == "sha256:vulkan"
+    assert comparison["performance_claim"] is True
     json.dumps(comparison, allow_nan=False)
 
 
 def test_memory_waitcnt_comparison_rejects_cross_mode_rows() -> None:
     module = _load_runner_module()
-    hip = {"measurements": {"rows": [_timed_row(module, backend="hip", median_us=10.0)]}}
-    vulkan = {
-        "measurements": {
-            "rows": [
-                _timed_row(
-                    module,
-                    backend="vulkan",
-                    median_us=5.0,
-                    timing_mode="independent_throughput",
-                )
-            ]
-        }
-    }
-    with pytest.raises(ValueError, match="timing modes"):
+    hip = _result(
+        module,
+        backend="hip",
+        row=_timed_row(module, backend="hip", median_us=10.0),
+    )
+    vulkan = _result(
+        module,
+        backend="vulkan",
+        row=_timed_row(
+            module,
+            backend="vulkan",
+            median_us=5.0,
+            timing_mode="independent_throughput",
+        ),
+    )
+    with pytest.raises(ValueError, match="timing_mode"):
         module.build_comparison(hip, vulkan, command=["compare"])
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda result: result.update(schema_version=1), "v2"),
+        (lambda result: result.update(kind="wrong"), "micro result"),
+        (lambda result: result.update(bench="wrong"), "bench"),
+        (lambda result: result.update(backend="hip"), "HIP then Vulkan"),
+        (lambda result: result.update(classification="wrong"), "classification"),
+        (lambda result: result["hardware"].update(gfx_arch="gfx1100"), "architectures"),
+        (lambda result: result["hardware"].update(gpu_name="different"), "device identities"),
+        (lambda result: result["source"].update(commit="d" * 40), "commit"),
+        (lambda result: result["source"].update(dirty=True), "dirty"),
+        (lambda result: result["source"].pop("source_hash"), "source hash"),
+    ],
+)
+def test_memory_waitcnt_comparison_rejects_identity_or_provenance_mismatch(
+    mutation, message: str
+) -> None:
+    module = _load_runner_module()
+    hip = _result(
+        module,
+        backend="hip",
+        row=_timed_row(module, backend="hip", median_us=10.0),
+    )
+    vulkan = _result(
+        module,
+        backend="vulkan",
+        row=_timed_row(module, backend="vulkan", median_us=5.0),
+    )
+    mutation(vulkan)
+    with pytest.raises(ValueError, match=message):
+        module.build_comparison(hip, vulkan, command=["compare"])
+
+
+def test_memory_waitcnt_comparison_requires_exact_unique_workload_rows() -> None:
+    module = _load_runner_module()
+    hip = _result(
+        module,
+        backend="hip",
+        row=_timed_row(module, backend="hip", median_us=10.0),
+    )
+    vulkan = _result(
+        module,
+        backend="vulkan",
+        row=_timed_row(module, backend="vulkan", median_us=5.0),
+    )
+
+    missing = deepcopy(vulkan)
+    missing["measurements"]["rows"] = []
+    with pytest.raises(ValueError, match="non-empty"):
+        module.build_comparison(hip, missing, command=["compare"])
+
+    duplicate = deepcopy(vulkan)
+    duplicate["measurements"]["rows"].append(
+        deepcopy(duplicate["measurements"]["rows"][0])
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        module.build_comparison(hip, duplicate, command=["compare"])
+
+    different_shape = deepcopy(vulkan)
+    different_shape["measurements"]["rows"][0]["body_iters"] = 32
+    with pytest.raises(ValueError, match="exact requested"):
+        module.build_comparison(hip, different_shape, command=["compare"])
+
+    duplicate_parameters_hip = deepcopy(hip)
+    duplicate_parameters_vulkan = deepcopy(vulkan)
+    duplicate_parameters_hip["parameters"]["workgroup_sizes"].append(128)
+    duplicate_parameters_vulkan["parameters"]["workgroup_sizes"].append(128)
+    with pytest.raises(ValueError, match="duplicate requested"):
+        module.build_comparison(
+            duplicate_parameters_hip,
+            duplicate_parameters_vulkan,
+            command=["compare"],
+        )
+
+
+def test_memory_waitcnt_comparison_marks_dirty_or_incorrect_inputs_non_claiming() -> None:
+    module = _load_runner_module()
+    hip = _result(module, backend="hip", row=_timed_row(module, backend="hip", median_us=10.0))
+    vulkan = _result(
+        module, backend="vulkan", row=_timed_row(module, backend="vulkan", median_us=5.0)
+    )
+    hip["source"]["dirty"] = True
+    vulkan["source"]["dirty"] = True
+    dirty = module.build_comparison(hip, vulkan, command=["compare"])
+    assert dirty["performance_claim"] is False
+    assert dirty["provenance"]["blocking_reasons"] == ["dirty_source"]
+
+    hip["source"]["dirty"] = False
+    vulkan["source"]["dirty"] = False
+    vulkan["correctness"]["status"] = "fail"
+    incorrect = module.build_comparison(hip, vulkan, command=["compare"])
+    assert incorrect["performance_claim"] is False
+    assert incorrect["provenance"]["blocking_reasons"] == [
+        "correctness_not_passed"
+    ]

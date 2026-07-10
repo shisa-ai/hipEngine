@@ -67,9 +67,11 @@ validates every disjoint output. Serial mode validates the final chained state
 plus a synchronization-sensitive sequence tag or equivalent litmus. An
 unsupported or below-resolution GPU clock is recorded as such, never as zero.
 
-Comparators key on workload shape, timing mode, dependency signature, and
-control. They emit GPU and host ratios separately and reject v1, missing, or
-mismatched contracts. A host-wall ratio additionally requires a matched
+Comparators key on the complete requested workload matrix, timing mode,
+dependency signature, control, architecture, device identity, and source
+provenance. They reject duplicates, incomplete matrices, v1 inputs, and
+mismatched contracts while retaining both backend source hashes. A host-wall
+ratio additionally requires a matched
 submission class: HIP graph replay can compare with Vulkan command-buffer
 replay, while an eager HIP launch loop cannot. Unmatched host walls remain
 visible as backend-specific measurements without a ratio. Static ISA extractors declare
@@ -89,12 +91,12 @@ Last updated: 2026-07-10.
 | Family | `serial_latency` | `independent_throughput` | Current status |
 | --- | --- | --- | --- |
 | Dispatch/grid floor | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact requested row matrices and source provenance are gated; HIP graph/Vulkan command-buffer host wall is matched only in serial mode, while independent host wall remains unpaired. |
-| Geometry | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Fixed HIP workgroups match Vulkan specialization; gfx1151 correctness smoke passed both modes. |
+| Geometry | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Fixed HIP workgroups match Vulkan specialization; exact K/rows/workgroup/body matrix and provenance are gated. gfx1151 correctness smoke passed both modes. |
 | Reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | LDS, extra-barrier, shuffle/subgroup, and 4/8/16-accumulator variants use fixed HIP workgroups, sequence-tagged shared output, or disjoint throughput slices; gfx1151 correctness smoke passed both modes. |
-| Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; gfx1151 correctness smoke passed both modes. |
-| Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Matched wg64/128/256 and sequence-tagged gfx1151 smoke passed; static dot4 evidence remains valid. |
-| VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Accumulating serial litmus, disjoint throughput outputs, and matched wg64/128/256; static VOPD evidence remains valid. |
-| Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Deterministic top-1/top-k exact-burst gfx1151 smoke passed both modes; old timing remains legacy. |
+| Memory/waitcnt | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix, accumulating serial litmus, and disjoint throughput outputs; correctness samples the first 64 outputs of every timed repetition. gfx1151 smoke passed both modes. |
+| Packed dot | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix and sequence tags are gated; correctness samples the first 64 outputs of every timed repetition. Static dot4 evidence remains valid. |
+| VOPD | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full `n`/body/workgroup matrix, accumulating serial litmus, and disjoint throughput outputs; correctness samples the first 64 outputs of every timed repetition. Static VOPD evidence remains valid. |
+| Sampler | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Exact rows/workgroup/top-k/vocab matrix and deterministic timed-burst oracle are gated; old timing remains legacy. |
 | Two-stage reduction | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Multi-stage work is round-robin over matched HIP streams and Vulkan compute queues; Vulkan uses calibrated cross-queue timestamps and one partial-to-final barrier per operation. gfx1151 exact-burst smoke passed both modes. |
 | Q4 selected-dual | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Full expected workgroup matrix, backend-specific ABI labels, calibrated combined queue lanes, downstream quantize oracle, and KL/top-1 gate. Production-shaped gfx1151 smoke passed both modes. |
 | Q6 selected-down X8 | Harness v2 complete; retained rerun pending | Harness v2 complete; retained rerun pending | Shared int64/BF16 ABI, exact quantize/dot/combined triplet, disjoint q8_1/output slices, calibrated queue lanes for combined throughput, KL/top-1 gate, and clean same-device provenance gate. Production-shaped gfx1151 smoke passed both modes. |

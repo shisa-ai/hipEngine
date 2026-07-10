@@ -304,6 +304,15 @@ def normalize_raw_result(
         row["workgroup_specialization"] = (
             "fixed" if backend == "hip" else "specialization_constant"
         )
+    expected_keys = _expected_shape_keys(config)
+    actual_keys = [_shape_key(row) for row in rows if isinstance(row, dict)]
+    if len(actual_keys) != len(rows) or len(set(actual_keys)) != len(actual_keys):
+        raise ValueError("raw geometry result contains invalid or duplicate rows")
+    if set(actual_keys) != expected_keys:
+        raise ValueError(
+            "raw geometry result does not contain the exact requested row matrix: "
+            f"expected {len(expected_keys)}, got {len(actual_keys)}"
+        )
     reference = _reference_row(rows)
     max_abs = max((float(row.get("max_abs", 0.0)) for row in rows), default=0.0)
     max_rel = max((float(row.get("max_rel", 0.0)) for row in rows), default=0.0)
@@ -335,6 +344,7 @@ def normalize_raw_result(
                 if backend == "hip"
                 else None,
                 "raw_config": config,
+                "expected_row_count": len(expected_keys),
                 "timing_mode": timing_mode,
                 "independent_streams": config.get("independent_streams")
                 if backend == "hip"
@@ -415,6 +425,84 @@ def _shape_key(row: dict[str, Any]) -> tuple[int, int, int, int, str]:
     )
 
 
+def _expected_shape_keys(config: dict[str, Any]) -> set[tuple[int, int, int, int, str]]:
+    matrix: dict[str, list[int]] = {}
+    for field in ("k_list", "rows_list", "workgroups"):
+        values = config.get(field)
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in values)
+            or len(set(values)) != len(values)
+        ):
+            raise ValueError(f"raw geometry config {field} must be a unique positive integer list")
+        matrix[field] = values
+    body_repeats = config.get("body_repeats")
+    if not isinstance(body_repeats, int) or isinstance(body_repeats, bool) or body_repeats <= 0:
+        raise ValueError("raw geometry config body_repeats must be a positive integer")
+    timing_contract = _load_timing_contract_module()
+    timing_mode = timing_contract.parse_timing_mode(str(config.get("timing_mode")))
+    return {
+        (k, rows, workgroup, body_repeats, timing_mode)
+        for k in matrix["k_list"]
+        for rows in matrix["rows_list"]
+        for workgroup in matrix["workgroups"]
+    }
+
+
+def _device_fingerprint(name: Any) -> str:
+    text = str(name).lower()
+    match = re.search(r"radeon\s+(\d+s)", text)
+    if match:
+        return f"radeon_{match.group(1)}"
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _validate_comparison_inputs(
+    hip_result: dict[str, Any], vulkan_result: dict[str, Any]
+) -> None:
+    for label, result, backend in (
+        ("HIP", hip_result, "hip"),
+        ("Vulkan", vulkan_result, "vulkan"),
+    ):
+        if result.get("schema_version") != 2:
+            raise ValueError("geometry comparisons require v2 result artifacts")
+        if result.get("kind") != "hipengine_micro_result":
+            raise ValueError(f"{label} geometry input must be a micro result")
+        if result.get("bench") != BENCH_NAME:
+            raise ValueError(f"{label} geometry input bench does not match {BENCH_NAME}")
+        if result.get("backend") != backend:
+            raise ValueError("geometry comparison inputs must be HIP then Vulkan")
+        if result.get("classification") != "geometry":
+            raise ValueError(f"{label} geometry input classification must be geometry")
+    hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
+    vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
+    if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
+        raise ValueError("HIP and Vulkan geometry gfx architectures do not match")
+    hip_device = _device_fingerprint(hip_result.get("hardware", {}).get("gpu_name", ""))
+    vulkan_device = _device_fingerprint(
+        vulkan_result.get("hardware", {}).get("gpu_name", "")
+    )
+    if not hip_device or hip_device == "unknown" or hip_device != vulkan_device:
+        raise ValueError("HIP and Vulkan geometry device identities do not match")
+    hip_source = hip_result.get("source", {})
+    vulkan_source = vulkan_result.get("source", {})
+    if not isinstance(hip_source, dict) or not isinstance(vulkan_source, dict):
+        raise ValueError("HIP and Vulkan geometry source provenance must be objects")
+    for field in ("repo", "branch", "commit", "dirty"):
+        if field not in hip_source or field not in vulkan_source:
+            raise ValueError(f"HIP and Vulkan geometry source {field} is required")
+        if hip_source[field] != vulkan_source[field]:
+            raise ValueError(f"HIP and Vulkan geometry source {field} values do not match")
+    if not str(hip_source.get("repo", "")) or not str(hip_source.get("commit", "")):
+        raise ValueError("HIP and Vulkan geometry source repo/commit must not be empty")
+    if not isinstance(hip_source.get("dirty"), bool):
+        raise ValueError("HIP and Vulkan geometry source dirty must be boolean")
+    for label, source in (("HIP", hip_source), ("Vulkan", vulkan_source)):
+        if not str(source.get("source_hash", "")):
+            raise ValueError(f"{label} geometry source hash must not be empty")
+
+
 def _metric_median(row: dict[str, Any], control: str, domain: str) -> float | None:
     metric = row.get("timing", {}).get(control, {}).get(domain, {})
     if metric.get("status") != "ok":
@@ -430,12 +518,49 @@ def build_comparison(
     command: list[str],
     out_ref: str | None = None,
 ) -> dict[str, Any]:
-    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
-        raise ValueError("geometry comparisons require v2 result artifacts")
+    _validate_comparison_inputs(hip_result, vulkan_result)
     hip_rows = hip_result.get("measurements", {}).get("rows", [])
     vulkan_rows = vulkan_result.get("measurements", {}).get("rows", [])
+    if (
+        not isinstance(hip_rows, list)
+        or not isinstance(vulkan_rows, list)
+        or not hip_rows
+        or not vulkan_rows
+        or not all(isinstance(row, dict) for row in hip_rows)
+        or not all(isinstance(row, dict) for row in vulkan_rows)
+    ):
+        raise ValueError("geometry comparison inputs require non-empty object rows")
     if any(row.get("workgroup_specialization") != "fixed" for row in hip_rows):
         raise ValueError("HIP geometry comparison rows must use fixed workgroups")
+    if any(
+        row.get("workgroup_specialization") != "specialization_constant"
+        for row in vulkan_rows
+    ):
+        raise ValueError("Vulkan geometry comparison rows must use specialization constants")
+    hip_config = hip_result.get("parameters", {}).get("raw_config", {})
+    vulkan_config = vulkan_result.get("parameters", {}).get("raw_config", {})
+    for field in (
+        "k_list",
+        "rows_list",
+        "workgroups",
+        "body_repeats",
+        "reps",
+        "warmup",
+        "samples",
+        "timing_mode",
+    ):
+        if field not in hip_config or field not in vulkan_config:
+            raise ValueError(f"HIP and Vulkan geometry config {field} is required")
+        if hip_config[field] != vulkan_config[field]:
+            if field == "timing_mode":
+                raise ValueError("HIP and Vulkan geometry timing modes do not match (timing_mode)")
+            raise ValueError(f"HIP and Vulkan geometry config {field} values do not match")
+    hip_parameters = hip_result.get("parameters", {})
+    vulkan_parameters = vulkan_result.get("parameters", {})
+    if hip_parameters.get("timing_mode") != vulkan_parameters.get("timing_mode"):
+        raise ValueError("HIP and Vulkan geometry parameter timing modes do not match")
+    if hip_parameters.get("timing_mode") != hip_config["timing_mode"]:
+        raise ValueError("geometry parameter timing mode disagrees with raw config")
     hip_modes = {row.get("timing_mode") for row in hip_rows}
     vulkan_modes = {row.get("timing_mode") for row in vulkan_rows}
     if len(hip_modes) != 1 or hip_modes != vulkan_modes:
@@ -443,13 +568,33 @@ def build_comparison(
     timing_contract = _load_timing_contract_module()
     hip_by_key = {_shape_key(row): row for row in hip_rows}
     vulkan_by_key = {_shape_key(row): row for row in vulkan_rows}
+    if len(hip_by_key) != len(hip_rows) or len(vulkan_by_key) != len(vulkan_rows):
+        raise ValueError("geometry comparison inputs contain duplicate rows")
+    expected_keys = _expected_shape_keys(hip_config)
+    hip_expected_count = hip_parameters.get("expected_row_count")
+    vulkan_expected_count = vulkan_parameters.get("expected_row_count")
+    if hip_expected_count != vulkan_expected_count:
+        raise ValueError("HIP and Vulkan geometry expected_row_count values do not match")
+    if hip_expected_count != len(expected_keys):
+        raise ValueError("geometry expected_row_count does not match its requested matrix")
+    if set(hip_by_key) != expected_keys or set(vulkan_by_key) != expected_keys:
+        raise ValueError(
+            "HIP and Vulkan geometry results must contain the exact requested "
+            f"{len(expected_keys)}-row matrix"
+        )
+    if set(hip_by_key) != set(vulkan_by_key):
+        raise ValueError("HIP and Vulkan geometry row sets do not match exactly")
     matched = []
     comparisons = []
-    for key in sorted(set(hip_by_key) & set(vulkan_by_key)):
+    for key in sorted(hip_by_key):
         hip_row = hip_by_key[key]
         vulkan_row = vulkan_by_key[key]
-        timing_contract.validate_timed_row(hip_row)
-        timing_contract.validate_timed_row(vulkan_row)
+        timing_contract.validate_timed_row(
+            hip_row, expected_repetitions=int(hip_config["reps"])
+        )
+        timing_contract.validate_timed_row(
+            vulkan_row, expected_repetitions=int(hip_config["reps"])
+        )
         hip_us = _metric_median(hip_row, "burst", "gpu_elapsed")
         vulkan_us = _metric_median(vulkan_row, "burst", "gpu_elapsed")
         matched.append(
@@ -559,13 +704,31 @@ def build_comparison(
             }
         )
 
-    source = hip_result.get("source", {})
+    dirty = bool(hip_result["source"]["dirty"])
+    correctness_pass = (
+        hip_result.get("correctness", {}).get("status") == "pass"
+        and vulkan_result.get("correctness", {}).get("status") == "pass"
+        and all(bool(row.get("correctness_pass")) for row in hip_rows)
+        and all(bool(row.get("correctness_pass")) for row in vulkan_rows)
+    )
+    performance_claim = not dirty and correctness_pass
+    blocking_reasons = []
+    if dirty:
+        blocking_reasons.append("dirty_source")
+    if not correctness_pass:
+        blocking_reasons.append("correctness_not_passed")
+
     comparison = {
         "schema_version": 2,
         "kind": "hipengine_micro_comparison",
         "bench": BENCH_NAME,
         "classification": "diagnostic_unclassified",
-        "source": source,
+        "performance_claim": performance_claim,
+        "source": hip_result.get("source", {}),
+        "sources": {
+            "hip": hip_result.get("source", {}),
+            "vulkan": vulkan_result.get("source", {}),
+        },
         "command": command,
         "hardware": {
             "hip": hip_result.get("hardware", {}),
@@ -579,6 +742,15 @@ def build_comparison(
         "correctness": {
             "hip": hip_result.get("correctness", {}),
             "vulkan": vulkan_result.get("correctness", {}),
+        },
+        "provenance": {
+            "commit_match": True,
+            "dirty": dirty,
+            "gfx_arch_match": True,
+            "device_match": True,
+            "source_hashes_present": True,
+            "performance_claim": performance_claim,
+            "blocking_reasons": blocking_reasons,
         },
         "matched_rows": matched,
         "comparisons": comparisons,

@@ -148924,3 +148924,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   compilation and scoped diff checks. The existing serial and independent
   gfx1151 smoke pairs each replayed with three matched rows and six comparisons;
   both remain non-claiming only because their recorded source is dirty.
+
+## 2026-07-10 - Strict single-stage comparison matrices
+
+- Hardened geometry, packed-dot, memory/waitcnt, VOPD, and sampler artifacts
+  and comparators. Row identity now includes every workload dimension:
+  geometry K/rows/workgroup/body repeats; dot, memory, and VOPD `n` plus body
+  iterations; sampler vocabulary plus rows/workgroup/top-k.
+- Normalization rejects raw/config disagreement, duplicate parameter entries,
+  duplicate rows, and incomplete requested cross-products. Comparisons require
+  v2 kind/bench/backend/classification, one timing mode, exact matrices,
+  matching gfx/device/repo/revision/dirty state, both source hashes, and valid
+  timed contracts. The schema-facing primary `source` remains singular while
+  the separate `sources` map preserves both backend hashes.
+- `performance_claim` is false for dirty or incorrect inputs. Documentation
+  now states that dot, memory, and VOPD timed correctness covers the first 64
+  outputs of every repetition rather than claiming a full-output oracle.
+- Validation: `uv run pytest -q tests/test_micro_geometry_sweep.py
+  tests/test_micro_dot_path.py tests/test_micro_memory_waitcnt.py
+  tests/test_micro_vopd_sweep.py tests/test_micro_sampler_argmax.py` (`91
+  passed`), plus Python compilation and scoped diff checks. The final complete
+  `uv run pytest -q tests/test_micro_*.py` gate passed all `213` tests after
+  the schema and device tightening.
