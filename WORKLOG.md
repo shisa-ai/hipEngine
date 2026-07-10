@@ -150107,3 +150107,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   recorded in `docs/ENVS.md` and `docs/REFACTOR.md`. SOL-G2 remains in progress
   until the real fused/chain driver localizes the first hidden/recurrent
   divergence and closes the short/512/4K/segment/chunk matrix.
+
+## 2026-07-11 - SOL-G2 fused/chain state comparator infrastructure
+
+- A live current-HEAD rerun of the exact 17-token greeting refined the stale
+  June result. Both production bulk modes now sample llama.cpp token `9419`
+  (`Hello`), but their FP32 hidden seed and recurrent state are not exact.
+  Layer 0 Conv state is byte-identical while layer 0 recurrent state differs;
+  the existing all-layer row-bulk capture shows layer 0 BF16 output still
+  rounds identically and the first hidden-output divergence appears after
+  layer 1 (`max_abs=0.000244140625`, 880 differing FP32 elements).
+- The existing synthetic cross-implementation gate allows state drift up to
+  `5e-3` absolute / 5% relative and BF16 output drift up to `5e-2` / 15%, so
+  it could not certify resident-state identity. This is now the concrete RED
+  to tighten before promoting the split chain.
+- RED for a reusable artifact driver failed collection because
+  `scripts.gguf_gdn_prefill_compare` did not exist. Added the driver with a
+  production bulk-prefill lane, optional all-layer final-row bisect lane,
+  layer-major Conv/GDN comparison, compact FP32 fingerprints/deltas, explicit
+  clean-provenance metadata, and no raw tensor payloads. A mismatch exits
+  nonzero by default; `--allow-mismatch` exists only to retain pre-fix evidence.
+- GREEN: `uv run pytest -q tests/test_gguf_gdn_prefill_compare.py` passes `5/5`;
+  Python compilation and `git diff --check` pass. The committed driver is the
+  next step's source for a clean pre-fix artifact. The required kernel-lineage
+  audit was attempted but cannot inspect its configured parent because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent; no external source was
+  copied or modified.
