@@ -148946,3 +148946,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passed`), plus Python compilation and scoped diff checks. The final complete
   `uv run pytest -q tests/test_micro_*.py` gate passed all `213` tests after
   the schema and device tightening.
+
+## 2026-07-10 - Microbenchmark README timing-contract reset
+
+- Replaced the microbenchmark README's pre-v2 command notebook and retained
+  timing table with the current two-mode contract, complete paired-runner
+  inventory, ISA-only boundary, blocked Q6 lm-head explanation, and a strict
+  legacy-artifact quarantine. No withdrawn ratio remains in the current
+  README.
+- Added executable gfx1151 templates for dispatch, every separate-backend
+  synthetic and production-slice family, and both joint reduction families in
+  `serial_latency` and `independent_throughput`. The dense-Q8 template includes
+  the required wave32 comparison control.
+- Documented single/burst controls, GPU/host clocks, calibrated multi-queue
+  timing, host submission-class gating, full versus sampled oracle scope, and
+  the non-claiming provenance conditions.
+- Validation: re-read all `393` lines, verified every named runner accepts
+  `--help`, checked every Bash template with `bash -n`, and passed scoped
+  `git diff --check`.

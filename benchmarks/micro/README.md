@@ -1,895 +1,393 @@
-# hipEngine Microbenchmarks
+# hipEngine HIP/Vulkan Microbenchmarks
 
-This directory is the home for controlled HIP vs Vulkan attribution
-microbenchmarks. The goal is not to produce a single "Vulkan is faster" number.
-The goal is to classify each delta into a cause that can drive engineering work:
-compiler codegen, workgroup geometry, wave/subgroup mode, dispatch/runtime
-overhead, layout/quantization, or fusion topology.
+This directory contains controlled HIP versus Vulkan attribution benchmarks.
+The goal is to identify actionable causes such as dispatch overhead, workgroup
+geometry, memory scheduling, quantization layout, or compiler code generation.
+It is not a source for an unconditional "Vulkan is faster" or "HIP is faster"
+claim.
 
-The benchmark plan lives in `docs/HIP-vs-VULKAN.md`. This tree provides the
-artifacts and utilities used to execute that plan.
+## Timing-Contract v2 Reset
 
-## Directory Layout
+Current timing evidence must use `timing_contract.py` and
+`schemas/result.schema.json` with `schema_version=2`. The retained timing table
+and command examples that previously appeared in this file were produced before
+this contract and have been removed from the current dashboard. No pre-v2 timing
+ratio is current evidence.
 
-```text
-benchmarks/micro/
-  README.md
-  collect_env.py
-  runners/
-    dot_path.py
-    geometry_sweep.py
-    isa_stats.py
-    q4_selected_dual_isa_stats.py
-    q6_x8_isa_stats.py
-    q6_lm_head_rowtile_probe.py
-    memory_waitcnt.py
-    q4_selected_dual_real_slice.py
-    reduction_sweep.py
-    sampler_argmax.py
-    vopd_sweep.py
-    hip_dot_path.hip
-    hip_geometry_sweep.hip
-    hip_memory_waitcnt.hip
-    hip_sampler_argmax.hip
-    hip_vopd_sweep.hip
-    hip_dispatch_floor.py
-    vulkan_dot_path.cpp
-    vulkan_geometry_sweep.cpp
-    vulkan_memory_waitcnt.cpp
-    vulkan_q4_selected_dual.cpp
-    vulkan_sampler_argmax.cpp
-    vulkan_vopd_sweep.cpp
-    vulkan_dispatch_floor.py
-    vulkan_dispatch_floor.cpp
-  kernels/
-    vulkan/
-      dot_path.comp
-      geometry_sweep.comp
-      memory_waitcnt.comp
-      q4_selected_dual.comp
-      q8_1_quantize.comp
-      reduction_extra_barrier.comp
-      reduction_multi_accum.comp
-      reduction_subgroup.comp
-      sampler_argmax.comp
-      vopd_sweep.comp
-  schemas/
-    environment.schema.json
-    result.schema.json
-  results/
-    .gitkeep
-```
+The two timing modes answer different questions:
 
-Future benchmark code should keep source and retained artifacts under this
-directory unless it needs shared hipEngine runtime code.
+| Mode | Work contract | Intended question |
+| --- | --- | --- |
+| `serial_latency` | Logical operations share or chain state. HIP uses stream order; Vulkan inserts compute-to-compute dependencies between repetitions. | How long does required ordered work take? |
+| `independent_throughput` | Logical operations write disjoint output slices and have no cross-operation dependency. A multi-stage operation still keeps its required internal stage dependency. | What throughput is available when independent work is submitted efficiently? |
 
-Suggested future layout:
+Do not compare one backend's `serial_latency` row with the other backend's
+`independent_throughput` row. A cross-backend ratio requires the same timing
+mode, logical iteration count, dispatches per iteration, work dependency, output
+partitioning, and shape.
 
-```text
-benchmarks/micro/
-  runners/
-    compare_results.py
-  kernels/
-    vulkan/
-      dispatch_floor.comp
-  results/
-    gfx1100/
-      w7900/
-      7900xtx/
-    gfx1151/
-      strix_halo/
-```
+Every timed row has two controls:
 
-## Result Rules
+- `single`: one logical operation, used to expose the one-operation floor.
+- `burst`: the configured number of logical operations, used for steady replay
+  or queue/stream throughput. The artifact records both whole-sequence and
+  per-iteration distributions.
 
-Each retained result must include:
+Every control records two clocks:
 
-- exact command and working directory;
-- git commit, branch, and dirty status;
-- hardware identity: GPU name, gfx arch, driver/runtime versions where
-  available;
-- OS/kernel and Python version;
-- HIP/ROCm compiler/runtime versions for HIP rows;
-- Vulkan loader, device, driver, Mesa/RADV/ACO information for Vulkan rows;
-- benchmark shape: backend, algorithm, K/N/rows/workgroup/wave or subgroup,
-  warmup and measured iterations;
-- correctness evidence against CPU or cross-backend oracle;
-- timing distribution, not just one value;
-- ISA/stat evidence when available: VGPR, SGPR, scratch, LDS, wave/subgroup,
-  `v_dot4_i32_iu8`, VOPD, and waitcnt counts.
+- `gpu_elapsed`: HIP events or Vulkan device timestamps. This is the primary
+  cross-backend kernel/sequence comparison domain. Multi-queue Vulkan spans use
+  an enabled calibrated-timestamps extension so timestamps from different queues
+  can be placed on one device timeline.
+- `host_wall`: `steady_clock` around the recorded submit/completion contract.
+  A host-wall ratio is emitted only when both rows have the same normalized
+  submission class, whether command recording is timed, whether submission is
+  timed, and whether completion is timed. HIP direct or multi-stream submission
+  is therefore not ratioed against Vulkan pre-recorded command-buffer replay.
 
-Use `schemas/result.schema.json` for result artifacts and
-`schemas/environment.schema.json` for environment snapshots.
+`independent_throughput` must validate every disjoint output from the timed
+burst. `serial_latency` may validate the chained final state. A single-dispatch
+oracle alone is not sufficient for either mode.
 
-## Environment Capture
+## Core Files
 
-Capture the environment before running a microbench:
+| Path | Purpose |
+| --- | --- |
+| `timing_contract.py` | Shared mode, control, metric, correctness, and comparison gates |
+| `runners/micro_timing_hip.hpp` | HIP event and multi-stream timing helpers |
+| `runners/micro_timing_vulkan.hpp` | Vulkan timestamp, barrier, calibrated multi-queue timing helpers |
+| `collect_env.py` | Dependency-free environment and device provenance capture |
+| `schemas/result.schema.json` | v1 legacy plus v2 result/comparison artifact schema |
+| `schemas/environment.schema.json` | Environment artifact schema |
+| `results/` | Retained compact artifacts, separated by architecture and device |
+
+## Paired Runner Inventory
+
+All timing runners below support both `serial_latency` and
+`independent_throughput`. "Separate" means run HIP and Vulkan artifacts first,
+then invoke the same Python wrapper with `--compare`. "Joint" means one wrapper
+runs both backends and emits the comparison artifact.
+
+| Area | Wrapper(s) | Interface | Coverage |
+| --- | --- | --- | --- |
+| Dispatch/grid floor | `hip_dispatch_floor.py`, `vulkan_dispatch_floor.py` | Separate; compare through `hip_dispatch_floor.py --compare` | Tiny launch count and grid-size controls |
+| F32 geometry | `geometry_sweep.py` | Separate | Matched FMA/reduction shapes and workgroups |
+| Reduction variants | `reduction_sweep.py` | Joint, `--backend both` | LDS tree, extra barrier, subgroup/wave, multi-accumulator variants |
+| Memory/waitcnt | `memory_waitcnt.py` | Separate | Coalesced, strided, gather, and load/compute interleave |
+| Packed dot | `dot_path.py` | Separate | Q8 signed, Q4 unsigned/signed, Q6 zero correction, scalar dequant |
+| VOPD/VALU | `vopd_sweep.py` | Separate | Independent/dependent FMA, mixed int/float, dequant-like work |
+| Sampler | `sampler_argmax.py` | Separate | Deterministic top-1 and top-k argmax |
+| Two-stage reduction | `two_stage_reduction.py` | Joint, `--backend both` | Partial reduction plus final reduction with an internal dependency |
+| Q4 selected-dual | `q4_selected_dual_real_slice.py` | Separate | Production-shaped Q4_K selected-dual q8_1 plus dp4a |
+| Q6 X8 selected-down | `q6_x8_real_slice.py` | Separate | Production-shaped Q6_K X8 selected-down q8_1 plus dp4a |
+| Dense Q8_0 | `q8_0_dense_real_slice.py` | Separate | Raw GGUF Q8_0 dense q8_1 plus dp4a, including row tiles |
+
+Multi-stage independent-throughput paths use matched HIP stream lanes and
+Vulkan compute-queue lanes where a single queue would introduce an unintended
+cross-operation dependency. Single-stage Vulkan paths may use independent,
+disjoint dispatches in one pre-recorded command buffer.
+
+Packed-dot, memory/waitcnt, and VOPD timed-sequence checks cover the first 64
+outputs from every logical repetition. That is a repeated sampled oracle, not
+a full-output equality claim. Geometry, sampler, and production-slice runners
+record their own stronger per-row oracle coverage in the artifact.
+
+## ISA-Only Tools
+
+These tools report static compiler/output evidence. They do not create or
+repair a timing claim and have no `--timing-mode`:
+
+| Tool | Evidence |
+| --- | --- |
+| `isa_stats.py` | HIP and RADV geometry code-object/disassembly statistics |
+| `q4_selected_dual_isa_stats.py` | Q4 selected-dual HIP/RADV static comparison |
+| `q6_x8_isa_stats.py` | Q6 X8 selected-down HIP/RADV static comparison |
+
+Static fields such as wave size, VGPR/SGPR allocation, scratch, spills,
+instruction counts, dot4, VOPD, and waitcnt counts may support an attribution
+only when tied to the exact timed source/build. They must not be presented as a
+timing ratio.
+
+## Blocked Comparison
+
+`q6_lm_head_rowtile_probe.py` remains available for per-backend diagnostics,
+but its HIP BF16 Q6_K T16 rowtile path and Vulkan Q6_K X8 q8_1+dp4a path are not
+the same algorithm/layout contract. It is not a valid HIP/Vulkan latency or
+throughput comparison. Keep its comparison list empty or otherwise explicitly
+blocked until both backends execute matched math and data movement.
+
+## Common gfx1151 Setup
+
+The templates below write to `/tmp`; they do not create retained claims. Run
+from the repository root on the gfx1151 system.
 
 ```bash
+export HIPENGINE_HIP_ARCH=gfx1151
+export GPU_NAME="Radeon 8060S Graphics"
+export MICRO_ROOT=/tmp/hipengine-micro-v2-gfx1151
+export MICRO_ENV="$MICRO_ROOT/environment.json"
+
+mkdir -p "$MICRO_ROOT"
 python3 benchmarks/micro/collect_env.py \
-  --out /tmp/hipengine-micro-env.json \
+  --out "$MICRO_ENV" \
   --pretty
 ```
 
-`benchmarks/micro/system_info.py` is an alias for the same collector. The
-environment artifact records repo state, OS/kernel, Arch package versions,
-HIP/ROCm/TheRock compiler versions, LLVM tools, Vulkan/RADV/Mesa versions,
-AMDGPU module/firmware probes, rocm-smi/amd-smi/inxi device state, and
-RyzenAdj output when available.
+For a retained run, replace `/tmp` paths with the appropriate
+`results/gfx1151/<device>/` paths only after correctness, schema, source, and
+comparison gates pass.
 
-For Strix Halo or other APU rows where power limits matter, use the
-fast-failing privileged probe after confirming sudo is available:
+## Current gfx1151 Command Templates
+
+### Dispatch
+
+The dispatch pair uses separate HIP and Vulkan wrappers. Vulkan has no stream
+count argument; its independent work is encoded by the command-buffer harness.
 
 ```bash
-python3 benchmarks/micro/system_info.py \
-  --include-privileged \
-  --out /tmp/hipengine-micro-env.json \
-  --pretty
+for MODE in serial_latency independent_throughput; do
+  OUT="$MICRO_ROOT/$MODE"
+  mkdir -p "$OUT"
+
+  python3 benchmarks/micro/runners/hip_dispatch_floor.py \
+    --counts 1,50,200,941 \
+    --kernels tiny \
+    --grid-sweep 1,128,1024,8192 \
+    --reps 50 \
+    --warmup 10 \
+    --timing-mode "$MODE" \
+    --independent-streams 4 \
+    --environment-json "$MICRO_ENV" \
+    --environment-ref "$MICRO_ENV" \
+    --gfx-arch gfx1151 \
+    --hardware-gpu "$GPU_NAME" \
+    --out "$OUT/hip-dispatch-floor.json" \
+    --pretty
+
+  python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
+    --counts 1,50,200,941 \
+    --grid-sweep 1,128,1024,8192 \
+    --reps 50 \
+    --warmup 10 \
+    --timing-mode "$MODE" \
+    --environment-json "$MICRO_ENV" \
+    --environment-ref "$MICRO_ENV" \
+    --gfx-arch gfx1151 \
+    --hardware-gpu "$GPU_NAME" \
+    --out "$OUT/vulkan-dispatch-floor.json" \
+    --pretty
+
+  python3 benchmarks/micro/runners/hip_dispatch_floor.py \
+    --compare "$OUT/hip-dispatch-floor.json" \
+              "$OUT/vulkan-dispatch-floor.json" \
+    --out "$OUT/dispatch-floor-comparison.json" \
+    --pretty
+done
 ```
 
-The privileged path uses `sudo -n ryzenadj -i`, so it records a normal command
-failure instead of blocking for a password prompt.
+### Separate-Backend Families
 
-For tests or machines without ROCm/Vulkan tools:
+This helper invokes each wrapper's `--backend` and `--compare` interfaces for
+both timing modes. The arguments following the name are passed unchanged to
+both backend runs.
 
 ```bash
-python3 benchmarks/micro/collect_env.py --skip-device-probes --pretty
+run_paired_micro() {
+  local RUNNER=$1
+  local NAME=$2
+  shift 2
+
+  local MODE OUT BACKEND
+  for MODE in serial_latency independent_throughput; do
+    OUT="$MICRO_ROOT/$MODE"
+    mkdir -p "$OUT"
+
+    for BACKEND in hip vulkan; do
+      python3 "$RUNNER" \
+        --backend "$BACKEND" \
+        --timing-mode "$MODE" \
+        --independent-streams 4 \
+        --reps 20 \
+        --warmup 5 \
+        --samples 7 \
+        --environment-json "$MICRO_ENV" \
+        --environment-ref "$MICRO_ENV" \
+        --gfx-arch gfx1151 \
+        --hardware-gpu "$GPU_NAME" \
+        "$@" \
+        --out "$OUT/$BACKEND-$NAME.json" \
+        --pretty
+    done
+
+    python3 "$RUNNER" \
+      --compare "$OUT/hip-$NAME.json" "$OUT/vulkan-$NAME.json" \
+      --out "$OUT/$NAME-comparison.json" \
+      --pretty
+  done
+}
 ```
 
-The collector is dependency-free and intentionally tolerant: missing commands
-are recorded as unavailable instead of failing the run.
-
-## HIP Dispatch/Grid Floor
-
-The first runner wraps the existing `scripts/graph_node_microbench.py` HIP
-diagnostic and normalizes it into `schemas/result.schema.json`:
+Run the synthetic families with bounded gfx1151 matrices:
 
 ```bash
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/hip_dispatch_floor.py \
-  --counts 1,50,200,941 \
-  --kernels tiny,wide \
-  --grid-sweep 1,128,1024,8192 \
-  --reps 50 \
-  --warmup 10 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/dispatch-floor.json
-```
+run_paired_micro benchmarks/micro/runners/geometry_sweep.py geometry \
+  --k-list 512,2048 \
+  --rows-list 1,4 \
+  --workgroups 64,256 \
+  --body-repeats 32
 
-For compact retained artifacts, capture the environment once and reference it:
+run_paired_micro benchmarks/micro/runners/memory_waitcnt.py memory-waitcnt \
+  --variants coalesced:4,strided:4,gather:1,interleave:4 \
+  --n 32768 \
+  --body-iters 64 \
+  --workgroups 64,256
 
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/hip_dispatch_floor.py \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --counts 1,50,200,941 \
-  --kernels tiny,wide \
-  --grid-sweep 1,128,1024,8192 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/dispatch-floor.json
-```
-
-Use `--legacy-input <path>` to normalize an existing
-`scripts/graph_node_microbench.py --json` artifact without rerunning HIP.
-
-## Vulkan Dispatch/Grid Floor
-
-The Vulkan runner builds a tiny storage-buffer compute shader and a standalone
-`libvulkan` C++ harness, records command buffers outside the timed region, and
-normalizes submit+fence timing into the same result schema:
-
-```bash
-python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
-  --counts 1,50,200,941 \
-  --grid-sweep 1,128,1024,8192 \
-  --reps 50 \
-  --warmup 10 \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dispatch-floor.json
-```
-
-For paired retained rows, use the same environment artifact as the HIP run:
-
-```bash
-python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --counts 1,50,200,941 \
-  --grid-sweep 1,128,1024,8192 \
-  --gfx-arch gfx1100 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dispatch-floor.json
-```
-
-This is a dispatch/runtime diagnostic only. It does not establish RADV/ACO
-shader codegen quality; it tells us how much of a HIP vs Vulkan delta can be
-explained before any real math kernel runs.
-
-## Packed Dot Path
-
-`runners/dot_path.py` runs matched packed-int dot diagnostics on HIP and Vulkan.
-The retained variants cover q8 signed dot, q4 unsigned-byte by signed-q8 dot,
-q6 zero-point correction (`dot_u - 32 * q8_sum`), and a scalar q4 dequant
-baseline. HIP uses the same `__builtin_amdgcn_sudot4` idiom as the shipped GGUF
-diagnostic kernels; Vulkan requires `VK_KHR_shader_integer_dot_product` and
-uses `dotPacked4x8EXT`.
-
-Example paired run:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/dot_path.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
+run_paired_micro benchmarks/micro/runners/dot_path.py packed-dot \
   --variants q8_signed:16,q4_unsigned:16,q6_zero:16,scalar_dequant:16 \
   --n 32768 \
-  --body-iters 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/hip-dot-path.json
+  --body-iters 64 \
+  --workgroups 64,256
 
-python3 benchmarks/micro/runners/dot_path.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --variants q8_signed:16,q4_unsigned:16,q6_zero:16,scalar_dequant:16 \
-  --n 32768 \
-  --body-iters 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --debug-n 1024 \
-  --debug-body-iters 8 \
-  --quiet-shader-dump \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dot-path.json
-
-python3 benchmarks/micro/runners/dot_path.py \
-  --compare benchmarks/micro/results/gfx1100/w7900/hip-dot-path.json \
-            benchmarks/micro/results/gfx1100/w7900/vulkan-dot-path.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/dot-path-comparison.json
-```
-
-The runner records CPU-oracle correctness, timing, HIP code-object metadata,
-RADV final shader disassembly stats, final dot4 counts, waitcnt/load counts,
-wave/subgroup size, HIP scratch/spill evidence, and SPIR-V `OpSDot`/`OpSUDot`
-counts for the Vulkan rows. Use `--hip-wavefront-size 64` or
-`--hip-wavefront-size 32` on HIP rows to run wave-mode controls; the normalized
-artifact records both the requested mode and the code-object wave size. Use
-`--hip-fixed-block-index` on HIP rows to compile a fixed-indexing control with
-`__launch_bounds__(256)` and `kBlockSize`-based global ID calculation instead
-of `blockDim.x`; this isolates the tiny runtime-shape overhead that remains in
-the normal HIP source.
-
-## F32 GEMV Geometry Sweep
-
-`runners/geometry_sweep.py` runs a matched math diagnostic on HIP or Vulkan.
-Each row uses one workgroup per output row, repeat-shifted strided f32 FMA
-accumulation over K, and a shared-memory tree reduction. The repeat-shift keeps
-the body loop from collapsing into one identical dot product. HIP uses the
-runtime block size; Vulkan uses a `local_size_x` specialization constant. The
-harness validates every row against a CPU reference that mirrors the same
-per-workgroup reduction order. Use `--hip-workgroup-specialization fixed` on
-HIP rows to compile one fixed-workgroup binary per requested workgroup size and
-merge the rows into one artifact. This removes the runtime `blockDim.x`
-reduction/indexing path and is the paired control for Vulkan's
-`local_size_x` specialization.
-Use `--hip-wavefront-size 64` with fixed specialization to produce the combined
-fixed-wave64 control; the normalized artifact records the requested wave mode
-and CPU-oracle status.
-
-Example paired run:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/geometry_sweep.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --k-list 512,2048,8192 \
-  --rows-list 1,4,8 \
-  --workgroups 32,64,128,256 \
-  --body-repeats 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 11 \
-  --raw-json benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep-raw.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json
-
-python3 benchmarks/micro/runners/geometry_sweep.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --k-list 512,2048,8192 \
-  --rows-list 1,4,8 \
-  --workgroups 32,64,128,256 \
-  --body-repeats 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 11 \
-  --raw-json benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep-raw.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json
-
-python3 benchmarks/micro/runners/geometry_sweep.py \
-  --compare benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json \
-            benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/geometry-sweep-comparison.json
-```
-
-This family can classify workgroup-shape effects. It is not sufficient
-`compiler_aco` evidence until paired ISA/stat extraction shows register,
-scratch, waitcnt, VOPD, or instruction-count differences at identical shape.
-
-## F32 Geometry ISA/Stat Extraction
-
-`runners/isa_stats.py` extracts compiler/output statistics for the geometry
-kernel without making a new timing claim. HIP extraction uses `hipcc
---save-temps`, `llvm-readobj --notes`, and `llvm-objdump`. Vulkan extraction
-runs the Vulkan geometry harness under `RADV_DEBUG=shaders,shaderstats` and
-parses RADV final shader disassembly plus shaderstats allocation counts.
-Estimated physical register spans are retained as cross-checks, but current
-RADV rows use official shaderstats VGPR/SGPR/spill/scratch fields when present.
-Use `--hip-workgroup-specialization fixed --hip-wavefront-size 64` on HIP rows
-when extracting ISA for the combined fixed-wave64 geometry control; this
-compiles one code object per requested workgroup.
-
-Example paired run:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/isa_stats.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
-  --geometry-result benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --k 2048 \
-  --rows 1 \
-  --workgroups 64,256 \
-  --body-repeats 128 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/hip-geometry-isa-stats.json
-
-python3 benchmarks/micro/runners/isa_stats.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
-  --geometry-result benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --k 2048 \
-  --rows 1 \
-  --workgroups 64,256 \
-  --body-repeats 128 \
-  --reps 1 \
-  --warmup 0 \
-  --samples 1 \
-  --quiet-shader-dump \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-isa-stats.json
-
-python3 benchmarks/micro/runners/isa_stats.py \
-  --compare benchmarks/micro/results/gfx1100/w7900/hip-geometry-isa-stats.json \
-            benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-isa-stats.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/geometry-isa-stats-comparison.json
-```
-
-## Memory / Waitcnt Sweep
-
-`runners/memory_waitcnt.py` runs paired device-memory load diagnostics with
-ISA/stat extraction. The retained variants should cover coalesced vector-width
-loads, strided loads, gather-ID addressing, and load/compute interleave. Vulkan
-uses device-local storage buffers with staging copies so the timed region is not
-just a host-visible-buffer diagnostic. Use `--hip-wavefront-size 64` or
-`--hip-wavefront-size 32` on HIP rows to test whether the memory-side Vulkan
-lead survives wave-mode control. Use `--hip-fixed-block-index` on HIP rows to
-compile the fixed 256-thread indexing and launch-bounds control.
-
-Example paired run:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/memory_waitcnt.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --n 32768 \
-  --body-iters 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/hip-memory-waitcnt.json
-
-python3 benchmarks/micro/runners/memory_waitcnt.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --n 32768 \
-  --body-iters 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --debug-n 1024 \
-  --debug-body-iters 8 \
-  --quiet-shader-dump \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-memory-waitcnt.json
-
-python3 benchmarks/micro/runners/memory_waitcnt.py \
-  --compare benchmarks/micro/results/gfx1100/w7900/hip-memory-waitcnt.json \
-            benchmarks/micro/results/gfx1100/w7900/vulkan-memory-waitcnt.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/memory-waitcnt-comparison.json
-```
-
-## VOPD Scheduling Sweep
-
-`runners/vopd_sweep.py` runs paired pure-VALU diagnostics for VOPD and VALU
-scheduling. Each variant is compiled separately with mode/accumulator macros so
-the ISA evidence corresponds to exactly one kernel body. The default variants
-cover independent f32 FMA chains, dependent f32 FMA chains, mixed int+float,
-and dequant-like shift/mask/cvt/FMA chains.
-
-Example paired run:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json
-
-HIPENGINE_HIP_ARCH=gfx1100 \
-python3 benchmarks/micro/runners/vopd_sweep.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
+run_paired_micro benchmarks/micro/runners/vopd_sweep.py vopd \
+  --variants independent_fma:4,dependent_fma:4,mixed_int_float:4,dequant_like:4 \
   --n 65536 \
-  --body-iters 2048 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/hip-vopd-sweep.json
+  --body-iters 512 \
+  --workgroups 64,256
 
-python3 benchmarks/micro/runners/vopd_sweep.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
-  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
-  --gfx-arch gfx1100 \
-  --hardware-gpu "AMD Radeon Pro W7900" \
-  --n 65536 \
-  --body-iters 2048 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --debug-n 1024 \
-  --debug-body-iters 64 \
-  --quiet-shader-dump \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vulkan-vopd-sweep.json
-
-python3 benchmarks/micro/runners/vopd_sweep.py \
-  --compare benchmarks/micro/results/gfx1100/w7900/hip-vopd-sweep.json \
-            benchmarks/micro/results/gfx1100/w7900/vulkan-vopd-sweep.json \
-  --pretty \
-  --out benchmarks/micro/results/gfx1100/w7900/vopd-sweep-comparison.json
-```
-
-## Q4 Selected-Dual HIP/RADV ISA Comparison
-
-`runners/q4_selected_dual_isa_stats.py` compares the production HIP
-Q4_K selected-dual q8_1+dp4a kernel against the retained Vulkan/RADV shaderstats
-artifact for the same real slice. It compiles the HIP production source with
-`hipcc --save-temps`, parses code-object metadata and `llvm-objdump`
-disassembly, then joins the rows with the RADV shaderstats artifact.
-
-Retained gfx1151 command:
-
-```bash
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/q4_selected_dual_isa_stats.py \
-  --hip-result benchmarks/micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json \
-  --vulkan-isa-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json \
-  --build-dir /tmp/hipengine-micro-q4-selected-dual-isa-stats \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --out benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json
-```
-
-This is an attribution artifact for the retained Q4_K selected-dual Vulkan win.
-It does not create a new timing claim by itself.
-
-## Q6 X8 HIP/RADV ISA Comparison
-
-`runners/q6_x8_isa_stats.py` compares the production HIP Q6_K X8
-selected-down q8_1+dp4a kernel against the retained Vulkan/RADV shaderstats
-artifact for the same real slice. It compiles the HIP production source with
-`hipcc --save-temps`, parses code-object metadata and `llvm-objdump`
-disassembly, then joins the rows with the retained Vulkan timing and RADV
-shaderstats artifacts.
-
-Retained gfx1151 command:
-
-```bash
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/q6_x8_isa_stats.py \
-  --hip-result benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json \
-  --vulkan-result benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json \
-  --vulkan-isa-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json \
-  --build-dir /tmp/hipengine-micro-q6-x8-isa-stats \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --out benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json
-```
-
-This is an attribution artifact for the retained negative Q6_K X8 Vulkan
-real-slice result. It does not create a new timing claim by itself.
-
-## Q6 lm-head Rowtile Diagnostic
-
-`runners/q6_lm_head_rowtile_probe.py` compares the HIP production-style
-BF16 x Q6_K T16 lm-head rowtile path against the existing Vulkan Q6_K X8
-q8_1+dp4a full-output shader. This is intentionally diagnostic rather than a
-bit-identical cross-backend math/layout comparison: HIP correctness is checked
-against per-row decode output, while Vulkan correctness is checked against the
-existing CPU q8_1+Q6_K X8 oracle.
-
-Retained gfx1151 commands:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json
-
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --shapes 2048x32768,2048x152064 \
+run_paired_micro benchmarks/micro/runners/sampler_argmax.py sampler \
   --rows-list 1,4,8 \
-  --reps 10 \
-  --warmup 3 \
-  --samples 5 \
-  --build-dir /tmp/hipengine-q6-lmhead-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json \
-  --pretty
-
-python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --shapes 2048x32768,2048x152064 \
-  --rows-list 1,4,8 \
-  --local-sizes 64,128,256 \
-  --reps 10 \
-  --warmup 3 \
-  --samples 5 \
-  --build-dir /tmp/hipengine-q6-lmhead-retained-vulkan \
-  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json \
-  --pretty
-
-python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
-  --compare benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json \
-            benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json \
-  --out benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json \
-  --pretty
-```
-
-## Q4 Selected-Dual Vulkan Setup / Amortization Probe
-
-`runners/q4_selected_dual_real_slice.py` now records Vulkan setup phase timings
-from the underlying `vulkan_q4_selected_dual.cpp` harness. The retained
-instrumented row reuses the positive local_size=64 Q4_K selected-dual real
-slice and separates one-shot backend setup from steady pre-recorded command
-buffer replay.
-
-Retained gfx1151 command:
-
-```bash
-python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py \
-  --build-dir /tmp/hipengine-micro-q4-integration-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json \
-  --local-size 64 \
-  --reps 120 \
-  --warmup 30 \
-  --samples 11
-```
-
-This is a bounded setup/amortization probe. It is not a production
-`vulkan_radv_gfx11` backend result because it does not exercise hipEngine
-registry integration or full inference residency.
-
-## LDS / Barrier / Subgroup / Accumulator Reduction Sweep
-
-`runners/reduction_sweep.py` runs HIP and Vulkan reduction-topology controls
-using the geometry harness interface. The retained variants are HIP LDS tree,
-HIP LDS tree with one extra barrier per reduction stage, HIP wave-shuffle
-reduction, HIP 4/8/16 lane-local accumulator reductions, Vulkan LDS tree,
-Vulkan extra-barrier LDS tree, Vulkan subgroup reduction via
-`GL_KHR_shader_subgroup_arithmetic`, and Vulkan 4/8/16 lane-local accumulator
-reductions.
-
-Retained gfx1151 command:
-
-```bash
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/reduction_sweep.py \
-  --backend both \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --build-dir /tmp/hipengine-micro-reduction-sweep \
-  --out benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json \
-  --k-list 512,2048,8192 \
-  --rows-list 1 \
   --workgroups 64,256 \
-  --body-repeats 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 11 \
-  --pretty
+  --top-k-list 1,8 \
+  --vocab 32768
 ```
 
-This is a reduction-topology control for the f32 geometry gap. It does not
-stand alone as LLVM/RADV compiler attribution.
-
-Accumulator extension retained command:
+Run the production-shaped slice families through the same helper:
 
 ```bash
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/reduction_sweep.py \
-  --backend both \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --build-dir /tmp/hipengine-micro-reduction-accum-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/reduction-accum-sweep.json \
-  --k-list 512,2048,8192 \
-  --rows-list 1 \
-  --workgroups 32,64,256 \
-  --body-repeats 128 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 11 \
-  --pretty
+run_paired_micro benchmarks/micro/runners/q4_selected_dual_real_slice.py q4-selected-dual \
+  --x-rows 4 \
+  --rows 32 \
+  --experts 256 \
+  --in-features 2048 \
+  --out-features 512 \
+  --workgroups 64,128
+
+run_paired_micro benchmarks/micro/runners/q6_x8_real_slice.py q6-x8-selected-down \
+  --rows 8 \
+  --experts 256 \
+  --in-features 512 \
+  --out-features 2048 \
+  --local-size 64
+
+run_paired_micro benchmarks/micro/runners/q8_0_dense_real_slice.py dense-q8 \
+  --shapes 768x2048,2048x2048 \
+  --rows-list 1,4 \
+  --local-sizes 32,64,128 \
+  --row-tiles 1,4
 ```
 
-The accumulator extension closes the no-LDS-accumulator diagnostic as negative
-for HIP recovery on gfx1151.
+For profiling, prebuild HIP kernels outside `rocprofv3`, provide
+`--compiler-version-file`, and use `--require-cached-build` on runners that
+expose those options.
 
-True two-stage retained command:
+### Joint Reduction Families
+
+Both joint wrappers run HIP and Vulkan and emit one v2 comparison artifact.
 
 ```bash
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/two_stage_reduction.py \
-  --backend both \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-two-stage-reduction.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --k-list 8192,32768,65536 \
-  --rows-list 1,4,8 \
-  --workgroups 128,256 \
-  --split-counts 2,4,8 \
-  --body-repeats 32 \
-  --reps 20 \
-  --warmup 5 \
-  --samples 7 \
-  --build-dir /tmp/hipengine-two-stage-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/two-stage-reduction.json \
-  --pretty
+for MODE in serial_latency independent_throughput; do
+  OUT="$MICRO_ROOT/$MODE"
+  mkdir -p "$OUT"
+
+  python3 benchmarks/micro/runners/reduction_sweep.py \
+    --backend both \
+    --k-list 512,2048 \
+    --rows-list 1 \
+    --workgroups 64,256 \
+    --body-repeats 32 \
+    --reps 20 \
+    --warmup 5 \
+    --samples 7 \
+    --timing-mode "$MODE" \
+    --independent-streams 4 \
+    --environment-json "$MICRO_ENV" \
+    --environment-ref "$MICRO_ENV" \
+    --gfx-arch gfx1151 \
+    --hardware-gpu "$GPU_NAME" \
+    --out "$OUT/reduction-sweep.json" \
+    --pretty
+
+  python3 benchmarks/micro/runners/two_stage_reduction.py \
+    --backend both \
+    --k-list 8192,32768 \
+    --rows-list 1,4 \
+    --workgroups 128,256 \
+    --split-counts 2,4 \
+    --body-repeats 16 \
+    --reps 20 \
+    --warmup 5 \
+    --samples 7 \
+    --timing-mode "$MODE" \
+    --independent-streams 4 \
+    --environment-json "$MICRO_ENV" \
+    --environment-ref "$MICRO_ENV" \
+    --gfx-arch gfx1151 \
+    --hardware-gpu "$GPU_NAME" \
+    --out "$OUT/two-stage-reduction.json" \
+    --pretty
+done
 ```
 
-The true two-stage block-partial plus final-reduce sweep is also negative for
-a broad Vulkan reduction win on gfx1151. All 54 matched rows pass CPU
-correctness; Vulkan/HIP speedup is `0.690x-1.118x`, median `0.835x`, with only
-3/54 wg256/split8 rows above parity.
+## Result and Retention Rules
 
-## Sampler Top-1 And Top-K8 Argmax
+Every retained timing artifact must include:
 
-`runners/sampler_argmax.py` runs matched deterministic top-1 and compile-time
-top-k argmax diagnostics on HIP and Vulkan. Each shader uses one workgroup per
-logits row, scans vocab=`32768`, reduces to `(value, index)` pairs, and
-validates against a CPU oracle with stable value/index ordering. This covers
-the sampler/argmax matrix bucket for reduction, scan, LDS/shared-memory,
-register, VOPD, and waitcnt evidence. It is not a stochastic sampler,
-probability-filtered sampler, or fused lm-head+sample implementation.
+- exact wrapper/build/run commands and working directory;
+- commit, branch, dirty state, and source hash;
+- detected GPU name, gfx target, device index, driver/runtime/compiler versions;
+- full shape, quant/layout, workgroup, stream/queue count, warmup, repetitions,
+  samples, timing mode, and submission strategy;
+- `single` and `burst` GPU/host distributions;
+- timed-sequence correctness and synchronization validation;
+- a schema-v2 result or comparison classification.
 
-Retained gfx1151 commands:
+A comparison artifact must reject missing, duplicate, or shape-mismatched rows.
+GPU ratios require matched dependency contracts. Host ratios additionally
+require matched submission classes. A result that fails either gate stays
+diagnostic and must not be summarized as a backend speedup. Dirty,
+commit-mismatched, device-mismatched, or failed-correctness inputs must set
+`performance_claim=false` even when diagnostic ratios remain visible.
 
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json
+## Legacy Artifact Quarantine
 
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --rows-list 1,4,8 \
-  --workgroups 64,128,256 \
-  --vocab 32768 \
-  --reps 50 \
-  --warmup 10 \
-  --samples 9 \
-  --build-dir /tmp/hipengine-micro-sampler-argmax-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json \
-  --pretty
+Existing files under `results/` remain useful for provenance and for locating
+the source of earlier hypotheses. Timing fields and ratios from artifacts that
+predate timing-contract v2, omit the v2 dependency/submission/correctness
+contract, or timed Vulkan repetitions without the required dependencies are
+historical only. Do not use them in current dashboards, optimization priority,
+or HIP/Vulkan performance claims.
 
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-argmax.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --rows-list 1,4,8 \
-  --workgroups 64,128,256 \
-  --vocab 32768 \
-  --debug-vocab 1024 \
-  --reps 50 \
-  --warmup 10 \
-  --samples 9 \
-  --build-dir /tmp/hipengine-micro-sampler-argmax-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json \
-  --quiet-shader-dump \
-  --pretty
-
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --compare benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-argmax.json \
-            benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json \
-  --out benchmarks/micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json \
-  --pretty
-```
-
-Retained deterministic top-k8 commands use the same shape with `--top-k-list 8`:
-
-```bash
-python3 benchmarks/micro/collect_env.py \
-  --pretty \
-  --out benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json
-
-HIPENGINE_HIP_ARCH=gfx1151 \
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --backend hip \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --rows-list 1,4,8 \
-  --workgroups 64,128,256 \
-  --top-k-list 8 \
-  --vocab 32768 \
-  --reps 50 \
-  --warmup 10 \
-  --samples 9 \
-  --build-dir /tmp/hipengine-micro-sampler-topk8-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-topk8.json \
-  --pretty
-
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --backend vulkan \
-  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json \
-  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json \
-  --gfx-arch gfx1151 \
-  --hardware-gpu "Radeon 8060S Graphics" \
-  --rows-list 1,4,8 \
-  --workgroups 64,128,256 \
-  --top-k-list 8 \
-  --vocab 32768 \
-  --debug-vocab 1024 \
-  --reps 50 \
-  --warmup 10 \
-  --samples 9 \
-  --build-dir /tmp/hipengine-micro-sampler-topk8-retained \
-  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json \
-  --quiet-shader-dump \
-  --pretty
-
-python3 benchmarks/micro/runners/sampler_argmax.py \
-  --compare benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-topk8.json \
-            benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json \
-  --out benchmarks/micro/results/gfx1151/strix-halo/sampler-topk8-comparison.json \
-  --pretty
-```
-
-## Retained Results
-
-| Date | Hardware | Bench | Finding | Artifacts |
-| --- | --- | --- | --- | --- |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q6_K lm-head rowtile diagnostic | HIP BF16 x Q6_K T16 rowtile chunks and Vulkan Q6_K X8 q8_1+dp4a full-output rows both pass their own correctness gates: HIP `6/6`, Vulkan `18/18`. Across shapes `2048x32768` and `2048x152064`, rows=`1/4/8`, and Vulkan local_size=`64/128/256`, Vulkan/HIP speedup ranges `0.367x-1.058x` for quantize+dot and `0.367x-1.112x` for prequantized dot. Vulkan only wins the smaller `2048x32768` rows=1 case; full-vocab rows=1 is near parity/slower and rows=4/8 strongly favor HIP. Classified `real_slice_probe`; closes q6 lm-head as mostly negative for the current Vulkan X8 target on gfx1151. | `results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`, `results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json`, `results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json`, `results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | True two-stage reduction | Block-partial plus final-reduce rows K=`8192/32768/65536`, rows=`1/4/8`, wg=`128/256`, split_count=`2/4/8` all pass CPU correctness across 54 matched rows. Vulkan/HIP speedup ranges `0.690x-1.118x`, median `0.835x`; only 3/54 wg256/split8 rows are above parity. Classified `diagnostic_unclassified`; closes true two-stage reduction as negative for a broad Vulkan/RADV reduction win on gfx1151. | `results/gfx1151/strix-halo/two-stage-reduction.json`, `results/gfx1151/strix-halo/environment-two-stage-reduction.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Dense Q8_0 real-slice probe | Raw GGUF Q8_0 dense q8_1+dp4a shapes `768x2048`, `2048x2048`, and `2048x6144`, rows=`1/4/8`, row_tile=`1/4` all pass CPU correctness on HIP and Vulkan. Across 54 matched rows, Vulkan/HIP speedup ranges `0.279x-1.120x` for quantize+dot and `0.238x-1.169x` for prequantized dot. Vulkan only wins useful smaller `768x2048` cases; larger rows favor HIP, including `2048x2048` rows=4 row_tile=4 at `0.863x` combined and `2048x6144` rows=8 row_tile=4 at `0.707x` combined. Classified `real_slice_probe`; closes dense Q8_0 as mostly negative for Vulkan on current gfx1151 data. | `results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`, `results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/environment-q8-0-dense.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Reduction accumulator sweep | One-row K=512/2048/8192 wg32/wg64/wg256 rows all pass CPU correctness. HIP 4/8/16 lane-local accumulators are mostly slower than HIP LDS (`1.02x-2.40x`), Vulkan accumulator variants are mixed versus Vulkan LDS (`0.90x-1.77x`), and matched Vulkan accumulator rows remain `9.57x-15.81x` faster than HIP. Classified `diagnostic_unclassified`; closes the no-LDS-accumulator row as negative for HIP recovery. True two-stage is covered separately by `two-stage-reduction.json`. | `results/gfx1151/strix-halo/reduction-accum-sweep.json`, `results/gfx1151/strix-halo/environment-reduction-accum.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Sampler deterministic top-k8 argmax | Deterministic top-k8 rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the CPU oracle on HIP and Vulkan. Vulkan is `12.79x-25.93x` faster across matched rows; both backends prefer wg256 for best-native rows, where Vulkan is `12.79x-23.20x` faster. HIP reports wave32, 32-34 SGPR / 18-20 VGPR, no scratch/spills, and 5-7 VOPD; RADV reports wave64, official 108 SGPR / 12 VGPR, no scratch/spills, and 0 VOPD. Classified `diagnostic_unclassified`; covers deterministic top-k8 argmax, not stochastic sampling or fused lm-head+sample. | `results/gfx1151/strix-halo/sampler-topk8-comparison.json`, `results/gfx1151/strix-halo/hip-sampler-topk8.json`, `results/gfx1151/strix-halo/vulkan-sampler-topk8.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Sampler top-1 argmax | Deterministic top-1 argmax rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass the CPU oracle on HIP and Vulkan. Vulkan is `12.75x-26.94x` faster across matched rows; both backends prefer wg256 for best-native rows, where Vulkan is `12.75x-16.85x` faster. HIP reports wave32, 15 SGPR / 7 VGPR, no scratch/spills, and 3 VOPD; RADV reports wave64, official 108 SGPR / 12 VGPR, no scratch/spills, and 0 VOPD. Classified `diagnostic_unclassified`; top-k8 is covered separately, while stochastic sampling and fused lm-head+sample remain untested. | `results/gfx1151/strix-halo/sampler-argmax-comparison.json`, `results/gfx1151/strix-halo/hip-sampler-argmax.json`, `results/gfx1151/strix-halo/vulkan-sampler-argmax.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q6_K X8 HIP/RADV ISA comparison | Targeted ISA comparison for the negative Q6_K X8 real-slice row shows the Vulkan loss is not missing RADV dot4 or Vulkan spills. HIP and RADV both emit 9 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 30 SGPR / 51 VGPR, 599 static instructions, 39 waitcnt-family instructions, and 51 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 1117 static instructions, 89 waitcnt-family instructions, and 0 VOPD. Classified `real_slice_probe`; this is negative production-transfer evidence for a broad LLVM waitcnt/scheduling claim. | `results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q4_K selected-dual Vulkan setup/amortization probe | Instrumented local_size=64 rerun passes full CPU correctness and keeps steady replay positive at `0.292745 ms` prequantized dot and `0.293117 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`. Standalone backend setup before steady replay is `47.8645 ms`, dominated by `25.3268 ms` synthetic host staging and `17.4106 ms` Vulkan instance/device setup; pipeline creation is only `0.1736 ms`, device upload `3.4389 ms`, descriptor setup `0.0171 ms`, and command recording `0.0639 ms`. If all setup is charged to the retained Q4 quantize+dot delta, breakeven is about `908` calls. Classified bounded setup probe: useful only with persistent pipelines/resident buffers, not a production-backend win by itself. | `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | LDS/barrier/subgroup reduction sweep | One-row K=512/2048/8192 wg64/wg256 rows all pass CPU correctness. HIP extra-barrier is only `1.002x-1.028x` slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS (`0.991x-1.005x`), Vulkan extra-barrier is flat versus Vulkan LDS (`0.991x-1.005x`), and Vulkan subgroup is mostly flat to modestly slower than Vulkan LDS (`0.984x-1.132x`). Matched Vulkan LDS remains `8.19x-14.55x` faster than matched HIP LDS, so reduction topology is not the missing f32 geometry switch. Classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/reduction-sweep.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q4_K selected-dual HIP/RADV ISA comparison | Targeted ISA comparison for the one positive Vulkan real-slice row shows the Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing. HIP and RADV both emit 3 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 31 SGPR / 22 VGPR, 564 static instructions, 35 waitcnt-family instructions, and 4 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 526 static instructions, 26 waitcnt-family instructions, and 0 VOPD. Classified slice-specific `real_slice_probe`; remaining Q4 follow-up is narrower scheduling/source/reduction work only if it changes backend or HIP implementation priority. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q4_K selected-dual real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness and does transfer a real Vulkan win. Best Vulkan local_size=64 is `0.29607 ms` prequantized dot and `0.29238 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`, so Vulkan is `1.17x` faster on dot and `1.18x` faster combined. RADV final dot shader has 3 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 26 waitcnt-family instructions, and 22 buffer loads. Classified slice-specific `real_slice_probe`, not broad `compiler_aco`. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q6_K X8 selected-down real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness but does not transfer the synthetic Vulkan dot-path win. Best Vulkan local_size=64 is `0.03076 ms` prequantized dot and `0.03217 ms` quantize+dot versus retained HIP `0.01665 ms` and `0.01925 ms`, so Vulkan is `1.85x` slower on dot and `1.67x` slower combined. RADV final dot shader has 9 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 89 waitcnt-family instructions, and 82 buffer loads. Classified `real_slice_probe`; do not pursue this q6 selected-down Vulkan port as implemented, and do not file a broad LLVM memory/waitcnt issue from this synthetic-to-production transfer. | `results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json`, `results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S | HIP q8_1 real-slice layout controls | HIP production-layout q8_1 controls are positive. Q4_K selected-dual gate/up q8_1 quantize+dp4a is `2.77x` faster than raw selected-dual with top-1 `1.0`; Q6_K selected-down X8 q8_1 quantize+dp4a is `1.68x` faster than production T16 float with top-1 `1.0`. q8_1 quantization is only `0.0025-0.0027 ms`. Classified `layout_quant`; this is HIP-only evidence, not a matched Vulkan real-slice result. | `results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | HIP fixed-wave64 geometry controls | Forcing HIP wave64 while also specializing fixed workgroup sizes does not close the f32 geometry gap. HIP fixed-wave64 is `1.13x-1.23x` slower than fixed wave32 on best-native rows, and Vulkan remains `6.31x-16.18x` faster than HIP fixed-wave64. HIP fixed-wave64 ISA for K=2048 rows=1 wg64/wg256 reports wave64, 20 SGPR, 11 VGPR, no scratch/spills, 0 VOPD, and 20/24 waitcnt-family instructions. Classified `diagnostic_unclassified`; wave mode is not the missing f32 geometry switch. | `results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64.json`, `results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json`, `results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json`, `results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json`, `results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | HIP fixed-shape controls | Fixed-shape controls do not close the retained gaps. Dot fixed-block indexing is `0.993x-1.000x` versus same-commit runtime HIP and Vulkan remains `3.31x-3.43x` faster. Memory fixed-block indexing is mixed (`0.906x-1.290x` fixed/runtime) and Vulkan remains faster on every row (`1.04x-2.36x`). Fixed-workgroup geometry improves some HIP wg256 rows by up to `6.3%`, but Vulkan still leads best-native geometry by `5.56x-14.03x`. Classified `diagnostic_unclassified`; runtime `blockDim`/specialization is not the missing switch. | `results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`, `results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`, `results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | HIP wave64 controls | Forcing HIP wave64 does not close the retained dot or memory gaps. Dot-path wave64 is `1.007x-1.061x` slower than HIP wave32 and still trails same-commit Vulkan by `2.63x-3.55x`. Memory/waitcnt wave64 is mixed, leaves Vulkan faster on most rows, and regresses gather `6.349x` versus HIP wave32. Classified `diagnostic_unclassified`; do not promote broad HIP wave64 routing from this evidence. | `results/gfx1151/strix-halo/dot-path-wave64-comparison.json`, `results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | packed dot path | Packed q8 signed, q4 unsigned-byte by signed-q8, q6 zero-corrected, and scalar q4 rows all pass the exact sampled CPU oracle. HIP and RADV both emit final dot4 instructions in q8/q4/q6 rows, and HIP reports no scratch/spills. Vulkan remains `3.28x-3.42x` faster, including scalar dequant, so the retained gap is not a missed-HIP-dot4 story and remains `diagnostic_unclassified`. | `results/gfx1151/strix-halo/dot-path-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | memory/waitcnt sweep | Device-memory rows all pass the sampled CPU oracle. Vulkan is `1.02x-2.25x` faster across retained rows, while gather is essentially tied (`1.02x`). HIP reports no scratch/spills; RADV shaderstats reports official 12/24/48 VGPR buckets, 108 SGPR, and no scratch/spills. HIP wave64 and fixed-block controls do not close the synthetic gap, but the first memory-heavy production transfer, Q6_K X8 selected-down, is negative for Vulkan. This remains diagnostic memory-side evidence, not a clean `compiler_aco` proof. | `results/gfx1151/strix-halo/memory-waitcnt-comparison.json`, `results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`, `results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`, `results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | VOPD scheduling sweep | Pure VALU rows all pass the sampled CPU oracle. HIP emits VOPD in every retained row while RADV final disassembly emits 0 VOPD in every row. Vulkan is modestly faster only on independent-8 (`1.05x`), mixed int+float (`1.08x`), and dequant-like (`1.04x`); HIP is faster on independent-2/4 and dependent-4. Classified `diagnostic_unclassified`; this is a negative result for the "ACO wins through VOPD" hypothesis. | `results/gfx1151/strix-halo/vopd-sweep-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 geometry ISA/stat extraction | K=2048 rows=1 wg64/wg256 extraction passed correctness references. HIP reports 18 SGPR, 11 VGPR, no scratch/spills, wave32, and 2 VOPD instructions; RADV shaderstats reports 108 SGPR, 12 VGPR, no scratch/spills, wave64, and 0 VOPD. The geometry gap is not a missed-HIP-VOPD, HIP-spill, or missing-RADV-allocation-data story; still classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/geometry-isa-stats-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 GEMV geometry sweep | Repeat-shifted matched f32 GEMV/reduction rows all pass the CPU oracle. HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap; Vulkan remains `5.79x-14.03x` faster on best-native rows. Classified `diagnostic_unclassified`; paired ISA extraction rules out a simple missed-HIP-VOPD explanation but does not yet identify the primary cause. | `results/gfx1151/strix-halo/geometry-sweep-comparison.json` |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | dispatch/grid floor | Vulkan command-buffer replay is much cheaper than HIP direct/graph for one-block launch-heavy bursts (`0.043621 us` vs HIP tiny direct `2.0087 us` and HIP graph `1.8069 us` at N=941), but the gap narrows to about `1.10x` at 8192 blocks. Classified `runtime_dispatch`, not `compiler_aco`. | `results/gfx1151/strix-halo/dispatch-floor-comparison.json` |
+Static ISA data in an older artifact may still be referenced as static evidence
+when its source/build identity is known. It does not make the artifact's timing
+ratio current. New retained rows should be added only after rerunning the exact
+matrix above (or a documented superset) under both timing modes.
 
 ## Classification
 
-Every retained benchmark should choose one primary classification:
+Every retained artifact chooses one primary classification from the result
+schema:
 
 | Classification | Meaning |
 | --- | --- |
-| `compiler_aco` | Same algorithm/layout/geometry, Vulkan faster with better ISA stats |
-| `geometry` | HIP closes the gap after matching Vulkan's workgroup/subgroup shape |
-| `wave_mode` | HIP wave64 or subgroup-size control materially changes the result |
-| `runtime_dispatch` | No-op/grid/command rows explain the gap |
-| `layout_quant` | Dot/layout/quantization dominates compiler choice |
-| `fusion_topology` | Per-op kernels match, but fused Vulkan topology wins |
-| `not_reproducible` | The old difference disappears under the controlled harness |
-| `diagnostic_unclassified` | Gap remains but the retained evidence is insufficient for one primary cause |
+| `compiler_aco` | Matched algorithm/layout/geometry with a supported compiler/ISA attribution |
+| `geometry` | Workgroup/subgroup geometry accounts for the measured delta |
+| `wave_mode` | A matched wave/subgroup control accounts for the delta |
+| `runtime_dispatch` | Dispatch, submission, or grid overhead accounts for the delta |
+| `layout_quant` | Quantization or data layout accounts for the delta |
+| `fusion_topology` | Matched primitive kernels but different fused topology accounts for the delta |
+| `real_slice_probe` | Correct production-shaped slice evidence with bounded transfer scope |
+| `not_reproducible` | The prior difference disappears under the v2 controls |
+| `diagnostic_unclassified` | Correct gap remains without enough evidence for one cause |
 
-If a row cannot be classified, keep it diagnostic and do not use it to justify
-LLVM work, kernel rewrites, or a Vulkan backend.
+The benchmark plan and interpretation dashboard live in
+`docs/HIP-vs-VULKAN.md`.
