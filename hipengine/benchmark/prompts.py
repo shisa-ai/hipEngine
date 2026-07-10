@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from hipengine.tokenization.identity import token_ids_sha256
+
 DEFAULT_STABLE_PROMPT_FIXTURE = Path("fixtures/dflash/stable_prompts.jsonl")
 DEFAULT_SYNTHETIC_LENGTHS = (64, 256)
 DEFAULT_SYNTHETIC_SEED = 20260518
@@ -215,11 +217,6 @@ STABLE_PROMPT_SPECS: tuple[StablePromptSpec, ...] = (
 
 def text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def token_ids_sha256(token_ids: Sequence[int]) -> str:
-    encoded = ",".join(str(int(token)) for token in token_ids).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def file_sha256(path: str | Path) -> str:

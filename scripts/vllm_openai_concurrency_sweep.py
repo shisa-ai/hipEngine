@@ -14,8 +14,9 @@ from pathlib import Path
 from typing import Any
 from urllib import error, request
 
+from hipengine.benchmark.exact_tokens import DEFAULT_EXACT_TOKEN_FIXTURE, load_exact_token_fixture
 
-DEFAULT_FIXTURE = Path("/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json")
+DEFAULT_FIXTURE = DEFAULT_EXACT_TOKEN_FIXTURE
 
 
 class SweepError(RuntimeError):
@@ -99,19 +100,15 @@ def metric_delta(after: dict[str, float], before: dict[str, float], key: str) ->
 
 
 def load_rows(path: Path, prompt_length: int | None, count: int | None) -> list[list[int]]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    ids = data.get("prompt_ids")
-    if not isinstance(ids, list) or not all(isinstance(x, int) for x in ids):
-        raise SweepError(f"{path} missing flat integer prompt_ids")
-    plen = int(prompt_length or data.get("prompt_length") or 0)
-    if plen <= 0:
-        raise SweepError("prompt_length must be positive")
-    n = int(count or data.get("prompt_count") or (len(ids) // plen))
-    rows = [ids[i * plen : (i + 1) * plen] for i in range(n)]
-    rows = [row for row in rows if len(row) == plen]
-    if not rows:
-        raise SweepError("no complete prompt rows in fixture")
-    return rows
+    try:
+        fixture = load_exact_token_fixture(
+            path,
+            prompt_length=prompt_length,
+            prompt_count=count,
+        )
+    except ValueError as exc:
+        raise SweepError(str(exc)) from exc
+    return [list(row) for row in fixture.prompt_rows]
 
 
 def choose_rows(rows: list[list[int]], c: int) -> list[list[int]]:

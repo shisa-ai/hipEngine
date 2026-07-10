@@ -149775,3 +149775,72 @@ graphless decode launch-collapse path without regressing target/serial parity.
   next. This unit changes measurement identity only: it supersedes no metric or
   compact result, and all historical server rates remain ineligible until
   rerun under exact tokens, owned timing, canonical provenance, and shape v1.
+
+## 2026-07-11 - SOL-E5 exact-token direct/HTTP parity route
+
+- RED covered the three missing contracts. `tests/test_exact_token_benchmark.py`
+  failed collection because no shared fixture/oracle module existed;
+  `LLM.generate_detailed([[10, 11], ...])` converted each row to its string
+  representation; and `/v1/completions` rejected `prompt: int[]`. Focused RED
+  also required invalid rows to fail, prompt hashes/counts to be returned, and
+  exact rows to survive `n` expansion.
+- Added text-or-token-row `PromptInput` at the common `GenerationRequest`
+  boundary. `SubmitPollTextGenerator` preserves raw rows, while PARO and GGUF
+  use supplied IDs directly and invoke their tokenizers only for text. Direct
+  `LLM.generate()`/`generate_detailed()` and speculative MTP requests therefore
+  share one input path. Explicit generator regressions replace `_select_token`
+  or GGUF `encode()` with a failure and prove real generation still receives
+  the original IDs.
+- `/v1/completions` now accepts the OpenAI token-array forms: flat `int[]` for
+  one row and `int[][]` for a batch. Admission and usage use supplied lengths;
+  queue coalescing, internal splits, and `n` preserve the rows. Exact-token
+  responses expose `hipengine.prompt_token_accounting` v1 with per-row hashes,
+  row lengths, and total input tokens. Streaming, echo, continuations, and
+  sessions fail explicitly for raw rows. Capabilities advertise the scope and
+  the E1 generated-ID oracle path.
+- Added `hipengine.benchmark.exact_tokens`, formal
+  `benchmarks/schemas/exact-token-oracle.schema.json`, and
+  `scripts/exact_token_generation.py`. The committed
+  `fixtures/qwen35_paro/parent_512_32_seed1234.json` row is now the default;
+  consumers can cycle its single canonical 512-ID row instead of depending on
+  the temporary 8x512 copy. Direct mode emits every input/output ID plus
+  canonical E3 provenance. HTTP mode requires that direct artifact and fails
+  closed on prompt hash/count, exact usage, output row count/length, or any
+  generated-ID mismatch. `scripts/vllm_openai_concurrency_sweep.py` uses the
+  same committed fixture loader.
+- Live exit gate passed on Radeon 8060S/gfx1151 with shisa
+  Qwen3.6-35B-A3B PARO snapshot `437eba06...`, `w4_paro`, BF16 KV, greedy,
+  `ignore_eos=true`, one 512-ID prompt and 128 output IDs. Direct command:
+  `uv run python scripts/exact_token_generation.py direct --model-path
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --backend hip_gfx1151 --quant w4_paro --target-arch gfx1151
+  --prompt-length 512 --prompt-count 1 --max-tokens 128 --json
+  benchmarks/results/2026-07-11-sol-e5-gfx1151-paro-direct-exact-p512-d128.json`.
+  The recorded direct call wall was `19.590 s`, including model/session load;
+  it is not a throughput result.
+- HTTP server command used the same model/backend/quant plus
+  `--served-model-name sol-e5-paro --max-context-tokens 1024
+  --no-startup-chat-smoke --no-startup-scratch-probe
+  --generation-batch-window-ms 0 --host 127.0.0.1 --port 8015`.
+  HTTP command matched the direct shape and added `--url
+  http://127.0.0.1:8015 --model sol-e5-paro --oracle <direct-artifact>`.
+  The recorded client wall was `2.738 s`; usage was exactly prompt `512`,
+  completion `128`, total `640`; generation shape was one queue request, one
+  prompt row, backend width one, and zero verifier rows. Again,
+  `performance_claim=false` and the wall is not promoted.
+- Direct and HTTP artifacts have identical prompt hash
+  `b162b2d0c13b1aaa6325ad1efcecc7b8344917039884987cf50152dc69f82388`
+  and generated hash
+  `42796d4bc689de39262d5b2465b544ed1d10615cb40bea7bb7f311f2b41e9a67`;
+  all 512 prompt IDs and all 128 generated IDs compare equal. Canonical
+  provenance records base commit `66fd7560`, concrete
+  `hip_gfx1151/gfx1151/Radeon 8060S Graphics`, the model fingerprint, and the
+  task-dirty/untracked state (including the 255 pre-existing untracked benchmark
+  files). No historical metric or topline is superseded.
+- GREEN: full `tests/test_llm_generate.py`, PARO/GGUF generation suites,
+  `tests/test_server_api.py`, and exact-token benchmark suite pass together.
+  `python3 -m compileall -q hipengine tests scripts`, all three CPU smoke modes,
+  explicit 7/7 top-level CPU fixtures, oracle/provenance parsing, schema/artifact
+  `json.tool`, benchmark/root README sync, and `git diff --check` pass. Updated
+  API, benchmark, plan, SOL, PARO-transfer, root/benchmark README, and changelog
+  handoffs. `SOL-E5` is accepted and `SOL-B1` is the next foundation unit.

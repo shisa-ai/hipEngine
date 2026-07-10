@@ -264,6 +264,45 @@ def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(mon
     assert calls == [("configure_host_sampler", 99), ("configure_host_sampler", None)]
 
 
+def test_qwen35_paro_generate_preserves_exact_token_prompt(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        config = SimpleNamespace(linear_conv_kernel_dim=1)
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.max_sequence_length = max_sequence_length
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append((tuple(token_ids), bool(sample)))
+            return _result(42, "X")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("raw token prompt was retokenized")),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    outputs = generator.generate_detailed(
+        _request(prompts=((10, 11, 12, 13),), max_tokens=1, ignore_eos=True)
+    )
+
+    assert outputs[0].generated_token_ids == (42,)
+    assert calls == [((10, 11, 12, 13), True)]
+    assert _decode_state(outputs[0])["prompt_tokens"] == 4
+
+
 def test_qwen35_paro_sampled_request_forced_token_overrides_logits(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: None)

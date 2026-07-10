@@ -116,7 +116,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
-| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
+| `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts are non-streaming and do not support `echo`, continuations, or sessions. For a single text prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
@@ -133,6 +133,44 @@ curl http://127.0.0.1:8000/v1/completions \
     "temperature": 0.0
   }'
 ```
+
+### Exact-token completion
+
+`LLM.generate_detailed()` accepts either text prompts or exact token-ID rows.
+The completion endpoint mirrors the OpenAI token-array forms: `prompt: [1, 2]`
+is one row and `prompt: [[1, 2], [3, 4]]` is a prompt batch. Token rows are
+validated as non-empty, non-negative integer sequences and bypass both PARO and
+GGUF tokenizers.
+
+```bash
+curl http://127.0.0.1:8000/v1/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "qwen-paro",
+    "prompt": [133935, 158931, 13606],
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "ignore_eos": true
+  }'
+```
+
+Exact-token requests are intentionally non-streaming and reject `stream`,
+`echo`, `continuation_id`, and `session`. Non-streaming responses bind the
+accepted input without echoing its contents:
+
+```json
+{
+  "schema_version": 1,
+  "input_type": "token_ids",
+  "prompt_token_ids_sha256": ["<sha256>"],
+  "prompt_tokens": [512],
+  "total_prompt_tokens": 512
+}
+```
+
+This object is at `hipengine.prompt_token_accounting`; exact outputs remain at
+`hipengine.token_accounting.choice_generated_token_ids`. Capabilities advertise
+the contract under `features.exact_token_prompts`.
 
 ### Chat completion
 
@@ -376,7 +414,9 @@ top-level `hipengine.token_accounting` object:
 
 In that case OpenAI-compatible `usage.completion_tokens` is the sum of the
 exact ID lengths across every choice, including `n>1`. Prompt usage continues
-to use the model tokenizer/counting hook. `retokenized_visible_tokens` is an
+to use the model tokenizer/counting hook for text input; exact-token input uses
+the supplied row lengths and emits `hipengine.prompt_token_accounting` hashes
+and counts. `retokenized_visible_tokens` is an
 optional decoded-text diagnostic and is never an authoritative throughput
 denominator; decoded text can merge or split tokens when encoded again.
 Backend generated IDs/counts describe work produced in the current request,

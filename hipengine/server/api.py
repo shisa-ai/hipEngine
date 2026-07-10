@@ -51,6 +51,7 @@ from hipengine.generation import (
     GenerationStreamChunk,
     GenerationTelemetry,
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
+    PromptInput,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     ThinkingBudgetState,
@@ -60,7 +61,9 @@ from hipengine.generation import (
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState
+from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.tokenization.identity import token_ids_sha256
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
@@ -1452,7 +1455,7 @@ else:  # pragma: no cover - Pydantic v1 compatibility
 
 class CompletionRequest(_OpenAIBaseModel):
     model: str | None = None
-    prompt: str | list[str] | None = None
+    prompt: str | list[str] | list[int] | list[list[int]] | None = None
     max_tokens: int | None = Field(default=16, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
@@ -1694,7 +1697,7 @@ def _qwen35_retained_avoid_c6_groups_enabled() -> bool:
 
 
 def _qwen35_retained_group_split_slices(
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     sampling: SamplingParams,
     *,
     route: str,
@@ -1885,7 +1888,7 @@ def _log_stream_failure(
 
 @dataclass
 class _QueuedGeneration:
-    prompts: tuple[str, ...]
+    prompts: tuple[PromptInput, ...]
     sampling: SamplingParams
     future: asyncio.Future[Any] | None = None
     stream_queue: asyncio.Queue[object] | None = None
@@ -2023,7 +2026,7 @@ class _GenerationBatcher:
 
     async def submit(
         self,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
         detailed: bool = False,
@@ -2031,7 +2034,7 @@ class _GenerationBatcher:
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
-        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
         self._raise_if_full(error_extra=error_extra)
@@ -2051,14 +2054,14 @@ class _GenerationBatcher:
 
     async def stream(
         self,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
 
-        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
         self._raise_if_full(error_extra=error_extra)
@@ -2122,7 +2125,7 @@ class _GenerationBatcher:
                 if _engine_supports_stream_many(engine):
                     await self._stream_many(group[0], engine)
                     return
-            prompts: list[str] = []
+            prompts: list[PromptInput] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
             for item in group:
                 start = len(prompts)
@@ -2178,7 +2181,7 @@ class _GenerationBatcher:
 
     async def _generate_prompts(
         self,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         sampling: SamplingParams,
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -2206,7 +2209,7 @@ class _GenerationBatcher:
 
     async def _generate_prompt_group(
         self,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         sampling: SamplingParams,
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -2295,7 +2298,7 @@ def _finish_queued_generation(
     item.stream_queue.put_nowait(_STREAM_DONE)
 
 
-async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams) -> AsyncIterator[Any]:
+async def _stream_engine_text(engine: Any, prompt: PromptInput, sampling: SamplingParams) -> AsyncIterator[Any]:
     detailed_streamer = getattr(engine, "stream_detailed", None)
     if callable(detailed_streamer):
         iterator = iter(detailed_streamer(prompt, sampling))
@@ -2336,13 +2339,13 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
 
 async def _stream_engine_many(
     engine: Any,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     sampling: SamplingParams,
 ) -> AsyncIterator[GenerationStreamChunk]:
     streamer = _engine_stream_many_callable(engine)
     if streamer is None:
         raise NotImplementedError("multi-row streaming is not supported by this generator")
-    iterator = iter(streamer(tuple(str(prompt) for prompt in prompts), sampling))
+    iterator = iter(streamer(tuple(prompts), sampling))
     done = False
     try:
         while True:
@@ -3592,7 +3595,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def sampling_params(
         request: CompletionRequest | ChatCompletionRequest,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         engine: Any,
         *,
         deadline_at: float | None = None,
@@ -3688,7 +3691,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return prompt
 
     async def generate(
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         request: CompletionRequest | ChatCompletionRequest,
         *,
         deadline_at: float | None = None,
@@ -3831,7 +3834,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return batch
 
     async def generate_with_request_control(
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         request: CompletionRequest | ChatCompletionRequest,
         control: _RequestControl | None = None,
         *,
@@ -4714,6 +4717,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ],
                     "streaming": False,
                 },
+                "exact_token_prompts": {
+                    "completions": True,
+                    "request_forms": ["token_ids", "token_id_rows"],
+                    "direct_api": "LLM.generate_detailed(token_id_rows, sampling_params)",
+                    "streaming": False,
+                    "echo": False,
+                    "response_identity": "hipengine.prompt_token_accounting",
+                    "generated_id_oracle": "hipengine.token_accounting.choice_generated_token_ids",
+                },
                 "structured_outputs": _structured_outputs_capability(),
                 "grammars": _grammar_capability(),
                 "finish_details": True,
@@ -5074,6 +5086,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         if token_accounting is not None:
             response["hipengine"]["token_accounting"] = token_accounting
+        prompt_token_accounting = _exact_prompt_token_accounting(expanded_prompts)
+        if prompt_token_accounting is not None:
+            response["hipengine"]["prompt_token_accounting"] = prompt_token_accounting
         if batch.generation_shape is not None:
             response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
         await _maybe_write_agentic_result_replay_artifact(
@@ -7906,7 +7921,7 @@ def _startup_free_memory_guard(
 
 def _request_max_tokens(
     request: CompletionRequest | ChatCompletionRequest,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     engine: Any,
     max_context_tokens: int | None,
     *,
@@ -7926,14 +7941,14 @@ def _request_max_tokens(
 
 
 def _remaining_context_tokens(
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     engine: Any,
     max_context_tokens: int | None,
 ) -> int | None:
     if max_context_tokens is None:
         return None
     return min(
-        int(max_context_tokens) - _count_tokens_for_admission(engine, str(prompt)) - 1
+        int(max_context_tokens) - _prompt_token_count(engine, prompt) - 1
         for prompt in prompts
     )
 
@@ -8026,7 +8041,7 @@ def _request_top_logprobs(request: CompletionRequest | ChatCompletionRequest) ->
 
 async def _generate_detailed(
     engine: Any,
-    prompts: tuple[str, ...],
+    prompts: tuple[PromptInput, ...],
     sampling: SamplingParams,
 ) -> list[Any]:
     detailed = getattr(engine, "generate_detailed", None)
@@ -8037,7 +8052,7 @@ async def _generate_detailed(
 
 async def _generate_speculative_mtp_detailed(
     engine: Any,
-    prompts: tuple[str, ...],
+    prompts: tuple[PromptInput, ...],
     sampling: SamplingParams,
 ) -> list[Any]:
     runner = _engine_speculative_mtp_callable(engine)
@@ -8556,6 +8571,16 @@ def _validate_generation_request(
     route_unsupported_grammar: bool = False,
 ) -> None:
     _request_n(request)
+    if _completion_prompt_uses_token_ids(request):
+        for param in ("stream", "echo", "continuation_id", "session"):
+            value = getattr(request, param, None)
+            if value not in (None, False):
+                raise OpenAIHTTPError(
+                    400,
+                    f"{param} is not supported with exact token-ID prompts",
+                    code="unsupported_parameter",
+                    param=param,
+                )
     extra_keys = _request_extra_keys(request)
     if extra_keys:
         param = sorted(extra_keys)[0]
@@ -8642,7 +8667,7 @@ def _validate_generation_request(
 def _validate_context_budget(
     max_context_tokens: int | None,
     engine: Any,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     sampling: SamplingParams,
     *,
     fit_context_extra: Mapping[str, Any] | None = None,
@@ -8653,7 +8678,7 @@ def _validate_context_budget(
     max_context = max(1, int(max_context_tokens))
     max_tokens = max(0, int(sampling.max_tokens))
     for index, prompt in enumerate(prompts):
-        prompt_tokens = _count_tokens_for_admission(engine, str(prompt))
+        prompt_tokens = _prompt_token_count(engine, prompt)
         required = prompt_tokens + max_tokens + 1
         if required > max_context:
             fit_context = _context_fit_payload(
@@ -8713,6 +8738,12 @@ def _count_tokens_for_admission(engine: Any, text: str) -> int:
         return max(0, int(counter(text)))
     except NotImplementedError:
         return 0
+
+
+def _prompt_token_count(engine: Any, prompt: PromptInput) -> int:
+    if isinstance(prompt, str):
+        return _count_tokens_for_admission(engine, prompt)
+    return len(prompt)
 
 
 def _count_tokens_strict(engine: Any, text: str) -> int:
@@ -9169,14 +9200,47 @@ def _tool_call_close_repair_token_sequences(
     return (tuple(int(token_id) for token_id in token_ids),)
 
 
-def _normalize_prompts(prompt: str | list[str] | None) -> tuple[str, ...]:
+def _normalize_prompts(
+    prompt: str | list[str] | list[int] | list[list[int]] | None,
+) -> tuple[PromptInput, ...]:
     if prompt is None:
         raise OpenAIHTTPError(400, "prompt is required", code="invalid_request", param="prompt")
     if isinstance(prompt, str):
         return (prompt,)
     if not prompt:
         raise OpenAIHTTPError(400, "prompt must not be empty", param="prompt")
-    return tuple(str(item) for item in prompt)
+    try:
+        if all(isinstance(item, int) and not isinstance(item, bool) for item in prompt):
+            return (normalize_prompt_input(prompt),)
+        if all(isinstance(item, str) for item in prompt):
+            return tuple(str(item) for item in prompt)
+        if all(
+            isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray))
+            for item in prompt
+        ):
+            return tuple(normalize_prompt_input(item) for item in prompt)
+    except (TypeError, ValueError) as exc:
+        raise OpenAIHTTPError(400, str(exc), code="invalid_request", param="prompt") from exc
+    raise OpenAIHTTPError(
+        400,
+        "prompt must be text, text rows, one token-ID row, or token-ID rows",
+        code="invalid_request",
+        param="prompt",
+    )
+
+
+def _completion_prompt_uses_token_ids(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    if not isinstance(request, CompletionRequest):
+        return False
+    prompt = request.prompt
+    if not isinstance(prompt, list) or not prompt:
+        return False
+    return all(isinstance(item, int) and not isinstance(item, bool) for item in prompt) or all(
+        isinstance(item, list)
+        and bool(item)
+        and all(isinstance(token, int) and not isinstance(token, bool) for token in item)
+        for item in prompt
+    )
 
 
 def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
@@ -9397,6 +9461,8 @@ def _continuation_can_create(
     finish_details: Mapping[str, Any],
     backend_continuation_eligible: bool | None = None,
 ) -> bool:
+    if _completion_prompt_uses_token_ids(request):
+        return False
     if backend_continuation_eligible is False:
         return False
     if str(finish_details.get("reason") or "") in (_SESSION_UNSAFE_VISIBLE_REASONS - {"length"}):
@@ -10470,7 +10536,7 @@ def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> s
     return set()
 
 
-def _expand_prompts_for_n(prompts: Sequence[str], n: int) -> tuple[str, ...]:
+def _expand_prompts_for_n(prompts: Sequence[PromptInput], n: int) -> tuple[PromptInput, ...]:
     return tuple(prompt for prompt in prompts for _ in range(int(n)))
 
 
@@ -11349,16 +11415,13 @@ def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[Tok
 
 def _usage(
     engine: Any,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     outputs: Sequence[str],
     *,
     details: Sequence[GenerationOutput] | None = None,
 ) -> dict[str, int]:
     counter = getattr(engine, "count_tokens", None)
-    if callable(counter):
-        prompt_tokens = sum(_safe_count(counter, text) for text in prompts)
-    else:
-        prompt_tokens = 0
+    prompt_tokens = sum(_prompt_token_count(engine, prompt) for prompt in prompts)
     exact_rows = _exact_generated_token_rows(details, expected_rows=len(outputs))
     if exact_rows is not None:
         completion_tokens = sum(len(row) for row in exact_rows)
@@ -11371,6 +11434,19 @@ def _usage(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
+    }
+
+
+def _exact_prompt_token_accounting(prompts: Sequence[PromptInput]) -> dict[str, Any] | None:
+    if not prompts or any(isinstance(prompt, str) for prompt in prompts):
+        return None
+    rows = tuple(tuple(int(token) for token in prompt) for prompt in prompts)
+    return {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [token_ids_sha256(row) for row in rows],
+        "prompt_tokens": [len(row) for row in rows],
+        "total_prompt_tokens": sum(len(row) for row in rows),
     }
 
 

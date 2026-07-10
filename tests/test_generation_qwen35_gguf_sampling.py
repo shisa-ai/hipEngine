@@ -1589,6 +1589,42 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     assert session_inits[0][2] is generator._shared_runner
 
 
+def test_gguf_generate_preserves_exact_token_prompt(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=False):
+            calls.append(("prefill", tuple(token_ids), return_logits))
+            return SimpleNamespace(token_id=1)
+
+        def step(self, token_id: int, *, return_logits=False):
+            calls.append(("step", int(token_id), return_logits))
+            return SimpleNamespace(token_id=2)
+
+    generator = _generator()
+    generator.tokenizer.encode = lambda prompt: (_ for _ in ()).throw(
+        AssertionError("raw token prompt was retokenized")
+    )
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    outputs = generator.generate_detailed(
+        _request(prompts=((30, 31, 32, 33),), max_tokens=2, ignore_eos=True)
+    )
+
+    assert outputs[0].generated_token_ids == (1, 2)
+    assert calls[0] == ("prefill", (30, 31, 32, 33), False)
+    assert _decode_state(outputs[0])["prompt_tokens"] == 4
+
+
 def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
     calls: list[tuple] = []
 

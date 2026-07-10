@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +139,7 @@ class LLM:
 
     def generate(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ) -> list[str]:
         prompt_tuple = _normalize_prompts(prompts)
@@ -148,7 +149,7 @@ class LLM:
 
     def generate_detailed(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Return generated text plus optional per-token metadata."""
@@ -171,7 +172,7 @@ class LLM:
 
     def generate_speculative_mtp_detailed(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Return generated text through a model-owned speculative MTP route."""
@@ -208,7 +209,7 @@ class LLM:
 
     def stream(
         self,
-        prompt: str,
+        prompt: Any,
         sampling_params: SamplingParams | None = None,
     ) -> Iterator[str]:
         """Yield generated text chunks for a single prompt when supported."""
@@ -218,13 +219,15 @@ class LLM:
 
     def stream_detailed(
         self,
-        prompt: str,
+        prompt: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Yield generated text chunks plus optional backend telemetry."""
 
         generator = self._get_text_generator()
-        request = _generation_request((str(prompt),), sampling_params or SamplingParams())
+        from hipengine.generation.registry import normalize_prompt_input
+
+        request = _generation_request((normalize_prompt_input(prompt),), sampling_params or SamplingParams())
         from hipengine.generation import GenerationStreamChunk
 
         detailed_streamer = getattr(generator, "stream_detailed", None)
@@ -255,7 +258,7 @@ class LLM:
 
     def stream_many_detailed(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Yield row-indexed stream chunks for multiple prompts when supported."""
@@ -448,7 +451,7 @@ class LLM:
         return index, plugin
 
 
-def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
+def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
     from hipengine.generation import GenerationRequest
 
     return GenerationRequest(
@@ -498,10 +501,15 @@ def _looks_like_gguf_path(path: Path) -> bool:
     return path.suffix.lower() == ".gguf"
 
 
-def _normalize_prompts(prompts: str | Iterable[str]) -> tuple[str, ...]:
+def _normalize_prompts(prompts: Any) -> tuple[Any, ...]:
+    from hipengine.generation.registry import normalize_prompt_input
+
     if isinstance(prompts, str):
         return (prompts,)
-    return tuple(str(prompt) for prompt in prompts)
+    values = tuple(prompts)
+    if values and all(isinstance(token, Integral) and not isinstance(token, bool) for token in values):
+        return (normalize_prompt_input(values),)
+    return tuple(normalize_prompt_input(prompt) for prompt in values)
 
 
 def _primary_architecture(config: dict[str, Any]) -> str:
