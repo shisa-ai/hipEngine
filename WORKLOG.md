@@ -149201,3 +149201,42 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `GFX1151_PARO_CURRENT`, then `--write` and `--check` passed; `PYTHONPATH=. uv
   run pytest -q tests/test_benchmark_readme_sync.py` (`2 passed`); `git diff
   --check`.
+
+## 2026-07-10 - gfx1151 PARO c1 README reference
+
+- Added the missing c1 reference to the 2026-07-10 direct PARO shape table.
+  The established concurrency c1 protocol uses the single-sequence graph-replay
+  path with token `9707` repeated for 512 prompt positions, 8 warmup decode
+  steps, and 128 measured steps. It is a reference protocol; c2-c8 use the
+  separate fixed prompt-slice fixture.
+- Created a clean detached worktree at measured commit
+  `4175dabf145d2054ff751c56bf019febd03ced65`. The first cached-only attempt
+  correctly failed because that worktree's AOTriton wrapper was not built.
+  Ran one unmeasured 512/1 prebuild, then required cached builds for all three
+  measurements.
+- Exact measured command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3
+  scripts/qwen35_paro_bench.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8
+  --max-layers 40 --graph-replay-decode --compiler-version-file
+  /tmp/hipengine-gfx1151-readme-clean4175/c1-reference/hipcc-version.txt
+  --require-cached-build --json
+  /tmp/hipengine-gfx1151-readme-clean4175/c1-reference/c1-r<rep>.json`.
+- Three fresh-process runs measured `66.785384 / 66.805619 / 66.860835 tok/s`;
+  median `66.805619 tok/s`, per-sequence equal to aggregate, and median-of-run
+  median step `14.968801 ms`. All artifacts record `hip_gfx1151`, detected and
+  target `gfx1151`, commit `4175dabf`, and `hipengine_dirty=false`.
+- Added the three raw SHA-256 bindings and c1 command/protocol to
+  `benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json`.
+  The artifact records c1's clean detached worktree separately from the c2-c8
+  worktree. Same-fixture c1 remains a promotion/scaling blocker; the public row
+  is labeled as a repeated-token reference.
+- Validation: the pre-write README sync check reported only the expected stale
+  `GFX1151_PARO_CURRENT` block; `scripts/sync_benchmark_readme.py --write` then
+  `--check` passed. Compact JSON parsing, all 25 raw SHA-256 bindings, displayed
+  c1/c2/c4/c6/c8 medians, provenance, primitive gates, odd-width rejections,
+  relative Markdown links, and `git diff --check` passed. `PYTHONPATH=. uv run
+  pytest -q tests/test_benchmark_readme_sync.py` passed (`2 passed`). Reviewed
+  the edited text against `/home/lhl/devstack/docs/ANTI-SLOP-INSTRUCTIONS.md`.

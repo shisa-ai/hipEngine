@@ -14,6 +14,7 @@
     "target_arch": "gfx1151"
   },
   "source": {
+    "scope": "c2-c8 same-fixture runs; c1 provenance is recorded in rows.1.source",
     "hipengine_commit": "4175dabf145d2054ff751c56bf019febd03ced65",
     "tracked_source_dirty": false,
     "untracked_files_present": true,
@@ -35,7 +36,8 @@
     "generated_equality_tokens_per_request": 137,
     "sampling": "greedy",
     "timing_scope": "direct backend measured decode wall",
-    "widths_probed": [
+    "widths_measured": [
+      1,
       2,
       3,
       4,
@@ -44,7 +46,20 @@
       7,
       8
     ],
+    "same_fixture_widths_probed": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "reference_widths": [
+      1
+    ],
     "repeated_widths": [
+      1,
       2,
       4,
       6,
@@ -52,18 +67,43 @@
     ],
     "measured_repetitions_per_green_width": 3,
     "failed_width_repetitions": 1,
+    "c1_reference_prompt": "token 9707 repeated 512 times; separate from the fixed prompt slices used by c2-c8",
     "primitive_gate": "batch KV append and attention vs independent c1 plus NumPy, seed 1234",
     "generated_token_gate": "native batch token IDs vs independent c1 resident sessions",
     "compiler_cache": "precomputed compiler version plus --require-cached-build"
   },
   "commands": {
     "primitive_template": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_correctness.py --rows <rows> --seed 1234 --json <outdir>/primitive-c<rows>.json",
+    "c1_reference_template": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --graph-replay-decode --compiler-version-file <outdir>/c1-reference/hipcc-version.txt --require-cached-build --json <outdir>/c1-reference/c1-r<rep>.json",
     "benchmark_template": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size <rows> --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file <outdir>/hipcc-version.txt --require-cached-build --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path auto --primitive-correctness-json <outdir>/primitive-c<rows>.json --json <outdir>/c<rows>-r<rep>.json"
   },
   "rows": {
     "1": {
-      "status": "not_run",
-      "reason": "The retained c>N harness requires rows greater than one; no same-fixture c1 timing was captured in this bounded refresh."
+      "status": "diagnostic_reference",
+      "performance_claim": false,
+      "prompt_source": "token_id_9707_repeated",
+      "same_fixture_as_cn": false,
+      "decode_tok_s_aggregate_runs": [
+        66.78538408437468,
+        66.80561879672233,
+        66.86083473931578
+      ],
+      "decode_tok_s_aggregate_median": 66.80561879672233,
+      "decode_tok_s_per_request_median": 66.80561879672233,
+      "decode_step_ms_median_of_run_medians": 14.96880079866969,
+      "prefill_tok_s_median": 937.5559657443406,
+      "decode_path": {
+        "execution": "single_sequence_graph_replay",
+        "backend": "hip_gfx1151",
+        "graph_steps_per_replay": 1
+      },
+      "source": {
+        "hipengine_commit": "4175dabf145d2054ff751c56bf019febd03ced65",
+        "tracked_source_dirty": false,
+        "untracked_files_present": false,
+        "worktree": "clean_detached"
+      },
+      "reason": "Best measured single-sequence reference at hipEngine 4175dabf under the established concurrency protocol; prompt tokens differ from the c2-c8 fixture."
     },
     "2": {
       "status": "diagnostic_exact",
@@ -228,6 +268,9 @@
       "c2-r0.json": "fe8d0b248297229ebdf3a17e762fa0613df24ed174074ac52aefbd92d510bd5f",
       "c2-r1.json": "aa6f26dcb9d002368a47df1199994c2fae7904523d1a57af41de114ccef9b2c4",
       "c2-r2.json": "44d02aaaf87d8837680d213a9199b0007239fe86f0501f9e322edd1dbafad838",
+      "c1-reference/c1-r0.json": "84828d4ff88d1467740b7a397464ba362d25adabf58173b3c077982a18794dad",
+      "c1-reference/c1-r1.json": "4c1204c9d950e441db3feaa7623804873a8edd44c6335651bdea8c126ee85600",
+      "c1-reference/c1-r2.json": "f19f13db8c57fa8513f22aa1b98982ce5091ccdc530226097980a74392f9b205",
       "c3-r0.json": "4c73ba1b8d55024a28f8e44ae5c64c8f230a90aad821c04ebc62a7dba9384eae",
       "c4-r0.json": "6772497646da845b088dd471d1b1c049c3b07c6f71b77e8cbed5160085332de7",
       "c4-r1.json": "411d7817a0dcd5bf34cee44f615dddb05c365fea46484d0768911518d05a25d1",
@@ -250,13 +293,13 @@
     }
   },
   "blockers": [
-    "c1 was not rerun with the same fixed-token fixture and timing scope",
+    "c1 uses the established repeated-token graph-replay reference rather than the fixed prompt slices used by c2-c8; no same-fixture c1 timing was captured",
     "c3, c5, and c7 fail generated-token equality and their timing is withheld",
     "dynamic shrinking from c8 through c1 was not exercised",
     "c4 and c8 require all-layer full-attention rowchunk2; c6 requires selected-layer rowchunk2 and a serial LM-head",
     "selected-c1 MoE recovery paths do not satisfy the retained grouped-compact execution contract",
     "no retained c1/serial scaling baselines or rocprof kernel trace were captured",
-    "raw runs came from a tracked-clean source revision but a worktree containing unrelated untracked files"
+    "c2-c8 raw runs came from a tracked-clean source revision but a worktree containing unrelated untracked files"
   ],
-  "decision": "Publish only as a dated current-path diagnostic. Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
+  "decision": "Publish as a diagnostic measured on 2026-07-10 at hipEngine 4175dabf. Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
 }

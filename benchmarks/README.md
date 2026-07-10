@@ -52,7 +52,7 @@ correctness gate, or comparison engine do.
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Dated diagnostic | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-06-15 | hipEngine `64b86b9a`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp `6e9007ae6` build 9641 | **Stale diagnostic**: one measured run, no measured warmup, and commit/environment live only in WORKLOG rather than the summary artifact | Dated diagnostic | Add a committed gfx1151 refresh runner, emit full provenance in the artifact, and rerun the repeated protocol |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c2-c8 shape matrix | 2026-07-10 | tracked-clean hipEngine `4175dabf`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c2/c4/c6/c8 pass primitive and generated-token gates; c3/c5/c7 are correctness-red; c1, shrinking batches, profiler, and scaling controls are missing | Dated diagnostic | Repair odd widths, then rerun c1-c8 plus c8-to-c1 shrinking in a clean detached worktree with retained profiler/scaling gates |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c1-c8 shape matrix | 2026-07-10 | tracked-clean hipEngine `4175dabf`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c1 is a repeated-token graph-replay reference; c2/c4/c6/c8 pass primitive and generated-token gates; c3/c5/c7 are correctness-red; same-fixture c1, shrinking batches, profiler, and scaling controls are missing | Dated diagnostic | Repair odd widths, then rerun same-fixture c1-c8 plus c8-to-c1 shrinking in a clean detached worktree with retained profiler/scaling gates |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Dated diagnostic | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
@@ -292,13 +292,14 @@ the Radeon 8060S at tracked-clean hipEngine `4175dabf`; detected and requested
 target architecture are both gfx1151. It measures the opt-in retained-default
 recovery routes; the production server default uses different routing. The
 artifact sets `performance_claim=false`: odd widths fail generated-token
-equality, c1 and dynamic shrinking were not run, and the retained
-profiler/scaling gates are absent. Red-width timing is withheld.
+equality, c1 uses a separate repeated-token reference, dynamic shrinking was
+not run, and the retained profiler/scaling gates are absent. Red-width timing
+is withheld.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Exact gate | Measured route |
 | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | Not rerun | Not rerun | Not rerun | Same-fixture timing missing | Single-sequence control required |
+| 1 | 66.806 | 66.806 | 14.969 | Three-run reference; different prompt | Single-sequence graph replay; repeated token 9707 |
 | 2 | 78.578 | 39.289 | 25.465 | Primitive pass; generated IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
 | 3 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
 | 4 | 99.616 | 24.904 | 40.158 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
@@ -310,11 +311,13 @@ profiler/scaling gates are absent. Red-width timing is withheld.
 
 Protocol: Qwen3.6-35B-A3B PARO snapshot
 `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV, 40 layers,
-fixed 512-token slices, 8 warmup decode steps, 128 measured decode steps, and
-greedy sampling. Every width c2-c8 ran the seed-1234 KV/attention primitive
-gate and one generated-token comparison against independent c1 sessions. The
-four green even widths have three measured repetitions; displayed values are
-medians. The odd-width probe stopped after one correctness-red run.
+8 warmup decode steps, 128 measured decode steps, and greedy sampling. The c1
+reference repeats token `9707` for 512 prompt positions and uses the best
+single-sequence graph-replay path. Widths c2-c8 use fixed prompt slices; each
+ran the seed-1234 KV/attention primitive gate and one generated-token comparison
+against independent c1 sessions. c1 and the four green even widths have three
+measured repetitions; displayed values are medians. The odd-width probe stopped
+after one correctness-red run.
 
 Run record:
 
@@ -420,10 +423,11 @@ serve as the next refresh command. Before updating the gfx1151 tables:
 5. Keep comparison engines in separate columns when quant or timing scope
    differs. Do not bold a cross-quant winner.
 
-The 2026-07-10 current-path diagnostic satisfies detected/target architecture,
-primitive c2-c8, and repeated even-width generated-token coverage. It is not a
-full refresh wrapper: c1 and shrinking batches are absent, odd widths are red,
-raw runs were not from a detached worktree, and profiler/scaling gates were not
+The diagnostic measured on 2026-07-10 at `4175dabf` satisfies detected/target
+architecture, the established repeated-token c1 reference, primitive c2-c8,
+and repeated even-width generated-token coverage. It is not a full refresh wrapper:
+same-fixture c1 and shrinking batches are absent, odd widths are red, c2-c8 raw
+runs were not from a detached worktree, and profiler/scaling gates were not
 captured. Use its compact artifact for the exact lower-level commands, not as a
 substitute for the five requirements above.
 
