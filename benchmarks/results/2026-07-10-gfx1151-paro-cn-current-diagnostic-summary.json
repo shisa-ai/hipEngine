@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_paro_cn_readme_diagnostic_summary",
+  "created_at": "2026-07-10T04:30:06Z",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "retained_ready": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "detected_arches": [
+      "gfx1151"
+    ],
+    "target_arch": "gfx1151"
+  },
+  "source": {
+    "hipengine_commit": "4175dabf145d2054ff751c56bf019febd03ced65",
+    "tracked_source_dirty": false,
+    "untracked_files_present": true,
+    "python": "3.12.13",
+    "hipcc": "HIP version: 7.13.60980-c76140fa27",
+    "note": "The benchmark harness records tracked git diff state. This summary separately records that unrelated untracked files were present; raw outputs were written under /tmp and are not source inputs."
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "layers": 40
+  },
+  "protocol": {
+    "prompt_tokens_per_request": 512,
+    "warmup_decode_tokens_per_request": 8,
+    "measured_decode_tokens_per_request": 128,
+    "generated_equality_tokens_per_request": 137,
+    "sampling": "greedy",
+    "timing_scope": "direct backend measured decode wall",
+    "widths_probed": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "repeated_widths": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "measured_repetitions_per_green_width": 3,
+    "failed_width_repetitions": 1,
+    "primitive_gate": "batch KV append and attention vs independent c1 plus NumPy, seed 1234",
+    "generated_token_gate": "native batch token IDs vs independent c1 resident sessions",
+    "compiler_cache": "precomputed compiler version plus --require-cached-build"
+  },
+  "commands": {
+    "primitive_template": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_correctness.py --rows <rows> --seed 1234 --json <outdir>/primitive-c<rows>.json",
+    "benchmark_template": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size <rows> --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file <outdir>/hipcc-version.txt --require-cached-build --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path auto --primitive-correctness-json <outdir>/primitive-c<rows>.json --json <outdir>/c<rows>-r<rep>.json"
+  },
+  "rows": {
+    "1": {
+      "status": "not_run",
+      "reason": "The retained c>N harness requires rows greater than one; no same-fixture c1 timing was captured in this bounded refresh."
+    },
+    "2": {
+      "status": "diagnostic_exact",
+      "performance_claim": false,
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_tok_s_aggregate_runs": [
+        78.57812295069243,
+        78.51731648873923,
+        78.63233752931927
+      ],
+      "decode_tok_s_aggregate_median": 78.57812295069243,
+      "decode_tok_s_per_request_median": 39.289061475346216,
+      "decode_step_ms_median_of_run_medians": 25.464988546445966,
+      "prefill_tok_s_median": 763.4339951094463,
+      "decode_path": {
+        "moe": "selected_c1",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch",
+        "full_attention_row_chunk_size": 0,
+        "sampler": "batched_lm_head"
+      }
+    },
+    "3": {
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "generated_token_equality": false,
+      "primitive_correctness": true,
+      "equal_prefix_tokens_by_row": [
+        4,
+        4,
+        4
+      ],
+      "first_mismatch_index": 4,
+      "timing_withheld": true
+    },
+    "4": {
+      "status": "diagnostic_exact",
+      "performance_claim": false,
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_tok_s_aggregate_runs": [
+        99.61617696553428,
+        99.65651457131828,
+        99.61271663706567
+      ],
+      "decode_tok_s_aggregate_median": 99.61617696553428,
+      "decode_tok_s_per_request_median": 24.90404424138357,
+      "decode_step_ms_median_of_run_medians": 40.15832021832466,
+      "prefill_tok_s_median": 748.6720324883212,
+      "decode_path": {
+        "moe": "selected_c1",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": "all",
+        "sampler": "batched_lm_head"
+      }
+    },
+    "5": {
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "generated_token_equality": false,
+      "primitive_correctness": true,
+      "equal_prefix_tokens_by_row": [
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "first_mismatch_index": 4,
+      "timing_withheld": true
+    },
+    "6": {
+      "status": "diagnostic_exact",
+      "performance_claim": false,
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_tok_s_aggregate_runs": [
+        110.0035188277154,
+        109.90931512826558,
+        109.88262967007259
+      ],
+      "decode_tok_s_aggregate_median": 109.90931512826558,
+      "decode_tok_s_per_request_median": 18.318219188044264,
+      "decode_step_ms_median_of_run_medians": 54.568375926464796,
+      "prefill_tok_s_median": 608.317576004399,
+      "decode_path": {
+        "moe": "selected_c1_with_small_batch_shared_expert",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_selected_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31
+        ],
+        "sampler": "serial_lm_head"
+      }
+    },
+    "7": {
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "generated_token_equality": false,
+      "primitive_correctness": true,
+      "equal_prefix_tokens_by_row": [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        2
+      ],
+      "first_mismatch_index": 2,
+      "timing_withheld": true
+    },
+    "8": {
+      "status": "diagnostic_exact",
+      "performance_claim": false,
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_tok_s_aggregate_runs": [
+        115.51524524144139,
+        115.51048960096419,
+        115.5608785997194
+      ],
+      "decode_tok_s_aggregate_median": 115.51524524144139,
+      "decode_tok_s_per_request_median": 14.439405655180174,
+      "decode_step_ms_median_of_run_medians": 69.25414828583598,
+      "prefill_tok_s_median": 535.9591992776104,
+      "decode_path": {
+        "moe": "selected_c1",
+        "linear_attention": "batch_segments",
+        "full_attention": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_layers": "all",
+        "sampler": "batched_lm_head"
+      }
+    }
+  },
+  "primitive_max_abs_vs_numpy": {
+    "2": 2.2351741790771484e-08,
+    "3": 2.9802322387695312e-08,
+    "4": 2.9802322387695312e-08,
+    "5": 2.9802322387695312e-08,
+    "6": 2.9802322387695312e-08,
+    "7": 2.9802322387695312e-08,
+    "8": 5.960464477539063e-08
+  },
+  "raw_artifacts": {
+    "directory": "/tmp/hipengine-gfx1151-readme-clean4175",
+    "committed": false,
+    "policy": "Raw per-token artifacts remain outside git; this compact summary retains the measurements, gates, commands, provenance, and SHA-256 bindings.",
+    "sha256": {
+      "c2-r0.json": "fe8d0b248297229ebdf3a17e762fa0613df24ed174074ac52aefbd92d510bd5f",
+      "c2-r1.json": "aa6f26dcb9d002368a47df1199994c2fae7904523d1a57af41de114ccef9b2c4",
+      "c2-r2.json": "44d02aaaf87d8837680d213a9199b0007239fe86f0501f9e322edd1dbafad838",
+      "c3-r0.json": "4c73ba1b8d55024a28f8e44ae5c64c8f230a90aad821c04ebc62a7dba9384eae",
+      "c4-r0.json": "6772497646da845b088dd471d1b1c049c3b07c6f71b77e8cbed5160085332de7",
+      "c4-r1.json": "411d7817a0dcd5bf34cee44f615dddb05c365fea46484d0768911518d05a25d1",
+      "c4-r2.json": "8034ba9d9ee833de4496ffa218a697dbb99b7bcecbb76a083078f36b782a85fa",
+      "c5-r0.json": "5f7d52381267b687da30ebb5f8792ef658afe52fda089d97f314b7b1c850b2a9",
+      "c6-r0.json": "b8b348abbbacf1254f6c001fc9e9b61aecfbb6320c19895d38b6cf5f8db69e08",
+      "c6-r1.json": "ec4b5c52b3bf22c8171de1845a3a11aa31a09934756a3f399c0269ec0e89c7d9",
+      "c6-r2.json": "071a8738da5b6a2b46fb46fabc49700865727d50ae292a890d6cbbe92b8f09a3",
+      "c7-r0.json": "4c7732a78acbcaa51b1b9a8a2b76de2b3578445ba9f5dea4c15dfa33708ebed1",
+      "c8-r0.json": "9753b3926350416f4df3b640635c03bf57d64915b33a41109cc22812cd261507",
+      "c8-r1.json": "ed830101ed756e9045aae3abc82d897a9e844a3b5efc3e08cabeeef40c51796f",
+      "c8-r2.json": "389aec254b1548c3605243b0eaa9c0ea0b91f60a3f8b9abe06742f1fc12f704e",
+      "primitive-c2.json": "1018f2a8fb229f6d4e28ae5958094dbfdfcf95284cd6c47b27f669794d3ae8f1",
+      "primitive-c3.json": "4fef62cd409871fc4d6bc78b6a6a38d5a187dc70f478b228315000b98c16aae5",
+      "primitive-c4.json": "439e97d40a62400f32a04c484eac5fd58e2893eed7df7055babab34b71d77ba0",
+      "primitive-c5.json": "cae2b9eb454939eb03221c9cc099a9ed6509e3e1e266d0dbc154badf6f3acd70",
+      "primitive-c6.json": "119ea0470a30c1cd31c486c5a7633a1d60cd207bc3e054172d4f03d1f0a18ef4",
+      "primitive-c7.json": "d44ec0a719f9df06343ab6d3829c3c0dba175a479034782e1d3e6faf7df8dbc4",
+      "primitive-c8.json": "997d4061a3781acc9964a849f12c6706c64c41863855a7793fedf0066ec320a5"
+    }
+  },
+  "blockers": [
+    "c1 was not rerun with the same fixed-token fixture and timing scope",
+    "c3, c5, and c7 fail generated-token equality and their timing is withheld",
+    "dynamic shrinking from c8 through c1 was not exercised",
+    "c4 and c8 require all-layer full-attention rowchunk2; c6 requires selected-layer rowchunk2 and a serial LM-head",
+    "selected-c1 MoE recovery paths do not satisfy the retained grouped-compact execution contract",
+    "no retained c1/serial scaling baselines or rocprof kernel trace were captured",
+    "raw runs came from a tracked-clean source revision but a worktree containing unrelated untracked files"
+  ],
+  "decision": "Publish only as a dated current-path diagnostic. Keep the 2026-06-15 cross-engine matrix separate; do not describe these rows as retained, default production, or an apples-to-apples engine comparison."
+}
