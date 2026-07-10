@@ -474,7 +474,7 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipEngine run real c=8 PARO decode? | Diagnostic only. PARO c=2/c=4/c=8 decode paths have generated-token equality evidence, but no retained production c>N throughput row. |
+| Can current hipEngine run real c=8 PARO decode? | No retained native route. The former c=2/c=4/c=8 generated-token comparison used a batch-shaped width-1 oracle; independent-c1 testing fails native c8 at token index 2. Production fails closed to width-1 sessions. |
 | Does current hipEngine implement continuous batching? | Partially. The engine loop, scheduler, and OpenAI coalescer have batch-shaped request accounting, but mixed prefill/decode admission, compaction/reclaim, and retained c>N perf are not complete. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
@@ -483,6 +483,9 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 Why the design is better positioned:
 
+- `GenerationOutput` carries exact generated token IDs, and non-streaming OpenAI
+  completion/chat responses expose validated per-choice and all-choice totals;
+  decoded-text re-tokenization is diagnostic only.
 - The hot path owns raw HIP pointers and `hipGraph` replay directly instead of depending on torch tensors or PyTorch graph wrappers.
 - Many wrappers already expose `tokens`, `rows`, or row-shaped grids, so partial batching can be tested without changing the public API.
 - `KVLiveSpans` and `KVPolicy.batch_spans(...)` are intended to represent per-sequence KV state rather than a single scalar `(block_table, context_len)` pair.
@@ -509,9 +512,11 @@ Current blockers that keep c>N diagnostic rather than retained:
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
   commit. Target verify is packed up to four slots; draft-side batching, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
-- Benchmark coverage must report aggregate tok/s, per-request tok/s, latency,
-  memory, active occupancy, generated-token equality, graph/profiler provenance,
-  and same-quant external baselines before promoting c>N claims.
+- Exact all-choice generated-token accounting is available for non-streaming
+  responses. Benchmark coverage still needs timing ownership/deduplication,
+  aggregate tok/s, per-request tok/s, latency, memory, active occupancy,
+  generated-token equality, graph/profiler provenance, and same-quant external
+  baselines before promoting c>N claims.
 
 #### Expected c=8 behavior
 

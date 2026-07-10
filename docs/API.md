@@ -354,17 +354,50 @@ Cache hit/miss, budget pressure, per-request KV-byte deltas, and
 backend-authored per-phase token metadata are omitted until the runtime exposes
 those signals.
 
+### Exact generated-token accounting
+
+`GenerationOutput.generated_token_ids` is the authoritative completion-token
+sequence for non-streaming generation. Qwen3.5/Qwen3.6 PARO and GGUF generators
+populate it for greedy, sampled, packed, serial-fallback, and speculative MTP
+results, including a known-empty tuple when `max_tokens=0`.
+
+When every choice carries exact IDs, non-streaming completion and chat responses
+include `choices[].hipengine.generated_token_ids` and `generated_tokens`, plus a
+top-level `hipengine.token_accounting` object:
+
+```json
+{
+  "choice_generated_token_ids": [[101, 102], [201]],
+  "choice_generated_tokens": [2, 1],
+  "total_generated_tokens": 3,
+  "retokenized_visible_tokens": 2
+}
+```
+
+In that case OpenAI-compatible `usage.completion_tokens` is the sum of the
+exact ID lengths across every choice, including `n>1`. Prompt usage continues
+to use the model tokenizer/counting hook. `retokenized_visible_tokens` is an
+optional decoded-text diagnostic and is never an authoritative throughput
+denominator; decoded text can merge or split tokens when encoded again.
+Backend generated IDs/counts describe work produced in the current request,
+including tokens later hidden by a server-side stop-string or structured-output
+validation. A legacy generator that does not provide exact IDs retains the old
+retokenized usage fallback and omits `hipengine.token_accounting`, so benchmark
+harnesses can fail closed instead of treating that fallback as exact evidence.
+
 ### Choice telemetry
 
 Non-streaming completion and chat choices include `choices[].hipengine` when the
-backend returns `GenerationTelemetry`. This extension currently mirrors the
-backend-authored `decode_state` snapshot, optional backend-authored `timing` and
-`usage` payloads, and the final `finish_details`, giving agent harnesses access
-to row index, prompt/generated token counts, sampler mode, active processors,
-fast-path blockers, scheduler execution path, native/serial fallback state, stop
-suffix state, forced-token queue state, and budget
-pressure when those fields were authored by the generation loop. The field is
-omitted when the backend or fake engine does not provide telemetry.
+backend returns `GenerationTelemetry` or exact generated token IDs. This
+extension mirrors the backend-authored `decode_state` snapshot, optional
+backend-authored `timing` and `usage` payloads, and the final `finish_details`,
+giving agent harnesses access to row index, prompt/generated token counts,
+sampler mode, active processors, fast-path blockers, scheduler execution path,
+native/serial fallback state, stop suffix state, forced-token queue state, and
+budget pressure when those fields were authored by the generation loop.
+Exact-ID-only choices contain `generated_token_ids` and `generated_tokens`; the
+field is omitted when the backend or fake engine provides neither telemetry nor
+IDs.
 
 ### Finish details
 
@@ -1115,9 +1148,10 @@ in local, non-sensitive debugging sessions.
   `<tool_call>` JSON is treated as ordinary assistant text except for the common
   duplicated-start wrapper around otherwise valid inner tool JSON.
 - Unknown top-level request parameters are rejected instead of silently ignored.
-- Token `usage` and diagnostics are exact only when the served engine exposes
-  tokenizer/counting hooks; unsupported models return explicit diagnostics
-  errors or zero-count usage placeholders.
+- Completion `usage` is exact when every `GenerationOutput` exposes generated
+  token IDs. Prompt usage and legacy completion fallback counting require the
+  served engine's tokenizer/counting hooks; unsupported models return explicit
+  diagnostics errors or zero-count usage placeholders.
 - Model-specific tokenizer chat templates are not public yet. Chat messages are
   rendered with a Qwen-style `<|im_start|>...<|im_end|>` text template.
 

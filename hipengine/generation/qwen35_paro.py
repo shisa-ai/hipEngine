@@ -90,6 +90,7 @@ class Qwen35ParoOneTokenGenerator:
             self.last_generation_outputs = tuple(
                 GenerationOutput(
                     text="",
+                    generated_token_ids=(),
                     finish_details=_finish_details_for_tokens(
                         None,
                         (),
@@ -261,16 +262,9 @@ class Qwen35ParoOneTokenGenerator:
                 cancellation_token=cancellation_token,
             )
             group_wall_s = time.perf_counter() - group_started_at
-            token_ids = [
-                int(token)
-                for token in (
-                    (output.telemetry.diagnostics or {}).get("generated_token_ids", ())
-                    if output.telemetry is not None
-                    else ()
-                )
-            ]
-            if not token_ids:
+            if output.generated_token_ids is None:
                 raise RuntimeError("true c1 fallback did not expose generated token ids")
+            token_ids = list(output.generated_token_ids)
             generated_ids[row_index] = token_ids
             tokenizer = self._session.tokenizer if self._session is not None else None
             output_parts[row_index] = [
@@ -427,6 +421,7 @@ class Qwen35ParoOneTokenGenerator:
                 GenerationOutput(
                     text="".join(chunk.text for chunk in relabeled_chunks),
                     token_logprobs=tuple(output_tokens),
+                    generated_token_ids=tuple(token.token_id for token in output_tokens),
                     finish_details=final_chunk.finish_details,
                     telemetry=final_chunk.telemetry,
                 )
@@ -820,6 +815,7 @@ class Qwen35ParoOneTokenGenerator:
         if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
             return GenerationOutput(
                 text="".join(generated_text),
+                generated_token_ids=generated_token_ids,
                 finish_details=_finish_details_for_tokens(
                     session.tokenizer,
                     generated_token_ids,
@@ -860,6 +856,7 @@ class Qwen35ParoOneTokenGenerator:
                     break
         return GenerationOutput(
             text="".join(generated_text),
+            generated_token_ids=generated_token_ids,
             finish_details=_finish_details_for_tokens(
                 session.tokenizer,
                 generated_token_ids,
@@ -1312,6 +1309,7 @@ class Qwen35ParoOneTokenGenerator:
         return [
             GenerationOutput(
                 text="".join(output_parts[request_id]),
+                generated_token_ids=generated_ids[request_id],
                 finish_details=_finish_details_for_tokens(
                     session.tokenizer,
                     generated_ids[request_id],
@@ -2055,6 +2053,7 @@ def _generation_output_from_steps(
     return GenerationOutput(
         text="".join(step.token_text for step in steps),
         token_logprobs=tokens,
+        generated_token_ids=tuple(token.token_id for token in tokens),
         finish_details=finish_details,
         telemetry=telemetry,
     )

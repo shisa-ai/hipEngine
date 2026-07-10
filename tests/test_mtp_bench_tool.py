@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 TOOL_PATH = Path("scripts/mtp-bench.py")
 
@@ -73,6 +75,34 @@ def test_concurrent_aggregate_uses_client_wall_not_request_wall_sum() -> None:
     }
 
 
+def test_concurrent_aggregate_preserves_exact_generated_total() -> None:
+    tool = _load_tool()
+
+    agg = tool.aggregate(
+        [
+            {
+                "predicted_n": 9,
+                "total_generated_tokens": 9,
+                "backend_generated_tokens": 9,
+                "wall_s": 1.5,
+            },
+            {
+                "predicted_n": 3,
+                "total_generated_tokens": 3,
+                "backend_generated_tokens": 3,
+                "wall_s": 0.5,
+            },
+        ],
+        client_wall_s=1.6,
+        concurrency=2,
+    )
+
+    assert agg["total_generated_tokens"] == 12
+    assert agg["aggregate_generated_per_second"] == 7.5
+    assert agg["total_backend_generated"] == 12
+    assert agg["aggregate_backend_generated_per_second"] == 7.5
+
+
 def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None:
     tool = _load_tool()
 
@@ -111,6 +141,66 @@ def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None
         "generated_tokens": 24,
         "prompt_tokens": 50,
     }
+
+
+def test_record_from_hipengine_response_uses_exact_all_choice_token_ids() -> None:
+    tool = _load_tool()
+    token_rows = [[101, 102], [201], [301, 302, 303], [], [501, 502], [601]]
+
+    record = tool.record_from_response(
+        "code_python",
+        {
+            "usage": {"completion_tokens": 6},
+            "timings": {"predicted_per_second": 999.0},
+            "choices": [{"hipengine": {"decode_state": {"generated_tokens": 2}}}],
+            "hipengine": {
+                "token_accounting": {
+                    "choice_generated_token_ids": token_rows,
+                    "choice_generated_tokens": [2, 1, 3, 0, 2, 1],
+                    "total_generated_tokens": 9,
+                    "retokenized_visible_tokens": 6,
+                }
+            },
+        },
+        wall_s=1.5,
+    )
+
+    assert record["predicted_n"] == 9
+    assert record["predicted_per_second"] == 6.0
+    assert record["choice_generated_token_ids"] == token_rows
+    assert record["choice_generated_tokens"] == [2, 1, 3, 0, 2, 1]
+    assert record["total_generated_tokens"] == 9
+    assert record["retokenized_visible_tokens"] == 6
+    assert record["backend_generated_tokens"] == 9
+    assert record["backend_generated_per_second"] == 6.0
+
+
+@pytest.mark.parametrize(
+    "accounting",
+    [
+        {
+            "choice_generated_token_ids": [[1, 2]],
+            "choice_generated_tokens": [1],
+            "total_generated_tokens": 2,
+        },
+        {
+            "choice_generated_token_ids": [[1, 2]],
+            "choice_generated_tokens": [2],
+            "total_generated_tokens": 3,
+        },
+    ],
+)
+def test_record_from_hipengine_response_rejects_inconsistent_exact_accounting(
+    accounting: dict[str, object],
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(tool.BenchError, match="match"):
+        tool.record_from_response(
+            "code_python",
+            {"hipengine": {"token_accounting": accounting}},
+            wall_s=1.0,
+        )
 
 
 def test_cli_lists_llamacpp_prompt_suite() -> None:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
+
 from hipengine.generation import (
     DecodePhase,
     DecodeState,
@@ -95,6 +97,26 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
     }
+
+
+def test_generation_output_normalizes_exact_generated_token_ids() -> None:
+    output = GenerationOutput(
+        text="decoded text that does not round-trip",
+        generated_token_ids=[101, "202", 303],
+    )
+
+    assert output.generated_token_ids == (101, 202, 303)
+    assert output.generated_tokens == 3
+
+
+def test_generation_output_distinguishes_known_empty_ids_from_unknown_ids() -> None:
+    assert GenerationOutput(text="", generated_token_ids=[]).generated_tokens == 0
+    assert GenerationOutput(text="legacy output").generated_tokens is None
+
+
+def test_generation_output_rejects_negative_generated_token_ids() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        GenerationOutput(text="invalid", generated_token_ids=(1, -2))
 
 
 def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:

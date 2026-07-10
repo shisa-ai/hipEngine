@@ -183,6 +183,54 @@ def choice_hipengine_payloads(response: dict[str, Any]) -> list[dict[str, Any]]:
     return payloads
 
 
+def exact_token_accounting(response: dict[str, Any]) -> dict[str, Any] | None:
+    hipengine = response.get("hipengine")
+    if not isinstance(hipengine, dict):
+        return None
+    accounting = hipengine.get("token_accounting")
+    if not isinstance(accounting, dict):
+        return None
+    raw_rows = accounting.get("choice_generated_token_ids")
+    raw_counts = accounting.get("choice_generated_tokens")
+    raw_total = accounting.get("total_generated_tokens")
+    if not isinstance(raw_rows, list) or not isinstance(raw_counts, list):
+        raise BenchError("hipEngine token_accounting choice fields must be lists")
+    rows: list[list[int]] = []
+    for row in raw_rows:
+        if not isinstance(row, list):
+            raise BenchError("hipEngine choice_generated_token_ids rows must be lists")
+        normalized: list[int] = []
+        for token_id in row:
+            if isinstance(token_id, bool) or not isinstance(token_id, int) or token_id < 0:
+                raise BenchError("hipEngine generated token IDs must be non-negative integers")
+            normalized.append(int(token_id))
+        rows.append(normalized)
+    counts = []
+    for value in raw_counts:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise BenchError("hipEngine choice_generated_tokens must contain non-negative integers")
+        counts.append(int(value))
+    expected_counts = [len(row) for row in rows]
+    if counts != expected_counts:
+        raise BenchError("hipEngine choice_generated_tokens do not match exact ID rows")
+    if isinstance(raw_total, bool) or not isinstance(raw_total, int) or raw_total < 0:
+        raise BenchError("hipEngine total_generated_tokens must be a non-negative integer")
+    total = int(raw_total)
+    if total != sum(counts):
+        raise BenchError("hipEngine total_generated_tokens does not match choice totals")
+    normalized_accounting: dict[str, Any] = {
+        "choice_generated_token_ids": rows,
+        "choice_generated_tokens": counts,
+        "total_generated_tokens": total,
+    }
+    retokenized = accounting.get("retokenized_visible_tokens")
+    if retokenized is not None:
+        if isinstance(retokenized, bool) or not isinstance(retokenized, int) or retokenized < 0:
+            raise BenchError("hipEngine retokenized_visible_tokens must be a non-negative integer")
+        normalized_accounting["retokenized_visible_tokens"] = int(retokenized)
+    return normalized_accounting
+
+
 def numeric_mapping(value: Any) -> dict[str, float]:
     if not isinstance(value, dict):
         return {}
@@ -204,8 +252,14 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
     if not isinstance(timings, dict):
         timings = {}
 
-    predicted_n = first_number(usage.get("completion_tokens"), timings.get("predicted_n"))
-    predicted_per_second = first_number(timings.get("predicted_per_second"))
+    token_accounting = exact_token_accounting(response)
+    exact_generated = None if token_accounting is None else token_accounting["total_generated_tokens"]
+    predicted_n = first_number(exact_generated, usage.get("completion_tokens"), timings.get("predicted_n"))
+    predicted_per_second = (
+        float(exact_generated) / wall_s
+        if exact_generated is not None and wall_s > 0
+        else first_number(timings.get("predicted_per_second"))
+    )
     if predicted_per_second is None and predicted_n is not None and wall_s > 0:
         predicted_per_second = float(predicted_n) / wall_s
     if predicted_per_second is None:
@@ -222,6 +276,8 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
         "draft_n": int(draft_n),
         "draft_n_accepted": int(draft_n_accepted),
     }
+    if token_accounting is not None:
+        record.update(token_accounting)
     hipengine_payloads = choice_hipengine_payloads(response)
     if hipengine_payloads:
         record["hipengine"] = hipengine_payloads
@@ -255,6 +311,11 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
             backend_prompt = first_number(decode_state.get("prompt_tokens"))
             if backend_prompt is not None:
                 record["backend_prompt_tokens"] = int(backend_prompt)
+    if exact_generated is not None:
+        record["backend_generated_tokens"] = int(exact_generated)
+        record["backend_generated_per_second"] = (
+            round(float(exact_generated) / wall_s, 2) if wall_s > 0 else 0.0
+        )
     record["accept_rate"] = (
         round(record["draft_n_accepted"] / record["draft_n"], 4) if record["draft_n"] else None
     )
@@ -311,6 +372,12 @@ def aggregate(
         "request_wall_s_total": round(request_wall, 2),
         "aggregate_predicted_per_second": round(total_predicted / aggregate_wall, 2) if aggregate_wall > 0 else None,
     }
+    if results and all("total_generated_tokens" in row for row in results):
+        total_generated = sum(int(row["total_generated_tokens"]) for row in results)
+        payload["total_generated_tokens"] = total_generated
+        payload["aggregate_generated_per_second"] = (
+            round(total_generated / aggregate_wall, 2) if aggregate_wall > 0 else None
+        )
     if total_backend_generated > 0:
         payload["total_backend_generated"] = total_backend_generated
         payload["aggregate_backend_generated_per_second"] = (
