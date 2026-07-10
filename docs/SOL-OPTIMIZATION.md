@@ -13,16 +13,17 @@ This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
 consolidates the next work from:
 
-- `MTP-LLAMACPP-PARITY.md`, the GGUF MTP experiment history;
-- `PARO-GGUF-MTP-TRANSFER.md`, the PARO transfer queue;
-- `HIP-vs-VULKAN.md`, the compiler/runtime microbenchmark investigation;
+- `MTP-LLAMACPP-PARITY.md`, the current GGUF MTP parity dashboard;
+- `PARO-GGUF-MTP-TRANSFER.md`, the current PARO transfer queue;
+- `HIP-vs-VULKAN.md`, the current compiler/runtime decision dashboard;
 - `TUNING-gfx1151.md`, `TUNING-gguf.md`, and `CONCURRENCY.md`;
 - the 2026-07-10 current-HEAD code and evidence audit.
 
 `PLAN.md` remains the architecture source of truth. `BENCHMARK.md`
-and `TESTING.md` remain the promotion contracts. The long-form documents
-above remain dated lab notebooks and implementation references; this file owns
-the current ordering, prerequisites, and completion state.
+and `TESTING.md` remain the promotion contracts. Each dashboard links a
+byte-for-byte `*-HISTORY.md` snapshot containing its dated lab notebook and
+implementation record. This file owns the cross-cutting ordering,
+prerequisites, and completion state.
 
 ## Scope And Completion
 
@@ -257,10 +258,10 @@ layout and profiled bottleneck.
 | `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `accepted`: backend packages have a refreshable registration hook; the GGUF generator/runner defaults resolve `auto`; resident models/weights carry the concrete backend; embedding, single/fused linear, router, GDN, and compact/sidecar MoE registry paths use it. AST regression rejects literal gfx1100 resolver arguments, lazy gfx1151 reconstruction passes, and a live public gfx1151 smoke generated ID `11` with all layers tagged gfx1151. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
 | `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
 | `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `open` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
-| `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `open` | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
+| `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `accepted`: MTP parity, PARO transfer, and HIP/Vulkan are 94/87/87-line current dashboards with retained/diagnostic/open/blocked language; their 6,812/597/2,602-line notebooks are linked `*-HISTORY.md` files whose blob hashes exactly match the originals. | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
 
-P0 implementation lands as small validated commits: E1-E5 and B1 are
-accepted; M1/D1 are next. Do not combine backend plumbing with kernel
+P0 implementation lands as small validated commits: E1-E5, B1, and D1 are
+accepted; M1 is next. Do not combine backend plumbing with kernel
 tuning.
 
 ## Baseline Matrix
@@ -485,6 +486,5 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next overall foundation units are `SOL-M1` and `SOL-D1`: join the corrected
-identity/timing contracts in one matrix artifact and split the three long
-optimization notebooks into current dashboards plus dated history.
+The next overall foundation unit is `SOL-M1`: join the corrected identity,
+exact-token, shape, and timing contracts in one matrix artifact.
