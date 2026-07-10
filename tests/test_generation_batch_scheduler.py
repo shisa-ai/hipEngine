@@ -18821,10 +18821,14 @@ def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(retained_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(retained_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(retained_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = retained_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
@@ -18869,10 +18873,14 @@ def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(paro_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(paro_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(paro_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = paro_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
@@ -18991,13 +18999,62 @@ def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypat
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(serial_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(serial_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(serial_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = serial_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
+
+
+def test_qwen35_retained_hardware_context_separates_detected_and_target_arch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+    monkeypatch.setattr(retained_bench, "detect_hip_target_arches", lambda: ("gfx1151",))
+    monkeypatch.setattr(
+        retained_bench,
+        "_visible_hip_device_context",
+        lambda: {"env": {}, "device_name": "Radeon 8060S Graphics"},
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_run_capture",
+        lambda argv, *, timeout: {
+            "command": " ".join(str(part) for part in argv),
+            "returncode": 0,
+            "output": "Name: gfx1151",
+        },
+    )
+
+    hardware = retained_bench._hardware_context()
+
+    assert hardware["arch"] == "gfx1151"
+    assert hardware["detected_arches"] == ["gfx1151"]
+    assert hardware["target_arch"] == "gfx1100"
+    assert hardware["default_hardware"] is False
+
+
+def test_qwen35_retained_command_preserves_target_arch_and_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    command = retained_bench._command(["--json", "benchmarks/results/retained.json"])
+
+    assert shlex.split(command)[:5] == [
+        "env",
+        "HIPENGINE_HIP_ARCH=gfx1151",
+        "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1",
+        "python3",
+        "scripts/qwen35_batch_retained_bench.py",
+    ]
 
 
 def test_qwen35_batch_benchmarks_omit_blank_visible_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
