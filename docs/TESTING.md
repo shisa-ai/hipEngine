@@ -161,6 +161,12 @@ Greeting and 512 retain the all-layer bisect; longer cases may use
 states are still compared exactly. Single-order wall fields from this driver
 are correctness diagnostics only and cannot select the G3 default.
 
+Default selection uses `scripts/gguf_gdn_prefill_ab.py`, not comparator wall
+fields. Its contract gate requires unique positive contexts, a passing G2
+artifact that covers each context, balanced even repetitions, exact timed
+tokens, clean provenance, and a win at both 512 and 4096 before returning a
+chain-promotion decision.
+
 ### 2. CPU deterministic bundle
 
 Use for ordinary non-GPU code changes before commit:
