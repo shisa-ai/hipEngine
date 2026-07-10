@@ -1782,11 +1782,10 @@ class Qwen35ParoResidentSession:
         slots: list[int] | tuple[int, ...] | None = None,
         sample: bool = True,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
-        """Run one decode token per physical batch slot using the resident c=1 layer path.
+        """Run one decode token per physical batch slot through exact row-aware decode.
 
-        This is a correctness-first c>N bridge: it consumes batch-shaped hidden,
-        linear-state, and KV-cache rows but executes active rows serially until
-        native c-aware layer kernels replace the fallback. Use
+        This is a correctness-first c>N bridge: it executes the certified
+        row-aware decode path with ``rows=1`` for each physical slot. Use
         :meth:`batch_execution_metadata` to label artifacts from this path so the
         serial bridge cannot be mistaken for native compact c>N throughput.
         """
@@ -1805,22 +1804,25 @@ class Qwen35ParoResidentSession:
         if len(set(slot_ids)) != len(slot_ids):
             raise ValueError("slots must be unique")
 
-        saved_hidden, saved_next_hidden = self.hidden, self.next_hidden
         results: list[Qwen35ParoAutoregressiveStepResult | None] = []
-        try:
-            for token_id, position, slot in zip(tokens, pos, slot_ids, strict=True):
-                self._check_slot(slot)
-                self._check_position(position)
-                self._set_slot_token_embedding(token_id, slot=slot)
-                self._set_slot_position(position, slot=slot)
-                hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
-                if sample:
-                    results.append(self._sample_from_hidden_for_slot(hidden, slot))
-                else:
-                    results.append(None)
-            return tuple(results)
-        finally:
-            self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
+        for token_id, position, slot in zip(tokens, pos, slot_ids, strict=True):
+            self._check_slot(slot)
+            self._check_position(position)
+            self._set_batch_token_embeddings((token_id,), stream=0)
+            self._set_batch_positions((position,), slots=(slot,), stream=0)
+            hidden = self._run_layers_batch_decode(
+                rows=1,
+                positions=(position,),
+                slots=(slot,),
+                stream=0,
+            )
+            if sample:
+                results.append(self._sample_from_hidden_for_slot(hidden, slot))
+            else:
+                results.append(None)
+        if not sample:
+            self.runtime.device_synchronize()
+        return tuple(results)
 
     def step_batch_native(
         self,
@@ -1889,7 +1891,7 @@ class Qwen35ParoResidentSession:
                 token_arr.nbytes,
                 runtime=self.runtime,
             )
-            self._set_batch_positions(pos, stream=0)
+            self._set_batch_positions(pos, slots=slot_ids, stream=0)
             self._step_batch_from_device_tokens(
                 rows=rows,
                 positions=pos,
@@ -1899,7 +1901,7 @@ class Qwen35ParoResidentSession:
             )
             return self._read_batch_next_tokens(rows=rows)
         self._set_batch_token_embeddings(tokens, stream=0)
-        self._set_batch_positions(pos, stream=0)
+        self._set_batch_positions(pos, slots=slot_ids, stream=0)
         hidden = self._run_layers_batch_decode(rows=rows, positions=pos, slots=slot_ids, stream=0)
         if not sample:
             self.runtime.device_synchronize()
@@ -1973,7 +1975,7 @@ class Qwen35ParoResidentSession:
             # Seed the device decode counters to the real start positions before
             # capture (this runs, not captured); the captured advance walks them
             # forward each replay.
-            self._set_batch_positions(start_positions, stream=stream)
+            self._set_batch_positions(start_positions, slots=slot_ids, stream=stream)
             self.runtime.stream_synchronize(stream)
             self.runtime.stream_begin_capture(stream)
             try:
@@ -2002,7 +2004,7 @@ class Qwen35ParoResidentSession:
             raise
         # Capture does not execute, so the device counters are still at start;
         # reset explicitly for clarity so the first replay begins at start.
-        self._set_batch_positions(start_positions, stream=stream)
+        self._set_batch_positions(start_positions, slots=slot_ids, stream=stream)
         self.runtime.stream_synchronize(stream)
         return Qwen35ParoBatchDecodeGraph(
             session=self,
@@ -7910,6 +7912,7 @@ class Qwen35ParoResidentSession:
         self,
         positions: list[int] | tuple[int, ...],
         *,
+        slots: list[int] | tuple[int, ...] | None = None,
         active_mask: list[bool] | tuple[bool, ...] | None = None,
         stream: int = 0,
     ) -> None:
@@ -7922,10 +7925,33 @@ class Qwen35ParoResidentSession:
             raise ValueError("positions exceed max_batch_size")
         for position in pos:
             self._check_position(position)
+        slot_ids = tuple(range(len(pos))) if slots is None else tuple(int(slot) for slot in slots)
+        if len(slot_ids) != len(pos):
+            raise ValueError("slots must match positions")
+        if len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("slots must be unique")
+        for slot in slot_ids:
+            self._check_slot(slot)
+        mask = None if active_mask is None else tuple(bool(item) for item in active_mask)
+        if mask is not None and len(mask) != len(pos):
+            raise ValueError("active_mask must match positions")
         pos_arr = np.asarray(pos, dtype=np.int64)
         if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
-            self.position_arr[: len(pos)] = pos_arr
-            self.context_arr[: len(pos)] = pos_arr + np.int64(1)
+            self.position_arr[np.asarray(slot_ids, dtype=np.intp)] = pos_arr
+            self.context_arr[np.asarray(slot_ids, dtype=np.intp)] = pos_arr + np.int64(1)
+        if slot_ids != tuple(range(len(pos))):
+            for index, (position, slot) in enumerate(zip(pos, slot_ids, strict=True)):
+                if mask is not None and not mask[index]:
+                    continue
+                set_decode_position_i64(
+                    self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
+                    self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
+                    int(position),
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
+            return
         # Reuse a persistent device scratch instead of malloc/free per decode step.
         pos_scratch_bytes = int(self.max_batch_size) * DType.INT64.itemsize
         pos_buf = getattr(self, "_batch_position_scratch", None)
@@ -7936,10 +7962,7 @@ class Qwen35ParoResidentSession:
         mask_buf = None
         try:
             copy_host_to_device(pos_buf, host_array_ptr(pos_arr), pos_arr.nbytes, runtime=self.runtime)
-            if active_mask is not None:
-                mask = tuple(bool(item) for item in active_mask)
-                if len(mask) != len(pos):
-                    raise ValueError("active_mask must match positions")
+            if mask is not None:
                 mask_arr = np.asarray(mask, dtype=np.uint8)
                 mask_buf = malloc(mask_arr.nbytes, runtime=self.runtime)
                 copy_host_to_device(mask_buf, host_array_ptr(mask_arr), runtime=self.runtime)
@@ -8852,14 +8875,24 @@ class Qwen35ParoResidentSession:
         hidden = self._run_layers_batch_decode(rows=rows, positions=positions, slots=slots, stream=stream)
         self._write_batch_next_tokens_device(hidden, rows=rows, stream=stream)
         if advance_positions:
-            advance_decode_positions_i64(
-                self.position_buf.ptr,
-                self.context_buf.ptr,
-                rows,
-                stream=stream,
-                library=self.libraries["runtime_state"],
-                runtime=self.runtime,
-            )
+            if slots == tuple(range(rows)):
+                advance_decode_positions_i64(
+                    self.position_buf.ptr,
+                    self.context_buf.ptr,
+                    rows,
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
+            else:
+                for slot in slots:
+                    advance_decode_position_i64(
+                        self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
+                        self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
+                        stream=stream,
+                        library=self.libraries["runtime_state"],
+                        runtime=self.runtime,
+                    )
 
     def _read_batch_next_tokens(self, *, rows: int) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         """Read the device-resident next-token argmax back into host step results.
@@ -12748,7 +12781,11 @@ class Qwen35ParoBatchDecodeGraph:
 
         if self.closed:
             raise RuntimeError("batch decode graph is closed")
-        self.session._set_batch_positions(self.start_positions, stream=self.stream)
+        self.session._set_batch_positions(
+            self.start_positions,
+            slots=self.slots,
+            stream=self.stream,
+        )
         self.session.runtime.stream_synchronize(self.stream)
 
     def replay(self, steps: int) -> None:
