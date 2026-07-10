@@ -496,6 +496,151 @@ def _summarize_ratios(items: list[dict[str, Any]], ratio_key: str) -> dict[str, 
     }
 
 
+def _schema_comparisons(
+    comparison_groups: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Flatten matched backend ratios into the v2 comparison schema shape."""
+    timing_contract = _load_timing_contract_module()
+    out: list[dict[str, Any]] = []
+    for item in comparison_groups["backend"]:
+        ratios = item.get("ratios")
+        if not isinstance(ratios, dict):
+            raise ValueError("reduction backend comparison is missing timing ratios")
+        for control in timing_contract.TIMING_CONTROLS:
+            domains = ratios.get(control)
+            if not isinstance(domains, dict):
+                raise ValueError(
+                    f"reduction backend comparison is missing {control} ratios"
+                )
+            gpu_elapsed = domains.get("gpu_elapsed")
+            host_wall = domains.get("host_wall")
+            if not isinstance(gpu_elapsed, dict) or not isinstance(host_wall, dict):
+                raise ValueError(
+                    f"reduction backend comparison has incomplete {control} domains"
+                )
+            out.append(
+                {
+                    "comparison": item.get("comparison"),
+                    "k": item.get("k"),
+                    "rows": item.get("rows"),
+                    "workgroup_size": item.get("workgroup_size"),
+                    "variant": item.get("variant"),
+                    "timing_mode": item.get("timing_mode"),
+                    "control": control,
+                    "gpu_elapsed": gpu_elapsed,
+                    "host_wall": host_wall,
+                    "hip_correctness_pass": item.get("lhs_correctness_pass"),
+                    "vulkan_correctness_pass": item.get("rhs_correctness_pass"),
+                }
+            )
+    return out
+
+
+def _correctness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def backend_summary(backend: str) -> dict[str, Any]:
+        backend_rows = [row for row in rows if row.get("backend") == backend]
+        if not backend_rows:
+            return {"status": "not_run", "row_count": 0}
+        all_pass = all(bool(row.get("correctness_pass")) for row in backend_rows)
+        return {
+            "status": "pass" if all_pass else "fail",
+            "row_count": len(backend_rows),
+            "all_rows_pass": all_pass,
+        }
+
+    all_pass = bool(rows) and all(bool(row.get("correctness_pass")) for row in rows)
+    return {
+        "status": "pass" if all_pass else "fail" if rows else "not_run",
+        "row_count": len(rows),
+        "all_rows_pass": all_pass,
+        "hip": backend_summary("hip"),
+        "vulkan": backend_summary("vulkan"),
+    }
+
+
+def _build_comparison_artifact(
+    *,
+    args: argparse.Namespace,
+    environment: dict[str, Any],
+    source_hash: str,
+    commands: list[dict[str, Any]],
+    raw_results: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+    comparison_groups: dict[str, list[dict[str, Any]]],
+    wrapper_command: list[str],
+) -> dict[str, Any]:
+    config = {
+        "backend": args.backend,
+        "k_list": _parse_csv_u32(args.k_list),
+        "rows_list": _parse_csv_u32(args.rows_list),
+        "workgroups": _parse_csv_u32(args.workgroups),
+        "body_repeats": args.body_repeats,
+        "reps": args.reps,
+        "warmup": args.warmup,
+        "samples": args.samples,
+        "timing_mode": args.timing_mode,
+        "independent_streams": args.independent_streams,
+        "variants": {
+            "hip": list(HIP_VARIANTS),
+            "vulkan": list(VULKAN_VARIANTS),
+        },
+    }
+    hardware = {
+        "gfx_arch": args.gfx_arch or "unknown",
+        "gpu_name": args.hardware_gpu or "unknown",
+    }
+    schema_comparisons = _schema_comparisons(comparison_groups)
+    correctness = _correctness_summary(rows)
+    return {
+        "schema": "hipengine.micro.reduction_sweep.v2",
+        "schema_version": 2,
+        "kind": "hipengine_micro_comparison",
+        "bench": "reduction_sweep",
+        "classification": "diagnostic_unclassified",
+        "hardware": {"hip": dict(hardware), "vulkan": dict(hardware)},
+        "source": _source_record(environment, source_hash),
+        "command": wrapper_command,
+        "inputs": config,
+        "correctness": correctness,
+        "comparisons": schema_comparisons,
+        "environment": {
+            "ref": args.environment_ref,
+            "captured": environment if not args.environment_ref else None,
+        },
+        "config": config,
+        "commands": _json_safe(commands),
+        "raw_results": raw_results,
+        "rows": rows,
+        "matched_rows": comparison_groups["backend"],
+        "comparison_groups": comparison_groups,
+        "summary": {
+            "backend_ratio_summary": _summarize_ratios(
+                comparison_groups["backend"], "vulkan_vs_hip_gpu_burst_speedup"
+            ),
+            "variant_ratio_summary": _summarize_ratios(
+                comparison_groups["variant"], "rhs_over_lhs_time_ratio"
+            ),
+            "all_correctness_pass": correctness["all_rows_pass"],
+            "primary_domain": "gpu_elapsed",
+            "host_wall_status": "not_comparable_direct_vs_command_buffer",
+        },
+        "artifact_ref": str(args.out),
+        "interpretation": (
+            "Reduction-shape control for LDS tree, extra barrier, HIP wave-shuffle, "
+            "Vulkan subgroup reductions, and 4/8/16-way lane-local accumulators. "
+            "serial_latency orders shared-output iterations; independent_throughput "
+            "uses disjoint output slices. Cross-backend GPU ratios use equal dependency "
+            "contracts, while direct/multi-stream HIP and Vulkan command-buffer host "
+            "walls are intentionally not ratioed."
+        ),
+        "wrapper": {
+            "command": wrapper_command,
+            "cwd": str(REPO_ROOT),
+            "build_dir": str(args.build_dir),
+        },
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", choices=("both", "hip", "vulkan"), default="both")
@@ -612,66 +757,16 @@ def main(argv: list[str] | None = None) -> None:
         TIMING_CONTRACT,
     ]
     source_hash = _hash_files(source_paths)
-    result = {
-        "schema": "hipengine.micro.reduction_sweep.v2",
-        "schema_version": 2,
-        "kind": "hipengine_micro_result",
-        "bench": "reduction_sweep",
-        "classification": "diagnostic_unclassified",
-        "hardware": {
-            "gfx_arch": args.gfx_arch or "unknown",
-            "gpu_name": args.hardware_gpu or "unknown",
-        },
-        "config": {
-            "backend": args.backend,
-            "k_list": _parse_csv_u32(args.k_list),
-            "rows_list": _parse_csv_u32(args.rows_list),
-            "workgroups": _parse_csv_u32(args.workgroups),
-            "body_repeats": args.body_repeats,
-            "reps": args.reps,
-            "warmup": args.warmup,
-            "samples": args.samples,
-            "timing_mode": args.timing_mode,
-            "independent_streams": args.independent_streams,
-            "variants": {
-                "hip": list(HIP_VARIANTS),
-                "vulkan": list(VULKAN_VARIANTS),
-            },
-        },
-        "environment": {
-            "ref": args.environment_ref,
-            "captured": environment if not args.environment_ref else None,
-        },
-        "source": _source_record(environment, source_hash),
-        "commands": _json_safe(commands),
-        "rows": rows,
-        "comparisons": comparisons,
-        "summary": {
-            "backend_ratio_summary": _summarize_ratios(
-                comparisons["backend"], "vulkan_vs_hip_gpu_burst_speedup"
-            ),
-            "variant_ratio_summary": _summarize_ratios(
-                comparisons["variant"], "rhs_over_lhs_time_ratio"
-            ),
-            "all_correctness_pass": all(bool(row.get("correctness_pass")) for row in rows),
-            "primary_domain": "gpu_elapsed",
-            "host_wall_status": "not_comparable_direct_vs_command_buffer",
-        },
-        "artifact_ref": str(args.out),
-        "interpretation": (
-            "Reduction-shape control for LDS tree, extra barrier, HIP wave-shuffle, "
-            "Vulkan subgroup reductions, and 4/8/16-way lane-local accumulators. "
-            "serial_latency orders shared-output iterations; independent_throughput "
-            "uses disjoint output slices. Cross-backend GPU ratios use equal dependency "
-            "contracts, while direct/multi-stream HIP and Vulkan command-buffer host "
-            "walls are intentionally not ratioed."
-        ),
-        "wrapper": {
-            "command": [Path(sys.executable).name, *sys.argv],
-            "cwd": str(REPO_ROOT),
-            "build_dir": str(args.build_dir),
-        },
-    }
+    result = _build_comparison_artifact(
+        args=args,
+        environment=environment,
+        source_hash=source_hash,
+        commands=commands,
+        raw_results=raw_results,
+        rows=rows,
+        comparison_groups=comparisons,
+        wrapper_command=[Path(sys.executable).name, *sys.argv],
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     indent = 2 if args.pretty else None
     args.out.write_text(json.dumps(_json_safe(result), indent=indent, sort_keys=True) + "\n", encoding="utf-8")
