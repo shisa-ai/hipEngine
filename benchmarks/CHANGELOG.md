@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-10
+
+- [micro evidence correction retained] gfx1151 / Radeon 8060S / HIP vs Vulkan bounded matrix: pre-v2 overlap timings -> timing-contract v2 serialized/independent results after adding real dependencies, disjoint throughput storage, GPU plus host clocks, and exact timed-sequence correctness. Geometry changes from an invalid `5.79x-14.03x` Vulkan headline to **`0.677x-0.988x` serialized / `4.133x-7.708x` independent**; sampler changes from invalid `12.75x-26.94x` to **`0.507x-1.134x` / `2.461x-5.646x`**; Q4 combined changes from invalid `1.18x` Vulkan to **`0.922x-0.973x` / `0.911x-0.978x`**, favoring HIP in every row. Packed dot remains Vulkan-positive at **`3.052x-3.243x` / `3.840x-4.272x`**. All 22 clean `ca241dae` comparisons pass exact matrix/provenance/timed-command gates with `performance_claim=true`; ratios are Vulkan/HIP burst GPU time and percent deltas are intentionally omitted because the old/new timing contracts are not comparable. `benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json`.
+
 ## 2026-07-09
 
 - [diagnostic rejected] Qwen3.6-35B-A3B PARO / w4_paro / gfx1151 c6 reduced 512/16 local generated-token equality: native rows=6 no-rowchunk full-attention probes rejected two likely substage repairs. Forcing full-attention O projection batch GEMV remained red at token 9 (`108.525 tok/s`, median `52.264 ms`), and adding dense-context batch-gate on selected frontier layers `3,7,11,15,19,23,27,31` regressed to token 2 (`102.893 tok/s`, median `55.530 ms`). Keep the selected full-attention rowchunk2 bridge while bisecting deeper context/scratch/state behavior. `benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-no-rowchunk-substage-rejects-summary.json`.

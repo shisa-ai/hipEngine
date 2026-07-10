@@ -49,6 +49,35 @@ Every control records two clocks:
 burst. `serial_latency` may validate the chained final state. A single-dispatch
 oracle alone is not sufficient for either mode.
 
+## Retained gfx1151 Matrix
+
+The clean bounded run at
+`ca241dae795d1252303c801f30e5db54a79eeb96` retains all 11 paired families in
+both modes. All 22 comparisons pass timed-command correctness, exact requested
+matrix, same-device/source, and clean provenance gates. The compact result is
+[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+
+These are burst GPU Vulkan/HIP ratios (`HIP time / Vulkan time`); above `1.0x`
+favors Vulkan.
+
+| Family | Serial | Independent |
+| --- | ---: | ---: |
+| Dispatch/grid | `1.162x-16.789x` | `1.116x-150.459x` |
+| Geometry | `0.677x-0.988x` | `4.133x-7.708x` |
+| Reduction | `0.689x-0.981x` | `4.246x-7.502x` |
+| Memory/waitcnt | `0.869x-1.071x` | `1.077x-1.370x` |
+| Packed dot | `3.052x-3.243x` | `3.840x-4.272x` |
+| VOPD | `1.031x-1.200x` | `1.040x-1.110x` |
+| Sampler | `0.507x-1.134x` | `2.461x-5.646x` |
+| Two-stage reduction | `0.682x-0.934x` | `1.087x-1.466x` |
+
+Matched combined production slices favor HIP in every serialized row: Q4
+selected-dual is `0.922x-0.973x`, Q6 selected-down X8 is `0.549x`, and dense
+Q8_0 is `0.540x-0.903x`. Independent combined rows are Q4
+`0.911x-0.978x`, Q6 `0.587x`, and dense Q8_0 `0.558x-1.144x`; only three small
+`768x2048` dense rows favor Vulkan. Q6 lm-head remains blocked because the two
+backends do not execute the same math/layout.
+
 ## Core Files
 
 | Path | Purpose |
