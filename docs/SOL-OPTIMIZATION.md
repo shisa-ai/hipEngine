@@ -2,8 +2,9 @@
 
 Last updated: 2026-07-11.
 
-Status: active ledger. `SOL-E1` through `SOL-E3` and `SOL-S2` are accepted on
-top of the `7ea21e98b097` release-default baseline. The gfx1151 HIP/Vulkan v2
+Status: active ledger. `SOL-E1` through `SOL-E3`, `SOL-E5`, `SOL-S2`, and
+`SOL-B1` are accepted on top of the `7ea21e98b097` release-default baseline.
+The gfx1151 HIP/Vulkan v2
 matrix was measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO
 true-c1 shrinking gate was measured at `0c1845170955` with
 `hipengine_dirty=false`.
@@ -225,7 +226,7 @@ also preventing incompatible quant kernels from being copied blindly.
 
 | Surface | PARO today | GGUF today | Required comparison / transfer |
 | --- | --- | --- | --- |
-| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | Public GGUF factory/session/build identity reaches gfx1151 after `7ea21e98`, but internal registry resolver keys remain semantically gfx1100-only. | Complete the internal resolver cleanup in `SOL-B1` before gfx1151 GGUF tuning. |
+| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | `SOL-B1` tags resident GGUF models and every weight with the resolved backend; embedding, linear/fused-linear, router, GDN, and compact/sidecar MoE resolves rebind shared gfx1100 source templates to that identity. A live gfx1151 public smoke retained `hip_gfx1151` through generator/runner/model/weights and generated token ID `11`. | Backend identity is complete; establish the corrected baseline matrix before architecture-specific tuning. |
 | Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | GGUF chunking exists, but GDN always selects the slow fused decode-order fallback when registered. | Re-certify GGUF GDN chain, then retune chunks by arch and context. |
 | Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption. | Establish correct eager oracle, then recapture by full shape/state key. |
 | c>N decode | PARO has native multi-row paths, owned batch timing, and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work, exact all-choice IDs, and owned batch timing, but route width/shape identity remain incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
@@ -253,13 +254,14 @@ layout and profiled bottleneck.
 | `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `accepted`: the stdlib/torch-free collector emits `hipengine_artifact_provenance` v1 for server, retained PARO, GGUF category/true-AR, and micro artifacts; dynamic gfx1151 identity resolves from `auto`; staged, unstaged, untracked, snapshot-revision, file, directory, and missing-model cases have regressions. | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
 | `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `open` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
 | `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `accepted`: raw token rows are a common generation input; OpenAI `int[]`/`int[][]` prompts preserve IDs through batching and `n`; prompt hashes/counts and exact generated IDs are exposed; the shared tool/schema fail closed on parity; live gfx1151 PARO 512/128 direct/HTTP matched all IDs. | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
-| `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open`: public factory, runner/session target, JIT build, capabilities, and installed-wheel route landed at `7ea21e98`; internal semantic `hip_gfx1100` resolver keys remain. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
+| `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `accepted`: backend packages have a refreshable registration hook; the GGUF generator/runner defaults resolve `auto`; resident models/weights carry the concrete backend; embedding, single/fused linear, router, GDN, and compact/sidecar MoE registry paths use it. AST regression rejects literal gfx1100 resolver arguments, lazy gfx1151 reconstruction passes, and a live public gfx1151 smoke generated ID `11` with all layers tagged gfx1151. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
 | `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
-| `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `blocked` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
+| `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `open` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
 | `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `blocked` | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
 
-P0 implementation should land as small validated commits: E1, E2, E3, E5,
-B1, then M1/E4. Do not combine backend plumbing with kernel tuning.
+P0 implementation lands as small validated commits: E1, E2, E3, E5, and B1
+are accepted; M1/E4 are next. Do not combine backend plumbing with kernel
+tuning.
 
 ## Baseline Matrix
 
@@ -483,6 +485,6 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next overall foundation unit is `SOL-B1`: remove the remaining semantic
-gfx1100 resolver keys from the gfx1151 GGUF path. Exact token identity, owned
-timing, provenance, and shape identity are now explicit.
+The next overall foundation units are `SOL-M1` and `SOL-E4`: join the corrected
+identity/timing contracts in one matrix artifact, then remove ineligible rows
+from current dashboards. `SOL-D1` unblocks after the dashboard repair.

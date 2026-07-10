@@ -115,6 +115,7 @@ class Qwen35GGUFDeviceWeight:
 
     spec: Qwen35GGUFWeightSpec
     allocations: Mapping[str, DeviceTensorAllocation]
+    backend: str
 
     def allocation(self, name: str = "raw") -> DeviceTensorAllocation:
         return self.allocations[name]
@@ -145,6 +146,7 @@ class Qwen35GGUFResidentWeights:
     config: Qwen35GGUFConfig
     root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
+    backend: str
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -228,6 +230,7 @@ def materialize_qwen35_gguf_weights(
     decode_repack: bool | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    backend: str = "hip_gfx1100",
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -243,7 +246,15 @@ def materialize_qwen35_gguf_weights(
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
     try:
         root_weights = {
-            slot: _materialize_or_alias(spec, reader, materialized, selected, device=device, runtime=runtime)
+            slot: _materialize_or_alias(
+                spec,
+                reader,
+                materialized,
+                selected,
+                device=device,
+                runtime=runtime,
+                backend=backend,
+            )
             for slot, spec in plan.root_specs.items()
             if selected is None or spec.slot_path in selected
         }
@@ -260,6 +271,7 @@ def materialize_qwen35_gguf_weights(
                             selected,
                             device=device,
                             runtime=runtime,
+                            backend=backend,
                         )
                         for slot in plan.layer_specs[layer.layer_id]
                         if selected is None or plan.layer_specs[layer.layer_id][slot].slot_path in selected
@@ -276,6 +288,7 @@ def materialize_qwen35_gguf_weights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),
         layers=layers,
+        backend=backend,
     )
 
 
@@ -642,12 +655,19 @@ def _materialize_or_alias(
     *,
     device: Device | None,
     runtime: HipRuntime | None,
+    backend: str,
 ) -> Qwen35GGUFDeviceWeight:
     del selected  # selection is handled by callers before materialization.
     key = (spec.source.name, spec.layout)
     weight = materialized.get(key)
     if weight is None:
-        weight = _materialize_spec(spec, reader, device=device, runtime=runtime)
+        weight = _materialize_spec(
+            spec,
+            reader,
+            device=device,
+            runtime=runtime,
+            backend=backend,
+        )
         materialized[key] = weight
     return weight
 
@@ -658,6 +678,7 @@ def _materialize_spec(
     *,
     device: Device | None,
     runtime: HipRuntime | None,
+    backend: str,
 ) -> Qwen35GGUFDeviceWeight:
     import numpy as np
 
@@ -787,7 +808,11 @@ def _materialize_spec(
         }
     else:
         raise ValueError(f"unsupported materialization layout {spec.layout!r}")
-    return Qwen35GGUFDeviceWeight(spec=spec, allocations=MappingProxyType(allocations))
+    return Qwen35GGUFDeviceWeight(
+        spec=spec,
+        allocations=MappingProxyType(allocations),
+        backend=backend,
+    )
 
 
 __all__ = [

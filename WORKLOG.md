@@ -149844,3 +149844,57 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `json.tool`, benchmark/root README sync, and `git diff --check` pass. Updated
   API, benchmark, plan, SOL, PARO-transfer, root/benchmark README, and changelog
   handoffs. `SOL-E5` is accepted and `SOL-B1` is the next foundation unit.
+
+## 2026-07-11 - SOL-B1 concrete gfx1151 GGUF registry identity
+
+- RED isolated the remaining semantic backend leaks without loading a model.
+  A gfx1151-tagged weight still produced gfx1100 embedding/linear keys, the
+  GGUF F32 router adapter resolved gfx1100, and all five GDN prefill plan
+  members resolved gfx1100 even when the owning runner was gfx1151. The focused
+  RED command was `uv run pytest -q tests/test_gfx1151_backend.py -k
+  'gguf_weight_backend or gguf_router_resolve or gguf_gdn_plan'` (`3 failed`).
+- Added a backend-package load/refresh convention and made gfx1151 alias
+  registration fill missing keys without overwriting caller fixtures. The
+  full-stack runner resolves `auto`, validates its HIP target, refreshes the
+  peer backend package at model-build time, and passes the concrete backend
+  into materialization. `Qwen35GGUFResidentWeights` and every
+  `Qwen35GGUFDeviceWeight` now retain that identity, including the host-token-
+  embedding replacement record. Scheduling-only tests that deliberately bypass
+  generator initialization with `__new__` retain an explicit gfx1100 fixture
+  fallback; initialized generators never use it.
+- GGUF embedding and single/fused linear dispatch derive their backend from
+  resident weights. Pair/triple/concatenated eligibility keys, dispatch caches,
+  and lazy source-family reconstruction are backend-aware and reject mixed-
+  backend weight groups. Router, Q6 rowtile, GDN, expert-sidecar, and compact
+  WMMA/GEMV resolver paths likewise use the owning weight/runner backend. The
+  physical `hip_gfx1100` imports and static table entries remain source-lineage
+  templates; an AST regression proves no selected resolver call supplies a
+  literal gfx1100 backend.
+- GREEN: `tests/test_gfx1151_backend.py` passes `17/17`, covering factory,
+  target/build flags, resident tagging, router/GDN resolution, fused-linear
+  matching, lazy alias reconstruction after a cleared registry, and the
+  literal-resolver audit. The focused embedding/linear/materialization/GDN/
+  compact-MoE bundle and the complete GGUF generation/LLM/server bundle pass;
+  the explicit seven-file CPU-reference fixture gate, Python compilation, and
+  `git diff --check` pass. The complete
+  `tests/test_gguf*.py tests/test_qwen35_gguf*.py` sweep
+  reached 100%; its seven failures reproduce individually and predate this
+  unit: the stale B1 sampling fixture expectation, raw-vs-T16 sidecar
+  expectation, four `zero_states` test doubles missing current keyword
+  arguments, and one stale MoE interception signature.
+- Live public exit smoke ran on Radeon 8060S/gfx1151 with
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `quant=auto`, prompt `Hello`,
+  greedy `max_tokens=1`, and no `HIPENGINE_BACKEND`/`HIPENGINE_HIP_ARCH`
+  overrides. `LLM`, generator, runner, resident model, every root weight, and
+  every layer weight all reported `hip_gfx1151`; target arch was `gfx1151`,
+  674 gfx1151 kernel keys were registered, resolved quant was `gguf_q4_k_m`,
+  and exact output was token ID `11` / text `,`. This is a route/correctness
+  smoke, not a throughput claim, so no benchmark artifact or scoreboard row is
+  created.
+- The required pre-kernel lineage command
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` could not inspect
+  its external parent because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+  SOL-B1 ports no kernel body, so this is recorded as an environment limitation
+  rather than a completion blocker. Updated `docs/KERNELS.md` and
+  `docs/SOL-OPTIMIZATION.md`; SOL-B1 is accepted, SOL-M1 is unblocked, and
+  SOL-M1/E4 are the next foundation units.

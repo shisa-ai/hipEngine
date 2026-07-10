@@ -208,6 +208,7 @@ from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kernels.backends import (
     hip_target_arch_environment,
     hip_target_arch_for_backend,
+    load_backend_kernel_package,
     resolve_backend,
 )
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
@@ -1099,7 +1100,7 @@ def _launch_qwen35_router_logits_bf16_hidden(
     """
 
     fn = resolve(
-        backend="hip_gfx1100",
+        backend=weight.backend,
         layer="router_logits",
         quant=weight.spec.quant_key,
         variant="bf16_hidden",
@@ -1130,7 +1131,7 @@ def _launch_qwen35_router_logits_f32_hidden(
     """Launch F32-hidden router logits through the kernel registry."""
 
     fn = resolve(
-        backend="hip_gfx1100",
+        backend=weight.backend,
         layer="router_logits",
         quant=weight.spec.quant_key,
         variant="f32_hidden",
@@ -1389,7 +1390,7 @@ class Qwen35GGUFFullStackRunner:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
-    backend: str = "hip_gfx1100"
+    backend: str = "auto"
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
 
@@ -1399,9 +1400,14 @@ class Qwen35GGUFFullStackRunner:
             self.target_arch = hip_target_arch_for_backend(self.backend)
         except ValueError as exc:
             raise RuntimeError("Qwen35GGUFFullStackRunner requires a HIP backend") from exc
+        load_backend_kernel_package(self.backend)
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
-        self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+        self.weights = materialize_qwen35_gguf_weights(
+            self.model_path,
+            runtime=self.runtime,
+            backend=self.backend,
+        )
 
     def _aotriton_prefill_library(self):
         """Return the cached AOTriton prefill shim handle."""
@@ -1468,7 +1474,7 @@ class Qwen35GGUFFullStackRunner:
 
         plan = getattr(self, "_gguf_gdn_prefill_plan_cache", None)
         if plan is None:
-            plan = _resolve_gguf_gdn_prefill_plan()
+            plan = _resolve_gguf_gdn_prefill_plan(self.backend)
             self._gguf_gdn_prefill_plan_cache = plan
         return plan
 
@@ -1486,7 +1492,7 @@ class Qwen35GGUFFullStackRunner:
         """Dispatch the qwen35 GGUF GDN prefill chain (or fused fallback).
 
         Plugin-style: the kernel chain is resolved via the kernel registry
-        keyed by ``(hip_gfx1100, ..., gguf_qwen35, ...)``. Whether the
+        keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``. Whether the
         single-segment k2 or multi-segment k2_segments recurrent kernel runs
         is a perf-tuning decision controlled by
         ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
@@ -5073,6 +5079,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.moe_selected_experts.ptr,
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+            backend=self.backend,
             x_rows=rows,
             rows=selected_rows,
             num_experts=cfg.expert_count,
@@ -5089,6 +5096,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.post_norm.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.ffn_gate_up.ptr,
+                backend=self.backend,
                 x_rows=rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -5103,6 +5111,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.post_norm.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                backend=self.backend,
                 x_rows=rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -5229,6 +5238,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.ffn_intermediate.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.moe_down_out.ptr,
+                backend=self.backend,
                 x_rows=selected_rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -6880,7 +6890,7 @@ class Qwen35GGUFResidentSession:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
-    backend: str = "hip_gfx1100"
+    backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
     max_sequence_length: int | None = None
     use_expert_sidecar: bool = False
@@ -7680,13 +7690,18 @@ class Qwen35GGUFResidentSession:
         raw = reader.tensor_data(token_weight.spec.source.name)
         for allocation in reversed(tuple(token_weight.allocations.values())):
             allocation.free(runtime=runtime)
-        host_weight = Qwen35GGUFDeviceWeight(spec=token_weight.spec, allocations=MappingProxyType({}))
+        host_weight = Qwen35GGUFDeviceWeight(
+            spec=token_weight.spec,
+            allocations=MappingProxyType({}),
+            backend=token_weight.backend,
+        )
         root_weights = dict(weights.root_weights)
         root_weights["token_embedding"] = host_weight
         self.runner.weights = Qwen35GGUFResidentWeights(
             config=weights.config,
             root_weights=MappingProxyType(root_weights),
             layers=weights.layers,
+            backend=weights.backend,
         )
         self._host_token_embedding_reader = reader
         self._host_token_embedding_raw = raw
@@ -11753,7 +11768,6 @@ class Qwen35GGUFResidentSession:
                 weight,
                 activation_dtype=GGUF_ACTIVATION_BF16,
                 output_dtype=GGUF_OUTPUT_F32,
-                backend="hip_gfx1100",
                 rows=rows,
             )
             if dispatch.key.quant != "gguf_q6_k_t16_v1" or dispatch.abi != "t16":
@@ -13359,12 +13373,15 @@ def _gguf_full_attention_split_gate_bf16_fn(
     return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
 
 
-def _resolve_gguf_gdn_prefill_plan() -> _GGUFGDNPrefillPlan:
+def _resolve_gguf_gdn_prefill_plan(
+    backend: str = "hip_gfx1100",
+) -> _GGUFGDNPrefillPlan:
     register_qwen35_linear_attn_gdn_kernels()
+    load_backend_kernel_package(backend)
 
     def _resolve(key: KernelKey):
         return resolve(
-            backend=key.backend,
+            backend=backend,
             layer=key.layer,
             quant=key.quant,
             variant=key.variant,
@@ -13395,6 +13412,7 @@ def _launch_selected_expert_pack8_moe_pair(
     out_a_ptr: int,
     out_b_ptr: int,
     *,
+    backend: str,
     x_rows: int,
     rows: int,
     num_experts: int,
@@ -13419,8 +13437,17 @@ def _launch_selected_expert_pack8_moe_pair(
         in_features=in_features,
         out_features=out_features,
     )
-    register_gguf_expert_pack8_gemv_kernels()
-    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    fn = resolve(
+        backend=backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+        missing="none",
+    )
+    if fn is None:
+        register_gguf_expert_pack8_gemv_kernels()
+        load_backend_kernel_package(backend)
+        fn = resolve(backend=backend, layer=key.layer, quant=key.quant, variant=key.variant)
     fn(
         x_ptr,
         selected_ptr,
@@ -13450,6 +13477,7 @@ def _launch_selected_expert_pack8_moe_linear(
     selected_ptr: int,
     out_ptr: int,
     *,
+    backend: str,
     x_rows: int,
     rows: int,
     num_experts: int,
@@ -13469,8 +13497,17 @@ def _launch_selected_expert_pack8_moe_linear(
         in_features=in_features,
         out_features=out_features,
     )
-    register_gguf_expert_pack8_gemv_kernels()
-    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    fn = resolve(
+        backend=backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+        missing="none",
+    )
+    if fn is None:
+        register_gguf_expert_pack8_gemv_kernels()
+        load_backend_kernel_package(backend)
+        fn = resolve(backend=backend, layer=key.layer, quant=key.quant, variant=key.variant)
     fn(
         x_ptr,
         selected_ptr,
@@ -14392,6 +14429,12 @@ def _resolve_compact_moe_wmma_kernels(
     runtime can transparently use the slower per-row fallback paths.
     """
 
+    backend = getattr(gate_weight, "backend", "hip_gfx1100")
+    if (
+        getattr(up_weight, "backend", backend) != backend
+        or getattr(down_weight, "backend", backend) != backend
+    ):
+        raise ValueError("GGUF compact MoE weights must share one backend")
     gate_up_pair = (gate_weight.spec.quant_key, up_weight.spec.quant_key)
     ds4_gate_up_key = _COMPACT_MOE_Q4_DUAL_DS4_KEYS.get(gate_up_pair)
     use_ds4_gate_up = _gguf_t16_ds4_prefill_enabled() and ds4_gate_up_key is not None
@@ -14400,10 +14443,11 @@ def _resolve_compact_moe_wmma_kernels(
     if gate_up_key is None or down_key is None:
         return None
     required = (*_COMPACT_MOE_SCHEDULER_KEYS, *_COMPACT_MOE_FUSED_KEYS, gate_up_key, down_key)
-    resolved = _resolve_compact_moe_required_keys(required)
+    resolved = _resolve_compact_moe_required_keys(required, backend=backend)
     if any(fn is None for fn in resolved):
         _ensure_compact_moe_wmma_registered()
-        resolved = _resolve_compact_moe_required_keys(required)
+        load_backend_kernel_package(backend)
+        resolved = _resolve_compact_moe_required_keys(required, backend=backend)
     if any(fn is None for fn in resolved):
         return None
     return _CompactMoeWmmaPlan(
@@ -14431,10 +14475,14 @@ def _selected_wmma_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
     return "tiles" if weight.spec.quant_key.endswith("_t16_v1") else "raw"
 
 
-def _resolve_compact_moe_required_keys(keys: tuple[KernelKey, ...]):
+def _resolve_compact_moe_required_keys(
+    keys: tuple[KernelKey, ...],
+    *,
+    backend: str,
+):
     return [
         resolve(
-            backend=key.backend,
+            backend=backend,
             layer=key.layer,
             quant=key.quant,
             variant=key.variant,
@@ -14486,6 +14534,12 @@ def _resolve_compact_moe_gemv_kernels(
     so the runtime can transparently use the legacy per-row selected GEMV.
     """
 
+    backend = getattr(gate_weight, "backend", "hip_gfx1100")
+    if (
+        getattr(up_weight, "backend", backend) != backend
+        or getattr(down_weight, "backend", backend) != backend
+    ):
+        raise ValueError("GGUF compact MoE weights must share one backend")
     gate_up_key = _COMPACT_MOE_Q4_DUAL_GEMV_KEYS.get(
         (gate_weight.spec.quant_key, up_weight.spec.quant_key)
     )
@@ -14493,15 +14547,16 @@ def _resolve_compact_moe_gemv_kernels(
     if gate_up_key is None or down_key is None:
         return None
     scheduler_keys = (
-        KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
-        KernelKey("hip_gfx1100", "moe_group_prefix", "w4_paro", "qwen35"),
-        KernelKey("hip_gfx1100", "moe_group_scatter_gather", "w4_paro", "qwen35_lowp"),
+        KernelKey(backend, "moe_group_count", "w4_paro", "qwen35"),
+        KernelKey(backend, "moe_group_prefix", "w4_paro", "qwen35"),
+        KernelKey(backend, "moe_group_scatter_gather", "w4_paro", "qwen35_lowp"),
     )
     required = (*scheduler_keys, *_COMPACT_MOE_FUSED_KEYS, gate_up_key, down_key)
-    resolved = _resolve_compact_moe_required_keys(required)
+    resolved = _resolve_compact_moe_required_keys(required, backend=backend)
     if any(fn is None for fn in resolved):
         _ensure_compact_moe_gemv_registered()
-        resolved = _resolve_compact_moe_required_keys(required)
+        load_backend_kernel_package(backend)
+        resolved = _resolve_compact_moe_required_keys(required, backend=backend)
     if any(fn is None for fn in resolved):
         return None
     return _CompactMoeGemvPlan(
