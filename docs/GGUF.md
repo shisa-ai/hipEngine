@@ -2839,8 +2839,9 @@ Caveats:
   Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900.
 - hipENGINE rows here are current retained Qwen3.6-35B-A3B UD-Q4_K_M GGUF rows
   on the local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun remains unverified.
-- llama.cpp HIP/Vulkan rows use the `benchmarks/README.md` external baseline
-  tok/s values; peak memory is from the retained diagnostic peak artifacts.
+- llama.cpp HIP/Vulkan rows use the archived
+  [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) external baseline values;
+  peak memory is from the retained diagnostic peak artifacts.
 
 Comparison snapshot:
 
@@ -3182,6 +3183,4 @@ materialization, not scratch/KV:
 | 4 | **Fuse activate+down** | +1-2% DC | Low | **Done** (2026-06-17). Neutral/slightly lower decode speed; retained for launch overhead reduction. |
 | 5 | **Pack8 layout opt** | -2-3 GiB mem | Tradeoff | **Done** (2026-06-17). Avoided Pack8 expansion, saving ~1.15 GiB peak memory at the cost of a small prefill/decode throughput regression (114.60 -> 114.42 tok/s on 4K DC). |
 | 6 | **Drop T16 for Q8_0** | -0.5-1 GiB mem | Low | **Done** (2026-06-17). Saved ~0.55 GiB peak memory with negligible decode regression. |
-
-
 
