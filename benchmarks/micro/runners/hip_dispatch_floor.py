@@ -347,6 +347,66 @@ def _row_key(row: dict[str, Any]) -> tuple[str, int, int, str]:
     )
 
 
+def _row_index(
+    result: dict[str, Any], *, backend: str
+) -> dict[tuple[str, int, int, str], dict[str, Any]]:
+    rows = result.get("measurements", {}).get("rows", [])
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"{backend} dispatch comparison input has no timing rows")
+    indexed: dict[tuple[str, int, int, str], dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError(f"{backend} dispatch result contains a non-object row")
+        key = _row_key(row)
+        if key in indexed:
+            raise ValueError(f"duplicate {backend} dispatch result row: {key}")
+        indexed[key] = row
+    return indexed
+
+
+def _expected_row_keys(parameters: dict[str, Any]) -> set[tuple[str, int, int, str]]:
+    try:
+        counts = [int(value) for value in parameters["counts"]]
+        grid_sweep = [int(value) for value in (parameters.get("grid_sweep") or [])]
+        grid_sweep_count = int(parameters["grid_sweep_count"])
+        n_elements = int(parameters["n_elements"])
+        local_size_x = int(parameters["local_size_x"])
+        timing_mode = timing_contract.parse_timing_mode(
+            str(parameters["timing_mode"])
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("dispatch comparison parameters are incomplete") from exc
+    if not counts or any(value <= 0 for value in counts):
+        raise ValueError("dispatch comparison counts must be positive")
+    if any(value <= 0 for value in grid_sweep):
+        raise ValueError("dispatch comparison grid sweep values must be positive")
+    if grid_sweep_count <= 0 or n_elements <= 0 or local_size_x <= 0:
+        raise ValueError("dispatch comparison shape parameters must be positive")
+    count_grid_blocks = (n_elements + local_size_x - 1) // local_size_x
+    return {
+        *(("count", count, count_grid_blocks, timing_mode) for count in counts),
+        *(("grid", grid_sweep_count, blocks, timing_mode) for blocks in grid_sweep),
+    }
+
+
+def _validate_result_identity(result: dict[str, Any], *, backend: str) -> None:
+    if result.get("schema_version") != 2:
+        raise ValueError("dispatch comparison requires v2 timing-contract results")
+    if result.get("kind") != "hipengine_micro_result":
+        raise ValueError(f"{backend} dispatch input has the wrong result kind")
+    if result.get("bench") != BENCH_NAME:
+        raise ValueError(f"{backend} dispatch input has the wrong benchmark identity")
+    if result.get("backend") != backend:
+        raise ValueError("dispatch comparison inputs must be HIP then Vulkan")
+    if result.get("classification") != "runtime_dispatch":
+        raise ValueError(f"{backend} dispatch input has the wrong classification")
+    source = result.get("source")
+    if not isinstance(source, dict) or not str(source.get("commit") or ""):
+        raise ValueError(f"{backend} dispatch input is missing source provenance")
+    if not str(source.get("source_hash") or ""):
+        raise ValueError(f"{backend} dispatch input is missing its source hash")
+
+
 def _domain_comparison(
     hip_row: dict[str, Any],
     vulkan_row: dict[str, Any],
@@ -388,37 +448,37 @@ def build_comparison(
     vulkan_ref: str | None = None,
     out_ref: str | None = None,
 ) -> dict[str, Any]:
-    if hip_result.get("schema_version") != 2 or vulkan_result.get("schema_version") != 2:
-        raise ValueError("dispatch comparison requires v2 timing-contract results")
-    if hip_result.get("backend") != "hip" or vulkan_result.get("backend") != "vulkan":
-        raise ValueError("dispatch comparison inputs must be HIP then Vulkan")
+    _validate_result_identity(hip_result, backend="hip")
+    _validate_result_identity(vulkan_result, backend="vulkan")
     hip_arch = str(hip_result.get("hardware", {}).get("gfx_arch", ""))
     vulkan_arch = str(vulkan_result.get("hardware", {}).get("gfx_arch", ""))
     if not hip_arch or hip_arch == "unknown" or hip_arch != vulkan_arch:
         raise ValueError("HIP and Vulkan dispatch gfx architectures do not match")
     hip_parameters = hip_result.get("parameters", {})
     vulkan_parameters = vulkan_result.get("parameters", {})
-    for field in ("n_elements", "local_size_x", "reps", "warmup"):
+    for field in (
+        "counts",
+        "grid_sweep",
+        "grid_sweep_count",
+        "n_elements",
+        "local_size_x",
+        "reps",
+        "warmup",
+        "timing_mode",
+    ):
         if hip_parameters.get(field) != vulkan_parameters.get(field):
             raise ValueError(f"HIP and Vulkan dispatch {field} values do not match")
-    hip_rows = {
-        _row_key(row): row
-        for row in hip_result.get("measurements", {}).get("rows", [])
-        if isinstance(row, dict)
-    }
-    vulkan_rows = {
-        _row_key(row): row
-        for row in vulkan_result.get("measurements", {}).get("rows", [])
-        if isinstance(row, dict)
-    }
-    if not hip_rows or not vulkan_rows:
-        raise ValueError("dispatch comparison inputs must contain timing rows")
+    hip_rows = _row_index(hip_result, backend="hip")
+    vulkan_rows = _row_index(vulkan_result, backend="vulkan")
     hip_modes = {key[3] for key in hip_rows}
     vulkan_modes = {key[3] for key in vulkan_rows}
     if hip_modes != vulkan_modes:
         raise ValueError("HIP and Vulkan dispatch timing modes do not match")
     if set(hip_rows) != set(vulkan_rows):
         raise ValueError("HIP and Vulkan dispatch row shapes do not match")
+    expected_rows = _expected_row_keys(hip_parameters)
+    if set(hip_rows) != expected_rows:
+        raise ValueError("HIP and Vulkan dispatch rows do not cover the requested matrix")
     comparisons: list[dict[str, Any]] = []
     for key in sorted(set(hip_rows) & set(vulkan_rows)):
         hip_row = hip_rows[key]
@@ -443,13 +503,28 @@ def build_comparison(
             )
     if not comparisons:
         raise ValueError("HIP and Vulkan dispatch artifacts have no matched rows")
+    hip_source = hip_result["source"]
+    vulkan_source = vulkan_result["source"]
+    commit_match = hip_source.get("commit") == vulkan_source.get("commit")
+    dirty = bool(hip_source.get("dirty")) or bool(vulkan_source.get("dirty"))
+    correctness_pass = (
+        hip_result.get("correctness", {}).get("status") == "pass"
+        and vulkan_result.get("correctness", {}).get("status") == "pass"
+        and all(
+            row.get("correctness", {}).get("timed_sequence", {}).get("status")
+            == "pass"
+            for row in [*hip_rows.values(), *vulkan_rows.values()]
+        )
+    )
+    performance_claim = commit_match and not dirty and correctness_pass
     return _json_safe(
         {
             "schema_version": 2,
             "kind": "hipengine_micro_comparison",
             "bench": BENCH_NAME,
             "classification": "runtime_dispatch",
-            "source": hip_result.get("source", {}),
+            "source": hip_source,
+            "sources": {"hip": hip_source, "vulkan": vulkan_source},
             "command": command,
             "hardware": {
                 "hip": hip_result.get("hardware", {}),
@@ -463,8 +538,15 @@ def build_comparison(
             "correctness": {
                 "hip": hip_result.get("correctness", {}),
                 "vulkan": vulkan_result.get("correctness", {}),
+                "all_timed_rows_pass": correctness_pass,
             },
             "comparisons": comparisons,
+            "performance_claim": performance_claim,
+            "claim_gate": {
+                "commit_match": commit_match,
+                "clean_sources": not dirty,
+                "correctness_pass": correctness_pass,
+            },
             "interpretation": (
                 "GPU elapsed ratios compare matched dependency contracts. Serial host-wall "
                 "ratios compare pre-recorded HIP graph replay with pre-recorded Vulkan command "
