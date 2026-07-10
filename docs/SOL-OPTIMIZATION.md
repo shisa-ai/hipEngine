@@ -2,10 +2,10 @@
 
 Last updated: 2026-07-10.
 
-Status: planning baseline at hipEngine `4e4e935ca021`. The repository,
-retained artifacts, relevant runtime/server code, and recent `WORKLOG.md`
-entries were reviewed for this baseline. No GPU benchmark was rerun while
-writing this plan.
+Status: active ledger at hipEngine `0c1845170955`. The gfx1151 HIP/Vulkan v2
+matrix was measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO
+true-c1 shrinking gate was measured at `0c1845170955` with
+`hipengine_dirty=false`.
 
 This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
@@ -64,17 +64,16 @@ Landing instrumentation is not `accepted` for a performance item.
 
 ## Current Evidence Snapshot
 
-These are document/artifact results at `4e4e935`, not measurements
-made while writing this plan.
+The table names the source revision for each result.
 
 | Area | Current defensible result | Qualification / immediate consequence |
 | --- | --- | --- |
 | GGUF MTP on gfx1151 | `llama-compat` B2 reports `71.52 tok/s` versus llama.cpp HIP `71.91 tok/s`, with hipEngine stage wall `14.005` versus `14.269 ms/output`. | This is an opt-in direct-commit/dp4a compatibility contract, not exact/default semantics. Keep it as a replication lane, not the production default. |
 | Exact/default GGUF MTP | Fixed 10-cycle B5 reports `61.98` versus AR `54.79 tok/s`. | Natural `max_tokens=24` loses at B1/B2/B5: `52.13/52.04/50.65` versus AR `54.80`. Fixed-cycle rows do not close production MTP economics. |
 | MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | Absolute server rates are not valid until all-choice token accounting and batch-timing ownership are fixed. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
-| PARO c>N | Retained gfx1100 direct rows exist for c4/c8; current gfx1151 c6 selected-rowchunk diagnostics reach about `109.2 tok/s`. | Architecture/model evidence is mixed. Odd widths, c6 fallbacks, sparse slots, and shrinking groups are not retained-safe. |
+| PARO c>N | Retained gfx1100 direct rows exist for c4/c8. The gfx1151 c1-c8 timing rows at `4175dabf`/`02aec604` used a batch-shaped width-1 oracle and cannot select routing. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native decode fails 0/8, first mismatch at c8 generated token index 2. | Production greedy and sampled batches use exact width-1 sessions. Reopen every gfx1151 native width; localize the common c8 divergence before width-specific tuning. |
 | gfx1100 GGUF AR | Current W7900 diagnostic is about `654 prefill / 35.8 decode tok/s` at 512/128. | It emits repeated token `9707`, is marked `performance_claim=false`, and sits in "Current fastest." Treat it as a P0 correctness/recovery problem, not a clean 66% regression claim. |
-| HIP versus Vulkan | ISA facts, HIP-only A/B controls, environment snapshots, and the serialized two-stage reduction remain useful. | Most Vulkan timing loops have no inter-repetition dependency. Their ratios are independent-throughput hypotheses, not matched latency results. |
+| HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
 
 The first sprint is therefore measurement and routing correctness, followed by
 GGUF recovery and PARO shape safety. New speculative kernels come later.
@@ -307,26 +306,27 @@ Do not restore the old GGUF graph as a shortcut. Do not optimize the repeated
 
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
-| `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `in progress`: gfx1151 c2-c8 are exact in three runs per width; c1 still uses the separate repeated-token reference. gfx1100 remains stale. | P0 foundation | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
-| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `blocked` | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
-| `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `in progress`: CPU integration covers a surviving `[0,2]` c2 group; full GPU shrink coverage remains. | P2 RED tests | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
+| `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `blocked`: the prior gfx1151 c2-c8 timing matrix used a batch-shaped width-1 oracle. At `0c184517` with `hipengine_dirty=false`, native c8 fails independent c1 at generated token index 2. gfx1100 remains stale. | P0 foundation; native divergence bisect | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
+| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `in_progress`: at `0c184517` with `hipengine_dirty=false`, gfx1151 serial c8-to-c1 passes 8/8 rows and native passes 0/8. A full c3-to-sparse-c2 serial run passes and native fails. Ragged contexts remain unrun. | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
+| `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `blocked`: CPU/runtime addressing supports sorted sparse slots, but native sparse decode is correctness-red. Production uses width-1 sessions, so holes do not select an uncertified native route. | P2 RED tests; native correctness | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
 | `SOL-P4` | Make selected-c1 MoE a named multi-row algorithm and compare it with grouped-compact at every supported width. | `blocked` | P1, scoped profiler | Full-layer/server wall, routed-lane counts, and correctness select the mode; c6's current advantage is rechecked. |
-| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `in progress`: clean three-run 512/128 gates make direct gfx1151 c3/c5/c7 exact with selected-c1 MoE, the small-batch shared expert, and all-layer rowchunk2. The identity-matched profile covers c2-c8; shrinking/ragged transitions remain. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
-| `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `in progress`: the splitter is default-off and explicit opt-in; exact server accounting remains. | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
+| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `blocked`: the prior c3/c5/c6/c7 green rows used the invalid batch-shaped oracle. The common native c8 path fails before any width transition, so width-specific promotion evidence is reopened. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
+| `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `blocked`: the splitter is default-off; neither direct c6 nor c4+c2 is independent-c1-certified on gfx1151. | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
 | `SOL-P7` | Capture/replay decode buckets keyed by active rows, context, mask, variants, and replay length. | `blocked` | P1-P5 | Cache hit/miss/fallback telemetry is complete; exact replay improves server wall for retained shapes. |
 | `SOL-P8` | Retune gfx1151 prefill chunks, AOTriton threshold, projection, and sampler modes after the route is shape-safe. | `blocked` | B2, P1-P5 | Same-device profile and end-to-end matrix select values without gfx1100 regression. |
 | `SOL-P9` | Replace row-parallel GEMV with weight-reusing MMQ/GEMM/WMMA/grouped algorithms where c>N profiles justify it. | `conditional` | P1 profiler | Activate per family when weight reload/occupancy is material; prove c1 non-regression and c>N aggregate wall win. |
 
-The c6 splitter is an opt-in diagnostic policy. The exact width planner uses
-the lower-cost direct c6 profile, while unknown/red widths use a minimum-cost
-cover of profiled c2-c8 widths plus serial rows. Only correct all-choice server
-measurements may remove the splitter or assign it a latency objective.
+The c6 splitter is an opt-in diagnostic policy. The schema-1 c2-c8 profile has
+`performance_claim=false` and an invalid batch-shaped oracle, so the loader
+rejects it. Production uses `scheduler_true_c1_fallback`. A schema-2 profile
+must pass independent-c1 packed-prefill, sparse-slot, and shrinking gates before
+the planner can select native groups.
 
 For c9-c16, `scripts/qwen35_batch_retained_bench.py
---batch-decode-execution=profile_partitioned` measures the same packed prefill,
-independent-c1 equality, and decode wall as the direct rows. Use
+--batch-decode-execution=profile_partitioned` remains a diagnostic driver. Use
 `--batch-decode-execution=serial` for the matched fallback control and
-`direct_native` only as a correctness diagnostic for unprofiled widths.
+`direct_native` only for correctness localization. Production c9+ requests use
+reused width-1 sessions until an accepted schema-2 profile exists.
 
 ## MTP, DFlash, And Routing
 
@@ -350,17 +350,21 @@ Require a changed premise and name it in the new artifact.
 
 | Evidence | Current use |
 | --- | --- |
-| Vulkan 43x dispatch, 5.8-16x geometry/reduction, 13-27x sampler | Invalid as matched latency; preserve as independent-throughput hypotheses. |
-| Packed dot, memory/waitcnt, Q4/Q6/Q8 slices, current Q6 LM-head ratios | Diagnostic throughput only until serialized rerun. |
-| Q4 `1.18x` | Additionally mismatched to the shipped HIP workgroup/path; cannot choose a backend or kernel. |
-| Q6 LM-head HIP T16 versus Vulkan q8_1/X8 | Algorithm/layout evidence only, not bit-identical backend math. |
+| Dispatch/grid floor | Retained v2: Vulkan/HIP `1.162x-16.789x` serialized and `1.116x-150.459x` independent. This is runtime/submission evidence, not compiler evidence. |
+| Geometry/reduction/sampler/two-stage | Retained v2: HIP wins or is mixed under required ordering; Vulkan wins independent overlap. Timing mode is part of the workload. |
+| Synthetic packed dot | Retained v2 Vulkan lead: `3.052x-3.243x` serialized and `3.840x-4.272x` independent. |
+| Production Q4/Q6/Q8 slices | Retained v2: serialized Q4 is parity/HIP-favored, Q6 is about `1.82x` HIP-favored combined, and dense Q8 is HIP-favored on every serialized row. |
+| Q6 lm-head HIP T16 versus Vulkan q8_1/X8 | Blocked: different math/layouts, so no cross-backend ratio is permitted. |
 | ISA dot4/VOPD/waitcnt/spill counts | Structural evidence remains valid. |
-| HIP-only wave/fixed-shape/q8_1 A/B tests | Retain within their stated HIP scope. |
-| True two-stage reduction | Current serialized control; rerun beside repaired rows. |
 
-### Required Harness Contract
+### Harness Contract V2
 
-1. Add `serial_latency` and `independent_throughput` modes.
+Implemented at `ca241dae` with `hipengine_dirty=false`; the executable contract is in
+`benchmarks/micro/timing_contract.py`, the v2 schema, and the HIP/Vulkan runner
+headers. The retained bounded artifact is
+`benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json`.
+
+1. Use `serial_latency` and `independent_throughput` modes.
 2. In serial mode, add compute-to-compute execution and memory dependencies
    between every Vulkan repetition, including WAW and read-to-next-write hazards.
 3. In independent mode, use disjoint outputs and compare with a HIP
@@ -379,22 +383,22 @@ Require a changed premise and name it in the new artifact.
 
 | ID | Family | Corrected gfx1151 anchors | Status |
 | --- | --- | --- | --- |
-| `SOL-V1` | Harness/schema | Implement the contract above and a dependency litmus test. | `open` |
-| `SOL-V2` | Dispatch | counts 1/50/941, grids 1/8192, reps 1 and burst, both modes/timings. | `blocked` on V1 |
-| `SOL-V3` | Geometry | K 512/8192, rows 1/8, wg 64/128/256. | `blocked` on V1 |
-| `SOL-V4` | Sampler | top-1/top-k8, rows 1/8, vocab 32768, wg 64/128/256. | `blocked` on V1 |
-| `SOL-V5` | Dot/memory | q8/q4 N=32768; coalesced-4 plus gather control; wg 64/128/256. | `blocked` on V1 |
-| `SOL-V6` | Q4 selected-dual | Active production layout, 4x32, 2048->512, HIP/Vulkan wg 64/128/256. | `blocked` on V1 |
-| `SOL-V7` | Q6 selected-down | rows 8, 512->2048, wg 64/128/256. | `blocked` on V1 |
-| `SOL-V8` | Two-stage control | K 32768, rows 1/8, wg 128/256, split 4, serialized. | `blocked` on V1 |
-| `SOL-V9` | HIP independent control | Multi-stream/disjoint-output throughput against Vulkan independent mode. | `blocked` on V1 |
-| `SOL-V10` | gfx1100 portability | Repeat corrected anchors and every gfx1151 delta above 5%. | `blocked` on V2-V9 and hardware |
-| `SOL-V11` | Q6 LM-head | Same math/layout at rows 1/8, 2048->152064. | `conditional` on production profile and matched implementation |
-| `SOL-V12` | Production Vulkan probe | Persistent registry Q4/sampler object and real engine wall. | `conditional` on corrected serialized win plus product decision |
+| `SOL-V1` | Harness/schema | Implement the contract above and a dependency litmus test. | `accepted` at `ca241dae` |
+| `SOL-V2` | Dispatch | counts 1/50/941, grids 1/8192, reps 1 and burst, both modes/timings. | `accepted` on gfx1151 |
+| `SOL-V3` | Geometry | K 512/8192, rows 1/8, wg 64/128/256. | `accepted` on gfx1151 |
+| `SOL-V4` | Sampler | top-1/top-k8, rows 1/8, vocab 32768, wg 64/128/256. | `accepted` on gfx1151 |
+| `SOL-V5` | Dot/memory | q8/q4 N=32768; coalesced-4 plus gather control; wg 64/128/256. | `accepted` on gfx1151 |
+| `SOL-V6` | Q4 selected-dual | Active production layout, 4x32, 2048->512, HIP/Vulkan wg 64/128/256. | `accepted`: parity/HIP-favored |
+| `SOL-V7` | Q6 selected-down | rows 8, 512->2048, wg 64/128/256. | `accepted`: HIP-favored |
+| `SOL-V8` | Two-stage control | K 32768, rows 1/8, wg 128/256, split 4, serialized. | `accepted` on gfx1151 |
+| `SOL-V9` | HIP independent control | Multi-stream/disjoint-output throughput against Vulkan independent mode. | `accepted` on gfx1151 |
+| `SOL-V10` | gfx1100 portability | Repeat corrected anchors and every gfx1151 delta above 5%. | `blocked` on W7900 hardware |
+| `SOL-V11` | Q6 LM-head | Same math/layout at rows 1/8, 2048->152064. | `blocked`: no matched math/layout implementation |
+| `SOL-V12` | Production Vulkan probe | Persistent registry Q4/sampler object and real engine wall. | `parked`: corrected production slices do not justify backend work |
 
-Run gfx1151 first. Do not start the W7900 matrix, LLVM issue, inline ISA, or
-Vulkan registry work until the corrected gfx1151 result says the answer could
-change a production decision.
+The gfx1151 matrix is complete. Run V10 on W7900 before transferring any ratio.
+The gfx1151 result does not justify an LLVM issue, inline ISA program, or Vulkan
+registry path.
 
 ## Profiling And Optimization Loop
 
@@ -429,7 +433,7 @@ small compounding win, as required by the project evidence policy.
 | 6 | PARO shape-safe native batching | P3-P8, then P9 if activated | Converts diagnostics into deployable c>N behavior. |
 | 7 | Batch-aware speculative routing | S1-S4, then conditional S5-S7 | Uses corrected economics rather than per-request guesses. |
 | 8 | Targeted non-backend kernel work | G10 and activated P9/S items | Only profiled, production-shaped kernels enter here. |
-| 9 | HIP/Vulkan repair and bounded rerun | V1-V10 | Re-establishes what is compiler, runtime, or overlap. |
+| 9 | HIP/Vulkan portability rerun | V10 | gfx1151 V1-V9 are complete; W7900 remains. |
 | 10 | Backend/ISA decision | G9 and V11-V12 if activated | Broad backend work requires a corrected production gate. |
 
 Cross-GPU work is not allowed to block useful local gfx1151 progress, but no
@@ -456,6 +460,7 @@ The optimization ledger can be called complete only when:
 - current dashboards contain only eligible claims, while rejected/diagnostic
   history remains discoverable.
 
-The immediate next logical unit after this planning commit is `SOL-E1`:
-exact generated-token plumbing and all-choice aggregation, with
-`SOL-E2` following before any new server performance measurement.
+The next PARO GPU unit is `SOL-P1`: localize the native c8 token-index-2
+divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
+Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
+independent c1.

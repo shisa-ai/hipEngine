@@ -41,6 +41,7 @@ Related source-of-truth docs:
 | Per-row sampler | Sampling parameters (temperature, top-k, top-p, repetition penalty, seed, stop tokens) are independent per active row. |
 | Packed/native prefill | Multiple prompt rows packed into one prefill slab and launched through row-shaped kernels. |
 | Serial bridge | A correctness-first path with batch-shaped slots/KV metadata but active rows execute through the c=1 layer path. Diagnostics only; not a throughput claim. |
+| True-c1 fallback | Each request uses an exact width-1 resident session with single-request prefill and decode. This is the gfx1151 production route until native batching passes the schema-2 evidence contract. |
 
 ## Destination state
 
@@ -75,16 +76,13 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 ## Current answer
 
-**hipEngine now has most host-side continuous-batching scaffolding in code, but
-it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c=8
-generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 projection
-dispatch evidence selects the row-bounded native projection candidate from one
-combined catalog. C2 now deliberately keeps the no-flag sampler on
-`serial_lm_head` after an eight-run batched-sampler audit reproduced intermittent
-`[137,104]` / `[82,137]` flakes; c4/c8 keep row-aware `batched_lm_head`. The
-remaining hard gates are accepted retained scaling/graph replay evidence,
-full-native c4/c8 attention without rowchunk diagnostics, and any residual
-fallback labels.
+**hipEngine has most host-side continuous-batching scaffolding, but gfx1151
+native PARO batching is correctness-red against the independent c1 contract.**
+The July c2-c8 generated-token rows used a batch-shaped width-1 reference. At
+`0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate accepts the serial c1
+decode bridge on 8/8 rows and rejects native c8 on 0/8 rows at generated token
+index 2. Production greedy and sampled batches use exact width-1 sessions; the
+schema-1 native profile is not routing-eligible.
 
 What is in place:
 
@@ -107,9 +105,16 @@ What is in place:
 
 What is still not green:
 
-- The retained Qwen/PARO native c>N decode path is experimental. BF16 primitive
+- The Qwen/PARO native c>N decode path is experimental. The first task is a
+  teacher-forced hidden/linear-state/KV bisect of the c8 token-index-2
+  divergence. Direct c2-c8, sparse, ragged, shrinking, profiler, and scaling
+  gates must then pass against single-request `prefill_native()+step()` before
+  a schema-2 profile can select native execution. The dated notebook below
+  records the earlier batch-shaped-oracle bisections.
+- BF16 primitive
   c=2/4/8 KV append/full-attention correctness passes, and generated-token
-  equality now passes for the c=2/c=4/c=8 512/128 gates under the
+  equality passed the former batch-shaped reference for the c=2/c=4/c=8
+  512/128 gates under the
   correctness-first auto projection path (no-selected batch metadata using the
   128-thread batch-GEMV QKV/Z diagnostic for c=2/c=4/c=8), native segmented
   linear state, batch-GEMV/Marlin linear output, grouped-compact MoE for

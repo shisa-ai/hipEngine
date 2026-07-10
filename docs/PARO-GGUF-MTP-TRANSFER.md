@@ -18,7 +18,7 @@ below:
 
 | Order | Item | Status | Gate |
 | ---: | --- | --- | --- |
-| 1 | PARO exact width fallback | In progress: the gfx1151 identity-matched profile covers every direct width c2-c8 after three exact 512/128 runs at repaired c3/c5/c7. Larger live sets use a costed cover of these widths plus serial rows. The older c6-to-c4+c2 server split requires `HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`. | Run full GPU c1-c16, sparse-slot, shrinking, and exact server accounting gates before promotion. |
+| 1 | PARO exact width fallback | Production-safe at width 1: the schema-1 gfx1151 c2-c8 profile is rejected because it used a batch-shaped width-1 oracle and has `performance_claim=false`. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native c8 fails 0/8 at generated token index 2. Greedy and sampled batches use width-1 sessions. | Localize the native c8 divergence, then rerun direct c1-c8, sparse, ragged, shrinking, and server accounting gates before native promotion. |
 | 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
 | 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
 | 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
@@ -35,6 +35,21 @@ The verifier bucket contract is intentionally coarse first-pass instrumentation:
 existing resident verifier lifecycle, not per-kernel layer-family timings.
 Fine-grained attention/MoE/LM-head splitting still requires profiler-backed
 instrumentation after this artifact plumbing is validated.
+
+## gfx1151 True-C1 Oracle Correction
+
+The July 9 and early July 10 local c>N harness called its reference
+"independent c1," but it executed `prefill_native_packed()` plus
+`step_batch_native(rows=1)`. Every gfx1151 c2-c8 pass from that harness is a
+legacy batch-shaped-oracle result. Those rows remain useful for path timing and
+internal bisection; they do not certify output against single-request
+`prefill_native()+step()` and cannot select production routing.
+
+Commit `0c1845170955` adds the true-c1 oracle and a holey c8-to-c1 gate. Its
+artifact records `hipengine_dirty=false`. The serial c1 decode bridge passes
+every row. Native decode diverges on every row at c8 generated token index 2
+(`17` versus c1 token `220`), before any width transition. Artifact:
+`benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json`.
 
 For detailed verifier phase attribution, set
 `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`. That profiling-only mode adds stream
@@ -77,7 +92,7 @@ staging or a PARO sidecar path starts using q8_1 activations.
 | --- | --- | --- |
 | PARO direct retained c>N harness | Accepted on gfx1100/RX 7900 XTX for c=4 and c=8 512/128. This proves the native compact PARO runtime can scale outside the server. | `benchmarks/README.md` retained rows: c=4 `155.987 tok/s`, c=8 `212.093 tok/s`; artifacts `benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json` and `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json`. |
 | PARO OpenAI server c>N | Not yet measured with the same retained direct protocol. Do not infer server throughput from the direct harness. | Server path must prove whether it reaches native packed prefill and native c-aware decode, or falls back through the serial slot bridge. |
-| PARO on gfx1151/Radeon 8060S | Needs a fresh server diagnostic sweep. Existing gfx1151 README rows show weaker hipEngine concurrency than llama.cpp Vulkan on this host, so backend/scheduler shape effects must be measured rather than assumed. | Use the local shisa packed model cache and record host, model, quant, command, telemetry, and JSON artifacts for every row. |
+| PARO on gfx1151/Radeon 8060S | Native batching is correctness-red against the true c1 contract. Production uses width-1 sessions. The old c1-c8 timing matrix is a legacy batch-shaped-oracle diagnostic. | Bisect the first native hidden/state divergence at c8 token index 2 before server or width-specific performance work. |
 
 ## Missed Opportunities From The GGUF Audit
 
@@ -237,11 +252,9 @@ The run is decode-bound, not prefill-bound. Its detailed diagnostics split the
 | 2 | 2 | `27.36 ms` | `gemv_awq_selected_dual_pack8_strided_c2` | evidenced batched LM-head | Fast in this timing run, but later local equality recheck rejected the retained bridge. |
 | 6 | 6 | `58.89 ms` | row-GEMV fallback | serial LM-head | No c6 projection dispatch candidate and no c6 sampler equality artifact. |
 
-That server timing row predates the local c6 projection repair below. The c6
-projection fallback is now covered by a local generated-token equality probe,
-but the full c6 path remains diagnostic because selected-c1 MoE plus rowchunked
-full/linear attention are still fallbacks and the retained primitive/profiler/
-baseline gates are not complete.
+That server timing row predates the local c6 projection work below. Its
+generated-token probes used the legacy batch-shaped oracle. The c6 numbers are
+path diagnostics only; they do not certify independent-c1 output.
 
 Follow-up local generated-token checks changed the immediate diagnosis:
 
@@ -252,15 +265,16 @@ Follow-up local generated-token checks changed the immediate diagnosis:
 | c6 all-full-attention rowchunk probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-all-probe.json` |
 | c6 per-row full-attention probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-fullattn-perrow-probe.json` |
 
-This changed the recovery target from "add row-shape coverage" to "recover
-local generated-token equality first." The old retained c2/c4/c8 bridge was red,
-and the server naturally admits intermediate live row counts like c3/c5/c6 and
-c7. Later probes recovered c2/c4/c8 with different diagnostic shapes, documented
-below, while c6 remains the server-relevant blocker. Until c6 is isolated or the
-scheduler avoids c6 live-row groups, no PARO server c>N perf path should be
-promoted by default.
+These batch-shaped-oracle probes motivated the path bisections below. The
+true-c1 gate at `0c184517` with `hipengine_dirty=false` supersedes their routing
+conclusion: native c8 is already red before shrinking, so the common native path
+is the first blocker. No PARO server c>N path is eligible for default promotion.
 
 ## c2 Generated-Token Bisection
+
+**Oracle scope:** every green/red label in this section uses the legacy
+batch-shaped width-1 reference. Preserve the bisection as internal path
+evidence; do not cite a green row as true-c1 correctness.
 
 Measured 2026-07-09 on the same gfx1151/Radeon 8060S local shisa setup with a
 short c2 diagnostic (`prompt=512`, `decode=8`, `warmup=0`) and final sampler
@@ -304,16 +318,16 @@ cap is two rows.
 Measured 2026-07-09 on gfx1151 / Radeon 8060S with local shisa
 `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, fixture
 `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`,
-prompt 512, decode 128, greedy. These are generated-token equality probes
-against independent c1 resident runs. They are **not** retained throughput
-claims yet because the primitive/profiler/baseline retained gates are still
-missing, and selected-c1 MoE/rowchunk repairs are diagnostic fallbacks.
+prompt 512, decode 128, greedy. These probes compare against the legacy
+batch-shaped width-1 route. The former "independent c1" label was incorrect.
+They are path-timing/bisection diagnostics and are not retained throughput or
+true-c1 correctness claims.
 
-| Rows | Diagnostic shape | Generated-token equality | Decode aggregate | Artifact |
+| Rows | Diagnostic shape | Legacy batch-shaped equality | Decode aggregate | Artifact |
 | ---: | --- | --- | ---: | --- |
-| 2 | native full-attention, selected-c1 MoE, batched LM-head | Pass | `78.021 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-p512-d128-selected-c1-moe-local-equality.json` |
-| 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
-| 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Pass | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 2 | native full-attention, selected-c1 MoE, batched LM-head | Legacy pass | `78.021 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-p512-d128-selected-c1-moe-local-equality.json` |
+| 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Legacy pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Legacy pass; true-c1 red at token index 2 | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
 | 6 | rowchunk2 on full-attention layers `3,7,11,15,19,23,27,31`, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `108.929 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json` |
 | 6 | rowchunk2 on every full-attention layer, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `107.891 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json` |
@@ -371,12 +385,12 @@ drift without replaying every linear-layer MoE row. Fixing
 `reserve_moe_c1_scratch(prefix=...)` to prefix `shared_out`, `moe_out`, and the
 shared-rotate barrier remains useful for the older row-local replay diagnostic.
 
-The current retained-bench auto diagnostic path should therefore start from the
-green local frontier:
+The July 9 retained-bench diagnostic selected this legacy-oracle frontier. Keep
+it only for bisection; it cannot populate a schema-2 profile:
 
 - c2/c4/c6/c8: auto-select selected-c1 MoE.
 - c2/c4/c6/c8: load the c-aware projection dispatch catalog; c6 now has a
-  generated-token-green projection candidate.
+  legacy-oracle-green projection candidate.
 - c4/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
   every full-attention layer is rowchunked.
 - c6: auto-select full-attention rowchunk2 only on layers
@@ -458,7 +472,7 @@ Compact summary artifact:
 | Same plus dense-context batch-gate override on `3,7,11,15,19,23,27,31` | Red | token 2 | `102.893 tok/s` | `55.530 ms` | Dense-context batch-gate override is slower and correctness-worse. |
 
 These rejects keep the selected full-attention rowchunk2 bridge as the only
-known generated-token-green c6 shape. The next useful isolation step is a
+legacy-oracle-green c6 shape in that bisection. The next useful isolation step is a
 full-attention substage hidden-bisect around the selected producer layers,
 especially row interaction or scratch/state aliasing in native rows=6 context
 construction, rather than more O-projection-only probes.
@@ -477,7 +491,7 @@ question is hidden/token/KV source equality.
 | Probe | Equality result | Key signal | Conclusion |
 | --- | --- | --- | --- |
 | Full-native no-rowchunk hidden-bisect, L8-L12, trace generated index 9 | hidden red, token green | first full KV sample mismatch at layer 7 key, row 0, sample positions `[0,255,256,519,520]`; positions match; current `batch_source_vs_c1_source` fails at `key_after_prepare` while cache-vs-source is clean | Cache placement/page boundaries are not the lead; layer-7 K/V source production differs before append. |
-| Rowchunk layer 7 only hidden-bisect | hidden red, token green | same layer-7 class of mismatch remains in the shallow trace | Rowchunking layer 7 alone is not enough; the known green bridge still needs selected rowchunks `3,7,11,15,19,23,27,31`. |
+| Rowchunk layer 7 only hidden-bisect | hidden red, token green | same layer-7 class of mismatch remains in the shallow trace | Rowchunking layer 7 alone is not enough under the legacy oracle; that bridge still needs selected rowchunks `3,7,11,15,19,23,27,31`. |
 | No-rowchunk generated-token probe with full-attention QKV forced per-row | generated-token red at token 9 | `107.578 tok/s`, median `53.022 ms`; batch token `12` vs c1 token `27` on all rows | Per-row QKV scratch alone is not the repair. |
 | No-rowchunk generated-token probe with full-attention input forced per-row | generated-token red at token 9 | `108.465 tok/s`, median `52.851 ms`; batch token `12` vs c1 token `27` | Per-row input/RMSNorm does not repair the native c6 divergence. |
 | No-rowchunk generated-token probe with full-attention scratch forced per-row | generated-token red at token 2 | `93.031 tok/s`, median `61.943 ms` | Whole-layer c1-like scratch fallback is correctness-worse and too slow. |
@@ -517,42 +531,32 @@ The grouped-compact MoE shortcut probe is
 The remaining full-attention rowchunk tax is not explained by O projection,
 input/RMSNorm, QKV scratch, KV append, batch gate, context-kernel row chunking,
 post-context suffix chunking in isolation, or context+suffix chunking together.
-The boundary compare now points at a numerical boundary rather than a page/KV
+The legacy-oracle boundary compare points at a numerical boundary rather than a page/KV
 placement bug: layer 3 full-layer rowchunking introduces sub-tolerance output
 drift, layer 4 amplifies it past tolerance, and layer 7 observes downstream QKV
 and KV-source differences. Larger `4+2` row chunks also reject, and grouped
 MoE is both red and slower, so rowchunk2 plus selected-c1 MoE remains the only
-known green c6 grouping. The next useful split is to reduce or avoid the
-selected full-layer rowchunk tax directly, or to add a scheduler grouping policy
-that avoids live c6 groups when faster green c2/c4/c8 shapes are available.
+known legacy-oracle-green c6 grouping. This does not establish true-c1
+correctness. The common native c8 divergence takes priority over reducing the
+c6 rowchunk tax.
 
 Next repair order:
 
-1. Treat c2/c4/c6/c8 selected-c1 MoE plus c4/c8 all-layer full-attention
-   rowchunk2, and c6 selected full-attention rowchunks
-   `3,7,11,15,19,23,27,31` plus native-linear and forced small-batch shared
-   expert, as the local equality starting point for direct retained sweeps and
-   the opt-in runtime retained-default bridge.
-2. Re-run natural c=8 server traffic after the selected-rowchunk repair if the
-   scheduler forms c6 groups; the latest natural c=8 probe formed two c4 groups,
-   so it did not exercise c6. Forced `n=6` now measures `50.434 ms/step` and
-   `9.26 backend generated tok/s`.
-3. Remove the remaining selected full-attention rowchunk blocker, or add an
-   explicit scheduler grouping policy that avoids live c6 groups when a faster
-   c2/c4/c8 path is available.
-4. Add primitive correctness/profiler/baseline gates for any recovered shape
-   before promoting a retained/default throughput claim.
-5. Re-run the c=8 server diagnostic with a server-visible c6 repair or an
-   explicit scheduler grouping policy, because the current server path naturally
-   admits c6 live-row groups.
+1. Reproduce c8 token-index-2 divergence with teacher-forced hidden,
+   linear-state, KV, and token comparisons against single-request c1.
+2. Repair the first common divergence and rerun true-c1 c2-c8 direct gates.
+3. Rerun sparse, ragged, and c8-to-c1 shrinking gates.
+4. Profile only true-c1-green native widths; revisit c6 rowchunk and splitter
+   policies after that profile exists.
+5. Run exact all-choice server accounting before promoting a native route.
 
-Scheduler policy implementation note: retained-defaults mode loads a native
-width profile only when its backend, target arch, model snapshot, quant, KV
-dtype, and decode-position range match. Unsupported widths are partitioned by
-measured step cost; a serial subgroup completes any uncovered rows. The older
-server-side c6-to-c4+c2 policy is default-off and requires
-`HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`. It remains limited to deterministic greedy
-default-route batches.
+Scheduler policy: the schema-1 native profile is rejected because
+`performance_claim=false`, its rows are not `accepted_exact`, and its oracle is
+batch-shaped. Production greedy and sampled batches use exact width-1 sessions.
+A schema-2 profile must match backend, target arch, model snapshot, quant, KV
+dtype, decode-position range, and independent-c1 packed-prefill/sparse/shrinking
+gates. The c6-to-c4+c2 server policy remains default-off behind
+`HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`.
 
 ## PARO MTP/DFlash Buckets To Add Next
 

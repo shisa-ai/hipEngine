@@ -149495,3 +149495,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   collected tests. Nine scheduler/server chunk and c6 grouping tests pass under
   `uv run pytest`. Compileall for the changed runtime and scripts plus
   `git diff --check` also pass.
+
+## 2026-07-10 - True-c1 evidence and rollup correction
+
+- Committed and pushed the fail-closed runtime as
+  `0c1845170955af48fd52413228d1699dcf72364c`. The configured SSH remote lacked
+  a usable key; `gh auth setup-git` plus the authenticated HTTPS remote pushed
+  `main` successfully.
+- Repeated the 40-layer 512-token c8-to-c1 gate at `0c184517` with
+  `hipengine_dirty=false`. Serial decode passes 8/8 rows; native decode passes
+  0/8. Every native row first
+  differs at generated token index 2 while still at c8: native token `17`, c1
+  token `220`. Raw artifact SHA-256 values are
+  `7655b92b4813f4f4ed903c3fd04734f2066bff560da33f65f0c8e380452ac79a`
+  for serial and
+  `5f9919d5b4b8f9ab6a642ade09e2a3499eea6b413499fb709da0a563ee8b0b8f`
+  for native. Both report `hipengine_dirty=false` and HIP
+  `7.13.60980-c76140fa27` on Radeon 8060S/gfx1151.
+- A separate detached `0c184517` public-API c9 smoke with
+  `hipengine_dirty=false` used nine copies of
+  token `23066` repeated 512 times and `max_tokens=4`. All outputs equal
+  `" dI\\u"`; telemetry reports `scheduler_true_c1_fallback`, nine
+  `true_c1_graph` groups, and `max_session_width=1`.
+- Added compact correctness artifact
+  `benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json`.
+  Reclassified the earlier c2-c8 rows as
+  `diagnostic_legacy_batch_oracle`, set their schema-1 profile
+  `routing_eligible=false`, and updated the benchmark changelog.
+- Updated `benchmarks/README.md`, root `README.md`, `docs/SOL-OPTIMIZATION.md`,
+  `docs/PARO-GGUF-MTP-TRANSFER.md`, and `docs/CONCURRENCY.md`. The timing rows
+  remain visible with their legacy-oracle limitation; production routing and
+  the next native-divergence task are stated separately. New text passes the
+  `/home/lhl/devstack/docs/ANTI-SLOP-INSTRUCTIONS.md` banned-word and decoration
+  scans.
+- Final documentation gates: both compact JSON artifacts parse with
+  `python3 -m json.tool`; `python3 scripts/sync_benchmark_readme.py --check`
+  reports synchronized root blocks; the benchmark/profile suite passes 14/14
+  tests; `git diff --check` passes.
