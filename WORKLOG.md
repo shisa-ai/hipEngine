@@ -148907,3 +148907,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   compilation and scoped diff checks. Both existing timing-mode smoke pairs
   replayed through the strict comparator with three matched rows and six
   clock/control comparisons each.
+
+## 2026-07-10 - Strict dense Q8 comparison evidence gate
+
+- Replaced the dense-Q8 comparator's row-count check with the exact row-key
+  matrix implied by shapes, row counts, row tiles, and the HIP wave32 control.
+  Identically truncated or identically substituted HIP/Vulkan inputs can no
+  longer produce ratios.
+- Added row-level backend, workgroup, packed-block, weight-size,
+  dispatch-count, and correctness checks. Both source hashes and normalized
+  device identities are retained, and `performance_claim` now requires clean,
+  same-commit, same-device, fully correct evidence.
+- Validation: `uv run pytest -q tests/test_micro_q8_0_dense_real_slice.py
+  tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`24 passed`), plus Python
+  compilation and scoped diff checks. The existing serial and independent
+  gfx1151 smoke pairs each replayed with three matched rows and six comparisons;
+  both remain non-claiming only because their recorded source is dirty.
