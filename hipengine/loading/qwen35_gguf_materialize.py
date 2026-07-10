@@ -289,7 +289,7 @@ def _plan_layer(layer: Qwen35GGUFLayerMap, *, decode_repack: bool) -> dict[str, 
 def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
     if value is not None:
         return bool(value)
-    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "")
+    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 

@@ -381,6 +381,88 @@ def test_llm_default_backend_auto_resolves_env_override(monkeypatch) -> None:
     assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
     assert llm.backend == "auto"
     assert llm._resolved_backend == "fake_auto_backend"
+    assert llm.resolved_backend == "fake_auto_backend"
+
+
+def test_llm_default_quant_resolves_model_plugin_default(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["ok"]
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(
+        loading,
+        "load_weight_index",
+        lambda model: SimpleNamespace(
+            config={"architectures": ["FakeAutoQuant"]},
+            model_path="/tmp/fake-model",
+        ),
+    )
+    monkeypatch.setattr(
+        models,
+        "resolve_model",
+        lambda architecture: SimpleNamespace(
+            name="fake_auto_quant",
+            default_quant="fake_default_quant",
+        ),
+    )
+    register_text_generator(
+        model="fake_auto_quant",
+        backend="fake_backend",
+        quant="fake_default_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
+    assert llm.quant == "auto"
+    assert llm.resolved_quant == "fake_default_quant"
+
+
+def test_llm_explicit_quant_overrides_model_plugin_default(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["explicit"]
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(
+        loading,
+        "load_weight_index",
+        lambda model: SimpleNamespace(
+            config={"architectures": ["FakeExplicitQuant"]},
+            model_path="/tmp/fake-model",
+        ),
+    )
+    monkeypatch.setattr(
+        models,
+        "resolve_model",
+        lambda architecture: SimpleNamespace(
+            name="fake_explicit_quant",
+            default_quant="wrong_default",
+        ),
+    )
+    register_text_generator(
+        model="fake_explicit_quant",
+        backend="fake_backend",
+        quant="chosen_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="chosen_quant")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["explicit"]
+    assert llm.resolved_quant == "chosen_quant"
 
 
 def test_llm_generate_normalizes_single_prompt(monkeypatch) -> None:

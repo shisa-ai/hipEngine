@@ -347,11 +347,12 @@ Semantics:
 
 - Public `prefill_native(token_ids, ...)` starts at position 0 on a fresh
   session. Non-zero external `start_position` is not a public API.
-- Final native prefill requires `T >= config.linear_conv_kernel_dim` (typically
-  4 for Qwen3.5/PARO) because the linear-attention conv prefill kernels require
-  enough rows. Shorter prompts raise `ValueError`; no production serial fallback
-  is added for this corner unless a future dedicated short-prompt native kernel
-  lands.
+- Low-level `prefill_native()` requires
+  `T >= config.linear_conv_kernel_dim` (typically 4 for Qwen3.5/PARO) because the
+  linear-attention conv prefill kernels require enough rows. The public generator
+  runs shorter prompts through exact token-serial c1 steps and samples only the
+  final prompt token. A dedicated short-prompt native kernel can replace that
+  fallback after matching generated-token and state gates.
 - Internal chunking may process the prompt as multiple contiguous chunks, but it
   must preserve exactly the same final conv/recurrent state and KV cache as a
   single full-prompt call.

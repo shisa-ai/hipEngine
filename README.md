@@ -1,8 +1,8 @@
 # hipEngine
 
 hipEngine is a ROCm-native local LLM inference engine designed from the ground
-up for AMD RDNA GPUs (starting with gfx1100, gfx1151). It pairs a small 
-purpose-built Python host with a complete suite of custom-tuned HIP kernels 
+up for AMD RDNA GPUs (starting with gfx1100, gfx1151). It pairs a small
+purpose-built Python host with a complete suite of custom-tuned HIP kernels
 developed through 100+ iterations of profiling and tuning.
 
 hipEngine has lightweight dependencies with no PyTorch required for fully
@@ -38,7 +38,7 @@ supported GPUs and models.
 ## Status
 
 **v0.2.2 alpha.** The runtime hot path is torch-free by construction, and the
-first two 35B-class model-loading surfaces are now available on gfx1100:
+first two 35B-class model-loading surfaces are available on gfx1100 and gfx1151:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format, plus Qwen3.6 GGUF
@@ -430,11 +430,12 @@ Full layer diagram, plugin axes, KV cache ABI, and roadmap are in
 ## Installation
 
 ```bash
-# one-time: fetch Git LFS payloads, including the vendored AOTriton runtime/images
+# PyPI wheel: runtime, JIT kernel sources, vendored AOTriton, and server
+pip install hipengine
+
+# Source checkout: fetch Git LFS payloads before an editable install
 git lfs install
 git lfs pull
-
-# runtime + OpenAI-compatible server (torch-free hot path)
 pip install -e .
 
 # with the optional dlpack torch bridge for user-boundary interop
@@ -472,14 +473,21 @@ hipengine serve --help
 hipengine bench list
 ```
 
-## Quickstart (Phase 0 — bring-up only)
+## Quickstart
 
-The public API surface is stable:
+Model loading does not start network downloads. Populate the Hugging Face cache
+before using a repository ID:
+
+```bash
+hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
+```
+
+Then construct `LLM` with the same repository ID:
 
 ```python
 from hipengine import LLM, SamplingParams
 
-llm = LLM("/path/to/model", quant="w4_paro")  # backend="auto" by default
+llm = LLM("shisa-ai/Qwen3.6-35B-A3B-PARO-packed")
 outputs = llm.generate(
     ["Hello, hipEngine."],
     SamplingParams(max_tokens=64, temperature=0.0),
@@ -487,10 +495,12 @@ outputs = llm.generate(
 print(outputs[0])
 ```
 
-Today `LLM.generate()` only resolves to narrow Qwen3.5 / PARO bring-up paths
-registered in `hipengine.generation`; unsupported `(model, backend, quant)`
-combinations fail loudly rather than falling back to a generic torch path. See
-[`docs/PLAN.md`](docs/PLAN.md) for the model / quant roadmap.
+`LLM(model)` auto-detects `gfx1100` or `gfx1151` and selects the model plugin's
+quantization. The Qwen3.6 GGUF path also selects T16 decode-repack plus the
+retained WMMA-prefill/GEMV-decode session profile. Explicit `backend=` and
+`quant=` arguments are overrides; supported PARO and GGUF models do not require
+hipEngine environment variables. Unsupported registry combinations fail instead
+of falling back to a torch path.
 
 ## OpenAI-compatible server
 
@@ -500,7 +510,6 @@ The OpenAI-compatible FastAPI layer is installed by default:
 pip install hipengine
 hipengine serve \
   --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
-  --quant w4_paro \
   --served-model-name qwen-paro
 ```
 

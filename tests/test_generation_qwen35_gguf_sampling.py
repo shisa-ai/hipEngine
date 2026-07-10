@@ -244,7 +244,7 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
             calls.append(("memcpy", int(nbytes)))
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.model_path = str(model_path)
             self.runtime = FakeRuntime()
             self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
@@ -416,7 +416,7 @@ def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> 
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.model_path = str(model_path)
             self.runtime = FakeRuntime()
             self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
@@ -1547,7 +1547,7 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.model_path = str(model_path)
             self.runtime = FakeRuntime()
             self.weights = SimpleNamespace(config=SimpleNamespace())
@@ -1595,7 +1595,7 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.model_path = str(model_path)
             self.runtime = FakeRuntime()
             self.weights = SimpleNamespace(config=SimpleNamespace())
@@ -1671,7 +1671,7 @@ def test_gguf_ar_packed_decode_can_be_disabled(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -1745,7 +1745,7 @@ def test_gguf_ar_stream_decode_uses_async_slot_streams(monkeypatch) -> None:
             calls.append(("stream_destroy", int(stream)))
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -1829,7 +1829,7 @@ def test_gguf_ar_stream_prefill_reuses_decode_streams(monkeypatch) -> None:
             calls.append(("stream_destroy", int(stream)))
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -1905,7 +1905,7 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -1995,7 +1995,7 @@ def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -2084,7 +2084,7 @@ def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -2142,7 +2142,7 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
     class FakeFullStackRunner:
         vocab_size = 128
 
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -2218,7 +2218,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     class FakeFullStackRunner:
         vocab_size = 128
 
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -2437,7 +2437,7 @@ def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> 
         pass
 
     class FakeFullStackRunner:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             self.runtime = FakeRuntime()
 
     class FakeSession:
@@ -2676,7 +2676,7 @@ def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> N
     logits[0, 99] = 5.0
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -2706,7 +2706,7 @@ def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> N
 
 def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -2746,7 +2746,7 @@ def test_gguf_json_object_close_forcing_goes_through_decode(monkeypatch) -> None
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -2785,7 +2785,7 @@ def test_gguf_json_object_close_forcing_goes_through_decode(monkeypatch) -> None
 
 def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -2828,7 +2828,7 @@ def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch)
 
 def test_gguf_sampled_force_sequence_completion_repairs_tool_close(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -2896,8 +2896,8 @@ def test_gguf_greedy_equivalent_request_uses_eager_step(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -2938,6 +2938,15 @@ def test_gguf_greedy_equivalent_request_uses_eager_step(monkeypatch) -> None:
         "continuation_eligible": False,
         "sampler_mode": "greedy_fast",
     }
+    assert calls[0] == (
+        "init",
+        "/tmp/fake.gguf",
+        {
+            "backend": "hip_gfx1100",
+            "use_wmma_prefill": True,
+            "use_gemv_decode": True,
+        },
+    )
     assert ("prefill", (10, 11), False) in calls
     assert ("step", 1, False) in calls
     assert not any(call[0] == "capture_decode_graph" for call in calls)
@@ -2958,7 +2967,7 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             calls.append(("init", str(model_path)))
 
         def __enter__(self):
@@ -3020,7 +3029,7 @@ def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(m
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3146,8 +3155,8 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -3199,7 +3208,15 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
         {"reason": "length", "length_limit": 2, "sampler_mode": "greedy_fast"},
     ]
     assert calls == [
-        ("init", "/tmp/fake.gguf"),
+        (
+            "init",
+            "/tmp/fake.gguf",
+            {
+                "backend": "hip_gfx1100",
+                "use_wmma_prefill": True,
+                "use_gemv_decode": True,
+            },
+        ),
         ("enter",),
         ("prefill", (10, 11), False),
         ("step", 1, False),
@@ -3209,7 +3226,7 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
 
 def test_gguf_stream_text_wrapper_preserves_plain_chunks(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3246,7 +3263,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3322,7 +3339,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
 
 def test_gguf_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3377,7 +3394,7 @@ def test_gguf_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
 
 def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3439,7 +3456,7 @@ def test_gguf_greedy_host_decode_checks_deadline_after_step(monkeypatch) -> None
             raise GenerationDeadlineExceeded(deadline_at=getattr(value, "deadline_at", value))
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             calls.append(("init", str(model_path)))
 
         def __enter__(self):
@@ -3477,7 +3494,7 @@ def test_gguf_greedy_host_decode_checks_cancellation_after_step(monkeypatch) -> 
     token = GenerationCancellationToken()
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             calls.append(("init", str(model_path)))
 
         def __enter__(self):
@@ -3513,7 +3530,7 @@ def test_gguf_greedy_host_decode_checks_cancellation_after_step(monkeypatch) -> 
 
 def test_gguf_finish_details_report_forced_thinking_close(monkeypatch) -> None:
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3566,7 +3583,7 @@ def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):
@@ -3608,7 +3625,7 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
+        def __init__(self, model_path, **kwargs):
             pass
 
         def __enter__(self):

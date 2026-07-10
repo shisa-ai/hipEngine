@@ -712,6 +712,11 @@ resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`
 detections map to the matching HIP backend, `HIPENGINE_BACKEND` can force a
 backend for nearby targets such as `gfx1101`/`gfx1102`, and unknown/no HIP
 detections warn before selecting `cpu_reference` where a CPU implementation exists.
+Public APIs and server entry points also default to `quant="auto"`. Model plugins
+must declare a concrete `default_quant`; registry lookup receives that resolved
+key. Explicit quant strings bypass the plugin default. GGUF text-generator
+factories are registered separately for `hip_gfx1100` and `hip_gfx1151`, and the
+resolved backend supplies the JIT target architecture.
 
 ### Backend Plugin
 

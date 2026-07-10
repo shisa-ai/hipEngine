@@ -811,7 +811,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        next_result = session.prefill_native(prompt_ids, sample=True)
+        next_result = _prefill_prompt(session, prompt_ids, sample=True)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
@@ -915,7 +915,7 @@ class Qwen35ParoOneTokenGenerator:
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
         try:
             raise_if_generation_deadline_expired(request)
-            next_result = session.prefill_native(prompt_ids, sample=True)
+            next_result = _prefill_prompt(session, prompt_ids, sample=True)
             raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
@@ -1674,7 +1674,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        next_result = session.prefill_native(prompt_ids, sample=True)
+        next_result = _prefill_prompt(session, prompt_ids, sample=True)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
@@ -1780,7 +1780,7 @@ class Qwen35ParoOneTokenGenerator:
         live_phase = None if state.thinking_budget is not None else "answer"
         try:
             raise_if_generation_deadline_expired(request)
-            next_result = session.prefill_native(prompt_ids, sample=True)
+            next_result = _prefill_prompt(session, prompt_ids, sample=True)
             raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
@@ -2448,6 +2448,37 @@ def _native_gpu_sampler_route_available(*, prompt_count: int) -> bool:
 
 def _native_gpu_sampler_requested() -> bool:
     return _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER", default=True)
+
+
+def _prefill_prompt(session: Any, token_ids: tuple[int, ...] | list[int], *, sample: bool) -> Any:
+    """Prefill a prompt, using exact c1 steps below the native conv width."""
+
+    tokens = tuple(int(token_id) for token_id in token_ids)
+    if not tokens:
+        raise ValueError("prompt produced no tokens")
+    min_native_tokens = max(
+        1,
+        int(getattr(getattr(session, "config", None), "linear_conv_kernel_dim", 1) or 1),
+    )
+    if len(tokens) >= min_native_tokens:
+        return session.prefill_native(tokens, sample=sample)
+
+    result = None
+    final_position = len(tokens) - 1
+    for position, token_id in enumerate(tokens):
+        result = session.step(
+            token_id,
+            position=position,
+            sample=bool(sample and position == final_position),
+        )
+    if hasattr(session, "last_prefill_execution"):
+        session.last_prefill_execution = {
+            "path": "short_prompt_serial_c1",
+            "tokens": len(tokens),
+            "full_native": False,
+            "native_min_tokens": min_native_tokens,
+        }
+    return result
 
 
 def _session_capacity_for(required_sequence_length: int) -> int:

@@ -8,6 +8,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from functools import wraps
 from pathlib import Path
 from typing import Any, ClassVar, Iterator
 
@@ -34,6 +35,7 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
+from hipengine.kernels.backends import hip_target_arch_environment, hip_target_arch_for_backend
 from hipengine.quant.gguf import dequantize_gguf_data
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -99,7 +101,27 @@ _GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
 )
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_ROLLING_SLOTS_ENV = "HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS"
+_GGUF_PUBLIC_USE_WMMA_PREFILL = True
+_GGUF_PUBLIC_USE_GEMV_DECODE = True
 _MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
+
+
+def _target_arch_scoped(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with hip_target_arch_environment(self.target_arch):
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
+def _target_arch_scoped_stream(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with hip_target_arch_environment(self.target_arch):
+            yield from method(self, *args, **kwargs)
+
+    return wrapper
 
 
 def _gguf_ar_packed_decode_enabled() -> bool:
@@ -510,6 +532,7 @@ class Qwen35GGUFBringupGenerator:
     model_path: str | Path
     weight_index: GGUFModelInfo
     model_plugin: Any
+    backend: str = "hip_gfx1100"
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -529,6 +552,11 @@ class Qwen35GGUFBringupGenerator:
     def __post_init__(self) -> None:
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
 
+    @property
+    def target_arch(self) -> str:
+        return hip_target_arch_for_backend(getattr(self, "backend", "hip_gfx1100"))
+
+    @_target_arch_scoped
     def prepare(
         self,
         *,
@@ -542,6 +570,7 @@ class Qwen35GGUFBringupGenerator:
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
 
+    @_target_arch_scoped
     def prepare_request_scratch(
         self,
         *,
@@ -796,7 +825,7 @@ class Qwen35GGUFBringupGenerator:
         with lock:
             runner = getattr(self, "_shared_runner", None)
             if runner is None:
-                runner = Qwen35GGUFFullStackRunner(self.model_path)
+                runner = Qwen35GGUFFullStackRunner(self.model_path, backend=self.backend)
                 self._shared_runner = runner
             return runner
 
@@ -834,6 +863,7 @@ class Qwen35GGUFBringupGenerator:
         return (
             Qwen35GGUFResidentSession(
                 self.model_path,
+                backend=self.backend,
                 runtime=shared_runner.runtime,
                 shared_runner=shared_runner,
                 use_wmma_prefill=use_wmma_prefill,
@@ -868,11 +898,11 @@ class Qwen35GGUFBringupGenerator:
         *,
         shared_runner: Qwen35GGUFFullStackRunner | None,
         pool_name: str,
-        use_wmma_prefill: bool | None = None,
-        use_gemv_decode: bool | None = None,
+        use_wmma_prefill: bool | None = _GGUF_PUBLIC_USE_WMMA_PREFILL,
+        use_gemv_decode: bool | None = _GGUF_PUBLIC_USE_GEMV_DECODE,
     ):
         if shared_runner is None:
-            session_kwargs: dict[str, bool] = {}
+            session_kwargs: dict[str, Any] = {"backend": self.backend}
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
             if use_gemv_decode is not None:
@@ -942,6 +972,7 @@ class Qwen35GGUFBringupGenerator:
         for chunk in self.stream_detailed(request):
             yield chunk.text
 
+    @_target_arch_scoped_stream
     def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
         self.last_batch_generation = None
         if len(request.prompts) != 1:
@@ -958,9 +989,19 @@ class Qwen35GGUFBringupGenerator:
         plan = _gguf_sampler_plan(request)
         shared_runner = self._prepared_shared_runner()
         session_kwargs = (
-            {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
+            {
+                "backend": self.backend,
+                "runtime": shared_runner.runtime,
+                "shared_runner": shared_runner,
+                "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
+                "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+            }
             if shared_runner is not None
-            else {}
+            else {
+                "backend": self.backend,
+                "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
+                "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+            }
         )
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
             if plan.mode is SamplingMode.GREEDY_FAST:
@@ -973,6 +1014,7 @@ class Qwen35GGUFBringupGenerator:
                 row_index=0,
             )
 
+    @_target_arch_scoped
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
@@ -1613,6 +1655,7 @@ class Qwen35GGUFBringupGenerator:
             else:
                 slot.session.close()
 
+    @_target_arch_scoped
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         """Generate through the llama.cpp-compatible GGUF MTP route.
 
@@ -4170,20 +4213,40 @@ def make_qwen35_gguf_bringup_generator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
+        backend="hip_gfx1100",
+    )
+
+
+def make_qwen35_gguf_bringup_generator_gfx1151(
+    *,
+    model_path: str | Path,
+    weight_index: GGUFModelInfo,
+    model_plugin: Any,
+) -> Qwen35GGUFBringupGenerator:
+    return Qwen35GGUFBringupGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend="hip_gfx1151",
     )
 
 
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
     for _quant in ("gguf_q4_k_m", "gguf_q8_0", "gguf_q4_1", "gguf_ud_q4_k_xl"):
-        register_text_generator(
-            model=_model,
-            backend="hip_gfx1100",
-            quant=_quant,
-            factory=make_qwen35_gguf_bringup_generator,
-        )
+        for _backend, _factory in (
+            ("hip_gfx1100", make_qwen35_gguf_bringup_generator),
+            ("hip_gfx1151", make_qwen35_gguf_bringup_generator_gfx1151),
+        ):
+            register_text_generator(
+                model=_model,
+                backend=_backend,
+                quant=_quant,
+                factory=_factory,
+            )
 
 
 __all__ = [
     "Qwen35GGUFBringupGenerator",
     "make_qwen35_gguf_bringup_generator",
+    "make_qwen35_gguf_bringup_generator_gfx1151",
 ]

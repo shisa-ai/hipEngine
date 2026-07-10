@@ -98,7 +98,7 @@ def _print_help(*, file=None) -> None:
         "  bench        Run or list benchmark helpers\n"
         "  version      Print the installed hipEngine version\n\n"
         "Examples:\n"
-        "  hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed --quant w4_paro\n"
+        "  hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed\n"
         "  hipengine bench list\n\n"
         "Use `hipengine <command> --help` for command-specific help.",
         file=file,

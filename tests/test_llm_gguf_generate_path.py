@@ -17,6 +17,7 @@ def test_qwen35_gguf_model_plugin_resolves_architecture() -> None:
 
     assert plugin.name == "qwen3_5_gguf"
     assert plugin.default_quant == "gguf_q4_k_m"
+    assert plugin.default_backend == "auto"
 
 
 def test_qwen35moe_gguf_model_plugin_resolves_architecture() -> None:
@@ -24,6 +25,7 @@ def test_qwen35moe_gguf_model_plugin_resolves_architecture() -> None:
 
     assert plugin.name == "qwen3_5_moe_gguf"
     assert plugin.default_quant == "gguf_q4_k_m"
+    assert plugin.default_backend == "auto"
 
 
 def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
@@ -32,8 +34,8 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -58,7 +60,15 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
     # Eager per-token decode (the HIP decode graph was retired; see WORKLOG
     # 2026-06-28 "#8 moot" - the lib cache made eager == graph).
     assert calls == [
-        ("init", str(MODEL.resolve())),
+        (
+            "init",
+            str(MODEL.resolve()),
+            {
+                "backend": "hip_gfx1100",
+                "use_wmma_prefill": True,
+                "use_gemv_decode": True,
+            },
+        ),
         ("enter",),
         ("prefill", (760, 4087, 369), False),
         ("step", 220, False),
@@ -74,8 +84,8 @@ def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> 
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -94,7 +104,15 @@ def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> 
     assert llm.generate("The answer is", SamplingParams(max_tokens=1)) == [" "]
 
     assert calls == [
-        ("init", str(MOE_MODEL.resolve())),
+        (
+            "init",
+            str(MOE_MODEL.resolve()),
+            {
+                "backend": "hip_gfx1100",
+                "use_wmma_prefill": True,
+                "use_gemv_decode": True,
+            },
+        ),
         ("enter",),
         ("prefill", (760, 4087, 369), False),
         ("exit", True),

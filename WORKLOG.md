@@ -149532,3 +149532,63 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m json.tool`; `python3 scripts/sync_benchmark_readme.py --check`
   reports synchronized root blocks; the benchmark/profile suite passes 14/14
   tests; `git diff --check` passes.
+
+## 2026-07-10 - Release-default and installed-wheel audit
+
+- Audited the no-env Python/server route on gfx1151. `LLM` still defaulted to
+  `quant="fp16"`, which had no production Qwen3.6 generator registration; GGUF
+  generators were registered only for `hip_gfx1100`; public GGUF AR sessions
+  did not select the retained WMMA-prefill/GEMV-decode profile; and T16
+  decode-repack required an env opt-in. A one-token PARO prompt (`Hello`) also
+  failed because low-level native prefill requires at least four tokens.
+- Public Python and server entry points use `quant="auto"` and resolve each
+  model plugin's concrete `default_quant`. Qwen3.5/Qwen3.6 GGUF factories are
+  registered for both HIP backends. The resolved backend reaches the GGUF
+  runner/session and scopes JIT builds to `gfx1100` or `gfx1151`. T16
+  decode-repack defaults on with `HIPENGINE_GGUF_DECODE_REPACK=0` as a
+  diagnostic rollback; public GGUF generate/stream sessions pass
+  `use_wmma_prefill=True` and `use_gemv_decode=True`.
+- The PARO public generator sends prompts shorter than
+  `linear_conv_kernel_dim` through exact token-serial c1 steps, sampling only
+  the final prompt token. Normal prompts still use `prefill_native()`. The
+  server keeps speculative MTP off, the cold-path batching window at zero, and
+  unaccepted PARO multi-row profiles fail closed to the true-c1 route.
+- The server audit caught a selector-dependent grouping bug introduced by the
+  new default: its GGUF width-cap condition compared the requested quant string,
+  so `auto` removed the retained c4 cap. GGUF detection uses the resolved
+  quant or local model reference, preserving the c4 AR/MTP caps. Server model,
+  readiness, capability, selected-device, and replay metadata report concrete
+  backend/quant values after load while lazy pre-load metadata may report
+  `auto`.
+- RED/GREEN coverage includes auto quant and explicit override, gfx1151 GGUF
+  factory identity, backend/target propagation, GGUF release-profile session
+  arguments, decode-repack opt-out semantics, PARO short/normal prefill, and
+  server/CLI defaults. The complete `tests/test_server_api.py` module and the
+  focused release suite pass with only missing local Qwen3.5 0.8B GGUF fixture
+  skips. `python3 -m compileall -q hipengine tests`,
+  `python3 scripts/sync_benchmark_readme.py --check`, and `git diff --check`
+  pass.
+- Built `dist/hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl`; it contains
+  626 files including the JIT HIP sources, gfx1151 backend aliases, server, and
+  vendored AOTriton payload. An isolated venv with
+  `include-system-site-packages=false` installed the wheel and all declared
+  dependencies; `pip check` reports no broken requirements. The README/API
+  state the local-cache loading contract and give
+  `hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed` before model-id use. A
+  final installed-wheel check also asserts `quant="auto"` and both GGUF route
+  caps at four requests.
+- Installed-wheel gfx1151 smokes ran from `/tmp` with no `HIPENGINE_*` or
+  `PYTHONPATH` variables. PARO `LLM(model-id)` selected
+  `hip_gfx1151`/`w4_paro`, generated `e` from `Hello`, and took `17.326 s`
+  including load/JIT. GGUF `LLM(file)` selected the gfx1151 factory and
+  `gfx1151` JIT target with `gguf_q4_k_m`, generated `,`, and took `46.927 s`
+  including load/repack. These are route/correctness smokes, not throughput
+  claims.
+- The broad `uv run pytest -q` milestone gate is not green. The run was stopped
+  near 10% after gfx1100-only DFlash tests launched cached gfx1100 objects on
+  gfx1151 (`HIP error 98: invalid device function`), build/provenance tests made
+  host-architecture assumptions, and later tests required large local models.
+  `python3 scripts/check_fixtures.py` separately reaches four passing fixtures
+  before `paged_attn_decode_int8_per_token_head.json` raises `KeyError` because
+  its schema lacks `expected`. These test-harness/fixture blockers remain for a
+  dedicated release-gate repair; no full-suite pass is claimed here.
