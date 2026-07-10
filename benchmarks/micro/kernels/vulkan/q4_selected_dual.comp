@@ -1,6 +1,8 @@
 #version 450
 #extension GL_EXT_integer_dot_product : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+#extension GL_EXT_shader_16bit_storage : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 
@@ -18,7 +20,9 @@ layout(push_constant) uniform PushConstants {
     uint q8_blocks_per_row;
     uint out_packed;
     uint blocks_per_row;
-    uint x_rows;
+    uint rep;
+    uint xq_slice;
+    uint output_slice;
 } pc;
 
 layout(set = 0, binding = 1) readonly buffer XQBuffer {
@@ -34,7 +38,7 @@ layout(set = 0, binding = 3) readonly buffer WeightBuffer {
 };
 
 layout(set = 0, binding = 4) buffer OutBuffer {
-    uint out_bf16[];
+    uint16_t out_bf16[];
 };
 
 shared float partial_a[8];
@@ -125,8 +129,10 @@ void reduce_and_store(uint row, uint out_col, float acc_a, float acc_b) {
         }
         uint out_idx = row * pc.out_features + out_col;
         uint tensor_stride = pc.rows * pc.out_features;
-        out_bf16[out_idx] = float_to_bf16(total_a);
-        out_bf16[tensor_stride + out_idx] = float_to_bf16(total_b);
+        uint output_base = pc.output_slice * 2u * tensor_stride;
+        out_bf16[output_base + out_idx] = uint16_t(float_to_bf16(total_a));
+        out_bf16[output_base + tensor_stride + out_idx] =
+            uint16_t(float_to_bf16(total_b));
     }
 }
 
@@ -139,12 +145,14 @@ void main() {
     }
 
     uint expert_id = selected[row];
-    if (expert_id >= pc.experts || pc.x_rows == 0u || (pc.rows % pc.x_rows) != 0u) {
+    // This Vulkan probe's push layout reuses out_packed for the activation row count.
+    uint x_rows = pc.out_packed;
+    if (expert_id >= pc.experts || x_rows == 0u || (pc.rows % x_rows) != 0u) {
         return;
     }
 
-    uint lanes_per_x_row = pc.rows / pc.x_rows;
-    uint x_row = pc.x_rows == 1u ? 0u : (row / lanes_per_x_row);
+    uint lanes_per_x_row = pc.rows / x_rows;
+    uint x_row = x_rows == 1u ? 0u : (row / lanes_per_x_row);
     uint groups4 = pc.in_features >> 2;
     uint row_bytes = pc.blocks_per_row * Q4_K_BLOCK_BYTES;
     uint expert_bytes = pc.out_features * row_bytes;
@@ -161,7 +169,9 @@ void main() {
         uint subblock = within >> 5;
         uint lane4 = within & 31u;
         uint q8_index = block_idx * 8u + subblock;
-        uint xq_base = (x_row * pc.q8_blocks_per_row + q8_index) * 9u;
+        uint xq_slice_words = x_rows * pc.q8_blocks_per_row * 9u;
+        uint xq_base = pc.xq_slice * xq_slice_words +
+            (x_row * pc.q8_blocks_per_row + q8_index) * 9u;
         uint x_pack = xq_words[xq_base + 1u + (lane4 >> 2)];
         int q8_sum = dot_u8_s8(0x01010101u, x_pack, 0);
         float xd = unpackHalf2x16(xq_words[xq_base]).x;
