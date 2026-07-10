@@ -34,7 +34,7 @@ from hipengine.runtime.gguf_linear import set_gemv_decode_enabled
 @pytest.fixture(autouse=True)
 def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_GEMV_DECODE", raising=False)
-    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)

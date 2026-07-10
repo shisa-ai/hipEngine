@@ -205,6 +205,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
     gguf_q4_k_selected_ffn_fused_bf16_bf16_out,
 )
 from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.backends import (
+    hip_target_arch_environment,
+    hip_target_arch_for_backend,
+    resolve_backend,
+)
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
@@ -1384,9 +1389,16 @@ class Qwen35GGUFFullStackRunner:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    backend: str = "hip_gfx1100"
+    target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
+        self.backend = resolve_backend(self.backend)
+        try:
+            self.target_arch = hip_target_arch_for_backend(self.backend)
+        except ValueError as exc:
+            raise RuntimeError("Qwen35GGUFFullStackRunner requires a HIP backend") from exc
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
         self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
@@ -1396,11 +1408,12 @@ class Qwen35GGUFFullStackRunner:
 
         library = getattr(self, "_aotriton_library", None)
         if library is None:
-            library = build_aotriton_wrap(
-                load=True,
-                compiler_version=self.compiler_version,
-                require_cached=self.require_cached_build,
-            )
+            with hip_target_arch_environment(self.target_arch):
+                library = build_aotriton_wrap(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
             self._aotriton_library = library
         return library
 
@@ -1409,11 +1422,12 @@ class Qwen35GGUFFullStackRunner:
 
         library = getattr(self, "_paged_attn_decode_library_handle", None)
         if library is None:
-            library = build_qwen35_paged_attn_decode(
-                load=True,
-                compiler_version=self.compiler_version,
-                require_cached=self.require_cached_build,
-            )
+            with hip_target_arch_environment(self.target_arch):
+                library = build_qwen35_paged_attn_decode(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
             self._paged_attn_decode_library_handle = library
         return library
 
@@ -1422,11 +1436,12 @@ class Qwen35GGUFFullStackRunner:
 
         library = getattr(self, "_cast_library_handle", None)
         if library is None:
-            library = build_cast(
-                load=True,
-                compiler_version=self.compiler_version,
-                require_cached=self.require_cached_build,
-            )
+            with hip_target_arch_environment(self.target_arch):
+                library = build_cast(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
             self._cast_library_handle = library
         return library
 
@@ -1435,11 +1450,12 @@ class Qwen35GGUFFullStackRunner:
 
         library = getattr(self, "_paged_kv_write_library_handle", None)
         if library is None:
-            library = build_qwen35_paged_kv_write(
-                load=True,
-                compiler_version=self.compiler_version,
-                require_cached=self.require_cached_build,
-            )
+            with hip_target_arch_environment(self.target_arch):
+                library = build_qwen35_paged_kv_write(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
             self._paged_kv_write_library_handle = library
         return library
 
@@ -6864,6 +6880,7 @@ class Qwen35GGUFResidentSession:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    backend: str = "hip_gfx1100"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
     max_sequence_length: int | None = None
     use_expert_sidecar: bool = False
@@ -6974,10 +6991,12 @@ class Qwen35GGUFResidentSession:
                 runtime=self.runtime,
                 compiler_version=self.compiler_version,
                 require_cached_build=self.require_cached_build,
+                backend=self.backend,
             )
             self._owns_runner = True
         else:
             self.runner = self.shared_runner
+            self.backend = self.runner.backend
             self.runtime = self.runner.runtime or self.runtime
             self._owns_runner = False
         if self.runner.weights is None:
@@ -7048,12 +7067,14 @@ class Qwen35GGUFResidentSession:
             "compiler_version": self.compiler_version,
             "require_cached": self.require_cached_build,
         }
-        self._runtime_state_library = build_runtime_state(**build_kwargs)
-        self._lm_head_library = build_lm_head(**build_kwargs)
-        if _gguf_verify_lm_head_q6_top1_dp4a_enabled():
-            self._q6_pack8_library = build_gguf_q6_k_pack8_gemv(**build_kwargs)
+        with hip_target_arch_environment(self.runner.target_arch):
+            self._runtime_state_library = build_runtime_state(**build_kwargs)
+            self._lm_head_library = build_lm_head(**build_kwargs)
+            if _gguf_verify_lm_head_q6_top1_dp4a_enabled():
+                self._q6_pack8_library = build_gguf_q6_k_pack8_gemv(**build_kwargs)
+            if self.use_expert_sidecar:
+                self._expert_pack8_library = build_gguf_expert_pack8_gemv(**build_kwargs)
         if self.use_expert_sidecar:
-            self._expert_pack8_library = build_gguf_expert_pack8_gemv(**build_kwargs)
             setattr(self.runner, "_expert_pack8_library", self._expert_pack8_library)
             self._expert_sidecar_reader = GGUFReader(self.model_path)
             self._expert_sidecar_model_map = build_qwen35_gguf_tensor_map(self._expert_sidecar_reader.info)

@@ -750,7 +750,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     assert model["hipengine"] == {
         "path": "/models/fake",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
         "loaded": True,
         "resident_context": True,
         "context": {
@@ -803,6 +803,22 @@ def test_models_endpoint_reports_lazy_model_not_loaded() -> None:
     assert model["hipengine"]["kv_capacity"]["estimate"] is None
 
 
+def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
+    fake = FakeLLM()
+    fake._resolved_backend = "hip_gfx1151"
+    fake._resolved_quant = "gguf_q4_k_m"
+    app = create_app(
+        ServerConfig(model="/models/fake.gguf", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    model = client.get("/v1/models").json()["data"][0]["hipengine"]
+
+    assert model["backend"] == "hip_gfx1151"
+    assert model["quant"] == "gguf_q4_k_m"
+
+
 def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
     advertised = frozenset(
         (
@@ -844,7 +860,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "id": "fake-model",
         "path": "/models/fake",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
     }
     assert body["context"] == {
         "configured_max_context_tokens": 2048,
@@ -2582,7 +2598,7 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["model"] == {
         "id": "fake-model",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
         "loaded": True,
         "loaded_model_count": 1,
     }
@@ -4247,6 +4263,24 @@ def test_generation_batcher_applies_route_specific_group_limit() -> None:
         ]
 
     asyncio.run(run())
+
+
+def test_server_auto_quant_keeps_gguf_route_group_limits() -> None:
+    app = create_app(
+        ServerConfig(
+            model="/models/Qwen3.6-35B-A3B-Q4_K_M.gguf",
+            eager_load=False,
+            max_active_requests=8,
+        ),
+        llm=FakeLLM(),
+    )
+
+    batcher = app.state.hipengine_generation_batcher
+
+    assert batcher._route_max_active_requests == {
+        _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+        _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+    }
 
 
 def test_generation_batcher_applies_mtp_route_group_limit() -> None:
@@ -15928,6 +15962,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
+    assert default_args.backend == "auto"
+    assert default_args.quant == "auto"
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
     assert default_args.chat_default_max_tokens == 4096

@@ -62,6 +62,44 @@ def _decode_state(output):
     return output.telemetry.to_json_dict()["decode_state"]
 
 
+def test_qwen35_paro_short_prompt_prefill_uses_serial_c1_steps() -> None:
+    calls = []
+
+    class FakeSession:
+        config = SimpleNamespace(linear_conv_kernel_dim=4)
+
+        def prefill_native(self, token_ids, *, sample: bool = True):  # pragma: no cover
+            raise AssertionError("short prompt must not enter native prefill")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append((int(token_id), int(position), bool(sample)))
+            return _result(100 + position, chr(ord("A") + position)) if sample else None
+
+    result = qwen35._prefill_prompt(FakeSession(), (10, 11), sample=True)
+
+    assert result == _result(101, "B")
+    assert calls == [(10, 0, False), (11, 1, True)]
+
+
+def test_qwen35_paro_normal_prompt_prefill_stays_native() -> None:
+    calls = []
+
+    class FakeSession:
+        config = SimpleNamespace(linear_conv_kernel_dim=4)
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append((tuple(token_ids), bool(sample)))
+            return _result(100, "A")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover
+            raise AssertionError("normal prompt must stay on native prefill")
+
+    result = qwen35._prefill_prompt(FakeSession(), (10, 11, 12, 13), sample=True)
+
+    assert result == _result(100, "A")
+    assert calls == [((10, 11, 12, 13), True)]
+
+
 def test_qwen35_paro_row_sampling_state_binds_thinking_budget() -> None:
     request = _request(
         thinking_close_token_ids=(42, 43),

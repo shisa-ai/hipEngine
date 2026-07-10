@@ -270,7 +270,7 @@ class ServerConfig:
 
     model: str
     backend: str = "auto"
-    quant: str = "w4_paro"
+    quant: str = "auto"
     served_model_name: str | None = None
     api_key: str | None = None
     eager_load: bool = True
@@ -317,6 +317,39 @@ class ServerConfig:
         if path.exists() and path.name:
             return path.name
         return self.model
+
+
+def _server_model_identity(config: ServerConfig, engine: Any | None = None) -> dict[str, str]:
+    """Return requested model identity, replacing selectors after engine resolution."""
+
+    backend = str(config.backend)
+    quant = str(config.quant)
+    if engine is not None:
+        resolved_backend = str(getattr(engine, "_resolved_backend", "") or "").strip()
+        resolved_quant = str(getattr(engine, "_resolved_quant", "") or "").strip()
+        if resolved_backend and resolved_backend != "auto":
+            backend = resolved_backend
+        if resolved_quant and resolved_quant != "auto":
+            quant = resolved_quant
+    return {"id": config.model_id, "backend": backend, "quant": quant}
+
+
+def _server_model_uses_gguf(config: ServerConfig, engine: Any | None = None) -> bool:
+    """Return whether server grouping must use the retained GGUF width caps."""
+
+    quant = _server_model_identity(config, engine)["quant"]
+    if quant != "auto":
+        return quant.startswith("gguf_")
+
+    path = Path(config.model).expanduser()
+    if path.suffix.lower() == ".gguf":
+        return True
+    from hipengine.loading import resolve_model_path
+
+    path = resolve_model_path(config.model)
+    if path.is_file():
+        return path.suffix.lower() == ".gguf"
+    return path.is_dir() and any(path.glob("*.gguf"))
 
 
 class OpenAIHTTPError(Exception):
@@ -644,11 +677,7 @@ def _build_replay_artifact(
             "json": _redact_replay_value(body_json, redaction=redaction),
             "prompt_hashes": _collect_prompt_hashes(body_json),
         },
-        "model": {
-            "id": config.model_id,
-            "backend": config.backend,
-            "quant": config.quant,
-        },
+        "model": _server_model_identity(config, engine),
         "sampling": _replay_sampling_payload(body_json, redaction=redaction),
         "seeds": _replay_seed_payload(body_json),
         "token_counts": _replay_token_counts(body_json, engine, config),
@@ -1117,11 +1146,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
     tokenizer_caps = _tokenizer_capability_flags(engine)
     tokenizer_backed = tokenizer_caps["tokenize"]
     return {
-        "model": {
-            "id": config.model_id,
-            "backend": config.backend,
-            "quant": config.quant,
-        },
+        "model": _server_model_identity(config, engine),
         "context": {
             "configured_max_context_tokens": config.max_context_tokens,
             "chat_default_max_tokens": config.chat_default_max_tokens,
@@ -3041,7 +3066,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
                 _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
             }
-            if str(config.quant).startswith("gguf_")
+            if _server_model_uses_gguf(config, llm)
             else None
         ),
         retry_after_seconds=config.queue_retry_after_seconds,
@@ -4143,6 +4168,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def readiness_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         graph = _graph_bucket_metric_values(engine)
@@ -4160,9 +4186,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "ready": bool(readiness.ready),
             "diagnostics": diagnostics,
             "model": {
-                "id": config.model_id,
-                "backend": config.backend,
-                "quant": config.quant,
+                **model_identity,
                 "loaded": bool(readiness.model_loaded),
                 "loaded_model_count": 0 if engine is None else 1,
             },
@@ -4194,7 +4218,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "misses": graph["misses"],
                 "replay_hit_rate": graph["replay_hit_rate"],
             },
-            "device": _selected_device_payload(config),
+            "device": _selected_device_payload(config, engine),
             "queue": {
                 "depth": generation_batcher.queue_depth(),
                 "max_depth": generation_batcher.max_queue_size(),
@@ -4455,6 +4479,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.get("/v1/models")
     async def list_models(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         configured_context = configured_max_context_tokens()
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
@@ -4468,8 +4493,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "owned_by": "hipengine",
                     "hipengine": {
                         "path": config.model,
-                        "backend": config.backend,
-                        "quant": config.quant,
+                        "backend": model_identity["backend"],
+                        "quant": model_identity["quant"],
                         "loaded": bool(readiness.model_loaded),
                         "resident_context": True,
                         "context": {
@@ -4499,6 +4524,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.get("/v1/hipengine/capabilities")
     async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         tokenizer_caps = _tokenizer_capability_flags(engine)
         stream_logprobs = _engine_supports_stream_logprobs(engine)
         configured_context = configured_max_context_tokens()
@@ -4507,10 +4533,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return {
             "object": "hipengine.capabilities",
             "model": {
-                "id": config.model_id,
+                "id": model_identity["id"],
                 "path": config.model,
-                "backend": config.backend,
-                "quant": config.quant,
+                "backend": model_identity["backend"],
+                "quant": model_identity["quant"],
             },
             "context": {
                 "configured_max_context_tokens": configured_context,
@@ -7602,7 +7628,7 @@ def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
     return payload or None
 
 
-def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
+def _selected_device_payload(config: ServerConfig, engine: Any | None = None) -> dict[str, Any]:
     hip_visible = os.environ.get("HIP_VISIBLE_DEVICES")
     rocr_visible = os.environ.get("ROCR_VISIBLE_DEVICES")
     source, visible_devices = _visible_device_selection(
@@ -7610,7 +7636,7 @@ def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
         rocr_visible_devices=rocr_visible,
     )
     return {
-        "backend": config.backend,
+        "backend": _server_model_identity(config, engine)["backend"],
         "hip_visible_devices": hip_visible,
         "rocr_visible_devices": rocr_visible,
         "visible_devices": visible_devices,

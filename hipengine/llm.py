@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+AUTO_QUANT = "auto"
+
 
 @dataclass(frozen=True)
 class SamplingParams:
@@ -124,11 +126,12 @@ class LLM:
     engine-level backend or quant conditionals.
     """
 
-    def __init__(self, model: str, *, backend: str = "auto", quant: str = "fp16"):
+    def __init__(self, model: str, *, backend: str = "auto", quant: str = AUTO_QUANT):
         self.model = model
         self.backend = backend
         self.quant = quant
         self._resolved_backend: str | None = None
+        self._resolved_quant: str | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
         self._text_generator: Any | None = None
@@ -366,10 +369,11 @@ class LLM:
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
         backend = self._resolve_backend()
+        quant = self._resolve_quant(model_plugin)
         factory = resolve_text_generator(
             model=model_plugin.name,
             backend=backend,
-            quant=self.quant,
+            quant=quant,
         )
         self._text_generator = SubmitPollTextGenerator(
             factory(
@@ -388,6 +392,38 @@ class LLM:
 
         self._resolved_backend = resolve_backend(self.backend)
         return self._resolved_backend
+
+    @property
+    def resolved_backend(self) -> str:
+        """Return the concrete backend key selected for this process."""
+
+        return self._resolve_backend()
+
+    def _resolve_quant(self, model_plugin: Any) -> str:
+        if self._resolved_quant is not None:
+            return self._resolved_quant
+        requested = str(self.quant or AUTO_QUANT).strip() or AUTO_QUANT
+        if requested != AUTO_QUANT:
+            self._resolved_quant = requested
+            return requested
+        default_quant = str(getattr(model_plugin, "default_quant", "") or "").strip()
+        if not default_quant or default_quant == AUTO_QUANT:
+            raise RuntimeError(
+                f"model plugin {getattr(model_plugin, 'name', '<unknown>')!r} does not "
+                "declare a concrete default_quant; pass quant= explicitly"
+            )
+        self._resolved_quant = default_quant
+        return default_quant
+
+    @property
+    def resolved_quant(self) -> str:
+        """Return the concrete quant key selected for this model."""
+
+        if self._resolved_quant is None:
+            _weight_index, model_plugin = self._load_model_metadata()
+            self._resolve_quant(model_plugin)
+        assert self._resolved_quant is not None
+        return self._resolved_quant
 
     def _load_model_metadata(self) -> tuple[Any, Any]:
         if self._weight_index is not None and self._model_plugin is not None:

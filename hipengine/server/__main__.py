@@ -96,7 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
             "use HIPENGINE_BACKEND or this flag to force)"
         ),
     )
-    parser.add_argument("--quant", default="w4_paro", help="Quantization key")
+    parser.add_argument(
+        "--quant",
+        default="auto",
+        help="Quantization key (default: model plugin selection)",
+    )
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")
     parser.add_argument(
         "--api-key",

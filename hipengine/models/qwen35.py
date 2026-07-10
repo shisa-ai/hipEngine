@@ -96,7 +96,7 @@ class Qwen35GGUFModel:
     name: str = "qwen3_5_gguf"
     architectures: tuple[str, ...] = ("qwen35",)
     default_quant: str = "gguf_q4_k_m"
-    default_backend: str = "hip_gfx1100"
+    default_backend: str = "auto"
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output_norm.weight",
@@ -121,7 +121,7 @@ class Qwen35MoeGGUFModel:
     name: str = "qwen3_5_moe_gguf"
     architectures: tuple[str, ...] = ("qwen35moe",)
     default_quant: str = "gguf_q4_k_m"
-    default_backend: str = "hip_gfx1100"
+    default_backend: str = "auto"
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",

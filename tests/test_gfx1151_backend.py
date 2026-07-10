@@ -159,3 +159,28 @@ def test_qwen35_paro_gfx1151_generation_factory_sets_backend() -> None:
     generator = factory(model_path="/tmp/fake", weight_index=object(), model_plugin=object())
 
     assert getattr(generator, "backend") == "hip_gfx1151"
+
+
+def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> None:
+    import hipengine.generation.qwen35_gguf as qwen35_gguf
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, weight_index: object()),
+    )
+    register_builtin_generators()
+    factory = resolve_text_generator(
+        model="qwen3_5_moe_gguf",
+        backend="hip_gfx1151",
+        quant="gguf_q4_k_m",
+    )
+
+    generator = factory(
+        model_path="/tmp/fake.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+
+    assert getattr(generator, "backend") == "hip_gfx1151"
+    assert generator.target_arch == "gfx1151"

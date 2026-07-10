@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-04
+Last updated: 2026-07-10
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -17,9 +17,9 @@ pip install hipengine
 ## Run
 
 ```bash
+hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
 hipengine serve \
-  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
-  --quant w4_paro \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
   --served-model-name qwen-paro \
   --host 127.0.0.1 \
   --port 8000
@@ -40,6 +40,16 @@ ROCm detections to `hip_gfx1100`/`hip_gfx1151`. Unknown HIP targets warn and
 select `cpu_reference` where a CPU implementation exists; nearby targets such as
 `gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
 `HIPENGINE_BACKEND=hip_gfx1100` after local validation.
+
+The server also defaults to `--quant auto`. PARO model plugins select `w4_paro`;
+Qwen3.5/Qwen3.6 GGUF plugins select the registered GGUF route. Supported
+gfx1100/gfx1151 PARO and GGUF models need only `--model`. Backend and quant flags
+remain explicit overrides.
+
+Before a lazy model load, metadata may report the requested selectors as `auto`.
+After load, model, readiness, capability, and replay payloads report the resolved
+backend and quant. Auto-selected GGUF models retain the four-request AR and MTP
+group caps used by the explicit `gguf_*` routes.
 
 By default the server eagerly loads the model, loads resident weights, estimates
 remaining HIP memory for KV cache plus persistent context metadata, then
