@@ -137,6 +137,20 @@ uv run python scripts/gguf_eager_teacher_forced_oracle.py \
   --require-cached-build --json /tmp/sol-g1-gfx1151-p512-d4.json
 ```
 
+For `SOL-G2` and any GGUF GDN prefill math/routing change, compare explicit
+`fused` and `chain` production bulk prefill on the exact 17-token greeting.
+The all-layer diagnostic lane identifies the first hidden-output and resident
+Conv/GDN divergence. A mismatch exits nonzero unless `--allow-mismatch` is used
+to retain a pre-fix diagnostic artifact; such an artifact is not an acceptance:
+
+```bash
+uv run python scripts/gguf_gdn_prefill_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --prompt-kind greeting \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/sol-g2-gfx1151-greeting.json
+```
+
 ### 2. CPU deterministic bundle
 
 Use for ordinary non-GPU code changes before commit:
