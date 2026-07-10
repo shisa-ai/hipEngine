@@ -149950,3 +149950,61 @@ graphless decode launch-collapse path without regressing target/serial parity.
   governing punchlist, and its primary artifacts. Updated the root
   documentation index and SOL coordinator language; `SOL-D1` is accepted and
   `SOL-M1` is the remaining open P0 foundation unit.
+
+## 2026-07-11 - SOL-M1 unified exact-token benchmark matrix
+
+- RED began with `tests/test_benchmark_matrix.py` importing a deliberately
+  absent `hipengine.benchmark.matrix` module. The synthetic contract covers the
+  complete PARO/GGUF x direct/server grid, exact generated-ID equality,
+  recomputed denominators, copied batch timing with one owner, route/backend/
+  verifier shapes, memory/profiler attachment pointers, incomplete coverage,
+  and forged-rate rejection. The initial focused run failed during collection
+  with `ModuleNotFoundError` as expected.
+- Added `hipengine_benchmark_matrix` and manifest schema v1 plus
+  `scripts/benchmark_matrix.py`. Rows are keyed by engine, surface, case, and
+  path variant; the builder revalidates prompt/output hashes and provenance,
+  derives generated tok/s and wall ms/token only from exact output IDs and
+  measured wall, deduplicates batch timing by stable ID and sole ownership,
+  preserves queue/backend/verifier shapes, and joins memory/profiler JSON by
+  source SHA-256 and RFC 6901 pointer. Direct/server ratios are emitted only
+  when exact outputs and timing scopes match. Cross-engine rows are
+  side-by-side without an implicit ratio because PARO and GGUF quant/math are
+  not interchangeable.
+- Extended the exact-token producer so direct artifacts carry per-output
+  generation telemetry and tracked-process allocation counters, while HTTP
+  artifacts preserve each server choice's telemetry and explicitly mark
+  server-process memory unavailable to the client. The schema keeps these
+  additions optional for legacy identity artifacts. A retained matrix requires
+  all clean-provenance, performance-claim, scoped-timing, memory, profiler,
+  correctness, and server-shape gates; diagnostic manifests may lower named
+  requirements without becoming performance claims.
+- Real diagnostic smoke reused the committed SOL-E5 gfx1151 PARO exact pair:
+  `uv run python scripts/benchmark_matrix.py build --manifest
+  benchmarks/manifests/sol-m1-paro-e5-diagnostic.json --json
+  /tmp/sol-m1-paro-e5-diagnostic.json`, followed by the `validate` subcommand.
+  Both pass. The report re-derives 128 output IDs over `19.589959 s` direct and
+  `2.738415 s` HTTP, confirms exact direct/server output equality, and records
+  the HTTP backend width as one. It deliberately emits no speed ratio because
+  `direct_call` (including setup) and `client_e2e` are different scopes. The
+  old E5 artifacts have no scoped internal timing, memory census, or profiler,
+  and this diagnostic creates no retained metric or scoreboard change.
+- GREEN: the focused benchmark/provenance bundle passes `19/19`; the broader
+  benchmark matrix, exact-token, provenance, generation-registry, MTP tool,
+  server API, and memory-audit bundle passes `531/531`. Python compilation,
+  all three smoke modes, seven top-level CPU fixtures, all three JSON parse
+  checks, benchmark/root README synchronization, and `git diff --check` pass.
+  The repository-wide `uv run pytest -q` milestone attempt is not green: after
+  earlier unrelated failures it reached about 85% and ROCm aborted with exit
+  134 / a GPU memory-access fault while running
+  `test_conv_prefill_segments_state_rows_match_per_segment_capture` in
+  `tests/test_qwen35_linear_attn_segment_state_rows.py`, so pytest produced no
+  final summary. Separately, `scripts/check_fixtures.py` passes the seven
+  top-level fixtures but raises `KeyError: expected` on the existing nested
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`. Neither
+  failure exercises the benchmark-only M1 implementation; both remain explicit
+  repository/milestone debt rather than being hidden by this acceptance.
+- Updated the benchmark/testing contracts, benchmark README/changelog, PARO
+  transfer dashboard, and SOL coordinator. `SOL-M1` is accepted, completing
+  the P0 foundation. The next measurement work is a clean repeated
+  PARO/GGUF matrix; the next code-localization units remain `SOL-P1` and
+  `SOL-G1`.

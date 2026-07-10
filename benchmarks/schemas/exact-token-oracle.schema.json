@@ -44,6 +44,18 @@
     },
     "generated_token_ids_sha256": {
       "$ref": "#/$defs/hashRows"
+    },
+    "generation_telemetry": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "memory": {
+      "type": "object"
+    },
+    "provenance": {
+      "$ref": "artifact-provenance.schema.json"
     }
   },
   "$defs": {

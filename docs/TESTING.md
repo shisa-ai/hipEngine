@@ -61,6 +61,7 @@ Do not use a new HIP kernel as its own oracle. CPU-reference exists so correctne
 | KV policy / attention span logic | Deterministic span fixtures for dense and variable-live-span cases; mask/position edge cases; no shortcut around `KVLiveSpans`. |
 | Runtime / memory / build | Import-time no-side-effect tests, fake-runtime tests, dry-run build planning tests, and real HIP smoke only after GPU clearance. |
 | Public API / server behavior | Unit/integration tests for success and failure paths; include user-visible output assertions once `LLM.generate()` exists. |
+| Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; exact-ID mismatch, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |
 | Perf claim | Exact benchmark command from `docs/BENCHMARK.md`, correctness gate, hardware/software context, and compact JSON artifact. |
 
 ## Numerical fixture policy
@@ -105,6 +106,19 @@ Examples:
 python3 -m pytest tests/test_cpu_reference.py -q
 python3 -m pytest tests/test_kernel_registry.py tests/test_fusion_spike.py -q
 python3 -m pytest tests/test_build.py tests/test_smoke_add_plan.py -q
+python3 -m pytest tests/test_benchmark_matrix.py tests/test_exact_token_benchmark.py -q
+```
+
+For matrix changes, also build and validate the committed diagnostic manifest.
+The direct/server rows use different wall scopes, so the expected report has a
+null rate ratio with an explicit scope-mismatch reason:
+
+```bash
+uv run python scripts/benchmark_matrix.py build \
+  --manifest benchmarks/manifests/sol-m1-paro-e5-diagnostic.json \
+  --json /tmp/sol-m1-paro-e5-diagnostic.json
+uv run python scripts/benchmark_matrix.py validate \
+  --json /tmp/sol-m1-paro-e5-diagnostic.json
 ```
 
 ### 2. CPU deterministic bundle

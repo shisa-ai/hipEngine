@@ -442,6 +442,47 @@ The parity artifact is a correctness/identity gate with
 warmup, repetition, timing-ownership, shape, profiler, and clean-provenance
 gates.
 
+### Unified direct/server PARO/GGUF matrix
+
+Use [`scripts/benchmark_matrix.py`](../scripts/benchmark_matrix.py) to join
+exact-token rows after the direct and HTTP artifacts exist. A manifest gives
+each row a stable case, engine (`paro|gguf`), surface (`direct|server`), and
+path variant, plus optional memory and profiler artifact pointers. The report:
+
+- validates every exact prompt/generated hash and requires direct/server output
+  equality within a case;
+- derives total tokens, tok/s, and ms/token from the raw generated-ID rows and
+  measured wall instead of accepting a supplied denominator;
+- deduplicates batch-scoped timing by `batch_id`, requires exactly one owner and
+  the declared number of row copies, and preserves choice/request/client scopes;
+- records route cap, queue rows, actual backend widths, verifier rows, and
+  execution paths separately;
+- attaches memory and profiler summaries by artifact SHA plus RFC 6901 JSON
+  pointer; and
+- refuses a direct/server rate ratio when timing scopes differ. PARO/GGUF rows
+  are side-by-side by default; a cross-engine ratio needs a separately proven
+  identical model, quant, math, and timing protocol.
+
+```bash
+uv run python scripts/benchmark_matrix.py build \
+  --manifest benchmarks/manifests/sol-m1-paro-e5-diagnostic.json \
+  --json /tmp/paro-direct-server-matrix.json
+
+uv run python scripts/benchmark_matrix.py validate \
+  --json /tmp/paro-direct-server-matrix.json
+```
+
+`--run-commands` executes optional row command arrays without a shell before
+assembling the report. A failed eligibility gate still writes the artifact and
+returns exit 2; use `--allow-ineligible` only for an explicitly diagnostic
+matrix. The formal input/output contracts are
+[`benchmark-matrix-manifest.schema.json`](../benchmarks/schemas/benchmark-matrix-manifest.schema.json)
+and
+[`benchmark-matrix.schema.json`](../benchmarks/schemas/benchmark-matrix.schema.json).
+The committed diagnostic manifest intentionally reuses the SOL-E5 PARO identity
+artifacts; it is not a throughput claim and its direct-call/client-E2E values
+are deliberately unratioed.
+
 Allowed artifact statuses:
 
 | Status | Meaning |

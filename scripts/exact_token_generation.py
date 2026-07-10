@@ -22,6 +22,7 @@ from hipengine.benchmark.exact_tokens import (
 )
 from hipengine.benchmark.prompts import text_sha256, token_ids_sha256
 from hipengine.benchmark.provenance import collect_artifact_provenance
+from hipengine.core.memory import memory_stats, reset_memory_stats
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +129,8 @@ def _base_artifact(
     output_texts: Sequence[str],
     resolved_backend: str | None,
     parity: Mapping[str, Any],
+    generation_telemetry: Sequence[Mapping[str, Any]],
+    memory: Mapping[str, Any],
     response_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = oracle.to_json_dict()
@@ -151,6 +154,8 @@ def _base_artifact(
             },
             "output_text_sha256": [text_sha256(str(text)) for text in output_texts],
             "exact_token_parity": dict(parity),
+            "generation_telemetry": [dict(row) for row in generation_telemetry],
+            "memory": dict(memory),
             "response_metadata": None if response_metadata is None else dict(response_metadata),
             "provenance": collect_artifact_provenance(
                 repo_root=REPO_ROOT,
@@ -172,7 +177,31 @@ def _base_artifact(
     return payload
 
 
+def _output_telemetry(outputs: Sequence[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for output in outputs:
+        telemetry = getattr(output, "telemetry", None)
+        serializer = getattr(telemetry, "to_json_dict", None)
+        rows.append(dict(serializer()) if callable(serializer) else {})
+    return rows
+
+
+def _http_choice_telemetry(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    choices = payload.get("choices")
+    if not isinstance(choices, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for choice in choices:
+        if not isinstance(choice, Mapping):
+            rows.append({})
+            continue
+        hipengine = choice.get("hipengine")
+        rows.append(dict(hipengine) if isinstance(hipengine, Mapping) else {})
+    return rows
+
+
 def run_direct(args: argparse.Namespace, fixture: ExactTokenFixture) -> dict[str, Any]:
+    reset_memory_stats()
     engine = LLM(str(args.model_path), backend=str(args.backend), quant=str(args.quant))
     sampling = SamplingParams(
         max_tokens=int(args.max_tokens),
@@ -204,6 +233,8 @@ def run_direct(args: argparse.Namespace, fixture: ExactTokenFixture) -> dict[str
             "prompt_ids_preserved": True,
             "generated_ids_recorded": True,
         },
+        generation_telemetry=_output_telemetry(outputs),
+        memory={"scope": "hipengine_tracked_process", **memory_stats()},
     )
 
 
@@ -257,6 +288,11 @@ def run_http(args: argparse.Namespace, fixture: ExactTokenFixture) -> dict[str, 
         output_texts=output_texts,
         resolved_backend=args.resolved_backend,
         parity=parity,
+        generation_telemetry=_http_choice_telemetry(response),
+        memory={
+            "scope": "server_process_unavailable_from_client",
+            "status": "unavailable",
+        },
         response_metadata={
             "usage": response.get("usage"),
             "hipengine": response.get("hipengine"),

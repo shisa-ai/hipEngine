@@ -68,6 +68,17 @@ and every generated ID must match the direct oracle. The formal contract is
 The 2026-07-11 gfx1151 PARO 512/128 correctness gate passed; it is not a
 throughput row and changes no topline.
 
+Unified direct/server reports use `hipengine_benchmark_matrix` v1 from
+[`scripts/benchmark_matrix.py`](../scripts/benchmark_matrix.py). The matrix
+recomputes exact-ID denominators, enforces timing ownership, preserves backend
+and verifier shapes, and attaches memory/profiler summaries. Its schemas are
+[`benchmark-matrix.schema.json`](schemas/benchmark-matrix.schema.json) and
+[`benchmark-matrix-manifest.schema.json`](schemas/benchmark-matrix-manifest.schema.json).
+The committed SOL-E5 PARO manifest is diagnostic: direct-call wall includes
+model/session setup while HTTP is client-E2E, so the report intentionally emits
+no direct/server speed ratio. A retained matrix requires the normal clean,
+repeated, scoped-timing, memory, profiler, correctness, and shape gates.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
