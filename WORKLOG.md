@@ -148824,3 +148824,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   matched the complete three-row matrix with all correctness gates passing;
   combined independent used four calibrated lanes. `/tmp/q8-*-wrapper-*.json`
   is smoke evidence only.
+
+## 2026-07-10 - Q4 selected-dual calibrated queue lanes
+
+- Replaced the withdrawn Q4 quantize/dot event sequence with true queue lanes.
+  Combined independent work owns round-robin activation, q8_1, and dual-output
+  slices per queue with a local quantize-to-dot barrier. Quantize-only and
+  prequantized-dot throughput remain disjoint one-command-buffer probes; serial
+  work retains compute barriers. Lane count is capped by requested lanes,
+  timed repetitions, four, and the selected queue family's availability.
+- Tightened evidence identity: the comparator requires v2 result identity,
+  architecture, all shared parameters, backend/quant/workgroup fields, and the
+  exact `1 + 2*workgroups` row set. Combined independent rows require matched
+  HIP/Vulkan lanes, Vulkan multi-queue submission, and calibrated clock labels.
+  The comparison now has one schema-valid primary source plus both backend
+  source hashes and separate environment provenance. Serial execution no
+  longer requires timeline/calibrated extensions.
+- Quantize-only correctness is explicitly downstream Q4_K equivalence, not raw
+  q8_1 bit identity. Exact timed HIP slice checks remain exact; cross-
+  implementation Vulkan/CPU and HIP/raw quality checks now record BF16
+  mismatches/max error and gate max per-row KL <= 0.05 plus top-1 >= 90%.
+  The gfx1151 smoke reached KL `3.84e-6` and top-1 `1.0`.
+- Validation: `uv run pytest -q
+  tests/test_micro_q4_selected_dual_real_slice.py
+  tests/test_micro_timing_contract.py
+  tests/test_micro_vulkan_multi_queue_timing.py` (`37 passed`); warning-clean
+  Vulkan C++ syntax, GLSL, Python compile, and scoped diff checks passed.
+  Paired gfx1151 smokes used x_rows=4, rows=32, experts=256, 2048x512, wg64,
+  reps=2, warmup=3, samples=3. Serial and independent matched all three rows;
+  combined independent used two calibrated lanes. One initial HIP serial run
+  emitted an invalid negative event sample and was rejected by the finite-
+  sample gate; an immediate clean rerun passed. `/tmp/q4-*-mq-*.json` is smoke
+  evidence only and correctly remains non-claiming on the dirty worktree.
