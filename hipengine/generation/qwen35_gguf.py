@@ -1028,6 +1028,7 @@ class Qwen35GGUFBringupGenerator:
             self.last_generation_outputs = tuple(
                 GenerationOutput(
                     text="",
+                    generated_token_ids=(),
                     finish_details=_gguf_finish_details((), self.tokenizer, request),
                     telemetry=_gguf_telemetry(
                         prompt_rows_by_request[index],
@@ -1093,6 +1094,7 @@ class Qwen35GGUFBringupGenerator:
                     outputs.append(
                         GenerationOutput(
                             text=text,
+                            generated_token_ids=generated_ids,
                             finish_details=finish_details,
                             telemetry=_gguf_telemetry(
                                 prompt_ids,
@@ -1112,9 +1114,9 @@ class Qwen35GGUFBringupGenerator:
                     )
                     outputs.append(output)
                     token_logprobs_by_request[row_index] = list(output.token_logprobs)
-                    generated_ids_by_request[row_index] = [
-                        int(token.token_id) for token in output.token_logprobs
-                    ]
+                    if output.generated_token_ids is None:
+                        raise RuntimeError("sampled GGUF generation did not expose generated token ids")
+                    generated_ids_by_request[row_index] = list(output.generated_token_ids)
         self.last_generation_outputs = tuple(outputs)
         self.last_batch_generation = _gguf_last_batch_generation(
             self.tokenizer,
@@ -1170,6 +1172,7 @@ class Qwen35GGUFBringupGenerator:
                 outputs.append(
                     GenerationOutput(
                         text=text,
+                        generated_token_ids=generated_ids,
                         finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
                         telemetry=_gguf_telemetry(
                             slot.prompt_ids,
@@ -2031,6 +2034,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> GenerationOutput:
         return GenerationOutput(
             text=self.tokenizer.decode(generated_ids),
+            generated_token_ids=generated_ids,
             finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
             telemetry=_gguf_telemetry(
                 prompt_ids,
@@ -3730,6 +3734,7 @@ def _gguf_generation_output(
     return GenerationOutput(
         text="".join(token.token_text for token in token_logprobs),
         token_logprobs=token_logprobs,
+        generated_token_ids=tuple(token.token_id for token in token_logprobs),
         finish_details=finish_details,
         telemetry=telemetry,
     )

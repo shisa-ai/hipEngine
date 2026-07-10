@@ -1,11 +1,11 @@
 # gfx1151 PARO/GGUF Optimization Ledger
 
-Last updated: 2026-07-10.
+Last updated: 2026-07-11.
 
-Status: active ledger at hipEngine `0c1845170955`. The gfx1151 HIP/Vulkan v2
-matrix was measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO
-true-c1 shrinking gate was measured at `0c1845170955` with
-`hipengine_dirty=false`.
+Status: active ledger. `SOL-E1` is accepted on top of the `7ea21e98b097`
+release-default baseline. The gfx1151 HIP/Vulkan v2 matrix was measured at
+`ca241dae795d` with `hipengine_dirty=false`; the PARO true-c1 shrinking gate was
+measured at `0c1845170955` with `hipengine_dirty=false`.
 
 This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
@@ -70,7 +70,8 @@ The table names the source revision for each result.
 | --- | --- | --- |
 | GGUF MTP on gfx1151 | `llama-compat` B2 reports `71.52 tok/s` versus llama.cpp HIP `71.91 tok/s`, with hipEngine stage wall `14.005` versus `14.269 ms/output`. | This is an opt-in direct-commit/dp4a compatibility contract, not exact/default semantics. Keep it as a replication lane, not the production default. |
 | Exact/default GGUF MTP | Fixed 10-cycle B5 reports `61.98` versus AR `54.79 tok/s`. | Natural `max_tokens=24` loses at B1/B2/B5: `52.13/52.04/50.65` versus AR `54.80`. Fixed-cycle rows do not close production MTP economics. |
-| MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | Absolute server rates are not valid until all-choice token accounting and batch-timing ownership are fixed. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
+| MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | `SOL-E1` fixes future all-choice denominators, but prior absolute server rates remain invalid and need a rerun after batch-timing ownership is fixed. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
+| Exact server token accounting | `SOL-E1` carries exact IDs in `GenerationOutput`, exposes per-choice and all-choice counts in non-streaming OpenAI responses, and makes `mtp-bench.py` prefer and validate them. | Retokenized visible text remains a non-authoritative diagnostic. Batch timing ownership is still `SOL-E2`; prior server rates remain ineligible until their timing scope is corrected and they are rerun. |
 | PARO c>N | Retained gfx1100 direct rows exist for c4/c8. The gfx1151 c1-c8 timing rows at `4175dabf`/`02aec604` used a batch-shaped width-1 oracle and cannot select routing. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native decode fails 0/8, first mismatch at c8 generated token index 2. | Production greedy and sampled batches use exact width-1 sessions. Reopen every gfx1151 native width; localize the common c8 divergence before width-specific tuning. |
 | gfx1100 GGUF AR | Current W7900 diagnostic is about `654 prefill / 35.8 decode tok/s` at 512/128. | It emits repeated token `9707`, is marked `performance_claim=false`, and sits in "Current fastest." Treat it as a P0 correctness/recovery problem, not a clean 66% regression claim. |
 | HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
@@ -207,10 +208,10 @@ also preventing incompatible quant kernels from being copied blindly.
 
 | Surface | PARO today | GGUF today | Required comparison / transfer |
 | --- | --- | --- | --- |
-| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | GGUF generation/model/dispatch remains semantically gfx1100-only. | Complete `SOL-B1` before gfx1151 GGUF tuning. |
+| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | Public GGUF factory/session/build identity reaches gfx1151 after `7ea21e98`, but internal registry resolver keys remain semantically gfx1100-only. | Complete the internal resolver cleanup in `SOL-B1` before gfx1151 GGUF tuning. |
 | Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | GGUF chunking exists, but GDN always selects the slow fused decode-order fallback when registered. | Re-certify GGUF GDN chain, then retune chunks by arch and context. |
 | Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption. | Establish correct eager oracle, then recapture by full shape/state key. |
-| c>N decode | PARO has native multi-row paths and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work, but route width is capped and identity/accounting is incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
+| c>N decode | PARO has native multi-row paths and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work and exact all-choice IDs, but route width is capped and batch timing/shape identity remain incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
 | Sparse slots | Runtime accepts sorted sparse physical slots. | Resident MTP slots are tracked, but actual group width must be exposed. | Remove generator compact-from-zero gating and test holes/reclaim. |
 | Full attention | PARO uses shape-specific native/rowchunk bridges; several widths remain diagnostic. | GGUF AR/verify paths have separate packed behavior. | Bucket context, row width, reducer, KV ABI, and fallback separately. |
 | GDN/linear state | PARO has segmented multi-row state work plus shape-specific fallbacks. | GGUF prefill chain is registered but shadowed; old decode graph corrupted state. | Use teacher-forced recurrent-state comparisons across multiple steps. |
@@ -230,12 +231,12 @@ layout and profiled bottleneck.
 
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
-| `SOL-E1` | Carry exact generated IDs/counts through `GenerationOutput` and OpenAI responses; aggregate every choice in `mtp-bench.py`. | `open` | none | Retokenization-mismatch and `n=6` regressions prove exact all-choice totals; usage semantics are documented. |
+| `SOL-E1` | Carry exact generated IDs/counts through `GenerationOutput` and OpenAI responses; aggregate every choice in `mtp-bench.py`. | `accepted`: PARO/GGUF outputs carry exact IDs; completion/chat `n=6` and retokenization-mismatch regressions pass; `mtp-bench.py` validates and aggregates all rows; API/benchmark semantics are documented. | none | Retokenization-mismatch and `n=6` regressions prove exact all-choice totals; usage semantics are documented. |
 | `SOL-E2` | Add `batch_id`, `group_rows`, `timing_scope`, and timing owner; deduplicate batch metrics in harnesses. | `open` | none | Synthetic duplicate payload and live PARO/GGUF group tests count batch wall once. |
 | `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `open` | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
 | `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `blocked` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
 | `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `open` | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
-| `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open` | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
+| `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open`: public factory, runner/session target, JIT build, capabilities, and installed-wheel route landed at `7ea21e98`; internal semantic `hip_gfx1100` resolver keys remain. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
 | `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
 | `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `blocked` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
 | `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `blocked` | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
@@ -307,7 +308,7 @@ Do not restore the old GGUF graph as a shortcut. Do not optimize the repeated
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
 | `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `blocked`: the prior gfx1151 c2-c8 timing matrix used a batch-shaped width-1 oracle. At `0c184517` with `hipengine_dirty=false`, native c8 fails independent c1 at generated token index 2. gfx1100 remains stale. | P0 foundation; native divergence bisect | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
-| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `in_progress`: at `0c184517` with `hipengine_dirty=false`, gfx1151 serial c8-to-c1 passes 8/8 rows and native passes 0/8. A full c3-to-sparse-c2 serial run passes and native fails. Ragged contexts remain unrun. | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
+| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `blocked`: at `0c184517` with `hipengine_dirty=false`, gfx1151 serial c8-to-c1 passes 8/8 rows and native passes 0/8. A full c3-to-sparse-c2 serial run passes and native fails. Ragged contexts remain unrun; resume after the common native divergence is localized in P1. | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
 | `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `blocked`: CPU/runtime addressing supports sorted sparse slots, but native sparse decode is correctness-red. Production uses width-1 sessions, so holes do not select an uncertified native route. | P2 RED tests; native correctness | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
 | `SOL-P4` | Make selected-c1 MoE a named multi-row algorithm and compare it with grouped-compact at every supported width. | `blocked` | P1, scoped profiler | Full-layer/server wall, routed-lane counts, and correctness select the mode; c6's current advantage is rechecked. |
 | `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `blocked`: the prior c3/c5/c6/c7 green rows used the invalid batch-shaped oracle. The common native c8 path fails before any width transition, so width-specific promotion evidence is reopened. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
@@ -464,3 +465,7 @@ The next PARO GPU unit is `SOL-P1`: localize the native c8 token-index-2
 divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
+
+The next overall foundation unit is `SOL-E2`: assign stable batch timing
+ownership and deduplicate copied batch metrics before any server throughput row
+is promoted.

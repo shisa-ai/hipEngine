@@ -34,6 +34,12 @@ win, regardless of how the metric moved.
 
 Hard rules:
 
+- **Exact server token denominators.** For hipEngine non-streaming OpenAI
+  responses, use `hipengine.token_accounting.total_generated_tokens` and retain
+  the per-choice ID rows/counts. `usage.completion_tokens` is authoritative only
+  when that exact accounting object is present. Decoded-text re-tokenization is
+  recorded only as `retokenized_visible_tokens`; it cannot support a throughput
+  or MTP economics claim. Multi-choice requests aggregate every choice.
 - **No input-conditioned shortcuts.** Do not add code that detects the prompt,
   token sequence, candidate-id pattern, logits shape, or any fixture-specific
   signal and changes the output to make a metric look better. Examples that are

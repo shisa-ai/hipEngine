@@ -3769,7 +3769,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             _validate_logprob_details(details, outputs)
         batch = _GeneratedBatch(
             outputs=outputs,
-            usage=_usage(engine, prompts, outputs),
+            usage=_usage(engine, prompts, outputs, details=details),
             details=details,
             scheduler_token_chunks=scheduler_token_chunks,
         )
@@ -4918,6 +4918,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         choices = []
         final_texts: list[str] = []
+        visible_generated_texts: list[str] = []
         cache_action = _session_cache_action(request)
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             previous_text = "" if continuation is None else continuation.generated_texts[index]
@@ -4936,6 +4937,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_reason,
             )
             final_texts.append(text)
+            visible_generated_texts.append(generated_text)
             choice = {
                 "text": text,
                 "index": index,
@@ -4997,6 +4999,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
             },
         }
+        token_accounting = _exact_generated_token_accounting(
+            getattr(app.state, "hipengine_llm", None),
+            batch.details,
+            visible_generated_texts,
+        )
+        if token_accounting is not None:
+            response["hipengine"]["token_accounting"] = token_accounting
         await _maybe_write_agentic_result_replay_artifact(
             config,
             raw_request,
@@ -5125,6 +5134,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
             choices = []
+            visible_generated_texts: list[str] = []
             requested_cache_action = _session_cache_action(request)
             for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
                 previous_text = "" if continuation is None else continuation.generated_texts[index]
@@ -5229,6 +5239,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if n > 1:
                     choice["request_id"] = _choice_request_id(response_id, 0, index)
                 choices.append(choice)
+                visible_generated_texts.append(_chat_response_format_text(message))
                 await commit_chat_session(
                     request,
                     request_messages=request.messages,
@@ -5253,6 +5264,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 },
             }
+            token_accounting = _exact_generated_token_accounting(
+                getattr(app.state, "hipengine_llm", None),
+                batch.details,
+                visible_generated_texts,
+            )
+            if token_accounting is not None:
+                response["hipengine"]["token_accounting"] = token_accounting
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -7962,12 +7980,19 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
     token_logprobs = getattr(value, "token_logprobs", None)
     finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
-    if token_logprobs is not None or finish_details is not None or telemetry is not None:
+    generated_token_ids = getattr(value, "generated_token_ids", None)
+    if (
+        token_logprobs is not None
+        or finish_details is not None
+        or telemetry is not None
+        or generated_token_ids is not None
+    ):
         return GenerationOutput(
             text=str(getattr(value, "text", value)),
             token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
+            generated_token_ids=generated_token_ids,
         )
     return GenerationOutput(text=str(value))
 
@@ -11104,20 +11129,67 @@ def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[Tok
     return tuple(selected)
 
 
-def _usage(engine: Any, prompts: Sequence[str], outputs: Sequence[str]) -> dict[str, int]:
+def _usage(
+    engine: Any,
+    prompts: Sequence[str],
+    outputs: Sequence[str],
+    *,
+    details: Sequence[GenerationOutput] | None = None,
+) -> dict[str, int]:
     counter = getattr(engine, "count_tokens", None)
     if callable(counter):
         prompt_tokens = sum(_safe_count(counter, text) for text in prompts)
+    else:
+        prompt_tokens = 0
+    exact_rows = _exact_generated_token_rows(details, expected_rows=len(outputs))
+    if exact_rows is not None:
+        completion_tokens = sum(len(row) for row in exact_rows)
+    elif callable(counter):
         completion_tokens = sum(_safe_count(counter, text) for text in outputs)
     else:
-        # Compatibility placeholder until public tokenizer accounting lands.
-        prompt_tokens = 0
+        # Compatibility placeholder for legacy generators without token IDs.
         completion_tokens = 0
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+
+
+def _exact_generated_token_rows(
+    details: Sequence[GenerationOutput] | None,
+    *,
+    expected_rows: int,
+) -> tuple[tuple[int, ...], ...] | None:
+    if details is None or len(details) != int(expected_rows):
+        return None
+    rows: list[tuple[int, ...]] = []
+    for detail in details:
+        if detail.generated_token_ids is None:
+            return None
+        rows.append(tuple(detail.generated_token_ids))
+    return tuple(rows)
+
+
+def _exact_generated_token_accounting(
+    engine: Any,
+    details: Sequence[GenerationOutput],
+    visible_outputs: Sequence[str],
+) -> dict[str, Any] | None:
+    rows = _exact_generated_token_rows(details, expected_rows=len(visible_outputs))
+    if rows is None:
+        return None
+    payload: dict[str, Any] = {
+        "choice_generated_token_ids": [list(row) for row in rows],
+        "choice_generated_tokens": [len(row) for row in rows],
+        "total_generated_tokens": sum(len(row) for row in rows),
+    }
+    counter = getattr(engine, "count_tokens", None)
+    if callable(counter):
+        payload["retokenized_visible_tokens"] = sum(
+            _safe_count(counter, text) for text in visible_outputs
+        )
+    return payload
 
 
 def _safe_count(counter: Any, text: str) -> int:
@@ -12650,10 +12722,15 @@ def _choice_hipengine_payload(
 
 
 def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | None) -> None:
-    telemetry = None if detail is None else detail.telemetry
-    if telemetry is None:
+    if detail is None:
         return
-    payload = telemetry.to_json_dict()
+    telemetry = detail.telemetry
+    payload = {} if telemetry is None else telemetry.to_json_dict()
+    if detail.generated_token_ids is not None:
+        payload["generated_token_ids"] = list(detail.generated_token_ids)
+        payload["generated_tokens"] = len(detail.generated_token_ids)
+    if not payload:
+        return
     finish_details = choice.get("finish_details")
     if isinstance(finish_details, Mapping):
         payload["finish_details"] = dict(finish_details)

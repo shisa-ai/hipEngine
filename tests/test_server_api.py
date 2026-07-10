@@ -4603,6 +4603,69 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "request_payload"),
+    [
+        ("/v1/completions", {"prompt": "one", "n": 6}),
+        (
+            "/v1/chat/completions",
+            {"messages": [{"role": "user", "content": "one"}], "n": 6},
+        ),
+    ],
+)
+def test_openai_n6_uses_exact_all_choice_generated_token_accounting(
+    endpoint: str,
+    request_payload: dict[str, Any],
+) -> None:
+    token_rows = (
+        (101, 102),
+        (201,),
+        (301, 302, 303),
+        (),
+        (501, 502),
+        (601,),
+    )
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text=f"singleword{index}",
+                generated_token_ids=token_ids,
+            )
+            for index, token_ids in enumerate(token_rows)
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        endpoint,
+        json={"model": "fake-model", "max_tokens": 3, **request_payload},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["choices"]) == 6
+    assert body["usage"]["completion_tokens"] == 9
+    accounting = body["hipengine"]["token_accounting"]
+    assert accounting == {
+        "choice_generated_token_ids": [list(row) for row in token_rows],
+        "choice_generated_tokens": [2, 1, 3, 0, 2, 1],
+        "total_generated_tokens": 9,
+        "retokenized_visible_tokens": 6,
+    }
+    assert [choice["hipengine"]["generated_token_ids"] for choice in body["choices"]] == [
+        list(row) for row in token_rows
+    ]
+    assert [choice["hipengine"]["generated_tokens"] for choice in body["choices"]] == [
+        2,
+        1,
+        3,
+        0,
+        2,
+        1,
+    ]
+
+
 def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(

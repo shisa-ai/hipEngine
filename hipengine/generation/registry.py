@@ -745,6 +745,7 @@ class GenerationOutput:
     token_logprobs: tuple[TokenLogprob, ...] = ()
     finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
+    generated_token_ids: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
@@ -753,6 +754,19 @@ class GenerationOutput:
             object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
         if self.telemetry is not None:
             object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
+        if self.generated_token_ids is not None:
+            token_ids = tuple(int(token_id) for token_id in self.generated_token_ids)
+            if any(token_id < 0 for token_id in token_ids):
+                raise ValueError("generated_token_ids must contain non-negative integers")
+            object.__setattr__(self, "generated_token_ids", token_ids)
+
+    @property
+    def generated_tokens(self) -> int | None:
+        """Return the exact generated-token count, or ``None`` when unavailable."""
+
+        if self.generated_token_ids is None:
+            return None
+        return len(self.generated_token_ids)
 
     def __str__(self) -> str:
         return self.text

@@ -149592,3 +149592,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   before `paged_attn_decode_int8_per_token_head.json` raises `KeyError` because
   its schema lacks `expected`. These test-harness/fixture blockers remain for a
   dedicated release-gate repair; no full-suite pass is claimed here.
+
+## 2026-07-11 - SOL-E1 exact all-choice generated-token accounting
+
+- Began the SOL optimization ledger in dependency order at `SOL-E1`. Existing
+  unrelated benchmark outputs remain untouched (`255` untracked paths under
+  `benchmarks/results/`); there were no tracked changes at start and
+  `main==origin/main==7ea21e98`.
+- RED established both missing contracts. `GenerationOutput` rejected
+  `generated_token_ids`, and `scripts/mtp-bench.py` reported the retokenized
+  `usage.completion_tokens=6` instead of the exact six-choice total `9`. The
+  focused RED command produced five expected failures:
+  `uv run pytest -q tests/test_generation_registry.py tests/test_server_api.py
+  -k 'exact_generated_token_ids or known_empty_ids or openai_n6'
+  tests/test_mtp_bench_tool.py -k 'exact_generated_token_ids or known_empty_ids
+  or openai_n6 or exact_all_choice'`.
+- Added a first-class optional `GenerationOutput.generated_token_ids` tuple and
+  `generated_tokens` property. `None` means a legacy/unknown sequence while an
+  empty tuple is authoritative zero-token output. PARO and GGUF greedy,
+  sampled, packed, serial-fallback, max-token-zero, and GGUF MTP result builders
+  now populate the field; negative IDs are rejected.
+- Non-streaming completion and chat responses now expose exact per-choice IDs
+  and counts at `choices[].hipengine`, plus canonical all-choice fields under
+  `hipengine.token_accounting`. `usage.completion_tokens` uses exact ID lengths
+  whenever every output provides them; legacy generators retain the explicitly
+  documented re-tokenized fallback. `retokenized_visible_tokens` remains a
+  non-authoritative diagnostic, including when server-side stop/structured
+  handling changes visible text after backend generation.
+- `scripts/mtp-bench.py` validates ID rows, per-choice counts, and the total;
+  malformed or inconsistent accounting fails closed. Exact totals override
+  both re-tokenized OpenAI usage and first-choice decode-state counts, and
+  throughput uses client wall over the full all-choice total.
+- GREEN: the focused exact/unknown-ID, completions/chat `n=6`, exact aggregate,
+  and malformed-accounting regressions pass. Full affected CPU/API suites pass:
+  `uv run pytest -q tests/test_generation_registry.py
+  tests/test_mtp_bench_tool.py tests/test_llm_generate.py`;
+  `uv run pytest -q tests/test_server_api.py`; and
+  `uv run pytest -q tests/test_generation_qwen35_paro.py
+  tests/test_generation_qwen35_gguf_sampling.py`.
+- Updated `docs/API.md`, `docs/BENCHMARK.md`, `docs/PLAN.md`, root `README.md`,
+  and `docs/SOL-OPTIMIZATION.md`. `SOL-E1` is accepted; the next foundation
+  unit is `SOL-E2`. No performance number changed, so no benchmark result,
+  scoreboard row, or benchmark changelog entry is warranted for this unit.
