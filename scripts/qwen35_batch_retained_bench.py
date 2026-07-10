@@ -4134,10 +4134,10 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Local gfx1151/shisa generated-token equality is green for c=2/c=4/c=6/c=8 only
-    # when grouped-compact MoE is replaced by selected-c1 MoE. This remains a
-    # diagnostic correctness bridge, not a retained throughput claim.
-    return "selected_c1" if int(batch_size) in {2, 4, 6, 8} else "grouped_compact"
+    # Local gfx1151/shisa generated-token equality is green for c=2..c=8 when
+    # grouped-compact MoE is replaced by selected-c1 MoE. Odd widths and c6 also
+    # require the retained small-batch shared-expert route in the runtime.
+    return "selected_c1" if 2 <= int(batch_size) <= 8 else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4197,14 +4197,10 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c3/c5 keep the older selected-layer diagnostic scope. Local gfx1151
-    # shisa c4/c6/c8 recovered full 512/128 generated-token equality with
-    # rowchunk2 on every full-attention layer plus selected-c1 MoE, so empty
-    # deliberately means all full-attention layers for c4/c8. c6 has a narrower
-    # local equality frontier: rowchunk the early full-attention layers through
-    # 31 and leave layers 35/39 full-native.
-    if int(batch_size) in {3, 5}:
-        return "3,7,11,15"
+    # Local gfx1151/shisa c3/c4/c5/c7/c8 require rowchunk2 on every
+    # full-attention layer. Empty deliberately means all layers. c6 has a
+    # narrower equality frontier: rowchunk early layers through 31 and leave
+    # layers 35/39 full-native.
     if int(batch_size) == 6:
         return "3,7,11,15,19,23,27,31"
     return ""

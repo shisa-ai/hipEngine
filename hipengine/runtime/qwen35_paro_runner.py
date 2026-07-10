@@ -236,15 +236,13 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     all-layer rowchunking, and for rows without stable selected-layer evidence.
     """
 
-    if rows in {3, 5}:
-        return {3, 7, 11, 15}
     if rows == 6:
         return {3, 7, 11, 15, 19, 23, 27, 31}
     return set()
 
 
 def _retained_selected_c1_moe_rows(rows: int) -> bool:
-    return int(rows) in {2, 4, 6, 8}
+    return 2 <= int(rows) <= 8
 
 
 def _retained_per_row_linear_moe_rows(rows: int) -> bool:
@@ -252,7 +250,7 @@ def _retained_per_row_linear_moe_rows(rows: int) -> bool:
 
 
 def _retained_force_small_batch_shared_expert_rows(rows: int) -> bool:
-    return int(rows) == 6
+    return int(rows) in {3, 5, 6, 7}
 
 
 def _retained_linear_row_chunk_size(rows: int) -> int:
