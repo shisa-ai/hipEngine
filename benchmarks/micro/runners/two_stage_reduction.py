@@ -27,6 +27,7 @@ HIP_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_hip.hpp"
 VULKAN_TIMING_HEADER = MICRO_ROOT / "runners" / "micro_timing_vulkan.hpp"
 TIMING_CONTRACT = MICRO_ROOT / "timing_contract.py"
 COLLECT_ENV = MICRO_ROOT / "collect_env.py"
+COMPARISON_CLAIM = MICRO_ROOT / "comparison_claim.py"
 DEFAULT_BUILD_DIR = Path("/tmp/hipengine-micro-two-stage-reduction")
 
 
@@ -43,6 +44,17 @@ def _load_timing_contract_module():
     spec = importlib.util.spec_from_file_location("micro_timing_contract", TIMING_CONTRACT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load timing contract: {TIMING_CONTRACT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_comparison_claim_module():
+    spec = importlib.util.spec_from_file_location(
+        "micro_comparison_claim", COMPARISON_CLAIM
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load comparison claim helper: {COMPARISON_CLAIM}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -270,6 +282,106 @@ def _source_record(environment: dict[str, Any], source_hash: str) -> dict[str, A
     }
 
 
+def _source_paths() -> list[Path]:
+    return [
+        Path(__file__).resolve(),
+        HIP_SOURCE,
+        VULKAN_SOURCE,
+        VULKAN_PARTIAL_SHADER,
+        VULKAN_FINAL_SHADER,
+        HIP_TIMING_HEADER,
+        VULKAN_TIMING_HEADER,
+        TIMING_CONTRACT,
+        COMPARISON_CLAIM,
+    ]
+
+
+def _matrix_evidence(
+    args: argparse.Namespace,
+    rows: list[dict[str, Any]],
+    matched: list[dict[str, Any]],
+    raw_results: dict[str, Any],
+) -> dict[str, Any]:
+    shapes = {
+        (k, row_count, workgroup, split_count)
+        for k in _parse_csv_u32(args.k_list)
+        for row_count in _parse_csv_u32(args.rows_list)
+        for workgroup in _parse_csv_u32(args.workgroups)
+        for split_count in _parse_csv_u32(args.split_counts)
+    }
+    expected_row_keys = {
+        (k, row_count, workgroup, split_count, args.timing_mode, backend)
+        for k, row_count, workgroup, split_count in shapes
+        for backend in ("hip", "vulkan")
+    }
+    indexed = _row_index(rows)
+    row_metadata_pass = all(
+        row.get("variant") == "two_stage"
+        and row.get("workgroup_specialization")
+        == ("fixed" if row.get("backend") == "hip" else "specialization_constant")
+        and row.get("body_repeats") == args.body_repeats
+        for row in rows
+    )
+    expected_raw_keys = {
+        f"hip:wg{workgroup}" for workgroup in _parse_csv_u32(args.workgroups)
+    } | {"vulkan"}
+    return {
+        "backend_pair_requested": args.backend == "both",
+        "exact_row_set": set(indexed) == expected_row_keys,
+        "row_metadata_pass": row_metadata_pass,
+        "exact_raw_result_set": set(raw_results) == expected_raw_keys,
+        "expected_rows": len(expected_row_keys),
+        "actual_rows": len(rows),
+        "expected_matched_rows": len(shapes),
+        "actual_matched_rows": len(matched),
+        "comparison_set_complete": len(matched) == len(shapes),
+    }
+
+
+def _comparison_provenance(
+    *,
+    args: argparse.Namespace,
+    environment: dict[str, Any],
+    source_hash: str,
+    raw_results: dict[str, Any],
+    rows: list[dict[str, Any]],
+    matched: list[dict[str, Any]],
+    correctness: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    source = _source_record(environment, source_hash)
+    matrix = _matrix_evidence(args, rows, matched, raw_results)
+    correctness_pass = correctness.get("status") == "pass" and bool(
+        correctness.get("all_rows_pass")
+    )
+    matrix_complete = all(
+        bool(matrix[field])
+        for field in (
+            "backend_pair_requested",
+            "exact_row_set",
+            "row_metadata_pass",
+            "exact_raw_result_set",
+            "comparison_set_complete",
+        )
+    )
+    claim = _load_comparison_claim_module()
+    hardware, source_coverage, claim_gate = claim.build_joint_claim_evidence(
+        source=source,
+        source_paths=_source_paths(),
+        repo_root=REPO_ROOT,
+        raw_results=raw_results,
+        expected_run_tags={
+            "hip": "hip-two-stage-reduction",
+            "vulkan": "vulkan-two-stage-reduction",
+        },
+        configured_arch=str(args.gfx_arch or ""),
+        fallback_gpu=str(args.hardware_gpu or ""),
+        correctness_pass=correctness_pass,
+        matrix=matrix,
+        matrix_complete=matrix_complete,
+    )
+    return source, hardware, source_coverage, claim_gate
+
+
 def _annotate_rows(raw: dict[str, Any], *, backend: str) -> list[dict[str, Any]]:
     timing_contract = _load_timing_contract_module()
     config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
@@ -481,19 +593,29 @@ def _build_comparison_artifact(
         "independent_streams": args.independent_streams,
         "independent_queues": args.independent_streams,
     }
-    hardware = {
-        "gfx_arch": args.gfx_arch or "unknown",
-        "gpu_name": args.hardware_gpu or "unknown",
-    }
     correctness = _correctness_summary(rows)
+    source, hardware, source_coverage, claim_gate = _comparison_provenance(
+        args=args,
+        environment=environment,
+        source_hash=source_hash,
+        raw_results=raw_results,
+        rows=rows,
+        matched=matched,
+        correctness=correctness,
+    )
+    performance_claim = bool(claim_gate["performance_claim"])
     return {
         "schema": "hipengine.micro.two_stage_reduction.v2",
         "schema_version": 2,
         "kind": "hipengine_micro_comparison",
         "bench": "two_stage_reduction",
         "classification": "diagnostic_unclassified",
-        "hardware": {"hip": dict(hardware), "vulkan": dict(hardware)},
-        "source": _source_record(environment, source_hash),
+        "performance_claim": performance_claim,
+        "hardware": hardware,
+        "source": source,
+        "sources": {"shared": source},
+        "source_coverage": source_coverage,
+        "claim_gate": claim_gate,
         "command": wrapper_command,
         "inputs": config,
         "correctness": correctness,
@@ -507,7 +629,7 @@ def _build_comparison_artifact(
         "raw_results": raw_results,
         "rows": rows,
         "matched_rows": matched,
-        "summary": _summary(matched),
+        "summary": {**_summary(matched), "performance_claim": performance_claim},
         "artifact_ref": str(args.out),
         "interpretation": (
             "True two-stage f32 reduction control. serial_latency orders each partial "
@@ -650,17 +772,7 @@ def main(argv: list[str] | None = None) -> None:
                 "HIP and Vulkan two-stage row sets do not match exactly: "
                 f"expected {expected_matches}, got {len(matched)}"
             )
-    source_paths = [
-        Path(__file__).resolve(),
-        HIP_SOURCE,
-        VULKAN_SOURCE,
-        VULKAN_PARTIAL_SHADER,
-        VULKAN_FINAL_SHADER,
-        HIP_TIMING_HEADER,
-        VULKAN_TIMING_HEADER,
-        TIMING_CONTRACT,
-    ]
-    source_hash = _hash_files(source_paths)
+    source_hash = _hash_files(_source_paths())
     result = _build_comparison_artifact(
         args=args,
         environment=environment,

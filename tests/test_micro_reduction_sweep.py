@@ -107,6 +107,10 @@ def _row(
         "body_repeats": 8,
         "backend": backend,
         "variant": variant,
+        "workgroup_specialization": (
+            "fixed" if backend == "hip" else "specialization_constant"
+        ),
+        "row_key": {"k": 512, "rows": 1, "workgroup_size": 64},
         "timing_mode": mode,
         "correctness_pass": True,
         "dependency_contract": {
@@ -153,6 +157,133 @@ def _row(
             },
         },
     }
+
+
+def _raw_result(
+    backend: str,
+    *,
+    device_name: str | None = None,
+    source_hash: str | None = None,
+) -> dict:
+    hardware = {
+        "device_name": device_name
+        or (
+            "Radeon 8060S Graphics"
+            if backend == "hip"
+            else "AMD Radeon 8060S Graphics (RADV STRIX_HALO)"
+        )
+    }
+    if backend == "hip":
+        hardware["gcn_arch_name"] = "gfx1151"
+    raw = {
+        "run_tag": f"{backend}-geometry-sweep",
+        "status": "diagnostic",
+        "backend": backend,
+        "hardware": hardware,
+    }
+    if source_hash:
+        raw["source"] = {"source_hash": source_hash}
+    return raw
+
+
+def _joint_rows(module, mode: str) -> list[dict]:
+    return [
+        _row(backend, variant, mode, 10.0 if backend == "hip" else 5.0)
+        for backend, variants in (
+            ("hip", module.HIP_VARIANTS),
+            ("vulkan", module.VULKAN_VARIANTS),
+        )
+        for variant in variants
+    ]
+
+
+def _joint_raw_results(
+    module,
+    *,
+    vulkan_device: str | None = None,
+    include_source_hashes: bool = True,
+) -> dict:
+    raw_results = {
+        f"hip:{variant}:wg64": _raw_result(
+            "hip", source_hash="sha256:raw-hip" if include_source_hashes else None
+        )
+        for variant in module.HIP_VARIANTS
+    }
+    raw_results.update(
+        {
+            f"vulkan:{variant}": _raw_result(
+                "vulkan",
+                device_name=vulkan_device,
+                source_hash=(
+                    "sha256:raw-vulkan" if include_source_hashes else None
+                ),
+            )
+            for variant in module.VULKAN_VARIANTS
+        }
+    )
+    return raw_results
+
+
+def _joint_artifact(
+    module,
+    mode: str,
+    *,
+    dirty: bool = False,
+    commit: str = "abc123",
+    vulkan_device: str | None = None,
+    drop_last_row: bool = False,
+    fail_correctness: bool = False,
+    include_source_hashes: bool = True,
+) -> dict:
+    args = module.parse_args(
+        [
+            "--out",
+            "/tmp/reduction-comparison.json",
+            "--k-list",
+            "512",
+            "--rows-list",
+            "1",
+            "--workgroups",
+            "64",
+            "--body-repeats",
+            "8",
+            "--reps",
+            "4",
+            "--timing-mode",
+            mode,
+            "--hardware-gpu",
+            "AMD Radeon 8060S Graphics",
+            "--gfx-arch",
+            "gfx1151",
+        ]
+    )
+    rows = _joint_rows(module, mode)
+    if drop_last_row:
+        rows.pop()
+    if fail_correctness:
+        rows[0]["correctness_pass"] = False
+    comparison_groups = module._comparisons(rows)
+    return module._build_comparison_artifact(
+        args=args,
+        environment={
+            "repo": {
+                "root": "/repo",
+                "branch": "main",
+                "commit": commit,
+                "dirty": dirty,
+            }
+        },
+        source_hash="sha256:joint",
+        commands=[{"kind": "test"}],
+        raw_results=_joint_raw_results(
+            module,
+            vulkan_device=vulkan_device,
+            include_source_hashes=include_source_hashes,
+        ),
+        rows=rows,
+        comparison_groups=comparison_groups,
+        wrapper_command=["python3", "reduction_sweep.py"],
+    )
 
 
 @pytest.mark.parametrize("mode", ["serial_latency", "independent_throughput"])
@@ -206,55 +337,103 @@ def test_reduction_cli_exposes_explicit_timing_modes() -> None:
     assert args.independent_streams == 4
 
 
+def test_joint_device_identity_normalizes_hip_and_vulkan_driver_names() -> None:
+    module = _load_runner_module()._load_comparison_claim_module()
+
+    assert module._device_fingerprint("Radeon PRO W7900") == module._device_fingerprint(
+        "AMD Radeon PRO W7900 (RADV NAVI31)"
+    )
+    assert module._device_fingerprint(
+        "Radeon 8060S Graphics"
+    ) == module._device_fingerprint("AMD Radeon 8060S Graphics (RADV STRIX_HALO)")
+
+
 @pytest.mark.parametrize("mode", ["serial_latency", "independent_throughput"])
 def test_reduction_joint_artifact_matches_v2_comparison_schema(mode: str) -> None:
     module = _load_runner_module()
-    args = module.parse_args(
-        [
-            "--out",
-            "/tmp/reduction-comparison.json",
-            "--k-list",
-            "512",
-            "--rows-list",
-            "1",
-            "--workgroups",
-            "64",
-            "--timing-mode",
-            mode,
-            "--hardware-gpu",
-            "test-gpu",
-            "--gfx-arch",
-            "gfx-test",
-        ]
-    )
-    rows = [
-        _row("hip", "lds_tree", mode, 10.0),
-        _row("vulkan", "lds_tree", mode, 5.0),
-    ]
-    comparison_groups = module._comparisons(rows)
-    artifact = module._build_comparison_artifact(
-        args=args,
-        environment={
-            "repo": {
-                "root": "/repo",
-                "branch": "main",
-                "commit": "abc123",
-                "dirty": False,
-            }
-        },
-        source_hash="sha256:test",
-        commands=[{"kind": "test"}],
-        raw_results={"hip": {}, "vulkan": {}},
-        rows=rows,
-        comparison_groups=comparison_groups,
-        wrapper_command=["python3", "reduction_sweep.py"],
-    )
+    artifact = _joint_artifact(module, mode)
 
     _assert_v2_comparison_schema_shape(artifact)
-    assert len(artifact["comparisons"]) == 2
+    assert len(artifact["comparisons"]) == 10
     assert {row["control"] for row in artifact["comparisons"]} == {"single", "burst"}
     assert all(row["timing_mode"] == mode for row in artifact["comparisons"])
-    assert artifact["comparison_groups"] == comparison_groups
-    assert artifact["matched_rows"] == comparison_groups["backend"]
-    assert artifact["raw_results"] == {"hip": {}, "vulkan": {}}
+    assert artifact["matched_rows"] == artifact["comparison_groups"]["backend"]
     assert artifact["correctness"]["status"] == "pass"
+    assert artifact["performance_claim"] is True
+    assert artifact["claim_gate"]["status"] == "pass"
+    assert artifact["claim_gate"]["same_commit"] is True
+    assert artifact["claim_gate"]["device_match"] is True
+    assert artifact["claim_gate"]["matrix_complete"] is True
+    assert artifact["claim_gate"]["blocking_reasons"] == []
+    assert artifact["sources"] == {"shared": artifact["source"]}
+    assert artifact["source_coverage"]["backend_source_hashes"] == {
+        "hip": ["sha256:raw-hip"],
+        "vulkan": ["sha256:raw-vulkan"],
+    }
+    assert artifact["source_coverage"]["combined_hash_backends"] == [
+        "hip",
+        "vulkan",
+    ]
+
+
+def test_reduction_joint_artifact_blocks_dirty_device_and_matrix_claims() -> None:
+    module = _load_runner_module()
+
+    dirty = _joint_artifact(module, "serial_latency", dirty=True)
+    assert dirty["performance_claim"] is False
+    assert dirty["claim_gate"]["blocking_reasons"] == ["dirty_source"]
+
+    mismatched_device = _joint_artifact(
+        module,
+        "serial_latency",
+        vulkan_device="Different GPU",
+    )
+    assert mismatched_device["performance_claim"] is False
+    assert "device_identity_mismatch_or_missing" in mismatched_device["claim_gate"][
+        "blocking_reasons"
+    ]
+
+    incomplete = _joint_artifact(
+        module,
+        "serial_latency",
+        drop_last_row=True,
+    )
+    assert incomplete["performance_claim"] is False
+    assert incomplete["claim_gate"]["matrix_complete"] is False
+    assert "comparison_matrix_incomplete" in incomplete["claim_gate"][
+        "blocking_reasons"
+    ]
+
+    incorrect = _joint_artifact(
+        module,
+        "serial_latency",
+        fail_correctness=True,
+    )
+    assert incorrect["performance_claim"] is False
+    assert incorrect["claim_gate"]["correctness_pass"] is False
+    assert "correctness_not_passed" in incorrect["claim_gate"]["blocking_reasons"]
+
+    missing_commit = _joint_artifact(module, "serial_latency", commit="")
+    assert missing_commit["performance_claim"] is False
+    assert missing_commit["claim_gate"]["same_commit"] is False
+    assert missing_commit["claim_gate"]["clean_source"] is True
+    assert missing_commit["claim_gate"]["blocking_reasons"] == ["commit_missing"]
+
+
+def test_reduction_joint_artifact_marks_combined_hash_backend_coverage() -> None:
+    module = _load_runner_module()
+    artifact = _joint_artifact(
+        module,
+        "serial_latency",
+        include_source_hashes=False,
+    )
+
+    assert artifact["performance_claim"] is True
+    assert artifact["source_coverage"]["backend_source_hashes"] == {
+        "hip": [],
+        "vulkan": [],
+    }
+    assert artifact["source_coverage"]["backend_hash_status"] == {
+        "hip": "covered_by_combined_source_hash",
+        "vulkan": "covered_by_combined_source_hash",
+    }
