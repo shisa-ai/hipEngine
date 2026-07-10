@@ -1367,7 +1367,8 @@ These are deliberately deferred. Each has a `rocprofv3` or benchmarking prerequi
 Every performance claim in hipEngine must include:
 - **Model**: exact checkpoint name, immutable revision, and content fingerprint
 - **Quantization**: FP16, W8A16, W4, etc.
-- **Workload**: prompt length, generation length, batch size
+- **Workload**: prompt/generation length, client concurrency, choices, queue
+  grouping, actual backend widths, and verifier rows
 - **Hardware**: selected GPU, configured/resolved backend, target arch, ROCm and compiler versions
 - **Source**: hipEngine commit plus separate staged, unstaged, and untracked state
 - **Command**: exact benchmark invocation
@@ -1383,6 +1384,14 @@ torch-free `hipengine_artifact_provenance` v1 collector and the formal
 content, and preserves staged, unstaged, and untracked dirtiness separately.
 Legacy artifact-specific provenance fields remain readable but are not a
 substitute for this canonical block on new retained rows.
+
+Non-streaming server evidence also uses `hipengine.generation_shape` v1. It
+records the route cap explicitly as a queued-request limit, then records queue
+request/prompt grouping, actual backend calls/widths, and speculative target
+verifier rows independently. Benchmark consumers validate complete queue groups
+and deduplicate the repeated shape by ID, preventing client c8 from being
+reported as a width-8 backend or verifier result when the route actually ran
+two c4 groups.
 
 ## License
 

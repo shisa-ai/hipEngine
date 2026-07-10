@@ -157,6 +157,110 @@ def test_concurrent_aggregate_preserves_exact_generated_total() -> None:
     assert agg["aggregate_backend_generated_per_second"] == 7.5
 
 
+def test_concurrent_shape_aggregate_distinguishes_c8_clients_from_c4_backend_groups() -> None:
+    tool = _load_tool()
+    records = []
+    for queue_group_index in range(2):
+        queue_group_id = f"queue-{queue_group_index}"
+        backend_group_id = f"backend-{queue_group_index}"
+        for item_index in range(4):
+            response = {
+                "usage": {"completion_tokens": 1},
+                "hipengine": {
+                    "generation_shape": {
+                        "schema_version": 1,
+                        "route": "speculative_mtp",
+                        "route_cap": {
+                            "scope": "queue_requests",
+                            "value": 4,
+                            "applied": True,
+                        },
+                        "queue_group": {
+                            "id": queue_group_id,
+                            "request_count": 4,
+                            "prompt_rows": 4,
+                            "item_index": item_index,
+                            "item_prompt_offset": item_index,
+                            "item_prompt_rows": 1,
+                        },
+                        "backend_groups": [
+                            {
+                                "id": backend_group_id,
+                                "call_index": 0,
+                                "prompt_offset": 0,
+                                "input_rows": 4,
+                                "actual_group_rows": [4],
+                                "max_actual_group_rows": 4,
+                                "verifier_rows": 12,
+                            }
+                        ],
+                        "verifier_rows": 12,
+                    }
+                },
+            }
+            records.append(tool.record_from_response(f"request-{len(records)}", response, 1.0))
+
+    aggregate = tool.aggregate(records, client_wall_s=2.0, concurrency=8)
+
+    assert aggregate["generation_shape"] == {
+        "queue_group_count": 2,
+        "queue_group_request_counts": [4, 4],
+        "queue_group_prompt_rows": [4, 4],
+        "route_cap_values": [4],
+        "backend_group_rows": [4, 4],
+        "max_backend_group_rows": 4,
+        "verifier_rows_total": 24,
+        "queue_groups": [
+            {
+                "id": "queue-0",
+                "route": "speculative_mtp",
+                "route_cap": {
+                    "scope": "queue_requests",
+                    "value": 4,
+                    "applied": True,
+                },
+                "request_count": 4,
+                "prompt_rows": 4,
+                "backend_groups": [
+                    {
+                        "id": "backend-0",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 4,
+                        "actual_group_rows": [4],
+                        "max_actual_group_rows": 4,
+                        "verifier_rows": 12,
+                    }
+                ],
+                "verifier_rows": 12,
+            },
+            {
+                "id": "queue-1",
+                "route": "speculative_mtp",
+                "route_cap": {
+                    "scope": "queue_requests",
+                    "value": 4,
+                    "applied": True,
+                },
+                "request_count": 4,
+                "prompt_rows": 4,
+                "backend_groups": [
+                    {
+                        "id": "backend-1",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 4,
+                        "actual_group_rows": [4],
+                        "max_actual_group_rows": 4,
+                        "verifier_rows": 12,
+                    }
+                ],
+                "verifier_rows": 12,
+            },
+        ],
+    }
+
+
 def test_concurrent_aggregate_deduplicates_copied_batch_timing_by_owner() -> None:
     tool = _load_tool()
     owner = tool.record_from_response(

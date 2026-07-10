@@ -2,10 +2,11 @@
 
 Last updated: 2026-07-11.
 
-Status: active ledger. `SOL-E1` through `SOL-E3` are accepted on top of the
-`7ea21e98b097` release-default baseline. The gfx1151 HIP/Vulkan v2 matrix was
-measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO true-c1
-shrinking gate was measured at `0c1845170955` with `hipengine_dirty=false`.
+Status: active ledger. `SOL-E1` through `SOL-E3` and `SOL-S2` are accepted on
+top of the `7ea21e98b097` release-default baseline. The gfx1151 HIP/Vulkan v2
+matrix was measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO
+true-c1 shrinking gate was measured at `0c1845170955` with
+`hipengine_dirty=false`.
 
 This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
@@ -70,8 +71,8 @@ The table names the source revision for each result.
 | --- | --- | --- |
 | GGUF MTP on gfx1151 | `llama-compat` B2 reports `71.52 tok/s` versus llama.cpp HIP `71.91 tok/s`, with hipEngine stage wall `14.005` versus `14.269 ms/output`. | This is an opt-in direct-commit/dp4a compatibility contract, not exact/default semantics. Keep it as a replication lane, not the production default. |
 | Exact/default GGUF MTP | Fixed 10-cycle B5 reports `61.98` versus AR `54.79 tok/s`. | Natural `max_tokens=24` loses at B1/B2/B5: `52.13/52.04/50.65` versus AR `54.80`. Fixed-cycle rows do not close production MTP economics. |
-| MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | `SOL-E1`/`SOL-E2` fix future all-choice denominators and copied batch timing, but prior absolute server rates remain invalid and need a rerun under the new contract. c8 is currently two backend groups capped at four, not an eight-slot verifier result. |
-| Exact server accounting | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata and makes `mtp-bench.py` count each batch owner once. | Retokenized visible text remains a non-authoritative diagnostic. Prior server rates predate both contracts and remain ineligible until rerun. |
+| MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | `SOL-E1`/`SOL-E2` fix future all-choice denominators and copied batch timing; `SOL-S2` now proves that a c8 client run under the current cap is two four-request queue/backend groups rather than one width-8 verifier. Prior absolute rates remain invalid and need a rerun under all contracts. |
+| Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
 | PARO c>N | Retained gfx1100 direct rows exist for c4/c8. The gfx1151 c1-c8 timing rows at `4175dabf`/`02aec604` used a batch-shaped width-1 oracle and cannot select routing. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native decode fails 0/8, first mismatch at c8 generated token index 2. | Production greedy and sampled batches use exact width-1 sessions. Reopen every gfx1151 native width; localize the common c8 divergence before width-specific tuning. |
 | gfx1100 GGUF AR | Current W7900 diagnostic is about `654 prefill / 35.8 decode tok/s` at 512/128. | It emits repeated token `9707`, is marked `performance_claim=false`, and sits in "Current fastest." Treat it as a P0 correctness/recovery problem, not a clean 66% regression claim. |
@@ -123,6 +124,15 @@ The server and benchmark harnesses must distinguish four shapes:
 - choices `n`: outputs requested by one HTTP request;
 - backend group width `C`: live requests advanced together;
 - verifier rows `V`: flattened speculative rows processed by the target.
+
+Non-streaming hipEngine responses expose these as
+`hipengine.generation_shape` schema v1. The route cap is an object with
+`scope="queue_requests"`; it is never interpreted as a backend-row or verifier
+limit. `queue_group` records the coalesced HTTP-request count, total prompt
+rows, and this response item's row slice. `backend_groups[]` records each
+actual generator call and any internal width split. `verifier_rows` is the sum
+of target rows across those backend calls. The harness deduplicates repeated
+response copies by `queue_group.id` and requires every group item exactly once.
 
 Required generated-work fields:
 
@@ -335,7 +345,7 @@ reused width-1 sessions until an accepted schema-2 profile exists.
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
 | `SOL-S1` | Move `auto` MTP choice from per-request eligibility to the realized backend group. | `blocked` | E1-E2, natural matrix | Initial policy is c1/c2 MTP, c4+ AR, c3 measured; explicit opt-in always requests MTP. Policy records reason/group/horizon. |
-| `SOL-S2` | Record route cap, actual backend group, queue grouping, and verifier rows separately. | `open` | E2 | A c8 client row cannot be mistaken for a width-8 verifier row. |
+| `SOL-S2` | Record route cap, actual backend group, queue grouping, and verifier rows separately. | `accepted`: non-streaming server responses emit `generation_shape` v1 with a request-scoped cap, queue-group ID/request/prompt counts and item slice, actual backend call widths, and deduplicated verifier rows; `mtp-bench.py` validates complete groups. The c8 regression produces two c4 queue/backend groups, never a width-8 verifier row, and the opt-in c6 splitter reports c4+c2 calls. | E2 | A c8 client row cannot be mistaken for a width-8 verifier row. |
 | `SOL-S3` | Add context/output-length buckets and EWMA hysteresis only after static policy is stable. | `blocked` | S1 retained | Online policy beats/equals static on held-out full-suite traffic without prompt-conditioned branches. |
 | `SOL-S4` | Run a real PARO DFlash row using the landed coarse phase and graph-shape telemetry. | `open` | E1-E3 | Same-session AR, exact output, phase coverage, and shape hit/miss data identify the dominant parent bucket. |
 | `SOL-S5` | Compare GGUF deferred accepted-row scatter/tail discard with PARO verifier commit/canonicalization. | `conditional` | S4 profile | Activate only if commit/scatter/sync is material; exact state/KV and cycle/server wall must improve. |
@@ -467,7 +477,6 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next overall foundation unit is `SOL-S2`: add route-cap, realized-group,
-queue-grouping, and verifier-row fields on top of the owned timing and canonical
-provenance contracts. `SOL-E5` and `SOL-B1` follow once shape identity is no
-longer ambiguous.
+The next overall foundation units are `SOL-E5` and `SOL-B1`: add the shared
+exact-token direct/server route, then remove the remaining semantic gfx1100
+resolver keys from the gfx1151 GGUF path. Shape identity is now explicit.

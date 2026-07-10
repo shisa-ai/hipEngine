@@ -176,6 +176,11 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         self.mtp_calls.append((prompt_tuple, sampling_params))
         self.last_batch_generation = {
             "path": "speculative_mtp_server",
+            "batch_size": len(prompt_tuple),
+            "group_widths": [len(prompt_tuple)],
+            "speculative_mtp": {
+                "target_verify_rows": len(prompt_tuple) * 3,
+            },
             "scheduler_token_chunks": [
                 {
                     "request_id": request_id,
@@ -4325,6 +4330,55 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_shape_separates_c8_queue_from_c4_verifier_groups() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={_SPECULATIVE_MTP_BATCH_ROUTE: 4},
+        )
+
+        results = await asyncio.gather(
+            *(
+                batcher.submit(
+                    (f"prompt-{index}",),
+                    sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=_SPECULATIVE_MTP_BATCH_ROUTE,
+                )
+                for index in range(8)
+            )
+        )
+
+        assert all(isinstance(result, _QueuedBatchResult) for result in results)
+        shapes = [result.generation_shape for result in results]
+        assert all(shape is not None for shape in shapes)
+        queue_group_ids = [shape["queue_group"]["id"] for shape in shapes]
+        assert len(set(queue_group_ids)) == 2
+        assert sorted(queue_group_ids.count(group_id) for group_id in set(queue_group_ids)) == [4, 4]
+        for shape in shapes:
+            assert shape["route"] == _SPECULATIVE_MTP_BATCH_ROUTE
+            assert shape["route_cap"] == {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": True,
+            }
+            assert shape["queue_group"]["request_count"] == 4
+            assert shape["queue_group"]["prompt_rows"] == 4
+            assert shape["queue_group"]["item_prompt_rows"] == 1
+            assert shape["backend_groups"][0]["input_rows"] == 4
+            assert shape["backend_groups"][0]["actual_group_rows"] == [4]
+            assert shape["backend_groups"][0]["max_actual_group_rows"] == 4
+            assert shape["backend_groups"][0]["verifier_rows"] == 12
+            assert shape["verifier_rows"] == 12
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_retained_defaults_keep_c6_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
 
@@ -4424,6 +4478,34 @@ def test_generation_batcher_retained_c6_split_remaps_scheduler_chunks(monkeypatc
             "original_rows": 6,
             "chunk_rows": 2,
         }
+        assert result.generation_shape is not None
+        assert result.generation_shape["queue_group"]["request_count"] == 1
+        assert result.generation_shape["queue_group"]["prompt_rows"] == 6
+        assert [
+            {
+                key: value
+                for key, value in group.items()
+                if key != "id"
+            }
+            for group in result.generation_shape["backend_groups"]
+        ] == [
+            {
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 4,
+                "actual_group_rows": [4],
+                "max_actual_group_rows": 4,
+                "verifier_rows": 0,
+            },
+            {
+                "call_index": 1,
+                "prompt_offset": 4,
+                "input_rows": 2,
+                "actual_group_rows": [2],
+                "max_actual_group_rows": 2,
+                "verifier_rows": 0,
+            },
+        ]
 
     asyncio.run(run())
 
@@ -4673,6 +4755,7 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
             model="fake-path",
             served_model_name="fake-model",
             speculative_mtp_serving="opt_in",
+            max_active_requests=4,
         ),
         llm=fake,
     )
@@ -4700,6 +4783,35 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
     assert sampling.max_tokens == 3
     assert sampling.temperature == 0.0
     assert sampling.top_p == 1.0
+    assert body["hipengine"]["generation_shape"] == {
+        "schema_version": 1,
+        "route": "speculative_mtp",
+        "route_cap": {
+            "scope": "queue_requests",
+            "value": 4,
+            "applied": True,
+        },
+        "queue_group": {
+            "id": body["hipengine"]["generation_shape"]["queue_group"]["id"],
+            "request_count": 1,
+            "prompt_rows": 2,
+            "item_index": 0,
+            "item_prompt_offset": 0,
+            "item_prompt_rows": 2,
+        },
+        "backend_groups": [
+            {
+                "id": body["hipengine"]["generation_shape"]["backend_groups"][0]["id"],
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 2,
+                "actual_group_rows": [2],
+                "max_actual_group_rows": 2,
+                "verifier_rows": 6,
+            }
+        ],
+        "verifier_rows": 6,
+    }
 
 
 def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:

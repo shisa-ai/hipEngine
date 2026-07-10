@@ -1602,12 +1602,15 @@ class _GeneratedBatch:
     usage: dict[str, int]
     details: list[GenerationOutput]
     scheduler_token_chunks: list[dict[str, Any]] | None = None
+    generation_shape: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class _QueuedBatchResult:
     outputs: list[Any]
     scheduler_token_chunks: list[dict[str, Any]] | None = None
+    backend_groups: tuple[dict[str, Any], ...] = ()
+    generation_shape: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1965,12 +1968,15 @@ class _GenerationBatcher:
     def active(self) -> bool:
         return self._worker is not None and not self._worker.done()
 
-    def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
+    def _route_request_cap(self, route: str) -> int | None:
         limit = self._max_active_requests
-        if group:
-            route_limit = self._route_max_active_requests.get(str(group[0].route))
-            if route_limit is not None:
-                limit = route_limit if limit is None else min(limit, route_limit)
+        route_limit = self._route_max_active_requests.get(str(route))
+        if route_limit is not None:
+            limit = route_limit if limit is None else min(limit, route_limit)
+        return limit
+
+    def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
+        limit = self._route_request_cap(group[0].route) if group else self._max_active_requests
         return limit is None or len(group) < limit
 
     def _group_key(self, item: _QueuedGeneration) -> tuple[str, tuple[Any, ...]]:
@@ -2122,18 +2128,21 @@ class _GenerationBatcher:
                 start = len(prompts)
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
+            queue_group_id = f"queue-{uuid.uuid4().hex}"
+            route = str(group[0].route)
+            route_cap = self._route_request_cap(route)
             try:
                 batch_result = await self._generate_prompt_group(
                     tuple(prompts),
                     self._sampling_for_group(group),
-                    route=group[0].route,
+                    route=route,
                 )
             except Exception as exc:
                 for item in group:
                     _finish_queued_generation(item, exception=exc)
                 return
             outputs = batch_result.outputs
-            for item, start, end in slices:
+            for item_index, (item, start, end) in enumerate(slices):
                 item_outputs: Sequence[Any] = outputs[start:end]
                 if not item.detailed:
                     item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
@@ -2148,6 +2157,18 @@ class _GenerationBatcher:
                         result=_QueuedBatchResult(
                             outputs=list(item_outputs),
                             scheduler_token_chunks=scheduler_token_chunks,
+                            backend_groups=batch_result.backend_groups,
+                            generation_shape=_queue_generation_shape(
+                                route=route,
+                                route_cap=route_cap,
+                                queue_group_id=queue_group_id,
+                                queue_request_count=len(group),
+                                queue_prompt_rows=len(prompts),
+                                item_index=item_index,
+                                item_prompt_offset=start,
+                                item_prompt_rows=end - start,
+                                backend_groups=batch_result.backend_groups,
+                            ),
                         ),
                     )
                 else:
@@ -2175,6 +2196,12 @@ class _GenerationBatcher:
         return _QueuedBatchResult(
             outputs=outputs,
             scheduler_token_chunks=_backend_scheduler_token_chunks(engine),
+            backend_groups=(
+                _backend_generation_group_shape(
+                    engine,
+                    input_rows=len(prompts),
+                ),
+            ),
         )
 
     async def _generate_prompt_group(
@@ -2189,6 +2216,7 @@ class _GenerationBatcher:
             return await self._generate_prompts(prompts, sampling, route=route)
         outputs: list[Any] = []
         scheduler_token_chunks: list[dict[str, Any]] = []
+        backend_groups: list[dict[str, Any]] = []
         for split_index, (start, end) in enumerate(split_slices):
             chunk_result = await self._generate_prompts(prompts[start:end], sampling, route=route)
             outputs.extend(chunk_result.outputs)
@@ -2201,9 +2229,17 @@ class _GenerationBatcher:
                     chunk_rows=end - start,
                 )
             )
+            backend_groups.extend(
+                _remap_backend_generation_groups(
+                    chunk_result.backend_groups,
+                    call_index_offset=len(backend_groups),
+                    prompt_offset=start,
+                )
+            )
         return _QueuedBatchResult(
             outputs=outputs,
             scheduler_token_chunks=scheduler_token_chunks or None,
+            backend_groups=tuple(backend_groups),
         )
 
     async def _stream_single(self, item: _QueuedGeneration) -> None:
@@ -3659,6 +3695,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         cancellation_token: GenerationCancellationToken | None = None,
         fit_context_extra: Mapping[str, Any] | None = None,
     ) -> _GeneratedBatch:
+        generation_shape: dict[str, Any] | None = None
         try:
             _validate_generation_request(
                 config,
@@ -3707,6 +3744,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
+                direct_backend_groups = (
+                    _backend_generation_group_shape(engine, input_rows=len(prompts)),
+                )
+                generation_shape = _queue_generation_shape(
+                    route=generation_route,
+                    route_cap=generation_batcher._route_request_cap(generation_route),
+                    route_cap_applied=False,
+                    queue_group_id=f"direct-{uuid.uuid4().hex}",
+                    queue_request_count=1,
+                    queue_prompt_rows=len(prompts),
+                    item_index=0,
+                    item_prompt_offset=0,
+                    item_prompt_rows=len(prompts),
+                    backend_groups=direct_backend_groups,
+                )
             else:
                 queued_result = await generation_batcher.submit(
                     tuple(prompts),
@@ -3727,6 +3779,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if isinstance(queued_result, _QueuedBatchResult):
                     raw_outputs = queued_result.outputs
                     scheduler_token_chunks = queued_result.scheduler_token_chunks
+                    generation_shape = queued_result.generation_shape
                 else:
                     raw_outputs = queued_result
                     scheduler_token_chunks = None
@@ -3772,6 +3825,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             usage=_usage(engine, prompts, outputs, details=details),
             details=details,
             scheduler_token_chunks=scheduler_token_chunks,
+            generation_shape=generation_shape,
         )
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
@@ -4646,6 +4700,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
                 },
                 "choice_telemetry": _choice_telemetry_capability(),
+                "generation_shape": {
+                    "non_streaming": True,
+                    "response_path": "hipengine.generation_shape",
+                    "schema_version": 1,
+                    "route_cap_scope": "queue_requests",
+                    "separates": [
+                        "route_cap",
+                        "queue_group_requests",
+                        "queue_group_prompt_rows",
+                        "backend_group_rows",
+                        "verifier_rows",
+                    ],
+                    "streaming": False,
+                },
                 "structured_outputs": _structured_outputs_capability(),
                 "grammars": _grammar_capability(),
                 "finish_details": True,
@@ -5006,6 +5074,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         if token_accounting is not None:
             response["hipengine"]["token_accounting"] = token_accounting
+        if batch.generation_shape is not None:
+            response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
         await _maybe_write_agentic_result_replay_artifact(
             config,
             raw_request,
@@ -5271,6 +5341,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             if token_accounting is not None:
                 response["hipengine"]["token_accounting"] = token_accounting
+            if batch.generation_shape is not None:
+                response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -8074,7 +8146,7 @@ def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) ->
     return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
 
 
-def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
+def _backend_generation_targets(engine: Any) -> tuple[Any, ...]:
     targets: list[Any] = [engine]
     generator = getattr(engine, "_text_generator", None)
     if generator is not None:
@@ -8082,20 +8154,166 @@ def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
         inner = getattr(generator, "inner", None)
         if inner is not None:
             targets.append(inner)
-    for target in targets:
+    return tuple(targets)
+
+
+def _backend_last_batch_generation(engine: Any) -> Mapping[str, Any] | None:
+    for target in _backend_generation_targets(engine):
+        batch_generation = getattr(target, "last_batch_generation", None)
+        if isinstance(batch_generation, Mapping):
+            return batch_generation
+    return None
+
+
+def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
+    for target in _backend_generation_targets(engine):
         batch_generation = getattr(target, "last_batch_generation", None)
         if not isinstance(batch_generation, Mapping):
             continue
         raw_chunks = batch_generation.get("scheduler_token_chunks")
-        if not isinstance(raw_chunks, Sequence) or isinstance(raw_chunks, (str, bytes, bytearray)):
-            continue
-        chunks: list[dict[str, Any]] = []
-        for raw_chunk in raw_chunks:
-            if isinstance(raw_chunk, Mapping):
-                chunks.append(deepcopy(dict(raw_chunk)))
-        if chunks:
-            return chunks
+        if isinstance(raw_chunks, Sequence) and not isinstance(raw_chunks, (str, bytes, bytearray)):
+            chunks = [
+                deepcopy(dict(raw_chunk))
+                for raw_chunk in raw_chunks
+                if isinstance(raw_chunk, Mapping)
+            ]
+            if chunks:
+                return chunks
     return None
+
+
+def _shape_int(value: Any, *, minimum: int = 0) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= minimum else None
+
+
+def _backend_actual_group_rows(
+    batch_generation: Mapping[str, Any] | None,
+    *,
+    input_rows: int,
+) -> list[int]:
+    if batch_generation is not None:
+        candidates = batch_generation.get("actual_backend_group_rows")
+        if candidates is None:
+            candidates = batch_generation.get("group_widths")
+        if isinstance(candidates, Sequence) and not isinstance(
+            candidates,
+            (str, bytes, bytearray),
+        ):
+            widths = [
+                width
+                for raw in candidates
+                if (width := _shape_int(raw, minimum=1)) is not None
+            ]
+            if widths and sum(widths) == int(input_rows):
+                return widths
+        groups = batch_generation.get("groups")
+        if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray)):
+            widths = [
+                width
+                for group in groups
+                if isinstance(group, Mapping)
+                and (width := _shape_int(group.get("width"), minimum=1)) is not None
+            ]
+            if widths and sum(widths) == int(input_rows):
+                return widths
+    return [int(input_rows)]
+
+
+def _backend_verifier_rows(batch_generation: Mapping[str, Any] | None) -> int:
+    if batch_generation is None:
+        return 0
+    for key in ("verifier_rows", "target_verify_rows"):
+        value = _shape_int(batch_generation.get(key))
+        if value is not None:
+            return value
+    speculative = batch_generation.get("speculative_mtp")
+    if isinstance(speculative, Mapping):
+        for key in ("verifier_rows", "target_verify_rows", "linear_state_captured_rows"):
+            value = _shape_int(speculative.get(key))
+            if value is not None:
+                return value
+    batch_timing = batch_generation.get("batch_timing")
+    if isinstance(batch_timing, Mapping):
+        value = _shape_int(batch_timing.get("mtp_target_verify_rows"))
+        if value is not None:
+            return value
+    return 0
+
+
+def _backend_generation_group_shape(engine: Any, *, input_rows: int) -> dict[str, Any]:
+    rows = max(1, int(input_rows))
+    batch_generation = _backend_last_batch_generation(engine)
+    batch_id = None if batch_generation is None else batch_generation.get("batch_id")
+    group_id = str(batch_id).strip() if batch_id is not None else ""
+    if not group_id:
+        group_id = f"backend-{uuid.uuid4().hex}"
+    actual_group_rows = _backend_actual_group_rows(batch_generation, input_rows=rows)
+    verifier_rows = _backend_verifier_rows(batch_generation)
+    return {
+        "id": group_id,
+        "call_index": 0,
+        "prompt_offset": 0,
+        "input_rows": rows,
+        "actual_group_rows": actual_group_rows,
+        "max_actual_group_rows": max(actual_group_rows),
+        "verifier_rows": verifier_rows,
+    }
+
+
+def _remap_backend_generation_groups(
+    groups: Sequence[Mapping[str, Any]],
+    *,
+    call_index_offset: int,
+    prompt_offset: int,
+) -> list[dict[str, Any]]:
+    remapped: list[dict[str, Any]] = []
+    for local_index, group in enumerate(groups):
+        payload = deepcopy(dict(group))
+        payload["call_index"] = int(call_index_offset) + local_index
+        payload["prompt_offset"] = int(prompt_offset) + int(payload.get("prompt_offset", 0))
+        remapped.append(payload)
+    return remapped
+
+
+def _queue_generation_shape(
+    *,
+    route: str,
+    route_cap: int | None,
+    route_cap_applied: bool = True,
+    queue_group_id: str,
+    queue_request_count: int,
+    queue_prompt_rows: int,
+    item_index: int,
+    item_prompt_offset: int,
+    item_prompt_rows: int,
+    backend_groups: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    copied_groups = [deepcopy(dict(group)) for group in backend_groups]
+    return {
+        "schema_version": 1,
+        "route": str(route),
+        "route_cap": {
+            "scope": "queue_requests",
+            "value": None if route_cap is None else int(route_cap),
+            "applied": bool(route_cap_applied),
+        },
+        "queue_group": {
+            "id": str(queue_group_id),
+            "request_count": int(queue_request_count),
+            "prompt_rows": int(queue_prompt_rows),
+            "item_index": int(item_index),
+            "item_prompt_offset": int(item_prompt_offset),
+            "item_prompt_rows": int(item_prompt_rows),
+        },
+        "backend_groups": copied_groups,
+        "verifier_rows": sum(int(group.get("verifier_rows", 0)) for group in copied_groups),
+    }
 
 
 def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:

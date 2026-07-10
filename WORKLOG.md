@@ -149730,3 +149730,48 @@ graphless decode launch-collapse path without regressing target/serial parity.
   unblocked, and `SOL-S2` is next. This is a measurement-contract change only:
   no metric or compact result artifact was superseded, and historical rows
   retain their existing eligibility until rerun.
+
+## 2026-07-11 - SOL-S2 queue/backend/verifier shape identity
+
+- RED captured all three missing surfaces. An eight-client synthetic MTP run
+  returned two c4 generator calls but `_QueuedBatchResult` had no shape
+  metadata; the non-streaming OpenAI response had no `generation_shape`; GGUF
+  MTP metadata had no explicit target verifier-row total; and `mtp-bench.py`
+  produced no shape rollup. The focused RED commands failed with the expected
+  `AttributeError`/`KeyError` on those fields.
+- Added non-streaming `hipengine.generation_shape` schema v1. `route_cap` is an
+  explicit `queue_requests`-scoped value (plus whether the cap was applied),
+  never an implied backend width. `queue_group` carries a stable ID, coalesced
+  HTTP-request count, total prompt rows, and this response item's index/row
+  slice. `backend_groups[]` records every actual generator call, prompt slice,
+  input rows, internal width split, maximum width, and verifier rows. Direct
+  logprob requests record the same shape with `route_cap.applied=false`.
+- The server now preserves backend-call shapes across the opt-in c6 c4+c2
+  splitter, exposes the shape on completion and chat responses, and advertises
+  the non-streaming contract/streaming limitation in capabilities. GGUF MTP
+  `last_batch_generation.speculative_mtp.target_verify_rows` is the exact sum
+  of target rows from direct-commit verify cycles; AR tails do not inflate it.
+- `scripts/mtp-bench.py` validates every field and fails closed on invalid cap
+  scope, non-contiguous/duplicate queue items, uncovered prompt slices,
+  duplicate backend IDs, inconsistent widths/maxima, or verifier totals. It
+  requires all responses from each queue group, deduplicates repeated group
+  metadata by ID, and reports queue-group counts/request/prompt rows, route-cap
+  values, flattened actual backend widths, max backend width, per-group detail,
+  and verifier rows once per group.
+- The exit regression proves the formerly ambiguous c8 case: eight concurrent
+  HTTP requests under route cap four produce two complete four-request queue
+  groups, backend widths `[4, 4]`, and separately counted verifier rows. A
+  separate c6 regression proves the server's opt-in splitter reports two
+  backend calls at widths four and two rather than the incoming width six.
+- GREEN: full `uv run pytest -q tests/test_server_api.py`, full
+  `tests/test_mtp_bench_tool.py`, and full
+  `tests/test_generation_qwen35_gguf_sampling.py` pass. Guard bundle passes:
+  `python3 -m compileall -q hipengine tests scripts`, all three CPU smoke modes,
+  explicit 7/7 top-level CPU fixtures, benchmark/root README sync, and
+  `git diff --check`.
+- Updated `docs/API.md`, `docs/BENCHMARK.md`, `docs/PLAN.md`,
+  `docs/SOL-OPTIMIZATION.md`, root/benchmark READMEs, and
+  `benchmarks/CHANGELOG.md`. `SOL-S2` is accepted; `SOL-E5` and `SOL-B1` are
+  next. This unit changes measurement identity only: it supersedes no metric or
+  compact result, and all historical server rates remain ineligible until
+  rerun under exact tokens, owned timing, canonical provenance, and shape v1.
