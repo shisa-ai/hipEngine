@@ -28,6 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
@@ -36,7 +37,7 @@ DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
-_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES", "HIPENGINE_HIP_ARCH")
 
 
 def _command_env_prefix_parts() -> list[str]:
@@ -79,10 +80,16 @@ def _hardware_context() -> dict[str, Any]:
     visible_device = _visible_hip_device_context()
     visible_device_name = visible_device.get("device_name")
     gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
+    detected_arches = detect_hip_target_arches()
+    target_arch = (os.environ.get("HIPENGINE_HIP_ARCH") or "").strip() or None
+    detected_arch = detected_arches[0] if detected_arches else None
+    arch = detected_arch or target_arch or "gfx1100"
     return {
         "gpu": gpu_name,
-        "arch": "gfx1100",
-        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "arch": arch,
+        "detected_arches": list(detected_arches),
+        "target_arch": target_arch,
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900" and arch == "gfx1100",
         "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
         "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),

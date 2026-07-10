@@ -149102,3 +149102,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   test that failed, repaired with `--write`, then passed; ASCII scan of the new
   scoreboard/script; `git diff --check`. No GPU benchmark was run because this
   unit changes evidence classification and documentation only.
+
+## 2026-07-10 - PARO benchmark architecture provenance
+
+- Removed the hard-coded `hardware.arch=gfx1100` label from the PARO resident
+  c1, serial-batch, and retained-native benchmark harnesses. They now record the
+  primary architecture returned by the torch-free ROCm target detector, the
+  full detected architecture list, and the separately requested
+  `HIPENGINE_HIP_ARCH` JIT target.
+- Preserved `HIPENGINE_HIP_ARCH` in all three recorded benchmark commands and
+  `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` in the retained-native command so
+  gfx1151 and opt-in recovery-path runs are reproducible from the artifact.
+- Live Radeon 8060S probe returned `arch=gfx1151`,
+  `detected_arches=[gfx1151]`, and `target_arch=gfx1151`; the recorded command
+  begins `env HIPENGINE_HIP_ARCH=gfx1151 python3`.
+- Validation: Python compilation of all three harnesses;
+  `PYTHONPATH=. uv run pytest -q tests/test_generation_batch_scheduler.py -k
+  'hardware_context_uses_visible_hip_device or
+  hardware_context_separates_detected_and_target_arch or
+  retained_command_preserves_target_arch_and_defaults or
+  batch_benchmarks_omit_blank_visible_device_env'` (`6 passed`); scoped
+  `git diff --check`.
