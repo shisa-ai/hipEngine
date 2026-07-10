@@ -13,7 +13,7 @@ import os
 import time
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
-from typing import Iterable, Protocol, Sequence
+from typing import Any, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
@@ -127,7 +127,7 @@ class SubmitPollTextGenerator:
         return [output.text for output in self.generate_detailed(request)]
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
-        prompts = tuple(str(prompt) for prompt in request.prompts)
+        prompts = tuple(request.prompts)
         if not prompts:
             return []
         runner = _SubmitPollTextRunner(self._inner, replace(request, prompts=prompts))
@@ -225,13 +225,15 @@ class _SubmitPollTextRunner:
         return replace(self._request, prompts=prompts, row_seeds=row_seeds)
 
 
-def _surrogate_prompt_tokens(prompt: str) -> tuple[int, ...]:
+def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
     # The inner text generator performs real tokenization.  The scheduler only
     # needs a non-empty non-negative row to exercise admission/prefill lifecycle.
-    return (len(prompt.encode("utf-8")),)
+    if isinstance(prompt, str):
+        return (len(prompt.encode("utf-8")),)
+    return (len(prompt),)
 
 
-def _submit_poll_max_ticks(prompts: Sequence[str], prefill_chunk_size: int) -> int:
+def _submit_poll_max_ticks(prompts: Sequence[Any], prefill_chunk_size: int) -> int:
     # One admission+prefill tick per prompt plus one decode tick is expected for
     # the current surrogate rows.  Keep a loose bound so future larger surrogate
     # rows fail loudly instead of hanging tests or server requests.

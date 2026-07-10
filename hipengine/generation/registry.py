@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from numbers import Integral
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+
+PromptInput = str | tuple[int, ...]
+
+
+def normalize_prompt_input(value: Any) -> PromptInput:
+    """Normalize one text or exact-token prompt without retokenizing it."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bytes, bytearray)) or not isinstance(value, Sequence):
+        raise TypeError("prompt must be text or a sequence of token IDs")
+    row = tuple(value)
+    if not row:
+        raise ValueError("prompt token IDs must not be empty")
+    normalized: list[int] = []
+    for token in row:
+        if isinstance(token, bool) or not isinstance(token, Integral):
+            raise TypeError("prompt token IDs must be integers")
+        token_id = int(token)
+        if token_id < 0:
+            raise ValueError("prompt token IDs must be non-negative")
+        normalized.append(token_id)
+    return tuple(normalized)
 
 
 @dataclass(frozen=True)
@@ -23,7 +48,7 @@ class GenerationKey:
 class GenerationRequest:
     """Normalized public generation request."""
 
-    prompts: tuple[str, ...]
+    prompts: tuple[PromptInput, ...]
     max_tokens: int
     temperature: float
     top_p: float
@@ -62,7 +87,7 @@ class GenerationRequest:
     def __post_init__(self) -> None:
         from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
 
-        object.__setattr__(self, "prompts", tuple(str(prompt) for prompt in self.prompts))
+        object.__setattr__(self, "prompts", tuple(normalize_prompt_input(prompt) for prompt in self.prompts))
         object.__setattr__(self, "max_tokens", int(self.max_tokens))
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_p", float(self.top_p))
@@ -122,6 +147,21 @@ class GenerationRequest:
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
+
+    @property
+    def prompt_input_kind(self) -> str:
+        kinds = {"text" if isinstance(prompt, str) else "token_ids" for prompt in self.prompts}
+        if not kinds:
+            return "empty"
+        return next(iter(kinds)) if len(kinds) == 1 else "mixed"
+
+    def prompt_token_ids(self, index: int, encode_text: Callable[[str], Sequence[int]]) -> tuple[int, ...]:
+        """Return the exact row, invoking the tokenizer only for text input."""
+
+        prompt = self.prompts[int(index)]
+        if isinstance(prompt, str):
+            return tuple(int(token) for token in encode_text(prompt))
+        return prompt
 
 
 @dataclass(frozen=True)

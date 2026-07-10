@@ -23,6 +23,7 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PromptInput,
     TokenLogprob,
     register_text_generator,
 )
@@ -52,6 +53,13 @@ from hipengine.runtime.qwen35_paro_batch_width import (
 
 def _new_timing_batch_id(kind: str) -> str:
     return f"paro-{str(kind)}-{uuid.uuid4().hex}"
+
+
+def _prompt_ids(model_path: Path, prompt: PromptInput) -> tuple[int, ...]:
+    if not isinstance(prompt, str):
+        return tuple(int(token) for token in prompt)
+    _last_token_id, prompt_ids = _select_token(model_path, prompt, None)
+    return tuple(int(token) for token in prompt_ids)
 
 
 @dataclass
@@ -230,7 +238,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch_true_c1_fallback(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -252,7 +260,7 @@ class Qwen35ParoOneTokenGenerator:
         started_at = time.perf_counter()
         batch_id = _new_timing_batch_id("true-c1")
         for row_index, prompt in enumerate(prompts):
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             prompt_row = [int(token) for token in prompt_ids]
             if not prompt_row:
                 raise ValueError("prompt produced no tokens")
@@ -346,7 +354,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch_sampled_true_c1_fallback(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -365,7 +373,7 @@ class Qwen35ParoOneTokenGenerator:
         started_at = time.perf_counter()
         batch_id = _new_timing_batch_id("sampled-true-c1")
         for row_index, prompt in enumerate(prompts):
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             prompt_row = [int(token) for token in prompt_ids]
             if not prompt_row:
                 raise ValueError("prompt produced no tokens")
@@ -496,7 +504,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch_isolated_width_groups(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -511,7 +519,7 @@ class Qwen35ParoOneTokenGenerator:
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
             prompt_rows.append([int(token) for token in prompt_ids])
@@ -800,7 +808,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -810,7 +818,7 @@ class Qwen35ParoOneTokenGenerator:
         cancellation_token: Any | None,
     ) -> GenerationOutput:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -897,7 +905,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_one_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -907,7 +915,7 @@ class Qwen35ParoOneTokenGenerator:
         plan,
     ) -> GenerationOutput:
         raise_if_generation_deadline_expired(request)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -1038,7 +1046,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -1058,7 +1066,7 @@ class Qwen35ParoOneTokenGenerator:
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
@@ -1369,7 +1377,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -1386,7 +1394,7 @@ class Qwen35ParoOneTokenGenerator:
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
             raise_if_generation_deadline_expired(request)
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             raise_if_generation_deadline_expired(request)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
@@ -1678,7 +1686,7 @@ class Qwen35ParoOneTokenGenerator:
     def _stream_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -1687,7 +1695,7 @@ class Qwen35ParoOneTokenGenerator:
         cancellation_token: Any | None,
     ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -1772,7 +1780,7 @@ class Qwen35ParoOneTokenGenerator:
     def _stream_one_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -1783,7 +1791,7 @@ class Qwen35ParoOneTokenGenerator:
         include_internal_token_logprobs: bool = False,
     ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(request)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -2579,13 +2587,13 @@ def _native_profile_prompt_position_blockers(
     profile: NativeBatchWidthProfile,
     *,
     model_path: Path,
-    prompts: tuple[str, ...],
+    prompts: tuple[PromptInput, ...],
     max_tokens: int,
 ) -> tuple[str, ...]:
     starts: list[int] = []
     ends: list[int] = []
     for prompt in prompts:
-        _last_token_id, prompt_ids = _select_token(model_path, prompt, None)
+        prompt_ids = _prompt_ids(model_path, prompt)
         starts.append(len(prompt_ids))
         ends.append(len(prompt_ids) + max(0, int(max_tokens) - 2))
     return tuple(

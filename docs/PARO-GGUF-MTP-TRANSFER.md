@@ -159,8 +159,9 @@ Measured 2026-07-09 on gfx1151 / Radeon 8060S, shisa
 8 natural chat prompts from `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`,
 `max_tokens=128`, greedy, `ignore_eos=true`, batch window 5 ms. These rows are
 diagnostic and **not** the direct retained 512-token exact-token protocol:
-`/v1/completions` currently rejects token-id prompt arrays, so exact-token server
-benchmarking is itself a follow-up.
+at the time `/v1/completions` rejected token-id prompt arrays. `SOL-E5` later
+added the exact route; these natural-prompt rows remain historical diagnostics
+and were not retroactively upgraded.
 
 Artifact summary:
 `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-summary.json`.
@@ -194,14 +195,23 @@ Telemetry notes:
 
 Immediate next targets from this sweep:
 
-1. Add or expose an exact-token server benchmark route so PARO server rows can
-   run the same 512/128 fixture as the direct retained harness.
-2. Inspect why `scheduler_native_packed_prefill_native_decode` still emits
+1. Inspect why `scheduler_native_packed_prefill_native_decode` still emits
    `native_caware_decode=false` and scales weakly.
-3. Add server AR buckets for prefill, decode layer wall, projection, attention,
+2. Add server AR buckets for prefill, decode layer wall, projection, attention,
    MoE, sampler/LM-head, host sync/readback, and scheduler wall.
-4. Only after the AR server path scales should PARO MTP/DFlash verifier
+3. Only after the AR server path scales should PARO MTP/DFlash verifier
    lifecycle optimizations be ported from GGUF.
+
+### Exact-token route closure (2026-07-11)
+
+`SOL-E5` made raw token rows a shared `GenerationRequest` input for PARO and
+GGUF, exposed the OpenAI `prompt: int[] | int[][]` forms, and added
+`scripts/exact_token_generation.py`. On Radeon 8060S/gfx1151 with shisa
+Qwen3.6-35B-A3B PARO `437eba06...`, direct and HTTP runs used the committed
+512-ID parent fixture and matched all 128 generated IDs (prompt hash
+`b162b2d0...`, generated hash `42796d4b...`). This is an identity/correctness
+gate, not a performance result; the July 9 natural-prompt rates remain
+diagnostic and the first performance follow-up is an exact-token c1-c8 sweep.
 
 ## Retained Defaults Bridge and Current Bottleneck
 

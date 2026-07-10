@@ -24,6 +24,7 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PromptInput,
     TokenLogprob,
     register_text_generator,
 )
@@ -74,6 +75,12 @@ _GGUF_MTP_REQUIRED_TENSORS = (
 
 def _new_gguf_timing_batch_id(kind: str) -> str:
     return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
+
+
+def _encode_prompt(tokenizer: Any, prompt: PromptInput) -> list[int]:
+    if not isinstance(prompt, str):
+        return [int(token) for token in prompt]
+    return [int(token) for token in tokenizer.encode(prompt)]
 
 
 _LLAMA_COMPAT_MTP_ENV = {
@@ -988,7 +995,7 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         if request.max_tokens == 0:
             return
-        prompt_ids = self.tokenizer.encode(request.prompts[0])
+        prompt_ids = _encode_prompt(self.tokenizer, request.prompts[0])
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
@@ -1028,7 +1035,7 @@ class Qwen35GGUFBringupGenerator:
         plan = _gguf_sampler_plan(request)
         if request.max_tokens == 0:
             prompt_rows_by_request = {
-                index: self.tokenizer.encode(prompt)
+                index: _encode_prompt(self.tokenizer, prompt)
                 for index, prompt in enumerate(request.prompts)
             }
             self.last_generation_outputs = tuple(
@@ -1078,7 +1085,7 @@ class Qwen35GGUFBringupGenerator:
                 row_timing: dict[str, float] = {"session_open_ms": session_open_ms}
                 raise_if_generation_deadline_expired(request)
                 tokenize_start = time.perf_counter()
-                prompt_ids = self.tokenizer.encode(prompt)
+                prompt_ids = _encode_prompt(self.tokenizer, prompt)
                 _timing_set(row_timing, "tokenize_ms", tokenize_start)
                 prompt_rows_by_request[row_index] = prompt_ids
                 raise_if_generation_deadline_expired(request)
@@ -1147,7 +1154,7 @@ class Qwen35GGUFBringupGenerator:
         for row_index, prompt in enumerate(request.prompts):
             raise_if_generation_deadline_expired(request)
             tokenize_start = time.perf_counter()
-            prompt_ids = self.tokenizer.encode(prompt)
+            prompt_ids = _encode_prompt(self.tokenizer, prompt)
             tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
             if not prompt_ids:
                 raise ValueError("GGUF prompt tokenization produced no token IDs")
@@ -1699,7 +1706,7 @@ class Qwen35GGUFBringupGenerator:
         tokenize_ms_by_request: dict[int, float] = {}
         for row_index, prompt in enumerate(request.prompts):
             tokenize_start = time.perf_counter()
-            encoded_prompts[row_index] = self.tokenizer.encode(prompt)
+            encoded_prompts[row_index] = _encode_prompt(self.tokenizer, prompt)
             tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
         if any(
             len(prompt_ids) < _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS

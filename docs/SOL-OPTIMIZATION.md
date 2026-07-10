@@ -145,6 +145,12 @@ Required generated-work fields:
 | `target_rows` | Target model rows actually evaluated. |
 | `retokenized_visible_tokens` | Optional decoded-text diagnostic, clearly non-authoritative. |
 
+Exact-token direct/server comparisons also retain
+`hipengine.prompt_token_accounting`: input type, per-row token-ID SHA-256,
+per-row lengths, and total prompt tokens. The raw rows enter the common
+`GenerationRequest` and bypass PARO/GGUF tokenizers; the hash echo and generated
+ID oracle must match before timing is comparable.
+
 Required timing scopes:
 
 | Scope | Examples | Aggregation |
@@ -246,7 +252,7 @@ layout and profiled bottleneck.
 | `SOL-E2` | Add `batch_id`, `group_rows`, `timing_scope`, and timing owner; deduplicate batch metrics in harnesses. | `accepted`: the telemetry contract defaults unscoped timing to explicit choice ownership and requires complete batch ownership; PARO/GGUF live c2 groups expose one owner; `mtp-bench.py` rejects malformed ownership and deduplicates copied batch walls by ID. | none | Synthetic duplicate payload and live PARO/GGUF group tests count batch wall once. |
 | `SOL-E3` | Create shared artifact/provenance helpers; detect backend/arch dynamically; include full dirty state and model fingerprint. | `accepted`: the stdlib/torch-free collector emits `hipengine_artifact_provenance` v1 for server, retained PARO, GGUF category/true-AR, and micro artifacts; dynamic gfx1151 identity resolves from `auto`; staged, unstaged, untracked, snapshot-revision, file, directory, and missing-model cases have regressions. | none | Server, PARO retained, GGUF, and micro artifacts satisfy one schema; staged/untracked tests pass. |
 | `SOL-E4` | Repair dashboards: remove `performance_claim=false` rows from "Current fastest," correct server token headlines where raw IDs suffice, and mark timing rows awaiting rerun. | `open` | E1-E3 | Current tables contain only eligible rows; diagnostics remain linked in a separate section. |
-| `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `open` | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
+| `SOL-E5` | Add an exact-token server benchmark route shared by PARO/GGUF direct and server runs. | `accepted`: raw token rows are a common generation input; OpenAI `int[]`/`int[][]` prompts preserve IDs through batching and `n`; prompt hashes/counts and exact generated IDs are exposed; the shared tool/schema fail closed on parity; live gfx1151 PARO 512/128 direct/HTTP matched all IDs. | E1, E3 | 512/128 token-ID prompts produce the same prompt IDs and generated-ID oracle through direct and HTTP paths. |
 | `SOL-B1` | Register GGUF for `hip_gfx1151` and thread resolved backend/target through generator, runner/session, registry resolves, builds, capabilities, and telemetry. | `open`: public factory, runner/session target, JIT build, capabilities, and installed-wheel route landed at `7ea21e98`; internal semantic `hip_gfx1100` resolver keys remain. | E3 | gfx1151 factory/dispatch/build tests pass; no semantic gfx1100 resolver key remains on the selected path. |
 | `SOL-B2` | Add registry/config-owned architecture tuning profiles without changing defaults. | `blocked` | B1, baseline matrix | Empty/equal profiles are behavior-identical; future gfx1151 values require same-device evidence. |
 | `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `blocked` | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
@@ -477,6 +483,6 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next overall foundation units are `SOL-E5` and `SOL-B1`: add the shared
-exact-token direct/server route, then remove the remaining semantic gfx1100
-resolver keys from the gfx1151 GGUF path. Shape identity is now explicit.
+The next overall foundation unit is `SOL-B1`: remove the remaining semantic
+gfx1100 resolver keys from the gfx1151 GGUF path. Exact token identity, owned
+timing, provenance, and shape identity are now explicit.

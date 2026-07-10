@@ -4685,6 +4685,119 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     ]
 
 
+def test_completions_exact_token_prompt_preserves_ids_and_identity() -> None:
+    class ExactTokenFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams):
+            prompt_rows = tuple(tuple(int(token) for token in row) for row in prompts)
+            self.calls.append((prompt_rows, sampling_params))
+            return [
+                GenerationOutput(text="answer", generated_token_ids=(701, 702))
+                for _row in prompt_rows
+            ]
+
+    fake = ExactTokenFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": [10, 11, 12, 13],
+            "max_tokens": 2,
+            "ignore_eos": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.calls[0][0] == ((10, 11, 12, 13),)
+    assert body["usage"] == {
+        "prompt_tokens": 4,
+        "completion_tokens": 2,
+        "total_tokens": 6,
+    }
+    assert body["hipengine"]["prompt_token_accounting"] == {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [
+            "fe52e32025ab5b0c96a9dff2cf661e34f4ce86fe760a6399212957aee39c6bde"
+        ],
+        "prompt_tokens": [4],
+        "total_prompt_tokens": 4,
+    }
+    assert body["hipengine"]["token_accounting"]["choice_generated_token_ids"] == [[701, 702]]
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    exact = capabilities["features"]["exact_token_prompts"]
+    assert exact["completions"] is True
+    assert exact["streaming"] is False
+    assert exact["response_identity"] == "hipengine.prompt_token_accounting"
+
+
+def test_completions_exact_token_prompt_rejects_stream_and_mixed_rows() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    streamed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": [10, 11], "stream": True},
+    )
+    mixed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": [[10, 11], "text"]},
+    )
+
+    assert streamed.status_code == 400
+    assert streamed.json()["error"]["param"] == "stream"
+    assert mixed.status_code in {400, 422}
+
+
+def test_completions_exact_token_rows_expand_n_without_id_loss() -> None:
+    class ExactRowsFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams):
+            rows = tuple(tuple(int(token) for token in row) for row in prompts)
+            self.calls.append((rows, sampling_params))
+            return [
+                GenerationOutput(text=f"row-{index}", generated_token_ids=(800 + index,))
+                for index, _row in enumerate(rows)
+            ]
+
+    fake = ExactRowsFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": [[10, 11, 12], [20, 21, 22]],
+            "max_tokens": 1,
+            "ignore_eos": True,
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    expected_rows = ((10, 11, 12), (10, 11, 12), (20, 21, 22), (20, 21, 22))
+    assert fake.calls[0][0] == expected_rows
+    body = response.json()
+    assert body["usage"] == {
+        "prompt_tokens": 12,
+        "completion_tokens": 4,
+        "total_tokens": 16,
+    }
+    assert body["hipengine"]["prompt_token_accounting"]["prompt_tokens"] == [3, 3, 3, 3]
+    assert body["hipengine"]["token_accounting"]["choice_generated_token_ids"] == [
+        [800],
+        [801],
+        [802],
+        [803],
+    ]
+
+
 @pytest.mark.parametrize(
     ("endpoint", "request_payload"),
     [

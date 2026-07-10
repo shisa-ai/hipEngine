@@ -58,6 +58,16 @@ New non-streaming hipEngine server rows also require a complete
 widths, and verifier rows remain separate and are deduplicated by queue-group
 ID. Client concurrency is never substituted for backend or verifier width.
 
+Direct/server comparisons additionally require the
+`hipengine_exact_token_oracle` v1 gate from
+[`scripts/exact_token_generation.py`](../scripts/exact_token_generation.py).
+The committed 512-ID fixture feeds both PARO/GGUF direct generation and
+`/v1/completions` without detokenization. HTTP input hashes/counts, exact usage,
+and every generated ID must match the direct oracle. The formal contract is
+[`schemas/exact-token-oracle.schema.json`](schemas/exact-token-oracle.schema.json).
+The 2026-07-11 gfx1151 PARO 512/128 correctness gate passed; it is not a
+throughput row and changes no topline.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |

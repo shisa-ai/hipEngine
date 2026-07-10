@@ -1393,6 +1393,14 @@ and deduplicate the repeated shape by ID, preventing client c8 from being
 reported as a width-8 backend or verifier result when the route actually ran
 two c4 groups.
 
+Direct and OpenAI completion benchmarks share exact token-ID prompt values at
+the `GenerationRequest` boundary. Raw rows bypass model tokenizers in both PARO
+and GGUF; server admission/usage uses their supplied lengths and returns
+`hipengine.prompt_token_accounting` hashes/counts. The
+`hipengine_exact_token_oracle` v1 artifact binds the committed fixture plus all
+generated IDs, so HTTP evidence cannot be compared with direct evidence until
+the 512/128 parity gate passes.
+
 ## License
 
 AGPL-3.0-or-later. hipEngine is intended as copyleft software for local/home users, including the optional hosted/server paths; model weights, checkpoints, and external datasets remain under their own licenses.

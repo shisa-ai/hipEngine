@@ -40,6 +40,11 @@ Hard rules:
   when that exact accounting object is present. Decoded-text re-tokenization is
   recorded only as `retokenized_visible_tokens`; it cannot support a throughput
   or MTP economics claim. Multi-choice requests aggregate every choice.
+- **Exact server prompt identity.** Direct and HTTP parity rows use raw token-ID
+  prompts, never detokenized text. Retain the committed fixture fingerprint and
+  `hipengine.prompt_token_accounting` row hashes/counts. The server hash echo,
+  exact usage, and every generated-ID row must match the direct oracle before a
+  server row can be compared with a direct row.
 - **Owned server timing.** Retain `timing_scope`, `group_rows`, `timing_owner`,
   and `batch_id` for batch-scoped payloads. Sum choice timing only for an
   explicitly named per-choice-work metric. Deduplicate batch timing by
@@ -409,6 +414,33 @@ validated `generation_shape` rollup: queue-group count and request/prompt rows,
 request-scoped route-cap values, flattened actual backend-group widths, maximum
 backend width, per-group details, and total verifier rows. Missing or partial
 shape metadata makes a new hipEngine server row diagnostic rather than retained.
+
+### Exact-token direct/HTTP gate
+
+Use [`scripts/exact_token_generation.py`](../scripts/exact_token_generation.py)
+before comparing PARO or GGUF direct and OpenAI-server results. It defaults to
+the committed `fixtures/qwen35_paro/parent_512_32_seed1234.json` 512-ID row and
+`max_tokens=128`. Direct mode records the raw prompt and generated-ID oracle;
+HTTP mode requires that artifact and fails closed on any input hash/count,
+usage, output-row, or generated-ID mismatch.
+
+```bash
+uv run python scripts/exact_token_generation.py direct \
+  --model-path /models/qwen36-paro --backend hip_gfx1151 --quant w4_paro \
+  --json /tmp/direct-p512-d128.json
+
+uv run python scripts/exact_token_generation.py http \
+  --url http://127.0.0.1:8000 --model qwen-paro \
+  --model-path /models/qwen36-paro --backend hip_gfx1151 --quant w4_paro \
+  --oracle /tmp/direct-p512-d128.json --json /tmp/http-p512-d128.json
+```
+
+The `hipengine_exact_token_oracle` v1 contract is formalized in
+[`benchmarks/schemas/exact-token-oracle.schema.json`](../benchmarks/schemas/exact-token-oracle.schema.json).
+The parity artifact is a correctness/identity gate with
+`performance_claim=false`; throughput promotion still requires the normal
+warmup, repetition, timing-ownership, shape, profiler, and clean-provenance
+gates.
 
 Allowed artifact statuses:
 
