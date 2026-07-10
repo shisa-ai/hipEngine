@@ -294,14 +294,14 @@ and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 **Status: diagnostic, not retained.** This direct PARO batch measurement ran at
 tracked-clean hipEngine `4175dabf` with detected and target arch gfx1151. It
 uses opt-in retained-default recovery routes; the production server default
-uses different routing. Odd widths fail generated-token equality; c1, dynamic
-shrinking, profiler, and scaling gates are missing. Red-width timing is
-withheld.
+uses different routing. Odd widths fail generated-token equality; c1 is a
+separate repeated-token reference; same-fixture c1, dynamic shrinking,
+profiler, and scaling gates are missing. Red-width timing is withheld.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Width | Aggregate decode tok/s | Per sequence tok/s | Median step ms | Exact gate | Measured route |
 | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | Not rerun | Not rerun | Not rerun | Same-fixture timing missing | Single-sequence control required |
+| 1 | 66.806 | 66.806 | 14.969 | Three-run reference; different prompt | Single-sequence graph replay; repeated token 9707 |
 | 2 | 78.578 | 39.289 | 25.465 | Primitive pass; generated IDs 3/3 | Native full attention; selected-c1 MoE; batched LM-head |
 | 3 | Withheld | Withheld | Withheld | Rejected at token index 4 | Grouped-compact MoE; selected-layer rowchunk2 |
 | 4 | 99.616 | 24.904 | 40.158 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
@@ -311,10 +311,11 @@ withheld.
 | 8 | 115.515 | 14.439 | 69.254 | Primitive pass; generated IDs 3/3 | Selected-c1 MoE; all-layer rowchunk2; batched LM-head |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
-Protocol: W4 PARO/BF16 KV, 40 layers, fixed 512-token slices, 8 warmup decode
-steps, 128 measured decode steps, and greedy sampling. Green widths report the
-median of three direct backend runs and pass primitive plus 137-token generated
-equality. See the [compact artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json)
+Protocol: W4 PARO/BF16 KV, 40 layers, 8 warmup decode steps, 128 measured
+decode steps, and greedy sampling. The c1 reference repeats token `9707` for
+512 prompt positions; c2-c8 use fixed 512-token slices. c1 and the green even
+widths report the median of three direct backend runs; c2/c4/c6/c8 pass
+primitive plus 137-token generated equality. See the [compact artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json)
 and [canonical run record](benchmarks/README.md#gfx1151-paro-direct-exact-shape-diagnostic-2026-07-10).
 
 ### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)

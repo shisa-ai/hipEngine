@@ -29,6 +29,19 @@ def test_gfx1151_current_paro_table_matches_compact_artifact() -> None:
     scoreboard = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
 
     assert artifact["performance_claim"] is False
+    reference = artifact["rows"]["1"]
+    expected_reference = (
+        f"| 1 | {reference['decode_tok_s_aggregate_median']:.3f} | "
+        f"{reference['decode_tok_s_per_request_median']:.3f} | "
+        f"{reference['decode_step_ms_median_of_run_medians']:.3f} |"
+    )
+    assert expected_reference in scoreboard
+    assert reference["status"] == "diagnostic_reference"
+    assert reference["same_fixture_as_cn"] is False
+    assert reference["source"]["hipengine_commit"].startswith("4175dabf")
+    assert reference["source"]["tracked_source_dirty"] is False
+    assert reference["source"]["untracked_files_present"] is False
+
     for rows in (2, 4, 6, 8):
         result = artifact["rows"][str(rows)]
         expected = (
