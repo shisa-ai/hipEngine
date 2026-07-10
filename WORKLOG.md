@@ -149055,3 +149055,50 @@ graphless decode launch-collapse path without regressing target/serial parity.
   changelog; pre-v2 numeric rows remain explicitly labeled legacy/withdrawn.
 - Validation: `uv run pytest -q tests/test_micro_*.py` passed all `214` tests;
   `git diff --check` passed before staging.
+
+## 2026-07-10 - Canonical topline benchmark scoreboard
+
+- Replaced the 1,500-line mixed `benchmarks/README.md` rollup with a 516-line
+  operational scoreboard. The new platform index records run date, measured
+  revision/build, evidence status, root export eligibility, and the concrete
+  refresh condition for W7900/gfx1100 and Radeon 8060S/gfx1151 model,
+  concurrency, speculative, and HIP/Vulkan microbenchmark families.
+- Preserved the previous rollup as `benchmarks/HISTORY.md`. Source-lineage
+  targets, external baselines, superseded rows, and the experiment notebook are
+  archive material rather than live toplines.
+- Reclassified the 2026-07-07 W7900 model sweep as a stale diagnostic because
+  its summary has `performance_claim=false` and the GGUF path emits repeated
+  token `9707`. Reclassified the 2026-06-15 gfx1151 model/concurrency snapshots
+  as stale diagnostics because they are single-run or lack measured source/build
+  provenance in the summary artifacts. Removed bold cross-quant winners.
+- Limited the public speculative table to DFlash B4, exact/default fixed-cycle
+  MTP B5, and the qualified `llama-compat` direct B2 contract. Removed OpenAI
+  server MTP rates from the root topline because decoded-text token accounting
+  and duplicated batch timing payloads do not meet the promotion contract.
+- Added `scripts/sync_benchmark_readme.py`. Six marked table blocks in
+  `benchmarks/README.md` are canonical and copied into the root `README.md` by
+  `--write`; `--check` fails when any target block differs. Added the CPU-only
+  `tests/test_benchmark_readme_sync.py` guard. Updated
+  `docs/BENCHMARK.md`, documentation indexes, GGUF historical references, and
+  the benchmark changelog to match the new ownership split.
+- Added the 2026-05-19 W7900 PARO BF16/INT8 context-capacity table to the
+  canonical export with its `ae229513` source, exact command, memory scopes, and
+  Qwen3.5-gate limitation. Corrected retained KV units from mislabeled GiB to
+  the artifact's decimal GB. Removed the root llama.cpp Q8_0 memory numbers
+  because no artifact, model fingerprint, build revision, or run date exists.
+- Reconciled the gfx1151 hipEngine concurrency table with its linked
+  `2026-06-15...hipengine-paro/summary.json`. The public values
+  `66.98/69.86/88.10/96.03` were not present in that artifact; corrected
+  c1/c2/c4/c8 aggregate decode to the artifact medians
+  `66.62/69.54/88.39/100.68 tok/s` and per-sequence values to
+  `66.62/34.77/22.10/12.59 tok/s`. This is an evidence correction, not a rerun.
+- Verified every displayed W7900/gfx1151 sweep and speculative number against
+  its JSON artifact with rounding assertions. All relative Markdown targets in
+  the changed indexes resolve. `qwen35_readme_sweep.py`,
+  `gguf_ar_mtp_suite.py`, and `dflash_chain_e2e_bench.py` accepted every
+  documented option; `bash -n scripts/run_w7900_readme_refresh.sh` passed.
+- Validation: `uv run pytest -q tests/test_benchmark_readme_sync.py` (`1
+  passed`); Python compilation; live export `--check`; a temporary stale target
+  test that failed, repaired with `--write`, then passed; ASCII scan of the new
+  scoreboard/script; `git diff --check`. No GPU benchmark was run because this
+  unit changes evidence classification and documentation only.

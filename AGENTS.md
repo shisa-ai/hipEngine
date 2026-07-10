@@ -45,7 +45,8 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Append-only cross-session journal. |
-| `benchmarks/README.md` | Human-readable current-fastest benchmark rollup and comparison tables. |
+| `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
+| `benchmarks/HISTORY.md` | Archived experiment rollup, superseded diagnostics, source-lineage targets, and external baselines. |
 | `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
 | `benchmarks/results/` | Compact JSON artifacts for accepted/blocked/rejected benchmark attempts. |
 | `pyproject.toml` | Package metadata and extras. Do not casually add hard deps. |

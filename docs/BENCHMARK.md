@@ -4,7 +4,13 @@ Protocols, baselines, and artifact formats for every perf claim hipEngine retain
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it.
 
-Human-readable rollup: `benchmarks/README.md` tracks current fastest accepted rows, comparison baselines, source-lineage targets, and last-updated dates. `benchmarks/CHANGELOG.md` keeps reverse-chronological one-line history so the README stays compact. Machine-readable artifacts live under `benchmarks/results/`.
+Human-readable rollup: `benchmarks/README.md` is the platform-indexed topline
+scoreboard. It records evidence status, run date, measured revision, build
+environment, exact protocol, artifacts, refresh commands, and root README export
+blocks. `benchmarks/HISTORY.md` holds the superseded experiment notebook,
+source-lineage targets, and external baselines. `benchmarks/CHANGELOG.md` keeps
+reverse-chronological rollup history. Machine-readable artifacts live under
+`benchmarks/results/`.
 
 ## Evidence Policy (restated)
 
@@ -392,18 +398,29 @@ A JSON artifact with `status != "accepted"` is still useful evidence, but it is 
 
 ## Human-readable Rollup
 
-`benchmarks/README.md` is the scoreboard. It exists because humans need a quick way to see current fastest rows across models/quants/backends without diffing JSON artifacts.
+`benchmarks/README.md` is the scoreboard. A reader must be able to identify the
+latest eligible row for a platform and protocol without reconstructing shell
+history or diffing JSON artifacts.
 
 Maintain it with every retained benchmark:
 
-1. Update the top `Last updated: YYYY-MM-DD` line.
-2. Add or replace the row keyed by `(model, quant, backend, workload, policy)`.
-3. Link the compact JSON artifact in `benchmarks/results/` for hipEngine measurements.
-4. Include correctness/validation, peak memory, source command/artifact, and per-row last-updated date.
-5. Add a dated one-line entry to `benchmarks/CHANGELOG.md` for the rollup change: model / quant / workload, metric `old -> new`, percent delta, reason/change, and artifact/source.
-6. Keep source-lineage targets and external baselines in separate tables from hipEngine measurements.
+1. Update the top review date and the platform index.
+2. Add or replace the row keyed by platform, GPU, model fingerprint, quant, KV
+   type, backend, workload, concurrency, policy, and timing scope.
+3. Record the measured source revision, dependency builds, command, repetition
+   policy, correctness status, memory scope, and compact artifact links.
+4. Keep diagnostics visible only with their blocker. A diagnostic cannot replace
+   a retained row for the same protocol.
+5. Update the marked public table and run
+   `python3 scripts/sync_benchmark_readme.py --write` followed by `--check`.
+6. Add a dated entry to `benchmarks/CHANGELOG.md`: model, quant, workload,
+   metric `old -> new`, percent delta, reason, and artifact. State explicitly
+   when a contract-only change has no metric supersession.
 
-Blocked/rejected benchmark attempts may be summarized there only if clearly marked as blocked/rejected; otherwise they live in JSON artifacts and `WORKLOG.md`. Git history for `benchmarks/README.md` and `benchmarks/CHANGELOG.md` is the human-readable performance history; JSON artifacts are the durable evidence.
+Blocked and rejected attempts may be summarized in the scoreboard when their
+status and next action are explicit. Detailed experiment history belongs in
+JSON artifacts, `WORKLOG.md`, and `benchmarks/HISTORY.md`. JSON artifacts remain
+the durable evidence.
 
 ## Hardware & Software Context (default)
 
