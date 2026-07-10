@@ -150161,3 +150161,48 @@ graphless decode launch-collapse path without regressing target/serial parity.
   make the split prepare/recurrent arithmetic byte-exact at layer 0, then rerun
   the greeting, 512, 4K, segment-threshold, and chunk-boundary matrix before
   considering G3 performance promotion.
+
+## 2026-07-11 - SOL-G2 exact GGUF split-chain implementation
+
+- The layer-0 RED starts only after the zero-state token: the legacy split
+  prepare materializes normalized Q/K, while the fused kernel contracts raw K,
+  its normalization scale, recurrent state, and decay in decode order. That
+  intermediate rounding changes the second-token recurrence. An exact RED
+  against the old k2 route reported `121531/524288` recurrent-state elements
+  different on the synthetic 17-row production shape.
+- Added GGUF-only registry variants `linear_attn_prefill_prepare /
+  f32_bf16_raw_scales` and `gdn_prefill_recurrent /
+  f32_decode_order_exact{,_segments}`. The prepare kernel retains raw Q/K plus
+  separate FP32 scales; the recurrent kernels reproduce the fused eight-wide
+  contraction/update order; the existing RMSNorm+gate remains the unfused
+  final primitive. The legacy PARO/k2 bodies and aliases are unchanged.
+- Explicit `chain` prefers the exact members and falls back to the legacy
+  complete chain for compatibility fakes or backends without them. `auto`
+  remains fused-first pending G2/G3. Scratch adds two scalar FP32 arrays,
+  `2 * rows * 32 * 4` bytes: `128 KiB` at 512 rows and `1 MiB` at 4K.
+- GREEN: both non-segment and segment exact chains are byte-identical to fused
+  for synthetic Qwen production dimensions. A dirty-tree real 35B greeting
+  development run at `/tmp/sol-g2-exact-chain-greeting-dirty.json` also passes:
+  sampled token, final FP32 hidden seed, every captured layer output, and all
+  Conv/GDN states are exact, with no first divergence. It is development
+  evidence only (`performance_claim=false`); clean retained matrix artifacts
+  follow after this implementation commit.
+- `uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py
+  tests/test_qwen35_gguf_gdn_prefill_routing.py
+  tests/test_qwen35_linear_attn_gdn_plan.py tests/test_gfx1151_backend.py`
+  passes `48/48`. Python compilation and `git diff --check` pass.
+- The first full-model profiler attempt was discarded because unrelated GGUF
+  lazy builders spawned `hipcc` under `rocprofv3`. After a non-profiled cache
+  warmup, a narrow cached-library child produced
+  `/tmp/sol-g2-exact-gdn-only-rocprof-20260711/gfx1151/1617600_kernel_trace.csv`
+  with no nested compiler. It records raw-scale prepare `30.981/28.194 us`
+  (`VGPR=32`), exact recurrence `1.677015 ms`, segment recurrence
+  `1.444605 ms` (`VGPR=40`), and RMSNorm+gate `8.898/8.454 us`; all have
+  `Scratch_Size=0` and plausible production grids. These are execution-trace
+  observations, not a speed claim.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` was attempted as
+  required, but the configured read-only parent
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. No external source was
+  copied or changed. Updated the kernel catalog, env/testing contracts,
+  refactor ledger, and SOL coordinator. G2 remains open for the clean
+  short/512/4K/segment/chunk matrix.
