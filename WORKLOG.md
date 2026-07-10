@@ -149366,3 +149366,10 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Added refactor debt for the duplicated generator/benchmark group-execution
   loops. Consolidation waits for the sparse-slot and shrinking-batch telemetry
   ABI to settle.
+- Preflight found that `_apply_runtime_env_args()` still pinned MoE, attention,
+  projection, and sampler variables from the parent c>8 width. That would make
+  c8/c6/etc subgroups run parent-width algorithms instead of their retained
+  per-width defaults. Added a RED test and made `profile_partitioned` clear all
+  batch-decode and batch-sampler overrides before session construction while
+  preserving packed-prefill and profile configuration. The partition/retained
+  subset passes (`11 passed`).

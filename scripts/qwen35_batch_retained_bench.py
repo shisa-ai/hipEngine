@@ -4377,8 +4377,32 @@ def _resolved_batch_decode_attn_dense_context_batch_gate_layers(args: argparse.N
     return ""
 
 
+def _clear_profile_partitioned_group_env() -> None:
+    exact_keys = {
+        "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
+        "HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV",
+    }
+    for name in tuple(os.environ):
+        if (
+            name in exact_keys
+            or name.startswith("HIPENGINE_QWEN35_BATCH_DECODE_")
+            or name.startswith("HIPENGINE_QWEN35_BATCH_SAMPLE_")
+        ):
+            os.environ.pop(name, None)
+
+
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    if str(getattr(args, "batch_decode_execution", "direct_native")) == "profile_partitioned":
+        _clear_profile_partitioned_group_env()
+        os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
+            "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
+        )
+        projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
+        if projection_dispatch_artifact is not None:
+            os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
+        return
     batch_decode_moe_path = _resolved_batch_decode_moe_path(args)
     force_selected_c1_moe = batch_decode_moe_path == "selected_c1"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = "1" if force_selected_c1_moe else "0"
