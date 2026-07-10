@@ -1,6 +1,6 @@
 # PARO Follow-Ups from GGUF/MTP Work
 
-Last updated: 2026-07-09.
+Last updated: 2026-07-10.
 
 This is the active TODO list for applying recent GGUF/MTP server and verifier
 lessons to PARO. The key split is:
@@ -18,7 +18,7 @@ below:
 
 | Order | Item | Status | Gate |
 | ---: | --- | --- | --- |
-| 1 | PARO server grouping policy for c6 | Done in `a1c048d2`: retained-defaults mode avoids accidental c6 live-row groups by splitting exactly six greedy rows into c4+c2. Disable with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. | Focused server batcher tests passed; natural c=8/c6-forced server rerun remains the perf gate. |
+| 1 | PARO exact width fallback | In progress: unsupported live widths use a costed cover of identity-matched c8/c6/c4/c2 evidence plus exact serial rows. The older c6-to-c4+c2 server split requires `HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`. | Run full GPU c1-c16, sparse-slot, shrinking, and exact server accounting gates before promotion. |
 | 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
 | 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
 | 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
@@ -546,14 +546,13 @@ Next repair order:
    explicit scheduler grouping policy, because the current server path naturally
    admits c6 live-row groups.
 
-Scheduler policy implementation note: retained-defaults mode now has a narrow
-server-side c6 avoidance policy for deterministic greedy default-route batches.
-Exactly six prompt rows are split into `4+2`, so the backend uses the
-generated-token-green c4 and c2 shapes instead of the slower c6 rowchunk bridge.
-The policy is enabled by `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` and can
-be disabled with `HIPENGINE_QWEN35_AVOID_C6_GROUPS=0`. It does not alter
-sampling/logprob/processed-generator rows; those need row-seed and telemetry
-offset plumbing before they can be safely split.
+Scheduler policy implementation note: retained-defaults mode loads a native
+width profile only when its backend, target arch, model snapshot, quant, KV
+dtype, and decode-position range match. Unsupported widths are partitioned by
+measured step cost; a serial subgroup completes any uncovered rows. The older
+server-side c6-to-c4+c2 policy is default-off and requires
+`HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`. It remains limited to deterministic greedy
+default-route batches.
 
 ## PARO MTP/DFlash Buckets To Add Next
 

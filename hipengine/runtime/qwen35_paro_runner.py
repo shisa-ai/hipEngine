@@ -83,6 +83,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 from hipengine.dispatch import (
     ActiveBatch,
     BatchSamplerMode,
+    NativeBatchWidthProfile,
     ProjectionKernelSelection,
     RequestState,
     plan_batch_sampler_dispatch,
@@ -121,6 +122,11 @@ from hipengine.runtime.qwen35_paro import (
     _set_shared_rotate_fuse_barrier_memset_mode,
     _use_moe_grouped_compact_prefill,
     _verify_moe_grouped_min_tokens,
+)
+from hipengine.runtime.qwen35_paro_batch_width import (
+    DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
+    QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV,
+    load_qwen35_paro_native_batch_width_profile,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
@@ -1569,6 +1575,7 @@ class Qwen35ParoResidentSession:
             chunk_size=self.chunk_size,
         )
         self.max_batch_size = int(max_batch_size)
+        self._native_batch_width_profile = self._load_native_batch_width_profile()
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
         self.requested_prefill_config = prefill_config or PrefillConfig()
@@ -1678,6 +1685,28 @@ class Qwen35ParoResidentSession:
             allocation.free(runtime=self.runtime)
         for buffer in reversed(self.buffers):
             free(buffer, runtime=self.runtime)
+
+    def _load_native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
+        if not _retained_batch_defaults_enabled() or not _env_flag(
+            "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+        ):
+            return None
+        artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
+        if artifact is None or not artifact.strip():
+            artifact = DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+        return load_qwen35_paro_native_batch_width_profile(
+            artifact.strip(),
+            backend=self.backend,
+            target_arch=self.target_arch,
+            model_path=self.model,
+            kv_dtype=self.kv_storage_dtype.value,
+        )
+
+    def native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
+        """Return the identity-matched width profile used by scheduler decode."""
+
+        return self._native_batch_width_profile
+
     def __enter__(self) -> "Qwen35ParoResidentSession":
         return self
 

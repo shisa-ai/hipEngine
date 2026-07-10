@@ -1649,7 +1649,6 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
-_QWEN35_RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
 _QWEN35_AVOID_C6_GROUPS_ENV = "HIPENGINE_QWEN35_AVOID_C6_GROUPS"
 
 
@@ -1661,12 +1660,9 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _qwen35_retained_avoid_c6_groups_enabled() -> bool:
-    """Return whether the server should avoid PARO's slow c6 resident shape."""
+    """Return whether the diagnostic c4+c2 split is explicitly requested."""
 
-    return _env_flag(
-        _QWEN35_AVOID_C6_GROUPS_ENV,
-        default=_env_flag(_QWEN35_RETAINED_BATCH_DEFAULTS_ENV, default=False),
-    )
+    return _env_flag(_QWEN35_AVOID_C6_GROUPS_ENV, default=False)
 
 
 def _qwen35_retained_group_split_slices(
@@ -1675,13 +1671,11 @@ def _qwen35_retained_group_split_slices(
     *,
     route: str,
 ) -> tuple[tuple[int, int], ...]:
-    """Split retained PARO c6 server work into green c4+c2 groups.
+    """Split PARO c6 server work into c4+c2 groups for latency diagnostics.
 
-    The current local PARO evidence has generated-token-green c2/c4/c8 shapes.
-    c6 is correct only through a selected full-attention rowchunk bridge and is
-    slower than the neighboring green groupings.  Keep the policy narrow:
-    default route, retained-defaults mode, deterministic greedy rows, exactly
-    six prompts.
+    Direct c6 has lower aggregate step cost than sequential c4+c2 in the
+    gfx1151 diagnostic profile. Keep this older split opt-in and narrow:
+    default route, deterministic greedy rows, and exactly six prompts.
     """
 
     rows = len(prompts)

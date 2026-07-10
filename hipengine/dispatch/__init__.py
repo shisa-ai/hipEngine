@@ -1,6 +1,12 @@
 """Dispatch, batching, and fusion planning."""
 
 from hipengine.dispatch.batch import ActiveBatch, BatchShapeKey, BatchSlot, RequestState, SlotMove, WorkItem, WorkKind
+from hipengine.dispatch.batch_width import (
+    BatchWidthGroup,
+    BatchWidthPartitionPlan,
+    NativeBatchWidthProfile,
+    plan_batch_width_partition,
+)
 from hipengine.dispatch.fusion import BoundKernel, FusionPlanner, KernelPlanStep, resolve_plan
 from hipengine.dispatch.kv import (
     KVKernelSelection,
@@ -41,6 +47,8 @@ __all__ = [
     "BatchSamplerMode",
     "BatchShapeKey",
     "BatchSlot",
+    "BatchWidthGroup",
+    "BatchWidthPartitionPlan",
     "BoundKernel",
     "FusionPlanner",
     "KVKernelSelection",
@@ -52,6 +60,7 @@ __all__ = [
     "ProjectionDispatchDecision",
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
+    "NativeBatchWidthProfile",
     "RequestState",
     "SlotMove",
     "WorkItem",
@@ -69,6 +78,7 @@ __all__ = [
     "projection_dispatch_candidates_from_json",
     "projection_dispatch_evidence_payload_blockers",
     "plan_batch_sampler_dispatch",
+    "plan_batch_width_partition",
     "resolve_paged_attn_decode",
     "resolve_paged_attn_prefill",
     "resolve_paged_kv_write",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import time
 from typing import Any, ClassVar
 
+from hipengine.dispatch import NativeBatchWidthProfile, plan_batch_width_partition
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -518,10 +520,9 @@ class Qwen35ParoOneTokenGenerator:
         """Generate a prompt list through the scheduler-owned c>N path.
 
         Native compact prefill runs all admitted rows together when their block
-        table shapes permit it. Decode remains the explicit serial slot bridge
-        until native c-aware replay lands; keep ``last_batch_generation`` clear
-        about that so prompt-list batching is not mistaken for a retained c>N
-        throughput path.
+        table shapes permit it. Decode uses only identity-matched native widths;
+        unsupported live widths are covered by native subgroups plus an exact
+        serial remainder. ``last_batch_generation`` records the effective route.
         """
 
         prompt_rows: list[list[int]] = []
@@ -599,6 +600,11 @@ class Qwen35ParoOneTokenGenerator:
 
         decode_steps = 0
         native_decode_steps = 0
+        native_decode_group_calls = 0
+        serial_decode_row_calls = 0
+        partitioned_decode_steps = 0
+        decode_partition_histogram: Counter[str] = Counter()
+        native_width_profile_payload: dict[str, Any] | None = None
         serial_decode_fallback = False
         while next_token_by_request:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
@@ -619,40 +625,94 @@ class Qwen35ParoOneTokenGenerator:
                 scheduler.active_batch.slot_for(request_id)
                 for request_id in request_ids_for_step
             ]
-            compact_slots = tuple(slots_for_step) == tuple(range(len(slots_for_step)))
-            use_native_decode = compact_slots and len(slots_for_step) > 1 and hasattr(session, "step_batch_native")
+            sorted_step_rows = sorted(
+                zip(
+                    slots_for_step,
+                    request_ids_for_step,
+                    token_ids_for_step,
+                    positions_for_step,
+                    strict=True,
+                ),
+                key=lambda item: item[0],
+            )
+            profile_provider = getattr(session, "native_batch_width_profile", None)
+            profile = profile_provider() if callable(profile_provider) else None
+            if profile is not None and not isinstance(profile, NativeBatchWidthProfile):
+                raise TypeError("native_batch_width_profile() must return NativeBatchWidthProfile or None")
+            if profile is not None:
+                native_width_profile_payload = profile.to_json_dict()
+            plan = plan_batch_width_partition(
+                len(sorted_step_rows),
+                profile=profile if hasattr(session, "step_batch_native") else None,
+                positions=tuple(int(item[3]) for item in sorted_step_rows),
+            )
             decode_started_at = time.perf_counter()
-            if use_native_decode:
-                try:
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    results = session.step_batch_native(
-                        token_ids_for_step,
-                        positions=positions_for_step,
-                        slots=slots_for_step,
-                        sample=True,
-                    )
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    native_decode_steps += 1
-                except NotImplementedError:
+            result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult | None] = {}
+            effective_groups: list[tuple[str, int]] = []
+            cursor = 0
+            step_native_rows = 0
+            step_serial_rows = 0
+            for group in plan.groups:
+                group_rows = sorted_step_rows[cursor : cursor + group.width]
+                cursor += group.width
+                group_slots = [int(item[0]) for item in group_rows]
+                group_request_ids = [int(item[1]) for item in group_rows]
+                group_token_ids = [int(item[2]) for item in group_rows]
+                group_positions = [int(item[3]) for item in group_rows]
+                results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
+                if group.mode == "native":
+                    try:
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        results = session.step_batch_native(
+                            group_token_ids,
+                            positions=group_positions,
+                            slots=group_slots,
+                            sample=True,
+                        )
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        native_decode_group_calls += 1
+                        step_native_rows += group.width
+                        effective_groups.append(("native", group.width))
+                    except NotImplementedError:
+                        serial_decode_fallback = True
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        results = session.step_batch_serial(
+                            group_token_ids,
+                            positions=group_positions,
+                            slots=group_slots,
+                            sample=True,
+                        )
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        serial_decode_row_calls += group.width
+                        step_serial_rows += group.width
+                        effective_groups.append(("serial", group.width))
+                else:
                     serial_decode_fallback = True
                     raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
                     results = session.step_batch_serial(
-                        token_ids_for_step,
-                        positions=positions_for_step,
-                        slots=slots_for_step,
+                        group_token_ids,
+                        positions=group_positions,
+                        slots=group_slots,
                         sample=True,
                     )
                     raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            else:
-                serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                results = session.step_batch_serial(
-                    token_ids_for_step,
-                    positions=positions_for_step,
-                    slots=slots_for_step,
-                    sample=True,
-                )
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    serial_decode_row_calls += group.width
+                    step_serial_rows += group.width
+                    effective_groups.append(("serial", group.width))
+                if len(results) != len(group_request_ids):
+                    raise RuntimeError(
+                        f"decode group returned {len(results)} results for {len(group_request_ids)} requests"
+                    )
+                result_by_request.update(zip(group_request_ids, results, strict=True))
+            if cursor != len(sorted_step_rows):
+                raise RuntimeError("decode width partition did not consume every live row")
+            results = tuple(result_by_request[request_id] for request_id in request_ids_for_step)
+            if step_native_rows and step_serial_rows == 0:
+                native_decode_steps += 1
+            if len(effective_groups) > 1:
+                partitioned_decode_steps += 1
+            signature = "+".join(f"{mode}:{width}" for mode, width in effective_groups)
+            decode_partition_histogram[signature] += 1
             decode_wall_s += time.perf_counter() - decode_started_at
             generated: list[GeneratedToken] = []
             for request_id, result in zip(request_ids_for_step, results, strict=True):
@@ -686,17 +746,28 @@ class Qwen35ParoOneTokenGenerator:
             "batch_decode_step_ms_avg": (decode_wall_s * 1000.0 / decode_steps) if decode_steps else 0.0,
             "batch_decode_steps": float(decode_steps),
             "batch_native_decode_steps": float(native_decode_steps),
+            "batch_native_decode_group_calls": float(native_decode_group_calls),
+            "batch_serial_decode_rows": float(serial_decode_row_calls),
         }
+        if partitioned_decode_steps:
+            execution_path = "scheduler_native_packed_prefill_partitioned_decode"
+        elif native_decode_complete:
+            execution_path = "scheduler_native_packed_prefill_native_decode"
+        else:
+            execution_path = "scheduler_native_packed_prefill_serial_decode"
         self.last_batch_generation = {
-            "path": "scheduler_native_packed_prefill_native_decode"
-            if native_decode_complete
-            else "scheduler_native_packed_prefill_serial_decode",
+            "path": execution_path,
             "batch_size": batch_size,
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
             "packed_prefill_slabs": prefill_slab_shapes,
             "decode_steps": decode_steps,
             "native_decode_steps": native_decode_steps,
+            "native_decode_group_calls": native_decode_group_calls,
+            "serial_decode_row_calls": serial_decode_row_calls,
+            "partitioned_decode_steps": partitioned_decode_steps,
+            "decode_partition_histogram": dict(sorted(decode_partition_histogram.items())),
+            "native_width_profile": native_width_profile_payload,
             "serial_decode_fallback": serial_decode_fallback,
             "native_compact_prefill": bool(
                 getattr(batch_execution, "native_compact_prefill", False)

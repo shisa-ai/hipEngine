@@ -327,6 +327,7 @@ Run record:
 | Source/build | hipEngine `4175dabf145d2054ff751c56bf019febd03ced65`; tracked source clean; unrelated untracked files present; Python 3.12.13; TheRock HIP `7.13.60980-c76140fa27` |
 | Timing scope | Direct retained-batch backend decode wall; aggregate generated tokens divided by measured decode wall |
 | Correctness | Primitive c2-c8 exact vs c1 and within `5.961e-8` of NumPy; 137-token generated equality green only at c2/c4/c6/c8 |
+| Partition profile | Opt-in retained/native decode may use c2/c4/c6/c8 only for matching gfx1151/model/quant/BF16-KV identity at decode positions 512-647; every mismatch falls back to serial |
 | Missing gates | Same-fixture c1, serial scaling bridge, rocprof trace, odd-width equality, and dynamic c8-to-c1 shrinking |
 | Artifact | [`2026-07-10...current-diagnostic-summary.json`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json) |
 

@@ -5,8 +5,26 @@
   "status": "diagnostic",
   "performance_claim": false,
   "retained_ready": false,
+  "native_batch_width_profile": {
+    "schema": 1,
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "model_snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "native_widths": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "min_position": 512,
+    "max_position": 647,
+    "cost_source": "rows.<width>.decode_step_ms_median_of_run_medians"
+  },
   "hardware": {
     "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
     "arch": "gfx1151",
     "detected_arches": [
       "gfx1151"
@@ -58,6 +76,16 @@
     "reference_widths": [
       1
     ],
+    "native_partition_widths": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "evidenced_decode_position_range": {
+      "min": 512,
+      "max": 647
+    },
     "repeated_widths": [
       1,
       2,

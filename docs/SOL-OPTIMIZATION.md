@@ -309,17 +309,18 @@ Do not restore the old GGUF graph as a shortcut. Do not optimize the repeated
 | --- | --- | --- | --- | --- |
 | `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `blocked` | P0 foundation | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
 | `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `blocked` | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
-| `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `blocked` | P2 RED tests | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
+| `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `in progress`: CPU integration covers a surviving `[0,2]` c2 group; full GPU shrink coverage remains. | P2 RED tests | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
 | `SOL-P4` | Make selected-c1 MoE a named multi-row algorithm and compare it with grouped-compact at every supported width. | `blocked` | P1, scoped profiler | Full-layer/server wall, routed-lane counts, and correctness select the mode; c6's current advantage is rechecked. |
-| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `blocked` | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
-| `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `blocked` | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
+| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `in progress`: the generator partitions unsupported widths into evidenced native groups plus exact serial rows; direct odd-width repair remains. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
+| `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `in progress`: the splitter is default-off and explicit opt-in; exact server accounting remains. | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
 | `SOL-P7` | Capture/replay decode buckets keyed by active rows, context, mask, variants, and replay length. | `blocked` | P1-P5 | Cache hit/miss/fallback telemetry is complete; exact replay improves server wall for retained shapes. |
 | `SOL-P8` | Retune gfx1151 prefill chunks, AOTriton threshold, projection, and sampler modes after the route is shape-safe. | `blocked` | B2, P1-P5 | Same-device profile and end-to-end matrix select values without gfx1100 regression. |
 | `SOL-P9` | Replace row-parallel GEMV with weight-reusing MMQ/GEMM/WMMA/grouped algorithms where c>N profiles justify it. | `conditional` | P1 profiler | Activate per family when weight reload/occupancy is material; prove c1 non-regression and c>N aggregate wall win. |
 
-The current c6 splitter is an opt-in diagnostic policy, not a completed
-throughput optimization. The direct-rate estimate favors unsplit c6, but only
-correct all-choice server measurements may decide the policy.
+The c6 splitter is an opt-in diagnostic policy. The exact width planner uses
+the lower-cost direct c6 profile, while unknown/red widths use a minimum-cost
+cover of c8/c6/c4/c2 plus serial rows. Only correct all-choice server
+measurements may remove the splitter or assign it a latency objective.
 
 ## MTP, DFlash, And Routing
 
