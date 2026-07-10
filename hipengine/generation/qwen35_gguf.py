@@ -37,7 +37,11 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
-from hipengine.kernels.backends import hip_target_arch_environment, hip_target_arch_for_backend
+from hipengine.kernels.backends import (
+    hip_target_arch_environment,
+    hip_target_arch_for_backend,
+    resolve_backend,
+)
 from hipengine.quant.gguf import dequantize_gguf_data
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -545,7 +549,7 @@ class Qwen35GGUFBringupGenerator:
     model_path: str | Path
     weight_index: GGUFModelInfo
     model_plugin: Any
-    backend: str = "hip_gfx1100"
+    backend: str = "auto"
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -563,11 +567,20 @@ class Qwen35GGUFBringupGenerator:
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
+        self.backend = resolve_backend(self.backend)
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
 
     @property
     def target_arch(self) -> str:
-        return hip_target_arch_for_backend(getattr(self, "backend", "hip_gfx1100"))
+        backend = self.__dict__.get("backend")
+        if backend is None:
+            # Lightweight scheduling tests intentionally bypass the dataclass
+            # initializer with ``__new__``. Keep that non-runtime fixture on
+            # the historical source target; every real generator resolves and
+            # stores a concrete backend in ``__post_init__``.
+            backend = "hip_gfx1100"
+            self.backend = backend
+        return hip_target_arch_for_backend(backend)
 
     @_target_arch_scoped
     def prepare(

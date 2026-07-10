@@ -15,6 +15,8 @@ import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib import import_module
+from types import ModuleType
 
 AUTO_BACKEND = "auto"
 CPU_BACKEND = "cpu_reference"
@@ -63,6 +65,23 @@ def hip_target_arch_for_backend(backend: str) -> str:
     except KeyError as exc:
         valid = ", ".join(sorted(HIP_BACKEND_TARGET_ARCH))
         raise ValueError(f"unsupported HIP backend {backend!r}; expected one of: {valid}") from exc
+
+
+def load_backend_kernel_package(backend: str) -> ModuleType:
+    """Load and refresh one concrete HIP backend's kernel registrations.
+
+    Backend packages may expose a conventional ``register_backend_kernels``
+    hook.  Calling it with ``replace=False`` fills registrations that are
+    missing after test isolation or lazy family imports without overwriting a
+    caller-provided registry fixture.
+    """
+
+    hip_target_arch_for_backend(backend)
+    module = import_module(f"hipengine.kernels.{backend}")
+    registrar = getattr(module, "register_backend_kernels", None)
+    if callable(registrar):
+        registrar(replace=False)
+    return module
 
 
 def select_backend(

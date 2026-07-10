@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Iterator, Mapping
 
+from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_dual_gemv_bf16_bf16_out,
@@ -184,6 +185,36 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         "t16",
     ),
 }
+
+
+def _weight_backend(
+    *weights: Qwen35GGUFDeviceWeight,
+    backend: str | None = None,
+) -> str:
+    """Return one explicit or resident-weight backend for a dispatch group."""
+
+    resident_backends = {
+        str(value)
+        for weight in weights
+        if (value := getattr(weight, "backend", None)) is not None
+    }
+    if len(resident_backends) > 1:
+        raise ValueError(
+            "GGUF fused dispatch requires weights from one backend; got "
+            + ", ".join(sorted(resident_backends))
+        )
+    if backend is not None:
+        if resident_backends and backend not in resident_backends:
+            resident = next(iter(resident_backends))
+            raise ValueError(
+                f"GGUF dispatch backend {backend!r} does not match resident weight backend {resident!r}"
+            )
+        return backend
+    if resident_backends:
+        return next(iter(resident_backends))
+    # Compatibility for lightweight dispatch fixtures that predate backend-tagged
+    # resident weights. Production materialization always supplies the backend.
+    return "hip_gfx1100"
 
 
 def set_gemv_decode_enabled(enabled: bool | None) -> None:
@@ -445,11 +476,12 @@ def resolve_gguf_linear_dispatch(
     *,
     activation_dtype: str = GGUF_ACTIVATION_BF16,
     output_dtype: str = GGUF_OUTPUT_BF16,
-    backend: str = "hip_gfx1100",
+    backend: str | None = None,
     rows: int = 1,
 ) -> GGUFLinearDispatch:
     """Resolve a GGUF linear launch without model/engine quant branches."""
 
+    resolved_backend = _weight_backend(weight, backend=backend)
     table_key = (weight.spec.layout, activation_dtype, output_dtype)
     try:
         dispatch = _DISPATCH_TABLE[table_key]
@@ -461,7 +493,7 @@ def resolve_gguf_linear_dispatch(
     quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
     variant = _variant_for_rows(dispatch.key.variant, rows=rows)
     return GGUFLinearDispatch(
-        KernelKey(backend, dispatch.key.layer, quant, variant),
+        KernelKey(resolved_backend, dispatch.key.layer, quant, variant),
         dispatch.abi,
     )
 
@@ -496,7 +528,7 @@ def launch_gguf_linear(
     *,
     activation_dtype: str = GGUF_ACTIVATION_BF16,
     output_dtype: str = GGUF_OUTPUT_BF16,
-    backend: str = "hip_gfx1100",
+    backend: str | None = None,
     threads: int = 0,
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
@@ -520,6 +552,7 @@ def launch_gguf_linear(
     Otherwise the existing decode-shaped ``prefill_*`` aliases run.
     """
 
+    resolved_backend = _weight_backend(weight, backend=backend)
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
@@ -532,7 +565,7 @@ def launch_gguf_linear(
         out_features,
         activation_dtype,
         output_dtype,
-        backend,
+        resolved_backend,
         f_gemv,
         use_wmma,
         f_rowtile,
@@ -543,7 +576,7 @@ def launch_gguf_linear(
             weight,
             activation_dtype=activation_dtype,
             output_dtype=output_dtype,
-            backend=backend,
+            backend=resolved_backend,
             rows=rows,
         )
         dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
@@ -615,7 +648,7 @@ def launch_gguf_linear_raw_ptr(
     *,
     activation_dtype: str = GGUF_ACTIVATION_BF16,
     output_dtype: str = GGUF_OUTPUT_BF16,
-    backend: str = "hip_gfx1100",
+    backend: str | None = None,
     threads: int = 0,
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
@@ -629,11 +662,12 @@ def launch_gguf_linear_raw_ptr(
     while dispatch still resolves from the original logical weight spec.
     """
 
+    resolved_backend = _weight_backend(weight, backend=backend)
     dispatch = resolve_gguf_linear_dispatch(
         weight,
         activation_dtype=activation_dtype,
         output_dtype=output_dtype,
-        backend=backend,
+        backend=resolved_backend,
         rows=rows,
     )
     if dispatch.abi != "raw":
@@ -674,6 +708,7 @@ def launch_gguf_linear_pair(
     out_features: int,
     *,
     out_features_b: int | None = None,
+    backend: str | None = None,
     stream: int = 0,
     runtime=None,
     use_wmma_prefill: bool | None = None,
@@ -696,6 +731,7 @@ def launch_gguf_linear_pair(
     concatenated layout that ``silu_mul_dual_out_*`` consumes downstream.
     """
 
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
@@ -710,6 +746,7 @@ def launch_gguf_linear_pair(
         in_features,
         out_features,
         out_features_b,
+        resolved_backend,
         use_wmma,
         use_gemv,
     )
@@ -722,6 +759,7 @@ def launch_gguf_linear_pair(
             in_features=in_features,
             out_features=out_features,
             out_features_b=out_features_b,
+            backend=resolved_backend,
             use_wmma=use_wmma,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
@@ -824,21 +862,22 @@ def _resolve_gguf_linear_pair_kind(
     in_features: int,
     out_features: int,
     out_features_b: int,
+    backend: str,
     use_wmma: bool,
 ) -> str:
     dispatch_a = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_a, rows=rows),
+        resolve_gguf_linear_dispatch(weight_a, backend=backend, rows=rows),
         rows=rows,
         out_features=out_features,
     )
     dispatch_b = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_b, rows=rows),
+        resolve_gguf_linear_dispatch(weight_b, backend=backend, rows=rows),
         rows=rows,
         out_features=out_features,
     )
     if use_wmma and rows > 1:
         q4_prefill_raw = KernelKey(
-            "hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out"
+            backend, "linear", "gguf_q4_k", "prefill_bf16_bf16_out"
         )
         if (
             out_features_b == out_features
@@ -858,7 +897,7 @@ def _resolve_gguf_linear_pair_kind(
             if _dispatch_can_use_wmma_prefill(d, rows=rows, in_features=in_features):
                 return "none"
     q8_t16_dual = KernelKey(
-        "hip_gfx1100",
+        backend,
         "linear",
         "gguf_q8_0_t16_v1",
         "t16_dual_gemv_decode_bf16_bf16_out",
@@ -880,11 +919,11 @@ def _resolve_gguf_linear_pair_kind(
             return "none"
         return "q8_t16_dual_split"
 
-    q8_decode = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+    q8_decode = KernelKey(backend, "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
     if rows == 1 and out_features_b == out_features and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
         return "q8_raw_dual"
 
-    q4_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
+    q4_prefill = KernelKey(backend, "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
     if rows > 1 and out_features_b == out_features and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
         return "q4_pack8_dual_prefill"
     return "none"
@@ -904,32 +943,34 @@ def launch_gguf_linear_triple(
     *,
     out_features_b: int | None = None,
     out_features_c: int | None = None,
+    backend: str | None = None,
     stream: int = 0,
     runtime=None,
     threads: int = 0,
 ) -> bool:
     """Launch a supported same-input triple of GGUF projections."""
 
+    resolved_backend = _weight_backend(weight_a, weight_b, weight_c, backend=backend)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
     out_features_c = out_features if out_features_c is None else int(out_features_c)
     dispatch_a = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_a, rows=rows),
+        resolve_gguf_linear_dispatch(weight_a, backend=resolved_backend, rows=rows),
         rows=rows,
         out_features=out_features,
     )
     dispatch_b = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_b, rows=rows),
+        resolve_gguf_linear_dispatch(weight_b, backend=resolved_backend, rows=rows),
         rows=rows,
         out_features=out_features_b,
     )
     dispatch_c = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_c, rows=rows),
+        resolve_gguf_linear_dispatch(weight_c, backend=resolved_backend, rows=rows),
         rows=rows,
         out_features=out_features_c,
     )
     use_wmma = _resolve_use_wmma_prefill(None)
     q8_t16_triple = KernelKey(
-        "hip_gfx1100",
+        resolved_backend,
         "linear",
         "gguf_q8_0_t16_v1",
         "t16_triple_gemv_decode_bf16_bf16_out",
@@ -1001,6 +1042,7 @@ def launch_gguf_linear_pair_concat(
     in_features: int,
     out_features: int,
     *,
+    backend: str | None = None,
     stream: int = 0,
     runtime=None,
     use_wmma_prefill: bool | None = None,
@@ -1017,11 +1059,12 @@ def launch_gguf_linear_pair_concat(
     decode so the two Q8_0 projections share one T16 kernel launch family.
     """
 
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
-    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
-    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
+    dispatch_a = resolve_gguf_linear_dispatch(weight_a, backend=resolved_backend, rows=rows)
+    dispatch_b = resolve_gguf_linear_dispatch(weight_b, backend=resolved_backend, rows=rows)
     q8_t16_dual = KernelKey(
-        "hip_gfx1100",
+        resolved_backend,
         "linear",
         "gguf_q8_0_t16_v1",
         "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
@@ -1061,10 +1104,10 @@ def launch_gguf_linear_pair_concat(
     if not use_wmma or rows <= 1:
         return False
     q8_prefill_raw = KernelKey(
-        "hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
+        resolved_backend, "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
     )
     q8_dual = KernelKey(
-        "hip_gfx1100",
+        resolved_backend,
         "linear",
         "gguf_q8_0",
         "wmma_prefill_dual_gate_up_bf16_bf16_out",
@@ -1368,6 +1411,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
     register_gguf_q8_0_t16_prefill_kernels()
+    load_backend_kernel_package(key.backend)
 
 
 _LAUNCH_ABI = {
