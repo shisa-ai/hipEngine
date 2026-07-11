@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`a18ff7bc428833a5f3d87ed422d04633abbf0b10`
+`6f1910c9cc647089a0701805ce102c0cec565bcc`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -150,6 +150,16 @@ Production `record_steps=0` graph capture adds no tracked buffer and a measured
 **308 KiB** HIP graph/exec delta. G5 remains the cryptographically linked exact
 and performance non-regression gate; this G6 artifact makes no new speed claim.
 
+SOL-P2 is accepted on gfx1151 in
+[`2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json`](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json).
+At clean detached `6f1910c9`, exact prompt lengths 449 through 512 shrink from
+c8 to c1 without compaction. One row retires through EOS; explicit
+cancellations create middle, tail, then front holes while every post-event
+width remains exact. All eight generated sequences, all 30 linear recurrent
+state families, and all 10 live full-attention K/V families match independent
+c1. Ragged prefill uses the explicitly labelled `per_segment_ragged_exact`
+fallback; this is a correctness artifact with `performance_claim=false`.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
@@ -164,7 +174,8 @@ and performance non-regression gate; this G6 artifact makes no new speed claim.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 | clean detached hipEngine `7f611fe3`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: all 128 graph launches are byte-exact; capture-inclusive p512/d128 wall is 20.334 -> 20.311 ms/token (+0.112% throughput) against same-run eager. | Yes, named repeated-token protocol | Rerun after graph key/capture, decode math, state/KV layout, admission threshold, or HIP runtime changes; run separately on W7900 before enabling it there. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF replacement-layout residency and 24 GiB-class gate | 2026-07-11 | clean detached hipEngine `d70c9464`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained memory/correctness gate**: 733 unique sources, no raw+replacement duplicates or optional sidecars, 21.478 GiB owned/tracked p512/d128 graph session, 2.522 GiB budget margin. `performance_claim=false`; G5 supplies linked speed non-regression. | Diagnostic link only | Rerun after weight materialization/layout, KV/state, prefill scratch, graph allocation, or max-sequence policy changes; context-specific capacity remains separate. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1-c8 shape/routing catalog | 2026-07-11 | clean detached hipEngine `a18ff7bc`; TheRock HIP `7.13.60980-c76140fa27`; exact model and prompt fingerprints retained | **Retained c1 performance and routing correctness**: exact-fixture c1 graph is 66.910 tok/s median; clean c2-c8 native rows all fail independent-c1 equality at index 2 and are explicitly serial. Native rates are diagnostic only. | Yes for c1 exact-fixture graph only | Rerun after c1 graph/prefill changes or any general native c>N algorithm change; finish P2 ragged/sparse/EOS transition coverage separately |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1-c8 shape/routing catalog | 2026-07-11 | clean detached hipEngine `a18ff7bc`; TheRock HIP `7.13.60980-c76140fa27`; exact model and prompt fingerprints retained | **Retained c1 performance and routing correctness**: exact-fixture c1 graph is 66.910 tok/s median; clean c2-c8 native rows all fail independent-c1 equality at index 2 and are explicitly serial. Native rates are diagnostic only. | Yes for c1 exact-fixture graph only | Rerun after c1 graph/prefill changes or any general native c>N algorithm change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO ragged c8-to-c1 lifecycle correctness | 2026-07-11 | clean detached hipEngine `6f1910c9`; TheRock HIP `7.13.60980-c76140fa27`; same exact model/fixture fingerprints as P1 | **Accepted correctness-only gate**: eight token sequences, 30 linear-state families, and 10 full-KV families match c1 through EOS and front/middle/tail sparse cancellation. `performance_claim=false`; ragged prefill uses an exact per-segment fallback. | Diagnostic link only | Rerun after ragged prefill, scheduler retirement, slot/state/KV addressing, or true-c1 decode changes; run independently on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
@@ -355,11 +366,12 @@ Artifacts: [hipEngine](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104
 
 ### gfx1151 PARO exact shape/routing catalog, 2026-07-11
 
-**Status: retained for c1 performance and c1-c8 routing correctness.** All rows
-ran from clean detached hipEngine `a18ff7bc` on the Radeon 8060S. The input is
-the same exact 512-token fixture row at every width. c1 uses native full prefill
-and state-bound graph replay; c2-c8 compare 137 generated IDs against true
-single-request `prefill_native()+step()` sessions.
+**Status: retained for c1 performance, c1-c8 routing correctness, and production
+lifecycle safety.** P1 ran from clean detached hipEngine `a18ff7bc`; P2 ran from
+clean detached `6f1910c9` on the same Radeon 8060S and exact model/fixture.
+P1 uses the same 512-token row at every width and compares 137 generated IDs
+against true single-request sessions. P2 uses ragged lengths 449 through 512
+and checks every persistent state/KV family through c8-to-c1 retirement.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Client c | Production backend groups | Exact classification | Retained aggregate decode |
@@ -400,6 +412,13 @@ changes the input/state of linear layer 4; the visible token flips on the next
 step. Grouped-compact produces the correct token at index 2 but fails the full
 shrinking sequence at index 4, so it is not a replacement default.
 
+The retained P2 lifecycle gate keeps physical slots sparse and un-compacted.
+Slot 3 exits by EOS at c8; later explicit cancellation creates middle, tail,
+and front holes while slot 4 survives to c1. Every generated sequence, all 30
+linear Conv/GDN state pairs, and all 10 live K/V layer pairs are SHA-256 exact
+against independent c1 at each row's retirement boundary. Ragged packed prefill
+selects `per_segment_ragged_exact`; equal-length packed prefill is unchanged.
+
 Run record:
 
 | Field | Value |
@@ -407,16 +426,19 @@ Run record:
 | GPU/backend | AMD Ryzen AI MAX+ 395 / Radeon 8060S, detected gfx1151, target gfx1151 |
 | Source/build | clean hipEngine `a18ff7bc428833a5f3d87ed422d04633abbf0b10`; Python 3.12.13; TheRock HIP `7.13.60980-c76140fa27`; detected/target gfx1151 |
 | Timing scope | Direct resident backend decode wall; c1 median of 3; rejected native rows one run each |
-| Correctness | c1 endpoints repeat across 3/3 runs and match the independent sequence final ID. c2-c8 fail every row at index 2. Serial c8-to-c1 remains 8/8 exact. |
+| Correctness | c1 endpoints repeat across 3/3 runs and match the independent sequence final ID. c2-c8 native rows fail every row at index 2. The production serial route passes ragged c8-to-c1 for 8/8 token/state/KV rows. |
 | Production route | `true_c1_graph` for c1; `scheduler_true_c1_fallback` for c2-c8. No gfx1100 artifact may select this gfx1151 catalog. |
-| Remaining transition gates | P2 ragged contexts plus EOS/cancel and front/tail sparse-slot coverage; these do not reopen native routing. |
-| Current artifact | [`2026-07-11...exact-catalog.json`](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json) |
+| Lifecycle route | `per_segment_ragged_exact` prefill plus true-c1 decode; EOS and front/middle/tail sparse cancellation are exact. No throughput claim is attached to the fallback. |
+| Current artifacts | [`P1 exact catalog`](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json), [`P2 ragged lifecycle`](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json) |
 | Historical correction | [`2026-07-10...legacy timing summary`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json), [`true-c1 shrink gate`](results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json) |
 
 Reproduce c2-c8 with `scripts/qwen35_batch_equality_matrix.py --batch-sizes
 2,3,4,5,6,7,8`; use `scripts/qwen35_paro_bench.py --prompt-fixture ...
 --prompt-row 0` for the exact c1 control. Commands and raw SHA-256 values are
-embedded in the compact artifact.
+embedded in the compact artifact. Reproduce P2 with
+`scripts/qwen35_batch_shrinking_correctness.py --batch-size 8
+--prompt-lengths 449,458,467,476,485,494,503,512 --steps-per-width 1
+--survivor-slot 4 --eos-slot 3` and the same model/fixture.
 
 ### gfx1151 historical cross-engine concurrency, 2026-06-15
 
@@ -633,13 +655,12 @@ untracked experiment files as part of the rollup gate.
   historical rows predate all four contracts. Raw IDs now suffice for the
   completion-token headline, but no corrected timing headline exists until the
   same protocol is rerun.
-- **gfx1151 PARO native batching:** the [2026-07-10 timing artifact](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json) passes the primitive c2-c8 gate,
-  but the direct timing matrix used a batch-shaped width-1 oracle. At
-  `0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate rejects native c8
-  on all rows at generated token index 2 and accepts the serial bridge through
-  every width. No native width is routing-eligible until the direct, sparse,
-  ragged, and shrinking matrix passes against independent single-request
-  prefill/decode.
+- **gfx1151 PARO native batching:** P1's clean direct matrix rejects every
+  native c2-c8 width at generated index 2; P2's clean ragged lifecycle gate
+  accepts the production true-c1 bridge through EOS and front/middle/tail
+  sparse slots. Production correctness is closed, but no native width is
+  routing-eligible until a general c>N algorithm passes the same independent-c1
+  token/state/KV gates. The 2026-07-10 native timing artifact remains diagnostic.
 - **gfx1151 model sweep:** the [committed summary](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json) omits source/build provenance
   and contains one measured repetition. Its values remain a dated diagnostic.
 - **llama.cpp 24 GiB Q8_0 memory:** the former root README tables had no compact

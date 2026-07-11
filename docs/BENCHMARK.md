@@ -803,11 +803,22 @@ are different protocols. The short matrix is prompt 512, 8 warmup decode steps,
   Classify it explicitly serial until a general algorithm passes the full gate.
 - Keep gfx1100 and gfx1151 catalogs separate. A stale W7900 row cannot select a
   gfx1151 route, and vice versa.
+- Close lifecycle safety separately with
+  `scripts/qwen35_batch_shrinking_correctness.py`. Use one exact ragged prompt
+  vector, leave a non-edge physical slot alive through c1, retire one row by
+  EOS, and cancel enough rows to exercise front, middle, and tail holes without
+  compaction. Compare every generated ID plus SHA-256 of all persistent linear
+  Conv/GDN state and live full-attention K/V prefixes at each retirement
+  boundary. A per-segment ragged fallback is correctness evidence only, not a
+  c>N throughput claim.
 
 The current gfx1151 catalog is
 `benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json`:
 c1 is retained; every c2-c8 native candidate fails at generated index 2 and
-production uses width-1 sessions.
+production uses width-1 sessions. The matching lifecycle gate is
+`benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json`:
+ragged c8-to-c1 EOS/cancel transitions pass all token/state/KV rows on the
+production true-c1 route; `performance_claim=false`.
 
 ### OPTIMAL MoE/PARO parity rows
 

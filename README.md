@@ -212,10 +212,12 @@ canonical [`benchmarks/README.md`](benchmarks/README.md#blocked-and-diagnostic-b
 
 hipEngine contains an opt-in native `c>1` diagnostic path: scheduler-owned
 compact prefill plus device-resident batched decode. The gfx1151 path is not
-routing-eligible because it fails the independent c1 oracle. Production PARO
-batches use width-1 sessions until a schema-2 profile passes direct, sparse,
-ragged, and shrinking gates. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
-for the design and C3.0a/b/c history.
+routing-eligible because P1's direct matrix fails the independent c1 oracle.
+Production PARO batches use width-1 sessions; P2 now proves that route exact
+through ragged c8-to-c1 EOS/cancel transitions and front/middle/tail sparse
+slots. Native batching remains closed until a general c>N algorithm passes the
+same token/state/KV gates. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for
+the design and C3.0a/b/c history.
 
 The linked records keep gfx1100 and gfx1151 separate because the model files,
 ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
@@ -247,10 +249,12 @@ and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 
 ### gfx1151 / Radeon 8060S PARO exact shape catalog (2026-07-11, Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained c1 performance and c1-c8 routing correctness.** Clean
-`a18ff7bc` uses the same exact 512-token fixture at every width. c1 graph replay
-is retained; every c2-c8 native candidate fails independent-c1 equality at
-generated index 2 and is explicitly routed through width-1 sessions.
+**Status: retained c1 performance, c1-c8 routing correctness, and production
+lifecycle safety.** Clean `a18ff7bc` uses the same exact 512-token fixture at
+every width. c1 graph replay is retained; every c2-c8 native candidate fails
+independent-c1 equality at generated index 2 and is explicitly routed through
+width-1 sessions. Clean `6f1910c9` then passes ragged c8-to-c1 EOS/cancel
+lifecycle coverage without compacting physical slots.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Client c | Production backend groups | Exact classification | Retained aggregate decode |
@@ -269,7 +273,12 @@ Protocol: W4 PARO/BF16 KV, 40 layers, exact prompt-ID SHA-256
 `b162b2d0...2388`, 8 warmup decode steps, 128 measured decode steps, and greedy
 sampling. c1 is a clean median of three (`66.948/66.754/66.910 tok/s`). Native
 c2-c8 diagnostic rates are withheld from the topline because all rows fail the
-137-token oracle. See the [compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json)
+137-token oracle. The P2 gate uses prompt lengths 449 through 512 and matches
+all eight generated sequences, 30 linear-state families, and 10 live K/V
+families through EOS plus front/middle/tail sparse cancellation. Ragged prefill
+uses the correctness-first `per_segment_ragged_exact` fallback and makes no
+throughput claim. See the [P1 compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json),
+[P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
 and [canonical run record](benchmarks/README.md#gfx1151-paro-exact-shaperouting-catalog-2026-07-11).
 
 ### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)
