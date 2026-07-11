@@ -65,10 +65,29 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.Monk
 
     original_run_post_attention_moe_rows = Qwen35GGUFFullStackRunner._run_post_attention_moe_rows
 
-    def intercept_ref(self, layer_id, out_ptr, scratch, *, rows, stream=0, expert_sidecar=None):
+    def intercept_ref(
+        self,
+        layer_id,
+        out_ptr,
+        scratch,
+        *,
+        rows,
+        stream=0,
+        expert_sidecar=None,
+        **kwargs,
+    ):
         nonlocal ref_experts, ref_out
         # Run original reference (GEMV)
-        original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
+        original_run_post_attention_moe_rows(
+            self,
+            layer_id,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+            **kwargs,
+        )
         self.runtime.device_synchronize()
 
         # Capture selected experts
@@ -91,12 +110,40 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.Monk
     class Layer0DoneException(Exception):
         pass
 
-    def intercept_layer0_only(self, layer_id, out_ptr, scratch, *, rows, stream=0, expert_sidecar=None):
+    def intercept_layer0_only(
+        self,
+        layer_id,
+        out_ptr,
+        scratch,
+        *,
+        rows,
+        stream=0,
+        expert_sidecar=None,
+        **kwargs,
+    ):
         if layer_id == 0:
-            intercept_ref(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
+            intercept_ref(
+                self,
+                layer_id,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                expert_sidecar=expert_sidecar,
+                **kwargs,
+            )
             raise Layer0DoneException()
         else:
-            original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
+            original_run_post_attention_moe_rows(
+                self,
+                layer_id,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                expert_sidecar=expert_sidecar,
+                **kwargs,
+            )
 
     monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_layer0_only)
 
@@ -111,11 +158,30 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.Monk
     cand_experts = None
     cand_out = None
 
-    def intercept_cand(self, layer_id, out_ptr, scratch, *, rows, stream=0, expert_sidecar=None):
+    def intercept_cand(
+        self,
+        layer_id,
+        out_ptr,
+        scratch,
+        *,
+        rows,
+        stream=0,
+        expert_sidecar=None,
+        **kwargs,
+    ):
         nonlocal cand_experts, cand_out
         if layer_id == 0:
             # Run original candidate (WMMA)
-            original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
+            original_run_post_attention_moe_rows(
+                self,
+                layer_id,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                expert_sidecar=expert_sidecar,
+                **kwargs,
+            )
             self.runtime.device_synchronize()
 
             # Capture selected experts
@@ -127,7 +193,16 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.Monk
             self.runtime.memcpy(host_array_ptr(cand_out), out_ptr, cand_out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             raise Layer0DoneException()
         else:
-            original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
+            original_run_post_attention_moe_rows(
+                self,
+                layer_id,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                expert_sidecar=expert_sidecar,
+                **kwargs,
+            )
 
     # 2. Run Layer 0 with WMMA enabled (Candidate)
     monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: True)
