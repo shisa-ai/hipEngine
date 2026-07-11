@@ -1,6 +1,6 @@
 # HIP vs Vulkan Current Dashboard
 
-Last reviewed: 2026-07-11. Last retained measurement: 2026-07-10.
+Last reviewed: 2026-07-11. Last retained measurement: 2026-07-11.
 
 This file contains only the current cross-backend conclusions and open gates.
 The verbatim attribution notebook, including every pre-v2 hypothesis and local
@@ -24,6 +24,44 @@ Current comparisons use timing-contract v2:
 The executable contract is in
 [`benchmarks/micro/timing_contract.py`](../benchmarks/micro/timing_contract.py)
 and [`benchmarks/micro/schemas/result.schema.json`](../benchmarks/micro/schemas/result.schema.json).
+
+## Retained gfx1100 Matrix
+
+The clean bounded run used hipEngine `c57f21b5d5d` on Radeon Pro
+W7900/gfx1100, TheRock ROCm `7.15.0a20260711`, and RADV/Mesa `26.1.4`. All 22
+comparisons and 232 burst GPU rows pass exact-matrix, timed-command correctness,
+clean same-commit provenance, matching device/arch, and GPU-clock gates with
+`performance_claim=true`.
+
+Ratios are Vulkan/HIP speedup (`HIP GPU time / Vulkan GPU time`); above `1.0x`
+favors Vulkan.
+
+| Family | Serial V/H | Independent V/H | Current read |
+| --- | ---: | ---: | --- |
+| Dispatch/grid | `2.437x-10.122x` | `1.980x-65.325x` | Vulkan replay has the lower tiny-dispatch floor; independent is throughput, not call latency. |
+| Geometry | `0.360x-0.790x` | `1.100x-3.925x` | HIP wins required ordering; Vulkan wins independent overlap. |
+| Reduction | `0.304x-0.729x` | `1.110x-4.035x` | Same mode split as geometry. |
+| Memory/waitcnt | `0.517x-0.936x` | `0.544x-2.139x` | HIP wins serialized rows; independent rows are mixed. |
+| Packed dot | `1.052x-1.133x` | `1.872x-2.106x` | Vulkan leads, but the gfx1151 `3x-4x` magnitude does not transfer. |
+| VOPD | `0.391x-0.561x` | `0.516x-0.616x` | Every configured row favors HIP. |
+| Sampler top-1/top-k8 | `0.259x-0.501x` | `0.782x-2.563x` | Serialized sampling favors HIP; independent rows are mixed. |
+| Two-stage reduction | `0.324x-0.925x` | `0.394x-0.813x` | Every configured row favors HIP in both modes. |
+
+Production-shaped combined rows favor HIP in every serialized case: Q4
+selected-dual is `0.501x-0.562x`, Q6 selected-down X8 is `0.675x`, and dense
+Q8_0 is `0.393x-0.966x`. Independent combined Q4 is `0.432x-0.477x`, Q6 is
+`0.673x`, and dense Q8_0 is `0.388x-1.030x`; only three small `768x2048`
+dense rows barely favor Vulkan. A higher-sample Q6 serial follow-up also favored
+HIP, while its independent Vulkan run failed timed-sequence correctness and is
+not used as a comparison.
+
+Artifact:
+[`2026-07-11-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json).
+The local full report is `~/ROCm-report-gfx1100.md`.
+
+The W7900 and gfx1151 systems use different ROCm, kernel, firmware, and Mesa
+versions. Cross-architecture differences are descriptive only; they are not a
+controlled gfx1100-versus-gfx1151 attribution.
 
 ## Retained gfx1151 Matrix
 
@@ -56,6 +94,43 @@ and Vulkan X8 q8_1 paths use different math/layouts.
 Artifact:
 [`2026-07-10-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
 
+## gfx1100 versus gfx1151
+
+The two retained matrices use the same benchmark shapes, timing modes,
+dependency contracts, correctness gates, and ratio definition. They do **not**
+use the same software stack: W7900 ran TheRock ROCm 7.15 plus Mesa 26.1.4,
+while Strix Halo ran ROCm 7.13 plus Mesa 26.1.2. The table therefore answers
+"does the observed pattern transfer?", not "what does architecture alone
+cause?"
+
+| Family | gfx1100 serial / independent | gfx1151 serial / independent | Transfer read |
+| --- | ---: | ---: | --- |
+| Dispatch/grid | `2.437x-10.122x` / `1.980x-65.325x` | `1.162x-16.789x` / `1.116x-150.459x` | Vulkan leads on both; the absolute floor and range differ. |
+| Geometry | `0.360x-0.790x` / `1.100x-3.925x` | `0.677x-0.988x` / `4.133x-7.708x` | Same HIP-serial/Vulkan-independent split, much narrower independent gap on gfx1100. |
+| Reduction | `0.304x-0.729x` / `1.110x-4.035x` | `0.689x-0.981x` / `4.246x-7.502x` | Same mode split, stronger serialized HIP and narrower independent Vulkan lead on gfx1100. |
+| Memory/waitcnt | `0.517x-0.936x` / `0.544x-2.139x` | `0.869x-1.071x` / `1.077x-1.370x` | Does not broadly transfer: gfx1100 serial favors HIP and independent crosses parity. |
+| Packed dot | `1.052x-1.133x` / `1.872x-2.106x` | `3.052x-3.243x` / `3.840x-4.272x` | Vulkan leads on both, but the gfx1151 `3x-4x` magnitude collapses on gfx1100. |
+| VOPD | `0.391x-0.561x` / `0.516x-0.616x` | `1.031x-1.200x` / `1.040x-1.110x` | Direction flips: HIP wins every gfx1100 row; Vulkan modestly wins gfx1151. |
+| Sampler | `0.259x-0.501x` / `0.782x-2.563x` | `0.507x-1.134x` / `2.461x-5.646x` | Serialized HIP advantage strengthens; gfx1100 independent rows become mixed. |
+| Two-stage reduction | `0.324x-0.925x` / `0.394x-0.813x` | `0.682x-0.934x` / `1.087x-1.466x` | Serialized HIP transfers; independent direction flips to HIP on gfx1100. |
+
+Production-shaped combined operations are more consistent than the synthetic
+families:
+
+| Combined operation | gfx1100 serial / independent | gfx1151 serial / independent | Transfer read |
+| --- | ---: | ---: | --- |
+| Q4 selected-dual | `0.501x-0.562x` / `0.432x-0.477x` | `0.922x-0.973x` / `0.911x-0.978x` | HIP wins both architectures; the W7900 margin is much larger. |
+| Q6 selected-down X8 | `0.675x` / `0.673x` | `0.549x` / `0.587x` | HIP wins both bounded matrices. |
+| Dense Q8_0 | `0.393x-0.966x` / `0.388x-1.030x` | `0.540x-0.903x` / `0.558x-1.144x` | Mostly HIP on both; only small independent rows approach or cross parity. |
+
+The architecture-specific signal is therefore real enough to block ratio
+transfer: only dispatch and the geometry/reduction mode split reproduce
+qualitatively across the full synthetic families. Packed-dot magnitude, VOPD,
+sampler independent throughput, and two-stage independent throughput differ
+materially. Before assigning those differences to gfx1100 versus gfx1151,
+rerun both devices with matched ROCm/compiler, Mesa/RADV, kernel/firmware, fixed
+clock policy, and interleaved backend order.
+
 ## Current Decision
 
 - Keep HIP as the production backend. The data does not justify a broad Vulkan
@@ -65,7 +140,8 @@ Artifact:
 - Use the dispatch result to prioritize fewer launches, graph replay, and fused
   boundaries. Compare host wall only when submission classes match.
 - Keep packed-dot as a diagnostic until a matched production slice transfers
-  the win. Current Q4, Q6, and dense-Q8 production slices mostly do not.
+  the win. Its gfx1151 magnitude collapses on gfx1100, and current Q4, Q6, and
+  dense-Q8 combined production slices mostly favor HIP.
 - Add a new cross-backend slice only when a current production profile exposes
   a hot bucket whose answer would change routing or implementation priority.
 
@@ -73,7 +149,8 @@ Artifact:
 
 | Priority | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
-| 0 | Run the exact bounded v2 matrix on W7900/gfx1100 | Blocked on hardware | Same matrices, timing modes, correctness, provenance, and clocks pass on gfx1100; results remain separate from gfx1151. |
+| 0 | Fix-clock W7900 dispatch/stream attribution | Open | Interleaved one/four-stream and graph controls plus queue/AQL traces separate runtime submission from clock residency. |
+| 0 | Resolve Q6 50-repetition independent correctness | Open | The Vulkan timed-sequence oracle passes the higher-repetition disjoint-output run before its timing is compared. |
 | 1 | Profile current PARO and GGUF server paths | Open | A shipped hot slice is identified by layer family and submission behavior before another Vulkan experiment is added. |
 | 1 | Match Q6 lm-head math/layout | Blocked on comparable implementation | HIP and Vulkan use identical quantization, activation layout, output coverage, and rowtile algorithm before any ratio is reported. |
 | 2 | Production Vulkan or hand ISA | Decision-gated | A clean matched production slice wins in the relevant timing mode and final combined operation, then improves end-to-end wall without a memory/correctness regression. |

@@ -151070,3 +151070,46 @@ graphless decode launch-collapse path without regressing target/serial parity.
   actual positive-token host guard before any library/GPU load without changing
   short-prefill semantics. The Conv plan plus both segment-state GPU tests pass
   5/5, and `git diff --check` passes.
+
+## 2026-07-11 - Retain the W7900 HIP/Vulkan v2 matrix
+
+- Ran `python3 -m pytest -q tests/test_micro_*.py` before measurement: all 214
+  timing-contract/unit tests passed. The W7900 and XTX were idle; the retained
+  run selected W7900 with `HIP_VISIBLE_DEVICES=0` and Vulkan physical device 0.
+- Replayed the exact 22-entry gfx1151 bounded command manifest at clean
+  `c57f21b5d5d5fd5f389a7f3921062578c53eb744`, replacing the target/device with
+  gfx1100/W7900. The final clean wrapper used only TheRock ROCm
+  `7.15.0a20260711` root/core/generic multi-arch libraries plus AMD clang
+  `23.0.0git` (`aa451e1...+PATCHED:440716f8...`), and RADV/Mesa `26.1.4`.
+  It explicitly excluded the stale installed
+  `rocm-sdk-libraries-gfx110X-all==7.13.0a20260423` library path. An earlier
+  mixed-path diagnostic was discarded and the full matrix rerun.
+- Final run command driver: clean `env -i` with TheRock root, `HIPENGINE_HIP_ARCH=gfx1100`,
+  `HIP_VISIBLE_DEVICES=0`, and `/tmp/run_gfx1100_hip_vulkan_matrix.py`; exact
+  transformed arrays are embedded in the compact artifact. Result: 59/59
+  commands completed in 352.2 s, all 22 comparisons set
+  `performance_claim=true`, all timed-sequence correctness and GPU clocks pass,
+  and the matrix contains 232 burst GPU rows.
+- Retained burst Vulkan/HIP ranges: dispatch `2.437x-10.122x` serialized and
+  `1.980x-65.325x` independent; geometry `0.360x-0.790x` / `1.100x-3.925x`;
+  reduction `0.304x-0.729x` / `1.110x-4.035x`; memory `0.517x-0.936x` /
+  `0.544x-2.139x`; packed dot `1.052x-1.133x` / `1.872x-2.106x`; VOPD
+  `0.391x-0.561x` / `0.516x-0.616x`; sampler `0.259x-0.501x` /
+  `0.782x-2.563x`; two-stage reduction `0.324x-0.925x` / `0.394x-0.813x`.
+- Production combined rows mostly favor HIP: Q4 `0.501x-0.562x` /
+  `0.432x-0.477x`, Q6 `0.675x` / `0.673x`, and dense Q8 `0.393x-0.966x` /
+  `0.388x-1.030x`. A Q6 `50/10/9` serial confirmation passed and favored HIP
+  at `0.380x` combined; the independent Vulkan confirmation failed its timed
+  sequence oracle, so no confirmation ratio is retained for that mode.
+- Exact environment/manifest/execution SHA-256 values are
+  `769997d0...`, `d38ecdad...`, and `ad480a25...`. Raw JSON evidence is
+  `~/hip-vulkan-gfx1100-w7900-2026-07-11.zip`
+  (`d8f19b80c8c61483993c914980cc912b965cb2535ac5be2ee59aa6d5eff27811`).
+  Compact evidence is
+  `benchmarks/micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json`;
+  the detailed local report is `~/ROCm-report-gfx1100.md`.
+- Updated the micro runner guide, HIP/Vulkan dashboard, canonical benchmark
+  platform index, and benchmark changelog. No backend default changes: HIP
+  remains production; gfx1100/gfx1151 differences are descriptive because the
+  software/hardware stacks are not controlled. No under-load clock/power trace
+  was captured, so fixed-clock dispatch attribution remains follow-up work.

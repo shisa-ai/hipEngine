@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`8eb272155703ca45ad126b68c593ab8dc1f3ec09`
+`c57f21b5d5d5fd5f389a7f3921062578c53eb744`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -181,7 +181,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF OpenAI server automatic-route gate | 2026-07-11 | tracked-clean hipEngine `d2b1e742`; TheRock HIP `7.13.60980-c76140fa27`; exact GGUF and prompt-suite fingerprints retained; unrelated untracked files disclosed | **Diagnostic correctness rejection**: compatibility MTP is faster at c1/c2 but changes true-AR IDs on heldouts, so it cannot select automatic routing. One c8 AR repetition also exposes the separate exact-concurrency blocker. | Diagnostic link only | Implement an exact/default server MTP hook, then rerun full plus category-heldout realized-group economics before admitting it to `auto`. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-10 | clean detached hipEngine `ca241dae`; TheRock ROCm `7.13.0a20260411`; RADV/Mesa `26.1.2` | **Retained**, 22/22 comparisons pass provenance, correctness, and exact-matrix gates | Linked, not copied here | Rerun the bounded matrix after a timed kernel/harness change |
-| Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | Not run | None | **Blocked** | No | Run the same bounded v2 matrix used on gfx1151 |
+| Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean hipEngine `c57f21b5`; TheRock ROCm `7.15.0a20260711`; RADV/Mesa `26.1.4` | **Retained**, 22/22 comparisons and 232 burst GPU rows pass provenance, correctness, exact-matrix, device, and clock gates | Linked, not copied here | Rerun after a timed kernel/harness, ROCm, Mesa, or device clock-policy change |
 
 ## Current Eligible Toplines
 
@@ -222,9 +222,10 @@ the older SOL-G4 row remains the canonical eager/Amdahl baseline.
 Artifacts: [`SOL-G4 eager audit`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json)
 and [`SOL-G5 production graph audit`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
-The retained gfx1151 HIP/Vulkan timing-contract v2 micro matrix is linked from
-the platform index and [`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); it
-is not a model-throughput topline.
+The retained gfx1100 and gfx1151 HIP/Vulkan timing-contract v2 micro matrices
+are linked from the platform index and
+[`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); they are not
+model-throughput toplines.
 
 ## Diagnostics Awaiting Rerun
 
@@ -672,8 +673,10 @@ match these target and drafter revisions.
 Microbenchmark claims do not belong in the model-throughput tables. The v2
 timing contract and exact bounded rerun commands are in
 [`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md) and
-[`benchmarks/micro/README.md`](micro/README.md). Retained gfx1151 evidence is
-[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+[`benchmarks/micro/README.md`](micro/README.md). Retained evidence is
+[`gfx1100/W7900`](micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json)
+and
+[`gfx1151/Strix Halo`](micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
 
 ## Update Checklist
 
@@ -732,8 +735,6 @@ untracked experiment files as part of the rollup gate.
 - **llama.cpp 24 GiB Q8_0 memory:** the former root README tables had no compact
   artifact, model fingerprint, llama.cpp revision, or run date. The numbers were
   removed; rerun before publishing another capacity table.
-- **gfx1100 HIP versus Vulkan v2:** no timing-contract v2 matrix has been run on
-  W7900. Do not transfer the gfx1151 ratios to gfx1100.
 
 Rejected and superseded rows remain in JSON artifacts, `WORKLOG.md`,
 [`benchmarks/CHANGELOG.md`](CHANGELOG.md), and
