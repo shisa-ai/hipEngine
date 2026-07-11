@@ -393,6 +393,7 @@ def _run_gguf_sweep(
         kv_scale_dtype=kv_policy.scale_dtype,
         kv_scale_granularity=kv_policy.scale_granularity,
     )
+    resolved_backend, target_arch = _gguf_session_identity(session)
     load_seconds = time.perf_counter() - load_start
     host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
     host_token_embedding_reason = getattr(session, "host_token_embedding_reason", None)
@@ -456,9 +457,9 @@ def _run_gguf_sweep(
         compiler_version_file=args.compiler_version_file,
         compiler_version=compiler_version,
         extra={
-            "backend": session.backend,
+            "backend": resolved_backend,
             "requested_backend": args.backend,
-            "target_arch": session.runner.target_arch,
+            "target_arch": target_arch,
             "use_bulk_prefill": use_bulk_prefill,
             "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
             "use_wmma_prefill": args.use_wmma_prefill,
@@ -473,6 +474,19 @@ def _run_gguf_sweep(
             "host_token_embedding_reason": host_token_embedding_reason,
         },
     )
+
+
+def _gguf_session_identity(session: Qwen35GGUFResidentSession) -> tuple[str, str]:
+    """Snapshot resolved identity before ``close()`` clears the owned runner."""
+
+    runner = session.runner
+    if runner is None:
+        raise RuntimeError("GGUF README sweep session has no resolved runner")
+    backend = str(session.backend).strip()
+    target_arch = str(runner.target_arch).strip()
+    if not backend or not target_arch:
+        raise RuntimeError("GGUF README sweep session identity is incomplete")
+    return backend, target_arch
 
 
 def _sweep_output(

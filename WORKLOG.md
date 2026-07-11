@@ -151159,3 +151159,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passes 12/12; Python compilation, `bash -n`, wrapper `--help`, the live GTT
   probe, and `git diff --check` pass. No throughput result changed in this
   runner-only unit; the retained refresh follows from a clean worktree.
+
+## 2026-07-11 - Snapshot GGUF sweep identity before session teardown
+
+- The first clean `acadc4e3` refresh attempt completed both one-step prebuild
+  measurements, then stopped before any timed sweep because
+  `qwen35_readme_sweep.py` read `session.runner.target_arch` after `close()` had
+  cleared the owned runner. PARO prebuild was unaffected; no topline component
+  artifact was written.
+- Snapshot the concrete GGUF backend/target immediately after construction and
+  carry those immutable strings into provenance after teardown. A focused
+  lifetime regression clears a fake session runner after the snapshot and
+  preserves `hip_gfx1151` / `gfx1151` identity. The focused module passes 5/5,
+  Python compilation and `git diff --check` pass.
