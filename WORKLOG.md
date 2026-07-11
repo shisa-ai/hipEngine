@@ -150990,3 +150990,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: the expert-sidecar and related plan/sidecar selection run passes
   5 tests with 12 unavailable-model skips; `git diff --check` passes. No
   materialization default, model data, or benchmark value changed.
+
+## 2026-07-11 - Synchronize hidden-seed session test doubles
+
+- The post-sidecar continuation found stale `Qwen35GGUFResidentSession` test
+  doubles in the hidden-seed contract module. Since `ab477ffb`, `reset()`
+  forwards `stream`/`set_position` into scratch state reset and resets the
+  full-attention position; bulk prefill also passes `stream` to sampling and
+  reads resident-buffer capacity. The older fakes implemented none of those
+  ABI fields.
+- Updated only the local doubles: accept reset/sample keyword arguments, stub
+  the unrelated device-position setter in two serial/reset tests, provide
+  realistic resident buffer sizes, and initialize the empty INT8 oracle-buffer
+  owner. Assertions still exercise the original hidden-seed semantics.
+- Validation: `uv run pytest -q
+  tests/test_qwen35_gguf_hidden_seed_contract.py` passes 20/20;
+  `git diff --check` passes. Runtime code and benchmark values are unchanged.
