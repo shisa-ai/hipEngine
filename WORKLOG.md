@@ -150485,3 +150485,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Conv/GDN, KV, and tokens. Its one-step timing correctly rejects capture cost
   (`49.189` eager vs `27.247 tok/s` stable graph); it is validation only. The
   next clean p512/d128 run is the first publishable production-path result.
+
+## 2026-07-11 - SOL-G5 production graph accepted on gfx1151
+
+- Ran the committed production-API audit from clean detached hipEngine
+  `7f611fe3acfaa6e2cb4cd2d1e1dee6de29e62bda` on Radeon 8060S/gfx1151 with
+  TheRock HIP `7.13.60980-c76140fa27` and exact Q4_K_M fingerprint
+  `936659d6...c89fb`:
+  `python3 scripts/gguf_decode_graph_g5.py --correctness-steps 128
+  --timing-steps 128 --warmups 1 --repetitions 4 --require-cached --out
+  /tmp/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`.
+- Stable production replay passes 128/128 byte-exact launch checkpoints versus
+  eager for generated token, FP32 hidden seed, all 30 Conv/GDN state pairs,
+  and all 10 live BF16 K/V pairs. Conservative state-generation recapture also
+  passes 128/128 with 128 distinct keys; first failure is null.
+- Four rotating capture-inclusive samples measure same-run eager median
+  `20.334279 ms/token` (`49.178042 tok/s`) and stable graph median
+  `20.311461 ms/token` (`49.233288 tok/s`): **+0.1122% throughput**. Candidate
+  wall includes one `14.98-15.53 ms` capture/instantiate and final destroy per
+  128-token window. Replay-only median is about `20.179 ms/token`; per-token
+  recapture is rejected at `35.429019 ms/token` (`28.225450 tok/s`).
+- Retained
+  `benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`
+  (212,159 bytes, SHA-256
+  `6f58210ca8facb0c8a7176ea99065203b32df4b511acc590bf6b86a2ea2d29a1`,
+  `performance_claim=true`). Updated the SOL ledger, benchmark protocol,
+  canonical/root README, changelog, and graph rollback ledger. SOL-G5 is
+  accepted for the narrow gfx1151 long-c1-greedy admission; SOL-G6 is next.

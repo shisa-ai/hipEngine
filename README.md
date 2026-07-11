@@ -57,6 +57,7 @@ numbers below.
 - New server, retained PARO, GGUF, and HIP/Vulkan micro artifacts share one torch-free provenance contract with a concrete resolved backend/arch/device, content-derived model fingerprint, exact command/toolchain, and separate staged, unstaged, and untracked source state.
 - The gfx1151 GGUF eager gate proves that `[9707] * 512` legitimately continues with token `9707` in both llama.cpp and hipEngine; four teacher-forced transitions match fresh serial-prefix hidden, Conv/GDN, and live KV state byte-for-byte. This is a [correctness artifact](benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json), not a throughput claim.
 - The gfx1151 GDN prefill [exact matrix](benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json) passes 6/6 short, 512, segment-threshold, 4K, and chunk-boundary cases. The clean [interleaved A/B](benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json) then rejects split-chain promotion: it is 5.19% slower at 512 and 6.70% slower at 4K across four balanced repetitions, with exact timed tokens. Fused remains the default; the exact split stays available as the unfused diagnostic fallback.
+- The gfx1151 GGUF production graph [audit](benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json) passes 128/128 byte-exact hidden, recurrent-state, KV, and token checkpoints. For a 128-token long-greedy window, capture-inclusive throughput improves same-run eager 49.178 -> 49.233 tok/s (+0.112%); shorter, sampled, streaming, c>N, INT8-KV, and gfx1100 routes remain eager.
 - `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
 - Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M/Q4_K_S sweeps are in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). The Q4_K_M link points at Unsloth's MTP-bearing GGUF repo so the same filename also works for llama.cpp draft-MTP comparisons. GGUF uses a substantial GGUF-specific runtime path with bulk prefill, eager resident decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is the lower-memory secondary file; Q4_K_M is the active 1:1 llama.cpp comparison target and current 24 GiB BF16-KV support is mid-context unless a lower-memory KV/weight policy is enabled. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
@@ -167,18 +168,20 @@ cross-engine memory comparisons are omitted. Row sources: [`gfx1151 summary`](be
 [`llama.cpp HIP`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
 [`llama.cpp Vulkan`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json). The canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-sweep-2026-06-15) records the missing-runner blocker and next refresh protocol.
 
-### Current gfx1151 GGUF eager baseline
+### Current gfx1151 GGUF decode baselines
 
-This is the retained exact repeated-token SOL-G4 row; it does not turn the old
-one-repetition model sweep into a current cross-engine comparison.
+These are the retained exact repeated-token SOL-G4/G5 rows; they do not turn
+the old one-repetition model sweep into a current cross-engine comparison.
 
 <!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
 | Path | Platform and protocol | Result | Evidence status |
 | --- | --- | ---: | --- |
 | GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; 1 discarded + 4 measured runs; 128 eager steps; graph off | **49.285 tok/s** (`20.290 ms/token`) | Retained for this exact repeated-token protocol; every output ID is 9707 and the G1 hidden/state/KV oracle is linked |
+| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same model/KV/prompt; 1 warmup + 4 measured rotating same-session runs; 128 steps; one capture and destroy charged per run | **49.233 tok/s** (`20.311 ms/token`), **+0.112%** vs same-run eager | Retained for this exact long-greedy protocol; 128/128 hidden/state/KV/token checkpoints are byte-exact |
 <!-- END TOPLINE:GFX1151_GGUF_EAGER -->
 
-Artifact: [`SOL-G4 eager audit`](benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
+Artifacts: [`SOL-G4 eager audit`](benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json)
+and [`SOL-G5 production graph audit`](benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
 See [`benchmarks/README.md`](benchmarks/README.md) for the platform freshness
 index, exact settings, run commands, and evidence status.
