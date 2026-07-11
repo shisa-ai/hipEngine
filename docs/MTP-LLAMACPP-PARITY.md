@@ -11,19 +11,32 @@ this dashboard or [`benchmarks/README.md`](../benchmarks/README.md).
 
 ## Current Status
 
-Only the two GGUF MTP rows retained by the canonical scoreboard are current
-performance evidence. They exercise different semantic contracts and must not
-be ranked as interchangeable implementations.
+The two hipEngine GGUF columns retained by the canonical scoreboard exercise
+different semantic contracts. The llama.cpp HIP column is included as an
+external diagnostic comparator, not promoted as a repository topline.
 
-| Contract | Platform and workload | Retained result | Qualification | Artifact |
-| --- | --- | ---: | --- | --- |
-| Exact/default B5 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B Q4_K_M; 10-prompt category suite; fixed 10 cycles | `61.98` vs `54.79` AR tok/s, `1.1312x` | Correctness-preserving fixed-cycle result. It does not prove a natural-output-horizon production win. | [`2026-07-02...parallelattn-full.json`](../benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json) |
-| `llama-compat` B2 | Same GPU/model/suite; natural24/cyclecap24; direct partial commit and dp4a compatibility semantics | `71.52` vs `54.79` AR tok/s, `1.3055x` | Retained only for the compatibility contract. It is accuracy-traded and not serial-prefix-equivalent. | [`2026-07-03...natural24...json`](../benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json) |
+| Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: |
+| Headline route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Headline MTP decode | 61.98 tok/s (1.1312x own AR) | 71.52 tok/s (1.3055x own AR) | 71.91 tok/s (1.3835x own AR) |
+| Matched natural24 B2 MTP decode | 52.04 tok/s (diagnostic) | 71.52 tok/s | 71.91 tok/s |
+| Matched natural24 own AR | 54.80 tok/s | 54.79 tok/s | 51.98 tok/s |
+| Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
+| State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
 
-The exact/default route remains the semantic control. `llama-compat` remains an
-opt-in replication lane, not the production default. The historical llama.cpp
-HIP/Vulkan rates and stage traces are external/diagnostic comparators, not
-hipEngine toplines.
+The exact/default route remains the semantic control. Its retained 61.98 tok/s
+row uses a fixed-cycle horizon and cannot be ranked directly against the
+natural24 columns. `llama-compat` is the closer 1:1 performance comparison with
+llama.cpp because both use the B2 natural24 shape, but it is not
+serial-prefix-equivalent and remains an opt-in replication lane rather than the
+production default. The locally instrumented llama.cpp stage rerun has dirty
+source provenance and `performance_claim=false`; it is a comparison target,
+not an eligible standalone topline.
+
+Artifacts: [retained exact B5](../benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
+[exact natural24 B1-B5](../benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json),
+[retained `llama-compat` B2](../benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json),
+and [llama.cpp HIP B2 stage rerun](../benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
 
 The underlying gfx1151 eager target control is now correctness-certified by
 [`SOL-G1`](SOL-OPTIMIZATION.md): for the exact Q4_K_M model and

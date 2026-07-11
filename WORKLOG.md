@@ -151348,3 +151348,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
   passes 19/19. README synchronization, Python compilation of both assemblers,
   runner shell syntax, JSON parsing, and `git diff --check` also pass.
+
+## 2026-07-11 - Make the GGUF MTP contracts a three-lane comparison
+
+- Replaced the row-oriented public GGUF MTP summary with side-by-side columns
+  for hipEngine exact/default, hipEngine `llama-compat`, and llama.cpp HIP.
+  This is a presentation/evidence correction only; no benchmark was rerun and
+  no metric or routing default changed.
+- Preserve the retained exact/default B5 fixed-10-cycle result at `61.98 tok/s`
+  (`1.1312x` its `54.79 tok/s` AR control), but do not rank that different
+  output horizon directly against natural24. The table now also exposes the
+  matched exact/default natural24 B2 diagnostic: `52.04` versus `54.80 tok/s`
+  AR (`0.9496x`) and `19.248 ms/output`.
+- Put the natural24 B2 structural replication lanes beside that control:
+  hipEngine `llama-compat` is `71.52` versus `54.79 tok/s` AR (`1.3055x`) at
+  `14.005 ms/output`; the locally instrumented llama.cpp HIP rerun is `71.91`
+  versus `51.98 tok/s` AR (`1.3835x`) at `14.269 ms/output`. `llama-compat` is
+  therefore the closer 1:1 performance comparison because both use B2 and the
+  natural24 horizon, while remaining explicitly accuracy-traded and not
+  serial-prefix-equivalent. The llama.cpp artifact is still a dirty-source
+  diagnostic with `performance_claim=false`, not a promoted standalone row.
+- Updated `benchmarks/README.md`, the synchronized root README, and
+  `docs/MTP-LLAMACPP-PARITY.md`; added a changelog evidence-correction line and
+  a regression that derives every published numeric row from the four source
+  artifacts. `uv run pytest -q tests/test_gfx1151_readme_refresh.py
+  tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
+  passes 20/20; README synchronization and `git diff --check` pass.

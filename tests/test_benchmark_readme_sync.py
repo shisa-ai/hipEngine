@@ -90,6 +90,85 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert (repo_root / correctness_path).is_file()
 
 
+def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    results = repo_root / "benchmarks/results"
+    exact_fixed = json.loads(
+        (results / "2026-07-02-ar-mtp-default-parallelattn-full.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    exact_natural = json.loads(
+        (
+            results / "2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json"
+        ).read_text(encoding="utf-8")
+    )
+    compat = json.loads(
+        (
+            results
+            / "2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-"
+            "cyclecap24-f32head-full.json"
+        ).read_text(encoding="utf-8")
+    )
+    llamacpp = json.loads(
+        (
+            results / "2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json"
+        ).read_text(encoding="utf-8")
+    )
+    canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
+    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
+
+    assert exact_fixed["apple_to_apple_ok"] is True
+    assert exact_natural["apple_to_apple_ok"] is True
+    assert compat["apple_to_apple_ok"] is True
+    assert llamacpp["status"] == "diagnostic_retained"
+    assert llamacpp["performance_claim"] is False
+
+    exact_b5 = exact_fixed["mtp_by_budget"]["b5"]
+    exact_b2 = exact_natural["mtp_by_budget"]["b2"]
+    compat_b2 = compat["mtp_by_budget"]["b2"]
+    llama_summary = llamacpp["summary"]["natural"]
+    llama_timing = llamacpp["stage_timing_summary"]["measured_excluding_first_task"]
+    expected_rows = [
+        (
+            f"| Headline MTP decode | {exact_b5['decode_tok_s_weighted']:.2f} "
+            f"tok/s ({exact_b5['vs_ar_ratio']:.4f}x own AR) | "
+            f"{compat_b2['decode_tok_s_weighted']:.2f} tok/s "
+            f"({compat_b2['vs_ar_ratio']:.4f}x own AR) | "
+            f"{llama_summary['mtp_weighted_predicted_per_second']:.2f} tok/s "
+            f"({llama_summary['speedup']:.4f}x own AR) |"
+        ),
+        (
+            f"| Matched natural24 B2 MTP decode | "
+            f"{exact_b2['decode_tok_s_weighted']:.2f} tok/s (diagnostic) | "
+            f"{compat_b2['decode_tok_s_weighted']:.2f} tok/s | "
+            f"{llama_summary['mtp_weighted_predicted_per_second']:.2f} tok/s |"
+        ),
+        (
+            f"| Matched natural24 own AR | "
+            f"{exact_natural['ar']['decode_tok_s_weighted']:.2f} tok/s | "
+            f"{compat['ar']['decode_tok_s_weighted']:.2f} tok/s | "
+            f"{llama_summary['base_weighted_predicted_per_second']:.2f} tok/s |"
+        ),
+        (
+            f"| Matched natural24 cycle wall/output | "
+            f"{exact_b2['cycle_wall_ms_per_output']:.3f} ms | "
+            f"{compat_b2['cycle_wall_ms_per_output']:.3f} ms | "
+            f"{llama_timing['cycle_wall_ms_per_output']:.3f} ms |"
+        ),
+    ]
+    header = (
+        "| Metric | hipEngine GGUF exact/default | "
+        "hipEngine GGUF `llama-compat` | llama.cpp HIP |"
+    )
+    for readme in (canonical, root_readme):
+        assert header in readme
+        assert "`llama-compat` is the closer 1:1 performance comparison" in readme
+        assert "(`performance_claim=false`)" in readme
+        for expected_row in expected_rows:
+            assert expected_row in readme
+
+
 def test_gfx1151_legacy_paro_diagnostic_is_linked_but_not_published() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     artifact = json.loads(
