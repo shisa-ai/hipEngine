@@ -150393,3 +150393,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   README, benchmark changelog, SOL coordinator/Amdahl table, benchmark protocol,
   and graph cleanup ledger. SOL-G4 is accepted locally; G5 is now open on
   gfx1151, while W7900 G4/G5 evidence remains hardware-blocked.
+
+## 2026-07-11 - SOL-G5 state-keyed decode-graph audit harness
+
+- RED: `tests/test_gguf_decode_graph_g5.py` initially failed collection because
+  no current composite GGUF graph diagnostic existed after `3b0f6067` removed
+  the obsolete production machinery. Added a model-free contract for the full
+  shape/state key, context buckets, hidden/GDN/KV mismatch localization, exact
+  timing summaries, and the promotion decision.
+- Added `scripts/gguf_decode_graph_g5.py` without restoring a runtime/public
+  graph API. It reconstructs the current composite step only inside the audit,
+  fingerprints the FP32 hidden seed, every Conv/GDN pair, all live BF16 K/V
+  rows, and tokens after each launch, and compares stable-key relaunch against
+  a conservative state-generation-keyed capture-per-token route. The key covers
+  backend/arch/model/quant/KV/shape/layer/weight-role/route/buffer identities
+  plus state generation. Wall includes capture/instantiate/launch/sync/destroy
+  for the conservative route.
+- GREEN: focused tests pass `5/5`; Python compilation and `git diff --check`
+  pass. A dirty-tree three-launch full-model smoke on gfx1151/HIP
+  `7.13.60980-c76140fa27` found launches 1-3 byte-exact, unlike the older June
+  runtime evidence. One-step timing was diagnostic only: eager `49.255 tok/s`,
+  stable relaunch `47.930 tok/s` (-2.69%), and state-keyed recapture
+  `28.553 tok/s`. The committed harness still needs the clean 16-step,
+  four-repetition gate before SOL-G5 can be classified.
