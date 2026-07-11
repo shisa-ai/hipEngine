@@ -150906,3 +150906,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   changelog, or performance claim changes. The remaining blocked SOL items are
   external portability/matched-layout rows (V10/V11) or hardware-local gfx1100
   qualifications already named in accepted gfx1151 entries.
+
+## 2026-07-11 - Reconcile the SOL front matter and parity audit
+
+- Final status search found no unresolved local item rows, but the ledger header
+  still said `active` and the PARO/GGUF parity table predated S2, G5, P1/P2, and
+  S4-S7. It incorrectly described route/verifier shape identity as open, the
+  old GGUF graph as still awaiting G5, selected-c1 MoE as production-ready, and
+  PARO DFlash as lacking a current real GPU row.
+- Updated the current evidence snapshot and every affected parity surface to
+  the accepted/rejected/parked results. The header now calls the local gfx1151
+  sprint closed while preserving the two genuine external blockers: V10 needs
+  W7900 hardware and V11 needs a matched Q6 math/layout implementation.
+- Docs-only reconciliation; no benchmark value, artifact, default, or
+  architecture plan changed. `git diff --check` passes and a status scan finds
+  no local `open`, `in_progress`, `conditional`, or `blocked` SOL item row.
