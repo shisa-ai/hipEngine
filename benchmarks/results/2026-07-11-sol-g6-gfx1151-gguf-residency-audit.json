@@ -1,0 +1,280 @@
+{
+  "kind": "hipengine_gguf_residency_sol_g6_audit",
+  "schema_version": 1,
+  "created_at": "2026-07-11T01:58:50.296601+00:00",
+  "status": "accepted",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "memory_claim": true,
+  "classification": {
+    "status": "accepted",
+    "decision": "retain_replacement_only_default_residency",
+    "checks": {
+      "source_provenance_clean": true,
+      "source_backend_is_gfx1151": true,
+      "production_graph_exercised": true,
+      "no_default_raw_plus_replacement_duplicate": true,
+      "no_default_optional_replacement_sidecar": true,
+      "owned_session_within_24gib": true,
+      "tracked_peak_within_24gib": true,
+      "graph_has_no_tracked_close_leak": true,
+      "session_returns_tracked_bytes_to_baseline": true,
+      "linked_g5_exact_performance_gate_valid": true
+    }
+  },
+  "workload": {
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_storage_dtype": "bf16",
+    "prompt_source": "repeated_token_id",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "max_sequence_length": 641,
+    "graph_replay_decode": true,
+    "persistent_session": true
+  },
+  "plan_audit": {
+    "spec_count": 733,
+    "unique_source_count": 733,
+    "planned_source_bytes_by_storage_class": {
+      "dense": 104581632,
+      "raw_gguf": 540344320,
+      "replacement": 21478612992
+    },
+    "raw_plus_replacement_duplicate_count": 0,
+    "raw_plus_replacement_duplicates": [],
+    "optional_sidecar_count": 0,
+    "optional_sidecars": [],
+    "multi_layout_source_count": 0,
+    "multi_layout_sources": []
+  },
+  "allocation_census": {
+    "owned_session_total_bytes": 23061586696,
+    "owned_session_total_gib": 21.477776296436787,
+    "resident_weights": {
+      "total_bytes": 22614272512,
+      "total_gib": 21.061182498931885,
+      "allocation_count": 733,
+      "by_storage_class_bytes": {
+        "dense": 104581632,
+        "raw_gguf": 540344320,
+        "replacement": 21969346560
+      },
+      "by_layout_bytes": {
+        "raw_gguf": 540344320,
+        "dense_f32": 104581632,
+        "gguf_q6_k_t16_v1": 1077780480,
+        "gguf_q4_k_t16_v1": 12415139840,
+        "gguf_q5_k_t16_v1": 6983516160,
+        "gguf_q8_0_t16_v1": 1492910080
+      },
+      "by_quant_key_bytes": {
+        "gguf_q8_0": 540344320,
+        "f32": 104581632,
+        "gguf_q6_k_t16_v1": 1077780480,
+        "gguf_q4_k_t16_v1": 12415139840,
+        "gguf_q5_k_t16_v1": 6983516160,
+        "gguf_q8_0_t16_v1": 1492910080
+      },
+      "by_allocation_name_bytes": {
+        "raw": 644925952,
+        "tiles": 21969346560
+      }
+    },
+    "decode_scratch": {
+      "total_bytes": 85619188,
+      "total_gib": 0.07973908260464668,
+      "max_positions": 768,
+      "block_table_len": 3,
+      "kv_storage_dtype": "bf16",
+      "kv_scale_dtype": "fp16",
+      "kv_scale_granularity": "per_token_head",
+      "int8_kv_value_bf16": false,
+      "by_component_bytes": {
+        "full_attention_kv_cache": 15728640,
+        "full_attention_kv_scales": 0,
+        "linear_attention_state": 66846720,
+        "metadata_tables": 393244,
+        "decode_workspace_other": 2650584
+      }
+    },
+    "session_buffers": {
+      "total_bytes": 361694996,
+      "total_gib": 0.3368547149002552,
+      "by_component_bytes": {
+        "decode_logits_and_lm_head": 1007312,
+        "prefill_token_buffer": 6144,
+        "prefill_full_sequence_hidden": 6291456,
+        "bulk_prefill_scratch": 354390084,
+        "session_buffer_other": 0
+      },
+      "prefill_hidden_b_rows": null,
+      "bulk_prefill_scratch_rows": 768,
+      "bulk_prefill_scratch_capacity": 768
+    },
+    "kv_bytes": 15728640,
+    "kv_scale_bytes": 0,
+    "graph": {
+      "method": "live production graph snapshot minus post-graph-close snapshot",
+      "tracked_live_minus_closed_bytes": 0,
+      "tracked_retained_bytes_lower_bound": 0,
+      "hip_used_live_minus_closed_bytes": 315392,
+      "hip_retained_bytes_lower_bound": 315392,
+      "owned_session_live_bytes": 23061586696,
+      "owned_session_closed_graph_bytes": 23061586696,
+      "note": "Production record_steps=0 allocates no graph-owned DeviceBuffer; HIP graph/exec internals are estimated from synchronized hipMemGetInfo phase deltas."
+    }
+  },
+  "capacity_gate_24gib": {
+    "budget_bytes": 25769803776,
+    "budget_gib": 24.0,
+    "owned_session_bytes": 23061586696,
+    "owned_session_gib": 21.477776296436787,
+    "owned_margin_bytes": 2708217080,
+    "owned_margin_gib": 2.5222237035632133,
+    "tracked_peak_bytes": 23061586696,
+    "tracked_peak_gib": 21.477776296436787,
+    "tracked_margin_bytes": 2708217080,
+    "tracked_margin_gib": 2.5222237035632133
+  },
+  "close_audit": {
+    "tracked_after_close_minus_before_load_bytes": 0,
+    "hip_used_after_close_minus_before_load_bytes": 192139264
+  },
+  "performance_non_regression": {
+    "method": "cryptographic link to the clean accepted production SOL-G5 gate; G6 changes only census/reporting",
+    "artifact_path": "/tmp/hipengine-sol-g6-d70c9464/benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json",
+    "artifact_sha256": "6f58210ca8facb0c8a7176ea99065203b32df4b511acc590bf6b86a2ea2d29a1",
+    "valid": true,
+    "hipengine_commit": "7f611fe3acfaa6e2cb4cd2d1e1dee6de29e62bda",
+    "launches_checked": 128,
+    "third_and_later_launches_checked": 126,
+    "eager_median_ms_per_token": 20.334279230468752,
+    "graph_median_ms_per_token": 20.31146094921875,
+    "speedup_vs_eager": 1.0011234190050164
+  },
+  "source": {
+    "raw_benchmark_path": "/tmp/2026-07-11-sol-g6-gfx1151-residency-source.json",
+    "raw_benchmark_sha256": "13fc8b5d279d0d96580cbc0f6af871ec359d492888a223661cb7d5243989c4a9",
+    "benchmark_command": [
+      "scripts/qwen35_gguf_bench.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--token-id",
+      "9707",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--warmup-decode-tokens",
+      "0",
+      "--warmup-runs",
+      "0",
+      "--measured-runs",
+      "1",
+      "--persistent-session",
+      "--force-bulk-prefill",
+      "--graph-replay-decode",
+      "--graph-steps-per-replay",
+      "1",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--require-cached-build",
+      "--json",
+      "/tmp/2026-07-11-sol-g6-gfx1151-residency-source.json"
+    ],
+    "postprocess_command": [
+      "scripts/gguf_residency_g6.py",
+      "--source-json",
+      "/tmp/2026-07-11-sol-g6-gfx1151-residency-source.json",
+      "--g5-artifact",
+      "benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--out",
+      "/tmp/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json"
+    ]
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T01:58:38.022989+00:00",
+    "repo_root": "/tmp/hipengine-sol-g6-d70c9464",
+    "hipengine_commit": "d70c9464182e158c150659c74fe2eb9d3f7edda1",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_gguf_bench.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--token-id",
+      "9707",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--warmup-decode-tokens",
+      "0",
+      "--warmup-runs",
+      "0",
+      "--measured-runs",
+      "1",
+      "--persistent-session",
+      "--force-bulk-prefill",
+      "--graph-replay-decode",
+      "--graph-steps-per-replay",
+      "1",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--require-cached-build",
+      "--json",
+      "/tmp/2026-07-11-sol-g6-gfx1151-residency-source.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_MOE_GRAPH": "0"
+    },
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "qwen35_gguf_resident_bench",
+    "timing_protocol": "resident GGUF session; prefill and decode timed separately; graph capture excluded from decode throughput and reported separately",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": {
+      "enabled": false,
+      "reason": "host wall and residency benchmark"
+    }
+  }
+}

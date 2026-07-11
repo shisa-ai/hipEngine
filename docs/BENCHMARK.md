@@ -925,6 +925,18 @@ generated token, FP32 hidden seed, all resident Conv/GDN states, and all live
 BF16 K/V rows. Third-and-later launches are mandatory; replay-only timing is
 diagnostic, and per-token recapture is a separately timed rejection control.
 
+For the SOL-G6 replacement-residency gate, run a clean persistent-session
+`scripts/qwen35_gguf_bench.py` p512/d128 row with the production graph selected,
+then compact it with `scripts/gguf_residency_g6.py`. Snapshot the graph live,
+after graph close, and after session close. The retained census must classify
+resident weights by raw/replacement/dense layout; name BF16/INT8 KV payload and
+scales, recurrent state, decode scratch, prefill/session buffers, and graph
+residency; audit source tensors for simultaneous raw+replacement layouts and
+optional sidecars; and check owned plus tracked bytes against 24 GiB. A memory
+gate does not create a speed claim: link an accepted exact same-path performance
+artifact by SHA-256 and set `performance_claim=false` unless timing is repeated
+under the full performance protocol.
+
 Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipline (time share → occupancy → iters-per-thread → VGPR) lives in `~/amd-gpu-tuning/AGENTS.md`.
 
 ## Artifact Format

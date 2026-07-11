@@ -240,7 +240,7 @@ also preventing incompatible quant kernels from being copied blindly.
 | LM-head/sampler | PARO has batched LM-head evidence at some widths and serial fallback elsewhere. | GGUF uses Q6 rowtile/chunks; large rowtiles collapse. | Profile full lm-head + reduction + readback before new fusion. |
 | Speculative lifecycle | PARO DFlash has coarse timing and graph-shape telemetry, not a current real GPU row. | GGUF has packed verify and deferred scatter work; copied group timing now has one stable owner, while verifier-row/actual-group identity remains open. | Complete shape identity, then compare accepted-row scatter, tail discard, commit, and sync. |
 | Startup/cache | PARO/GGUF both contain warmup and resident-cache ideas. | Coverage and artifact identity differ. | Record cold, warmed, cache-hit, and shape-miss behavior explicitly. |
-| Memory residency | PARO packed rows are near the consumer-card target. | Current GGUF W7900 rows are about 25.5 GiB and raw/repacked replacement coverage needs audit. | Census raw, packed, scratch, graph, and KV bytes by path. |
+| Memory residency | PARO packed rows are near the consumer-card target. | SOL-G6 cleanly audits gfx1151 Q4_K_M p512/d128 at 21.478 GiB owned/tracked: 733 unique sources, no raw+replacement duplicates or enabled optional sidecars, and 2.522 GiB margin to 24 GiB. | Keep the replacement-only default; context-specific long-KV capacity remains a separate policy gate. |
 
 GGUF Q*_K, T16/X8, q8_1/dp4a, and Q6 LM-head kernels are not PARO
 `w4_paro` kernels. Transfer scheduler, lifecycle, shape, graph,
@@ -314,11 +314,11 @@ and a true no-spec AR baseline.
 | `SOL-G3` | Promote the split prepare + segmented-k2 + RMSNorm chain only if same-run wall wins. | `rejected` at clean `ad773eba`: exact timed tokens and the linked G2 state/trace gates pass, but four balanced repetitions show chain `1248.436` vs fused `1186.842 ms` at 512 (+5.19%) and `10870.022` vs `10187.300 ms` at 4K (+6.70%). Fused remains default. | G2 | Exact state/tokens plus prefill wall win on both primary contexts; expected kernel trace present. |
 | `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `accepted` on gfx1151 at clean `5f4c6561`: p512/d128 exact eager is 49.285 tok/s; direct-parent `4499fb13` is the 17.799 -> 54.963 tok/s (+208.79%, 3.088x) library-cache boundary; current p8 is 55.208 tok/s. Twenty-four exact ROCTX windows yield the decode-only Amdahl table below. W7900 remains blocked on hardware. | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
 | `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `accepted` on gfx1151 at clean `7f611fe3`: the production graph is exact for all 128 hidden/Conv/GDN/KV/token checkpoints and capture-inclusive wall improves same-run eager `20.3343 -> 20.3115 ms/token` (+0.112% throughput). Admission is gfx1151-only, non-streaming c1 greedy, and at least 128 remaining transitions. W7900 remains blocked on hardware. | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
-| `SOL-G6` | Audit replacement layout residency and eliminate raw+packed duplicates where the replacement path is complete. | `open` | E3 | Allocation census names raw/packed/KV/scratch/graph bytes; 24 GiB-class goals are checked without speed regression. |
+| `SOL-G6` | Audit replacement layout residency and eliminate raw+packed duplicates where the replacement path is complete. | `accepted` on gfx1151 at clean `d70c9464`: 733 unique source tensors map to one resident layout each, with zero raw+replacement duplicates and zero enabled optional sidecars. The p512/d128 BF16-KV production graph session is 21.478 GiB owned/tracked (2.522 GiB under 24 GiB); graph/exec adds 0 tracked bytes and 308 KiB sampled HIP residency. G5 is linked by SHA-256 for exact speed non-regression. | E3 | Allocation census names raw/packed/KV/scratch/graph bytes; 24 GiB-class goals are checked without speed regression. |
 | `SOL-G7` | Tune gfx1151 chunk, workgroup, rowtile, attention split, and route thresholds. | `blocked` | B1-B2, G2-G4, matrix | Same-device exact A/B selects profile values; gfx1100 remains unchanged. |
 | `SOL-G8` | Replace GGUF serial/row-replay concurrency with a true resident multi-row AR path across c1-c8 and sparse slots. | `blocked` | G4, baseline matrix | Exact c1-c8, shrink, sparse-slot, and profiler gates pass with aggregate scaling. |
-| `SOL-G9` | Narrow HIP Q4 selected-dual recovery using source/layout/reduction/waitcnt changes. | `conditional` | corrected V6 result and real profile | Activate only if serialized matched Q4 still favors Vulkan and Q4 is material in production wall. |
-| `SOL-G10` | Four-wave Q6 verifier LM-head rowtile: each wave owns four output columns to reduce accumulators. | `conditional` | E2, corrected profile | Activate only if Q6 head remains dominant; R6/R8/R12 show no spills, exact output, lower GPU event time, and server wall win. |
+| `SOL-G9` | Narrow HIP Q4 selected-dual recovery using source/layout/reduction/waitcnt changes. | `parked`: corrected V6 serialized Q4 is parity/HIP-favored (`0.922x-0.973x` Vulkan/HIP), so the activation premise is false; G4 also identifies dense Q8 and selected-MoE GEMV as the dominant production families. | corrected V6 result and real profile | Activate only if serialized matched Q4 still favors Vulkan and Q4 is material in production wall. |
+| `SOL-G10` | Four-wave Q6 verifier LM-head rowtile: each wave owns four output columns to reduce accumulators. | `parked`: G4 attributes 10.06% of eager GPU time to Q6 LM-head, behind dense Q8 and selected-MoE; the exact small-B rowtile is already retained, while the later rowtile+top1 server experiment was flat/rejected. The “Q6 remains dominant” trigger is false. | E2, corrected profile | Activate only if Q6 head remains dominant; R6/R8/R12 show no spills, exact output, lower GPU event time, and server wall win. |
 
 Do not restore the old GGUF graph as a shortcut. SOL-G1 proves the repeated
 `9707` stream is valid on gfx1151; it still does not make a stale timing row
@@ -371,6 +371,31 @@ The graph row charges one capture/instantiate plus final destroy to each
 fallbacks remain part of the claim. Full commands, samples, key, provenance,
 and checkpoint hashes are in
 [`2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`](../benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
+
+### SOL-G6 gfx1151 replacement residency
+
+The clean `d70c9464` census runs the production p512/d128 graph session and
+audits both the materialization plan and live owned buffers. All **733** source
+tensors have one planned resident layout; there are **zero** same-source
+raw+replacement duplicates and **zero** enabled optional raw/X8 sidecars.
+
+| Resident family | GiB | Notes |
+| --- | ---: | --- |
+| Replacement weights | 20.461 | Q4/Q5/Q6/Q8 T16 replacements; no optional X8 sidecar |
+| Required raw GGUF | 0.503 | Device token embedding, not a duplicate |
+| Dense weights/metadata | 0.097 | F32/BF16 residents |
+| Decode scratch | 0.080 | 15 MiB BF16 KV, 63.75 MiB linear state, metadata/other |
+| Session/prefill buffers | 0.337 | 0.330 GiB bulk-prefill scratch dominates |
+| **Owned/tracked total** | **21.478** | **2.522 GiB below the 24 GiB gate** |
+
+The production `record_steps=0` graph owns no tracked `DeviceBuffer`; the
+synchronized live-minus-closed `hipMemGetInfo` delta is **315,392 bytes**
+(308 KiB) for HIP graph/exec internals. Tracked allocations return exactly to
+their pre-load baseline after session close. The artifact links the accepted
+G5 SHA-256 for 128-launch exactness and capture-inclusive speed non-regression;
+G6 itself makes no new throughput claim. Full allocation maps, close deltas,
+commands, and clean provenance are in
+[`2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json`](../benchmarks/results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json).
 
 ## PARO Concurrency And Optimization
 
@@ -502,9 +527,9 @@ small compounding win, as required by the project evidence policy.
 | 5 | gfx1100 GGUF recovery | G1-G6 | Largest plausible performance recovery; correctness first. |
 | 6 | PARO shape-safe native batching | P3-P8, then P9 if activated | Converts diagnostics into deployable c>N behavior. |
 | 7 | Batch-aware speculative routing | S1-S4, then conditional S5-S7 | Uses corrected economics rather than per-request guesses. |
-| 8 | Targeted non-backend kernel work | G10 and activated P9/S items | Only profiled, production-shaped kernels enter here. |
+| 8 | Targeted non-backend kernel work | Activated P9/S items; G10 is parked | Only profiled, production-shaped kernels enter here. |
 | 9 | HIP/Vulkan portability rerun | V10 | gfx1151 V1-V9 are complete; W7900 remains. |
-| 10 | Backend/ISA decision | G9 and V11-V12 if activated | Broad backend work requires a corrected production gate. |
+| 10 | Backend/ISA decision | V11-V12 if activated; G9 is parked | Broad backend work requires a corrected production gate. |
 
 Cross-GPU work is not allowed to block useful local gfx1151 progress, but no
 gfx1100/gfx1151 shared default is promoted without both architectures or an
@@ -535,7 +560,9 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next PARO GPU unit is `SOL-P1`; the next GGUF unit is `SOL-G6` on gfx1151.
+The next PARO GPU unit is `SOL-P1`. G7/G8 now wait on the corrected baseline
+matrix and B2 profile plumbing; G9/G10 are parked because their triggers did
+not fire, so there is no independent GGUF unit ahead of P1.
 G2/G3 establish fused as the exact, measured prefill default. The matrix driver
 is ready, but its first clean repeated PARO/GGUF baseline is measurement work,
 not evidence implied by these correctness gates.
