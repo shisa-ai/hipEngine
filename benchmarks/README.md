@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`6f1910c9cc647089a0701805ce102c0cec565bcc`
+`d2b1e7426d9de21068e32d708e9730c030ec951a`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -179,6 +179,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF OpenAI server automatic-route gate | 2026-07-11 | tracked-clean hipEngine `d2b1e742`; TheRock HIP `7.13.60980-c76140fa27`; exact GGUF and prompt-suite fingerprints retained; unrelated untracked files disclosed | **Diagnostic correctness rejection**: compatibility MTP is faster at c1/c2 but changes true-AR IDs on heldouts, so it cannot select automatic routing. One c8 AR repetition also exposes the separate exact-concurrency blocker. | Diagnostic link only | Implement an exact/default server MTP hook, then rerun full plus category-heldout realized-group economics before admitting it to `auto`. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-10 | clean detached hipEngine `ca241dae`; TheRock ROCm `7.13.0a20260411`; RADV/Mesa `26.1.2` | **Retained**, 22/22 comparisons pass provenance, correctness, and exact-matrix gates | Linked, not copied here | Rerun the bounded matrix after a timed kernel/harness change |
 | Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | Not run | None | **Blocked** | No | Run the same bounded v2 matrix used on gfx1151 |
 
@@ -440,6 +441,40 @@ embedded in the compact artifact. Reproduce P2 with
 --prompt-lengths 449,458,467,476,485,494,503,512 --steps-per-width 1
 --survivor-slot 4 --eos-slot 3` and the same model/fixture.
 
+### gfx1151 GGUF server automatic-route gate, 2026-07-11
+
+**Status: diagnostic correctness rejection; no performance claim.** The first
+post-E1/E2/E3 server matrix runs the committed ten-prompt category JSONL and its
+documented four-prompt heldout directly. It records exact choice IDs, canonical
+model/suite provenance, owned batch timing, and realized queue/backend groups.
+The source tree had no staged or unstaged changes; 255 unrelated untracked
+benchmark files are disclosed, so this diagnostic is not a clean retained
+performance row.
+
+| Client c | Realized groups (full suite) | AR median tok/s | Compatibility MTP median tok/s | MTP/AR | Exact vs c1 AR |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | ten c1 groups | 35.92 | 39.35 | 1.095x | fail `general_ja_explain` |
+| 2 | five c2 groups | 56.84 | 58.50 | 1.029x | fail 3/10 prompts |
+| 3 | c3+c3+c3+c1 | 60.83 | 61.47 | 1.011x | fail 2/10 prompts |
+| 4 | c4+c4+c2 | 69.70 | 66.13 | 0.949x | fail 3/10 prompts |
+| 8 | c4+c4+c2 (route cap 4) | 69.84 | 65.87 | 0.943x | fail 3/10 prompts |
+
+Full-suite values are medians of three after one discarded route/shape warmup;
+heldout values use five repetitions. The mixed client-c3 aggregate hides the
+reason realized groups matter: isolated full-suite c3 groups are +1.71% for
+MTP, but isolated heldout c3 groups are **-3.92%**, so c3 does not activate.
+More importantly, the current server hook is the documented
+`llama-compat` direct-commit/dp4a route and is not serial-prefix-equivalent.
+Its apparent c1/c2 speed benefit cannot enter automatic/default routing.
+
+True AR c1-c4 is exact across every repetition. One of three client-c8 AR runs
+changes `general_ja_explain` even though its actual backend groups are c4+c4+c2;
+that remains a separate SOL-G8 exact-concurrency blocker, not evidence for a
+width-8 backend. SOL-S1 therefore must make automatic MTP fall back to the
+default AR route until an exact/default hook exists; explicit opt-in keeps the
+compatibility contract. The compact artifact is
+[`2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json`](results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json).
+
 ### gfx1151 historical cross-engine concurrency, 2026-06-15
 
 **Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV; llama.cpp uses
@@ -647,14 +682,13 @@ untracked experiment files as part of the rollup gate.
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900
   measurement still needs its own current state/KV gate and repeated clean
   performance rerun before it can become a baseline.
-- **OpenAI MTP server c=1/2/4/8:** the [2026-07-06 notebook rows](HISTORY.md#natural24-mtp-vs-ar-concurrency-diagnostic) use decoded-text
-  re-tokenization for completion counts and repeat one batch-scoped timing
-  payload per choice. The current harness now counts exact IDs across every
-  choice, deduplicates owned batch timing, emits canonical provenance, and
-  validates route-cap/queue/backend/verifier shape independently, but those
-  historical rows predate all four contracts. Raw IDs now suffice for the
-  completion-token headline, but no corrected timing headline exists until the
-  same protocol is rerun.
+- **OpenAI MTP server c=1/2/3/4/8:** the corrected
+  [2026-07-11 route gate](results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json)
+  supersedes the pre-contract 2026-07-06/07 timing rows. It counts exact IDs,
+  owns batch timing once, records canonical provenance, and separates client,
+  queue, backend, and verifier widths. Compatibility MTP is diagnostically
+  faster at c1/c2 but changes true-AR IDs, so no automatic-route performance
+  claim is eligible; explicit opt-in remains separately labelled.
 - **gfx1151 PARO native batching:** P1's clean direct matrix rejects every
   native c2-c8 width at generated index 2; P2's clean ragged lifecycle gate
   accepts the production true-c1 bridge through EOS and front/middle/tail
