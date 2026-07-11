@@ -150554,3 +150554,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   checks KV, graph delta, 24 GiB margin, close, and G5 linkage. Focused tests
   pass `9/9`; Python compilation and `git diff --check` pass. Next action is a
   clean gfx1151 p512/d128 source run and compact retained G6 artifact.
+
+## 2026-07-11 - SOL-G6 replacement residency accepted on gfx1151
+
+- Ran the production p512/d128 Q4_K_M/BF16-KV graph census from clean detached
+  `d70c9464182e158c150659c74fe2eb9d3f7edda1` on Radeon 8060S/gfx1151,
+  TheRock HIP `7.13.60980-c76140fa27`, exact sampled model fingerprint
+  `936659d6...c89fb`. The first clean attempt correctly failed
+  `require_cached` on the revision-specific AOTriton wrapper; prebuilt
+  `aotriton_wrap-f13d314d57b78123` outside the benchmark, then reran cached-only.
+- Source command: `HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_MOE_GRAPH=0 python3
+  scripts/qwen35_gguf_bench.py --model
+  /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant
+  gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128
+  --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1
+  --persistent-session --force-bulk-prefill --graph-replay-decode
+  --graph-steps-per-replay 1 --use-wmma-prefill --use-gemv-decode
+  --require-cached-build --json
+  /tmp/2026-07-11-sol-g6-gfx1151-residency-source.json`.
+- The live plan contains 733 unique sources and exactly one layout per source:
+  zero raw+replacement duplicates, zero enabled raw/X8 sidecars. Resident
+  weights are `21.061182 GiB`: replacement `20.460548`, required raw Q8 token
+  embedding `0.503235`, and dense `0.097399`. Decode scratch is `0.079739 GiB`
+  (BF16 KV `15 MiB`, linear state `63.75 MiB`); session/prefill buffers are
+  `0.336855 GiB` (bulk scratch `0.330051 GiB`).
+- Owned and tracked total are both `21.477776 GiB`, leaving `2.522224 GiB` to
+  24 GiB. Production `record_steps=0` graph capture adds zero tracked bytes and
+  `315,392 bytes` (308 KiB) by synchronized HIP live-minus-closed sampling.
+  Session close returns tracked bytes exactly to pre-load baseline; HIP retains
+  `183.24 MiB` of process/library cache, reported separately rather than called
+  an owned leak.
+- The one-run source was correctness/memory-only: final token `9707`, finite
+  logits, replay-only `49.641 tok/s`; it is not a speed claim. The compact G6
+  record links the accepted G5 artifact SHA-256 for 128-launch exactness and
+  capture-inclusive `+0.112%` non-regression.
+- Retained
+  `benchmarks/results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json`
+  (9,657 bytes, SHA-256
+  `0cfca9bc319f787631a9275a1fa2a09a34cef0452f946c6089c4cfdd69446623`);
+  raw source SHA-256 is
+  `13fc8b5d279d0d96580cbc0f6af871ec359d492888a223661cb7d5243989c4a9`
+  under `/tmp`. Updated SOL, benchmark/root README, benchmark protocol, and
+  changelog. G6 is accepted; G9/G10 are parked because their profile triggers
+  are false. P1 is now the prerequisite for B2/G7/G8.

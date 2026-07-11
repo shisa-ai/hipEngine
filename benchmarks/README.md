@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`7f611fe3acfaa6e2cb4cd2d1e1dee6de29e62bda`
+`d70c9464182e158c150659c74fe2eb9d3f7edda1`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -137,6 +137,19 @@ window. Per-token recapture is rejected at **35.429 ms/token**. Production
 therefore defaults to this graph only for non-streaming c1 greedy gfx1151
 windows with at least 128 remaining transitions; all other routes remain eager.
 
+SOL-G6 is accepted on gfx1151 in
+[`2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json`](results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json).
+At clean detached `d70c9464`, the Q4_K_M p512/d128 BF16-KV production graph
+session owns **21.478 GiB**, leaving **2.522 GiB** to the explicit 24 GiB gate.
+Its 733 planned source tensors have zero raw+replacement duplicates and zero
+enabled optional replacement sidecars: **20.461 GiB** is replacement layout,
+**0.503 GiB** is the required raw token embedding, and **0.097 GiB** is dense
+metadata. Decode scratch is **0.080 GiB** (including **15 MiB** KV and
+**63.75 MiB** linear state), while session/prefill buffers are **0.337 GiB**.
+Production `record_steps=0` graph capture adds no tracked buffer and a measured
+**308 KiB** HIP graph/exec delta. G5 remains the cryptographically linked exact
+and performance non-regression gate; this G6 artifact makes no new speed claim.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
@@ -150,6 +163,7 @@ windows with at least 128 remaining transitions; all other routes remain eager.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 | clean detached hipEngine `7f611fe3`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: all 128 graph launches are byte-exact; capture-inclusive p512/d128 wall is 20.334 -> 20.311 ms/token (+0.112% throughput) against same-run eager. | Yes, named repeated-token protocol | Rerun after graph key/capture, decode math, state/KV layout, admission threshold, or HIP runtime changes; run separately on W7900 before enabling it there. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF replacement-layout residency and 24 GiB-class gate | 2026-07-11 | clean detached hipEngine `d70c9464`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained memory/correctness gate**: 733 unique sources, no raw+replacement duplicates or optional sidecars, 21.478 GiB owned/tracked p512/d128 graph session, 2.522 GiB budget margin. `performance_claim=false`; G5 supplies linked speed non-regression. | Diagnostic link only | Rerun after weight materialization/layout, KV/state, prefill scratch, graph allocation, or max-sequence policy changes; context-specific capacity remains separate. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO direct c1-c8 shape matrix | 2026-07-10 | timing rows: tracked files matched hipEngine `4175dabf` and `02aec604`, with unrelated untracked files present; true-c1 shrink gate: `0c184517`, `hipengine_dirty=false`; TheRock HIP `7.13.60980-c76140fa27`; detected and target arch gfx1151 | **Diagnostic**: c2-c8 timing rows used a batch-shaped width-1 oracle and cannot select routing. At `0c184517`, serial c8-to-c1 passes all rows against independent c1; native c8 fails every row at generated token index 2. Production uses width-1 sessions. | Diagnostic link only | Localize the native c8 divergence, then rerun c1-c8, sparse, ragged, and shrinking gates against independent single-request prefill/decode before collecting retained timings |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
