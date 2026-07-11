@@ -150416,3 +150416,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   stable relaunch `47.930 tok/s` (-2.69%), and state-keyed recapture
   `28.553 tok/s`. The committed harness still needs the clean 16-step,
   four-repetition gate before SOL-G5 can be classified.
+
+## 2026-07-11 - SOL-G5 capture-inclusive gate correction
+
+- The first clean 16-step run was deliberately not retained. It proved all 16
+  stable-key relaunches byte-exact and measured replay-only graph wall
+  `19.9964 ms/token` versus eager `20.1274 ms/token` (+0.65%), but the stable
+  timing summary omitted its one-time `hipGraph` capture/instantiate cost while
+  the written G5 contract required capture-inclusive wall. Its `/tmp` artifact
+  is invalid for promotion and was not copied into `benchmarks/results/`.
+- Corrected the audit before publication: stable-key wall now starts before
+  capture and is the classification input; eager/stable/recapture modes rotate
+  order across warmups and measured repetitions; the accepted decision names
+  the actual state-bound relaunch route; and full checkpoint payloads are
+  compacted to per-step combined state hashes after byte-exact comparison.
+- GREEN: focused tests remain `5/5`, Python compilation and `git diff --check`
+  pass. A dirty-tree one-step smoke confirms the corrected gate rejects capture
+  overhead (`49.122` eager vs `29.138 tok/s` stable capture-inclusive). The next
+  retained run will use a 128-token window so one-time capture is amortized
+  under the same p512/d128 workload as SOL-G4.

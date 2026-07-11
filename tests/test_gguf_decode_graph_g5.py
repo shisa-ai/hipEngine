@@ -143,11 +143,13 @@ def test_candidate_classification_rejects_third_launch_or_no_wall_win() -> None:
         relaunch_first_failure=None,
         recapture_passed=True,
         eager_summary=eager,
-        recapture_summary=faster,
+        recapture_summary=slower,
+        relaunch_summary=faster,
     )
 
     assert corrupt["status"] == "rejected"
     assert corrupt["decision"] == "reject_third_or_later_relaunch_state_corruption"
     assert no_win["decision"] == "reject_no_end_to_end_wall_win"
     assert accepted["status"] == "accepted"
-    assert accepted["decision"] == "promote_state_keyed_graph_replay"
+    assert accepted["decision"] == "promote_state_bound_graph_relaunch"
+    assert accepted["candidate_median_ms_per_token"] == 18.0
