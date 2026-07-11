@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-12
+
+- [micro correctness attribution] Radeon 8060S/gfx1151 Vulkan Q4/Q6 strict fixture boundaries: shared Vulkan-q8 input -> **CPU-prequantized q8 isolation**, changing Q4 KL `0.079520 -> 4.46e-51` with top-1 `1.0`, and Q6 top-1 `0.875 -> 1.0` with KL `0.007756 -> 3.20e-12`. Readback finds every mismatched `d` exactly one FP16 code low (`1,374/2,816` Q4 blocks; `1,686/2,304` Q6), while a temporary RNE-pack control clears both end-to-end gates. This attributes the misses to a portable q8_1 rounding contract, not dot math, synchronization, or a Mesa `.2 -> .4` regression; no performance row changes. Boundary wall `2.014s` Q4 / `0.877s` Q6; `benchmarks/results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`.
+
 ## 2026-07-11
 
 - [micro matrix retained refresh] Radeon 8060S/gfx1151 HIP versus Vulkan timing-contract v2, matched prior sampling on TheRock HIP `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, Mesa/RADV `26.1.4`: old-stack `22/22 -> 22/22` valid comparisons (**0% matrix-coverage change**) and 232 burst GPU rows. Packed-dot serial/independent is `3.052x-3.243x -> 3.054x-3.204x` / `3.840x-4.272x -> 3.833x-4.197x`; Q4 combined is `0.922x-0.973x -> 0.916x-0.980x` / `0.911x-0.978x -> 0.854x-0.973x`. Production Q4/Q6 remain HIP-favored. Wall `249.323s`; artifact: `benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json`.

@@ -133,9 +133,29 @@ package mismatch. The current gfx1100 bounded 10-repetition rows also pass; its
 separate Q6 50-repetition diagnostic exposes the same coverage-sensitive class
 of numerical miss.
 
+The clean `67df43ad` isolation attributes both misses to the shared Vulkan
+q8_1 quantizer, not the Q4/Q6 dot kernels. Reading q8_1 back shows that every
+mismatched stored `d` scale is exactly one FP16 code below the CPU/HIP oracle:
+`1,374/2,816` Q4 blocks and `1,686/2,304` Q6 blocks. Quantized-byte differences
+are sparse and at most one integer (`91` Q4, `6` Q6). Uploading CPU q8_1 blocks
+and running the unchanged Vulkan dot shaders makes all 11 Q4 slices pass at KL
+`4.46e-51`, top-1 `1.0`, and all 18 Q6 slices pass at KL `3.20e-12`, top-1
+`1.0`. The differing packed `s` field is not consumed by these dot kernels.
+
+A temporary software round-to-nearest-even FP16 pack plus explicit
+away-from-zero integer half-tie rounding clears the original end-to-end gates:
+Q4 KL becomes `2.16e-06`, top-1 `1.0`; Q6 KL becomes `0.000229`, top-1 `1.0`.
+This establishes a fixable shader numerical-contract problem: the stock shader
+relied on implementation rounding in `packHalf2x16` and `round()`. It does not
+establish a RADV/ACO compiler defect, and the candidate shader is not yet the
+retained production path.
+
 The strict matrix took approximately 5m10s of benchmark work and 5m49s
 end-to-end with failure handling and confirmation. Compact artifact:
 [`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
+The isolated Q4/Q6 runs took `2.014s` and `0.877s`; field-level evidence and
+reproduction commands are in
+[`2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`](../benchmarks/results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json).
 
 ## gfx1100 versus gfx1151
 
@@ -194,6 +214,7 @@ backend order, and queue/kernel counters—not another version-matching pass.
 | ---: | --- | --- | --- |
 | 0 | Fix-clock W7900 dispatch/stream attribution | Open | Interleaved one/four-stream and graph controls plus queue/AQL traces separate runtime submission from clock residency. |
 | 1 | Profile current PARO and GGUF server paths | Open | A shipped hot slice is identified by layer family and submission behavior before another Vulkan experiment is added. |
+| 1 | Make Vulkan q8_1 rounding portable | Isolated; RNE control passes | Retained shader matches the CPU/HIP `d` contract, strict Q4/Q6 coverage passes on gfx1151 and gfx1100, and the full paired timing matrix shows no performance regression. |
 | 1 | Match Q6 lm-head math/layout | Blocked on comparable implementation | HIP and Vulkan use identical quantization, activation layout, output coverage, and rowtile algorithm before any ratio is reported. |
 | 2 | Production Vulkan or hand ISA | Decision-gated | A clean matched production slice wins in the relevant timing mode and final combined operation, then improves end-to-end wall without a memory/correctness regression. |
 
