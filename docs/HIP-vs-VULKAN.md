@@ -59,10 +59,12 @@ Artifact:
 [`2026-07-11-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json).
 The local full report is `~/ROCm-report-gfx1100.md`.
 
-The W7900 and gfx1151 systems now use the same TheRock and Mesa releases, but
-still differ in kernel, firmware, hardware, and clock behavior.
-Cross-architecture differences remain descriptive rather than controlled
-gfx1100-versus-gfx1151 attribution.
+The retained W7900 and gfx1151 runs use the same TheRock ROCm/HIP build, AMD
+clang/LLVM build, CachyOS kernel, firmware packages, Mesa/RADV release, Vulkan
+loader, sampling counts, and executable benchmark sources. The measured
+variables are the host/GPU platforms and their automatic clock behavior; this
+is the intended cross-device comparison rather than a software-version
+mismatch.
 
 ## Retained gfx1151 Matrix
 
@@ -76,9 +78,10 @@ clean same-commit provenance, and environment gates with
 
 This run deliberately matches the prior retained sampling: paired families use
 10 repetitions, 3 warmups, and 5 samples; dispatch uses 20 repetitions and 5
-warmups. That makes it a valid old-stack versus updated-stack snapshot, although
-version deltas remain observational because ROCm, kernel, Mesa, and hipEngine
-moved together.
+warmups. It is therefore directly comparable to both the historical gfx1151
+snapshot and the retained gfx1100 matrix. The historical gfx1151 version delta
+does not isolate a single software component because several components moved
+together; that does not affect the current matched cross-device matrix.
 
 Ratios are Vulkan/HIP speedup (`HIP GPU time / Vulkan GPU time`); above `1.0x`
 favors Vulkan.
@@ -117,14 +120,18 @@ independent Q4 failed KL (`0.079520 > 0.05`) and Q6 failed top-1 agreement
 (`0.875 < 0.9`). Repeats and one/two/four-queue controls are bit-identical.
 
 The same strict probes fail identically under Mesa/RADV 26.1.2, while both
-Mesa versions pass at the old 10-repetition coverage (Q4 KL `0.004753`, Q6 KL
-`0.006046`, both top-1 `1.0`). Benchmark sources are unchanged from the old
-retained revision. Therefore newly exercised input slices 10 through 19 expose
-deterministic numerical quality misses; this is not evidence of a Mesa `.2` to
-`.4` regression, gfx1151 synchronization failure, or TheRock package mismatch.
-The current gfx1100 bounded 10-repetition rows also pass; its separate Q6
-50-repetition diagnostic fails, which is consistent with a coverage-sensitive
-kernel/oracle issue rather than a gfx1151-only problem.
+Mesa versions pass at the retained 10-repetition coverage. Cumulative replay
+pinpoints the fixture boundaries (zero-based): Q4 first fails when slice `10`
+(the 11th repetition) is included, where aggregate KL moves from `0.004753` to
+`0.079520`; Q6 KL changes from `0.006046` to `0.007756` at slice `14` but still
+passes, then the gate first fails at slice `17` (the 18th repetition), where
+top-1 moves from `1.0` to `0.875`. Repetition does not degrade a fixed input;
+the longer protocol simply includes these deterministic fixture slices.
+Benchmark sources are unchanged from the old retained revision. This is not a
+Mesa `.2` to `.4` regression, gfx1151 synchronization failure, or TheRock
+package mismatch. The current gfx1100 bounded 10-repetition rows also pass; its
+separate Q6 50-repetition diagnostic exposes the same coverage-sensitive class
+of numerical miss.
 
 The strict matrix took approximately 5m10s of benchmark work and 5m49s
 end-to-end with failure handling and confirmation. Compact artifact:
@@ -132,11 +139,11 @@ end-to-end with failure handling and confirmation. Compact artifact:
 
 ## gfx1100 versus gfx1151
 
-The two retained matrices use the same benchmark shapes, sampling counts,
-timing modes, dependency contracts, correctness gates, ratio definition,
-TheRock release, and Mesa release. They still differ in kernel, firmware,
-hardware, and clock state. The table therefore answers "does the observed
-pattern transfer?", not "what does architecture alone cause?"
+The two retained matrices use the same executable benchmark sources, shapes,
+sampling counts, timing modes, dependency contracts, correctness gates, ratio
+definition, TheRock/AMD-clang build, kernel, firmware packages, Mesa/RADV, and
+Vulkan loader. The host/GPU platforms and their automatic clock behavior are
+the material differences.
 
 | Family | gfx1100 serial / independent | gfx1151 serial / independent | Transfer read |
 | --- | ---: | ---: | --- |
@@ -162,9 +169,10 @@ The architecture-specific signal is therefore real enough to block ratio
 transfer: only dispatch and the geometry/reduction mode split reproduce
 qualitatively across the full synthetic families. Packed-dot magnitude, VOPD,
 sampler independent throughput, and two-stage independent throughput differ
-materially. Before assigning those differences to gfx1100 versus gfx1151,
-rerun both devices with matched ROCm/compiler, Mesa/RADV, kernel/firmware, fixed
-clock policy, and interleaved backend order.
+materially. Software versions and executable sources are already matched.
+Separating GPU architecture from automatic clock residency and runtime
+scheduling now requires fixed or continuously recorded clocks, interleaved
+backend order, and queue/kernel counters—not another version-matching pass.
 
 ## Current Decision
 

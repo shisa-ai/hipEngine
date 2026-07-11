@@ -120,11 +120,13 @@ seconds (`4m09.323s`). Its sampling counts intentionally match the prior
 
 The current command templates below are stricter: paired `20/5/7`, dispatch
 `50/10`. That coverage produces 20/22 valid comparisons because additional
-input slices make Vulkan independent Q4 fail KL and Q6 fail top-1. Mesa 26.1.2
-reproduces those failures, one/two/four-queue outputs are identical, and both
-families pass at the old 10-repetition coverage. This diagnostic is therefore
-not a Mesa, synchronization, architecture, or TheRock regression. Its compact
-artifact is
+input slices make Vulkan independent Q4 fail KL and Q6 fail top-1. In
+zero-based fixture indexing, Q4 first fails at slice `10`; Q6's KL first changes
+at slice `14` but remains valid, and its top-1 gate first fails at slice `17`.
+Mesa 26.1.2 reproduces those failures, one/two/four-queue outputs are identical,
+and both families pass at the retained 10-repetition coverage. This diagnostic
+is therefore fixture coverage, not a Mesa, synchronization, architecture, or
+TheRock regression. Its compact artifact is
 [`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
 It took 5m49s including failure handling and one confirmatory rerun; budget
 approximately six minutes for the stricter matrix.
