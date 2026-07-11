@@ -756,12 +756,12 @@ def _revision_boundary(
         REPO_ROOT,
         "merge-base",
         "--is-ancestor",
-        route_metadata["commit"],
         metadata["commit"],
+        route_metadata["commit"],
         check=False,
     )
     if ancestry.returncode != 0:
-        raise ValueError("production eager route change is not an ancestor of the speed boundary")
+        raise ValueError("eager speed boundary is not an ancestor of the production route change")
     return {
         "classification": "first_performance_changing_revision_found",
         "protocol": "same_host_direct_parent_graph_off_repacked_eager_p8_d32_1x4",
@@ -783,7 +783,8 @@ def _revision_boundary(
         "interpretation": (
             "4499fb13 is the direct-parent eager performance boundary: loaded HIP "
             "library memoization removes repeated host library loads without changing "
-            "decode math. Current short-context eager speed remains in the same band."
+            "decode math. e8521a2a subsequently selects that now-fast eager route for "
+            "production. Current short-context eager speed remains in the same band."
         ),
     }
 
