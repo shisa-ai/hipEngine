@@ -4552,24 +4552,52 @@ class Qwen35ParoResidentSession:
         hidden = self._prefill_hidden_view_for_rows(rows)
         force_per_segment_linear = _env_flag("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR")
         force_per_segment_full_attention = _env_flag("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN")
-        blockers: list[str] = []
-        if force_per_segment_linear:
-            blockers.append("linear-attention packed prefill forced to per-segment diagnostic path")
-        if force_per_segment_full_attention:
-            blockers.append("full-attention packed prefill forced to per-segment diagnostic path")
-        self._last_packed_prefill_linear_path = "per_segment" if force_per_segment_linear else "packed_segments"
-        self._last_packed_prefill_full_attention_path = "per_segment" if force_per_segment_full_attention else "packed_varlen"
-        self._last_packed_prefill_blockers = blockers
-        max_segment_rows = max(
+        segment_rows = tuple(
             int(slab.cu_seqlens_q[index + 1]) - int(slab.cu_seqlens_q[index])
             for index in range(int(slab.request_count))
         )
+        ragged_segments = len(set(segment_rows)) > 1
+        use_per_segment_linear = force_per_segment_linear or ragged_segments
+        use_per_segment_full_attention = force_per_segment_full_attention or ragged_segments
+        active_layer_types = {
+            str(layer_type)
+            for layer_type in tuple(getattr(self.config, "layer_types", ()))[: len(self.states)]
+        }
+        blockers: list[str] = []
+        if force_per_segment_linear and "linear_attention" in active_layer_types:
+            blockers.append("linear-attention packed prefill forced to per-segment diagnostic path")
+        elif ragged_segments and "linear_attention" in active_layer_types:
+            blockers.append("ragged linear-attention packed prefill uses exact per-segment fallback")
+        if force_per_segment_full_attention and "full_attention" in active_layer_types:
+            blockers.append("full-attention packed prefill forced to per-segment diagnostic path")
+        elif ragged_segments and "full_attention" in active_layer_types:
+            blockers.append("ragged full-attention packed prefill uses exact per-segment fallback")
+        self._last_packed_prefill_linear_path = (
+            "packed_segments"
+            if "linear_attention" not in active_layer_types
+            else "per_segment"
+            if force_per_segment_linear
+            else "per_segment_ragged_exact"
+            if ragged_segments
+            else "packed_segments"
+        )
+        self._last_packed_prefill_full_attention_path = (
+            "packed_varlen"
+            if "full_attention" not in active_layer_types
+            else "per_segment"
+            if force_per_segment_full_attention
+            else "per_segment_ragged_exact"
+            if ragged_segments
+            else "packed_varlen"
+        )
+        self._last_packed_prefill_blockers = blockers
+        max_segment_rows = max(segment_rows)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             copied_layer_output = False
             if layer_type == "linear_attention":
                 self._trace_prefill_linear_input(layer_id=layer_id, hidden=hidden, rows=rows, stream=stream)
-                if force_per_segment_linear:
+                if use_per_segment_linear:
                     for segment_index in range(int(slab.request_count)):
                         start = int(slab.cu_seqlens_q[segment_index])
                         end = int(slab.cu_seqlens_q[segment_index + 1])
@@ -4617,7 +4645,7 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
             elif layer_type == "full_attention":
-                if force_per_segment_full_attention:
+                if use_per_segment_full_attention:
                     block_count = int(slab.block_count)
                     for segment_index in range(int(slab.request_count)):
                         start = int(slab.cu_seqlens_q[segment_index])
