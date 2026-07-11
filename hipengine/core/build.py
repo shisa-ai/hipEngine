@@ -176,6 +176,9 @@ def build_hip(
         compiler_version=compiler_version,
         dry_run=dry_run,
     )
+    resolved_target_arch = _normalize_target_arch(
+        target_arch or _target_arch_from_environment()
+    )
     cache_key: tuple | None = None
     if load and not dry_run:
         cache_key = (
@@ -184,7 +187,7 @@ def build_hip(
             output_name,
             tuple(str(Path(s)) for s in sources),
             None if cache_root is None else str(cache_root),
-            target_arch,
+            resolved_target_arch,
             compiler,
             version,
             tuple(str(Path(d)) for d in include_dirs),
@@ -204,7 +207,7 @@ def build_hip(
         compiler_version=version,
         include_dirs=include_dirs,
         extra_flags=extra_flags,
-        target_arch=target_arch,
+        target_arch=resolved_target_arch,
         output_name=output_name,
     )
     if dry_run:
