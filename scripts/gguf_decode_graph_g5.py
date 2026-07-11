@@ -1,0 +1,1262 @@
+#!/usr/bin/env python3
+"""SOL-G5 GGUF composite decode-graph correctness and wall audit.
+
+The production GGUF runtime intentionally has no whole-step decode graph.  This
+diagnostic reconstructs the removed composite capture around the current eager
+helpers without restoring a public/runtime graph API.  It compares two routes:
+
+* one state-bound graph relaunched for every token, with explicit checks after
+  the third and every later launch; and
+* a conservative state-generation-keyed route that captures a fresh graph for
+  every token and therefore never reuses a graph across a state transition.
+
+Every correctness checkpoint fingerprints the FP32 output-normalized hidden
+seed, every resident Conv/GDN state pair, all live BF16 full-attention K/V rows,
+and the generated token.  Promotion requires exact long-replay state and a
+capture-inclusive wall win over current eager decode.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import statistics
+import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+KIND = "hipengine_gguf_decode_graph_sol_g5_audit"
+SCHEMA_VERSION = 1
+
+
+def _canonical_sha256(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _context_bucket(*, position: int, replay_steps: int, block_size: int, max_positions: int) -> int:
+    if position < 0:
+        raise ValueError("position must be non-negative")
+    if replay_steps <= 0:
+        raise ValueError("replay_steps must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    if max_positions <= 0:
+        raise ValueError("max_positions must be positive")
+    replay_limit = int(position) + int(replay_steps)
+    bucket = ((replay_limit + int(block_size) - 1) // int(block_size)) * int(block_size)
+    if bucket > int(max_positions):
+        raise ValueError(
+            f"decode graph context bucket {bucket} exceeds resident cache capacity {max_positions}"
+        )
+    return bucket
+
+
+def _build_graph_key(
+    *,
+    backend: str,
+    target_arch: str,
+    model_fingerprint: str,
+    quant: str,
+    kv_dtype: str,
+    position: int,
+    replay_steps: int,
+    steps_per_launch: int,
+    block_size: int,
+    max_positions: int,
+    hidden_size: int,
+    vocab_size: int,
+    layer_types: Sequence[str],
+    weight_role_digest: str,
+    route: Mapping[str, Any],
+    buffer_ptrs: Sequence[int],
+    state_generation: int,
+) -> dict[str, Any]:
+    """Return the complete per-session shape/state identity for a capture.
+
+    Mutable state contents are validated separately by byte fingerprints.  The
+    operational key covers their resident buffer identities plus the monotonic
+    state generation, so a conservative cache cannot hit after a token mutates
+    Conv/GDN or K/V state.
+    """
+
+    if steps_per_launch <= 0:
+        raise ValueError("steps_per_launch must be positive")
+    if steps_per_launch > replay_steps:
+        raise ValueError("steps_per_launch cannot exceed replay_steps")
+    if state_generation < 0:
+        raise ValueError("state_generation must be non-negative")
+    context_bucket = _context_bucket(
+        position=int(position),
+        replay_steps=int(replay_steps),
+        block_size=int(block_size),
+        max_positions=int(max_positions),
+    )
+    pointer_payload = [int(pointer) for pointer in buffer_ptrs]
+    axes = {
+        "active_rows": 1,
+        "backend": str(backend),
+        "target_arch": str(target_arch),
+        "model_fingerprint": str(model_fingerprint),
+        "quant": str(quant),
+        "kv_dtype": str(kv_dtype),
+        "position": int(position),
+        "state_generation": int(state_generation),
+        "replay_steps": int(replay_steps),
+        "steps_per_launch": int(steps_per_launch),
+        "replay_context_limit": int(position) + int(replay_steps),
+        "context_bucket": int(context_bucket),
+        "block_size": int(block_size),
+        "max_positions": int(max_positions),
+        "hidden_size": int(hidden_size),
+        "vocab_size": int(vocab_size),
+        "layer_types": [str(layer_type) for layer_type in layer_types],
+        "weight_role_digest": str(weight_role_digest),
+        "route": dict(sorted((str(key), value) for key, value in route.items())),
+        "buffer_identity_sha256": _canonical_sha256(pointer_payload),
+        "buffer_count": len(pointer_payload),
+    }
+    return {"axes": axes, "key_sha256": _canonical_sha256(axes)}
+
+
+def _bf16_to_f32(raw: np.ndarray) -> np.ndarray:
+    words = np.ascontiguousarray(raw, dtype=np.uint8).view("<u2").astype(np.uint32)
+    return np.ascontiguousarray((words << np.uint32(16)).view(np.float32))
+
+
+def _fingerprint_raw(raw: np.ndarray, *, dtype: str) -> dict[str, Any]:
+    raw_u8 = np.ascontiguousarray(raw, dtype=np.uint8).reshape(-1)
+    if dtype == "fp32":
+        if raw_u8.size % np.dtype(np.float32).itemsize:
+            raise ValueError("FP32 buffer is not element-aligned")
+        values = raw_u8.view("<f4")
+    elif dtype == "bf16":
+        if raw_u8.size % np.dtype(np.uint16).itemsize:
+            raise ValueError("BF16 buffer is not element-aligned")
+        values = _bf16_to_f32(raw_u8)
+    else:
+        raise ValueError(f"unsupported checkpoint dtype: {dtype}")
+    finite = bool(np.all(np.isfinite(values)))
+    values64 = values.astype(np.float64, copy=False)
+    rms = float(math.sqrt(float(np.mean(values64 * values64)))) if values.size else 0.0
+    max_abs = float(np.max(np.abs(values64))) if values.size else 0.0
+    return {
+        "nbytes": int(raw_u8.size),
+        "blake2b_128": hashlib.blake2b(raw_u8.tobytes(), digest_size=16).hexdigest(),
+        "finite": finite,
+        "rms": rms,
+        "max_abs": max_abs,
+    }
+
+
+def _copy_device_fingerprint(
+    session: Any,
+    *,
+    ptr: int,
+    nbytes: int,
+    dtype: str,
+) -> dict[str, Any]:
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+
+    size = int(nbytes)
+    raw = np.empty((size,), dtype=np.uint8)
+    if size:
+        copy_device_to_host(
+            host_array_ptr(raw),
+            DeviceBuffer(int(ptr), size),
+            size,
+            runtime=session.runtime,
+        )
+    return _fingerprint_raw(raw, dtype=dtype)
+
+
+def _capture_checkpoint(
+    session: Any,
+    *,
+    position: int,
+    input_token_id: int,
+    predicted_token_id: int,
+) -> dict[str, Any]:
+    from hipengine.core.dtype import DType
+
+    if session.runner is None or session.runner.weights is None or session.scratch is None:
+        raise RuntimeError("GGUF resident session is closed")
+    session.runtime.device_synchronize()
+    runner = session.runner
+    scratch = session.scratch
+    hidden_seed = _copy_device_fingerprint(
+        session,
+        ptr=int(scratch.hidden_seed_fp32.ptr),
+        nbytes=int(runner.hidden_size) * DType.FP32.itemsize,
+        dtype="fp32",
+    )
+    linear_states: list[dict[str, Any]] = []
+    for layer_id, (conv_state, recurrent_state) in enumerate(
+        zip(scratch.layer_conv_states, scratch.layer_recurrent_states, strict=True)
+    ):
+        if conv_state is None or recurrent_state is None:
+            continue
+        linear_states.append(
+            {
+                "layer": int(layer_id),
+                "conv": _copy_device_fingerprint(
+                    session,
+                    ptr=int(conv_state.ptr),
+                    nbytes=int(conv_state.nbytes),
+                    dtype="fp32",
+                ),
+                "recurrent": _copy_device_fingerprint(
+                    session,
+                    ptr=int(recurrent_state.ptr),
+                    nbytes=int(recurrent_state.nbytes),
+                    dtype="fp32",
+                ),
+            }
+        )
+
+    cfg = runner.weights.config
+    live_positions = int(position)
+    kv_row_nbytes = int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+    live_nbytes = live_positions * kv_row_nbytes
+    kv_states: list[dict[str, Any]] = []
+    for layer_id, (key_cache, value_cache) in enumerate(
+        zip(scratch.full_key_caches, scratch.full_value_caches, strict=True)
+    ):
+        if key_cache is None or value_cache is None:
+            continue
+        checked_nbytes = min(live_nbytes, int(key_cache.nbytes), int(value_cache.nbytes))
+        kv_states.append(
+            {
+                "layer": int(layer_id),
+                "live_positions": live_positions,
+                "key": _copy_device_fingerprint(
+                    session,
+                    ptr=int(key_cache.ptr),
+                    nbytes=checked_nbytes,
+                    dtype="bf16",
+                ),
+                "value": _copy_device_fingerprint(
+                    session,
+                    ptr=int(value_cache.ptr),
+                    nbytes=checked_nbytes,
+                    dtype="bf16",
+                ),
+            }
+        )
+    fingerprints = [
+        hidden_seed,
+        *(row[part] for row in linear_states for part in ("conv", "recurrent")),
+        *(row[part] for row in kv_states for part in ("key", "value")),
+    ]
+    return {
+        "position": live_positions,
+        "input_token_id": int(input_token_id),
+        "predicted_token_id": int(predicted_token_id),
+        "finite": all(bool(fingerprint["finite"]) for fingerprint in fingerprints),
+        "hidden_seed": hidden_seed,
+        "linear_states": linear_states,
+        "kv_states": kv_states,
+    }
+
+
+def _same_fingerprint(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    return (
+        left.get("nbytes") == right.get("nbytes")
+        and left.get("blake2b_128") == right.get("blake2b_128")
+    )
+
+
+def _layer_map(rows: Any, *, label: str) -> dict[int, Mapping[str, Any]]:
+    if not isinstance(rows, list):
+        raise ValueError(f"{label} must be a list")
+    result: dict[int, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or isinstance(row.get("layer"), bool):
+            raise ValueError(f"{label} has an invalid layer row")
+        layer = int(row["layer"])
+        if layer in result:
+            raise ValueError(f"{label} has duplicate layer {layer}")
+        result[layer] = row
+    return result
+
+
+def _compare_checkpoints(reference: Mapping[str, Any], candidate: Mapping[str, Any]) -> dict[str, Any]:
+    mismatches: list[dict[str, Any]] = []
+
+    def add(component: str, *, layer: int | None, part: str | None, expected: Any, actual: Any) -> None:
+        mismatches.append(
+            {
+                "component": component,
+                "layer": layer,
+                "part": part,
+                "expected": expected,
+                "actual": actual,
+            }
+        )
+
+    for key, component in (
+        ("position", "position"),
+        ("input_token_id", "input_token"),
+        ("predicted_token_id", "predicted_token"),
+    ):
+        if reference.get(key) != candidate.get(key):
+            add(
+                component,
+                layer=None,
+                part=None,
+                expected=reference.get(key),
+                actual=candidate.get(key),
+            )
+    if reference.get("finite") is not True or candidate.get("finite") is not True:
+        add(
+            "nonfinite",
+            layer=None,
+            part=None,
+            expected=reference.get("finite"),
+            actual=candidate.get("finite"),
+        )
+    if not _same_fingerprint(reference.get("hidden_seed", {}), candidate.get("hidden_seed", {})):
+        add(
+            "hidden_seed",
+            layer=None,
+            part=None,
+            expected=reference.get("hidden_seed", {}).get("blake2b_128"),
+            actual=candidate.get("hidden_seed", {}).get("blake2b_128"),
+        )
+
+    reference_linear = _layer_map(reference.get("linear_states"), label="reference.linear_states")
+    candidate_linear = _layer_map(candidate.get("linear_states"), label="candidate.linear_states")
+    for layer in sorted(set(reference_linear) | set(candidate_linear)):
+        expected_row = reference_linear.get(layer)
+        actual_row = candidate_linear.get(layer)
+        for part in ("conv", "recurrent"):
+            if expected_row is None or actual_row is None or not _same_fingerprint(
+                expected_row.get(part, {}), actual_row.get(part, {})
+            ):
+                add(
+                    "linear_state",
+                    layer=layer,
+                    part=part,
+                    expected=None if expected_row is None else expected_row.get(part, {}).get("blake2b_128"),
+                    actual=None if actual_row is None else actual_row.get(part, {}).get("blake2b_128"),
+                )
+
+    reference_kv = _layer_map(reference.get("kv_states"), label="reference.kv_states")
+    candidate_kv = _layer_map(candidate.get("kv_states"), label="candidate.kv_states")
+    for layer in sorted(set(reference_kv) | set(candidate_kv)):
+        expected_row = reference_kv.get(layer)
+        actual_row = candidate_kv.get(layer)
+        if (
+            expected_row is not None
+            and actual_row is not None
+            and expected_row.get("live_positions") != actual_row.get("live_positions")
+        ):
+            add(
+                "full_attention_kv",
+                layer=layer,
+                part="live_positions",
+                expected=expected_row.get("live_positions"),
+                actual=actual_row.get("live_positions"),
+            )
+        for part in ("key", "value"):
+            if expected_row is None or actual_row is None or not _same_fingerprint(
+                expected_row.get(part, {}), actual_row.get(part, {})
+            ):
+                add(
+                    "full_attention_kv",
+                    layer=layer,
+                    part=part,
+                    expected=None if expected_row is None else expected_row.get(part, {}).get("blake2b_128"),
+                    actual=None if actual_row is None else actual_row.get(part, {}).get("blake2b_128"),
+                )
+
+    component_order = {
+        "position": 0,
+        "input_token": 1,
+        "predicted_token": 2,
+        "nonfinite": 3,
+        "hidden_seed": 4,
+        "linear_state": 5,
+        "full_attention_kv": 6,
+    }
+    mismatches.sort(
+        key=lambda row: (
+            -1 if row["layer"] is None else int(row["layer"]),
+            component_order.get(str(row["component"]), 99),
+            "" if row["part"] is None else str(row["part"]),
+        )
+    )
+    first = None
+    if mismatches:
+        first = {
+            "component": mismatches[0]["component"],
+            "layer": mismatches[0]["layer"],
+            "part": mismatches[0]["part"],
+        }
+    return {"passed": not mismatches, "mismatches": mismatches, "first_divergence": first}
+
+
+def _summarize_runs(runs: Sequence[Mapping[str, Any]], *, expected_token_id: int) -> dict[str, Any]:
+    if not runs:
+        raise ValueError("at least one timing run is required")
+    ms_per_token: list[float] = []
+    tok_s: list[float] = []
+    for run_index, run in enumerate(runs):
+        steps = int(run["steps"])
+        wall_ms = float(run["wall_ms"])
+        tokens = [int(token) for token in run["generated_token_ids"]]
+        if steps <= 0 or wall_ms <= 0.0 or len(tokens) != steps:
+            raise ValueError(f"invalid timing run {run_index}")
+        for token_index, token in enumerate(tokens):
+            if token != int(expected_token_id):
+                raise ValueError(
+                    f"unexpected token in timing run {run_index}, step {token_index}: "
+                    f"expected {expected_token_id}, observed {token}"
+                )
+        per_token = wall_ms / steps
+        ms_per_token.append(per_token)
+        tok_s.append(1000.0 / per_token)
+    return {
+        "runs": len(runs),
+        "all_tokens_exact": True,
+        "median_ms_per_token": statistics.median(ms_per_token),
+        "median_tok_s": statistics.median(tok_s),
+        "min_ms_per_token": min(ms_per_token),
+        "max_ms_per_token": max(ms_per_token),
+        "samples_ms_per_token": ms_per_token,
+        "samples_tok_s": tok_s,
+    }
+
+
+def _classify_candidate(
+    *,
+    relaunch_passed: bool,
+    relaunch_first_failure: int | None,
+    recapture_passed: bool,
+    eager_summary: Mapping[str, Any],
+    recapture_summary: Mapping[str, Any],
+    relaunch_summary: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    eager_ms = float(eager_summary["median_ms_per_token"])
+    candidate_summary = relaunch_summary if relaunch_passed and relaunch_summary is not None else recapture_summary
+    candidate_ms = float(candidate_summary["median_ms_per_token"])
+    speedup = eager_ms / candidate_ms
+    delta_pct = (candidate_ms / eager_ms - 1.0) * 100.0
+    common = {
+        "eager_median_ms_per_token": eager_ms,
+        "candidate_median_ms_per_token": candidate_ms,
+        "candidate_speedup_vs_eager": speedup,
+        "candidate_wall_delta_pct": delta_pct,
+    }
+    if not relaunch_passed:
+        return {
+            **common,
+            "status": "rejected",
+            "decision": "reject_third_or_later_relaunch_state_corruption",
+            "first_failing_launch": relaunch_first_failure,
+        }
+    if not recapture_passed:
+        return {
+            **common,
+            "status": "rejected",
+            "decision": "reject_state_keyed_recapture_not_exact",
+            "first_failing_launch": None,
+        }
+    if candidate_ms >= eager_ms:
+        return {
+            **common,
+            "status": "rejected",
+            "decision": "reject_no_end_to_end_wall_win",
+            "first_failing_launch": None,
+        }
+    return {
+        **common,
+        "status": "accepted",
+        "decision": "promote_state_keyed_graph_replay",
+        "first_failing_launch": None,
+    }
+
+
+@dataclass
+class _CapturedDecodeGraph:
+    runtime: Any
+    graph: int
+    graph_exec: int
+    stream: int
+    key: dict[str, Any]
+    closed: bool = False
+
+    def launch(self) -> None:
+        if self.closed:
+            raise RuntimeError("decode graph is closed")
+        self.runtime.graph_launch(self.graph_exec, self.stream)
+        self.runtime.stream_synchronize(self.stream)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.runtime.graph_exec_destroy(self.graph_exec)
+        self.runtime.graph_destroy(self.graph)
+        self.runtime.stream_destroy(self.stream)
+        self.closed = True
+
+    def __enter__(self) -> "_CapturedDecodeGraph":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+def _capture_decode_graph(
+    session: Any,
+    *,
+    position: int,
+    replay_steps: int,
+    steps_per_launch: int,
+    key: dict[str, Any],
+) -> _CapturedDecodeGraph:
+    from hipengine.kernels.hip_gfx1100.runtime.state import advance_decode_position_i64
+    from hipengine.runtime.gguf_linear import gemv_decode_session
+
+    if session.runner is None or session.scratch is None or session._lm_out_index is None:
+        raise RuntimeError("GGUF resident session is closed")
+    if session.host_token_embedding_enabled:
+        raise RuntimeError("device-resident decode graph requires device token embeddings")
+    if position < 0 or position + replay_steps > int(session.scratch.max_positions):
+        raise ValueError("decode graph replay span exceeds resident cache capacity")
+    runtime = session.runtime
+    stream = runtime.stream_create()
+    graph = 0
+    try:
+        session._set_full_attention_position_device(int(position), stream=stream)
+        runtime.stream_synchronize(stream)
+        runtime.stream_begin_capture(stream)
+        try:
+            with gemv_decode_session(session.use_gemv_decode):
+                for offset in range(int(steps_per_launch)):
+                    graph_position = int(position) + offset
+                    session.scratch.position_host[0] = graph_position
+                    session.scratch.context_host[0] = graph_position + 1
+                    session._set_token_embedding_from_ptr(session._lm_out_index.ptr, stream=stream)
+                    hidden_ptr = session._run_current_hidden_to_final_hidden(
+                        position=graph_position,
+                        stream=stream,
+                        attention_max_context_len=int(position) + int(replay_steps),
+                        capture_hidden_seed_fp32=True,
+                    )
+                    session._sample_device_from_hidden(hidden_ptr, stream=stream)
+                    advance_decode_position_i64(
+                        session.scratch.position_buf.ptr,
+                        session.scratch.context_buf.ptr,
+                        stream=stream,
+                        library=session._runtime_state_library,
+                        runtime=runtime,
+                    )
+            graph = runtime.stream_end_capture(stream)
+        except Exception:
+            try:
+                runtime.stream_end_capture(stream)
+            except Exception:
+                pass
+            raise
+        graph_exec = runtime.graph_instantiate(graph)
+    except Exception:
+        if graph:
+            try:
+                runtime.graph_destroy(graph)
+            except Exception:
+                pass
+        runtime.stream_destroy(stream)
+        raise
+    return _CapturedDecodeGraph(
+        runtime=runtime,
+        graph=graph,
+        graph_exec=graph_exec,
+        stream=stream,
+        key=key,
+    )
+
+
+def _buffer_ptrs(session: Any) -> tuple[int, ...]:
+    if session.scratch is None:
+        raise RuntimeError("GGUF resident session is closed")
+    buffers = [
+        session._hidden_a,
+        session._hidden_b,
+        session._token_buf,
+        session._logits_buf,
+        session._lm_block_values,
+        session._lm_block_indices,
+        session._lm_out_index,
+        session._lm_out_value,
+        session.scratch.position_buf,
+        session.scratch.context_buf,
+        session.scratch.hidden_seed_fp32,
+        session.scratch.norm,
+        session.scratch.attn_out,
+        *session.scratch.layer_conv_states,
+        *session.scratch.layer_recurrent_states,
+        *session.scratch.full_key_caches,
+        *session.scratch.full_value_caches,
+    ]
+    return tuple(int(buffer.ptr) for buffer in buffers if buffer is not None)
+
+
+def _weight_role_digest(session: Any) -> str:
+    if session.runner is None or session.runner.weights is None:
+        raise RuntimeError("GGUF resident session is closed")
+    roles = [
+        {
+            "slot_path": str(weight.spec.slot_path),
+            "quant_key": str(weight.spec.quant_key),
+            "shape": [int(dim) for dim in weight.spec.source.shape],
+        }
+        for weight in session.runner.weights.weights
+    ]
+    return _canonical_sha256(roles)
+
+
+def _session_key_context(
+    session: Any,
+    *,
+    backend: str,
+    target_arch: str,
+    model_fingerprint: str,
+    quant: str,
+) -> dict[str, Any]:
+    if session.runner is None or session.runner.weights is None or session.scratch is None:
+        raise RuntimeError("GGUF resident session is closed")
+    kv_dtype = getattr(session.kv_storage_dtype, "value", str(session.kv_storage_dtype))
+    weight_role_digest = _weight_role_digest(session)
+    roles = [str(weight.spec.quant_key) for weight in session.runner.weights.weights]
+    return {
+        "backend": str(backend),
+        "target_arch": str(target_arch),
+        "model_fingerprint": str(model_fingerprint),
+        "quant": str(quant),
+        "kv_dtype": str(kv_dtype),
+        "block_size": int(session.scratch.block_size),
+        "max_positions": int(session.scratch.max_positions),
+        "hidden_size": int(session.runner.hidden_size),
+        "vocab_size": int(session.runner.vocab_size),
+        "layer_types": tuple(str(item) for item in session.runner.weights.config.layer_types),
+        "weight_role_digest": weight_role_digest,
+        "route": {
+            "gemv_decode": bool(session.use_gemv_decode),
+            "wmma_prefill": bool(session.use_wmma_prefill),
+            "decode_repack": any(role.endswith("_t16_v1") or role.endswith("_x8_v1") for role in roles),
+            "host_token_embedding": bool(session.host_token_embedding_enabled),
+            "per_layer_moe_graph": False,
+        },
+        "buffer_ptrs": _buffer_ptrs(session),
+    }
+
+
+def _graph_key(
+    context: Mapping[str, Any],
+    *,
+    position: int,
+    replay_steps: int,
+    steps_per_launch: int,
+    state_generation: int,
+) -> dict[str, Any]:
+    return _build_graph_key(
+        backend=str(context["backend"]),
+        target_arch=str(context["target_arch"]),
+        model_fingerprint=str(context["model_fingerprint"]),
+        quant=str(context["quant"]),
+        kv_dtype=str(context["kv_dtype"]),
+        position=int(position),
+        replay_steps=int(replay_steps),
+        steps_per_launch=int(steps_per_launch),
+        block_size=int(context["block_size"]),
+        max_positions=int(context["max_positions"]),
+        hidden_size=int(context["hidden_size"]),
+        vocab_size=int(context["vocab_size"]),
+        layer_types=tuple(context["layer_types"]),
+        weight_role_digest=str(context["weight_role_digest"]),
+        route=dict(context["route"]),
+        buffer_ptrs=tuple(context["buffer_ptrs"]),
+        state_generation=int(state_generation),
+    )
+
+
+def _prefill(session: Any, prompt_ids: Sequence[int]) -> int:
+    session.reset()
+    result = session.prefill(
+        [int(token) for token in prompt_ids],
+        use_bulk=True,
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+    session.runtime.device_synchronize()
+    return int(result.token_id)
+
+
+def _run_eager_correctness(session: Any, *, prompt_ids: Sequence[int], steps: int) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    checkpoints: list[dict[str, Any]] = []
+    generated: list[int] = []
+    for _ in range(int(steps)):
+        input_token = current
+        result = session.step(
+            input_token,
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        current = int(result.token_id)
+        generated.append(current)
+        checkpoints.append(
+            _capture_checkpoint(
+                session,
+                position=int(session.position),
+                input_token_id=input_token,
+                predicted_token_id=current,
+            )
+        )
+    return {
+        "prefill_token_id": int(checkpoints[0]["input_token_id"]) if checkpoints else current,
+        "generated_token_ids": generated,
+        "checkpoints": checkpoints,
+    }
+
+
+def _run_relaunch_correctness(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    steps: int,
+    key_context: Mapping[str, Any],
+    reference: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    start_position = int(session.position)
+    key = _graph_key(
+        key_context,
+        position=start_position,
+        replay_steps=int(steps),
+        steps_per_launch=1,
+        state_generation=start_position,
+    )
+    checkpoints: list[dict[str, Any]] = []
+    comparisons: list[dict[str, Any]] = []
+    generated: list[int] = []
+    with _capture_decode_graph(
+        session,
+        position=start_position,
+        replay_steps=int(steps),
+        steps_per_launch=1,
+        key=key,
+    ) as graph:
+        for launch_index in range(1, int(steps) + 1):
+            input_token = current
+            graph.launch()
+            current = int(session._read_sample(return_logits=False).token_id)
+            session._position = start_position + launch_index
+            session.scratch.position_host[0] = int(session._position)
+            session.scratch.context_host[0] = int(session._position) + 1
+            session._hidden_seed_fp32_populated = True
+            checkpoint = _capture_checkpoint(
+                session,
+                position=int(session.position),
+                input_token_id=input_token,
+                predicted_token_id=current,
+            )
+            comparison = _compare_checkpoints(reference[launch_index - 1], checkpoint)
+            checkpoints.append(checkpoint)
+            comparisons.append(
+                {
+                    "launch": launch_index,
+                    "passed": bool(comparison["passed"]),
+                    "first_divergence": comparison["first_divergence"],
+                    "mismatch_count": len(comparison["mismatches"]),
+                    "mismatches": comparison["mismatches"],
+                }
+            )
+            generated.append(current)
+    first_failure = next((row["launch"] for row in comparisons if not row["passed"]), None)
+    return {
+        "passed": first_failure is None,
+        "first_failing_launch": first_failure,
+        "third_and_later_launches_checked": max(0, int(steps) - 2),
+        "graph_key": key,
+        "generated_token_ids": generated,
+        "comparisons": comparisons,
+        "checkpoints": checkpoints,
+    }
+
+
+def _run_recapture_correctness(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    steps: int,
+    key_context: Mapping[str, Any],
+    reference: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    comparisons: list[dict[str, Any]] = []
+    generated: list[int] = []
+    key_digests: list[str] = []
+    for step_index in range(int(steps)):
+        position = int(session.position)
+        input_token = current
+        key = _graph_key(
+            key_context,
+            position=position,
+            replay_steps=1,
+            steps_per_launch=1,
+            state_generation=position,
+        )
+        key_digests.append(str(key["key_sha256"]))
+        with _capture_decode_graph(
+            session,
+            position=position,
+            replay_steps=1,
+            steps_per_launch=1,
+            key=key,
+        ) as graph:
+            graph.launch()
+        current = int(session._read_sample(return_logits=False).token_id)
+        session._position = position + 1
+        session.scratch.position_host[0] = int(session._position)
+        session.scratch.context_host[0] = int(session._position) + 1
+        session._hidden_seed_fp32_populated = True
+        checkpoint = _capture_checkpoint(
+            session,
+            position=int(session.position),
+            input_token_id=input_token,
+            predicted_token_id=current,
+        )
+        comparison = _compare_checkpoints(reference[step_index], checkpoint)
+        comparisons.append(
+            {
+                "step": step_index + 1,
+                "passed": bool(comparison["passed"]),
+                "first_divergence": comparison["first_divergence"],
+                "mismatch_count": len(comparison["mismatches"]),
+                "mismatches": comparison["mismatches"],
+            }
+        )
+        generated.append(current)
+    return {
+        "passed": all(bool(row["passed"]) for row in comparisons),
+        "capture_count": int(steps),
+        "launches_per_capture": 1,
+        "unique_key_count": len(set(key_digests)),
+        "key_sha256": key_digests,
+        "generated_token_ids": generated,
+        "comparisons": comparisons,
+    }
+
+
+def _run_eager_timing(session: Any, *, prompt_ids: Sequence[int], steps: int) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    generated: list[int] = []
+    session.runtime.device_synchronize()
+    start_ns = time.perf_counter_ns()
+    for _ in range(int(steps)):
+        current = int(session.step(current, return_logits=False).token_id)
+        generated.append(current)
+    session.runtime.device_synchronize()
+    wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
+    return {"steps": int(steps), "wall_ms": wall_ms, "generated_token_ids": generated}
+
+
+def _run_recapture_timing(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    steps: int,
+    key_context: Mapping[str, Any],
+) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    generated: list[int] = []
+    capture_ms: list[float] = []
+    session.runtime.device_synchronize()
+    start_ns = time.perf_counter_ns()
+    for _ in range(int(steps)):
+        position = int(session.position)
+        key = _graph_key(
+            key_context,
+            position=position,
+            replay_steps=1,
+            steps_per_launch=1,
+            state_generation=position,
+        )
+        capture_start_ns = time.perf_counter_ns()
+        graph = _capture_decode_graph(
+            session,
+            position=position,
+            replay_steps=1,
+            steps_per_launch=1,
+            key=key,
+        )
+        capture_ms.append((time.perf_counter_ns() - capture_start_ns) / 1e6)
+        try:
+            graph.launch()
+        finally:
+            graph.close()
+        current = int(session._read_sample(return_logits=False).token_id)
+        session._position = position + 1
+        session.scratch.position_host[0] = int(session._position)
+        session.scratch.context_host[0] = int(session._position) + 1
+        generated.append(current)
+    session.runtime.device_synchronize()
+    wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
+    return {
+        "steps": int(steps),
+        "wall_ms": wall_ms,
+        "generated_token_ids": generated,
+        "capture_count": int(steps),
+        "capture_ms": capture_ms,
+        "capture_ms_total": sum(capture_ms),
+    }
+
+
+def _run_relaunch_timing(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    steps: int,
+    key_context: Mapping[str, Any],
+) -> dict[str, Any]:
+    current = _prefill(session, prompt_ids)
+    start_position = int(session.position)
+    key = _graph_key(
+        key_context,
+        position=start_position,
+        replay_steps=int(steps),
+        steps_per_launch=1,
+        state_generation=start_position,
+    )
+    capture_start_ns = time.perf_counter_ns()
+    graph = _capture_decode_graph(
+        session,
+        position=start_position,
+        replay_steps=int(steps),
+        steps_per_launch=1,
+        key=key,
+    )
+    capture_ms = (time.perf_counter_ns() - capture_start_ns) / 1e6
+    generated: list[int] = []
+    try:
+        session.runtime.device_synchronize()
+        start_ns = time.perf_counter_ns()
+        for launch_index in range(1, int(steps) + 1):
+            graph.launch()
+            current = int(session._read_sample(return_logits=False).token_id)
+            generated.append(current)
+            session._position = start_position + launch_index
+        session.runtime.device_synchronize()
+        wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
+    finally:
+        graph.close()
+    return {
+        "steps": int(steps),
+        "wall_ms": wall_ms,
+        "generated_token_ids": generated,
+        "capture_ms_excluded": capture_ms,
+    }
+
+
+def _read_compiler_version(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(f"empty compiler-version file: {path}")
+    return text
+
+
+def _run(args: argparse.Namespace) -> int:
+    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+    os.environ["HIPENGINE_GGUF_MOE_GRAPH"] = "0"
+    target_arch = "gfx1151" if args.backend == "hip_gfx1151" else "gfx1100"
+    os.environ["HIPENGINE_HIP_ARCH"] = target_arch
+    if args.compiler_version_file is not None:
+        os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
+
+    from hipengine.benchmark.provenance import collect_artifact_provenance
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    model = Path(args.model).resolve()
+    if not model.is_file():
+        raise FileNotFoundError(model)
+    model_sha256 = _file_sha256(model)
+    prompt_ids = [int(args.prompt_token_id)] * int(args.prompt_length)
+    max_sequence_length = (
+        int(args.max_sequence_length)
+        if int(args.max_sequence_length) > 0
+        else int(args.prompt_length) + max(int(args.correctness_steps), int(args.timing_steps)) + 8
+    )
+    compiler_version = _read_compiler_version(args.compiler_version_file)
+
+    with Qwen35GGUFResidentSession(
+        model,
+        max_sequence_length=max_sequence_length,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached),
+        backend=str(args.backend),
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as session:
+        key_context = _session_key_context(
+            session,
+            backend=str(args.backend),
+            target_arch=target_arch,
+            model_fingerprint=model_sha256,
+            quant=str(args.quant),
+        )
+        eager_correctness = _run_eager_correctness(
+            session,
+            prompt_ids=prompt_ids,
+            steps=int(args.correctness_steps),
+        )
+        expected_tokens = [int(args.expected_token_id)] * int(args.correctness_steps)
+        if eager_correctness["generated_token_ids"] != expected_tokens:
+            raise RuntimeError(
+                "current eager correctness trajectory differs from the required repeated-token oracle"
+            )
+        reference_checkpoints = eager_correctness["checkpoints"]
+        relaunch = _run_relaunch_correctness(
+            session,
+            prompt_ids=prompt_ids,
+            steps=int(args.correctness_steps),
+            key_context=key_context,
+            reference=reference_checkpoints,
+        )
+        recapture = _run_recapture_correctness(
+            session,
+            prompt_ids=prompt_ids,
+            steps=int(args.correctness_steps),
+            key_context=key_context,
+            reference=reference_checkpoints,
+        )
+
+        eager_warmups: list[dict[str, Any]] = []
+        recapture_warmups: list[dict[str, Any]] = []
+        eager_runs: list[dict[str, Any]] = []
+        recapture_runs: list[dict[str, Any]] = []
+        for run_index in range(int(args.warmups) + int(args.repetitions)):
+            measured = run_index >= int(args.warmups)
+            modes = ("eager", "recapture") if run_index % 2 == 0 else ("recapture", "eager")
+            for mode in modes:
+                if mode == "eager":
+                    row = _run_eager_timing(session, prompt_ids=prompt_ids, steps=int(args.timing_steps))
+                    (eager_runs if measured else eager_warmups).append(row)
+                else:
+                    row = _run_recapture_timing(
+                        session,
+                        prompt_ids=prompt_ids,
+                        steps=int(args.timing_steps),
+                        key_context=key_context,
+                    )
+                    (recapture_runs if measured else recapture_warmups).append(row)
+
+        relaunch_runs: list[dict[str, Any]] = []
+        if bool(relaunch["passed"]):
+            for _ in range(int(args.repetitions)):
+                relaunch_runs.append(
+                    _run_relaunch_timing(
+                        session,
+                        prompt_ids=prompt_ids,
+                        steps=int(args.timing_steps),
+                        key_context=key_context,
+                    )
+                )
+
+    eager_summary = _summarize_runs(eager_runs, expected_token_id=int(args.expected_token_id))
+    recapture_summary = _summarize_runs(recapture_runs, expected_token_id=int(args.expected_token_id))
+    relaunch_summary = (
+        _summarize_runs(relaunch_runs, expected_token_id=int(args.expected_token_id))
+        if relaunch_runs
+        else None
+    )
+    classification = _classify_candidate(
+        relaunch_passed=bool(relaunch["passed"]),
+        relaunch_first_failure=relaunch["first_failing_launch"],
+        recapture_passed=bool(recapture["passed"]),
+        eager_summary=eager_summary,
+        recapture_summary=recapture_summary,
+        relaunch_summary=relaunch_summary,
+    )
+
+    provenance = collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=str(args.backend),
+        resolved_backend=str(args.backend),
+        target_arch=target_arch,
+        model_path=model,
+        quant=str(args.quant),
+        kv_dtype="bf16",
+        command=[str(part) for part in sys.argv],
+        environment={
+            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
+            "HIPENGINE_HIP_ARCH": target_arch,
+            "HIPENGINE_GGUF_DECODE_REPACK": "1",
+            "HIPENGINE_GGUF_MOE_GRAPH": "0",
+            "HIPENGINE_GGUF_WMMA_PREFILL": "1 (constructor)",
+            "HIPENGINE_GGUF_GEMV_DECODE": "1 (constructor)",
+        },
+        build_profile="gguf_decode_graph_sol_g5_audit",
+        timing_protocol=(
+            "one resident session; alternating eager vs per-token state-keyed capture; "
+            "capture/instantiate/launch/sync/destroy included"
+        ),
+        warmups=int(args.warmups),
+        repetitions=int(args.repetitions),
+        profiler={"enabled": False, "reason": "G5 is a correctness and host-wall promotion gate"},
+    )
+    evidence_valid = bool(
+        not provenance["dirty"]
+        and eager_summary["all_tokens_exact"]
+        and recapture_summary["all_tokens_exact"]
+        and bool(recapture["passed"])
+        and len(relaunch["comparisons"]) == int(args.correctness_steps)
+        and int(relaunch["third_and_later_launches_checked"]) >= 1
+        and recapture["unique_key_count"] == int(args.correctness_steps)
+    )
+    artifact = {
+        "kind": KIND,
+        "schema_version": SCHEMA_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": classification["status"] if evidence_valid else "diagnostic_invalid",
+        "performance_claim": bool(evidence_valid),
+        "correctness_claim": bool(evidence_valid),
+        "classification": {
+            **classification,
+            "evidence_valid": evidence_valid,
+            "conclusion": (
+                "The state-bound composite graph is not promotable unless the same captured graph "
+                "survives third-and-later launches exactly and the conservative full-state-key route "
+                "beats eager with capture misses included."
+            ),
+        },
+        "workload": {
+            "model": str(model),
+            "model_sha256": model_sha256,
+            "quant": str(args.quant),
+            "kv_dtype": "bf16",
+            "backend": str(args.backend),
+            "target_arch": target_arch,
+            "prompt_source": "repeated_token_id",
+            "prompt_token_id": int(args.prompt_token_id),
+            "expected_token_id": int(args.expected_token_id),
+            "prompt_length": int(args.prompt_length),
+            "correctness_steps": int(args.correctness_steps),
+            "timing_steps": int(args.timing_steps),
+            "max_sequence_length": max_sequence_length,
+            "route": "repacked WMMA bulk prefill + GEMV decode; per-layer MoE graph off",
+        },
+        "graph_key_contract": {
+            "description": (
+                "Backend/model/quant/KV/shape/layer/weight-role/route/buffer identity plus state generation. "
+                "A state-generation-keyed cache intentionally misses after every token mutation."
+            ),
+            "stable_relaunch_key": relaunch["graph_key"],
+            "recapture_key_sha256": recapture["key_sha256"],
+            "recapture_unique_key_count": recapture["unique_key_count"],
+        },
+        "correctness": {
+            "protocol": (
+                "Byte-exact FP32 hidden seed, every Conv/GDN state pair, all live BF16 K/V rows, "
+                "and token after each launch versus current eager from the same resident session."
+            ),
+            "eager": eager_correctness,
+            "stable_key_relaunch": relaunch,
+            "state_generation_keyed_recapture": recapture,
+        },
+        "timing": {
+            "protocol": (
+                "Alternating same-session full runs after reset/prefill; recapture wall includes one "
+                "capture, instantiate, launch, synchronize, and destroy per token."
+            ),
+            "warmups": {
+                "eager": eager_warmups,
+                "state_generation_keyed_recapture": recapture_warmups,
+            },
+            "eager": {"summary": eager_summary, "runs": eager_runs},
+            "state_generation_keyed_recapture": {
+                "summary": recapture_summary,
+                "runs": recapture_runs,
+            },
+            "stable_key_relaunch": {
+                "eligible": bool(relaunch["passed"]),
+                "summary": relaunch_summary,
+                "runs": relaunch_runs,
+            },
+        },
+        "provenance": provenance,
+    }
+    if args.out is not None:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+        print(f"[sol-g5] wrote {args.out}", flush=True)
+    print(
+        f"[sol-g5] {artifact['status']}: {classification['decision']}; "
+        f"relaunch_passed={relaunch['passed']} first_failure={relaunch['first_failing_launch']}; "
+        f"eager={eager_summary['median_tok_s']:.3f} tok/s "
+        f"recapture={recapture_summary['median_tok_s']:.3f} tok/s",
+        flush=True,
+    )
+    return 0 if evidence_valid else 2
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1151")
+    parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument("--prompt-token-id", type=int, default=9707)
+    parser.add_argument("--expected-token-id", type=int, default=9707)
+    parser.add_argument("--prompt-length", type=int, default=512)
+    parser.add_argument("--correctness-steps", type=int, default=16)
+    parser.add_argument("--timing-steps", type=int, default=16)
+    parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument("--repetitions", type=int, default=4)
+    parser.add_argument("--max-sequence-length", type=int, default=0)
+    parser.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
+    parser.add_argument("--require-cached", action="store_true")
+    parser.add_argument("--out", type=Path)
+    return parser
+
+
+def main() -> int:
+    args = _parser().parse_args()
+    for name in ("prompt_length", "correctness_steps", "timing_steps", "repetitions"):
+        if int(getattr(args, name)) <= 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive")
+    if int(args.correctness_steps) < 3:
+        raise ValueError("--correctness-steps must be at least 3")
+    if int(args.warmups) < 0:
+        raise ValueError("--warmups must be non-negative")
+    if int(args.max_sequence_length) < 0:
+        raise ValueError("--max-sequence-length must be non-negative")
+    return _run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
