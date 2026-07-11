@@ -94,6 +94,33 @@ and Vulkan X8 q8_1 paths use different math/layouts.
 Artifact:
 [`2026-07-10-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
 
+### Latest matched-stack diagnostic
+
+A 2026-07-11 rerun at clean hipEngine `18255d264425` used the active TheRock
+HIP `7.15.0a20260711` runtime/compiler, kernel `7.1.3-2-cachyos`, and
+RADV/Mesa `26.1.4` on the same Radeon 8060S/gfx1151. It produced 20/22 valid
+comparisons and 224 valid burst GPU rows. Vulkan failed timed-sequence
+correctness for independent-throughput Q4 selected-dual twice and Q6
+selected-down once, so those rows have no ratio and the run does **not**
+supersede the retained 22/22 matrix above.
+
+The valid serial/independent ranges are dispatch
+`1.131x-10.937x`/`1.129x-148.100x`, geometry
+`0.690x-0.987x`/`4.234x-19.557x`, packed dot
+`3.054x-3.203x`/`3.599x-3.795x`, and two-stage reduction
+`0.694x-0.947x`/`0.660x-0.969x`. Valid combined production rows still favor
+HIP: serial Q4 is `0.926x-0.989x`, serial Q6 is `0.589x`, and serial/independent
+dense Q8_0 is `0.568x-0.901x`/`0.391x-0.906x`.
+
+Observed end-to-end wall was 5m49s including failure handling and a 5.18s Q4
+confirmation; active benchmark work was approximately 5m10s, so reserve about
+six minutes per bounded update. The environment still contains the older
+`rocm-sdk-libraries-gfx1151 7.13` BLAS package, but the measured microbenchmark
+binaries resolve HIP/HSA/LLVM from TheRock 7.15 and do not use those BLAS
+libraries. Full old-versus-updated tables are in `~/gfx1151-scratch.md`.
+Compact artifact:
+[`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
+
 ## gfx1100 versus gfx1151
 
 The two retained matrices use the same benchmark shapes, timing modes,
