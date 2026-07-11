@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Update the active Python environment to a pinned, compatible TheRock ROCm +
-# PyTorch nightly stack.  Defaults target gfx1100/W7900 and the multi-arch
-# wheel index documented in https://github.com/ROCm/TheRock/blob/main/RELEASES.md.
+# PyTorch nightly stack.  The GPU target is detected from HIPENGINE_HIP_ARCH or
+# rocminfo unless --device is provided explicitly.  Wheels come from the
+# multi-arch index documented in https://github.com/ROCm/TheRock/blob/main/RELEASES.md.
 
 set -euo pipefail
 
@@ -12,7 +13,9 @@ from __future__ import annotations
 
 import argparse
 import html
+import importlib.metadata
 import json
+import os
 import platform
 import re
 import shutil
@@ -162,6 +165,53 @@ def normalize_device(device: str) -> str:
     return device
 
 
+def detect_device(requested: str) -> tuple[str, str]:
+    requested = requested.strip().lower()
+    if requested != "auto":
+        return normalize_device(requested), "explicit --device"
+
+    configured = os.environ.get("HIPENGINE_HIP_ARCH", "").strip()
+    if configured:
+        return normalize_device(configured), "HIPENGINE_HIP_ARCH"
+
+    rocminfo = shutil.which("rocminfo")
+    if rocminfo is None:
+        raise ResolverError(
+            "cannot auto-detect a GPU target: rocminfo is unavailable and "
+            "HIPENGINE_HIP_ARCH is unset; pass --device gfx..."
+        )
+    completed = subprocess.run(
+        [rocminfo],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise ResolverError(
+            f"rocminfo failed while auto-detecting the GPU target{suffix}; "
+            "pass --device gfx..."
+        )
+    devices = sorted(
+        set(
+            re.findall(
+                r"^\s*Name:\s*(gfx[0-9a-z]+)\s*$",
+                completed.stdout,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+        )
+    )
+    if len(devices) != 1:
+        found = ", ".join(devices) if devices else "none"
+        raise ResolverError(
+            f"expected exactly one rocminfo GPU target, found {found}; "
+            "pass --device gfx... to select explicitly"
+        )
+    return normalize_device(devices[0]), "rocminfo"
+
+
 def python_tag() -> str:
     return f"cp{sys.version_info.major}{sys.version_info.minor}"
 
@@ -254,7 +304,7 @@ def collect_rocm_versions(index: SimpleIndex, device: str, platform_tag: str) ->
 
 
 def resolve_plan(args: argparse.Namespace) -> Plan:
-    device = normalize_device(args.device)
+    device, _ = detect_device(args.device)
     py_tag = python_tag()
     plat_tag = host_platform_tag()
     index = SimpleIndex(args.index_url)
@@ -353,13 +403,19 @@ def resolve_plan(args: argparse.Namespace) -> Plan:
     )
 
 
-def print_plan(args: argparse.Namespace, plan: Plan, pip_cmd: list[str]) -> None:
+def print_plan(
+    args: argparse.Namespace,
+    plan: Plan,
+    pip_cmd: list[str],
+    device_source: str,
+) -> None:
     summary = {
         "index_url": args.index_url,
         "python": sys.executable,
         "python_tag": plan.python_tag,
         "platform_tag": plan.platform_tag,
         "device": plan.device,
+        "device_source": device_source,
         "nightly_date": plan.date,
         "rocm": plan.rocm_version,
         "torch": plan.torch_version,
@@ -375,6 +431,7 @@ def print_plan(args: argparse.Namespace, plan: Plan, pip_cmd: list[str]) -> None
     print(f"  python:       {sys.executable} ({plan.python_tag})")
     print(f"  platform:     {plan.platform_tag}")
     print(f"  device:       {plan.device}")
+    print(f"  detected by:  {device_source}")
     print(f"  nightly date: {plan.date}")
     print(f"  ROCm SDK:     {plan.rocm_version}")
     print(f"  torch:        {plan.torch_version}")
@@ -398,6 +455,30 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def stale_device_packages(device: str) -> list[str]:
+    keep = {
+        f"rocm-sdk-device-{device}",
+        f"amd-torch-device-{device}",
+        f"amd-torchvision-device-{device}",
+    }
+    family_pkg = family_device_package(device)
+    if family_pkg is not None:
+        keep.add(family_pkg)
+
+    stale: list[str] = []
+    device_pattern = re.compile(
+        r"^(?:rocm-sdk-device|amd-torch-device|amd-torchvision-device)-gfx[0-9a-z]+$"
+    )
+    legacy_pattern = re.compile(r"^rocm-sdk-libraries-gfx[0-9a-z]+$")
+    for distribution in importlib.metadata.distributions():
+        name = str(distribution.metadata.get("Name") or "").strip().lower().replace("_", "-")
+        if not name:
+            continue
+        if legacy_pattern.fullmatch(name) or (device_pattern.fullmatch(name) and name not in keep):
+            stale.append(name)
+    return sorted(set(stale))
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="scripts/update-therock-torch.sh",
@@ -408,7 +489,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     )
     parser.add_argument("--index-url", default=DEFAULT_INDEX_URL, help=f"TheRock index URL (default: {DEFAULT_INDEX_URL})")
-    parser.add_argument("--device", default="gfx1100", help="GPU target, e.g. gfx1100 or device-gfx1100 (default: gfx1100)")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help=(
+            "GPU target, e.g. gfx1100 or device-gfx1151; default auto uses "
+            "HIPENGINE_HIP_ARCH then rocminfo"
+        ),
+    )
+    parser.add_argument(
+        "--detect-device-only",
+        action="store_true",
+        help="Print the resolved GPU target and detection source without reading the package index",
+    )
     parser.add_argument("--date", help="Require a specific nightly date YYYYMMDD instead of auto-discovering latest")
     parser.add_argument(
         "--torch-version",
@@ -425,6 +518,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--test", action="store_true", help="Run rocm-sdk test after init")
     parser.add_argument("--verify-torch", action="store_true", help="Import torch and print ROCm device availability after install")
     parser.add_argument(
+        "--keep-other-devices",
+        action="store_true",
+        help="Do not uninstall stale or non-target device-specific TheRock wheels after installation",
+    )
+    parser.add_argument(
         "--extra-pip-arg",
         action="append",
         default=[],
@@ -439,6 +537,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
+        device, device_source = detect_device(args.device)
+        if args.detect_device_only:
+            if args.json:
+                print(json.dumps({"device": device, "device_source": device_source}, indent=2))
+            else:
+                print(f"{device}\t{device_source}")
+            return 0
+        args.device = device
         plan = resolve_plan(args)
     except ResolverError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -452,13 +558,40 @@ def main(argv: list[str]) -> int:
     pip_cmd.extend(args.extra_pip_arg)
     pip_cmd.extend(plan.specs)
 
-    print_plan(args, plan, pip_cmd)
+    print_plan(args, plan, pip_cmd, device_source)
     if args.print_plan:
         return 0
+
+    stale: list[str] = []
+    removed_legacy_libraries = False
+    if not args.keep_other_devices and not args.pip_dry_run:
+        stale = stale_device_packages(plan.device)
+        removed_legacy_libraries = any(name.startswith("rocm-sdk-libraries-gfx") for name in stale)
+        if stale:
+            # Clean first: legacy device-library wheels share namespace files
+            # with the generic wheel and can remove those files on uninstall.
+            run([sys.executable, "-m", "pip", "uninstall", "-y", *stale])
 
     run(pip_cmd)
     if args.pip_dry_run:
         return 0
+
+    if removed_legacy_libraries:
+        # Restore any generic namespace files removed by the legacy wheel.
+        run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--index-url",
+                args.index_url,
+                "--force-reinstall",
+                "--no-deps",
+                f"rocm-sdk-libraries=={plan.rocm_version}",
+                f"rocm-sdk-devel=={plan.rocm_version}",
+            ]
+        )
 
     if not args.skip_init:
         rocm_sdk = shutil.which("rocm-sdk")

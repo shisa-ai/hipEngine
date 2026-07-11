@@ -151447,3 +151447,38 @@ graphless decode launch-collapse path without regressing target/serial parity.
   bounded run. Preserved the old/new/future update table in
   `~/gfx1151-scratch.md` and emitted compact diagnostic
   `benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`.
+
+## 2026-07-11 - Auto-detect TheRock updater target and repair gfx1151 environment
+
+- Diagnosed `scripts/update-therock-torch.sh` as the source of the mixed device
+  packages: its default was `gfx1100`, so the 20260711 run installed
+  `rocm-sdk-device-gfx1100`/gfx1100 Torch wheels while leaving the separately
+  named legacy `rocm-sdk-libraries-gfx1151 7.13.0a20260411` untouched. The
+  official multi-arch index does provide a complete gfx1151 20260711 plan.
+- Changed the default to `auto`: explicit `--device` wins, then
+  `HIPENGINE_HIP_ARCH`, then a unique `Name: gfx...` from `rocminfo`. Ambiguous
+  or absent detection fails closed. Added `--detect-device-only`, reports the
+  detection source, and retained explicit device overrides.
+- The updater now removes non-target device wheels and legacy
+  `rocm-sdk-libraries-gfx*` by default, with `--keep-other-devices` as an
+  opt-out. Cleanup runs before installation. Removing a legacy libraries wheel
+  requires forced reinstall of both generic `rocm-sdk-libraries` and
+  `rocm-sdk-devel`, because the legacy wheel shared the generic namespace init
+  and otherwise leaves devel files with non-canonical inodes.
+- Added `tests/test_update_therock_torch.py` coverage for configured detection,
+  explicit override, and mocked `rocminfo`. `bash -n` and all 3 tests pass.
+- Applied the detected gfx1151 plan at TheRock `7.15.0a20260711`, removed
+  gfx1100 device/Torch wheels plus legacy gfx1151 7.13 libraries, repaired the
+  generic/devel namespace, and reran the corrected updater idempotently with
+  `--test --verify-torch`. All 27 SDK tests pass; Torch
+  `2.10.0+rocm7.15.0a20260711` reports HIP `7.15.0`, device Radeon 8060S, arch
+  gfx1151; `pip check` reports no broken requirements.
+- Fresh-build post-repair Vulkan Q4 and Q6 independent probes reproduce the
+  exact pre-repair metrics: Q4 burst KL `0.07952005314` (limit `0.05`) and Q6
+  burst top-1 `0.875` (minimum `0.9`). One/two/four-queue Q6 and two/four-queue
+  Q4 controls were identical, ruling out multi-queue synchronization and the
+  TheRock package mismatch. The unchanged harnesses passed on gfx1151 Mesa
+  26.1.2 and normal 20-repetition gfx1100 Mesa 26.1.4; gfx1100 Q6 only fails the
+  focused 50-repetition follow-up. Mesa and kernel changed together locally,
+  and the old 26.1.2 package is not cached, so their individual attribution is
+  still unresolved.
