@@ -68,13 +68,13 @@ def _cpu_reference(
 
 
 @pytest.fixture(scope="module")
-def _attention_lib():
+def _attention_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_qwen35_paged_attn_decode(load=True, compiler_version=compiler_version)
 
 

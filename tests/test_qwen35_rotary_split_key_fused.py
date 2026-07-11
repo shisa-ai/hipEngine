@@ -27,24 +27,24 @@ def _runtime():
 
 
 @pytest.fixture(scope="module")
-def _rotary_lib():
+def _rotary_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_qwen35_rotary(load=True, compiler_version=compiler_version)
 
 
 @pytest.fixture(scope="module")
-def _cast_lib():
+def _cast_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.convert import build_cast
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_cast(load=True, compiler_version=compiler_version)
 
 
