@@ -151113,3 +151113,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   remains production; gfx1100/gfx1151 differences are descriptive because the
   software/hardware stacks are not controlled. No under-load clock/power trace
   was captured, so fixed-clock dispatch attribution remains follow-up work.
+## 2026-07-11 - Close the repository-wide gfx1151 milestone gate
+
+- The final uninterrupted `uv run pytest -q` reached 100% and exited `0` on
+  Radeon 8060S/gfx1151. It traversed the former Conv-validator crash point and
+  the remaining real-model tail without a HIP abort, failure, or error. A
+  follow-up quiet collect-only enumeration counted 5,997 test nodes; expected
+  availability skips remained visible in the green run.
+- The only emitted warnings were the existing Starlette/httpx test-client
+  deprecation and the CPU-reference SiLU `exp` overflow warning in
+  `test_mtp_q6_k_gemv_adapter.py`. The benchmark README synchronization module
+  also passes 2/2, and `git diff --check` passes.
+- This closes the local validation prerequisite for rerunning retained
+  gfx1151 PARO/GGUF benchmarks. It does not activate the three deliberately
+  parked research families: matched Q6 HIP/Vulkan LM-head math/layout, a
+  general exact native c>N algorithm, or an exact and profitable speculative
+  route. No benchmark result or production routing default changed in this
+  validation unit.
