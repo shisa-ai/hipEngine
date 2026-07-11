@@ -915,6 +915,16 @@ requires clean worktrees at direct-parent revisions `74b11dbc` and `4499fb13`;
 the same graph-off, repacked p8/d32 protocol identifies the first performance-
 changing revision without comparing graph output to correct eager output.
 
+For the state-bound GGUF decode-graph gate, use
+`scripts/gguf_decode_graph_g5.py` against the production
+`Qwen35GGUFResidentSession.capture_decode_graph()` API. The retained protocol
+uses the same `[9707] * 512` / 128-transition workload, one warmup, four rotating
+same-session repetitions, and charges capture/instantiate/destroy to every
+candidate window. Every graph launch must match eager byte-for-byte for the
+generated token, FP32 hidden seed, all resident Conv/GDN states, and all live
+BF16 K/V rows. Third-and-later launches are mandatory; replay-only timing is
+diagnostic, and per-token recapture is a separately timed rejection control.
+
 Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipline (time share → occupancy → iters-per-thread → VGPR) lives in `~/amd-gpu-tuning/AGENTS.md`.
 
 ## Artifact Format

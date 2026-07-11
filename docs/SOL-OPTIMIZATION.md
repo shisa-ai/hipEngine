@@ -313,7 +313,7 @@ and a true no-spec AR baseline.
 | `SOL-G2` | Add explicit GDN prefill `fused|chain|auto` diagnostic selection. Reproduce the 17-token mismatch and bisect first hidden/recurrent divergence. | `accepted` at `332f01f8`: the RED localized normalized-Q/K materialization as the first layer-0 recurrent divergence. The GGUF-only raw-Q/K-plus-scale exact split passes 6/6 clean gfx1151 cases: greeting, 512, 1024/1025 segment threshold, and 4095/4096 four-chunk boundary. Sampled tokens, FP32 hidden seeds, and resident Conv/GDN state are byte-exact; greeting/512 all-layer rows are exact. Focused tests pass 48/48 and the expected zero-scratch kernels appear in a cached-only trace. | G1 | Chain matches target tokens/state at short, 512, 4K, segment, and chunk boundaries. |
 | `SOL-G3` | Promote the split prepare + segmented-k2 + RMSNorm chain only if same-run wall wins. | `rejected` at clean `ad773eba`: exact timed tokens and the linked G2 state/trace gates pass, but four balanced repetitions show chain `1248.436` vs fused `1186.842 ms` at 512 (+5.19%) and `10870.022` vs `10187.300 ms` at 4K (+6.70%). Fused remains default. | G2 | Exact state/tokens plus prefill wall win on both primary contexts; expected kernel trace present. |
 | `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `accepted` on gfx1151 at clean `5f4c6561`: p512/d128 exact eager is 49.285 tok/s; direct-parent `4499fb13` is the 17.799 -> 54.963 tok/s (+208.79%, 3.088x) library-cache boundary; current p8 is 55.208 tok/s. Twenty-four exact ROCTX windows yield the decode-only Amdahl table below. W7900 remains blocked on hardware. | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
-| `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `open` on gfx1151; W7900 blocked on hardware | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
+| `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `accepted` on gfx1151 at clean `7f611fe3`: the production graph is exact for all 128 hidden/Conv/GDN/KV/token checkpoints and capture-inclusive wall improves same-run eager `20.3343 -> 20.3115 ms/token` (+0.112% throughput). Admission is gfx1151-only, non-streaming c1 greedy, and at least 128 remaining transitions. W7900 remains blocked on hardware. | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
 | `SOL-G6` | Audit replacement layout residency and eliminate raw+packed duplicates where the replacement path is complete. | `open` | E3 | Allocation census names raw/packed/KV/scratch/graph bytes; 24 GiB-class goals are checked without speed regression. |
 | `SOL-G7` | Tune gfx1151 chunk, workgroup, rowtile, attention split, and route thresholds. | `blocked` | B1-B2, G2-G4, matrix | Same-device exact A/B selects profile values; gfx1100 remains unchanged. |
 | `SOL-G8` | Replace GGUF serial/row-replay concurrency with a true resident multi-row AR path across c1-c8 and sparse slots. | `blocked` | G4, baseline matrix | Exact c1-c8, shrink, sparse-slot, and profiler gates pass with aggregate scaling. |
@@ -349,6 +349,28 @@ The old 2026-06-29 whole-process profile included prefill and warmup and is not
 the G4 Amdahl source. The full current table, top kernels, VGPR/scratch counts,
 commands, trace hashes, and linked G1 SHA are in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](../benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
+
+### SOL-G5 gfx1151 production graph
+
+The retained clean `7f611fe3` audit exercises the production
+`capture_decode_graph()` API rather than a benchmark-local reconstruction. Its
+key covers backend/target, model and quant identity, layer/KV layout, route and
+sampler, resident weight and buffer pointers, recording options, state
+generation, and a bounded context/replay window. Eager and stable graph replay
+match byte-for-byte through all 128 third-and-later launches; conservative
+state-generation recapture also passes 128/128 but is too slow to retain.
+
+| Route | Median ms/token | Throughput | Decision |
+| --- | ---: | ---: | --- |
+| Same-run eager | 20.3343 | 49.178 tok/s | Control |
+| State-bound graph, capture inclusive | 20.3115 | 49.233 tok/s | **Retained, +0.112%** |
+| Per-token state-generation recapture | 35.4290 | 28.225 tok/s | Rejected |
+
+The graph row charges one capture/instantiate plus final destroy to each
+128-token window. The strict 128-transition gfx1151 threshold and eager
+fallbacks remain part of the claim. Full commands, samples, key, provenance,
+and checkpoint hashes are in
+[`2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`](../benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
 ## PARO Concurrency And Optimization
 
@@ -513,7 +535,7 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next PARO GPU unit is `SOL-P1`; the next GGUF unit is `SOL-G5` on gfx1151.
+The next PARO GPU unit is `SOL-P1`; the next GGUF unit is `SOL-G6` on gfx1151.
 G2/G3 establish fused as the exact, measured prefill default. The matrix driver
 is ready, but its first clean repeated PARO/GGUF baseline is measurement work,
 not evidence implied by these correctness gates.
