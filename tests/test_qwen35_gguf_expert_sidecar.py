@@ -80,7 +80,7 @@ def test_qwen35moe_plan_marks_expert_sidecar_eligible() -> None:
         pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
     reader = GGUFReader(MOE_MODEL)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
 
     layer0 = plan.layer_specs[0]
     for slot in ("ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"):
