@@ -144,6 +144,14 @@ the expected prepare, non-segment recurrence, segment recurrence, and RMSNorm
 gate with `Scratch_Size=0`. This closes correctness only; its one-shot wall
 fields are not G3 performance evidence.
 
+SOL-G3 then measured the production full-prefill wall from clean detached
+`ad773eba` with one warmup and four balanced same-session repetitions. The
+exact split is slower than fused at both required contexts: `1248.436` versus
+`1186.842 ms` at 512 (+5.19%) and `10870.022` versus `10187.300 ms` at 4K
+(+6.70%). All timed token pairs remain exact. Fused stays the default; the
+split kernels remain the unfused fallback and should not be retuned without a
+different scheduling premise.
+
 ### K1 dense INT8 KV path evidence (**hipEngine landed, diagnostic/capacity path**)
 
 The K1 path is the dense/uniform `KVLiveSpans` path with

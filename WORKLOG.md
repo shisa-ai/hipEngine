@@ -150265,3 +150265,38 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check` pass. `ruff` is not installed in the current uv
   environment, so no ruff claim is made. The next action is a detached clean
   worktree run at this committed revision.
+
+## 2026-07-11 - SOL-G3 rejects exact-chain promotion; fused retained
+
+- Created clean detached worktree `/tmp/hipengine-sol-g3-ad773eba` at
+  `ad773eba45858f8eb34d408f21df307e61534e3c`. The first cached-only attempt
+  failed closed before measurement because the matching AOTriton wrapper was
+  absent. Ran one non-retained 512-only build warmup without
+  `--require-cached-build`, confirmed the worktree stayed clean, then reran the
+  exact documented command with cached builds required.
+- Retained command: `/home/lhl/hipEngine-main/.venv/bin/python3
+  scripts/gguf_gdn_prefill_ab.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --contexts 512,4096 --prompt-token-id 9707 --expected-token-id 9707
+  --warmups 1 --repetitions 4 --use-wmma-prefill
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached-build --json /tmp/sol-g3-gfx1151-ad773eba-ab.json`.
+- Every measured fused/chain call returns exact token `9707`; the linked G2
+  matrix SHA-256 matches the committed artifact. At 512, fused samples are
+  `1188.450/1186.018/1186.299/1187.384 ms` and chain samples are
+  `1248.421/1245.823/1248.450/1249.295 ms`; medians are `1186.842` versus
+  `1248.436 ms`, so chain is **+5.19% wall** (`0.9507x`). At 4096, medians are
+  `10187.300` versus `10870.022 ms`, so chain is **+6.70% wall** (`0.9372x`);
+  the paired chain-minus-fused median is `690.702 ms`.
+- Provenance is fully clean: detached `ad773eba`, staged/unstaged/untracked all
+  false/zero, `hip_gfx1151/gfx1151/Radeon 8060S Graphics`, TheRock HIP
+  `7.13.60980-c76140fa27`, exact Q4_K_M fingerprint `936659d6...c89fb`.
+  Retained the 11,613-byte artifact at
+  `benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json`
+  with `performance_claim=true` and decision
+  `retain_fused_reject_chain_promotion`.
+- SOL-G3 is rejected as a promotion premise, not blocked: the exact split does
+  not win either primary context. No runtime change is needed because `auto`
+  already selects fused. Updated the benchmark/root README, changelog, SOL,
+  env/refactor/kernel docs; the exact chain remains the required unfused
+  fallback and diagnostic route. SOL-G4 is the next local GGUF unit.

@@ -55,6 +55,11 @@ writing, and correctness-artifact reads are outside measured regions. The
 result is a full-prefill wall comparison, while the separate cached-only G2
 kernel trace proves the expected exact split kernels executed.
 
+The 2026-07-11 clean gfx1151 run at `ad773eba` rejects chain promotion:
+`1186.842 -> 1248.436 ms` at 512 (+5.19%) and
+`10187.300 -> 10870.022 ms` at 4K (+6.70%). Fused remains the selected default.
+See `benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json`.
+
 ## Anti-gaming
 
 A benchmark measures the model/kernels. Tuning a number to the specific inputs
