@@ -776,6 +776,12 @@ harnesses:
 - graph capture/replay status and bucket key;
 - peak memory fields and target/drafter model paths.
 
+The full-model `scripts/dflash_chain_e2e_bench.py` runner attaches the canonical
+artifact-provenance block directly, including concrete backend/architecture,
+target-model fingerprint, command/environment, and separate staged, unstaged,
+and untracked state. Run retained S4 rows from a clean worktree; unrelated
+untracked files in the primary checkout must not be hidden or discarded.
+
 Use `fixtures/dflash/stable_prompts.jsonl` for deterministic no-remote prompt
 coverage. Its `code_promotion` rows are the first speed-promotion gate;
 robustness rows cover general, instruct/prose/math, and multilingual output,
