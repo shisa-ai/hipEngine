@@ -87,41 +87,47 @@ cross-architecture interpretation and caveats.
 
 ## Retained gfx1151 Matrix
 
-The clean bounded run at
-`ca241dae795d1252303c801f30e5db54a79eeb96` retains all 11 paired families in
-both modes. All 22 comparisons pass timed-command correctness, exact requested
-matrix, same-device/source, and clean provenance gates. The compact result is
-[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+The clean matched-protocol refresh at
+`0e566a4559b52a8bfc65ccdbda22556ae9112279` retains all 11 paired families in
+both modes on TheRock `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, and
+Mesa/RADV `26.1.4`. All 22 comparisons and 232 burst GPU rows pass
+timed-command correctness, exact requested matrix, same-device/source, clean
+provenance, and corrected-gfx1151 environment gates. The compact result is
+[`2026-07-11-gfx1151-hip-vulkan-matched-protocol.json`](../results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json).
 
 These are burst GPU Vulkan/HIP ratios (`HIP time / Vulkan time`); above `1.0x`
 favors Vulkan.
 
 | Family | Serial | Independent |
 | --- | ---: | ---: |
-| Dispatch/grid | `1.162x-16.789x` | `1.116x-150.459x` |
-| Geometry | `0.677x-0.988x` | `4.133x-7.708x` |
-| Reduction | `0.689x-0.981x` | `4.246x-7.502x` |
-| Memory/waitcnt | `0.869x-1.071x` | `1.077x-1.370x` |
-| Packed dot | `3.052x-3.243x` | `3.840x-4.272x` |
-| VOPD | `1.031x-1.200x` | `1.040x-1.110x` |
-| Sampler | `0.507x-1.134x` | `2.461x-5.646x` |
-| Two-stage reduction | `0.682x-0.934x` | `1.087x-1.466x` |
+| Dispatch/grid | `1.128x-10.751x` | `1.115x-142.384x` |
+| Geometry | `0.707x-0.992x` | `2.619x-20.832x` |
+| Reduction | `0.659x-0.984x` | `2.525x-21.024x` |
+| Memory/waitcnt | `0.891x-1.109x` | `1.006x-1.170x` |
+| Packed dot | `3.054x-3.204x` | `3.833x-4.197x` |
+| VOPD | `1.061x-1.181x` | `1.010x-1.103x` |
+| Sampler | `0.517x-1.142x` | `1.526x-10.015x` |
+| Two-stage reduction | `0.681x-0.958x` | `0.825x-1.826x` |
 
 Matched combined production slices favor HIP in every serialized row: Q4
-selected-dual is `0.922x-0.973x`, Q6 selected-down X8 is `0.549x`, and dense
-Q8_0 is `0.540x-0.903x`. Independent combined rows are Q4
-`0.911x-0.978x`, Q6 `0.587x`, and dense Q8_0 `0.558x-1.144x`; only three small
-`768x2048` dense rows favor Vulkan. Q6 lm-head remains blocked because the two
-backends do not execute the same math/layout.
+selected-dual is `0.916x-0.980x`, Q6 selected-down X8 is `0.553x`, and dense
+Q8_0 is `0.552x-0.879x`. Independent combined rows are Q4
+`0.854x-0.973x`, Q6 `0.480x`, and dense Q8_0 `0.448x-1.152x`; only the smallest
+dense rows favor Vulkan. Q6 lm-head remains blocked because the two backends
+do not execute the same math/layout. The exact retained matrix took 249.323
+seconds (`4m09.323s`). Its sampling counts intentionally match the prior
+2026-07-10 retained run: paired `10/3/5`, dispatch `20/5`.
 
-The newer 2026-07-11 matched-stack attempt at clean `18255d264425` used active
-TheRock HIP `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, and Mesa/RADV `26.1.4`.
-It is a diagnostic, not a replacement: 20/22 comparisons and 224 burst GPU rows
-are valid, while Vulkan independent-throughput Q4 and Q6 fail timed-sequence
-correctness. The compact artifact is
+The current command templates below are stricter: paired `20/5/7`, dispatch
+`50/10`. That coverage produces 20/22 valid comparisons because additional
+input slices make Vulkan independent Q4 fail KL and Q6 fail top-1. Mesa 26.1.2
+reproduces those failures, one/two/four-queue outputs are identical, and both
+families pass at the old 10-repetition coverage. This diagnostic is therefore
+not a Mesa, synchronization, architecture, or TheRock regression. Its compact
+artifact is
 [`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
-The observed run took 5m49s including failure handling and one confirmatory
-rerun; budget approximately six minutes for this bounded matrix.
+It took 5m49s including failure handling and one confirmatory rerun; budget
+approximately six minutes for the stricter matrix.
 
 ## Core Files
 

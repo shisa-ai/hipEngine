@@ -151482,3 +151482,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   focused 50-repetition follow-up. Mesa and kernel changed together locally,
   and the old 26.1.2 package is not cached, so their individual attribution is
   still unresolved.
+
+## 2026-07-11 - Resolve strict Vulkan failures and retain matched gfx1151 refresh
+
+- Found that the 2026-07-10 retained gfx1151 run and the current README
+  template did not use matched sampling. The old run used paired
+  repetitions/warmups/samples `10/3/5` and dispatch `20/5`; the strict current
+  template uses paired `20/5/7` and dispatch `50/10`. The Q4/Q6 benchmark and
+  harness sources are unchanged between `ca241dae` and current code.
+- Isolated the official old Mesa/RADV 26.1.2 driver under
+  `/tmp/mesa-26.1.2-radv` without changing the system install. With the current
+  kernel it reproduces the exact strict-run failures: Q4 independent burst KL
+  `0.07952005314 > 0.05`, and Q6 top-1 `0.875 < 0.9`. Current Mesa 26.1.4 gives
+  the same values; one/two/four-queue controls are identical.
+- Both Q4 and Q6 pass with the old 10-repetition coverage under current Mesa:
+  Q4 burst KL `0.004753242485`, top-1 `1.0`; Q6 burst KL `0.006045591408`,
+  top-1 `1.0`. The deterministic failures enter through new input slices 10
+  through 19. This rules out the Mesa `.2 -> .4` update, multi-queue
+  synchronization, gfx1151-only behavior, and the prior mixed TheRock package
+  set as regression causes. The current gfx1100 bounded rows pass, while its
+  separate Q6 50-repetition probe fails consistently with coverage sensitivity.
+- Ran the exact old sampling protocol from clean detached
+  `0e566a4559b52a8bfc65ccdbda22556ae9112279` after the gfx1151 environment
+  repair. Hardware/software: Radeon 8060S/gfx1151, TheRock
+  `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, Mesa/RADV `26.1.4`; raw root
+  `/tmp/hipengine-micro-v2-gfx1151-matched-20260711`, environment SHA-256
+  `3e984fcb5f5a8667ce5780f05f425950b1e79d6f62f78a2e96c108ef3449abe1`.
+- The matched refresh passes all 22 comparisons and 232 burst GPU rows in
+  `249.322993041s` (`4m09.323s`). Production combined serial/independent
+  ranges are Q4 `0.916x-0.980x`/`0.854x-0.973x`, Q6
+  `0.553x`/`0.480x`, and dense Q8_0
+  `0.552x-0.879x`/`0.448x-1.152x`; Q4/Q6 remain HIP-favored in both modes.
+  Retained compact artifact:
+  `benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json`.

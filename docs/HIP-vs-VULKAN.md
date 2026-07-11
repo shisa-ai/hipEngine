@@ -59,96 +59,104 @@ Artifact:
 [`2026-07-11-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json).
 The local full report is `~/ROCm-report-gfx1100.md`.
 
-The W7900 and gfx1151 systems use different ROCm, kernel, firmware, and Mesa
-versions. Cross-architecture differences are descriptive only; they are not a
-controlled gfx1100-versus-gfx1151 attribution.
+The W7900 and gfx1151 systems now use the same TheRock and Mesa releases, but
+still differ in kernel, firmware, hardware, and clock behavior.
+Cross-architecture differences remain descriptive rather than controlled
+gfx1100-versus-gfx1151 attribution.
 
 ## Retained gfx1151 Matrix
 
-The clean bounded run used hipEngine `ca241dae795d` on Radeon 8060S/gfx1151,
-TheRock ROCm `7.13.0a20260411`, and RADV/Mesa `26.1.2`. All 22 comparisons (11
-families in both modes) pass exact-matrix, timed-command correctness, and clean
-same-commit provenance gates with `performance_claim=true`.
+The clean matched-protocol refresh used hipEngine `0e566a4559b5` on Radeon
+8060S/gfx1151, TheRock ROCm `7.15.0a20260711`, kernel
+`7.1.3-2-cachyos`, and RADV/Mesa `26.1.4`. The corrected environment contains
+only gfx1151 target-specific device wheels at the 20260711 nightly. All 22
+comparisons and 232 burst GPU rows pass exact-matrix, timed-command correctness,
+clean same-commit provenance, and environment gates with
+`performance_claim=true`.
+
+This run deliberately matches the prior retained sampling: paired families use
+10 repetitions, 3 warmups, and 5 samples; dispatch uses 20 repetitions and 5
+warmups. That makes it a valid old-stack versus updated-stack snapshot, although
+version deltas remain observational because ROCm, kernel, Mesa, and hipEngine
+moved together.
 
 Ratios are Vulkan/HIP speedup (`HIP GPU time / Vulkan GPU time`); above `1.0x`
 favors Vulkan.
 
 | Family | Serial V/H | Independent V/H | Current read |
 | --- | ---: | ---: | --- |
-| Dispatch/grid | `1.162x-16.789x` | `1.116x-150.459x` | Vulkan command replay has a real runtime advantage; this is not compiler evidence. |
-| Geometry | `0.677x-0.988x` | `4.133x-7.708x` | HIP wins required ordering; Vulkan wins independent overlap. |
-| Reduction | `0.689x-0.981x` | `4.246x-7.502x` | Same mode split as geometry. |
-| Memory/waitcnt | `0.869x-1.071x` | `1.077x-1.370x` | Serialized work is mixed near parity; independent work modestly favors Vulkan. |
-| Packed dot | `3.052x-3.243x` | `3.840x-4.272x` | Strongest synthetic Vulkan compiler/layout diagnostic. |
-| VOPD | `1.031x-1.200x` | `1.040x-1.110x` | Small Vulkan lead even though static evidence shows HIP, not RADV, emitting VOPD. |
-| Sampler top-1/top-k8 | `0.507x-1.134x` | `2.461x-5.646x` | Serialized sampling is HIP-favored or mixed; Vulkan's lead is independent throughput. |
-| Two-stage reduction | `0.682x-0.934x` | `1.087x-1.466x` | HIP wins serialized chains; Vulkan has a limited independent lead. |
+| Dispatch/grid | `1.128x-10.751x` | `1.115x-142.384x` | Vulkan command replay has a real runtime advantage; this is not compiler evidence. |
+| Geometry | `0.707x-0.992x` | `2.619x-20.832x` | HIP wins required ordering; Vulkan wins independent overlap. |
+| Reduction | `0.659x-0.984x` | `2.525x-21.024x` | Same mode split as geometry. |
+| Memory/waitcnt | `0.891x-1.109x` | `1.006x-1.170x` | Serialized work is mixed near parity; independent work modestly favors Vulkan. |
+| Packed dot | `3.054x-3.204x` | `3.833x-4.197x` | Strongest stable synthetic Vulkan compiler/layout diagnostic. |
+| VOPD | `1.061x-1.181x` | `1.010x-1.103x` | Small Vulkan lead even though static evidence shows HIP, not RADV, emitting VOPD. |
+| Sampler top-1/top-k8 | `0.517x-1.142x` | `1.526x-10.015x` | Serialized sampling is HIP-favored or mixed; Vulkan's lead is independent throughput. |
+| Two-stage reduction | `0.681x-0.958x` | `0.825x-1.826x` | HIP wins serialized chains; independent rows now cross parity. |
 
 Production-shaped combined rows favor HIP in every serialized case: Q4
-selected-dual is `0.922x-0.973x`, Q6 selected-down X8 is `0.549x`, and dense
-Q8_0 is `0.540x-0.903x`. Independent combined Q4 is `0.911x-0.978x`, Q6 is
-`0.587x`, and dense Q8_0 is `0.558x-1.144x`; only three small `768x2048`
-dense rows favor Vulkan. Q6 lm-head remains unratioed because the HIP T16 BF16
-and Vulkan X8 q8_1 paths use different math/layouts.
+selected-dual is `0.916x-0.980x`, Q6 selected-down X8 is `0.553x`, and dense
+Q8_0 is `0.552x-0.879x`. Independent combined Q4 is `0.854x-0.973x`, Q6 is
+`0.480x`, and dense Q8_0 is `0.448x-1.152x`; only the smallest dense shapes
+favor Vulkan. Q6 lm-head remains unratioed because the HIP T16 BF16 and Vulkan
+X8 q8_1 paths use different math/layouts.
 
 Artifact:
-[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+[`2026-07-11-gfx1151-hip-vulkan-matched-protocol.json`](../benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json).
+The exact matrix took 249.323 seconds (`4m09.323s`). The prior ROCm 7.13,
+kernel 7.0.12, Mesa 26.1.2 snapshot remains preserved in
+[`2026-07-10-hip-vulkan-timing-v2-bounded.json`](../benchmarks/micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json)
+and the side-by-side notebook is `~/gfx1151-scratch.md`.
 
-### Latest matched-stack diagnostic
+### Stricter 20-repetition diagnostic
 
-A 2026-07-11 rerun at clean hipEngine `18255d264425` used the active TheRock
-HIP `7.15.0a20260711` runtime/compiler, kernel `7.1.3-2-cachyos`, and
-RADV/Mesa `26.1.4` on the same Radeon 8060S/gfx1151. It produced 20/22 valid
-comparisons and 224 valid burst GPU rows. Vulkan failed timed-sequence
-correctness for independent-throughput Q4 selected-dual twice and Q6
-selected-down once, so those rows have no ratio and the run does **not**
-supersede the retained 22/22 matrix above.
+A separate run used the newer README template: 20 repetitions/5 warmups/7
+samples for paired families and 50 repetitions/10 warmups for dispatch. It
+produced 20/22 valid comparisons and 224 valid burst GPU rows. Vulkan
+independent Q4 failed KL (`0.079520 > 0.05`) and Q6 failed top-1 agreement
+(`0.875 < 0.9`). Repeats and one/two/four-queue controls are bit-identical.
 
-The valid serial/independent ranges are dispatch
-`1.131x-10.937x`/`1.129x-148.100x`, geometry
-`0.690x-0.987x`/`4.234x-19.557x`, packed dot
-`3.054x-3.203x`/`3.599x-3.795x`, and two-stage reduction
-`0.694x-0.947x`/`0.660x-0.969x`. Valid combined production rows still favor
-HIP: serial Q4 is `0.926x-0.989x`, serial Q6 is `0.589x`, and serial/independent
-dense Q8_0 is `0.568x-0.901x`/`0.391x-0.906x`.
+The same strict probes fail identically under Mesa/RADV 26.1.2, while both
+Mesa versions pass at the old 10-repetition coverage (Q4 KL `0.004753`, Q6 KL
+`0.006046`, both top-1 `1.0`). Benchmark sources are unchanged from the old
+retained revision. Therefore newly exercised input slices 10 through 19 expose
+deterministic numerical quality misses; this is not evidence of a Mesa `.2` to
+`.4` regression, gfx1151 synchronization failure, or TheRock package mismatch.
+The current gfx1100 bounded 10-repetition rows also pass; its separate Q6
+50-repetition diagnostic fails, which is consistent with a coverage-sensitive
+kernel/oracle issue rather than a gfx1151-only problem.
 
-Observed end-to-end wall was 5m49s including failure handling and a 5.18s Q4
-confirmation; active benchmark work was approximately 5m10s, so reserve about
-six minutes per bounded update. The environment still contains the older
-`rocm-sdk-libraries-gfx1151 7.13` BLAS package, but the measured microbenchmark
-binaries resolve HIP/HSA/LLVM from TheRock 7.15 and do not use those BLAS
-libraries. Full old-versus-updated tables are in `~/gfx1151-scratch.md`.
-Compact artifact:
+The strict matrix took approximately 5m10s of benchmark work and 5m49s
+end-to-end with failure handling and confirmation. Compact artifact:
 [`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
 
 ## gfx1100 versus gfx1151
 
-The two retained matrices use the same benchmark shapes, timing modes,
-dependency contracts, correctness gates, and ratio definition. They do **not**
-use the same software stack: W7900 ran TheRock ROCm 7.15 plus Mesa 26.1.4,
-while Strix Halo ran ROCm 7.13 plus Mesa 26.1.2. The table therefore answers
-"does the observed pattern transfer?", not "what does architecture alone
-cause?"
+The two retained matrices use the same benchmark shapes, sampling counts,
+timing modes, dependency contracts, correctness gates, ratio definition,
+TheRock release, and Mesa release. They still differ in kernel, firmware,
+hardware, and clock state. The table therefore answers "does the observed
+pattern transfer?", not "what does architecture alone cause?"
 
 | Family | gfx1100 serial / independent | gfx1151 serial / independent | Transfer read |
 | --- | ---: | ---: | --- |
-| Dispatch/grid | `2.437x-10.122x` / `1.980x-65.325x` | `1.162x-16.789x` / `1.116x-150.459x` | Vulkan leads on both; the absolute floor and range differ. |
-| Geometry | `0.360x-0.790x` / `1.100x-3.925x` | `0.677x-0.988x` / `4.133x-7.708x` | Same HIP-serial/Vulkan-independent split, much narrower independent gap on gfx1100. |
-| Reduction | `0.304x-0.729x` / `1.110x-4.035x` | `0.689x-0.981x` / `4.246x-7.502x` | Same mode split, stronger serialized HIP and narrower independent Vulkan lead on gfx1100. |
-| Memory/waitcnt | `0.517x-0.936x` / `0.544x-2.139x` | `0.869x-1.071x` / `1.077x-1.370x` | Does not broadly transfer: gfx1100 serial favors HIP and independent crosses parity. |
-| Packed dot | `1.052x-1.133x` / `1.872x-2.106x` | `3.052x-3.243x` / `3.840x-4.272x` | Vulkan leads on both, but the gfx1151 `3x-4x` magnitude collapses on gfx1100. |
-| VOPD | `0.391x-0.561x` / `0.516x-0.616x` | `1.031x-1.200x` / `1.040x-1.110x` | Direction flips: HIP wins every gfx1100 row; Vulkan modestly wins gfx1151. |
-| Sampler | `0.259x-0.501x` / `0.782x-2.563x` | `0.507x-1.134x` / `2.461x-5.646x` | Serialized HIP advantage strengthens; gfx1100 independent rows become mixed. |
-| Two-stage reduction | `0.324x-0.925x` / `0.394x-0.813x` | `0.682x-0.934x` / `1.087x-1.466x` | Serialized HIP transfers; independent direction flips to HIP on gfx1100. |
+| Dispatch/grid | `2.437x-10.122x` / `1.980x-65.325x` | `1.128x-10.751x` / `1.115x-142.384x` | Vulkan leads on both; the absolute floor and range differ. |
+| Geometry | `0.360x-0.790x` / `1.100x-3.925x` | `0.707x-0.992x` / `2.619x-20.832x` | Same HIP-serial/Vulkan-independent split, much wider independent range on gfx1151. |
+| Reduction | `0.304x-0.729x` / `1.110x-4.035x` | `0.659x-0.984x` / `2.525x-21.024x` | Same mode split, stronger serialized HIP and narrower independent Vulkan lead on gfx1100. |
+| Memory/waitcnt | `0.517x-0.936x` / `0.544x-2.139x` | `0.891x-1.109x` / `1.006x-1.170x` | Does not broadly transfer: gfx1100 serial favors HIP and independent crosses parity. |
+| Packed dot | `1.052x-1.133x` / `1.872x-2.106x` | `3.054x-3.204x` / `3.833x-4.197x` | Vulkan leads on both, but the gfx1151 `3x-4x` magnitude collapses on gfx1100. |
+| VOPD | `0.391x-0.561x` / `0.516x-0.616x` | `1.061x-1.181x` / `1.010x-1.103x` | Direction flips: HIP wins every gfx1100 row; Vulkan modestly wins gfx1151. |
+| Sampler | `0.259x-0.501x` / `0.782x-2.563x` | `0.517x-1.142x` / `1.526x-10.015x` | Serialized HIP advantage strengthens; gfx1100 independent rows become mixed. |
+| Two-stage reduction | `0.324x-0.925x` / `0.394x-0.813x` | `0.681x-0.958x` / `0.825x-1.826x` | Serialized HIP transfers; gfx1151 independent rows cross parity. |
 
 Production-shaped combined operations are more consistent than the synthetic
 families:
 
 | Combined operation | gfx1100 serial / independent | gfx1151 serial / independent | Transfer read |
 | --- | ---: | ---: | --- |
-| Q4 selected-dual | `0.501x-0.562x` / `0.432x-0.477x` | `0.922x-0.973x` / `0.911x-0.978x` | HIP wins both architectures; the W7900 margin is much larger. |
-| Q6 selected-down X8 | `0.675x` / `0.673x` | `0.549x` / `0.587x` | HIP wins both bounded matrices. |
-| Dense Q8_0 | `0.393x-0.966x` / `0.388x-1.030x` | `0.540x-0.903x` / `0.558x-1.144x` | Mostly HIP on both; only small independent rows approach or cross parity. |
+| Q4 selected-dual | `0.501x-0.562x` / `0.432x-0.477x` | `0.916x-0.980x` / `0.854x-0.973x` | HIP wins both architectures; the W7900 margin is much larger. |
+| Q6 selected-down X8 | `0.675x` / `0.673x` | `0.553x` / `0.480x` | HIP wins both bounded matrices. |
+| Dense Q8_0 | `0.393x-0.966x` / `0.388x-1.030x` | `0.552x-0.879x` / `0.448x-1.152x` | Mostly HIP on both; only small independent rows approach or cross parity. |
 
 The architecture-specific signal is therefore real enough to block ratio
 transfer: only dispatch and the geometry/reduction mode split reproduce
