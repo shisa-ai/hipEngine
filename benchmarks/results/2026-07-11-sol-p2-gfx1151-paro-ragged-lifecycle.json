@@ -1,0 +1,284 @@
+{
+  "schema": 1,
+  "kind": "sol_p2_gfx1151_paro_ragged_lifecycle",
+  "created_at": "2026-07-11T03:20:44Z",
+  "status": "accepted_correctness_gate",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "detected_arch": "gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "6f1910c9cc647089a0701805ce102c0cec565bcc",
+    "hipengine_dirty": false,
+    "python": "3.12.13",
+    "hip": "7.13.60980-c76140fa27",
+    "amd_clang": "23.0.0git",
+    "rocm_llvm_commit": "7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "layers": 40
+  },
+  "protocol": {
+    "correctness_oracle": "independent single-request prefill_native plus step; generated IDs and SHA-256 of every persistent linear state and live full-attention KV prefix",
+    "prompt_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_fixture_sha256": "f568951e1450a5846d00995a6af28c65aaa0ab05377b8c11eb80cc9e33348df4",
+    "prompt_lengths": [449, 458, 467, 476, 485, 494, 503, 512],
+    "initial_batch_size": 8,
+    "steps_per_width": 1,
+    "decode_tokens_by_slot": [7, 5, 3, 1, 8, 2, 4, 6],
+    "max_sequence_length": 1024,
+    "sampling": "greedy",
+    "decode_execution": "scheduler_true_c1_fallback",
+    "survivor_slot": 4,
+    "eos_slot": 3,
+    "eos_token_id": 220,
+    "timing_scope": "none; correctness-only gate"
+  },
+  "prefill_route": {
+    "ragged": true,
+    "slab_rows": 3844,
+    "block_count": 2,
+    "linear_attention": "per_segment_ragged_exact",
+    "full_attention": "per_segment_ragged_exact",
+    "classification": "exact fallback; no throughput claim",
+    "equal_length_route_unchanged": {
+      "linear_attention": "packed_segments",
+      "full_attention": "packed_varlen"
+    },
+    "refactor_trigger": "repair ragged packed kernels and prove c8 token/state/KV identity plus non-regressive prefill wall before removing the fallback"
+  },
+  "lifecycle": {
+    "termination_order": [3, 5, 2, 6, 1, 7, 0],
+    "events": [
+      {
+        "pre_width": 8,
+        "kind": "eos",
+        "slot": 3,
+        "finish_reason": "stop",
+        "post_width": 7
+      },
+      {
+        "pre_width": 7,
+        "kind": "cancel",
+        "slot": 5,
+        "finish_reason": "cancel",
+        "post_width": 6
+      },
+      {
+        "pre_width": 6,
+        "kind": "cancel",
+        "slot": 2,
+        "finish_reason": "cancel",
+        "post_width": 5
+      },
+      {
+        "pre_width": 5,
+        "kind": "cancel",
+        "slot": 6,
+        "finish_reason": "cancel",
+        "post_width": 4
+      },
+      {
+        "pre_width": 4,
+        "kind": "cancel",
+        "slot": 1,
+        "finish_reason": "cancel",
+        "post_width": 3
+      },
+      {
+        "pre_width": 3,
+        "kind": "cancel",
+        "slot": 7,
+        "finish_reason": "cancel",
+        "post_width": 2
+      },
+      {
+        "pre_width": 2,
+        "kind": "cancel",
+        "slot": 0,
+        "finish_reason": "cancel",
+        "post_width": 1
+      },
+      {
+        "pre_width": 1,
+        "kind": "length",
+        "slot": 4,
+        "finish_reason": "length",
+        "post_width": 0
+      }
+    ],
+    "active_physical_slots_by_width": {
+      "8": [0, 1, 2, 3, 4, 5, 6, 7],
+      "7": [0, 1, 2, 4, 5, 6, 7],
+      "6": [0, 1, 2, 4, 6, 7],
+      "5": [0, 1, 4, 6, 7],
+      "4": [0, 1, 4, 7],
+      "3": [0, 4, 7],
+      "2": [0, 4],
+      "1": [4]
+    },
+    "front_hole_exercised": true,
+    "middle_holes_exercised": true,
+    "tail_hole_exercised": true,
+    "no_compaction": true,
+    "no_group_wide_cancellation": true,
+    "all_post_event_widths_exact": true
+  },
+  "correctness": {
+    "passed": true,
+    "generated_token_equality": {
+      "passed": true,
+      "row_equality": [true, true, true, true, true, true, true, true],
+      "batch_sequences": [
+        [20, 13, 11, 220, 220, 17, 17, 17],
+        [13, 13, 58, 13, 80, 95744],
+        [5513, 220, 220, 248044],
+        [5513, 220],
+        [17, 22, 17, 17, 17, 220, 220, 17, 17],
+        [17, 658, 5513],
+        [3966, 1030, 196, 95744, 95744],
+        [17, 17, 220, 17, 13, 17, 17]
+      ],
+      "independent_c1_sequences_equal": true
+    },
+    "persistent_state_identity": {
+      "passed": true,
+      "linear_layer_count": 30,
+      "linear_components_per_layer": ["conv", "recurrent"],
+      "full_attention_layer_count": 10,
+      "full_attention_components_per_layer": ["key_prefix", "value_prefix"],
+      "row_equality": [true, true, true, true, true, true, true, true],
+      "batch_aggregate_sha256_by_slot": [
+        "4c154960303431739a384699511bf025d3ccf3e176432f5bc9da2af53ffc25e9",
+        "9da7cbf2f55a2caed8146826e2bab57d0c10c84814f49d99d47c45ef2592ccee",
+        "b354659e4f1403a5689ce7dbe355602c75e9fe034f5527e9995fc580cf8f9947",
+        "cc1e8203b1b3e2c5719f47de9c59fc55128dd1346f14eb55f805eb901619469e",
+        "b8a05998096e1435559def5be6f3eba35ec4c29aa880a83821501bcea9c11148",
+        "cbadd7944be65becbf55c58a46d667aad51881fd9c4aab81cfd9973b1d791061",
+        "5595b522107609fffff6814c423a027da236e7ea0fa4afd154908ee0aa10b8a1",
+        "1b5ac11e5ab176af47800ae300958701efd0b3cd4b233ef8c30b68b7bb942178"
+      ],
+      "independent_c1_aggregate_sha256_by_slot": [
+        "4c154960303431739a384699511bf025d3ccf3e176432f5bc9da2af53ffc25e9",
+        "9da7cbf2f55a2caed8146826e2bab57d0c10c84814f49d99d47c45ef2592ccee",
+        "b354659e4f1403a5689ce7dbe355602c75e9fe034f5527e9995fc580cf8f9947",
+        "cc1e8203b1b3e2c5719f47de9c59fc55128dd1346f14eb55f805eb901619469e",
+        "b8a05998096e1435559def5be6f3eba35ec4c29aa880a83821501bcea9c11148",
+        "cbadd7944be65becbf55c58a46d667aad51881fd9c4aab81cfd9973b1d791061",
+        "5595b522107609fffff6814c423a027da236e7ea0fa4afd154908ee0aa10b8a1",
+        "1b5ac11e5ab176af47800ae300958701efd0b3cd4b233ef8c30b68b7bb942178"
+      ]
+    },
+    "decode_counts_exact": true,
+    "eos_transition_observed": true,
+    "eos_seed_collision": false
+  },
+  "sources": {
+    "raw": {
+      "path": "/tmp/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle-snapshot-source.json",
+      "sha256": "592e7a5568460a1183997da539d0914a2ffb08e0d2fd172946abf9ff04db683b",
+      "bytes": 14357
+    },
+    "implementation_validation": {
+      "cpu_tests": "143/143",
+      "all_40_layer_c3_ragged_smoke": "passed"
+    }
+  },
+  "architecture_catalog": {
+    "gfx1151": {
+      "status": "accepted_ragged_lifecycle_correctness",
+      "decode": "scheduler_true_c1_fallback",
+      "ragged_prefill": "per_segment_ragged_exact"
+    },
+    "gfx1100": {
+      "status": "stale_unverified_no_local_hardware",
+      "routing_eligible_on_gfx1151": false,
+      "next_action": "rerun this exact lifecycle gate independently on W7900"
+    }
+  },
+  "decision": {
+    "sol_p2_accepted_on_gfx1151": true,
+    "native_cn_decode_accepted": false,
+    "production_decode_route": "scheduler_true_c1_fallback",
+    "reason": "Ragged c8-to-c1 EOS/cancel transitions preserve every row's generated IDs, persistent linear state, and live full-attention KV prefixes against independent c1 while retaining sparse front/middle/tail physical slots. This closes lifecycle safety without making rejected native c>1 decode eligible."
+  },
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T03:20:44.640024+00:00",
+    "repo_root": "/tmp/hipengine-sol-p2-6f1910c9",
+    "hipengine_commit": "6f1910c9cc647089a0701805ce102c0cec565bcc",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "python3",
+      "scripts/qwen35_batch_shrinking_correctness.py",
+      "--model",
+      "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--fixture",
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "--batch-size",
+      "8",
+      "--prompt-lengths",
+      "449,458,467,476,485,494,503,512",
+      "--steps-per-width",
+      "1",
+      "--max-layers",
+      "40",
+      "--max-sequence-length",
+      "1024",
+      "--survivor-slot",
+      "4",
+      "--eos-slot",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle-snapshot-source.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS": "1"
+    },
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "decode",
+    "timing_protocol": "correctness_only_no_timing_claim",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": {
+      "enabled": false,
+      "reason": "SOL-P2 is a correctness/lifecycle gate; no performance claim"
+    }
+  }
+}

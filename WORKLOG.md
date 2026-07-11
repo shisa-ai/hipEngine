@@ -150678,3 +150678,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check` pass. These runs are dirty implementation validation only.
   Next action is commit this logical unit, then run the clean c8 ragged
   p449..p512/front+tail-hole retained SOL-P2 gate.
+
+## 2026-07-11 - SOL-P2 ragged lifecycle accepted on gfx1151
+
+- Ran the retained gate from clean detached
+  `6f1910c9cc647089a0701805ce102c0cec565bcc` on Radeon 8060S/gfx1151,
+  TheRock HIP `7.13.60980-c76140fa27`, the same PARO snapshot/fingerprint as
+  P1 (`437eba06...8a1`, `995a8c67...d917`), and exact fixture SHA-256
+  `f568951e...8df4`. The first cached-only attempt correctly failed for the
+  detached-path AOTriton wrapper; prebuilt the wrapper outside the gate and
+  reran with `--require-cached-build`.
+- Command: `HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3
+  scripts/qwen35_batch_shrinking_correctness.py --batch-size 8
+  --prompt-lengths 449,458,467,476,485,494,503,512 --steps-per-width 1
+  --max-layers 40 --max-sequence-length 1024 --survivor-slot 4
+  --eos-slot 3 --require-cached-build` with the P1 model/fixture and compiler
+  version file.
+- The clean row passes all eight generated sequences, all 30 linear
+  conv/recurrent state families, and all 10 live full-attention K/V families
+  against independent c1 hashes. Slot 3 retires by EOS at c8; cancellation
+  order `3,5,2,6,1,7,0` creates middle, tail, then front holes while slot 4
+  survives to c1. Every post-event width is exactly `7..0`; no group-wide
+  cancellation or slot compaction occurs.
+- Ragged prefill is explicitly `per_segment_ragged_exact` for both linear and
+  full attention. This is a correctness-only fallback and the artifact sets
+  `performance_claim=false`; equal-length packed prefill and P1's retained c1
+  performance are unchanged.
+- Raw source is 14,357 bytes, SHA-256
+  `592e7a5568460a1183997da539d0914a2ffb08e0d2fd172946abf9ff04db683b`.
+  Retained compact artifact
+  `benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json`
+  is 10,401 bytes, SHA-256
+  `e24debabba4935602439a8660e133bd7630a55ea3c942ff979dd70cb400c6fe3`,
+  with valid canonical clean/model provenance. Updated SOL, benchmark/root
+  README, benchmark protocol, changelog, and the refactor trigger. P2 is
+  accepted on gfx1151; gfx1100 remains hardware-unverified. Next is the P3-P9
+  activation/parking audit, not more tuning of the P1-rejected native widths.
