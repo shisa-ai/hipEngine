@@ -150757,3 +150757,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   canonical prompts through the CLI, compiles, and passes `git diff --check`.
   Next action is the clean c1/c2/c3/c4/c8 true-AR/MTP full-suite plus heldout
   matrix that selects SOL-S1's realized-group policy.
+
+## 2026-07-11 - Reject compatibility MTP for automatic server routing
+
+- From tracked-clean `d2b1e742` (255 unrelated untracked benchmark files
+  disclosed), started one resident gfx1151 GGUF server with Qwen3.6-35B-A3B
+  UD-Q4_K_M fingerprint `936659d6...89fb`, BF16 KV, route cap 4, and explicit
+  `llama-compat` MTP opt-in. Ran the committed ten-prompt category suite plus
+  its four category-heldouts at client c1/c2/c3/c4/c8, natural 24-token greedy
+  horizon, after one route/shape warmup. Full suite has three measured runs per
+  route/client shape; heldout has five. Exact suite SHA-256 is
+  `fac920be...084a`.
+- Correct full-suite client-makespan medians (generated tok/s) are AR
+  `35.92/56.84/60.83/69.70/69.84` versus compatibility MTP
+  `39.35/58.50/61.47/66.13/65.87`, or
+  `+9.55%/+2.92%/+1.05%/-5.12%/-5.68%`. Shape telemetry proves client c3 is
+  c3+c3+c3+c1 and c4/c8 are c4+c4+c2. Isolated heldout c3 groups are **3.92%
+  slower** under MTP, so the mixed c3 aggregate does not activate.
+- The apparent c1/c2 gains are not eligible: exact generated IDs differ from
+  true AR on `general_ja_explain` already at c1. c2/c4/c8 additionally differ
+  on `general_en_plan` and/or `mixed_ja_en_review`; representative first
+  mismatches are generated indices 7, 1, and 4. This is consistent with the
+  route's documented direct-commit/dp4a compatibility semantics. It must remain
+  explicit-only; `auto` will fall back to default AR until an exact/default
+  server MTP hook exists.
+- True AR c1-c4 matches the c1 oracle in every run. One of three client-c8 AR
+  runs changes `general_ja_explain` while the other two match; actual groups are
+  c4+c4+c2. Recorded this as a separate G8 exact-concurrency blocker rather
+  than mislabelling it as a width-8 backend.
+- Retained diagnostic
+  `benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json`
+  (12,972 bytes, SHA-256
+  `cd9faa4afb48719550fc082220230ed8a23b0fc11a7b9a10c018f72ffd119d02`).
+  Its 80 raw measured files remain under `/tmp`; path-independent manifest
+  SHA-256 is `6a318bae...04a0`. Canonical provenance validates. Updated SOL,
+  benchmark/root README, and benchmark changelog; `performance_claim=false`.
+  Next is the RED/GREEN server change that makes `auto` exact-AR fallback with
+  explicit reason/group/horizon telemetry while preserving explicit MTP.

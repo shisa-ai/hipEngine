@@ -204,9 +204,12 @@ Artifacts: [`DFlash`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-h
 [`exact MTP`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
 and [`llama-compat` MTP](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
 Historical OpenAI MTP server rows are excluded. The current raw-ID route counts
-exact completion IDs across every choice and owns batch timing once, but the
-2026-07-06 timing rows predate those contracts and await a same-protocol rerun. See the
-canonical [`benchmarks/README.md`](benchmarks/README.md#blocked-and-diagnostic-benchmark-attempts).
+exact completion IDs across every choice and owns batch timing once. The
+corrected 2026-07-11 server matrix finds that compatibility MTP changes true-AR
+IDs even at c1, so it must remain explicit-only despite diagnostic c1/c2 speed
+gains; the SOL-S1 follow-up routes automatic requests to exact/default AR. See the
+[`route-gate artifact`](benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json)
+and canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-gguf-server-automatic-route-gate-2026-07-11).
 
 ## Concurrency Diagnostics Awaiting Rerun
 
