@@ -151578,3 +151578,13 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_micro_q6_x8_real_slice.py` passes all 51 tests. Fresh passing
   wrapper runs at Q4 reps 10 and Q6 reps 17 also preserve and parse the new
   isolation records.
+- Committed the isolation harness as `67df43ad`, rebuilt both runners and
+  shaders from that clean revision, and repeated the failing boundaries. The
+  result is unchanged; clean wall times are `2.014s` Q4 and `0.877s` Q6. Raw
+  SHA-256 values are `9d7e2ba2ff1408550e398e9d9fbb56419649c15931529a011ecaba7c98b717fe`
+  and `7dc45363ffd70e829c4da016c23d772405f6f7519f40f4425fe587fd8493237d`.
+- Retained compact correctness evidence in
+  `benchmarks/results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`
+  and updated `docs/HIP-vs-VULKAN.md`, the benchmark platform index, and the
+  benchmark changelog. No timing row is superseded and the temporary RNE
+  shader remains unpromoted pending a dedicated correctness/performance unit.
