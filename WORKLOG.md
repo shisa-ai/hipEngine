@@ -150962,3 +150962,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the remaining ten changed GPU modules pass 88/88 together. `git diff --check`
   passes. This is test architecture/cache isolation only; production dispatch,
   kernel bodies, and benchmark values are unchanged.
+
+## 2026-07-11 - Synchronize the B1 sampling fixture assertion
+
+- Milestone fail-fast advanced to 27% (`1,635 passed, 2 skipped`) before the
+  committed B1 fixture self-consistency assertion failed. Commit `533a7ddb`
+  intentionally changed the fixture to the llama.cpp-compatible draft contract
+  (`top_k=10`, `greedy_top1_from_topk`, selected index 0) but left this older
+  `top_k=1` assertion and both request-map expectations unchanged.
+- Updated the assertion to cover the complete current fixture contract,
+  including the llama.cpp server and hipEngine draft mappings. The fixture and
+  runtime behavior are unchanged.
+- Validation: `uv run pytest -q tests/test_gguf_mtp_parity_precheck.py
+  tests/test_gguf_mtp_b1_prompt_suite.py` passes 54/54; `git diff --check`
+  passes.
