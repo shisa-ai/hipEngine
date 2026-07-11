@@ -903,6 +903,18 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- \
 
 Profile the leaf workload, not a benchmark wrapper that spawns children. In particular, do not put `rocprofv3` around the MTP prompt-suite/economics parent harness; use `scripts/mtp_verifier_rocprof.py` or pre-warm and profile the final `mtp_chain_e2e_smoke.py` child directly.
 
+For the correct GGUF eager-decode baseline and layer-family Amdahl audit, use
+`scripts/gguf_decode_rocprof.py`. Its parent warm-builds outside the profiler,
+then requires cached builds for every timed child. The retained baseline is one
+resident session, one discarded full run, and four measured full runs at
+`[9707] * 512` / 128 eager steps. The profiler uses one synchronized ROCTX range
+per eager step and accepts only kernels fully contained in those ranges, so
+model load, prefill, and warmup cannot enter the Amdahl denominator. Every child
+records every generated ID and fails on the first non-`9707` token. SOL-G4 also
+requires clean worktrees at direct-parent revisions `74b11dbc` and `4499fb13`;
+the same graph-off, repacked p8/d32 protocol identifies the first performance-
+changing revision without comparing graph output to correct eager output.
+
 Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipline (time share → occupancy → iters-per-thread → VGPR) lives in `~/amd-gpu-tuning/AGENTS.md`.
 
 ## Artifact Format

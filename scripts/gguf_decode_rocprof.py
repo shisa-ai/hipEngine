@@ -1,31 +1,18 @@
 #!/usr/bin/env python3
-"""rocprofv3 kernel-family breakdown of the GGUF resident AR-decode wall.
+"""Audit correct GGUF eager decode wall time and decode-only kernel families.
 
-This is the GGUF-path counterpart to ``scripts/mtp_verifier_rocprof.py`` (which
-targets the PARO BF16 MTP model).  It answers "where does the ~18 ms/token decode
-wall actually go, per kernel family" for the production
-``Qwen3.6-35B-A3B-UD-Q4_K_M`` resident decode path on gfx1151.
+The parent performs three independent checks for SOL-G4:
 
-Two modes:
+* a clean, repeated 512-token eager baseline linked to the SOL-G1 state oracle;
+* a direct-parent revision boundary measurement for the loaded-library cache
+  that made correct eager decode fast; and
+* a ``rocprofv3`` trace sliced to per-step ROCTX marker windows, excluding model
+  load, prefill, and warmup from the layer-family Amdahl table.
 
-* ``--child`` (internal): prefill + warmup + N timed decode ``step()`` calls.
-  This is the process that runs *under* rocprofv3.  ``--require-cached`` forbids
-  any ``hipcc`` spawn so the JIT cache + a pinned compiler-version file keep the
-  profiled process from invoking the compiler (per AGENTS.md rocprof rules).
-* default (parent): warm-build the kernels in a non-profiled child, pin the
-  compiler-version file, run the child under ``rocprofv3 --kernel-trace``, then
-  bucket the kernel CSV into high-level families and emit a compact JSON
-  artifact + ranked table.
-
-Diagnostic only; no perf claim is retained from a single run.  The numbers size
-which kernel families dominate the decode wall so optimization targets the right
-one (e.g. dense Q8_0 GEMV vs selected-MoE GEMV).
-
-Example::
-
-    PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_decode_rocprof.py \
-        --steps 24 --warmup 4 \
-        --out benchmarks/results/2026-06-29-gguf-decode-rocprof-families.json
+All timed children force the production repacked/GEMV eager route, record every
+generated token ID, and fail on the first token that differs from the expected
+oracle. The profiled child requires cached JIT artifacts; its warm-build runs
+outside ``rocprofv3`` with a pinned compiler-version file.
 """
 
 from __future__ import annotations
@@ -33,242 +20,1129 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+import ctypes
+import hashlib
+import json
+import math
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import time
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
-DEFAULT_PROMPT = [760, 4087, 369, 220, 16, 17, 18, 19]
+DEFAULT_G1_ARTIFACT = (
+    REPO_ROOT
+    / "benchmarks"
+    / "results"
+    / "2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json"
+)
+DEFAULT_BEFORE_COMMIT = "74b11dbc3e75e2a50332907d13b882a063f7c56b"
+DEFAULT_AFTER_COMMIT = "4499fb132cabd1da7364d8d6f48e080a1352c074"
+DEFAULT_ROUTE_CHANGE_COMMIT = "e8521a2a3d8d4b5fe0f1078fd90eccafac29b55b"
+MARKER_PREFIX = "hipengine_gguf_eager_decode_step_"
+KIND = "hipengine_gguf_eager_decode_audit"
+SCHEMA_VERSION = 2
 
 
-# --------------------------------------------------------------------------- #
-# Child mode: the process that runs under rocprofv3.
-# --------------------------------------------------------------------------- #
+class _Roctx:
+    def __init__(self) -> None:
+        try:
+            self._lib = ctypes.CDLL("libroctx64.so")
+        except OSError as exc:  # pragma: no cover - depends on profiler SDK
+            raise RuntimeError(f"libroctx64.so is required for decode marker windows: {exc}") from exc
+        self._push = getattr(self._lib, "roctxRangePushA", None)
+        self._pop = getattr(self._lib, "roctxRangePop", None)
+        if self._push is None or self._pop is None:
+            raise RuntimeError("libroctx64.so does not expose roctxRangePushA/roctxRangePop")
+        self._push.argtypes = [ctypes.c_char_p]
+        self._push.restype = ctypes.c_int
+        self._pop.argtypes = []
+        self._pop.restype = ctypes.c_int
+
+    def push(self, name: str) -> None:
+        self._push(name.encode("utf-8"))
+
+    def pop(self) -> None:
+        self._pop()
+
+
+def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+    )
+    if check and result.returncode != 0:
+        raise RuntimeError(
+            f"git -C {root} {' '.join(args)} failed ({result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+    return result
+
+
+def _source_state(root: Path) -> dict[str, Any]:
+    resolved = root.resolve()
+    commit = _git(resolved, "rev-parse", "HEAD").stdout.strip()
+    branch = _git(resolved, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    status = _git(resolved, "status", "--porcelain=v1", "--untracked-files=all").stdout.splitlines()
+    return {
+        "root": str(resolved),
+        "commit": commit,
+        "branch": branch.stdout.strip() or None,
+        "dirty": bool(status),
+        "status_entries": status,
+    }
+
+
+def _read_compiler_version(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(f"empty compiler-version file: {path}")
+    return text
+
+
+def _configure_child_imports(source_root: Path) -> Path:
+    root = source_root.resolve()
+    if not (root / "hipengine").is_dir():
+        raise FileNotFoundError(f"source root does not contain hipengine/: {root}")
+    for candidate in (str(REPO_ROOT), str(root)):
+        while candidate in sys.path:
+            sys.path.remove(candidate)
+    sys.path.insert(0, str(root))
+    os.chdir(root)
+    return root
+
+
+def _run_eager_once(
+    session: Any,
+    *,
+    prompt_ids: Sequence[int],
+    warmup_steps: int,
+    steps: int,
+    expected_token_id: int,
+    marker: _Roctx | None = None,
+) -> dict[str, Any]:
+    session.reset()
+    first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+    current = int(first.token_id)
+    generated = [current]
+    if current != expected_token_id:
+        raise RuntimeError(
+            f"unexpected prefill token: expected {expected_token_id}, observed {current}"
+        )
+    for index in range(warmup_steps):
+        current = int(session.step(current, return_logits=False).token_id)
+        generated.append(current)
+        if current != expected_token_id:
+            raise RuntimeError(
+                f"unexpected warmup token at index {index}: "
+                f"expected {expected_token_id}, observed {current}"
+            )
+
+    session.runtime.device_synchronize()
+    start_ns = time.perf_counter_ns()
+    step_wall_ms: list[float] = []
+    for index in range(steps):
+        if marker is not None:
+            marker.push(f"{MARKER_PREFIX}{index}")
+        step_start_ns = time.perf_counter_ns()
+        try:
+            result = session.step(current, return_logits=False)
+            session.runtime.device_synchronize()
+        finally:
+            if marker is not None:
+                marker.pop()
+        step_end_ns = time.perf_counter_ns()
+        current = int(result.token_id)
+        generated.append(current)
+        step_wall_ms.append((step_end_ns - step_start_ns) / 1e6)
+        if current != expected_token_id:
+            raise RuntimeError(
+                f"unexpected timed token at index {index}: "
+                f"expected {expected_token_id}, observed {current}"
+            )
+    session.runtime.device_synchronize()
+    end_ns = time.perf_counter_ns()
+    wall_ms = (end_ns - start_ns) / 1e6
+    return {
+        "expected_token_id": int(expected_token_id),
+        "prompt_tokens": len(prompt_ids),
+        "warmup_steps": int(warmup_steps),
+        "timed_steps": int(steps),
+        "generated_token_ids": generated,
+        "all_tokens_exact": all(token == expected_token_id for token in generated),
+        "wall_ms": wall_ms,
+        "wall_ms_per_token": wall_ms / steps,
+        "tok_s": steps * 1000.0 / wall_ms,
+        "step_wall_ms": step_wall_ms,
+    }
+
+
 def _run_child(args: argparse.Namespace) -> int:
-    os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    if args.compiler_version_file:
+    source_root = _configure_child_imports(Path(args.source_root))
+    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+    os.environ.setdefault(
+        "HIPENGINE_HIP_ARCH",
+        "gfx1151" if args.backend == "hip_gfx1151" else "gfx1100",
+    )
+    if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
-    prompt_ids = [int(t) for t in args.prompt.split(",")] if args.prompt else DEFAULT_PROMPT
+    prompt_ids = [int(args.prompt_token_id)] * int(args.prompt_length)
+    max_sequence_length = int(
+        args.max_seq
+        or args.prompt_length + args.warmup_steps + args.steps + 8
+    )
+    compiler_version = _read_compiler_version(args.compiler_version_file)
+    warmup_runs: list[dict[str, Any]] = []
+    measured_runs: list[dict[str, Any]] = []
+    marker = _Roctx() if args.child_mode == "profile" else None
     with Qwen35GGUFResidentSession(
-        args.model, max_sequence_length=args.max_seq, require_cached_build=args.require_cached
+        args.model,
+        max_sequence_length=max_sequence_length,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached),
+        backend=str(args.backend),
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
     ) as session:
-        first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
-        cur = int(first.token_id)
-        for _ in range(args.warmup):
-            cur = int(session.step(cur, return_logits=False).token_id)
-        session.runtime.device_synchronize()
-        t0 = time.perf_counter()
-        for _ in range(args.steps):
-            cur = int(session.step(cur, return_logits=False).token_id)
-        session.runtime.device_synchronize()
-        ms = (time.perf_counter() - t0) / max(args.steps, 1) * 1000.0
-    print(f"[gguf-decode] {args.steps} steps  {ms:.3f} ms/step", flush=True)
+        if args.child_mode == "warmbuild":
+            measured_runs.append(
+                _run_eager_once(
+                    session,
+                    prompt_ids=prompt_ids,
+                    warmup_steps=int(args.warmup_steps),
+                    steps=max(1, int(args.steps)),
+                    expected_token_id=int(args.expected_token_id),
+                )
+            )
+        else:
+            for _ in range(int(args.benchmark_warmups)):
+                warmup_runs.append(
+                    _run_eager_once(
+                        session,
+                        prompt_ids=prompt_ids,
+                        warmup_steps=int(args.warmup_steps),
+                        steps=int(args.steps),
+                        expected_token_id=int(args.expected_token_id),
+                    )
+                )
+            repetitions = 1 if args.child_mode == "profile" else int(args.repetitions)
+            for _ in range(repetitions):
+                measured_runs.append(
+                    _run_eager_once(
+                        session,
+                        prompt_ids=prompt_ids,
+                        warmup_steps=int(args.warmup_steps),
+                        steps=int(args.steps),
+                        expected_token_id=int(args.expected_token_id),
+                        marker=marker,
+                    )
+                )
+        resolved_backend = str(getattr(session.runner, "backend", session.backend))
+        target_arch = str(getattr(session.runner, "target_arch", os.environ["HIPENGINE_HIP_ARCH"]))
+        effective_wmma = bool(getattr(session, "use_wmma_prefill", False))
+        effective_gemv = bool(getattr(session, "use_gemv_decode", False))
+
+    payload = {
+        "kind": "hipengine_gguf_eager_decode_child",
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "child_mode": str(args.child_mode),
+        "source": _source_state(source_root),
+        "command": [str(part) for part in sys.argv],
+        "workload": {
+            "model": str(Path(args.model).resolve()),
+            "quant": "gguf_q4_k_m",
+            "kv_dtype": "bf16",
+            "prompt_source": "repeated_token_id",
+            "prompt_token_id": int(args.prompt_token_id),
+            "prompt_length": int(args.prompt_length),
+            "prompt_sha256_i64": hashlib.sha256(
+                int(args.prompt_token_id).to_bytes(8, "little", signed=True)
+                * int(args.prompt_length)
+            ).hexdigest(),
+            "expected_token_id": int(args.expected_token_id),
+            "warmup_steps": int(args.warmup_steps),
+            "timed_steps": int(args.steps),
+            "benchmark_warmups": int(args.benchmark_warmups),
+            "repetitions": len(measured_runs),
+            "max_sequence_length": max_sequence_length,
+        },
+        "route": {
+            "configured_backend": str(args.backend),
+            "resolved_backend": resolved_backend,
+            "target_arch": target_arch,
+            "graph_replay_decode": False,
+            "decode_repack": True,
+            "requested_use_wmma_prefill": True,
+            "effective_use_wmma_prefill": effective_wmma,
+            "requested_use_gemv_decode": True,
+            "effective_use_gemv_decode": effective_gemv,
+            "require_cached_build": bool(args.require_cached),
+        },
+        "warmup_runs": warmup_runs,
+        "measured_runs": measured_runs,
+    }
+    _validate_child_payload(payload, expected_token_id=int(args.expected_token_id))
+    if args.child_json is not None:
+        args.child_json.parent.mkdir(parents=True, exist_ok=True)
+        args.child_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    summary = _summarize_wall_runs(measured_runs, expected_token_id=int(args.expected_token_id))
+    print(
+        f"[gguf-eager:{args.child_mode}] {args.prompt_length}/{args.steps} "
+        f"median={summary['median_tok_s']:.3f} tok/s exact=true",
+        flush=True,
+    )
     return 0
 
 
-# --------------------------------------------------------------------------- #
-# Kernel-family bucketing.
-# --------------------------------------------------------------------------- #
 def _family(name: str) -> str:
-    n = re.sub(r"^void\s+", "", name.strip()).replace("(anonymous namespace)::", "")
-    n = re.sub(r"<[^>]*>", "", n).split("(")[0]
-    return re.sub(r"_kernel$", "", n).strip()
+    value = re.sub(r"^void\s+", "", name.strip()).replace("(anonymous namespace)::", "")
+    value = re.sub(r"<[^>]*>", "", value).split("(")[0]
+    return re.sub(r"_kernel$", "", value).strip()
 
 
-def _bucket(f: str) -> str:
-    if "router" in f:
+def _bucket(family: str) -> str:
+    value = family.lower()
+    if "router" in value:
         return "moe_router"
-    if any(k in f for k in ("linear_attn", "gdn", "ssm", "_conv_")):
+    if any(key in value for key in ("linear_attn", "gdn", "ssm", "_conv_")):
         return "gdn_linear_attn"
-    if f.startswith(("q4_k_t16_selected", "qk_t16_selected", "gguf_k_selected", "gguf_q4_k_selected")):
+    if value.startswith(
+        ("q4_k_t16_selected", "qk_t16_selected", "gguf_k_selected", "gguf_q4_k_selected")
+    ):
         return "moe_selected_gemv"
-    if f.startswith("q8_0_t16"):
+    if value.startswith("q8_0_t16"):
         return "dense_q8_0_gemv"
-    if "dense_gemv" in f:
+    if "dense_gemv" in value:
         return "dense_gemv_bf16"
-    if "q6_k_t16_gemv" in f or "lm_head" in f or "argmax" in f:
+    if "q6_k_t16_gemv" in value or "lm_head" in value or "argmax" in value:
         return "lm_head"
-    if "rmsnorm" in f or "rotary" in f:
+    if "rmsnorm" in value or "rotary" in value:
         return "rmsnorm_rope"
-    if any(k in f for k in ("silu", "weighted_sum", "combine")):
+    if any(key in value for key in ("silu", "weighted_sum", "combine")):
         return "moe_combine_silu"
-    if any(k in f for k in ("attn", "flash", "softmax", "paged_kv", "paged_full")):
+    if any(key in value for key in ("attn", "flash", "softmax", "paged_kv", "paged_full")):
         return "attn_core"
-    if "embedding" in f:
+    if "embedding" in value:
         return "embedding"
-    if any(k in f for k in ("copyBuffer", "fillBuffer", "rocclr", "memcpy")):
+    if any(key in value for key in ("copybuffer", "fillbuffer", "rocclr", "memcpy")):
         return "memcpy_fill"
-    return "other:" + f
+    return "other"
 
 
-def _process_csv(csv_path: Path, top: int) -> dict[str, Any]:
-    rows = list(csv.DictReader(csv_path.open()))
-    if not rows:
-        raise SystemExit(f"empty kernel trace CSV: {csv_path}")
-    cols = rows[0].keys()
+def _read_marker_windows(path: Path, prefix: str) -> list[tuple[int, int, int]]:
+    windows: list[tuple[int, int, int]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            name = (
+                row.get("Function")
+                or row.get("Marker_Name")
+                or row.get("Marker_Text")
+                or row.get("Name")
+                or ""
+            ).strip()
+            if not name.startswith(prefix):
+                continue
+            try:
+                index = int(name.removeprefix(prefix))
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end >= start:
+                windows.append((index, start, end))
+    windows.sort(key=lambda item: item[0])
+    return windows
 
-    def col(sub: str) -> str:
-        return next(c for c in cols if sub in c)
 
-    name_c, s_c, e_c = col("Kernel_Name"), col("Start_Timestamp"), col("End_Timestamp")
-    fam_agg: dict[str, list[float]] = collections.defaultdict(lambda: [0, 0.0])
-    bucket_agg: dict[str, list[float]] = collections.defaultdict(lambda: [0, 0.0])
-    total = 0.0
-    for r in rows:
-        dur = (int(r[e_c]) - int(r[s_c])) / 1000.0  # microseconds
-        f = _family(r[name_c])
-        b = _bucket(f)
-        fam_agg[f][0] += 1
-        fam_agg[f][1] += dur
-        bucket_agg[b][0] += 1
-        bucket_agg[b][1] += dur
-        total += dur
+def _optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(str(value)))
+    except ValueError:
+        return None
 
-    def emit(agg: dict[str, list[float]]) -> list[dict[str, Any]]:
-        out = []
-        for key, (calls, us) in sorted(agg.items(), key=lambda x: -x[1][1]):
-            out.append(
+
+def _read_kernels(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            try:
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end < start:
+                continue
+            kernel = (
+                row.get("Kernel_Name")
+                or row.get("KernelName")
+                or row.get("Name")
+                or ""
+            ).strip()
+            family = _family(kernel)
+            rows.append(
                 {
-                    "name": key,
-                    "calls": int(calls),
-                    "total_us": round(us, 1),
-                    "pct": round(us / total * 100.0, 2),
-                    "us_per_call": round(us / calls, 3) if calls else 0.0,
+                    "kernel": kernel,
+                    "family": family,
+                    "bucket": _bucket(family),
+                    "start_ns": start,
+                    "end_ns": end,
+                    "duration_ns": end - start,
+                    "vgpr": _optional_int(row.get("VGPR_Count")),
+                    "scratch": _optional_int(row.get("Scratch_Size")),
                 }
             )
-        return out
+    return rows
+
+
+def _filter_kernels_by_windows(
+    rows: Iterable[dict[str, Any]], windows: Sequence[tuple[int, int]]
+) -> list[dict[str, Any]]:
+    ordered = sorted(windows)
+    return [
+        row
+        for row in rows
+        if any(
+            int(row["start_ns"]) >= start and int(row["end_ns"]) <= end
+            for start, end in ordered
+        )
+    ]
+
+
+def _amdahl_speedup(share: float, factor: float) -> float | None:
+    if not 0.0 <= share <= 1.0:
+        raise ValueError(f"Amdahl share must be within [0, 1], got {share}")
+    denominator = 1.0 - share if math.isinf(factor) else (1.0 - share) + share / factor
+    if denominator <= 0.0:
+        return None
+    return 1.0 / denominator
+
+
+def _summarize_rows(rows: Sequence[dict[str, Any]], *, steps: int, top: int) -> dict[str, Any]:
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    total_ns = sum(int(row["duration_ns"]) for row in rows)
+    if total_ns <= 0:
+        raise ValueError("selected decode window contains no positive-duration kernels")
+    by_bucket: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+    by_family: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+    resources: dict[str, dict[str, set[int]]] = collections.defaultdict(
+        lambda: {"vgpr": set(), "scratch": set()}
+    )
+    for row in rows:
+        duration = int(row["duration_ns"])
+        by_bucket[str(row["bucket"])][0] += 1
+        by_bucket[str(row["bucket"])][1] += duration
+        family = str(row["family"])
+        by_family[family][0] += 1
+        by_family[family][1] += duration
+        for key in ("vgpr", "scratch"):
+            if row.get(key) is not None:
+                resources[family][key].add(int(row[key]))
+
+    def emit(aggregate: dict[str, list[int]], *, include_amdahl: bool) -> list[dict[str, Any]]:
+        output: list[dict[str, Any]] = []
+        for name, (calls, duration_ns) in sorted(
+            aggregate.items(), key=lambda item: (-item[1][1], item[0])
+        ):
+            share = duration_ns / total_ns
+            record: dict[str, Any] = {
+                "name": name,
+                "calls": calls,
+                "calls_per_token": calls / steps,
+                "total_us": duration_ns / 1e3,
+                "gpu_us_per_token": duration_ns / steps / 1e3,
+                "share_pct": share * 100.0,
+                "us_per_call": duration_ns / calls / 1e3,
+            }
+            if include_amdahl:
+                record.update(
+                    {
+                        "amdahl_speedup_if_2x": _amdahl_speedup(share, 2.0),
+                        "amdahl_speedup_if_4x": _amdahl_speedup(share, 4.0),
+                        "amdahl_speedup_if_infinite": _amdahl_speedup(share, float("inf")),
+                    }
+                )
+            else:
+                record["vgpr_counts"] = sorted(resources[name]["vgpr"])
+                record["scratch_sizes"] = sorted(resources[name]["scratch"])
+            output.append(record)
+        return output
 
     return {
+        "timed_steps": int(steps),
         "total_kernels": len(rows),
-        "total_gpu_us": round(total, 1),
-        "buckets": emit(bucket_agg),
-        "top_kernels": emit(fam_agg)[:top],
+        "total_gpu_us": total_ns / 1e3,
+        "gpu_us_per_token": total_ns / steps / 1e3,
+        "buckets": emit(by_bucket, include_amdahl=True),
+        "top_kernels": emit(by_family, include_amdahl=False)[:top],
     }
 
 
-# --------------------------------------------------------------------------- #
-# Parent mode: warm-build, rocprof the child, process CSV, emit artifact.
-# --------------------------------------------------------------------------- #
+def _summarize_wall_runs(
+    runs: Sequence[dict[str, Any]], *, expected_token_id: int
+) -> dict[str, Any]:
+    if not runs:
+        raise ValueError("no measured wall runs")
+    for run_index, run in enumerate(runs):
+        tokens = [int(token) for token in run.get("generated_token_ids", [])]
+        mismatch = next((token for token in tokens if token != expected_token_id), None)
+        if mismatch is not None or not tokens:
+            raise ValueError(
+                f"unexpected token in run {run_index}: expected {expected_token_id}, "
+                f"observed {mismatch if mismatch is not None else 'empty stream'}"
+            )
+    samples = [float(run["wall_ms_per_token"]) for run in runs]
+    median_ms = statistics.median(samples)
+    return {
+        "repetitions": len(runs),
+        "all_tokens_exact": True,
+        "expected_token_id": int(expected_token_id),
+        "samples_ms_per_token": samples,
+        "samples_tok_s": [1000.0 / value for value in samples],
+        "median_ms_per_token": median_ms,
+        "median_tok_s": 1000.0 / median_ms,
+        "mean_ms_per_token": statistics.mean(samples),
+        "stdev_ms_per_token": statistics.stdev(samples) if len(samples) > 1 else 0.0,
+        "min_ms_per_token": min(samples),
+        "max_ms_per_token": max(samples),
+    }
+
+
+def _validate_child_payload(payload: dict[str, Any], *, expected_token_id: int) -> None:
+    route = payload.get("route") or {}
+    if route.get("graph_replay_decode") is not False:
+        raise ValueError("child did not record eager graph-off decode")
+    if route.get("decode_repack") is not True:
+        raise ValueError("child did not record decode repack")
+    if route.get("effective_use_gemv_decode") is not True:
+        raise ValueError("child did not activate the GGUF GEMV decode path")
+    _summarize_wall_runs(payload.get("measured_runs") or [], expected_token_id=expected_token_id)
+
+
+def _build_child_command(
+    *,
+    python: str,
+    script: Path,
+    child_mode: str,
+    source_root: Path,
+    model: Path,
+    backend: str,
+    prompt_token_id: int,
+    prompt_length: int,
+    expected_token_id: int,
+    steps: int,
+    warmup_steps: int,
+    benchmark_warmups: int,
+    repetitions: int,
+    compiler_version_file: Path,
+    child_json: Path,
+    require_cached: bool,
+) -> list[str]:
+    command = [
+        python,
+        str(script),
+        "--child-mode",
+        child_mode,
+        "--source-root",
+        str(source_root),
+        "--model",
+        str(model),
+        "--backend",
+        backend,
+        "--prompt-token-id",
+        str(prompt_token_id),
+        "--prompt-length",
+        str(prompt_length),
+        "--expected-token-id",
+        str(expected_token_id),
+        "--steps",
+        str(steps),
+        "--warmup-steps",
+        str(warmup_steps),
+        "--benchmark-warmups",
+        str(benchmark_warmups),
+        "--repetitions",
+        str(repetitions),
+        "--compiler-version-file",
+        str(compiler_version_file),
+        "--child-json",
+        str(child_json),
+    ]
+    if require_cached:
+        command.append("--require-cached")
+    return command
+
+
+def _run_command(command: Sequence[str], *, cwd: Path, env: dict[str, str]) -> None:
+    print(f"[gguf-eager-audit] {' '.join(command)}", flush=True)
+    subprocess.run(list(command), cwd=cwd, env=env, check=True)
+
+
+def _load_child(path: Path, *, expected_token_id: int) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    _validate_child_payload(payload, expected_token_id=expected_token_id)
+    return payload
+
+
+def _single_file(root: Path, pattern: str) -> Path:
+    matches = sorted(root.rglob(pattern))
+    if len(matches) != 1:
+        raise FileNotFoundError(f"expected one {pattern} under {root}, found {matches}")
+    return matches[0]
+
+
+def _default_roctx_sdk() -> Path:
+    candidates = [
+        Path(sys.prefix)
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+        / "_rocm_sdk_core"
+        / "lib"
+        / "librocprofiler-sdk-roctx.so.1",
+        Path(sys.prefix)
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+        / "_rocm_sdk_devel"
+        / "lib"
+        / "librocprofiler-sdk-roctx.so.1",
+        Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _prepare_roctx_override(sdk_path: Path) -> tuple[Path, tuple[Path, ...]]:
+    if not sdk_path.exists():
+        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
+    override = Path("/tmp/hipengine-roctx-sdk-override-gguf-eager")
+    override.mkdir(parents=True, exist_ok=True)
+    symlink = override / "libroctx64.so"
+    if symlink.exists() or symlink.is_symlink():
+        symlink.unlink()
+    symlink.symlink_to(sdk_path)
+    dependency_paths: list[Path] = [sdk_path.parent]
+    sysdeps = sdk_path.parent / "rocm_sysdeps" / "lib"
+    if sysdeps.is_dir():
+        dependency_paths.append(sysdeps)
+    return override, tuple(dependency_paths)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_g1_artifact(path: Path, *, model: Path, prompt_token_id: int) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    classification = payload.get("classification") or {}
+    workload = payload.get("workload") or {}
+    if classification.get("passed") is not True or classification.get("first_divergence") is not None:
+        raise ValueError(f"SOL-G1 artifact is not a passing no-divergence oracle: {path}")
+    if int(workload.get("prompt_length", -1)) != 512:
+        raise ValueError("SOL-G1 artifact does not cover the required 512-token prompt")
+    if int(workload.get("prompt_token_id", -1)) != prompt_token_id:
+        raise ValueError("SOL-G1 artifact prompt token does not match this audit")
+    fingerprint = (payload.get("provenance") or {}).get("model_fingerprint") or {}
+    return {
+        "path": str(path),
+        "sha256": _sha256(path),
+        "kind": payload.get("kind"),
+        "classification": classification,
+        "workload": workload,
+        "model_path": str(model.resolve()),
+        "model_fingerprint": fingerprint,
+    }
+
+
+def _commit_metadata(root: Path, commit: str) -> dict[str, Any]:
+    text = _git(
+        root,
+        "show",
+        "-s",
+        "--format=%H%x00%P%x00%aI%x00%s",
+        commit,
+    ).stdout.rstrip("\n")
+    full, parents, authored_at, subject = text.split("\x00", 3)
+    return {
+        "commit": full,
+        "parents": parents.split() if parents else [],
+        "authored_at": authored_at,
+        "subject": subject,
+    }
+
+
+def _revision_boundary(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    current_short: dict[str, Any],
+    *,
+    expected_before: str,
+    expected_after: str,
+    route_change_commit: str,
+    expected_token_id: int,
+) -> dict[str, Any]:
+    before_source = before["source"]
+    after_source = after["source"]
+    if before_source["commit"] != expected_before or after_source["commit"] != expected_after:
+        raise ValueError("bisect source commits do not match the requested boundary")
+    if before_source["dirty"] or after_source["dirty"]:
+        raise ValueError("bisect source worktrees must be clean")
+    metadata = _commit_metadata(REPO_ROOT, expected_after)
+    if metadata["parents"] != [expected_before]:
+        raise ValueError(
+            f"performance boundary is not a direct parent edge: {metadata['parents']} != {expected_before}"
+        )
+    before_summary = _summarize_wall_runs(
+        before["measured_runs"], expected_token_id=expected_token_id
+    )
+    after_summary = _summarize_wall_runs(
+        after["measured_runs"], expected_token_id=expected_token_id
+    )
+    current_summary = _summarize_wall_runs(
+        current_short["measured_runs"], expected_token_id=expected_token_id
+    )
+    speedup = after_summary["median_tok_s"] / before_summary["median_tok_s"]
+    current_vs_after_pct = (
+        current_summary["median_tok_s"] / after_summary["median_tok_s"] - 1.0
+    ) * 100.0
+    route_metadata = _commit_metadata(REPO_ROOT, route_change_commit)
+    ancestry = _git(
+        REPO_ROOT,
+        "merge-base",
+        "--is-ancestor",
+        route_metadata["commit"],
+        metadata["commit"],
+        check=False,
+    )
+    if ancestry.returncode != 0:
+        raise ValueError("production eager route change is not an ancestor of the speed boundary")
+    return {
+        "classification": "first_performance_changing_revision_found",
+        "protocol": "same_host_direct_parent_graph_off_repacked_eager_p8_d32_1x4",
+        "production_eager_route_change": route_metadata,
+        "before": {"source": before_source, "summary": before_summary, "command": before["command"]},
+        "after": {
+            "source": after_source,
+            "metadata": metadata,
+            "summary": after_summary,
+            "command": after["command"],
+        },
+        "speedup_after_vs_before": speedup,
+        "current_short_context": {
+            "source": current_short["source"],
+            "summary": current_summary,
+            "command": current_short["command"],
+            "delta_vs_boundary_after_pct": current_vs_after_pct,
+        },
+        "interpretation": (
+            "4499fb13 is the direct-parent eager performance boundary: loaded HIP "
+            "library memoization removes repeated host library loads without changing "
+            "decode math. Current short-context eager speed remains in the same band."
+        ),
+    }
+
+
 def _run_parent(args: argparse.Namespace) -> int:
-    rocprofv3 = shutil.which("rocprofv3") or "rocprofv3"
-    raw_root = Path(args.raw_root)
-    raw_root.mkdir(parents=True, exist_ok=True)
+    raw_root = Path(args.raw_root).resolve()
+    if raw_root.exists():
+        shutil.rmtree(raw_root)
+    raw_root.mkdir(parents=True)
+    trace_dir = raw_root / "trace"
+    trace_dir.mkdir()
+    compiler_file = Path(args.compiler_version_file).resolve()
+    if not compiler_file.exists():
+        result = subprocess.run(["hipcc", "--version"], capture_output=True, text=True, check=True)
+        compiler_file.parent.mkdir(parents=True, exist_ok=True)
+        compiler_file.write_text(result.stdout, encoding="utf-8")
 
-    # Pin the compiler-version file so the JIT cache key is stable under rocprofv3.
-    cvf = Path(args.compiler_version_file)
-    if not cvf.exists():
-        cvf.parent.mkdir(parents=True, exist_ok=True)
-        ver = subprocess.run(["hipcc", "--version"], capture_output=True, text=True)
-        cvf.write_text(ver.stdout or "hipcc-unknown\n", encoding="utf-8")
-
-    child_base = [
-        sys.executable,
-        str(Path(__file__)),
-        "--child",
-        "--model", str(args.model),
-        "--steps", str(args.steps),
-        "--warmup", str(args.warmup),
-        "--max-seq", str(args.max_seq),
-        "--compiler-version-file", str(cvf),
-    ]
-    if args.prompt:
-        child_base += ["--prompt", args.prompt]
-
+    source_root = REPO_ROOT.resolve()
     env = os.environ.copy()
-    env.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    env["HIPENGINE_COMPILER_VERSION_FILE"] = str(cvf)
+    env["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+    env["HIPENGINE_HIP_ARCH"] = "gfx1151" if args.backend == "hip_gfx1151" else "gfx1100"
+    env["HIPENGINE_COMPILER_VERSION_FILE"] = str(compiler_file)
+    script = Path(__file__).resolve()
 
-    # 1) Warm-build pass (no rocprof): build + cache every .so so the profiled
-    #    process never spawns hipcc.
+    def child_command(
+        *,
+        mode: str,
+        root: Path,
+        prompt_length: int,
+        steps: int,
+        warmup_steps: int,
+        benchmark_warmups: int,
+        repetitions: int,
+        output: Path,
+        require_cached: bool,
+    ) -> list[str]:
+        return _build_child_command(
+            python=sys.executable,
+            script=script,
+            child_mode=mode,
+            source_root=root,
+            model=Path(args.model),
+            backend=str(args.backend),
+            prompt_token_id=int(args.prompt_token_id),
+            prompt_length=prompt_length,
+            expected_token_id=int(args.expected_token_id),
+            steps=steps,
+            warmup_steps=warmup_steps,
+            benchmark_warmups=benchmark_warmups,
+            repetitions=repetitions,
+            compiler_version_file=compiler_file,
+            child_json=output,
+            require_cached=require_cached,
+        )
+
     if not args.skip_warmbuild:
-        print("[gguf-decode-rocprof] warm-build pass (no profiler)...", flush=True)
-        subprocess.run(child_base, cwd=REPO_ROOT, env=env, check=True)
+        warmbuild_json = raw_root / "warmbuild.json"
+        command = child_command(
+            mode="warmbuild",
+            root=source_root,
+            prompt_length=int(args.prompt_length),
+            steps=1,
+            warmup_steps=1,
+            benchmark_warmups=0,
+            repetitions=1,
+            output=warmbuild_json,
+            require_cached=False,
+        )
+        _run_command(command, cwd=source_root, env=env)
 
-    # 2) Profiled pass with --require-cached so any missing .so is a hard error
-    #    instead of a silent in-trace hipcc spawn.
-    out_dir = raw_root / "trace"
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
-    rocprof_cmd = [
-        rocprofv3,
-        "--kernel-trace",
-        "--output-format", "csv",
-        "-d", str(out_dir),
-        "--",
-        *child_base,
-        "--require-cached",
+    baseline_json = raw_root / "baseline-current-p512.json"
+    baseline_command = child_command(
+        mode="baseline",
+        root=source_root,
+        prompt_length=int(args.prompt_length),
+        steps=int(args.baseline_steps),
+        warmup_steps=int(args.baseline_warmup_steps),
+        benchmark_warmups=int(args.baseline_warmups),
+        repetitions=int(args.baseline_repetitions),
+        output=baseline_json,
+        require_cached=True,
+    )
+    _run_command(baseline_command, cwd=source_root, env=env)
+
+    short_json = raw_root / "baseline-current-p8.json"
+    short_command = child_command(
+        mode="baseline",
+        root=source_root,
+        prompt_length=int(args.bisect_prompt_length),
+        steps=int(args.bisect_steps),
+        warmup_steps=int(args.baseline_warmup_steps),
+        benchmark_warmups=int(args.baseline_warmups),
+        repetitions=int(args.baseline_repetitions),
+        output=short_json,
+        require_cached=True,
+    )
+    _run_command(short_command, cwd=source_root, env=env)
+
+    if args.bisect_before_root is None or args.bisect_after_root is None:
+        raise ValueError("--bisect-before-root and --bisect-after-root are required for SOL-G4")
+    bisect_children: list[tuple[str, Path, str]] = [
+        ("before", Path(args.bisect_before_root).resolve(), str(args.bisect_before_commit)),
+        ("after", Path(args.bisect_after_root).resolve(), str(args.bisect_after_commit)),
     ]
-    print(f"[gguf-decode-rocprof] {' '.join(rocprof_cmd)}", flush=True)
-    subprocess.run(rocprof_cmd, cwd=REPO_ROOT, env=env, check=True)
+    bisect_payloads: dict[str, dict[str, Any]] = {}
+    for label, root, expected_commit in bisect_children:
+        state = _source_state(root)
+        if state["commit"] != expected_commit or state["dirty"]:
+            raise ValueError(f"{label} bisect worktree does not match clean {expected_commit}: {state}")
+        output = raw_root / f"bisect-{label}.json"
+        command = child_command(
+            mode="baseline",
+            root=root,
+            prompt_length=int(args.bisect_prompt_length),
+            steps=int(args.bisect_steps),
+            warmup_steps=int(args.baseline_warmup_steps),
+            benchmark_warmups=int(args.baseline_warmups),
+            repetitions=int(args.baseline_repetitions),
+            output=output,
+            require_cached=True,
+        )
+        _run_command(command, cwd=root, env=env)
+        bisect_payloads[label] = _load_child(
+            output, expected_token_id=int(args.expected_token_id)
+        )
 
-    csvs = list(out_dir.rglob("*_kernel_trace.csv"))
-    if not csvs:
-        raise SystemExit(f"no kernel_trace.csv produced under {out_dir}")
-    summary = _process_csv(csvs[0], args.top)
-    summary.update(
+    profile_json = raw_root / "profile-child.json"
+    profile_child_command = child_command(
+        mode="profile",
+        root=source_root,
+        prompt_length=int(args.prompt_length),
+        steps=int(args.profile_steps),
+        warmup_steps=int(args.profile_warmup_steps),
+        benchmark_warmups=0,
+        repetitions=1,
+        output=profile_json,
+        require_cached=True,
+    )
+    roctx_override, roctx_dependencies = _prepare_roctx_override(Path(args.roctx_sdk))
+    profile_env = env.copy()
+    ld_prefix = os.pathsep.join(
+        [str(roctx_override), *(str(path) for path in roctx_dependencies)]
+    )
+    profile_env["LD_LIBRARY_PATH"] = f"{ld_prefix}:{profile_env.get('LD_LIBRARY_PATH', '')}"
+    rocprof_command = [
+        str(args.rocprofv3),
+        "--kernel-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        str(trace_dir),
+        "-o",
+        "sol-g4-gguf-eager",
+        "--",
+        *profile_child_command,
+    ]
+    _run_command(rocprof_command, cwd=source_root, env=profile_env)
+
+    baseline = _load_child(baseline_json, expected_token_id=int(args.expected_token_id))
+    current_short = _load_child(short_json, expected_token_id=int(args.expected_token_id))
+    profile_child = _load_child(profile_json, expected_token_id=int(args.expected_token_id))
+    kernel_csv = _single_file(trace_dir, "*_kernel_trace.csv")
+    marker_csv = _single_file(trace_dir, "*_marker_api_trace.csv")
+    windows = _read_marker_windows(marker_csv, MARKER_PREFIX)
+    expected_indices = list(range(int(args.profile_steps)))
+    if [index for index, _start, _end in windows] != expected_indices:
+        raise ValueError(
+            f"expected exact marker windows {expected_indices}, observed "
+            f"{[index for index, _start, _end in windows]}"
+        )
+    all_kernels = _read_kernels(kernel_csv)
+    selected_kernels = _filter_kernels_by_windows(
+        all_kernels, [(start, end) for _index, start, end in windows]
+    )
+    profile_summary = _summarize_rows(
+        selected_kernels, steps=int(args.profile_steps), top=int(args.top)
+    )
+    profile_wall = _summarize_wall_runs(
+        profile_child["measured_runs"], expected_token_id=int(args.expected_token_id)
+    )
+    profile_summary.update(
         {
-            "schema": "hipengine.gguf_decode_rocprof.v1",
-            "date": date.today().isoformat(),
-            "model": str(args.model),
-            "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
-            "passes": {"prefill": 1, "warmup_steps": args.warmup, "timed_steps": args.steps},
-            "note": (
-                "Whole-process trace (prefill + warmup + timed decode). Family "
-                "percentages are of total GPU time across all passes; the decode "
-                "families dominate. Diagnostic only."
+            "marker_windows": len(windows),
+            "whole_trace_kernels": len(all_kernels),
+            "selected_decode_kernels": len(selected_kernels),
+            "host_profiled_wall": profile_wall,
+            "gpu_kernel_share_of_profiled_host_wall_pct": (
+                profile_summary["gpu_us_per_token"]
+                / (profile_wall["median_ms_per_token"] * 1000.0)
+                * 100.0
             ),
-            "command": " ".join([Path(sys.executable).name] + sys.argv),
         }
     )
 
-    # Ranked table to stdout.
-    print(f"\nTOTAL gpu_us={summary['total_gpu_us']:.0f}  kernels={summary['total_kernels']}")
-    print("\n=== HIGH-LEVEL BUCKETS ===")
-    print(f"{'bucket':32s} {'calls':>7s} {'tot_us':>10s} {'%':>6s}")
-    for b in summary["buckets"]:
-        print(f"{b['name'][:32]:32s} {b['calls']:7d} {b['total_us']:10.0f} {b['pct']:6.1f}")
-    print("\n=== TOP KERNELS ===")
-    print(f"{'kernel':52s} {'calls':>6s} {'tot_us':>9s} {'%':>6s} {'us/call':>9s}")
-    for k in summary["top_kernels"]:
-        print(f"{k['name'][:52]:52s} {k['calls']:6d} {k['total_us']:9.0f} {k['pct']:6.1f} {k['us_per_call']:9.2f}")
+    revision = _revision_boundary(
+        bisect_payloads["before"],
+        bisect_payloads["after"],
+        current_short,
+        expected_before=str(args.bisect_before_commit),
+        expected_after=str(args.bisect_after_commit),
+        route_change_commit=str(args.route_change_commit),
+        expected_token_id=int(args.expected_token_id),
+    )
+    baseline_summary = _summarize_wall_runs(
+        baseline["measured_runs"], expected_token_id=int(args.expected_token_id)
+    )
+    correctness_gate = _validate_g1_artifact(
+        Path(args.correctness_artifact),
+        model=Path(args.model),
+        prompt_token_id=int(args.prompt_token_id),
+    )
 
-    if args.out:
-        import json
+    from hipengine.benchmark.provenance import collect_artifact_provenance
 
-        out = Path(args.out)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print(f"\n[gguf-decode-rocprof] wrote {out}")
-    return 0
+    provenance = collect_artifact_provenance(
+        repo_root=source_root,
+        configured_backend=str(args.backend),
+        resolved_backend=str(baseline["route"]["resolved_backend"]),
+        target_arch=str(baseline["route"]["target_arch"]),
+        model_path=Path(args.model),
+        quant="gguf_q4_k_m",
+        kv_dtype="bf16",
+        command=[str(part) for part in sys.argv],
+        environment={
+            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
+            "HIPENGINE_HIP_ARCH": env["HIPENGINE_HIP_ARCH"],
+            "HIPENGINE_GGUF_DECODE_REPACK": "1",
+            "HIPENGINE_GGUF_WMMA_PREFILL": "1 (constructor)",
+            "HIPENGINE_GGUF_GEMV_DECODE": "1 (constructor)",
+        },
+        build_profile="gguf_eager_decode_sol_g4_audit",
+        timing_protocol="clean_resident_eager_1x4_plus_roctx_decode_windows_v2",
+        warmups=int(args.baseline_warmups),
+        repetitions=int(args.baseline_repetitions),
+        profiler={
+            "enabled": True,
+            "kind": "rocprofv3_kernel_and_marker_trace",
+            "command": rocprof_command,
+            "profile_steps": int(args.profile_steps),
+            "marker_prefix": MARKER_PREFIX,
+            "kernel_trace_sha256": _sha256(kernel_csv),
+            "marker_trace_sha256": _sha256(marker_csv),
+        },
+    )
+    measurement_valid = (
+        not bool(provenance["dirty"])
+        and baseline_summary["all_tokens_exact"]
+        and revision["classification"] == "first_performance_changing_revision_found"
+        and profile_summary["marker_windows"] == int(args.profile_steps)
+        and bool(correctness_gate["classification"]["passed"])
+    )
+    artifact = {
+        "kind": KIND,
+        "schema_version": SCHEMA_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "accepted" if measurement_valid else "diagnostic_invalid",
+        "performance_claim": bool(measurement_valid),
+        "correctness_claim": True,
+        "classification": {
+            "passed": bool(measurement_valid),
+            "correct_eager_baseline_recorded": True,
+            "first_performance_changing_revision_recorded": True,
+            "decode_only_amdahl_recorded": True,
+            "conclusion": (
+                "Current gfx1151 eager decode is correct and retains the post-4499fb13 "
+                "short-context speed band; the 512-token baseline is context-cost, not a "
+                "post-July regression. The Amdahl table contains only marked timed decode steps."
+            ),
+        },
+        "workload": {
+            "model": str(Path(args.model).resolve()),
+            "quant": "gguf_q4_k_m",
+            "kv_dtype": "bf16",
+            "backend": str(args.backend),
+            "prompt_source": "repeated_token_id",
+            "prompt_token_id": int(args.prompt_token_id),
+            "expected_token_id": int(args.expected_token_id),
+            "primary_prompt_length": int(args.prompt_length),
+            "baseline_steps": int(args.baseline_steps),
+            "profile_steps": int(args.profile_steps),
+            "bisect_prompt_length": int(args.bisect_prompt_length),
+            "bisect_steps": int(args.bisect_steps),
+            "route": "repacked WMMA bulk prefill + GEMV eager decode; graph off",
+        },
+        "correctness_gate": correctness_gate,
+        "current_eager_baseline": {
+            "protocol": "one resident session; one discarded full run; four measured full runs",
+            "summary": baseline_summary,
+            "child": baseline,
+        },
+        "revision_bisect": revision,
+        "layer_family_amdahl": {
+            "protocol": (
+                "rocprofv3 kernel+marker trace; one ROCTX range per synchronized eager step; "
+                "prefill and warmup excluded by timestamp containment"
+            ),
+            "summary": profile_summary,
+            "child": profile_child,
+            "raw_trace": {
+                "raw_root": str(raw_root),
+                "kernel_csv": str(kernel_csv),
+                "kernel_csv_sha256": _sha256(kernel_csv),
+                "marker_csv": str(marker_csv),
+                "marker_csv_sha256": _sha256(marker_csv),
+            },
+        },
+        "provenance": provenance,
+    }
+    if args.out is not None:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+        print(f"[gguf-eager-audit] wrote {args.out}", flush=True)
+    print(
+        f"[gguf-eager-audit] current p512={baseline_summary['median_tok_s']:.3f} tok/s; "
+        f"boundary={revision['speedup_after_vs_before']:.3f}x; "
+        f"profile={profile_summary['gpu_us_per_token']:.1f} GPU us/token",
+        flush=True,
+    )
+    return 0 if measurement_valid else 2
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--child-mode", choices=("warmbuild", "baseline", "profile"))
+    parser.add_argument("--source-root", type=Path, default=REPO_ROOT)
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1151")
+    parser.add_argument("--prompt-token-id", type=int, default=9707)
+    parser.add_argument("--prompt-length", type=int, default=512)
+    parser.add_argument("--expected-token-id", type=int, default=9707)
+    parser.add_argument("--steps", type=int, default=24, help="Internal child timed steps")
+    parser.add_argument("--warmup-steps", type=int, default=4, help="Internal child decode warmup")
+    parser.add_argument("--benchmark-warmups", type=int, default=0, help="Internal discarded full runs")
+    parser.add_argument("--repetitions", type=int, default=1, help="Internal measured full runs")
+    parser.add_argument("--max-seq", type=int, default=0)
+    parser.add_argument("--require-cached", action="store_true")
+    parser.add_argument("--child-json", type=Path)
+
+    parser.add_argument("--baseline-steps", type=int, default=128)
+    parser.add_argument("--baseline-warmup-steps", type=int, default=1)
+    parser.add_argument("--baseline-warmups", type=int, default=1)
+    parser.add_argument("--baseline-repetitions", type=int, default=4)
+    parser.add_argument("--profile-steps", type=int, default=24)
+    parser.add_argument("--profile-warmup-steps", type=int, default=4)
+    parser.add_argument("--bisect-prompt-length", type=int, default=8)
+    parser.add_argument("--bisect-steps", type=int, default=32)
+    parser.add_argument("--bisect-before-root", type=Path)
+    parser.add_argument("--bisect-after-root", type=Path)
+    parser.add_argument("--bisect-before-commit", default=DEFAULT_BEFORE_COMMIT)
+    parser.add_argument("--bisect-after-commit", default=DEFAULT_AFTER_COMMIT)
+    parser.add_argument("--route-change-commit", default=DEFAULT_ROUTE_CHANGE_COMMIT)
+    parser.add_argument("--correctness-artifact", type=Path, default=DEFAULT_G1_ARTIFACT)
+    parser.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
+    parser.add_argument("--skip-warmbuild", action="store_true")
+    parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-sol-g4-gguf-eager-audit"))
+    parser.add_argument("--rocprofv3", default=shutil.which("rocprofv3") or "rocprofv3")
+    parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
+    parser.add_argument("--top", type=int, default=30)
+    parser.add_argument("--out", type=Path)
+    return parser
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--child", action="store_true", help="internal: the process run under rocprofv3")
-    ap.add_argument("--model", type=Path, default=DEFAULT_MODEL)
-    ap.add_argument("--prompt", default="", help="comma-separated prompt token ids")
-    ap.add_argument("--steps", type=int, default=24)
-    ap.add_argument("--warmup", type=int, default=4)
-    ap.add_argument("--max-seq", type=int, default=512)
-    ap.add_argument("--require-cached", action="store_true")
-    ap.add_argument("--skip-warmbuild", action="store_true")
-    ap.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
-    ap.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-gguf-decode-rocprof"))
-    ap.add_argument("--top", type=int, default=24)
-    ap.add_argument("--out", type=Path, default=None)
-    args = ap.parse_args()
-    return _run_child(args) if args.child else _run_parent(args)
+    args = _parser().parse_args()
+    for name in (
+        "prompt_length",
+        "steps",
+        "warmup_steps",
+        "repetitions",
+        "baseline_steps",
+        "baseline_repetitions",
+        "profile_steps",
+        "bisect_prompt_length",
+        "bisect_steps",
+    ):
+        if int(getattr(args, name)) <= 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive")
+    for name in ("benchmark_warmups", "baseline_warmup_steps", "baseline_warmups", "profile_warmup_steps"):
+        if int(getattr(args, name)) < 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
+    return _run_child(args) if args.child_mode is not None else _run_parent(args)
 
 
 if __name__ == "__main__":
