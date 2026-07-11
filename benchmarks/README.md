@@ -470,8 +470,8 @@ Its apparent c1/c2 speed benefit cannot enter automatic/default routing.
 True AR c1-c4 is exact across every repetition. One of three client-c8 AR runs
 changes `general_ja_explain` even though its actual backend groups are c4+c4+c2;
 that remains a separate SOL-G8 exact-concurrency blocker, not evidence for a
-width-8 backend. SOL-S1 therefore must make automatic MTP fall back to the
-default AR route until an exact/default hook exists; explicit opt-in keeps the
+width-8 backend. SOL-S1 now makes automatic MTP fall back to the default AR
+route until an exact/default hook exists; explicit opt-in keeps the
 compatibility contract. The compact artifact is
 [`2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json`](results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json).
 

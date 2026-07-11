@@ -234,6 +234,11 @@ _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
 _SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
+_SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
+_SPECULATIVE_MTP_AUTO_REJECTION_REASON = "compatibility_mtp_not_exact"
+_SPECULATIVE_MTP_AUTO_EVIDENCE = (
+    "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json"
+)
 _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
 _GGUF_MTP_MAX_ACTIVE_REQUESTS = 4
 _UNSUPPORTED_GRAMMAR_FIELDS = (
@@ -1137,11 +1142,19 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         {
             "policy": str(config.speculative_mtp_serving),
             "request_field": "speculative_mtp",
-            "default_enabled": str(config.speculative_mtp_serving) == "auto",
+            "default_enabled": False,
             "streaming_compatible": False,
             "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
         }
     )
+    if str(config.speculative_mtp_serving) == "auto":
+        payload["auto_route"] = {
+            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "exact_default_required": True,
+            "compatibility_mtp_explicit_only": True,
+            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+        }
     return payload
 
 
@@ -1689,6 +1702,40 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _resolve_realized_generation_route(
+    requested_route: str,
+    *,
+    group_rows: int,
+    sampling: SamplingParams,
+) -> tuple[str, dict[str, Any] | None]:
+    """Resolve automatic routing only after the batcher's group is known.
+
+    The currently exposed MTP hook implements the explicitly requested
+    ``llama-compat`` contract.  It is not generated-ID exact against true AR,
+    so automatic requests stay on the exact/default route until an exact MTP
+    hook and matching full-suite evidence exist.
+    """
+
+    route = str(requested_route)
+    if route != _SPECULATIVE_MTP_AUTO_ROUTE:
+        return route, None
+    rows = int(group_rows)
+    if rows < 1:
+        raise ValueError("automatic generation route requires a positive realized group")
+    return (
+        _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        {
+            "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "realized_group_rows": rows,
+            "output_horizon_tokens": int(sampling.max_tokens),
+            "exact_default_required": True,
+            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+        },
+    )
+
+
 def _next_stream_item(iterator: Iterator[Any]) -> object:
     try:
         return next(iterator)
@@ -2072,12 +2119,18 @@ class _GenerationBatcher:
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
             queue_group_id = f"queue-{uuid.uuid4().hex}"
-            route = str(group[0].route)
-            route_cap = self._route_request_cap(route)
+            requested_route = str(group[0].route)
+            group_sampling = self._sampling_for_group(group)
+            route, route_decision = _resolve_realized_generation_route(
+                requested_route,
+                group_rows=len(prompts),
+                sampling=group_sampling,
+            )
+            route_cap = self._route_request_cap(requested_route)
             try:
                 batch_result = await self._generate_prompts(
                     tuple(prompts),
-                    self._sampling_for_group(group),
+                    group_sampling,
                     route=route,
                 )
             except Exception as exc:
@@ -2111,6 +2164,7 @@ class _GenerationBatcher:
                                 item_prompt_offset=start,
                                 item_prompt_rows=end - start,
                                 backend_groups=batch_result.backend_groups,
+                                route_decision=route_decision,
                             ),
                         ),
                     )
@@ -3006,6 +3060,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             {
                 _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
                 _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+                _SPECULATIVE_MTP_AUTO_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
             }
             if _server_model_uses_gguf(config, llm)
             else None
@@ -4611,6 +4666,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "schema_version": 1,
                     "route_cap_scope": "queue_requests",
                     "separates": [
+                        "automatic_route_decision",
                         "route_cap",
                         "queue_group_requests",
                         "queue_group_prompt_rows",
@@ -8195,9 +8251,10 @@ def _queue_generation_shape(
     item_prompt_offset: int,
     item_prompt_rows: int,
     backend_groups: Sequence[Mapping[str, Any]],
+    route_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     copied_groups = [deepcopy(dict(group)) for group in backend_groups]
-    return {
+    payload = {
         "schema_version": 1,
         "route": str(route),
         "route_cap": {
@@ -8216,6 +8273,9 @@ def _queue_generation_shape(
         "backend_groups": copied_groups,
         "verifier_rows": sum(int(group.get("verifier_rows", 0)) for group in copied_groups),
     }
+    if route_decision is not None:
+        payload["route_decision"] = deepcopy(dict(route_decision))
+    return payload
 
 
 def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:
@@ -9193,7 +9253,9 @@ def _speculative_mtp_route_for_request(
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
-    return _SPECULATIVE_MTP_BATCH_ROUTE
+    if explicit_requested:
+        return _SPECULATIVE_MTP_BATCH_ROUTE
+    return _SPECULATIVE_MTP_AUTO_ROUTE
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:

@@ -150794,3 +150794,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   benchmark/root README, and benchmark changelog; `performance_claim=false`.
   Next is the RED/GREEN server change that makes `auto` exact-AR fallback with
   explicit reason/group/horizon telemetry while preserving explicit MTP.
+
+## 2026-07-11 - Make compatibility MTP explicit-only in automatic serving
+
+- Moved the `auto` decision from per-request compatibility admission to the
+  realized generation-batcher group. Eligible automatic requests carry a
+  `speculative_mtp_auto` intent; after grouping, the server selects exact/default
+  AR and emits the rejection reason, realized rows, output horizon, and retained
+  S1 evidence path in `generation_shape.route_decision`. Explicit
+  `speculative_mtp=true` requests still select the documented llama-compat MTP
+  hook.
+- RED first proved the previous endpoint sent an eligible two-prompt automatic
+  request through the compatibility hook. A separate parser RED showed
+  `scripts/mtp-bench.py` discarded the new route decision. GREEN covers the
+  endpoint, auto capabilities, GGUF route cap, schema validation, and
+  queue-group aggregation.
+- Validation passes the combined server/benchmark-tool suite `501/501`, the
+  agentic server conformance suite `13/13`, Python compilation, README sync, and
+  `git diff --check`. A live gfx1151 server with
+  `--speculative-mtp-serving auto` returned route `default`, realized rows 2,
+  horizon 4, reason `compatibility_mtp_not_exact`, and verifier rows 0; the same
+  process returned route `speculative_mtp` and verifier rows 3 for explicit
+  opt-in.
+- S1 is accepted. S3 is parked because no exact automatic MTP route is admitted,
+  so there is no stable static MTP policy for context buckets or EWMA hysteresis
+  to improve. This unit changes routing correctness only and makes no new
+  performance claim or benchmark artifact. Next is the real PARO DFlash S4
+  profile.

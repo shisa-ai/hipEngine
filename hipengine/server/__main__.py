@@ -230,7 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=_env_speculative_mtp_serving("HIPENGINE_SPECULATIVE_MTP_SERVING"),
         help=(
             "GGUF MTP serving policy: off, opt_in via request speculative_mtp=true, "
-            "or auto for compatible greedy requests (env HIPENGINE_SPECULATIVE_MTP_SERVING; default: off)"
+            "or auto with exact-AR fallback until an exact/default MTP route is admitted "
+            "(env HIPENGINE_SPECULATIVE_MTP_SERVING; default: off)"
         ),
     )
     parser.add_argument(

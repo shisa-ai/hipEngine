@@ -81,9 +81,12 @@ the server default.
 GGUF MTP serving is guarded and default-off. Start with
 `--speculative-mtp-serving opt_in` or
 `HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
-`"speculative_mtp": true` on a non-streaming greedy request. The `auto` policy
-routes compatible greedy requests through MTP automatically and falls back to AR
-for incompatible requests. The capabilities manifest reports
+`"speculative_mtp": true` on a non-streaming greedy request. That explicitly
+selects the documented `llama-compat` contract. The corrected category gate
+shows this compatibility route is not exact against true AR, so the `auto`
+policy carries compatible requests to the realized batch group but selects
+exact/default AR with a recorded reason, group width, and output horizon. The
+capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
@@ -497,6 +500,14 @@ client harness can validate complete item indices/slices and deduplicate by
 `queue_group.id`. Direct logprob requests bypass queue coalescing and report
 `route_cap.applied=false`. Streaming does not yet emit this group-level object;
 the capabilities manifest reports that limitation explicitly.
+
+Automatic decisions add `route_decision` to the same object. It records
+`requested_route`, `selected_route`, a stable `reason`,
+`realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
+and the evidence artifact. The current reason is
+`compatibility_mtp_not_exact`, with selected route `default`; explicit MTP
+requests retain route `speculative_mtp` and do not carry this automatic
+fallback record.
 
 ### Finish details
 
@@ -1219,12 +1230,14 @@ in local, non-sensitive debugging sessions.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`. When
   `--speculative-mtp-serving opt_in` or `auto` is set and the loaded GGUF engine
-  has NextN tensors, non-streaming greedy-fast requests can use the
-  llama-compat MTP server hook. Resident-slot c=N serving is supported through
-  the generation batcher when the batch window and active-request cap allow it;
-  c=2 is the target path and c=4/c=8 have functional smoke coverage. Streaming
-  MTP and the exact/default MTP server route are not implemented yet. Current
-  MTP serving compatibility is greedy-fast only; `logit_bias`,
+  has NextN tensors, explicit non-streaming greedy-fast requests can use the
+  llama-compat MTP server hook. `auto` advertises `default_enabled=false` and an
+  `auto_route` exact-AR fallback because the compatibility hook is not
+  serial-prefix-equivalent. Resident-slot c=N explicit serving is supported
+  through the generation batcher when the batch window and active-request cap
+  allow it; c=2 is the target path and c=4/c=8 have functional smoke coverage.
+  Streaming MTP and the exact/default MTP server route are not implemented yet.
+  Current MTP serving compatibility is greedy-fast only; `logit_bias`,
   penalties, token suppressions, min-token/EOS policy, explicit EOS finish
   policy, token stops, `ignore_eos=true`, pending forced-token queues,
   post-thinking forced-token queues, token-sequence completion repair, JSON

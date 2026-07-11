@@ -301,6 +301,67 @@ def test_concurrent_shape_aggregate_distinguishes_c8_clients_from_c4_backend_gro
     }
 
 
+def test_generation_shape_preserves_automatic_route_decision() -> None:
+    tool = _load_tool()
+    response = {
+        "hipengine": {
+            "generation_shape": {
+                "schema_version": 1,
+                "route": "default",
+                "route_decision": {
+                    "requested_route": "speculative_mtp_auto",
+                    "selected_route": "default",
+                    "reason": "compatibility_mtp_not_exact",
+                    "realized_group_rows": 2,
+                    "output_horizon_tokens": 24,
+                    "exact_default_required": True,
+                    "evidence": "benchmarks/results/route-gate.json",
+                },
+                "route_cap": {"scope": "queue_requests", "value": 4, "applied": True},
+                "queue_group": {
+                    "id": "queue-auto",
+                    "request_count": 2,
+                    "prompt_rows": 2,
+                    "item_index": 0,
+                    "item_prompt_offset": 0,
+                    "item_prompt_rows": 1,
+                },
+                "backend_groups": [
+                    {
+                        "id": "backend-auto",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 2,
+                        "actual_group_rows": [2],
+                        "max_actual_group_rows": 2,
+                        "verifier_rows": 0,
+                    }
+                ],
+                "verifier_rows": 0,
+            }
+        }
+    }
+
+    shape = tool.generation_shape_from_response(response)
+
+    assert shape is not None
+    assert shape["route_decision"] == response["hipengine"]["generation_shape"]["route_decision"]
+    second_response = json.loads(json.dumps(response))
+    second_queue = second_response["hipengine"]["generation_shape"]["queue_group"]
+    second_queue["item_index"] = 1
+    second_queue["item_prompt_offset"] = 1
+    records = [
+        tool.record_from_response("one", response, 1.0),
+        tool.record_from_response("two", second_response, 1.0),
+    ]
+
+    aggregate = tool.aggregate(records, client_wall_s=1.0, concurrency=2)
+
+    assert aggregate["generation_shape"]["queue_groups"][0]["route_decision"] == shape[
+        "route_decision"
+    ]
+
+
 def test_concurrent_aggregate_deduplicates_copied_batch_timing_by_owner() -> None:
     tool = _load_tool()
     owner = tool.record_from_response(
