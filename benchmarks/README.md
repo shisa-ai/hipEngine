@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`c57f21b5d5d5fd5f389a7f3921062578c53eb744`
+`d1231ee081d9cc6799f59632a8e8db96de4c61c3`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -168,7 +168,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`. The repeated `9707` stream is externally validated on the exact model at gfx1151, but this old gfx1100 run predates the four-step state/KV oracle and current provenance contract. | Diagnostic link only | Run the G1 oracle and repeated performance protocol on W7900 at one clean revision; do not transfer the gfx1151 state result as hardware evidence. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-06-15 | hipEngine `64b86b9a`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp `6e9007ae6` build 9641 | **Stale diagnostic**: one measured run, no measured warmup, and commit/environment live only in WORKLOG rather than the summary artifact | Diagnostic link only | Add a committed gfx1151 refresh runner, emit full provenance in the artifact, and rerun the repeated protocol |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B model sweep | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained**: all six shapes pass clean provenance, finite/stable-ID correctness, five-sample variance, matched Q4_K_M identity, and the four-column promotion gate. | Yes | Rerun after a measured PARO/GGUF path, llama.cpp build, ROCm/RADV stack, or timing/memory contract changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-11 | hipEngine `c941c158`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: external and production tokens match; four hidden/layer/Conv/GDN/KV checkpoints are finite and byte-exact. `performance_claim=false`; unrelated untracked files are disclosed. | Diagnostic link only | Rerun after eager math/state/KV changes; run separately on W7900 before using it to refresh gfx1100 performance. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
@@ -188,6 +188,66 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 Only rows with an eligible evidence status appear in this section. The sync
 script copies this marked block into the root README byte-for-byte.
 
+### gfx1151 model throughput
+
+The clean 2026-07-11 refresh measures Radeon 8060S/gfx1151 at hipEngine
+`d1231ee0`. Each hipEngine shape uses its own right-sized resident session,
+two discarded warmups, and five measured repetitions; the tables report
+medians. llama.cpp uses one internal warmup plus five samples per split
+prefill/decode phase. The accepted top-level artifact checks every return code,
+sample variance, model/build/device identity, clean provenance, and the shared
+Q4_K_M fingerprint before setting `performance_claim=true`.
+
+<!-- BEGIN TOPLINE:GFX1151_SWEEP -->
+#### Prefill tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 994.866 | 430.767 | 1061.260 | 1067.770 |
+| 1K/128 | 810.029 | 437.467 | 1043.230 | 1069.870 |
+| 4K/128 | 671.985 | 403.946 | 1009.240 | 1016.580 |
+| 32K/128 | 599.063 | 369.942 | 743.547 | 814.923 |
+| 64K/128 | 511.248 | 334.395 | 573.611 | 660.974 |
+| 128K/128 | 375.635 | 270.601 | 390.441 | 476.788 |
+
+#### Decode tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 66.753 | 49.536 | 50.939 | 62.396 |
+| 1K/128 | 61.628 | 52.192 | 50.818 | 62.136 |
+| 4K/128 | 62.715 | 52.999 | 50.126 | 60.097 |
+| 32K/128 | 50.362 | 43.947 | 44.240 | 51.319 |
+| 64K/128 | 42.032 | 37.477 | 39.326 | 44.422 |
+| 128K/128 | 30.316 | 27.862 | 32.114 | 34.948 |
+
+#### Peak memory GiB
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 18.144 | 21.478 | 21.375 | 21.551 |
+| 1K/128 | 18.367 | 21.710 | 21.387 | 21.501 |
+| 4K/128 | 19.161 | 22.995 | 21.444 | 21.507 |
+| 32K/128 | 19.864 | 23.559 | 21.987 | 22.191 |
+| 64K/128 | 20.403 | 24.203 | 22.666 | 22.627 |
+| 128K/128 | 22.124 | 25.493 | 23.862 | 24.254 |
+<!-- END TOPLINE:GFX1151_SWEEP -->
+
+The PARO column is W4 PARO/BF16 KV. The other three columns use the same
+Q4_K_M GGUF; hipEngine uses BF16 KV and llama.cpp uses f16 KV. Peak-memory
+scopes differ: hipEngine reports its tracked allocator high-water, while
+llama.cpp reports absolute whole-device amdgpu GTT used, sampled every 10 ms.
+Use the memory table for within-column context growth; small cross-column
+deltas are not allocator-efficiency claims. hipEngine load and graph capture
+are excluded from phase throughput, while the separate SOL-G5 row below is the
+capture-inclusive GGUF graph proof.
+
+Artifacts: [accepted summary](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
+[hipEngine PARO](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
+[hipEngine GGUF](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
+[llama.cpp HIP](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json),
+and [llama.cpp Vulkan](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json).
+
 ### Speculative decode
 
 The public table includes only contracts with a true same-protocol AR control.
@@ -206,6 +266,12 @@ Artifacts: [DFlash](results/2026-06-11-hipengine-dflash-27b-dense-hardening-reru
 [exact MTP](results/2026-07-02-ar-mtp-default-parallelattn-full.json), and
 [`llama-compat` MTP](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
 
+The current clean gfx1151 PARO DFlash profile remains outside this eligible
+table: it is exact but measures only `9.676` versus `65.266 tok/s` AR
+(`0.14825x`), so DFlash stays default-off. Branch-copy is faster but diverges
+at generated token 1, and fused target LM-head is 5.16% slower. The diagnostic
+artifact is [SOL-S4](results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json).
+
 ### GGUF decode
 
 These are exact repeated-token SOL-G4/G5 rows, not natural-prompt quality or
@@ -222,12 +288,36 @@ the older SOL-G4 row remains the canonical eager/Amdahl baseline.
 Artifacts: [`SOL-G4 eager audit`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json)
 and [`SOL-G5 production graph audit`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
+### PARO concurrency and production routing
+
+The current gfx1151 concurrency table publishes only the exact production
+classification. c1 has a retained exact-fixture timing; c2-c8 use independent
+width-1 sessions because every native candidate fails the independent-c1
+sequence at generated index 2. This is not a cross-engine concurrency-speed
+claim, and the rejected native rates remain in the detailed record below.
+
+<!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
+| Client c | Production backend groups | Exact classification | Retained aggregate decode |
+| ---: | --- | --- | ---: |
+| 1 | `1` | c1 oracle / accepted | **66.910 tok/s** (`14.946 ms/token`) |
+| 2 | `1+1` | explicitly serial | no separate c>N claim |
+| 3 | `1+1+1` | explicitly serial | no separate c>N claim |
+| 4 | `1+1+1+1` | explicitly serial | no separate c>N claim |
+| 5 | five width-1 groups | explicitly serial | no separate c>N claim |
+| 6 | six width-1 groups | explicitly serial | no separate c>N claim |
+| 7 | seven width-1 groups | explicitly serial | no separate c>N claim |
+| 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
+<!-- END TOPLINE:GFX1151_PARO_CURRENT -->
+
+Artifacts: [P1 exact catalog](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json)
+and [P2 ragged lifecycle](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json).
+
 The retained gfx1100 and gfx1151 HIP/Vulkan timing-contract v2 micro matrices
 are linked from the platform index and
 [`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); they are not
 model-throughput toplines.
 
-## Diagnostics Awaiting Rerun
+## Platform Records And Diagnostics
 
 The dated records below preserve protocols, blockers, commands, and artifact
 links without publishing their numeric rows as current results. Their removed
@@ -316,34 +406,19 @@ Component artifacts: [hipEngine PARO](results/2026-07-07-w7900-gpu0-readme-refre
 [llama.cpp HIP](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json), and
 [llama.cpp Vulkan](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json).
 
-### gfx1151 model sweep, 2026-06-15
+### Superseded gfx1151 model sweep, 2026-06-15
 
-**Status: stale diagnostic.** This was one measured run per shape with no
-measured warmup. The summary artifact omits the source revision and build
-environment; the run record below recovers those fields from `WORKLOG.md`.
-The next refresh must put those fields in the artifact.
+**Status: superseded diagnostic.** This was one measured run per shape with no
+measured warmup, incomplete summary provenance, and unusable 512 MiB aperture
+memory readings for llama.cpp. The accepted 2026-07-11 sweep above replaces
+every public row with five-sample, clean-provenance evidence and proper GTT
+sampling. Keep the old record only for history.
 
-<!-- BEGIN TOPLINE:GFX1151_SWEEP -->
-No eligible model-throughput row; the one-repetition sweep remains linked below pending a provenance-complete rerun.
-<!-- END TOPLINE:GFX1151_SWEEP -->
-
-Run record:
-
-| Field | Value |
-| --- | --- |
-| GPU | AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 |
-| hipEngine source | Clean detached worktree at `64b86b9a` (recorded in `WORKLOG.md`, absent from summary JSON) |
-| hipEngine build | TheRock HIP `7.13.60980-c76140fa27`; Python 3.13.13; `HIPENGINE_HIP_ARCH=gfx1151` |
-| llama.cpp | Commit `6e9007ae6`, build 9641; same MTP-bearing `UD-Q4_K_M.gguf` for HIP and Vulkan |
-| Protocol | Shapes `512/128` through `128K/128`; one measured run, zero measured warmup runs |
-| Memory scope | Only hipEngine tracked allocator peaks are reported. The APU sysfs interface exposed a 512 MiB aperture, so llama.cpp whole-card memory values are unusable. |
-| Old runner | `/tmp/run_gfx1151_readme_udq4km.sh`; this temporary path is not reproducible and must not be used for another promotion |
-| Summary | [`2026-06-15...summary.json`](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json) |
-
-Component artifacts: [hipEngine PARO](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json),
+Artifacts: [old summary](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json),
+[hipEngine PARO](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json),
 [hipEngine GGUF](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json),
-[llama.cpp HIP](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
-[llama.cpp Vulkan](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json).
+[llama.cpp HIP](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json),
+and [llama.cpp Vulkan](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json).
 
 ### W7900 concurrency, 2026-07-07
 
@@ -375,22 +450,9 @@ P1 uses the same 512-token row at every width and compares 137 generated IDs
 against true single-request sessions. P2 uses ragged lengths 449 through 512
 and checks every persistent state/KV family through c8-to-c1 retirement.
 
-<!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
-| Client c | Production backend groups | Exact classification | Retained aggregate decode |
-| ---: | --- | --- | ---: |
-| 1 | `1` | c1 oracle / accepted | **66.910 tok/s** (`14.946 ms/token`) |
-| 2 | `1+1` | explicitly serial | no separate c>N claim |
-| 3 | `1+1+1` | explicitly serial | no separate c>N claim |
-| 4 | `1+1+1+1` | explicitly serial | no separate c>N claim |
-| 5 | five width-1 groups | explicitly serial | no separate c>N claim |
-| 6 | six width-1 groups | explicitly serial | no separate c>N claim |
-| 7 | seven width-1 groups | explicitly serial | no separate c>N claim |
-| 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
-<!-- END TOPLINE:GFX1151_PARO_CURRENT -->
-
 No eligible native-batch timing row exists. The c2-c8 native measurements below
 are correctness-rejected diagnostics; production uses the exact serial groups
-shown above.
+shown in the current concurrency table above.
 
 Protocol: Qwen3.6-35B-A3B PARO snapshot
 `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV, 40 layers,
@@ -593,7 +655,7 @@ REPO_ROOT="$WORKTREE" \
   "$WORKTREE/scripts/run_gfx1151_readme_refresh.sh" all
 ```
 
-Subset commands are `... hipengine` and `... llamacpp`. The runner fixes the
+Subset commands are `... hipengine`, `... llamacpp`, and `... summary`. The runner fixes the
 model identities, six standard shapes, native gfx1151 compiler target,
 torch-free hermetic TheRock environment, two discarded plus five measured
 hipEngine runs, and five internal llama-bench repetitions. It records a
@@ -603,7 +665,10 @@ merge gate verifies and preserves all samples in one compact rollup. This keeps
 512/1K memory honest and avoids imposing a 128K allocation on every row.
 Discarded runs warm the same kernels through eager submission; each measured
 run captures and destroys a fresh state-bound graph after reset/prefill/warmup,
-so no captured graph crosses a session reset.
+so no captured graph crosses a session reset. The summary phase verifies all
+four component artifacts together and generates the Markdown tables only when
+their provenance, model/build identity, correctness, return-code, variance,
+and memory-scope gates pass.
 
 gfx1151 is a UMA APU: sysfs reports only a 512 MiB visible-VRAM aperture while
 the amdgpu GTT domain is 120 GiB and holds model allocations. The runner
@@ -623,14 +688,12 @@ Before updating the gfx1151 tables:
 4. Keep comparison engines in separate columns when quant or timing scope
    differs. Do not bold a cross-quant winner.
 
-The 2026-07-10 timing diagnostic at `4175dabf`/`02aec604` satisfies
-detected/target architecture and primitive c2-c8 checks. Its generated-token
-oracle was batch-shaped. At `0c184517` with `hipengine_dirty=false`, the
-shrinking gate rejects native c8 and accepts the serial bridge through c1.
-Neither artifact is a full refresh:
-the independent-c1 direct c2-c8 matrix, ragged contexts, profiler, and scaling
-gates are missing. Use the compact artifacts for the lower-level commands, not
-as a substitute for the five requirements above.
+The clean P1/P2 artifacts now satisfy the current c1-c8 independent-c1 and
+ragged shrinking lifecycle gates. They retain c1 timing and classify c2-c8 as
+exact width-1 production groups because every native candidate is
+correctness-red. A future cross-engine concurrency-speed table still requires
+one matched quant/timing protocol; do not republish the superseded 2026-06-15
+native numbers as production throughput.
 
 The lower-level hipEngine sweep command is:
 

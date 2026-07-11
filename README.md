@@ -131,7 +131,7 @@ configuration was:
 A replacement capacity table must record the GGUF fingerprint, llama.cpp
 commit/build, GPU, full command, and whole-card sampling artifact.
 
-## Model Performance Diagnostics Awaiting Rerun
+## Model Performance
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
@@ -152,27 +152,63 @@ W7900 row sources: [`summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-r
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
-**Status: stale diagnostic.** The Strix Halo rows were measured on 2026-06-15
-from a clean detached worktree at `64b86b9a` with TheRock HIP
-`7.13.60980-c76140fa27`. The run used one measured repetition and no measured
-warmup. Its summary omits the source/build provenance, which was recovered from
-`WORKLOG.md`; the next refresh must emit it in the artifact.
+**Status: retained.** The Strix Halo rows were measured on 2026-07-11 from a
+clean detached worktree at `d1231ee0` with TheRock HIP
+`7.13.60980-c76140fa27`. hipEngine uses two discarded warmups plus five
+measured repetitions per right-sized resident shape; llama.cpp uses one
+internal warmup plus five samples per split phase. The top-level artifact
+passes clean provenance, stable finite-output, variance, model/build/device,
+and memory-scope gates.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
-No eligible model-throughput row; the one-repetition sweep remains linked below pending a provenance-complete rerun.
+#### Prefill tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 994.866 | 430.767 | 1061.260 | 1067.770 |
+| 1K/128 | 810.029 | 437.467 | 1043.230 | 1069.870 |
+| 4K/128 | 671.985 | 403.946 | 1009.240 | 1016.580 |
+| 32K/128 | 599.063 | 369.942 | 743.547 | 814.923 |
+| 64K/128 | 511.248 | 334.395 | 573.611 | 660.974 |
+| 128K/128 | 375.635 | 270.601 | 390.441 | 476.788 |
+
+#### Decode tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 66.753 | 49.536 | 50.939 | 62.396 |
+| 1K/128 | 61.628 | 52.192 | 50.818 | 62.136 |
+| 4K/128 | 62.715 | 52.999 | 50.126 | 60.097 |
+| 32K/128 | 50.362 | 43.947 | 44.240 | 51.319 |
+| 64K/128 | 42.032 | 37.477 | 39.326 | 44.422 |
+| 128K/128 | 30.316 | 27.862 | 32.114 | 34.948 |
+
+#### Peak memory GiB
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 18.144 | 21.478 | 21.375 | 21.551 |
+| 1K/128 | 18.367 | 21.710 | 21.387 | 21.501 |
+| 4K/128 | 19.161 | 22.995 | 21.444 | 21.507 |
+| 32K/128 | 19.864 | 23.559 | 21.987 | 22.191 |
+| 64K/128 | 20.403 | 24.203 | 22.666 | 22.627 |
+| 128K/128 | 22.124 | 25.493 | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
-On Strix Halo, `rocm-smi` / sysfs exposed only a 512 MiB VRAM aperture, so
-cross-engine memory comparisons are omitted. Row sources: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json),
-[`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json),
-[`hipEngine GGUF`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json),
-[`llama.cpp HIP`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
-[`llama.cpp Vulkan`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json). The canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-sweep-2026-06-15) records the missing-runner blocker and next refresh protocol.
+The memory columns have different scopes: hipEngine reports tracked allocator
+high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
+sampled every 10 ms. Use them for within-column context growth, not small
+cross-column allocator comparisons. Row sources: [`accepted summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
+[`hipEngine PARO`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
+[`hipEngine GGUF`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
+[`llama.cpp HIP`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json), and
+[`llama.cpp Vulkan`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json). Exact settings and gates are in the canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-throughput).
 
 ### Current gfx1151 GGUF decode baselines
 
-These are the retained exact repeated-token SOL-G4/G5 rows; they do not turn
-the old one-repetition model sweep into a current cross-engine comparison.
+These are separate exact repeated-token SOL-G4/G5 controls. The model sweep
+above excludes graph capture from steady decode throughput; SOL-G5 charges one
+capture/instantiate and destroy to each 128-token window.
 
 <!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
 | Path | Platform and protocol | Result | Evidence status |
@@ -220,16 +256,15 @@ slower than unfused. See the
 and the canonical
 [`benchmark analysis`](benchmarks/README.md#gfx1151-paro-dflash-s4-profile-2026-07-11).
 
-## Concurrency Diagnostics Awaiting Rerun
+## Concurrency
 
-hipEngine contains an opt-in native `c>1` diagnostic path: scheduler-owned
-compact prefill plus device-resident batched decode. The gfx1151 path is not
-routing-eligible because P1's direct matrix fails the independent c1 oracle.
-Production PARO batches use width-1 sessions; P2 now proves that route exact
-through ragged c8-to-c1 EOS/cancel transitions and front/middle/tail sparse
-slots. Native batching remains closed until a general c>N algorithm passes the
-same token/state/KV gates. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for
-the design and C3.0a/b/c history.
+The current publishable gfx1151 table is the exact PARO production-routing
+catalog below. c1 has a retained timing; c2-c8 use width-1 sessions because
+every native candidate fails the independent-c1 oracle. P2 proves that serial
+route through ragged c8-to-c1 EOS/cancel transitions and front/middle/tail
+sparse slots. Native batching remains closed until a general c>N algorithm
+passes the same token/state/KV gates. See
+[`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for the design history.
 
 The linked records keep gfx1100 and gfx1151 separate because the model files,
 ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across

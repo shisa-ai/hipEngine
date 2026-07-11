@@ -151284,3 +151284,67 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passes 10/10; Python compilation and `git diff --check` pass. No GPU rerun is
   required; regenerate both rollups from the clean saved components after this
   fix is committed.
+
+## 2026-07-11 - Publish the accepted gfx1151 four-engine topline refresh
+
+- Completed the full six-shape refresh on AMD Ryzen AI MAX+ 395 / Radeon 8060S
+  (`gfx1151`) from clean detached hipEngine `d1231ee0`, using TheRock HIP
+  `7.13.60980-c76140fa27`. PARO used the 20.497 GB
+  `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` revision `437eba06...`; hipEngine
+  GGUF and both llama.cpp backends used the same 22.663 GB
+  `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` fingerprint `936659d6...`. PARO/GGUF used
+  BF16 KV; llama.cpp HIP/Vulkan used f16 K/V. The exact phase commands were:
+
+  ```bash
+  RUN_TAG=20260711-d1231ee0 OUTDIR=/home/lhl/hipEngine-main/benchmarks/results REPO_ROOT=/tmp/hipengine-readme-gfx1151-d1231ee0 /tmp/hipengine-readme-gfx1151-d1231ee0/scripts/run_gfx1151_readme_refresh.sh hipengine
+  RUN_TAG=20260711-d1231ee0 OUTDIR=/home/lhl/hipEngine-main/benchmarks/results REPO_ROOT=/tmp/hipengine-readme-gfx1151-d1231ee0 /tmp/hipengine-readme-gfx1151-d1231ee0/scripts/run_gfx1151_readme_refresh.sh llamacpp
+  RUN_TAG=20260711-d1231ee0 OUTDIR=/home/lhl/hipEngine-main/benchmarks/results REPO_ROOT=/tmp/hipengine-readme-rollup-7e9aad21 LOGDIR=/tmp/hipengine-readme-gfx1151/20260711-d1231ee0 /tmp/hipengine-readme-rollup-7e9aad21/scripts/run_gfx1151_readme_refresh.sh summary
+  ```
+
+- hipEngine used two discarded warmups plus the median of five measured
+  right-sized resident sessions per shape. llama.cpp HIP `1ebf790cd` build
+  9648 and Vulkan `6e9007ae6` build 9641 used one internal warmup plus five
+  split-phase samples. The accepted medians are:
+
+  | Workload | PARO prefill | GGUF prefill | llama HIP prefill | llama Vulkan prefill | PARO decode | GGUF decode | llama HIP decode | llama Vulkan decode |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | 512/128 | 994.866 | 430.767 | 1061.260 | 1067.770 | 66.753 | 49.536 | 50.939 | 62.396 |
+  | 1K/128 | 810.029 | 437.467 | 1043.230 | 1069.870 | 61.628 | 52.192 | 50.818 | 62.136 |
+  | 4K/128 | 671.985 | 403.946 | 1009.240 | 1016.580 | 62.715 | 52.999 | 50.126 | 60.097 |
+  | 32K/128 | 599.063 | 369.942 | 743.547 | 814.923 | 50.362 | 43.947 | 44.240 | 51.319 |
+  | 64K/128 | 511.248 | 334.395 | 573.611 | 660.974 | 42.032 | 37.477 | 39.326 | 44.422 |
+  | 128K/128 | 375.635 | 270.601 | 390.441 | 476.788 | 30.316 | 27.862 | 32.114 | 34.948 |
+
+  Throughput is tok/s. Peak GiB by the same workload order is PARO
+  `18.144/18.367/19.161/19.864/20.403/22.124`, GGUF
+  `21.478/21.710/22.995/23.559/24.203/25.493`, llama.cpp HIP
+  `21.375/21.387/21.444/21.987/22.666/23.862`, and llama.cpp Vulkan
+  `21.551/21.501/21.507/22.191/22.627/24.254`. hipEngine reports tracked
+  allocator high-water; llama.cpp reports absolute whole-device amdgpu GTT
+  used, polled every 10 ms. Cross-column allocator comparisons are therefore
+  invalid; within-column context growth is valid.
+- The final summary is `accepted_topline` with `performance_claim=true` and
+  every promotion gate true: all phase return codes and variance gates pass,
+  all components are clean/same-revision/gfx1151, output IDs are stable and
+  logits finite, the GGUF identity matches, both llama.cpp builds/devices are
+  named, and the GTT scope is explicit. Worst llama.cpp phase variation is
+  2.469% (HIP 512 prefill), below the 5% gate. Linked correctness is the GGUF
+  external/state oracle (`SOL-G1`) and PARO exact c1-c8 routing catalog
+  (`SOL-P1`). The clean `7e9aad21` assembly only repairs the singular/plural
+  finite-logit schema gate; it does not relabel or rerun the `d1231ee0`
+  measurements.
+- Published five compact artifacts: PARO, GGUF, llama.cpp HIP, llama.cpp
+  Vulkan, and the accepted summary under
+  `benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-*`.
+  Updated the canonical benchmark scoreboard and changelog, synchronized the
+  root README with separate prefill/decode/peak-memory tables, retained the
+  DFlash/MTP section, and published the exact PARO production concurrency
+  route table. `docs/SOL-OPTIMIZATION.md` now records this refresh and states
+  that matched Q6, general exact native c>N, and exact profitable speculation
+  are parked reactivation gates rather than topline prerequisites.
+- The repository-wide milestone gate had already passed all 5,997 collected
+  tests before this benchmark-only/docs publication unit. After the runner and
+  artifact changes, `uv run pytest -q tests/test_gfx1151_readme_refresh.py
+  tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
+  passes 19/19. README synchronization, Python compilation of both assemblers,
+  runner shell syntax, JSON parsing, and `git diff --check` also pass.
