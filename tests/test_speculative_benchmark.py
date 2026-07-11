@@ -241,6 +241,7 @@ def test_dflash_chain_artifact_uses_canonical_provenance(
     assert captured["warmups"] == 0
     assert captured["repetitions"] == 1
     assert captured["environment"]["HIPENGINE_DFLASH_VERIFY_SYNC_PHASES"] is None
+    assert captured["environment"]["HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD"] is None
     assert captured["profiler"] == {
         "enabled": False,
         "phase_telemetry": True,

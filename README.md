@@ -212,6 +212,14 @@ compatibility hook explicit-only. See the
 [`route-gate artifact`](benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json)
 and canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-gguf-server-automatic-route-gate-2026-07-11).
 
+The clean gfx1151 PARO DFlash S4 profile is exact but not competitive:
+`9.68` versus `65.27 tok/s` AR (`0.148x`) at B4/32 tokens. Branch-copy is
+faster but diverges at generated token 1, and fused target LM-head is 5.16%
+slower than unfused. See the
+[`compact profile`](benchmarks/results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json)
+and the canonical
+[`benchmark analysis`](benchmarks/README.md#gfx1151-paro-dflash-s4-profile-2026-07-11).
+
 ## Concurrency Diagnostics Awaiting Rerun
 
 hipEngine contains an opt-in native `c>1` diagnostic path: scheduler-owned

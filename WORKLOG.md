@@ -150839,3 +150839,50 @@ graphless decode launch-collapse path without regressing target/serial parity.
   performance claim is created by this harness-only unit. The S4 measurement
   will run from a separate clean worktree so the primary checkout's unrelated
   untracked benchmark files remain untouched and fully disclosed.
+
+## 2026-07-11 - Close PARO DFlash S4-S7 on gfx1151
+
+- Ran the real 35B profile from detached clean `8eb27215` on Radeon 8060S /
+  gfx1151 with cached TheRock HIP 7.13 builds. The intended pair is target
+  `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` revision
+  `501ef863...c8d1` plus drafter `z-lab/Qwen3.6-35B-A3B-DFlash` revision
+  `42d3b34d...a719`; metadata/shape validation passes. The first preflight used
+  the generic shisa snapshot before the curated assembly was discovered. It
+  produced the same exact IDs/economics but is excluded from retained S4
+  evidence. Two earlier retained attempts stopped before model load while the
+  source-root-keyed AOTriton cache and compiler-version input were made ready;
+  the actual rows use `--require-cached-build`.
+- S4 exact/default canonical replay, first `code_promotion` prompt, B4/D32:
+  same-session AR is `65.266 tok/s` (`0.490301 s`) and DFlash is
+  `9.676 tok/s` (`3.307265 s`), or `0.14825x`. All 32 IDs match SHA-256
+  `ef22f4fd...202e`; all AR/draft/verify logits are finite. Thirty cycles accept
+  only 1/114 proposed draft tokens and spend 182 target rows, or 5.6875 rows per
+  output. `performance_claim=false`.
+- Coarse attribution is target verify `2.467947 s` (74.62%), draft
+  `0.833696 s` (25.21%), commit `0.003751 s`, and other `0.001869 s`.
+  Verifier graph auto records 30 validated misses and zero hits across the
+  primary chain-tloop shape (27 cycles) and three tail tree-tloop budgets.
+  The synchronized profiling-only companion remains exact and attributes total
+  wall to target linear layers 37.41%, drafter decoder+LM-head 25.55%, canonical
+  replay/canonicalization 20.80%, target full attention 7.51%, and target
+  LM-head/top1 5.37%. Drafter top-k/readback is 0.407%, commit scatter 0.249%,
+  and accept readback 0.042%.
+- S5 branch-copy is rejected. It enables 27 graph hits after two captures and
+  raises DFlash `9.676 -> 14.450 tok/s` (+49.34%), but generated IDs first differ
+  at index 1 (`70c3005e...fd35` versus AR `ef22f4fd...202e`). Canonical c1 replay
+  remains mandatory; direct commit/scatter state inherits the P1 native-c>N
+  blocker.
+- S6 is parked: wider groups would multiply rejected verifier rows at the
+  observed 0.0333 average accept length, and this single-request profile has no
+  multi-request draft serialization/group-cap signal. S7 fused target LM-head
+  stays exact but regresses `9.676 -> 9.177 tok/s` (-5.16%); no readback or
+  sampler rewrite activates. The provenance collector now also records the
+  fused-LM-head env on future rows.
+- Retained compact diagnostic
+  `benchmarks/results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json` is
+  12,940 bytes, SHA-256
+  `b940be80864ab79c01a7eba67e9ca0d39c2c4a920ad4017a82e7862526781924`.
+  It records exact commands/environments plus raw pair/coarse/sync/branch/fused
+  source sizes and hashes. Updated SOL, PARO transfer/refactor ledgers,
+  benchmark/root README, and benchmark changelog. S4-S7 are closed; this unit
+  promotes no DFlash default or performance number.

@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-11**
 
 Latest measured hipEngine revision in this scoreboard:
-`d2b1e7426d9de21068e32d708e9730c030ec951a`
+`8eb272155703ca45ad126b68c593ab8dc1f3ec09`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -440,6 +440,34 @@ embedded in the compact artifact. Reproduce P2 with
 `scripts/qwen35_batch_shrinking_correctness.py --batch-size 8
 --prompt-lengths 449,458,467,476,485,494,503,512 --steps-per-width 1
 --survivor-slot 4 --eos-slot 3` and the same model/fixture.
+
+### gfx1151 PARO DFlash S4 profile, 2026-07-11
+
+**Status: retained diagnostic profile; no performance claim.** Clean detached
+hipEngine `8eb27215` ran the curated 35B W4 PARO/BF16-KV target and 35B BF16
+DFlash drafter on the first `code_promotion` fixture, B4 and 32 output tokens.
+The exact/default replay route matches all AR IDs and finite-logit gates, but it
+is decisively slower:
+
+| Route | AR tok/s | DFlash tok/s | DFlash/AR | Exact | Decision |
+| --- | ---: | ---: | ---: | --- | --- |
+| Canonical replay, graph auto | 65.266 | 9.676 | 0.148x | yes | S4 profile accepted; speed rejected |
+| Branch-copy commit | 65.269 | 14.450 | 0.221x | no, first mismatch 1 | S5 correctness rejection |
+| Canonical replay + fused target LM-head | 65.223 | 9.177 | 0.141x | yes | S7 performance rejection (-5.16%) |
+
+The exact row accepts 1/114 proposed draft tokens and spends 5.6875 target rows
+per output. Coarse attribution is 74.62% target verify and 25.21% draft; the
+profiling-only synchronized companion identifies target linear layers (37.41%
+of total wall), drafter decoder+LM-head (25.55%), and canonical replay plus
+scratch canonicalization (20.80%) as the largest buckets. Commit scatter is
+0.25%, drafter top-k/readback 0.41%, and accept readback 0.04%.
+
+Exact replay records 30 validated verifier-graph misses and zero hits across
+two shapes. Branch-copy records 27 hits after two captures, but inherits the
+known non-canonical c>N state and fails output equality. S6 is therefore parked:
+wider verification would amplify rejected work, and this c1 row shows no
+multi-request draft group-cap bottleneck. Compact evidence:
+[`2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json`](results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json).
 
 ### gfx1151 GGUF server automatic-route gate, 2026-07-11
 
