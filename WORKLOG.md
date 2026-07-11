@@ -150530,3 +150530,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   compilation and `git diff --check` pass. Ruff is not installed in the active
   environment (`No module named ruff`). This is a selector-boundary fix with no
   math, allocation, or performance-path change; resume the clean G6 census.
+
+## 2026-07-11 - SOL-G6 current residency audit harness
+
+- Added a compact G6 postprocessor for a clean persistent
+  `qwen35_gguf_bench.py` graph run. It classifies the actual resident weights by
+  raw/replacement/dense layout, audits the full materialization plan by source
+  tensor for raw+replacement duplication and optional sidecars, retains
+  KV/scales/decode-scratch/prefill-session bytes, and estimates production
+  graph/exec residency from synchronized live-minus-closed phase snapshots.
+- The gate checks both owned-session and tracked peak against an explicit
+  24 GiB budget, verifies graph/session close accounting, requires concrete
+  clean gfx1151 provenance, and cryptographically links the accepted G5
+  128-launch exact/capture-inclusive performance gate. G6 introduces no new
+  runtime layout or performance claim; a clean census decides whether the
+  existing replacement-only default already satisfies the exit gate.
+- Repaired `qwen35_gguf_bench.py` artifact identity while adding the input
+  contract: each run now records the resolved backend/target, the top-level
+  backend is no longer hard-coded gfx1100, and raw artifacts embed canonical
+  model/repo/toolchain provenance.
+- RED/GREEN: synthetic plan coverage distinguishes replacement-only storage
+  from same-source raw+T16 and T16+X8 sidecars; the compact-artifact fixture
+  checks KV, graph delta, 24 GiB margin, close, and G5 linkage. Focused tests
+  pass `9/9`; Python compilation and `git diff --check` pass. Next action is a
+  clean gfx1151 p512/d128 source run and compact retained G6 artifact.

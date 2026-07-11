@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shlex
 import statistics
 import sys
@@ -33,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
@@ -279,11 +281,47 @@ def main() -> int:
         )
 
     measured_runs = [run for run in runs if run["measured"]]
+    resolved_backends = {str(run["resolved_backend"]) for run in runs}
+    target_arches = {str(run["target_arch"]) for run in runs}
+    if len(resolved_backends) != 1 or len(target_arches) != 1:
+        raise RuntimeError(
+            "GGUF benchmark runs changed backend identity: "
+            f"backends={sorted(resolved_backends)}, arches={sorted(target_arches)}"
+        )
+    resolved_backend = next(iter(resolved_backends))
+    target_arch = next(iter(target_arches))
+    provenance = collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend="auto",
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        model_path=args.model,
+        quant=str(args.quant),
+        kv_dtype=kv_policy.storage_dtype.value,
+        command=argv_payload["argv"],
+        environment={
+            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
+            "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+            "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
+            "HIPENGINE_GGUF_MOE_GRAPH": os.environ.get("HIPENGINE_GGUF_MOE_GRAPH"),
+        },
+        build_profile="qwen35_gguf_resident_bench",
+        timing_protocol=(
+            "resident GGUF session; prefill and decode timed separately; "
+            "graph capture excluded from decode throughput and reported separately"
+        ),
+        warmups=int(args.warmup_runs),
+        repetitions=int(args.measured_runs),
+        profiler={"enabled": False, "reason": "host wall and residency benchmark"},
+    )
     output = {
         "schema": 1,
         "model": str(args.model),
         "quant": args.quant,
-        "backend": "hip_gfx1100",
+        "backend": resolved_backend,
+        "resolved_backend": resolved_backend,
+        "target_arch": target_arch,
+        "provenance": provenance,
         "argv": argv_payload["argv"],
         "command": argv_payload["command"],
         "gguf": gguf_inventory,
@@ -668,6 +706,8 @@ def _run_existing_session_once(
         "run_index": int(run_index),
         "measured": bool(measured),
         "persistent_session": bool(persistent_session),
+        "resolved_backend": str(session.backend),
+        "target_arch": str(session.runner.target_arch),
         "model": str(model),
         "quant": quant,
         "prompt_length": len(prompt_tokens),
@@ -769,6 +809,8 @@ def _run_once(
     )
     load_seconds = time.perf_counter() - load_start
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
+    resolved_backend = str(session.backend)
+    target_arch = str(session.runner.target_arch)
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
 
     generated_token_ids: list[int] = []
@@ -833,6 +875,8 @@ def _run_once(
     return {
         "run_index": int(run_index),
         "measured": bool(measured),
+        "resolved_backend": resolved_backend,
+        "target_arch": target_arch,
         "model": str(model),
         "quant": quant,
         "prompt_length": len(prompt_tokens),
