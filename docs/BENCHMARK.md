@@ -122,6 +122,10 @@ Hard rules:
   `mixed_ja_en_review`; train is the remaining six prompts. A change is not a win
   if it improves train acceptance while regressing heldout acceptance or true-AR
   speed ratio.
+- **Run the committed suite directly.** `scripts/mtp-bench.py` accepts both its
+  legacy JSON prompt bundle and the canonical category JSONL. JSONL artifacts
+  emit the exact source SHA-256, selected prompt names, category counts, and the
+  six-train/four-heldout identity; do not benchmark an untracked converted copy.
 - **Greedy selection stays greedy.** Draft/target token selection in benchmark
   harnesses is pure argmax/top-k. The guard test
   `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
