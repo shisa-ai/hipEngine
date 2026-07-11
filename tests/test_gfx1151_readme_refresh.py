@@ -15,6 +15,8 @@ from scripts.assemble_gfx1151_readme_topline import (
 from scripts.llamacpp_bench_with_peak import parse_args
 from scripts.merge_readme_sweep_components import (
     STANDARD_WORKLOADS,
+    _finalize_rollup,
+    _finite_final_logit_passed,
     _merge_component_payloads,
 )
 from scripts.qwen35_readme_sweep import (
@@ -259,6 +261,29 @@ def test_component_rollup_promotes_six_clean_right_sized_workloads(
     }
 
 
+def test_component_rollup_accepts_paro_and_gguf_finite_logit_keys() -> None:
+    assert _finite_final_logit_passed({"finite_final_logit": True}) is True
+    assert _finite_final_logit_passed({"finite_final_logits": True}) is True
+    assert _finite_final_logit_passed({"finite_final_logit": False}) is False
+    assert _finite_final_logit_passed({}) is False
+
+
+def test_rollup_preserves_measured_provenance_and_separates_assembly() -> None:
+    measured = _provenance()
+    output = {"status": "accepted_topline", "performance_claim": True, "provenance": measured}
+    assembly = {**measured, "hipengine_commit": "d" * 40, "dirty": False}
+
+    finalized = _finalize_rollup(output, assembly_provenance=assembly)
+
+    assert finalized["provenance"]["hipengine_commit"] == "a" * 40
+    assert finalized["rollup_assembly_provenance"]["hipengine_commit"] == "d" * 40
+    assert finalized["performance_claim"] is True
+
+    dirty = _finalize_rollup(output, assembly_provenance={**assembly, "dirty": True})
+    assert dirty["status"] == "rejected_topline_gate"
+    assert dirty["performance_claim"] is False
+
+
 def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     script = repo_root / "scripts/run_gfx1151_readme_refresh.sh"
@@ -271,6 +296,7 @@ def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     assert "--memory-domain gtt" in text
     assert "merge_readme_sweep_components.py" in text
     assert "assemble_gfx1151_readme_topline.py" in text
+    assert 'memory.pop("kv_memory_audit", None)' in text
     assert "llamacpp-hip" in text
     assert "llamacpp-vulkan" in text
 

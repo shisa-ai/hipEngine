@@ -60,6 +60,15 @@ def _metric_gate(stats: dict[str, Any]) -> bool:
     return float(stdev) <= 0.05 * float(median)
 
 
+def _finite_final_logit_passed(correctness_sanity: dict[str, Any]) -> bool:
+    """Accept the established PARO singular and GGUF plural field names."""
+
+    return (
+        correctness_sanity.get("finite_final_logit") is True
+        or correctness_sanity.get("finite_final_logits") is True
+    )
+
+
 def _merge_component_payloads(
     components: Sequence[tuple[Path, dict[str, Any]]],
     *,
@@ -97,7 +106,7 @@ def _merge_component_payloads(
             raise ValueError(f"{path}: missing summary/runs for {workload}")
         measured = [run for run in runs if run.get("measured")]
         finite = all(
-            run.get("correctness_sanity", {}).get("finite_final_logit") is True
+            _finite_final_logit_passed(run.get("correctness_sanity", {}))
             for run in measured
         )
         ids_stable = summary.get("final_token_ids_stable") is True
@@ -181,6 +190,23 @@ def _merge_component_payloads(
     }
 
 
+def _finalize_rollup(
+    output: dict[str, Any], *, assembly_provenance: dict[str, Any]
+) -> dict[str, Any]:
+    """Attach assembly identity without replacing the measured source identity."""
+
+    finalized = dict(output)
+    finalized["rollup_assembly_provenance"] = assembly_provenance
+    correctness = dict(finalized.get("correctness") or {})
+    assembly_clean = assembly_provenance.get("dirty") is False
+    correctness["rollup_assembly_provenance_clean"] = assembly_clean
+    finalized["correctness"] = correctness
+    if not assembly_clean:
+        finalized["status"] = "rejected_topline_gate"
+        finalized["performance_claim"] = False
+    return finalized
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", choices=("paro", "gguf"), required=True)
@@ -195,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     first_provenance = validate_artifact_provenance(
         components[0][1].get("provenance") or {}, require_model=True
     )
-    provenance = collect_artifact_provenance(
+    assembly_provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(first_provenance["configured_backend"]),
         resolved_backend=str(first_provenance["resolved_backend"]),
@@ -214,7 +240,15 @@ def main(argv: list[str] | None = None) -> int:
         rocm_version=first_provenance.get("rocm_version"),
         hipcc_version=first_provenance.get("hipcc_version"),
     )
-    output = _merge_component_payloads(components, engine=args.engine, provenance=provenance)
+    output = _merge_component_payloads(
+        components,
+        engine=args.engine,
+        provenance=first_provenance,
+    )
+    output = _finalize_rollup(
+        output,
+        assembly_provenance=assembly_provenance,
+    )
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(
