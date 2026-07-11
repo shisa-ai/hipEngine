@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import subprocess
@@ -52,6 +53,14 @@ SOURCE_GIST = "https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090"
 SOURCE_RAW = (
     "https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/"
     "0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py"
+)
+DEFAULT_HELDOUT_PROMPT_NAMES = frozenset(
+    {
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    }
 )
 
 
@@ -83,23 +92,80 @@ def server_artifact_provenance(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
+def _prompt_text_from_messages(messages: Any, *, path: Path, name: str) -> str:
+    if not isinstance(messages, list) or len(messages) != 1:
+        raise BenchError(
+            f"{path} prompt {name!r} must contain exactly one user message"
+        )
+    message = messages[0]
+    if not isinstance(message, dict) or message.get("role") != "user":
+        raise BenchError(f"{path} prompt {name!r} must contain one user message")
+    content = message.get("content")
+    if not isinstance(content, str) or not content:
+        raise BenchError(f"{path} prompt {name!r} user content must be non-empty text")
+    return content
+
+
+def _normalize_prompt_entry(item: Any, *, path: Path) -> dict[str, str]:
+    if not isinstance(item, dict):
+        raise BenchError(f"invalid prompt entry in {path}: {item!r}")
+    name = str(item.get("name") or item.get("id") or "")
+    if not name:
+        raise BenchError(f"prompt entries require a non-empty name/id: {item!r}")
+    prompt = item.get("prompt")
+    if not isinstance(prompt, str) or not prompt:
+        prompt = _prompt_text_from_messages(item.get("messages"), path=path, name=name)
+
+    normalized = {"name": name, "prompt": prompt}
+    category = item.get("category")
+    if category is not None:
+        if not isinstance(category, str) or not category:
+            raise BenchError(f"{path} prompt {name!r} category must be non-empty text")
+        normalized["category"] = category
+    split = item.get("split")
+    if split is not None:
+        if split not in {"train", "heldout"}:
+            raise BenchError(f"{path} prompt {name!r} split must be train or heldout")
+        normalized["split"] = str(split)
+    elif category is not None:
+        normalized["split"] = "heldout" if name in DEFAULT_HELDOUT_PROMPT_NAMES else "train"
+    return normalized
+
+
 def load_prompt_suite(path: Path) -> dict[str, Any]:
-    suite = json.loads(path.read_text(encoding="utf-8"))
+    raw_text = path.read_text(encoding="utf-8")
+    try:
+        loaded = json.loads(raw_text)
+    except json.JSONDecodeError:
+        raw_prompts: list[Any] = []
+        for line_number, line in enumerate(raw_text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                raw_prompts.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise BenchError(f"invalid JSONL in {path} at line {line_number}: {exc}") from exc
+        suite: dict[str, Any] = {"prompts": raw_prompts, "source_format": "jsonl"}
+    else:
+        if not isinstance(loaded, dict):
+            raise BenchError(f"{path} must contain a JSON object or JSONL prompt rows")
+        suite = dict(loaded)
+        suite["source_format"] = "json"
+
     prompts = suite.get("prompts")
     if not isinstance(prompts, list) or not prompts:
         raise BenchError(f"{path} does not contain a non-empty 'prompts' list")
 
     seen: set[str] = set()
+    normalized_prompts: list[dict[str, str]] = []
     for item in prompts:
-        if not isinstance(item, dict):
-            raise BenchError(f"invalid prompt entry in {path}: {item!r}")
-        name = str(item.get("name") or "")
-        prompt = str(item.get("prompt") or "")
-        if not name or not prompt:
-            raise BenchError(f"prompt entries require non-empty name and prompt: {item!r}")
+        normalized = _normalize_prompt_entry(item, path=path)
+        name = normalized["name"]
         if name in seen:
             raise BenchError(f"duplicate prompt name in {path}: {name}")
         seen.add(name)
+        normalized_prompts.append(normalized)
+    suite["prompts"] = normalized_prompts
     return suite
 
 
@@ -115,7 +181,7 @@ def select_prompts(
     names_csv: str | None = None,
     limit: int | None = None,
 ) -> list[dict[str, str]]:
-    prompts = [{"name": str(p["name"]), "prompt": str(p["prompt"])} for p in suite["prompts"]]
+    prompts = [dict(prompt) for prompt in suite["prompts"]]
     names = split_csv(names_csv)
     if names:
         by_name = {p["name"]: p for p in prompts}
@@ -128,6 +194,36 @@ def select_prompts(
     if not prompts:
         raise BenchError("prompt selection is empty")
     return prompts
+
+
+def prompt_suite_metadata(
+    path: Path,
+    suite: dict[str, Any],
+    prompts: list[dict[str, str]],
+) -> dict[str, Any]:
+    try:
+        source = str(path.resolve().relative_to(REPO_ROOT.resolve()))
+    except ValueError:
+        source = str(path.resolve())
+    category_counts: dict[str, int] = {}
+    split_counts: dict[str, int] = {}
+    for prompt in prompts:
+        category = prompt.get("category")
+        if category:
+            category_counts[category] = category_counts.get(category, 0) + 1
+        split = prompt.get("split")
+        if split:
+            split_counts[split] = split_counts.get(split, 0) + 1
+    return {
+        "schema_version": 1,
+        "source": source,
+        "source_format": str(suite.get("source_format") or "unknown"),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "selected_prompt_count": len(prompts),
+        "selected_prompt_names": [prompt["name"] for prompt in prompts],
+        "category_counts": dict(sorted(category_counts.items())),
+        "split_counts": dict(sorted(split_counts.items())),
+    }
 
 
 def make_payload(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
@@ -820,7 +916,11 @@ def run_prompt_request(
     start = time.perf_counter()
     response = post_json(url, payload, timeout=args.timeout, api_key=args.api_key)
     wall_s = time.perf_counter() - start
-    return record_from_response(prompt["name"], response, wall_s)
+    record = record_from_response(prompt["name"], response, wall_s)
+    for field in ("category", "split"):
+        if field in prompt:
+            record[field] = prompt[field]
+    return record
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -837,7 +937,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.artifact_repetitions < 1:
         raise BenchError("--artifact-repetitions must be >= 1")
 
-    out: dict[str, Any] = {"results": [], "concurrency": int(args.concurrency)}
+    out: dict[str, Any] = {
+        "results": [],
+        "concurrency": int(args.concurrency),
+        "prompt_suite": prompt_suite_metadata(args.prompts_file, suite, prompts),
+    }
     if args.print_payload:
         for prompt in prompts:
             payload = make_payload(prompt["prompt"], args)

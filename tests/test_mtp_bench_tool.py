@@ -52,6 +52,46 @@ def test_record_from_llamacpp_timing_payload_matches_pr_columns() -> None:
     )
 
 
+def test_loads_canonical_category_jsonl_with_train_and_heldout_identity() -> None:
+    tool = _load_tool()
+    path = Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl")
+
+    suite = tool.load_prompt_suite(path)
+    prompts = tool.select_prompts(suite)
+
+    assert len(prompts) == 10
+    assert prompts[0] == {
+        "name": "code_merge_intervals",
+        "prompt": (
+            "Write a Python function merge_intervals(intervals) that merges "
+            "overlapping closed integer intervals. Include a compact pytest-style "
+            "test block. Return only code."
+        ),
+        "category": "code",
+        "split": "train",
+    }
+    by_name = {prompt["name"]: prompt for prompt in prompts}
+    assert by_name["code_markdown_table"]["split"] == "heldout"
+    assert by_name["general_en_explain"]["split"] == "heldout"
+    assert by_name["general_ja_explain"]["split"] == "heldout"
+    assert by_name["mixed_ja_en_review"]["split"] == "heldout"
+    assert tool.prompt_suite_metadata(path, suite, prompts) == {
+        "schema_version": 1,
+        "source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "source_format": "jsonl",
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "selected_prompt_count": 10,
+        "selected_prompt_names": [prompt["name"] for prompt in prompts],
+        "category_counts": {
+            "code": 4,
+            "general_en": 2,
+            "general_ja": 2,
+            "mixed_ja_en": 2,
+        },
+        "split_counts": {"heldout": 4, "train": 6},
+    }
+
+
 def test_server_artifact_uses_canonical_provenance_schema(tmp_path: Path) -> None:
     tool = _load_tool()
     model = tmp_path / "model.gguf"

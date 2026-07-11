@@ -150739,3 +150739,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `tests/test_server_api.py` `478/478`, Python compilation, and
   `git diff --check` pass. The next PARO unit is corrected natural-economics
   routing plus a real DFlash profile (S1-S4); native c>N tuning remains closed.
+
+## 2026-07-11 - Make the server economics gate consume canonical JSONL
+
+- `scripts/mtp-bench.py` previously failed before any request when passed the
+  canonical `benchmarks/prompts/mtpbench-code-general-ja.jsonl` required by the
+  evidence policy; the older natural24 runs depended on an untracked `/tmp`
+  JSON conversion. Added direct JSONL normalization for the suite's single-user
+  message rows while preserving legacy JSON input.
+- Canonical rows now retain category and the documented train/heldout split.
+  Server artifacts emit `prompt_suite` v1 with the repo path, exact SHA-256
+  `fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a`,
+  all selected names, category counts (`4/2/2/2`), and split counts (`6/4`).
+  Per-prompt results also carry their category and split.
+- RED reproduced the JSON `Extra data` failure on line 2. GREEN passes the
+  complete `tests/test_mtp_bench_tool.py` bundle `20/20`, lists all ten
+  canonical prompts through the CLI, compiles, and passes `git diff --check`.
+  Next action is the clean c1/c2/c3/c4/c8 true-AR/MTP full-suite plus heldout
+  matrix that selects SOL-S1's realized-group policy.
