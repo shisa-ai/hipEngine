@@ -151261,3 +151261,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   llama.cpp rejection. `bash -n scripts/run_gfx1151_readme_refresh.sh` passes.
   Ruff is not installed in the environment, so that optional invocation could
   not run; pytest completed before the missing-tool error.
+
+## 2026-07-11 - Repair the GGUF topline rollup gate
+
+- The clean `d1231ee0` hipEngine refresh completed all PARO and GGUF shapes,
+  including the full 128K two-warmup/five-measured protocol. The GGUF rollup
+  was rejected only because the merger checked PARO's
+  `correctness_sanity.finite_final_logit` spelling while GGUF emits the
+  established plural `finite_final_logits`. All 30 measured GGUF logits are
+  finite, every workload has five stable `9707` final IDs, and prefill/decode
+  coefficient of variation is at most 0.154%/0.030%.
+- Accept both established finite-logit spellings in the merger. Keep the first
+  component's clean measured provenance as the rollup's source identity and
+  attach the merger's revision separately as `rollup_assembly_provenance`;
+  dirty assembly still forces rejection. This lets a gate-only fix reassemble
+  the completed `d1231ee0` measurements without pretending they ran at a later
+  revision or weakening the same-revision four-engine check.
+- Correct the component compactor to remove the repeated PARO
+  `memory.kv_memory_audit` payload while retaining numeric memory summaries and
+  the per-workload persistent audit. RED: the new regression initially failed
+  to import the missing helpers. GREEN: the focused gfx1151 refresh module now
+  passes 10/10; Python compilation and `git diff --check` pass. No GPU rerun is
+  required; regenerate both rollups from the clean saved components after this
+  fix is committed.

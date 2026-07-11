@@ -117,6 +117,9 @@ data = json.loads(path.read_text(encoding="utf-8"))
 for runs in data.get("runs_by_workload", {}).values():
     for run in runs:
         run.pop("memory_snapshots", None)
+        memory = run.get("memory")
+        if isinstance(memory, dict):
+            memory.pop("kv_memory_audit", None)
 for key in ("snapshots",):
     if isinstance(data.get("persistent_session_memory"), dict):
         data["persistent_session_memory"].pop(key, None)
