@@ -151020,3 +151020,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_qwen35_gguf_p10_x2_layer_correctness.py` passes on the local
   Qwen3.6-35B-A3B Q4_K_M model and gfx1151 device; `git diff --check` passes.
   No production code or benchmark value changed.
+
+## 2026-07-11 - Cover all current INT8 KV oracle formats
+
+- Tail validation found the legacy synthetic KV-accuracy fixture still used
+  `head_dim=8` and expected only BF16 plus per-token/head INT8. The accuracy
+  script now unconditionally covers key-INT8/value-BF16 and block16 INT8 too;
+  block16 correctly rejects head dimensions that are not divisible by 16.
+- Raised the minimal synthetic head dimension to 16 and made the test assert
+  that all four current CPU-reference paths pass their pseudo-logit top-1 gate.
+  The JSON CLI case uses the same valid shape.
+- Validation: `uv run pytest -q tests/test_qwen35_kv_int8_accuracy.py` passes
+  4/4; `git diff --check` passes. This changes test coverage only, not an INT8
+  runtime default or quality decision.
