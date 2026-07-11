@@ -150612,3 +150612,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   an out-of-range row. The focused benchmark memory/input module passes `4/4`;
   Python compilation and `git diff --check` pass. Next action is a clean cached
   c1 p512/d128 graph row against the same SOL-P1 fixture.
+
+## 2026-07-11 - SOL-P1 exact gfx1151 c1-c8 catalog accepted as serial
+
+- Ran the exact p512/w8/d128 greedy matrix from clean detached
+  `a18ff7bc428833a5f3d87ed422d04633abbf0b10` on Radeon 8060S/gfx1151,
+  TheRock HIP `7.13.60980-c76140fa27`, model fingerprint
+  `995a8c67...d917`, prompt-ID SHA-256 `b162b2d0...2388`. The first cached-only
+  matrix attempt correctly failed because the detached-path AOTriton wrapper was
+  absent; prebuilt `aotriton_wrap-c76eb557d59995cb` outside timing and reran
+  cached-only.
+- Exact-fixture c1 native-full-prefill + state-bound graph replay measured
+  `66.948/66.754/66.910 tok/s`; median is **66.910 tok/s** or
+  **14.946 ms/token**. Median prefill is `856.327 tok/s`; tracked peak is
+  `18.144 GiB`. All three runs emit seed/final endpoints `17/220`, matching the
+  independent c1 sequence endpoint.
+- Every clean c2-c8 retained-default native candidate fails all rows at
+  generated index 2 (`17` versus c1 `220`). One-run aggregate native rates are
+  `78.525/87.472/99.641/102.178/109.806/109.580/115.508 tok/s`; they are
+  correctness-rejected diagnostics, not scaling or routing claims. Production
+  classifies c2-c8 explicitly serial through `scheduler_true_c1_fallback`.
+- The bounded c8 trace localizes the common path. Packed-prefill final hidden,
+  linear state/input, and full-attention KV prefixes are exact. On decode step
+  0 the selected-c1 route first introduces layer-4 linear input drift, then
+  conv/recurrent state drift; the next token differs. Grouped-compact emits the
+  correct index-2 token but the full shrinking control first fails at index 4,
+  so it moves rather than fixes the divergence.
+- Retained compact artifact:
+  `benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json`.
+  It is 15,485 bytes with SHA-256
+  `94607726258a3fd47e7e2e4cd7ea85068e31f109cbd4ef9fd323b448792d47a4`.
+  Raw matrix summary SHA-256 is
+  `1ff3f002e20f790a359a3db4de2c52b5f65d46ef47f6474a26d309e2921e2aad`;
+  individual raw hashes, commands, and localization hashes are embedded. The
+  artifact has valid canonical provenance and marks performance scope c1 only.
+- Updated SOL-P1 to accepted on gfx1151, SOL-P5 to accepted by explicit serial
+  classification, benchmark/root README, benchmark protocol, and changelog.
+  gfx1100 remains stale/non-selecting pending W7900 hardware. SOL-P2 ragged,
+  EOS/cancel, and front/tail sparse transition coverage is next.
