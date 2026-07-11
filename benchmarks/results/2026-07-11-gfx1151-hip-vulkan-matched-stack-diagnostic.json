@@ -96,9 +96,11 @@
   },
   "root_cause_followup": {
     "matched_old_protocol_result": "benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json",
+    "slice_bisect_raw_root": "/tmp/hipengine-vulkan-slice-bisect-20260712",
+    "slice_bisect_method": "Replay the already-built Vulkan binaries with cumulative reps 11 through 20, warmup 0, one timing sample, and the same four-lane independent contract; compare each cumulative timed-sequence oracle.",
     "mesa_26_1_2_control": "The old RADV version reproduces the same failures at 20 repetitions.",
     "queue_control": "One-, two-, and four-queue runs are identical.",
-    "sampling_control": "Both Q4 and Q6 pass with the prior 10-repetition sampling; the failures first enter through additional input slices 10 through 19."
+    "sampling_control": "Both Q4 and Q6 pass with the retained 10-repetition sampling. With zero-based fixture indexing, Q4 first fails at slice 10; Q6 KL changes but remains valid at slice 14, then its top-1 gate first fails at slice 17."
   },
   "interpretation": "This run increases input coverage from 10 to 20 repetitions and exposes deterministic Vulkan numerical quality misses. It is not a matched comparison to the 2026-07-10 result and is not evidence of a Mesa, architecture, synchronization, or TheRock packaging regression."
 }

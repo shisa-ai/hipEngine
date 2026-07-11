@@ -151515,3 +151515,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `0.552x-0.879x`/`0.448x-1.152x`; Q4/Q6 remain HIP-favored in both modes.
   Retained compact artifact:
   `benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json`.
+
+## 2026-07-12 - Pin Vulkan quality slices and refresh ROCm issue reports
+
+- Replayed the already-built gfx1151 Vulkan Q4 and Q6 independent binaries at
+  cumulative repetitions 11 through 20, warmup 0, one timing sample, and four
+  lanes. Raw diagnostic outputs are under
+  `/tmp/hipengine-vulkan-slice-bisect-20260712`; this was correctness
+  attribution only and no timing from it is retained.
+- Q4 passes through zero-based fixture slice 9 at KL `0.004753242485`; adding
+  slice 10 (the 11th repetition) changes aggregate KL to `0.07952005314` and
+  fails the `0.05` gate. Q6 KL changes from `0.006045591408` to
+  `0.007755592208` when slice 14 is included but remains below its limit; adding
+  slice 17 (the 18th repetition) changes top-1 from `1.0` to `0.875` and fails
+  the `0.9` gate. Later cumulative runs retain the same failing metrics.
+- Documented these as deterministic fixture-coverage boundaries: repetition
+  does not degrade a fixed input. Both Mesa 26.1.2 and 26.1.4 and all tested
+  queue counts reproduce the boundaries. Performance claims remain limited to
+  the fully passing matched `10/3/5` paired protocol.
+- Updated `docs/HIP-vs-VULKAN.md` and benchmark rollups/artifacts to state that
+  the retained gfx1100 and gfx1151 matrices match TheRock ROCm/HIP, AMD
+  clang/LLVM, kernel, firmware, Mesa/RADV, Vulkan loader, sampling, and
+  executable benchmark sources. Only the host/GPU platforms and automatic
+  clock behavior differ materially.
+- Rewrote `~/ROCm-report-gfx1151.md` with the current 22/22 matrix, exact
+  versions, runtime, production controls, quality boundaries, and pinned GitHub
+  reproduction links. Rewrote `~/ROCm-report-combined.md` as a parent ROCm
+  triage issue for graph replay, independent-stream submission, and
+  packed-integer HIP/LLVM performance versus RADV/Vulkan, with no obsolete
+  software-version mismatch caveats.
