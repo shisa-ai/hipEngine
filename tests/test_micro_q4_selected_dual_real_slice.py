@@ -230,6 +230,18 @@ def test_q4_vulkan_shaders_share_push_layout_and_native_bf16_output() -> None:
     assert "shared ABI" not in dot_source
 
 
+def test_vulkan_q8_quantizer_has_explicit_rounding_contract() -> None:
+    source = (
+        REPO_ROOT / "benchmarks/micro/kernels/vulkan/q8_1_quantize.comp"
+    ).read_text(encoding="utf-8")
+
+    assert "uint f32_to_f16_rne(float value)" in source
+    assert "uint pack_half2_rne(vec2 values)" in source
+    assert "int round_away_from_zero(float value)" in source
+    assert "packHalf2x16(" not in source
+    assert "int(round(" not in source
+
+
 def test_q4_vulkan_harness_records_calibrated_multi_queue_combined_path() -> None:
     source = (
         REPO_ROOT / "benchmarks/micro/runners/vulkan_q4_selected_dual.cpp"
