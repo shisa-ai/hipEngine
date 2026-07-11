@@ -230,7 +230,7 @@ also preventing incompatible quant kernels from being copied blindly.
 | --- | --- | --- | --- |
 | Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | `SOL-B1` tags resident GGUF models and every weight with the resolved backend; embedding, linear/fused-linear, router, GDN, and compact/sidecar MoE resolves rebind shared gfx1100 source templates to that identity. A live gfx1151 public smoke retained `hip_gfx1151` through generator/runner/model/weights and generated token ID `11`. | Backend identity is complete; establish the corrected baseline matrix before architecture-specific tuning. |
 | Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | SOL-G2 certifies the raw-Q/K exact GDN chain across segment/chunk boundaries, but clean G3 walls reject it at 512/4K (+5.19%/+6.70%). | Keep fused; retune chunks against the selected fused route unless a materially different exact-chain scheduler is proposed. |
-| Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption; SOL-G1 now supplies the exact eager control. | Profile the correct eager route in G4, then recapture by full shape/state key in G5. |
+| Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption; SOL-G1 supplies the exact eager control and SOL-G4 profiles it in 24 decode-only marker windows. | Recapture by full shape/state key in G5 only against the retained eager wall/profile. |
 | c>N decode | PARO has native multi-row paths, owned batch timing, and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work, exact all-choice IDs, and owned batch timing, but route width/shape identity remain incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
 | Sparse slots | Runtime accepts sorted sparse physical slots. | Resident MTP slots are tracked, but actual group width must be exposed. | Remove generator compact-from-zero gating and test holes/reclaim. |
 | Full attention | PARO uses shape-specific native/rowchunk bridges; several widths remain diagnostic. | GGUF AR/verify paths have separate packed behavior. | Bucket context, row width, reducer, KV ABI, and fallback separately. |
@@ -312,8 +312,8 @@ and a true no-spec AR baseline.
 | `SOL-G1` | Build a teacher-forced token, hidden, recurrent-state, and KV oracle for eager GGUF decode across at least four steps. | `accepted` on gfx1151 at `c941c158`: the exact Q4_K_M `[9707] * 512` prompt and five-token continuation match llama.cpp; production bulk/eager tokens match; positions 513-516 are finite and byte-exact against fresh serial prefixes across every layer output, 30 Conv/GDN pairs, and 10 live K/V pairs. The old W7900 performance row still requires a hardware-local rerun. | E3, B1 | Repeated-token/current eager behavior is classified as correct or localized to the first divergent layer/state. |
 | `SOL-G2` | Add explicit GDN prefill `fused|chain|auto` diagnostic selection. Reproduce the 17-token mismatch and bisect first hidden/recurrent divergence. | `accepted` at `332f01f8`: the RED localized normalized-Q/K materialization as the first layer-0 recurrent divergence. The GGUF-only raw-Q/K-plus-scale exact split passes 6/6 clean gfx1151 cases: greeting, 512, 1024/1025 segment threshold, and 4095/4096 four-chunk boundary. Sampled tokens, FP32 hidden seeds, and resident Conv/GDN state are byte-exact; greeting/512 all-layer rows are exact. Focused tests pass 48/48 and the expected zero-scratch kernels appear in a cached-only trace. | G1 | Chain matches target tokens/state at short, 512, 4K, segment, and chunk boundaries. |
 | `SOL-G3` | Promote the split prepare + segmented-k2 + RMSNorm chain only if same-run wall wins. | `rejected` at clean `ad773eba`: exact timed tokens and the linked G2 state/trace gates pass, but four balanced repetitions show chain `1248.436` vs fused `1186.842 ms` at 512 (+5.19%) and `10870.022` vs `10187.300 ms` at 4K (+6.70%). Fused remains default. | G2 | Exact state/tokens plus prefill wall win on both primary contexts; expected kernel trace present. |
-| `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `in_progress` on gfx1151: the v2 audit harness now enforces exact IDs, clean direct-parent history, repeated current walls, and ROCTX-only decode buckets; the retained clean run is next. The W7900 half is blocked on hardware. | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
-| `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `blocked` | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
+| `SOL-G4` | Bisect correct eager decode against the last fast revision and profile the correct route by layer family. | `accepted` on gfx1151 at clean `5f4c6561`: p512/d128 exact eager is 49.285 tok/s; direct-parent `4499fb13` is the 17.799 -> 54.963 tok/s (+208.79%, 3.088x) library-cache boundary; current p8 is 55.208 tok/s. Twenty-four exact ROCTX windows yield the decode-only Amdahl table below. W7900 remains blocked on hardware. | G1 | Correct eager baseline, first performance-changing revision, and Amdahl table are recorded. |
+| `SOL-G5` | Rebuild correct graph replay by full shape/state key; test third-and-later replay explicitly. | `open` on gfx1151; W7900 blocked on hardware | G4 | Eager/graph hidden, recurrent state, KV, and tokens match over long replay; wall beats eager. |
 | `SOL-G6` | Audit replacement layout residency and eliminate raw+packed duplicates where the replacement path is complete. | `open` | E3 | Allocation census names raw/packed/KV/scratch/graph bytes; 24 GiB-class goals are checked without speed regression. |
 | `SOL-G7` | Tune gfx1151 chunk, workgroup, rowtile, attention split, and route thresholds. | `blocked` | B1-B2, G2-G4, matrix | Same-device exact A/B selects profile values; gfx1100 remains unchanged. |
 | `SOL-G8` | Replace GGUF serial/row-replay concurrency with a true resident multi-row AR path across c1-c8 and sparse slots. | `blocked` | G4, baseline matrix | Exact c1-c8, shrink, sparse-slot, and profiler gates pass with aggregate scaling. |
@@ -323,6 +323,32 @@ and a true no-spec AR baseline.
 Do not restore the old GGUF graph as a shortcut. SOL-G1 proves the repeated
 `9707` stream is valid on gfx1151; it still does not make a stale timing row
 eligible or replace the full prompt-suite quality/performance gates.
+
+### SOL-G4 gfx1151 eager Amdahl
+
+The retained audit uses clean `5f4c6561`, exact Q4_K_M, BF16 KV,
+`[9707] * 512`, four decode warmup steps, and 24 synchronized eager steps.
+Only kernels fully contained in each ROCTX step range enter the table. Kernel
+sum is **18.402 ms/token** versus **20.766 ms/token** profiled host wall
+(**88.62%**); the unprofiled four-run p512/d128 median is **20.290 ms/token**.
+
+| Family | GPU us/token | GPU share | Overall if family 2x | 4x | Infinite |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Dense Q8_0 GEMV | 8142.998 | 44.25% | 1.284x | 1.497x | 1.794x |
+| Selected-MoE GEMV | 3996.701 | 21.72% | 1.122x | 1.195x | 1.277x |
+| Full-attention core/KV | 1965.390 | 10.68% | 1.056x | 1.087x | 1.120x |
+| Q6 LM-head/argmax | 1851.998 | 10.06% | 1.053x | 1.082x | 1.112x |
+| MoE router | 807.582 | 4.39% | 1.022x | 1.034x | 1.046x |
+| GDN/linear attention | 705.191 | 3.83% | 1.020x | 1.030x | 1.040x |
+| RMSNorm/RoPE | 532.355 | 2.89% | 1.015x | 1.022x | 1.030x |
+| Dense BF16 GEMV | 192.909 | 1.05% | 1.005x | 1.008x | 1.011x |
+| MoE combine/SiLU | 165.271 | 0.90% | 1.005x | 1.007x | 1.009x |
+| Other + embedding + copies/fills | 41.641 | 0.23% | 1.001x | 1.002x | 1.002x |
+
+The old 2026-06-29 whole-process profile included prefill and warmup and is not
+the G4 Amdahl source. The full current table, top kernels, VGPR/scratch counts,
+commands, trace hashes, and linked G1 SHA are in
+[`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](../benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
 
 ## PARO Concurrency And Optimization
 
@@ -487,7 +513,7 @@ divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
 Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
 independent c1.
 
-The next PARO GPU unit is `SOL-P1`; the next GGUF unit is `SOL-G4` on gfx1151.
+The next PARO GPU unit is `SOL-P1`; the next GGUF unit is `SOL-G5` on gfx1151.
 G2/G3 establish fused as the exact, measured prefill default. The matrix driver
 is ready, but its first clean repeated PARO/GGUF baseline is measurement work,
 not evidence implied by these correctness gates.

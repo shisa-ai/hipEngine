@@ -28,6 +28,13 @@ retire `scripts/gguf_mtp_bench.py` `--target-graph-verify` /
 Convert any remaining decode in those modes to eager and drop the vestigial
 flags. (Ledger row below has the detail.)
 
+SOL-G4 now provides the correct comparison floor: clean p512/d128 eager is
+`20.290 ms/token`, while a 24-step marker profile contains `18.402 ms/token` of
+GPU kernels (`88.62%` of profiled host wall). Even removing every non-kernel
+microsecond would cap the profiled route near `1.128x`; G5 must therefore prove
+long-replay state identity and an end-to-end wall win before any graph surface
+returns. Otherwise finish this cleanup instead of retaining another graph flag.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
