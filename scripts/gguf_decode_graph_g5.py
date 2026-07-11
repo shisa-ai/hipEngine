@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""SOL-G5 GGUF composite decode-graph correctness and wall audit.
+"""SOL-G5 production GGUF decode-graph correctness and wall audit.
 
-The production GGUF runtime intentionally has no whole-step decode graph.  This
-diagnostic reconstructs the removed composite capture around the current eager
-helpers without restoring a public/runtime graph API.  It compares two routes:
+The audit drives ``Qwen35GGUFResidentSession.capture_decode_graph()`` and
+compares two routes:
 
 * one state-bound graph relaunched for every token, with explicit checks after
   the third and every later launch; and

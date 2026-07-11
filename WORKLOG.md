@@ -150512,3 +150512,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `performance_claim=true`). Updated the SOL ledger, benchmark protocol,
   canonical/root README, changelog, and graph rollback ledger. SOL-G5 is
   accepted for the narrow gfx1151 long-c1-greedy admission; SOL-G6 is next.
+
+## 2026-07-11 - Resolve standalone GGUF session backend before graph capability lookup
+
+- The first SOL-G6 live census probe reproduced a post-G5 regression in the
+  standalone benchmark: `Qwen35GGUFResidentSession()` constructed its
+  full-stack runner with `backend="auto"`; the runner resolved gfx1151, but the
+  enclosing session retained `auto` and passed it to
+  `backend_package_capability()`, which correctly rejects selectors as registry
+  keys. The probe failed after load with `unsupported HIP backend 'auto'`.
+- The session now adopts the runner's concrete backend for both owned and
+  shared runners, and the graph capability query reads the resolved runner
+  identity directly. Added a model-free regression proving an `auto` session
+  queries `hip_gfx1151`, and refreshed the G5/benchmark descriptions now that
+  the production graph is admitted.
+- Validation: focused graph/benchmark metadata tests pass `7/7`; Python
+  compilation and `git diff --check` pass. Ruff is not installed in the active
+  environment (`No module named ruff`). This is a selector-boundary fix with no
+  math, allocation, or performance-path change; resume the clean G6 census.
