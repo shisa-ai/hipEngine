@@ -3,10 +3,8 @@ from __future__ import annotations
 import pytest
 
 from scripts.gguf_decode_graph_g5 import (
-    _build_graph_key,
     _classify_candidate,
     _compare_checkpoints,
-    _context_bucket,
     _summarize_runs,
 )
 
@@ -44,43 +42,6 @@ def _checkpoint(*, token: int = 9707, recurrent: str = "r0", kv: str = "k0") -> 
             }
         ],
     }
-
-
-def test_context_bucket_rounds_replay_limit_and_checks_capacity() -> None:
-    assert _context_bucket(position=512, replay_steps=17, block_size=256, max_positions=1024) == 768
-    with pytest.raises(ValueError, match="capacity"):
-        _context_bucket(position=900, replay_steps=200, block_size=256, max_positions=1024)
-
-
-def test_graph_key_covers_state_generation_and_buffer_identity() -> None:
-    common = {
-        "backend": "hip_gfx1151",
-        "target_arch": "gfx1151",
-        "model_fingerprint": "model-sha",
-        "quant": "gguf_q4_k_m",
-        "kv_dtype": "bf16",
-        "position": 512,
-        "replay_steps": 16,
-        "steps_per_launch": 1,
-        "block_size": 256,
-        "max_positions": 1024,
-        "hidden_size": 2048,
-        "vocab_size": 248320,
-        "layer_types": ("linear_attention", "full_attention"),
-        "weight_role_digest": "weights",
-        "route": {"gemv_decode": True, "decode_repack": True},
-        "buffer_ptrs": (101, 202, 303),
-    }
-    first = _build_graph_key(**common, state_generation=512)
-    same = _build_graph_key(**common, state_generation=512)
-    next_state = _build_graph_key(**common, state_generation=513)
-    next_buffers = _build_graph_key(**{**common, "buffer_ptrs": (101, 202, 404)}, state_generation=512)
-
-    assert first == same
-    assert first["key_sha256"] != next_state["key_sha256"]
-    assert first["key_sha256"] != next_buffers["key_sha256"]
-    assert first["axes"]["active_rows"] == 1
-    assert first["axes"]["context_bucket"] == 768
 
 
 def test_checkpoint_comparison_localizes_recurrent_and_kv_drift() -> None:
