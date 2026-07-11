@@ -143,9 +143,10 @@ def test_committed_b1_sampling_fixture_is_self_consistent() -> None:
     assert sampling["draft"] == {
         "budget": "B1",
         "draft_max": 1,
-        "selection": "greedy_top1",
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
         "temperature": 0.0,
-        "top_k": 1,
+        "top_k": 10,
         "top_p": 1.0,
         "min_p": 0.0,
         "seed": 12345,
@@ -163,10 +164,15 @@ def test_committed_b1_sampling_fixture_is_self_consistent() -> None:
     assert payload["llamacpp_request_mapping"]["server"] == {
         "spec_type": "draft-mtp",
         "spec_draft_n_max": 1,
+        "spec_draft_selection": "greedy_top1_from_topk",
+        "spec_draft_selected_index": 0,
+        "spec_draft_top_k": 10,
     }
     assert payload["hipengine_request_mapping"]["draft"] == {
         "budget": 1,
-        "selection": "greedy_top1",
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
+        "top_k": 10,
     }
 
 
