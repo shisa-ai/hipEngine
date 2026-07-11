@@ -9,20 +9,18 @@ without HIP or the local 35B GGUF fixture.
 from __future__ import annotations
 
 import ctypes
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
-os.environ.setdefault("HIPENGINE_HIP_ARCH", "gfx1151")
-
 MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
-def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
+def test_q6_k_t16_rowtile_matches_per_row_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError:

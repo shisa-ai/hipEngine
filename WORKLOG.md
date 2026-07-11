@@ -150933,3 +150933,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   or status: c2-c8 timings remain correctness-rejected diagnostics and
   production uses the exact serial groups. This is a scoreboard/test contract
   repair, not a benchmark update.
+
+## 2026-07-11 - Isolate GPU test architecture environment
+
+- After the scoreboard fix, milestone fail-fast reached
+  `test_build_hip_dry_run_does_not_create_cache_or_run_compiler` and found an
+  unexpected `--offload-arch=gfx1151` flag. Three later-collected GPU modules
+  set `HIPENGINE_HIP_ARCH` and GGUF decode-repack at module import time; pytest
+  imports all 5,996 tests before execution, so those settings leaked into every
+  earlier test.
+- Moved both settings into each GPU test's `monkeypatch` scope in the low-row
+  block verifier, Q6 rowtile, and MTP dense-attention gates. This changes test
+  isolation only; their HIP availability guards and in-test runtime imports are
+  preserved.
