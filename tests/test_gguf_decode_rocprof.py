@@ -12,6 +12,7 @@ from scripts.gguf_decode_rocprof import (
     _filter_kernels_by_windows,
     _read_kernels,
     _read_marker_windows,
+    _session_kwargs,
     _summarize_rows,
     _summarize_wall_runs,
 )
@@ -138,3 +139,32 @@ def test_child_command_pins_route_and_cached_build(tmp_path: Path) -> None:
     assert command[command.index("--backend") + 1] == "hip_gfx1151"
     assert command[command.index("--prompt-length") + 1] == "512"
     assert "--require-cached" in command
+
+
+def test_historical_session_kwargs_omit_unsupported_backend() -> None:
+    class HistoricalSession:
+        def __init__(
+            self,
+            model_path: Path,
+            *,
+            max_sequence_length: int,
+            compiler_version: str | None,
+            require_cached_build: bool,
+            use_wmma_prefill: bool,
+            use_gemv_decode: bool,
+        ) -> None:
+            del model_path, max_sequence_length, compiler_version
+            del require_cached_build, use_wmma_prefill, use_gemv_decode
+
+    kwargs, backend_supported = _session_kwargs(
+        HistoricalSession,
+        max_sequence_length=256,
+        compiler_version="hipcc",
+        require_cached_build=True,
+        backend="hip_gfx1151",
+    )
+
+    assert backend_supported is False
+    assert "backend" not in kwargs
+    assert kwargs["use_wmma_prefill"] is True
+    assert kwargs["use_gemv_decode"] is True
