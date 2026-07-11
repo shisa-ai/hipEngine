@@ -18,6 +18,78 @@ def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    artifact_path = (
+        repo_root
+        / "benchmarks/results/2026-07-11-gfx1151-readme-refresh-"
+        "20260711-d1231ee0-summary.json"
+    )
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
+    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
+
+    assert artifact["schema"] == 1
+    assert artifact["status"] == "accepted_topline"
+    assert artifact["performance_claim"] is True
+    assert artifact["measured_hipengine_commit"] == (
+        "d1231ee081d9cc6799f59632a8e8db96de4c61c3"
+    )
+    assert artifact["assembly"]["hipengine_commit"] == (
+        "7e9aad21d92b6ed2c6cf7ff83aa7b5896a74d15b"
+    )
+    assert artifact["assembly"]["dirty"] is False
+    assert artifact["gates"]["all_passed"] is True
+    assert all(artifact["gates"].values())
+
+    workloads = ["512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128"]
+    columns = [
+        ("hipengine_paro", "hipEngine PARO"),
+        ("hipengine_gguf", "hipEngine GGUF"),
+        ("llamacpp_hip", "llama.cpp HIP"),
+        ("llamacpp_vulkan", "llama.cpp Vulkan"),
+    ]
+    assert artifact["workloads"] == workloads
+    assert [
+        (column["key"], column["label"]) for column in artifact["columns"]
+    ] == columns
+
+    headings = {
+        "prefill_tok_s": "Prefill tok/s",
+        "decode_tok_s": "Decode tok/s",
+        "peak_gib": "Peak memory GiB",
+    }
+    table_header = (
+        "| Workload | hipEngine PARO | hipEngine GGUF | "
+        "llama.cpp HIP | llama.cpp Vulkan |"
+    )
+    for table_key, heading in headings.items():
+        rows = artifact["tables"][table_key]
+        assert [row["workload"] for row in rows] == workloads
+        assert f"#### {heading}" in canonical
+        assert f"#### {heading}" in root_readme
+        assert table_header in canonical
+        assert table_header in root_readme
+        for row in rows:
+            published_row = (
+                f"| {row['workload']} | {row['hipengine_paro']:.3f} | "
+                f"{row['hipengine_gguf']:.3f} | {row['llamacpp_hip']:.3f} | "
+                f"{row['llamacpp_vulkan']:.3f} |"
+            )
+            assert published_row in canonical
+            assert published_row in root_readme
+
+    for name, component in artifact["components"].items():
+        assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name
+        provenance = artifact["component_provenance"][name]
+        assert provenance["hipengine_commit"] == artifact["measured_hipengine_commit"]
+        assert provenance["target_arch"] == "gfx1151"
+        assert provenance["dirty"] is False
+
+    for correctness_path in artifact["linked_correctness"].values():
+        assert (repo_root / correctness_path).is_file()
+
+
 def test_gfx1151_legacy_paro_diagnostic_is_linked_but_not_published() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     artifact = json.loads(
