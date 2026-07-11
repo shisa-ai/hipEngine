@@ -22,6 +22,7 @@ import collections
 import csv
 import ctypes
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -122,6 +123,28 @@ def _configure_child_imports(source_root: Path) -> Path:
     return root
 
 
+def _session_kwargs(
+    session_type: type,
+    *,
+    max_sequence_length: int,
+    compiler_version: str | None,
+    require_cached_build: bool,
+    backend: str,
+) -> tuple[dict[str, Any], bool]:
+    """Build kwargs shared by current and pre-backend-identity sessions."""
+
+    supported = inspect.signature(session_type).parameters
+    values: dict[str, Any] = {
+        "max_sequence_length": max_sequence_length,
+        "compiler_version": compiler_version,
+        "require_cached_build": require_cached_build,
+        "backend": backend,
+        "use_wmma_prefill": True,
+        "use_gemv_decode": True,
+    }
+    return ({name: value for name, value in values.items() if name in supported}, "backend" in supported)
+
+
 def _run_eager_once(
     session: Any,
     *,
@@ -208,15 +231,14 @@ def _run_child(args: argparse.Namespace) -> int:
     warmup_runs: list[dict[str, Any]] = []
     measured_runs: list[dict[str, Any]] = []
     marker = _Roctx() if args.child_mode == "profile" else None
-    with Qwen35GGUFResidentSession(
-        args.model,
+    session_kwargs, constructor_backend_supported = _session_kwargs(
+        Qwen35GGUFResidentSession,
         max_sequence_length=max_sequence_length,
         compiler_version=compiler_version,
         require_cached_build=bool(args.require_cached),
         backend=str(args.backend),
-        use_wmma_prefill=True,
-        use_gemv_decode=True,
-    ) as session:
+    )
+    with Qwen35GGUFResidentSession(args.model, **session_kwargs) as session:
         if args.child_mode == "warmbuild":
             measured_runs.append(
                 _run_eager_once(
@@ -250,7 +272,7 @@ def _run_child(args: argparse.Namespace) -> int:
                         marker=marker,
                     )
                 )
-        resolved_backend = str(getattr(session.runner, "backend", session.backend))
+        resolved_backend = str(getattr(session.runner, "backend", str(args.backend)))
         target_arch = str(getattr(session.runner, "target_arch", os.environ["HIPENGINE_HIP_ARCH"]))
         effective_wmma = bool(getattr(session, "use_wmma_prefill", False))
         effective_gemv = bool(getattr(session, "use_gemv_decode", False))
@@ -284,6 +306,7 @@ def _run_child(args: argparse.Namespace) -> int:
             "configured_backend": str(args.backend),
             "resolved_backend": resolved_backend,
             "target_arch": target_arch,
+            "constructor_backend_supported": constructor_backend_supported,
             "graph_replay_decode": False,
             "decode_repack": True,
             "requested_use_wmma_prefill": True,

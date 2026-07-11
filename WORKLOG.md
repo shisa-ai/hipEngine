@@ -150329,3 +150329,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check` pass. SOL-G4 remains in progress until this committed
   harness is run from a detached clean worktree and emits the retained compact
   artifact.
+
+## 2026-07-11 - SOL-G4 clean audit first-run compatibility fix
+
+- The committed audit reached two valid current controls in detached clean
+  `344abe8d`: p512/d128 median `49.283 tok/s` and p8/d32 median
+  `55.251 tok/s`, with every prefill, warmup, and timed token equal to 9707.
+  It then failed before either historical measurement because the current child
+  passed `backend=` to the June session class, whose constructor predates B1.
+- Added signature-filtered session kwargs. Current sessions still receive the
+  explicit backend; historical sessions omit only unsupported keywords and
+  retain the same explicit `HIPENGINE_HIP_ARCH=gfx1151` target used by their
+  original benchmark harness. The artifact records whether constructor backend
+  identity was available, so the compatibility path cannot be mistaken for a
+  current B1 route.
+- GREEN: the profiler/provenance bundle passes `12/12`; Python compilation and
+  `git diff --check` pass. The retained audit will restart at the fix commit.
