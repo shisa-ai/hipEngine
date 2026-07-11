@@ -3188,6 +3188,9 @@ def _collect_dflash_artifact_provenance(
             "HIPENGINE_DFLASH_VERIFY_SYNC_PHASES": os.environ.get(
                 "HIPENGINE_DFLASH_VERIFY_SYNC_PHASES"
             ),
+            "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD": os.environ.get(
+                "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD"
+            ),
             "sync_draft_phases": "1" if sync_draft_phases else "0",
         },
         build_profile=f"dflash_chain_e2e:{verifier_mode}",
