@@ -167,6 +167,19 @@ cross-engine memory comparisons are omitted. Row sources: [`gfx1151 summary`](be
 [`llama.cpp HIP`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
 [`llama.cpp Vulkan`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json). The canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-sweep-2026-06-15) records the missing-runner blocker and next refresh protocol.
 
+### Current gfx1151 GGUF eager baseline
+
+This is the retained exact repeated-token SOL-G4 row; it does not turn the old
+one-repetition model sweep into a current cross-engine comparison.
+
+<!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
+| Path | Platform and protocol | Result | Evidence status |
+| --- | --- | ---: | --- |
+| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; 1 discarded + 4 measured runs; 128 eager steps; graph off | **49.285 tok/s** (`20.290 ms/token`) | Retained for this exact repeated-token protocol; every output ID is 9707 and the G1 hidden/state/KV oracle is linked |
+<!-- END TOPLINE:GFX1151_GGUF_EAGER -->
+
+Artifact: [`SOL-G4 eager audit`](benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
+
 See [`benchmarks/README.md`](benchmarks/README.md) for the platform freshness
 index, exact settings, run commands, and evidence status.
 

@@ -150359,3 +150359,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Reversed the ancestry gate to encode that true order. No workload, route,
   timing, token, or profiler result changed; the clean retained audit will be
   rerun at the correction commit.
+
+## 2026-07-11 - SOL-G4 accepted gfx1151 eager baseline and Amdahl
+
+- Ran the exact documented audit from detached clean `5f4c6561` on Radeon 8060S
+  / gfx1151, TheRock HIP `7.13.60980-c76140fa27`, exact Q4_K_M fingerprint
+  `936659d6...c89fb`, BF16 KV, production WMMA bulk prefill plus repacked/GEMV
+  eager decode, and graph off. Canonical provenance is fully clean: no staged,
+  unstaged, or untracked files.
+- Current p512/d128 eager samples are `49.3083/49.2825/49.2875/49.1996 tok/s`;
+  median is **49.2850 tok/s** or **20.2901 ms/token** after one discarded full
+  run and across four measured full runs. Every prefill, warmup, and timed token
+  in every run is 9707, and the artifact links the accepted G1 hidden/layer/
+  Conv/GDN/KV oracle SHA-256 `df324ec1...64c2`.
+- The exact synchronized p8/d32 direct-parent bisect is
+  `74b11dbc` **17.7993 tok/s** -> `4499fb13` **54.9628 tok/s**
+  (**+208.79%, 3.0879x**). There is no intervening commit; the change memoizes
+  loaded HIP libraries and does not alter math. Production then selected eager
+  at descendant `e8521a2a`. Current p8 is **55.2079 tok/s**, +0.446% versus the
+  boundary result, so the earlier ~55 and current ~49 figures are short versus
+  512-token context, not a post-July regression.
+- The cached-only rocprof child emitted 24/24 exact marker windows and 16,989
+  selected decode kernels. GPU sum is **18.4020 ms/token** against profiled host
+  **20.7659 ms/token** (**88.62%**). Shares are dense Q8_0 GEMV **44.25%**,
+  selected-MoE GEMV **21.72%**, full-attention core/KV **10.68%**, Q6 LM-head/
+  argmax **10.06%**, router **4.39%**, GDN/linear attention **3.83%**, and all
+  remaining families **4.07%**. Dense Q8_0's standalone Amdahl ceilings are
+  `1.284x/1.497x/1.794x` for 2x/4x/infinite family acceleration.
+- Retained the 67,212-byte compact artifact at
+  `benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`
+  (SHA-256 `f5ff1a0a...9043`, `performance_claim=true`). Raw kernel/marker CSVs
+  remain under `/tmp`; their hashes are embedded. Updated the canonical/root
+  README, benchmark changelog, SOL coordinator/Amdahl table, benchmark protocol,
+  and graph cleanup ledger. SOL-G4 is accepted locally; G5 is now open on
+  gfx1151, while W7900 G4/G5 evidence remains hardware-blocked.
