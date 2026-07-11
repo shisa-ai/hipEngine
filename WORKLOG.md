@@ -151053,3 +151053,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - GREEN: build/backend tests pass 25/25, both segment-state Conv GPU tests pass
   on gfx1151, and `git diff --check` passes. This is a correctness/cache fix;
   kernel bodies and benchmark values are unchanged.
+
+## 2026-07-11 - Correct the milestone GPU-fault attribution
+
+- A verbose bounded rerun corrected the earlier attribution above: pytest's
+  quiet progress made the abort appear to occur in the following segment-state
+  case, but the actual active node was
+  `test_qwen35_linear_attn_conv_wrappers_validate_before_gpu_load`. The
+  effective-target loaded-library cache bug remains independently RED/GREEN
+  proven and retained, but it was not the nil-pointer launch.
+- The May validator expected `tokens=2, kernel_size=4` to be invalid. The later
+  c6 segmented correctness oracle intentionally uses one-token mutable prefill,
+  so short prefill is valid; the stale test passed four null device pointers
+  with a valid shape and launched a real kernel at address zero.
+- Changed the two F32/FP16 validator cases to `tokens=0`, which exercises the
+  actual positive-token host guard before any library/GPU load without changing
+  short-prefill semantics. The Conv plan plus both segment-state GPU tests pass
+  5/5, and `git diff --check` passes.
