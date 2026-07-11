@@ -49,6 +49,42 @@ Every control records two clocks:
 burst. `serial_latency` may validate the chained final state. A single-dispatch
 oracle alone is not sufficient for either mode.
 
+## Retained gfx1100 Matrix
+
+The clean W7900 run at
+`c57f21b5d5d5fd5f389a7f3921062578c53eb744` retains all 11 paired
+families in both modes. All 22 comparisons and 232 burst GPU rows pass
+correctness, exact-matrix, same-device/source, clean-provenance, and GPU-clock
+gates. The compact result is
+[`2026-07-11-hip-vulkan-timing-v2-bounded.json`](results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json).
+
+These are burst GPU Vulkan/HIP ratios (`HIP time / Vulkan time`); above `1.0x`
+favors Vulkan.
+
+| Family | Serial | Independent |
+| --- | ---: | ---: |
+| Dispatch/grid | `2.437x-10.122x` | `1.980x-65.325x` |
+| Geometry | `0.360x-0.790x` | `1.100x-3.925x` |
+| Reduction | `0.304x-0.729x` | `1.110x-4.035x` |
+| Memory/waitcnt | `0.517x-0.936x` | `0.544x-2.139x` |
+| Packed dot | `1.052x-1.133x` | `1.872x-2.106x` |
+| VOPD | `0.391x-0.561x` | `0.516x-0.616x` |
+| Sampler | `0.259x-0.501x` | `0.782x-2.563x` |
+| Two-stage reduction | `0.324x-0.925x` | `0.394x-0.813x` |
+
+Matched combined production slices mostly favor HIP. Serialized/independent Q4
+selected-dual is `0.501x-0.562x` / `0.432x-0.477x`; Q6 selected-down X8 is
+`0.675x` / `0.673x`; dense Q8_0 is `0.393x-0.966x` / `0.388x-1.030x`.
+Only three small `768x2048` dense independent combined rows barely favor
+Vulkan. A focused Q6 50-repetition independent follow-up failed its Vulkan
+timed-sequence oracle and is retained only as rejected diagnostic evidence in
+the compact artifact.
+
+The final process used TheRock ROCm `7.15.0a20260711` root/core/generic
+multi-arch libraries and excluded the stale installed gfx110X-all 7.13 library
+path. See [`docs/HIP-vs-VULKAN.md`](../../docs/HIP-vs-VULKAN.md) for the
+cross-architecture interpretation and caveats.
+
 ## Retained gfx1151 Matrix
 
 The clean bounded run at
