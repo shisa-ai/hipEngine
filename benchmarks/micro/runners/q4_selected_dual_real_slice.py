@@ -882,6 +882,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     quantize_retained = False
     device: dict[str, Any] = {}
     actual_lane_count: int | None = None
+    isolation_by_workgroup: dict[str, Any] = {}
     for local_size in local_sizes:
         dot_spv = args.build_dir / f"q4_selected_dual_wg{local_size}.spv"
         commands.append(
@@ -939,6 +940,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
         if completed.returncode != 0:
             raise RuntimeError("Vulkan Q4 selected-dual run failed")
         raw = json.loads(raw_path.read_text(encoding="utf-8"))
+        isolation_by_workgroup[str(local_size)] = raw.get("isolation", {})
         device = raw.get("hardware", {})
         timing_config = raw.get("timing_config", {})
         raw_lane_count = int(timing_config.get("actual_lane_count", 1))
@@ -1075,6 +1077,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
             "status": "pass" if correctness_pass else "fail",
             "oracle": "operation-specific downstream Q4_K selected-dual BF16 equivalence",
             "rows": len(rows_out),
+            "q8_dot_isolation_by_workgroup": isolation_by_workgroup,
         },
     }
     if args.environment_ref:

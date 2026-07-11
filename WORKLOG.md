@@ -151544,3 +151544,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   triage issue for graph replay, independent-stream submission, and
   packed-integer HIP/LLVM performance versus RADV/Vulkan, with no obsolete
   software-version mismatch caveats.
+
+## 2026-07-12 - Isolate Vulkan q8_1 fixture misses from Q4/Q6 dot math
+
+- Extended the Vulkan Q4 selected-dual and Q6 X8 runners with an untimed
+  correctness diagnostic. It dispatches q8_1 into disjoint slices, copies the
+  blocks back, compares CPU versus Vulkan `d`/`s`/`qs` fields, uploads the CPU
+  q8_1 blocks, and then validates the Vulkan dot shader alone. Normalized
+  wrapper artifacts now preserve the isolation record. The steady-state timing
+  command buffers and the existing pass/fail gate are unchanged.
+- Replayed the first failing independent-throughput boundaries on Radeon
+  8060S/gfx1151 with four queues, warmup 0, and one timing sample. Q4 used
+  `vulkan_q4_selected_dual ... --reps 11 --x-bf16
+  /tmp/hipengine-vulkan-slice-bisect-20260712/q4/x-11.bin`; Q6 used
+  `vulkan_q6_x8_selected_down ... --reps 18`. Raw outputs are under
+  `/tmp/hipengine-vulkan-isolation-20260712`; wall times were `2.081s` Q4 and
+  `0.892s` Q6.
+- The CPU-prequantized Vulkan dot path passes both boundaries: Q4 max KL
+  `4.456077219e-51`, top-1 `1.0`; Q6 max KL `3.204991408e-12`, top-1 `1.0`.
+  This excludes the Q4/Q6 dot shaders as the source of the retained misses.
+  The stock Vulkan q8 output differs in 2,149/2,816 Q4 block words and
+  1,975/2,304 Q6 block words. Every mismatched stored `d` scale is exactly one
+  FP16 code lower than the CPU/HIP oracle (`1,374` Q4 and `1,686` Q6); `qs`
+  mismatches are sparse and at most one integer (`91` Q4, `6` Q6).
+- A temporary, unretained q8 shader with software FP16 round-to-nearest-even
+  packing plus explicit away-from-zero integer rounding makes both original
+  boundary runs pass. Q4 changes from KL `0.07952005314` to
+  `2.158304589e-06`, top-1 `1.0`; Q6 changes from KL `0.007755592208`, top-1
+  `0.875` to KL `0.0002289689978`, top-1 `1.0`. The shader is not promoted in
+  this isolation-only unit.
+- Validation: both C++ runners compile with `c++ -O2 -std=c++17 ... -lvulkan`;
+  `uv run pytest -q tests/test_micro_q4_selected_dual_real_slice.py
+  tests/test_micro_q6_x8_real_slice.py` passes all 51 tests. Fresh passing
+  wrapper runs at Q4 reps 10 and Q6 reps 17 also preserve and parse the new
+  isolation records.

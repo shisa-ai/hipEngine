@@ -1005,6 +1005,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
             "oracle": "CPU Q6_K X8 selected-down q8_1+dp4a BF16 output",
             "all_pass": correctness_pass,
             "rows": len(rows_out),
+            "q8_dot_isolation": raw.get("isolation", {}),
         },
         "timing": _legacy_timing_aliases(rows_out),
         "correctness_vs_cpu": {

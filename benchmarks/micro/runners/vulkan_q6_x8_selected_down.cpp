@@ -89,6 +89,30 @@ struct OperationValidation {
   Correctness burst;
 };
 
+struct Q8SliceComparison {
+  uint32_t slice = 0;
+  uint64_t blocks_checked = 0;
+  uint64_t word_mismatches = 0;
+  uint64_t d_mismatches = 0;
+  uint64_t d_actual_lower = 0;
+  uint64_t d_actual_higher = 0;
+  uint64_t s_mismatches = 0;
+  uint64_t q_mismatches = 0;
+  uint32_t max_d_bits_abs_diff = 0;
+  uint32_t max_q_abs_diff = 0;
+};
+
+struct Q8Comparison {
+  Q8SliceComparison aggregate;
+  std::vector<Q8SliceComparison> slices;
+};
+
+struct IsolationResults {
+  Q8Comparison q8_cpu_vs_vulkan;
+  Correctness dot_cpu_prequantized_aggregate;
+  std::vector<Correctness> dot_cpu_prequantized_slices;
+};
+
 [[noreturn]] void fail(const std::string& message) {
   throw std::runtime_error(message);
 }
@@ -405,6 +429,82 @@ std::vector<uint32_t> cpu_quantize_q8_1(const std::vector<uint32_t>& x, const Ar
     }
   }
   return xq;
+}
+
+Q8Comparison compare_q8_slices(
+    const std::vector<std::vector<uint32_t>>& expected,
+    const std::vector<uint32_t>& actual,
+    const Args& args) {
+  const size_t blocks_per_slice =
+      static_cast<size_t>(args.rows) * (args.in_features / 32u);
+  const size_t words_per_slice = blocks_per_slice * Q8_1_WORDS;
+  if (actual.size() != expected.size() * words_per_slice) {
+    fail("Vulkan q8 readback size does not match CPU q8 slices");
+  }
+
+  Q8Comparison comparison{};
+  comparison.slices.reserve(expected.size());
+  for (size_t slice_index = 0; slice_index < expected.size(); ++slice_index) {
+    if (expected[slice_index].size() != words_per_slice) {
+      fail("CPU q8 slice size does not match the q8 buffer ABI");
+    }
+    Q8SliceComparison slice{};
+    slice.slice = static_cast<uint32_t>(slice_index);
+    slice.blocks_checked = blocks_per_slice;
+    const size_t actual_slice_base = slice_index * words_per_slice;
+    for (size_t word = 0; word < words_per_slice; ++word) {
+      if (expected[slice_index][word] != actual[actual_slice_base + word]) {
+        ++slice.word_mismatches;
+      }
+    }
+    for (size_t block = 0; block < blocks_per_slice; ++block) {
+      const size_t expected_base = block * Q8_1_WORDS;
+      const size_t actual_base = actual_slice_base + expected_base;
+      const uint32_t expected_ds = expected[slice_index][expected_base];
+      const uint32_t actual_ds = actual[actual_base];
+      const uint32_t expected_d = expected_ds & 0xffffu;
+      const uint32_t actual_d = actual_ds & 0xffffu;
+      if (expected_d != actual_d) {
+        ++slice.d_mismatches;
+        slice.d_actual_lower += actual_d < expected_d ? 1u : 0u;
+        slice.d_actual_higher += actual_d > expected_d ? 1u : 0u;
+        slice.max_d_bits_abs_diff = std::max(
+            slice.max_d_bits_abs_diff,
+            static_cast<uint32_t>(std::abs(
+                static_cast<int>(expected_d) - static_cast<int>(actual_d))));
+      }
+      if ((expected_ds >> 16u) != (actual_ds >> 16u)) {
+        ++slice.s_mismatches;
+      }
+      for (uint32_t lane = 0; lane < 32u; ++lane) {
+        const uint32_t shift = (lane & 3u) * 8u;
+        const size_t q_word = 1u + (lane >> 2u);
+        const int expected_q = static_cast<int>(static_cast<int8_t>(
+            (expected[slice_index][expected_base + q_word] >> shift) & 0xffu));
+        const int actual_q = static_cast<int>(static_cast<int8_t>(
+            (actual[actual_base + q_word] >> shift) & 0xffu));
+        if (expected_q != actual_q) {
+          ++slice.q_mismatches;
+          slice.max_q_abs_diff = std::max(
+              slice.max_q_abs_diff,
+              static_cast<uint32_t>(std::abs(expected_q - actual_q)));
+        }
+      }
+    }
+    comparison.aggregate.blocks_checked += slice.blocks_checked;
+    comparison.aggregate.word_mismatches += slice.word_mismatches;
+    comparison.aggregate.d_mismatches += slice.d_mismatches;
+    comparison.aggregate.d_actual_lower += slice.d_actual_lower;
+    comparison.aggregate.d_actual_higher += slice.d_actual_higher;
+    comparison.aggregate.s_mismatches += slice.s_mismatches;
+    comparison.aggregate.q_mismatches += slice.q_mismatches;
+    comparison.aggregate.max_d_bits_abs_diff = std::max(
+        comparison.aggregate.max_d_bits_abs_diff, slice.max_d_bits_abs_diff);
+    comparison.aggregate.max_q_abs_diff = std::max(
+        comparison.aggregate.max_q_abs_diff, slice.max_q_abs_diff);
+    comparison.slices.push_back(slice);
+  }
+  return comparison;
 }
 
 uint32_t q6_pack4_unsigned(const std::vector<uint32_t>& tiles, uint64_t block_byte, uint32_t group32, uint32_t lane4) {
@@ -1307,6 +1407,66 @@ void write_operation_validation_json(
   out << "    }" << suffix << "\n";
 }
 
+void write_q8_slice_comparison_json(
+    const std::string& name,
+    const Q8SliceComparison& comparison,
+    std::ostream& out,
+    const char* suffix) {
+  out << "      \"" << name << "\": {\n";
+  out << "        \"blocks_checked\": " << comparison.blocks_checked << ",\n";
+  out << "        \"word_mismatches\": " << comparison.word_mismatches << ",\n";
+  out << "        \"d_mismatches\": " << comparison.d_mismatches << ",\n";
+  out << "        \"d_actual_lower\": " << comparison.d_actual_lower << ",\n";
+  out << "        \"d_actual_higher\": " << comparison.d_actual_higher << ",\n";
+  out << "        \"s_mismatches\": " << comparison.s_mismatches << ",\n";
+  out << "        \"q_mismatches\": " << comparison.q_mismatches << ",\n";
+  out << "        \"max_d_bits_abs_diff\": "
+      << comparison.max_d_bits_abs_diff << ",\n";
+  out << "        \"max_q_abs_diff\": " << comparison.max_q_abs_diff << ",\n";
+  out << "        \"exact\": "
+      << (comparison.word_mismatches == 0 ? "true" : "false") << "\n";
+  out << "      }" << suffix << "\n";
+}
+
+void write_isolation_json(const IsolationResults& isolation, std::ostream& out) {
+  out << "  \"isolation\": {\n";
+  out << "    \"method\": \"Vulkan q8_1 readback versus the CPU block oracle, then Vulkan dot dispatches after uploading those CPU q8_1 blocks; outside all timed regions\",\n";
+  out << "    \"q8_cpu_vs_vulkan\": {\n";
+  out << "      \"all_exact\": "
+      << (isolation.q8_cpu_vs_vulkan.aggregate.word_mismatches == 0
+              ? "true"
+              : "false")
+      << ",\n";
+  write_q8_slice_comparison_json(
+      "aggregate", isolation.q8_cpu_vs_vulkan.aggregate, out, ",");
+  out << "      \"slices\": {\n";
+  for (size_t index = 0; index < isolation.q8_cpu_vs_vulkan.slices.size(); ++index) {
+    const Q8SliceComparison& slice = isolation.q8_cpu_vs_vulkan.slices[index];
+    write_q8_slice_comparison_json(
+        std::to_string(slice.slice),
+        slice,
+        out,
+        index + 1u == isolation.q8_cpu_vs_vulkan.slices.size() ? "" : ",");
+  }
+  out << "      }\n";
+  out << "    },\n";
+  out << "    \"dot_with_cpu_prequantized_q8\": {\n";
+  write_correctness_json(
+      "aggregate", isolation.dot_cpu_prequantized_aggregate, out, ",");
+  out << "      \"slices\": {\n";
+  for (size_t index = 0; index < isolation.dot_cpu_prequantized_slices.size(); ++index) {
+    const std::string slice_name = std::to_string(index);
+    write_correctness_json(
+        slice_name.c_str(),
+        isolation.dot_cpu_prequantized_slices[index],
+        out,
+        index + 1u == isolation.dot_cpu_prequantized_slices.size() ? "" : ",");
+  }
+  out << "      }\n";
+  out << "    }\n";
+  out << "  },\n";
+}
+
 std::string command_line(int argc, char** argv) {
   std::ostringstream out;
   for (int i = 0; i < argc; ++i) {
@@ -1333,10 +1493,11 @@ void write_json(
     const OperationValidation& quantize_validation,
     const OperationValidation& dot_validation,
     const OperationValidation& combined_validation,
+    const IsolationResults& isolation,
     std::ostream& out) {
   out << std::setprecision(10);
   out << "{\n";
-  out << "  \"schema\": \"hipengine.micro.vulkan_q6_x8_selected_down.v2\",\n";
+  out << "  \"schema\": \"hipengine.micro.vulkan_q6_x8_selected_down.v3\",\n";
   out << "  \"backend\": \"vulkan\",\n";
   out << "  \"classification\": \"real_slice_probe\",\n";
   out << "  \"timing_mode\": \""
@@ -1393,6 +1554,7 @@ void write_json(
   write_operation_validation_json("x8_selected_dp4a_dot_prequantized", dot_validation, out, ",");
   write_operation_validation_json("x8_selected_dp4a_quantize_plus_dot", combined_validation, out, "");
   out << "  },\n";
+  write_isolation_json(isolation, out);
   out << "  \"notes\": \"Matched production-shaped Vulkan probe for the retained HIP Q6_K selected-down X8 q8_1+dp4a slice; synthetic deterministic data, same GGUF Q6_K byte layout and X8 tile mapping.\"\n";
   out << "}\n";
 }
@@ -1415,10 +1577,16 @@ int main(int argc, char** argv) {
     }
     std::vector<uint64_t> selected = make_selected(args);
     std::vector<uint32_t> tiles = make_q6_x8_tiles(args);
+    std::vector<std::vector<uint32_t>> cpu_xq_slices;
+    cpu_xq_slices.reserve(work_repetitions);
+    std::vector<uint32_t> cpu_xq_flat;
     std::vector<std::vector<uint32_t>> expected;
     expected.reserve(work_repetitions);
     for (const std::vector<uint32_t>& slice : x_slices) {
-      expected.push_back(cpu_dot(cpu_quantize_q8_1(slice, args), selected, tiles, args));
+      std::vector<uint32_t> cpu_xq = cpu_quantize_q8_1(slice, args);
+      expected.push_back(cpu_dot(cpu_xq, selected, tiles, args));
+      cpu_xq_flat.insert(cpu_xq_flat.end(), cpu_xq.begin(), cpu_xq.end());
+      cpu_xq_slices.push_back(std::move(cpu_xq));
     }
     x = pack_bf16_storage(x);
     const size_t output_elements_per_slice =
@@ -1524,6 +1692,9 @@ int main(int argc, char** argv) {
     VkDeviceSize xq_bytes = sizeof(uint32_t) * static_cast<uint64_t>(args.rows) *
         (args.in_features / 32) * Q8_1_WORDS * work_repetitions;
     VkDeviceSize out_bytes = sizeof(uint16_t) * actual.size();
+    if (cpu_xq_flat.size() * sizeof(uint32_t) != static_cast<size_t>(xq_bytes)) {
+      fail("CPU q8 fixture size does not match the Vulkan q8 buffer");
+    }
 
     Buffer x_stage = create_buffer(
         physical_device,
@@ -1553,6 +1724,13 @@ int main(int argc, char** argv) {
         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         true);
+    Buffer xq_stage = create_buffer(
+        physical_device,
+        device,
+        xq_bytes,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        true);
     Buffer x_device = create_buffer(
         physical_device,
         device,
@@ -1578,7 +1756,8 @@ int main(int argc, char** argv) {
         physical_device,
         device,
         xq_bytes,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         false);
     Buffer out_device = create_buffer(
@@ -1883,6 +2062,110 @@ int main(int argc, char** argv) {
                 validate_operation(Combined, 1),
                 validate_operation(Combined, args.reps)};
 
+      IsolationResults isolation{};
+      {
+        VkCommandBuffer q8_readback_cmd = begin_one_time(device, command_pool);
+        buffer_barrier(
+            q8_readback_cmd,
+            xq_device,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        for (uint32_t rep = 0; rep < work_repetitions; ++rep) {
+          dispatch_quantize(
+              q8_readback_cmd,
+              quant_pipeline,
+              pipeline_layout,
+              descriptor_set,
+              slice_push(push, rep, rep, rep));
+        }
+        buffer_barrier(
+            q8_readback_cmd,
+            xq_device,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferCopy q8_readback_copy{};
+        q8_readback_copy.size = xq_bytes;
+        vkCmdCopyBuffer(
+            q8_readback_cmd,
+            xq_device.buffer,
+            xq_stage.buffer,
+            1,
+            &q8_readback_copy);
+        submit_and_free(device, queue, command_pool, q8_readback_cmd);
+
+        std::vector<uint32_t> vulkan_xq(cpu_xq_flat.size(), 0);
+        std::memcpy(
+            vulkan_xq.data(), xq_stage.mapped, static_cast<size_t>(xq_bytes));
+        isolation.q8_cpu_vs_vulkan =
+            compare_q8_slices(cpu_xq_slices, vulkan_xq, args);
+
+        std::memcpy(
+            xq_stage.mapped, cpu_xq_flat.data(), static_cast<size_t>(xq_bytes));
+        VkCommandBuffer cpu_q8_dot_cmd = begin_one_time(device, command_pool);
+        VkBufferCopy cpu_q8_upload{};
+        cpu_q8_upload.size = xq_bytes;
+        vkCmdCopyBuffer(
+            cpu_q8_dot_cmd,
+            xq_stage.buffer,
+            xq_device.buffer,
+            1,
+            &cpu_q8_upload);
+        buffer_barrier(
+            cpu_q8_dot_cmd,
+            xq_device,
+            VK_ACCESS_TRANSFER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(
+            cpu_q8_dot_cmd,
+            out_device,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        for (uint32_t rep = 0; rep < work_repetitions; ++rep) {
+          dispatch_dot(
+              cpu_q8_dot_cmd,
+              dot_pipeline,
+              pipeline_layout,
+              descriptor_set,
+              slice_push(push, rep, rep, rep));
+        }
+        buffer_barrier(
+            cpu_q8_dot_cmd,
+            out_device,
+            VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferCopy cpu_q8_output_copy{};
+        cpu_q8_output_copy.size = out_bytes;
+        vkCmdCopyBuffer(
+            cpu_q8_dot_cmd,
+            out_device.buffer,
+            out_stage.buffer,
+            1,
+            &cpu_q8_output_copy);
+        submit_and_free(device, queue, command_pool, cpu_q8_dot_cmd);
+        std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
+
+        std::vector<uint32_t> all_slices;
+        all_slices.reserve(work_repetitions);
+        isolation.dot_cpu_prequantized_slices.reserve(work_repetitions);
+        for (uint32_t rep = 0; rep < work_repetitions; ++rep) {
+          all_slices.push_back(rep);
+          isolation.dot_cpu_prequantized_slices.push_back(
+              compare_output_slices(expected, actual, {rep}, {rep}, args));
+        }
+        isolation.dot_cpu_prequantized_aggregate = compare_output_slices(
+            expected, actual, all_slices, all_slices, args);
+      }
+
       correctness_pass =
           dot_validation.single.pass && dot_validation.burst.pass &&
           quantize_validation.single.pass && quantize_validation.burst.pass &&
@@ -1899,7 +2182,12 @@ int main(int argc, char** argv) {
                 << " quantize=" << quantize_median / 1000.0
                 << " ms dot=" << dot_median / 1000.0
                 << " ms combined=" << combined_median / 1000.0
-                << " ms correctness=" << (correctness_pass ? "pass" : "fail") << "\n";
+                << " ms correctness=" << (correctness_pass ? "pass" : "fail")
+                << " q8_word_mismatches="
+                << isolation.q8_cpu_vs_vulkan.aggregate.word_mismatches
+                << " cpu_q8_dot="
+                << (isolation.dot_cpu_prequantized_aggregate.pass ? "pass" : "fail")
+                << "\n";
 
       auto emit_json = [&](std::ostream& output) {
         write_json(
@@ -1917,6 +2205,7 @@ int main(int argc, char** argv) {
             quantize_validation,
             dot_validation,
             combined_validation,
+            isolation,
             output);
       };
       if (args.json_path.empty()) {
@@ -1938,6 +2227,7 @@ int main(int argc, char** argv) {
     destroy_buffer(device, selected_stage);
     destroy_buffer(device, tiles_stage);
     destroy_buffer(device, out_stage);
+    destroy_buffer(device, xq_stage);
     destroy_buffer(device, x_device);
     destroy_buffer(device, selected_device);
     destroy_buffer(device, tiles_device);
