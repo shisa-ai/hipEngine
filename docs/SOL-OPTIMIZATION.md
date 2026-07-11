@@ -2,13 +2,12 @@
 
 Last updated: 2026-07-11.
 
-Status: active ledger. The P0 foundation (`SOL-E1` through `SOL-E5`, `SOL-B1`,
-`SOL-M1`, and `SOL-D1`) plus `SOL-S2` is accepted on top of the
-`7ea21e98b097` release-default baseline.
-The gfx1151 HIP/Vulkan v2
-matrix was measured at `ca241dae795d` with `hipengine_dirty=false`; the PARO
-true-c1 shrinking gate was measured at `0c1845170955` with
-`hipengine_dirty=false`.
+Status: local gfx1151 sprint closed. Every local item is accepted, rejected, or
+parked with a named reactivation gate. Cross-GPU V10 remains blocked on W7900
+hardware, and V11 remains blocked on a matched Q6 math/layout implementation.
+The P0 foundation is accepted on top of the `7ea21e98b097` release-default
+baseline; gfx1151 HIP/Vulkan v2 is clean at `ca241dae`, PARO P1/P2 are clean at
+`a18ff7bc` / `6f1910c9`, and the real DFlash profile is clean at `8eb27215`.
 
 This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
@@ -78,11 +77,13 @@ The table names the source revision for each result.
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
 | PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. `SOL-P2` closes ragged c8-to-c1 lifecycle safety at clean `6f1910c9`: all generated IDs, 30 linear-state families, and 10 full-KV families match independent c1 through EOS plus front/middle/tail sparse cancellation. | Production greedy and sampled batches use exact width-1 sessions; ragged packed prefill uses the explicit `per_segment_ragged_exact` fallback. gfx1100 is stale/non-selecting pending W7900 hardware. P3/P4/P7-P9 are parked behind a general exact native c>N algorithm; P6's invalid splitter is removed. |
+| PARO DFlash | Clean `8eb27215` S4 runs the curated 35B pair with same-session AR, exact output, coarse/fine phase buckets, and verifier graph shapes. Exact replay is `9.676` versus `65.266 tok/s` AR (`0.14825x`). | S5 branch-copy is correctness-red, S6 has no wider-group premise at 1/114 accepted proposals, and S7 fused LM-head is 5.16% slower. DFlash stays default-off. |
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
 | HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
 
-The first sprint is therefore measurement and routing correctness, followed by
-GGUF recovery and PARO shape safety. New speculative kernels come later.
+The local sprint has therefore closed measurement/routing correctness, GGUF
+recovery, PARO shape safety, and the bounded speculative transfer audit. New
+work starts only when a recorded reactivation gate changes.
 
 ## Non-Negotiable Gates
 
@@ -228,18 +229,18 @@ also preventing incompatible quant kernels from being copied blindly.
 
 | Surface | PARO today | GGUF today | Required comparison / transfer |
 | --- | --- | --- | --- |
-| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | `SOL-B1` tags resident GGUF models and every weight with the resolved backend; embedding, linear/fused-linear, router, GDN, and compact/sidecar MoE resolves rebind shared gfx1100 source templates to that identity. A live gfx1151 public smoke retained `hip_gfx1151` through generator/runner/model/weights and generated token ID `11`. | Backend identity is complete; establish the corrected baseline matrix before architecture-specific tuning. |
-| Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | SOL-G2 certifies the raw-Q/K exact GDN chain across segment/chunk boundaries, but clean G3 walls reject it at 512/4K (+5.19%/+6.70%). | Keep fused; retune chunks against the selected fused route unless a materially different exact-chain scheduler is proposed. |
-| Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | Fast GGUF graph was retired after third-and-later replay state corruption; SOL-G1 supplies the exact eager control and SOL-G4 profiles it in 24 decode-only marker windows. | Recapture by full shape/state key in G5 only against the retained eager wall/profile. |
-| c>N decode | PARO has native multi-row paths, owned batch timing, and retained gfx1100 c4/c8 direct rows. | GGUF server has packed AR/verify work, exact all-choice IDs, and owned batch timing, but route width/shape identity remain incomplete. | Run the same c1-c8 and shrinking matrix on both paths. |
-| Sparse slots | Runtime accepts sorted sparse physical slots. | Resident MTP slots are tracked, but actual group width must be exposed. | Remove generator compact-from-zero gating and test holes/reclaim. |
-| Full attention | PARO uses shape-specific native/rowchunk bridges; several widths remain diagnostic. | GGUF AR/verify paths have separate packed behavior. | Bucket context, row width, reducer, KV ABI, and fallback separately. |
+| Backend identity | PARO has gfx1100/gfx1151 factories and carries backend/target arch. | `SOL-B1` tags resident GGUF models and every weight with the resolved backend; embedding, linear/fused-linear, router, GDN, and compact/sidecar MoE resolves rebind shared gfx1100 source templates to that identity. A live gfx1151 public smoke retained `hip_gfx1151` through generator/runner/model/weights and generated token ID `11`. | Backend identity is complete; B2 is parked until an exact A/B selects a concrete architecture value. |
+| Prefill chunking | gfx1151 all-256 chunking was a large diagnostic win. | SOL-G2 certifies the raw-Q/K exact GDN chain across segment/chunk boundaries, but clean G3 walls reject it at 512/4K (+5.19%/+6.70%). | Keep fused; G7 parks undirected chunk/threshold sweeps unless a materially different exact candidate and named bucket appear. |
+| Decode graph | PARO has graph/bucket infrastructure, with path-specific evidence. | SOL-G5 rebuilds the GGUF graph by full shape/state identity and passes 128 third-and-later state/token checkpoints; capture-inclusive wall retains a 0.112% win for long c1 greedy windows. | Keep path-specific keys; do not transfer a graph policy without exact replay and same-path wall evidence. |
+| c>N decode | P1 rejects native gfx1151 c2-c8 and classifies production as exact width-1 sessions; P2 proves ragged sparse shrinking on that route. | S2 exposes route cap, queue/backend groups, and verifier rows. G8 is parked because client c8 realizes c4+c4+c2 and one of three runs has an intermittent c4-group mismatch; no true multi-row AR algorithm exists. | Reactivate each path only with its own independent-c1 hidden/state/KV oracle and a general algorithm. |
+| Sparse slots | P2 proves sorted sparse physical slots through EOS and front/middle/tail cancellations without compaction. | GGUF actual groups are observable, but true multi-row AR sparse-state semantics remain part of parked G8. | Preserve PARO's exact serial lifecycle; require the full G8 shrink/sparse gate before GGUF native promotion. |
+| Full attention | PARO c2-c8 candidates are correctness-red and production is explicitly serial; ragged prefill uses `per_segment_ragged_exact`. | GGUF eager/full-attention state is exact for G1/G5 c1; packed multi-row behavior remains behind G8. | Bucket context, row width, reducer, KV ABI, and fallback separately; never select from a rejected width. |
 | GDN/linear state | PARO has segmented multi-row state work plus shape-specific fallbacks. | GGUF eager state is exact; the raw-Q/K split passes G2 but loses balanced G3 full-prefill wall at both primary contexts. | Keep fused as the GGUF default and preserve the exact chain as the required unfused fallback/bisection path. |
-| MoE | Selected-c1 is already a true multi-row algorithm for even widths; grouped compact covers other diagnostics. | GGUF uses Q*_K/T16/X8 and dp4a-specific selected paths. | Transfer row/group policy and measurement, not quant kernel bodies. |
-| Projection | PARO catalogs candidates, but evidence mixes architectures and row-only bounds. | GGUF replacement layouts and selected/dense paths are quant-specific. | Key catalogs by full identity; compare true weight reuse versus row-GEMV. |
-| LM-head/sampler | PARO has batched LM-head evidence at some widths and serial fallback elsewhere. | GGUF uses Q6 rowtile/chunks; large rowtiles collapse. | Profile full lm-head + reduction + readback before new fusion. |
-| Speculative lifecycle | PARO DFlash has coarse timing and graph-shape telemetry, not a current real GPU row. | GGUF has packed verify and deferred scatter work; copied group timing now has one stable owner, while verifier-row/actual-group identity remains open. | Complete shape identity, then compare accepted-row scatter, tail discard, commit, and sync. |
-| Startup/cache | PARO/GGUF both contain warmup and resident-cache ideas. | Coverage and artifact identity differ. | Record cold, warmed, cache-hit, and shape-miss behavior explicitly. |
+| MoE | Selected-c1 and grouped-compact remain named diagnostics, but P1 rejects both as general native c>N production algorithms. | GGUF uses Q*_K/T16/X8 and dp4a-specific selected paths. | Transfer row/group policy and measurement, not quant kernel bodies; no rejected PARO width may select GGUF or PARO defaults. |
+| Projection | P1 catalogs every gfx1151 width under the full model/quant/KV/context identity and classifies production serial. | GGUF G6 proves replacement-only residency; selected/dense paths remain quant-specific. | Compare true weight reuse versus row-GEMV only after an exact multi-row profile exists. |
+| LM-head/sampler | PARO has exact serial fallback; current native widths are rejected. S4 synchronized DFlash attribution measures the target and drafter heads explicitly. | G4 profiles Q6 head/top1 at 10.06%; G10's dominance trigger is false. | S7 rejects fused DFlash target head and readback work; reactivate only on a changed measured bucket. |
+| Speculative lifecycle | S4 supplies a clean real GPU row with coarse/fine buckets and graph shapes; S5 branch-copy is faster but fails at token 1, so canonical replay remains exact. | S2 supplies stable queue/backend/verifier identity; S1 keeps non-exact compatibility MTP explicit-only. | Current transfer audit is closed. Reopen commit/group/fusion work only after exact/profitable route evidence changes. |
+| Startup/cache | PARO/GGUF both contain warmup and resident-cache paths. | G5 records GGUF capture/hit/replay identity; S4 records DFlash verifier shape misses and the non-exact branch-copy hit control. | Keep cache evidence path-specific; future claims must continue to separate cold, warmed, hit, and miss behavior. |
 | Memory residency | PARO packed rows are near the consumer-card target. | SOL-G6 cleanly audits gfx1151 Q4_K_M p512/d128 at 21.478 GiB owned/tracked: 733 unique sources, no raw+replacement duplicates or enabled optional sidecars, and 2.522 GiB margin to 24 GiB. | Keep the replacement-only default; context-specific long-KV capacity remains a separate policy gate. |
 
 GGUF Q*_K, T16/X8, q8_1/dp4a, and Q6 LM-head kernels are not PARO
@@ -562,8 +563,8 @@ The P3-P9 activation audit is closed. P2 supplies the exact production true-c1
 lifecycle; P3/P4/P7-P9 are parked until a general algorithm changes P1's native
 c2-c8 result, and P6 is rejected with its dead splitter removed. S1 now keeps
 automatic compatibility MTP on exact/default AR and S3 is parked until an
-exact/default MTP route establishes a stable static policy. The next PARO
-coordinator unit, S4-S7, is now closed: the real DFlash row is exact but only
+exact/default MTP route establishes a stable static policy. The S4-S7 PARO
+coordinator unit is now closed: the real DFlash row is exact but only
 0.14825x AR, branch-copy is correctness-red, wider groups lack an activation
 premise, and fused LM-head is slower. Fixture-specific rounding repair is not
 an optimization target.
