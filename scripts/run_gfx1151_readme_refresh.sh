@@ -157,32 +157,55 @@ run_hipengine() {
   run_prebuild
   local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
   local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local workloads=(512/128 1K/128 4K/128 32K/128 64K/128 128K/128)
+  local paro_components=()
+  local gguf_components=()
+  local workload safe component
 
   echo "[run] hipEngine PARO -> $paro_json" | tee -a "$LOGDIR/run.log"
-  "${THEROCK_ENV[@]}" timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
-    "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine paro --model "$PARO_MODEL" --backend hip_gfx1151 \
-    --shared-expert-format packed_paro_w4 --token-id 9707 \
-    --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
-    --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
-    --attn-aotriton-min-tokens 512 --graph-replay-decode \
-    --json "$paro_json" > "$LOGDIR/hipengine-paro.log" 2>&1
-  compact_readme_sweep_json "$paro_json"
+  for workload in "${workloads[@]}"; do
+    safe=${workload//\//-}
+    component="$LOGDIR/hipengine-paro-$safe.json"
+    paro_components+=("$component")
+    echo "[run] hipEngine PARO $workload" | tee -a "$LOGDIR/run.log"
+    "${THEROCK_ENV[@]}" timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
+      "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
+      --engine paro --model "$PARO_MODEL" --backend hip_gfx1151 \
+      --shared-expert-format packed_paro_w4 --token-id 9707 \
+      --workloads "$workload" \
+      --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
+      --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
+      --attn-aotriton-min-tokens 512 --graph-replay-decode \
+      --json "$component" > "$LOGDIR/hipengine-paro-$safe.log" 2>&1
+    compact_readme_sweep_json "$component"
+  done
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/merge_readme_sweep_components.py" \
+    --engine paro --components "${paro_components[@]}" --json "$paro_json" \
+    > "$LOGDIR/hipengine-paro-merge.log" 2>&1
 
   echo "[run] hipEngine GGUF -> $gguf_json" | tee -a "$LOGDIR/run.log"
-  "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 \
-    timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
-    "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
-    --backend hip_gfx1151 \
-    --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
-    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-    --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
-    --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
-    --json "$gguf_json" > "$LOGDIR/hipengine-gguf.log" 2>&1
-  compact_readme_sweep_json "$gguf_json"
+  for workload in "${workloads[@]}"; do
+    safe=${workload//\//-}
+    component="$LOGDIR/hipengine-gguf-$safe.json"
+    gguf_components+=("$component")
+    echo "[run] hipEngine GGUF $workload" | tee -a "$LOGDIR/run.log"
+    "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 \
+      timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
+      "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
+      --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
+      --backend hip_gfx1151 --workloads "$workload" \
+      --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+      --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+      --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
+      --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
+      --json "$component" > "$LOGDIR/hipengine-gguf-$safe.log" 2>&1
+    compact_readme_sweep_json "$component"
+  done
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/merge_readme_sweep_components.py" \
+    --engine gguf --components "${gguf_components[@]}" --json "$gguf_json" \
+    > "$LOGDIR/hipengine-gguf-merge.log" 2>&1
 }
 
 run_llamacpp() {

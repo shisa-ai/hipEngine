@@ -151192,3 +151192,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   numbers are diagnostic only because the source tree was dirty. The focused
   graph-lifetime module passes 6/6, Python compilation and `git diff --check`
   pass. The clean full refresh must be restarted from this fix.
+
+## 2026-07-11 - Isolate gfx1151 topline sessions by workload
+
+- The clean `897d1be5` max-context retry confirmed that graph recapture was
+  only part of the harness problem. With one reused graph it completed both
+  warmups plus measured repetitions 1-4 for 512/128, then the seventh
+  reset/replay again stopped at 100% GPU while the session carried the 128K
+  allocation. The process was terminated; HIP recovered immediately and no
+  partial component artifact was written.
+- Replace the artificial one-128K-session-for-all-shapes contract on gfx1151
+  with one process and one right-sized resident session per workload. Each
+  component still performs two discarded plus five measured resets, while
+  short-shape memory no longer includes unused 128K KV capacity and process
+  isolation bounds HIP graph lifetime. Load remains outside the phase timing
+  and is reported separately for every workload.
+- Added `scripts/merge_readme_sweep_components.py`. It requires the six ordered
+  standard shapes, identical clean source/model/backend/build identities,
+  five samples per phase, finite measured logits, stable final IDs, and
+  stdev/median <=5% before setting `performance_claim=true`. The compact
+  rollup retains every timing/correctness/memory sample plus component commands
+  and hashes; raw per-shape logs remain under `/tmp`.
+- The focused suite passes 7/7, including a synthetic six-shape promotion and
+  the one-graph-per-shape lifetime check. Shell syntax, Python compilation, and
+  `git diff --check` pass. The full clean matrix must restart from this runner.

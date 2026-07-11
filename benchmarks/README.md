@@ -597,7 +597,10 @@ Subset commands are `... hipengine` and `... llamacpp`. The runner fixes the
 model identities, six standard shapes, native gfx1151 compiler target,
 torch-free hermetic TheRock environment, two discarded plus five measured
 hipEngine runs, and five internal llama-bench repetitions. It records a
-canonical provenance object in every component artifact.
+canonical provenance object in every component artifact. Each hipEngine shape
+runs in its own process with a right-sized resident session, then the committed
+merge gate verifies and preserves all samples in one compact rollup. This keeps
+512/1K memory honest and avoids imposing a 128K allocation on every row.
 
 gfx1151 is a UMA APU: sysfs reports only a 512 MiB visible-VRAM aperture while
 the amdgpu GTT domain is 120 GiB and holds model allocations. The runner
