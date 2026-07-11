@@ -151006,3 +151006,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `uv run pytest -q
   tests/test_qwen35_gguf_hidden_seed_contract.py` passes 20/20;
   `git diff --check` passes. Runtime code and benchmark values are unchanged.
+
+## 2026-07-11 - Forward verifier kwargs through the P10.X2 hook
+
+- The remaining-tail gate reached the real-model P10.X2 layer-0 WMMA/GEMV
+  correctness case, but its May interception hooks rejected the verifier's
+  later `residual_f32_ptr` and stage-timing keyword arguments before either
+  reference or candidate MoE path ran.
+- Made all three local hooks accept and forward the complete keyword payload to
+  the original `_run_post_attention_moe_rows` method. Capture/abort behavior
+  and the expert/output equality gates are unchanged.
+- Validation: `uv run pytest -q
+  tests/test_qwen35_gguf_p10_x2_layer_correctness.py` passes on the local
+  Qwen3.6-35B-A3B Q4_K_M model and gfx1151 device; `git diff --check` passes.
+  No production code or benchmark value changed.
