@@ -486,11 +486,11 @@ as separate dimensions:
 `route_cap.value` limits compatible queued HTTP requests, not choices, prompt
 rows, backend width, or verifier rows. `queue_group` identifies the coalesced
 request group and this response's prompt slice. `backend_groups` records every
-actual generator call; for example, the opt-in c6 splitter reports separate
-c4 and c2 calls. `verifier_rows` counts target-model verification rows and is
-zero for non-speculative work. A c8 client benchmark under a four-request route
-cap therefore reports two queue groups with backend widths `[4, 4]`, not a
-width-8 verifier.
+actual generator call, including any future scheduler partitioning.
+`verifier_rows` counts target-model verification rows and is zero for
+non-speculative work. A c8 client benchmark under a four-request route cap
+therefore reports two queue groups with backend widths `[4, 4]`, not a width-8
+verifier.
 
 The object is repeated on every response participating in one queue group so a
 client harness can validate complete item indices/slices and deduplicate by

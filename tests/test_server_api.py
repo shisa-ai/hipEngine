@@ -4379,8 +4379,11 @@ def test_generation_batcher_shape_separates_c8_queue_from_c4_verifier_groups() -
     asyncio.run(run())
 
 
-def test_generation_batcher_retained_defaults_keep_c6_direct(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generation_batcher_keeps_c6_direct_when_removed_split_env_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
 
     async def run() -> None:
         fake = FakeLLM()
@@ -4397,115 +4400,6 @@ def test_generation_batcher_retained_defaults_keep_c6_direct(monkeypatch: pytest
 
         assert results == [[f"generated:prompt-{index}"] for index in range(6)]
         assert fake.calls == [(tuple(f"prompt-{index}" for index in range(6)), sampling)]
-
-    asyncio.run(run())
-
-
-def test_generation_batcher_retained_c6_split_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
-
-    async def run() -> None:
-        fake = FakeLLM()
-        sampling = SamplingParams(max_tokens=2)
-        batcher = _GenerationBatcher(
-            engine_factory=lambda: fake,
-            batch_window_seconds=0.01,
-            max_active_requests=8,
-        )
-
-        results = await asyncio.gather(
-            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
-        )
-
-        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
-        assert fake.calls == [
-            (("prompt-0", "prompt-1", "prompt-2", "prompt-3"), sampling),
-            (("prompt-4", "prompt-5"), sampling),
-        ]
-
-    asyncio.run(run())
-
-
-def test_generation_batcher_retained_c6_split_remaps_scheduler_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
-
-    class SchedulerChunkFakeLLM(FakeLLM):
-        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
-            outputs = super().generate_detailed(prompts, sampling_params)
-            self.last_batch_generation = {
-                "scheduler_token_chunks": [
-                    {"request_id": index, "token_index": 0, "token_id": 100 + index, "chunk": {"text": output.text}}
-                    for index, output in enumerate(outputs)
-                ]
-            }
-            return outputs
-
-    async def run() -> None:
-        fake = SchedulerChunkFakeLLM()
-        sampling = SamplingParams(max_tokens=2)
-        batcher = _GenerationBatcher(
-            engine_factory=lambda: fake,
-            batch_window_seconds=0.0,
-            max_active_requests=8,
-        )
-
-        result = await batcher.submit(
-            tuple(f"prompt-{index}" for index in range(6)),
-            sampling,
-            detailed=True,
-            include_batch_metadata=True,
-        )
-
-        assert isinstance(result, _QueuedBatchResult)
-        assert [output.text for output in result.outputs] == [
-            f"generated:prompt-{index}" for index in range(6)
-        ]
-        assert fake.calls == [
-            (("prompt-0", "prompt-1", "prompt-2", "prompt-3"), sampling),
-            (("prompt-4", "prompt-5"), sampling),
-        ]
-        assert result.scheduler_token_chunks is not None
-        assert [chunk["request_id"] for chunk in result.scheduler_token_chunks] == [0, 1, 2, 3, 4, 5]
-        assert [chunk["chunk"]["text"] for chunk in result.scheduler_token_chunks] == [
-            f"generated:prompt-{index}" for index in range(6)
-        ]
-        assert result.scheduler_token_chunks[4]["hipengine"]["batch_split"] == {
-            "policy": "qwen35_retained_avoid_c6",
-            "split_index": 1,
-            "request_id_offset": 4,
-            "original_rows": 6,
-            "chunk_rows": 2,
-        }
-        assert result.generation_shape is not None
-        assert result.generation_shape["queue_group"]["request_count"] == 1
-        assert result.generation_shape["queue_group"]["prompt_rows"] == 6
-        assert [
-            {
-                key: value
-                for key, value in group.items()
-                if key != "id"
-            }
-            for group in result.generation_shape["backend_groups"]
-        ] == [
-            {
-                "call_index": 0,
-                "prompt_offset": 0,
-                "input_rows": 4,
-                "actual_group_rows": [4],
-                "max_actual_group_rows": 4,
-                "verifier_rows": 0,
-            },
-            {
-                "call_index": 1,
-                "prompt_offset": 4,
-                "input_rows": 2,
-                "actual_group_rows": [2],
-                "max_actual_group_rows": 2,
-                "verifier_rows": 0,
-            },
-        ]
 
     asyncio.run(run())
 
