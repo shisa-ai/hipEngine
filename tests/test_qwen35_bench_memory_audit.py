@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from scripts.qwen35_paro_bench import _memory_summary, _workload_summary
+import pytest
+
+from scripts.qwen35_paro_bench import _memory_summary, _prompt_fixture_tokens, _workload_summary
 
 
 def test_qwen35_paro_bench_workload_summary_labels_c1_shape() -> None:
@@ -64,3 +67,30 @@ def test_qwen35_paro_bench_memory_summary_embeds_kv_audit_and_peaks() -> None:
     assert summary["kv_memory_audit"]["latest"]["retained_kv_payload_bytes_per_element"] == 1.0
     assert summary["kv_memory_audit"]["tracked_peak_allocated_bytes"] == 256
     assert summary["kv_memory_audit"]["hip_used_peak_sampled_bytes"] == 4096
+
+
+def test_qwen35_paro_bench_loads_exact_prompt_fixture_row(tmp_path: Path) -> None:
+    fixture = tmp_path / "prompts.json"
+    fixture.write_text(
+        json.dumps(
+            {
+                "prompt_length": 4,
+                "prompt_count": 2,
+                "prompt_ids": [10, 11, 12, 13, 20, 21, 22, 23],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _prompt_fixture_tokens(fixture, prompt_length=3, row=1) == [20, 21, 22]
+
+
+def test_qwen35_paro_bench_rejects_invalid_prompt_fixture_row(tmp_path: Path) -> None:
+    fixture = tmp_path / "prompts.json"
+    fixture.write_text(
+        json.dumps({"prompt_length": 2, "prompt_count": 1, "prompt_ids": [1, 2]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="outside available rows"):
+        _prompt_fixture_tokens(fixture, prompt_length=2, row=1)

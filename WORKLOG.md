@@ -150598,3 +150598,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   under `/tmp`. Updated SOL, benchmark/root README, benchmark protocol, and
   changelog. G6 is accepted; G9/G10 are parked because their profile triggers
   are false. P1 is now the prerequisite for B2/G7/G8.
+
+## 2026-07-11 - Add exact-token fixture input to the PARO c1 benchmark
+
+- The clean SOL-P1 c2-c8 equality matrix uses the repeated-parent 8x512 token
+  fixture, but `qwen35_paro_bench.py` could only construct repeated token IDs
+  or retokenized text. Added `--prompt-fixture` plus `--prompt-row` so the c1
+  timing row can consume the identical raw token slice.
+- Artifacts now label the prompt source, fixture, selected row, and exact token
+  SHA-256 at both the top level and in the workload identity. The existing
+  repeated-token/text behavior is unchanged when no fixture is supplied.
+- RED/GREEN coverage selects the second row from a two-row fixture and rejects
+  an out-of-range row. The focused benchmark memory/input module passes `4/4`;
+  Python compilation and `git diff --check` pass. Next action is a clean cached
+  c1 p512/d128 graph row against the same SOL-P1 fixture.

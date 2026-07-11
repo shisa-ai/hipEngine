@@ -21,13 +21,14 @@ import sys
 import time
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.provenance import collect_artifact_provenance, collect_repo_state
+from hipengine.benchmark.prompts import token_ids_sha256
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime import PrefillConfig
@@ -145,8 +146,9 @@ def _workload_summary(
     warmup_decode_tokens: int,
     max_layers: int,
     kv_policy_summary: dict[str, Any],
+    prompt_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "shape": f"c=1 prompt={int(prompt_length)} decode={int(decode_tokens)}",
         "model": "Qwen3.5-35B-A3B-PARO",
         "model_path": str(model),
@@ -161,6 +163,9 @@ def _workload_summary(
         "max_layers": int(max_layers),
         "kv_policy": kv_policy_summary,
     }
+    if prompt_identity is not None:
+        payload["prompt_identity"] = dict(prompt_identity)
+    return payload
 
 
 def main() -> int:
@@ -178,6 +183,18 @@ def main() -> int:
     parser.add_argument("--prompt", default="Hello")
     parser.add_argument("--token-id", type=int, default=9707, help="Repeated token id for fixed-length prompt")
     parser.add_argument("--prompt-length", type=int, default=16)
+    parser.add_argument(
+        "--prompt-fixture",
+        type=Path,
+        default=None,
+        help="JSON fixture with flat prompt_ids; when set, selects an exact token row instead of --token-id/--prompt",
+    )
+    parser.add_argument(
+        "--prompt-row",
+        type=int,
+        default=0,
+        help="Zero-based row in --prompt-fixture (rows use the fixture prompt_length)",
+    )
     parser.add_argument("--decode-tokens", type=int, default=8)
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
@@ -264,6 +281,10 @@ def main() -> int:
 
     if args.prompt_length <= 0:
         raise ValueError("--prompt-length must be positive")
+    if args.prompt_row < 0:
+        raise ValueError("--prompt-row must be non-negative")
+    if args.prompt_fixture is None and args.prompt_row != 0:
+        raise ValueError("--prompt-row requires --prompt-fixture")
     if args.decode_tokens < 0 or args.warmup_decode_tokens < 0:
         raise ValueError("decode token counts must be non-negative")
     if args.graph_steps_per_replay <= 0:
@@ -288,7 +309,26 @@ def main() -> int:
 
     model = Path(args.model)
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file is not None else None
-    prompt_tokens = _prompt_tokens(model, args.prompt, args.token_id, args.prompt_length)
+    if args.prompt_fixture is None:
+        prompt_tokens = _prompt_tokens(model, args.prompt, args.token_id, args.prompt_length)
+        prompt_identity = {
+            "source": "repeated_token_id" if args.token_id is not None else "tokenized_text_repeat",
+            "fixture": None,
+            "row": None,
+            "prompt_ids_sha256": token_ids_sha256(prompt_tokens),
+        }
+    else:
+        prompt_tokens = _prompt_fixture_tokens(
+            args.prompt_fixture,
+            prompt_length=args.prompt_length,
+            row=args.prompt_row,
+        )
+        prompt_identity = {
+            "source": "fixture_token_ids",
+            "fixture": str(args.prompt_fixture),
+            "row": int(args.prompt_row),
+            "prompt_ids_sha256": token_ids_sha256(prompt_tokens),
+        }
     max_sequence = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
 
     progress = _emit_progress if args.progress else None
@@ -441,8 +481,11 @@ def main() -> int:
         ),
         "commands": {"benchmark": _command(None)},
         "mode": "actual_autoregressive_resident",
-        "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
-        "prompt": args.prompt,
+        "prompt_source": prompt_identity["source"],
+        "prompt_fixture": prompt_identity["fixture"],
+        "prompt_row": prompt_identity["row"],
+        "prompt_ids_sha256": prompt_identity["prompt_ids_sha256"],
+        "prompt": None if args.prompt_fixture is not None else args.prompt,
         "prompt_length": len(prompt_tokens),
         "decode_tokens": args.decode_tokens,
         "warmup_decode_tokens": args.warmup_decode_tokens,
@@ -454,6 +497,7 @@ def main() -> int:
             warmup_decode_tokens=args.warmup_decode_tokens,
             max_layers=args.max_layers or runner.config.num_hidden_layers,
             kv_policy_summary=kv_policy_json(kv_policy),
+            prompt_identity=prompt_identity,
         ),
         "shared_expert_format": args.shared_expert_format,
         "tokens_per_step": 1,
@@ -627,6 +671,41 @@ def _prompt_tokens(model: Path, prompt: str, token_id: int | None, prompt_length
     while len(out) < prompt_length:
         out.extend(ids)
     return out[:prompt_length]
+
+
+def _prompt_fixture_tokens(path: Path, *, prompt_length: int, row: int) -> list[int]:
+    if prompt_length <= 0:
+        raise ValueError("prompt_length must be positive")
+    if row < 0:
+        raise ValueError("prompt fixture row must be non-negative")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw_tokens = payload.get("prompt_ids") if isinstance(payload, dict) else None
+    if not isinstance(raw_tokens, list) or not raw_tokens:
+        raise ValueError(f"prompt fixture {path} must contain a non-empty prompt_ids list")
+    if any(type(token) is not int or token < 0 for token in raw_tokens):
+        raise ValueError(f"prompt fixture {path} prompt_ids must be non-negative integers")
+    raw_row_length = payload.get("prompt_length")
+    if raw_row_length is None:
+        raw_prompt_count = payload.get("prompt_count", 1)
+        if type(raw_prompt_count) is not int or raw_prompt_count <= 0:
+            raise ValueError(f"prompt fixture {path} prompt_count must be a positive integer")
+        if len(raw_tokens) % raw_prompt_count != 0:
+            raise ValueError(f"prompt fixture {path} token count is not divisible by prompt_count")
+        row_length = len(raw_tokens) // raw_prompt_count
+    else:
+        if type(raw_row_length) is not int or raw_row_length <= 0:
+            raise ValueError(f"prompt fixture {path} prompt_length must be a positive integer")
+        row_length = raw_row_length
+    if prompt_length > row_length:
+        raise ValueError(
+            f"requested prompt_length {prompt_length} exceeds fixture row length {row_length}"
+        )
+    start = row * row_length
+    end = start + prompt_length
+    if end > len(raw_tokens):
+        available_rows = len(raw_tokens) // row_length
+        raise ValueError(f"prompt fixture row {row} is outside available rows 0..{available_rows - 1}")
+    return [int(token) for token in raw_tokens[start:end]]
 
 
 def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
