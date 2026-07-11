@@ -151409,3 +151409,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Docs-only validation: re-read `docs/SOL-OPTIMIZATION.md` end-to-end, verified
   every newly linked local artifact exists, and ran `git diff --check`. No GPU
   or benchmark rerun is required for this planning unit.
+## 2026-07-11 - Rerun gfx1151 HIP/Vulkan microbenchmarks on the updated stack
+
+- Ran the current timing-contract v2 bounded matrix from clean detached
+  hipEngine `18255d2644252b845bbc9b8e10baf5bd2702c386` in
+  `/tmp/hipengine-gfx1151-micro-20260711`, using the exact gfx1151 templates in
+  `benchmarks/micro/README.md`: both timing modes, four independent lanes,
+  paired families at 20 repetitions / 5 warmups / 7 samples, and dispatch at
+  50 repetitions / 10 warmups. Raw artifacts are under
+  `/tmp/hipengine-micro-v2-gfx1151-20260711`; environment SHA-256 is
+  `49b04324eff3e9f5877948e062823c5b39efc78cfc3e0c8f42493cdad24b5bdf`.
+- Measured Radeon 8060S/gfx1151 with active TheRock HIP
+  `7.15.0a20260711`/AMD clang 23 (`aa451e1f`), kernel
+  `7.1.3-2-cachyos`, and Mesa/RADV `26.1.4-arch3.1`. HIP executables resolve
+  runtime/HSA/LLVM from the 7.15 `_rocm_sdk_devel` tree. The installed
+  `rocm-sdk-libraries-gfx1151` package remains 7.13, but its BLAS libraries are
+  not used by these microbenchmarks. Clock policy remained automatic.
+- Result is correctness-blocked partial evidence: 20/22 comparisons and 224
+  burst GPU rows pass. Vulkan independent Q4 selected-dual timed-sequence
+  correctness failed on the initial run and a 5.180s confirmation; Vulkan
+  independent Q6 selected-down also failed. No ratios were emitted for those
+  rows and the retained 2026-07-10 22/22 matrix remains current.
+- Valid updated serial/independent ranges: dispatch
+  `1.131x-10.937x`/`1.129x-148.100x`, geometry
+  `0.690x-0.987x`/`4.234x-19.557x`, reduction
+  `0.663x-0.976x`/`4.061x-25.853x`, memory/waitcnt
+  `0.955x-1.224x`/`0.863x-1.031x`, packed dot
+  `3.054x-3.203x`/`3.599x-3.795x`, VOPD
+  `1.060x-1.220x`/`0.991x-1.127x`, sampler
+  `0.513x-1.249x`/`1.164x-5.029x`, and two-stage reduction
+  `0.694x-0.947x`/`0.660x-0.969x`. Valid combined rows favor HIP: serial Q4
+  `0.926x-0.989x`, serial Q6 `0.589x`, dense Q8 serial
+  `0.568x-0.901x`, and dense Q8 independent `0.391x-0.906x`.
+- Active benchmark work was approximately 310 seconds. Observed environment
+  capture through final artifact was 349 seconds (5m49s), including manual
+  failure handling and the Q4 confirmation; reserve about six minutes per
+  bounded run. Preserved the old/new/future update table in
+  `~/gfx1151-scratch.md` and emitted compact diagnostic
+  `benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`.

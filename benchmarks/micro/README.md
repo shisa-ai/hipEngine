@@ -114,6 +114,15 @@ Q8_0 is `0.540x-0.903x`. Independent combined rows are Q4
 `768x2048` dense rows favor Vulkan. Q6 lm-head remains blocked because the two
 backends do not execute the same math/layout.
 
+The newer 2026-07-11 matched-stack attempt at clean `18255d264425` used active
+TheRock HIP `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, and Mesa/RADV `26.1.4`.
+It is a diagnostic, not a replacement: 20/22 comparisons and 224 burst GPU rows
+are valid, while Vulkan independent-throughput Q4 and Q6 fail timed-sequence
+correctness. The compact artifact is
+[`2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json`](../results/2026-07-11-gfx1151-hip-vulkan-matched-stack-diagnostic.json).
+The observed run took 5m49s including failure handling and one confirmatory
+rerun; budget approximately six minutes for this bounded matrix.
+
 ## Core Files
 
 | Path | Purpose |
