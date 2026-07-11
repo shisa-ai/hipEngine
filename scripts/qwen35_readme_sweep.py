@@ -186,32 +186,28 @@ def _run_paro_sweep(
         for prompt_length, decode_tokens in workloads:
             label = _format_workload(prompt_length, decode_tokens)
             prompt_tokens = _prompt_tokens(model, "Hello", args.token_id, prompt_length)
-            graph_holder: dict[str, Any] = {}
             runs: list[dict[str, Any]] = []
-            try:
-                for raw_index in range(args.warmup_runs + args.measured_runs):
-                    measured = raw_index >= args.warmup_runs
-                    run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
-                    run = _run_existing_paro_session_once(
-                        session=session,
-                        model=model,
-                        runner=runner,
-                        prompt_tokens=prompt_tokens,
-                        decode_tokens=decode_tokens,
-                        warmup_decode_tokens=warmup_decode_tokens,
-                        graph_replay_decode=args.graph_replay_decode,
-                        graph_steps_per_replay=args.graph_steps_per_replay,
+            for raw_index in range(args.warmup_runs + args.measured_runs):
+                measured = raw_index >= args.warmup_runs
+                run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+                run = _run_existing_paro_session_once(
+                    session=session,
+                    model=model,
+                    runner=runner,
+                    prompt_tokens=prompt_tokens,
+                    decode_tokens=decode_tokens,
+                    warmup_decode_tokens=warmup_decode_tokens,
+                    graph_replay_decode=_measured_graph_replay_requested(
+                        requested=args.graph_replay_decode,
                         measured=measured,
-                        run_index=run_index,
-                        load_seconds=load_seconds,
-                        graph_holder=graph_holder,
-                    )
-                    runs.append(run)
-                    _print_run(label, run)
-            finally:
-                graph = graph_holder.get("graph")
-                if graph is not None:
-                    graph.close()
+                    ),
+                    graph_steps_per_replay=args.graph_steps_per_replay,
+                    measured=measured,
+                    run_index=run_index,
+                    load_seconds=load_seconds,
+                )
+                runs.append(run)
+                _print_run(label, run)
             runs_by_workload[label] = runs
     finally:
         persistent_memory["before_close"] = _paro_memory_snapshot("before_close", session.runtime, session)
@@ -391,6 +387,12 @@ def _acquire_paro_readme_graph(
     return graph, False, capture_seconds
 
 
+def _measured_graph_replay_requested(*, requested: bool, measured: bool) -> bool:
+    """Warm kernels eagerly; capture fresh graphs only for measured resets."""
+
+    return bool(requested and measured)
+
+
 def _run_gguf_sweep(
     args: argparse.Namespace,
     model: Path,
@@ -437,12 +439,16 @@ def _run_gguf_sweep(
         for prompt_length, decode_tokens in workloads:
             label = _format_workload(prompt_length, decode_tokens)
             prompt_tokens = [int(args.token_id)] * int(prompt_length)
-            graph_holder: dict[str, Any] = {}
             runs: list[dict[str, Any]] = []
-            try:
-                for raw_index in range(args.warmup_runs + args.measured_runs):
-                    measured = raw_index >= args.warmup_runs
-                    run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+            for raw_index in range(args.warmup_runs + args.measured_runs):
+                measured = raw_index >= args.warmup_runs
+                run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+                effective_graph_replay = _measured_graph_replay_requested(
+                    requested=args.graph_replay_decode,
+                    measured=measured,
+                )
+                graph_holder: dict[str, Any] | None = {} if effective_graph_replay else None
+                try:
                     run = _run_existing_gguf_session_once(
                         session=session,
                         runtime=runtime,
@@ -451,7 +457,7 @@ def _run_gguf_sweep(
                         prompt_tokens=prompt_tokens,
                         decode_tokens=decode_tokens,
                         warmup_decode_tokens=warmup_decode_tokens,
-                        graph_replay_decode=args.graph_replay_decode,
+                        graph_replay_decode=effective_graph_replay,
                         graph_steps_per_replay=args.graph_steps_per_replay,
                         use_bulk_prefill=use_bulk_prefill,
                         bulk_attention_mode=args.bulk_prefill_attention_mode,
@@ -466,10 +472,10 @@ def _run_gguf_sweep(
                     )
                     runs.append(run)
                     _print_run(label, run)
-            finally:
-                graph = graph_holder.get("graph")
-                if graph is not None:
-                    graph.close()
+                finally:
+                    graph = None if graph_holder is None else graph_holder.get("graph")
+                    if graph is not None:
+                        graph.close()
             runs_by_workload[label] = runs
     finally:
         persistent_memory["before_close"] = _gguf_memory_snapshot("before_close", runtime, session)
@@ -595,7 +601,7 @@ def _sweep_output(
         "notes": [
             "The model/session is loaded once for the largest requested shape and reset between repetitions.",
             "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
-            "Measured decode excludes HIP graph capture time when graph replay is enabled; PARO defaults to graph replay, while GGUF defaults to eager resident decode because its decode graph was retired.",
+            "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput.",
         ],
     }
 
