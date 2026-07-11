@@ -151672,3 +151672,46 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_micro_*.py tests/test_benchmark_readme_sync.py
   tests/test_benchmark_provenance.py` passes; benchmark README export blocks
   are synchronized; JSON parsing and `git diff --check` pass.
+
+## 2026-07-12 - Compare TuneD accelerator-performance on gfx1151 micros
+
+- Verified `tuned-adm active` reports `accelerator-performance` and
+  `tuned-adm verify` succeeds before and after both matrices. All 32 CPU
+  policies use the `performance` governor and EPP `performance`; the profile
+  disables higher-latency STOP states. AMD GPU DPM remains `auto`, with
+  600/1100/2900 MHz SCLK levels and 1000 MHz MCLK selected at the idle
+  snapshots, so this is a host/latency-policy diagnostic rather than a fixed
+  GPU-clock experiment.
+- Reused detached clean source `50bea8f330fe93420422a904927ea24d374edbc1`
+  and the exact prior backend order/shapes. The matched paired `10/3/5` plus
+  dispatch `20/5` matrix completed in `240.270s` (`4m00.270s`); raw root
+  `/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-tuned-matched-20260712`,
+  environment SHA-256
+  `3345c42cae58fdd16340231b3fb6b3258181e8187f8359be220e10abea55f636`.
+  The strict paired `20/5/7` plus dispatch `50/10` matrix completed in
+  `293.066s` (`4m53.066s`); raw root
+  `/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-tuned-strict-20260712`,
+  environment SHA-256
+  `12d98c8a391c99669e59225dae04d83128c19bd4776660074a3cf4de953b91a4`.
+- Both TuneD matrices pass 22/22 comparisons and all 232 burst rows. Strict
+  correctness is unchanged: Q4 KL `0.004180817473`, top-1 `1.0`; Q6 serial KL
+  `1.574600576e-05`, independent KL `0.0002289689978`, top-1 `1.0`; dense Q8_0
+  passes all 52 rows per timing mode.
+- Across all 99 strict burst rows, TuneD changes geometric-mean GPU time by
+  `-0.41%` serial / `-1.20%` independent for HIP and `-0.44%` / `-0.90%` for
+  Vulkan. Matched sampling gives `+0.56%` / `-3.18%` HIP and `-0.23%` /
+  `-0.44%` Vulkan. End-to-end matrix wall is `-2.61%` matched and `-1.91%`
+  strict, but includes build/harness/cache effects.
+- Family deltas are not consistent enough for a broad speedup claim. For
+  example, matched independent geometry makes HIP `14.50%` faster while the
+  strict rerun makes it `11.67%` slower. Strict VOPD and Q4 combined improve
+  for both backends, while dense independent HIP regresses. Packed dot remains
+  essentially unchanged across ROCm 7.13, ROCm 7.15 automatic, and ROCm 7.15
+  TuneD snapshots. The stable interpretation is approximately neutral
+  aggregate GPU time; fixed or continuously recorded GPU clocks are required
+  before attributing small family deltas.
+- Updated only `~/gfx1151-scratch.md` with the tuned snapshot rows, exact
+  commands/roots/hashes, matched and strict ranges, absolute-time deltas, and
+  the 7.13-to-7.15 interpretation. Per the requested scope, these remain local
+  clock-policy diagnostics and do not supersede the retained repo artifact or
+  ROCm reports.
