@@ -245,25 +245,32 @@ Source artifacts:
 [`full W7900 refresh summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 
-### gfx1151 / Radeon 8060S PARO legacy shape-timing diagnostic (2026-07-10, Qwen3.6 35B-A3B, 512/128)
+### gfx1151 / Radeon 8060S PARO exact shape catalog (2026-07-11, Qwen3.6 35B-A3B, 512/128)
 
-**Status: diagnostic, not routing-eligible.** The archived timings were
-measured at `4175dabf`/`02aec604` against a batch-shaped width-1 oracle. At
-`0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate accepts the serial
-bridge on all eight rows and rejects native c8 on all eight rows at generated
-token index 2. Production greedy and sampled batches use width-1 sessions.
+**Status: retained c1 performance and c1-c8 routing correctness.** Clean
+`a18ff7bc` uses the same exact 512-token fixture at every width. c1 graph replay
+is retained; every c2-c8 native candidate fails independent-c1 equality at
+generated index 2 and is explicitly routed through width-1 sessions.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
-No eligible native-batch timing row; schema-1 timings remain linked below pending independent-c1 gates and rerun.
+| Client c | Production backend groups | Exact classification | Retained aggregate decode |
+| ---: | --- | --- | ---: |
+| 1 | `1` | c1 oracle / accepted | **66.910 tok/s** (`14.946 ms/token`) |
+| 2 | `1+1` | explicitly serial | no separate c>N claim |
+| 3 | `1+1+1` | explicitly serial | no separate c>N claim |
+| 4 | `1+1+1+1` | explicitly serial | no separate c>N claim |
+| 5 | five width-1 groups | explicitly serial | no separate c>N claim |
+| 6 | six width-1 groups | explicitly serial | no separate c>N claim |
+| 7 | seven width-1 groups | explicitly serial | no separate c>N claim |
+| 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
-Protocol: W4 PARO/BF16 KV, 40 layers, 8 warmup decode steps, 128 measured
-decode steps, and greedy sampling. The c1 timing repeats token `9707`; c2-c8
-use fixed 512-token slices. Each timing is a three-run median. The old c2-c8
-generated-ID field is a legacy batch-shaped comparison, not independent-c1
-evidence. See the [timing artifact](benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json),
-[true-c1 gate](benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json),
-and [canonical run record](benchmarks/README.md#gfx1151-paro-legacy-shape-timing-diagnostic-2026-07-10).
+Protocol: W4 PARO/BF16 KV, 40 layers, exact prompt-ID SHA-256
+`b162b2d0...2388`, 8 warmup decode steps, 128 measured decode steps, and greedy
+sampling. c1 is a clean median of three (`66.948/66.754/66.910 tok/s`). Native
+c2-c8 diagnostic rates are withheld from the topline because all rows fail the
+137-token oracle. See the [compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json)
+and [canonical run record](benchmarks/README.md#gfx1151-paro-exact-shaperouting-catalog-2026-07-11).
 
 ### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)
 

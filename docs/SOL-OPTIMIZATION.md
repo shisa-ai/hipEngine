@@ -77,7 +77,7 @@ The table names the source revision for each result.
 | MTP server routing | After normalizing to generated token IDs, current evidence still favors MTP at c1/c2 and AR at c4/c8. | `SOL-E1`/`SOL-E2` fix future all-choice denominators and copied batch timing; `SOL-S2` now proves that a c8 client run under the current cap is two four-request queue/backend groups rather than one width-8 verifier. Prior absolute rates remain invalid and need a rerun under all contracts. |
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
-| PARO c>N | Retained gfx1100 direct rows exist for c4/c8. The gfx1151 c1-c8 timing rows at `4175dabf`/`02aec604` used a batch-shaped width-1 oracle and cannot select routing. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native decode fails 0/8, first mismatch at c8 generated token index 2. | Production greedy and sampled batches use exact width-1 sessions. Reopen every gfx1151 native width; localize the common c8 divergence before width-specific tuning. |
+| PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. The c8 bisect proves packed-prefill hidden/state/KV exactness, then first decode-step linear/state drift; grouped-compact moves but does not remove the mismatch. | Production greedy and sampled batches use exact width-1 sessions. gfx1100 is explicitly stale/non-selecting pending W7900 hardware. P2 ragged and transition coverage is next; do not tune rejected native widths. |
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
 | HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
 
@@ -401,11 +401,11 @@ commands, and clean provenance are in
 
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
-| `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `blocked`: the prior gfx1151 c2-c8 timing matrix used a batch-shaped width-1 oracle. At `0c184517` with `hipengine_dirty=false`, native c8 fails independent c1 at generated token index 2. gfx1100 remains stale. | P0 foundation; native divergence bisect | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
-| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `blocked`: at `0c184517` with `hipengine_dirty=false`, gfx1151 serial c8-to-c1 passes 8/8 rows and native passes 0/8. A full c3-to-sparse-c2 serial run passes and native fails. Ragged contexts remain unrun; resume after the common native divergence is localized in P1. | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
+| `SOL-P1` | Run the exact c1-c8 512/128 matrix and publish a full shape/algorithm catalog per architecture/model. | `accepted` on gfx1151 at clean `a18ff7bc`: exact-fixture c1 graph replay is `66.910 tok/s` median over 3 runs. Clean c2-c8 native candidates all fail 137-token independent-c1 equality at index 2 and are explicitly cataloged as `scheduler_true_c1_fallback`. Prefill hidden/state/KV are exact; selected-c1 first changes layer-4 linear input/state, while grouped-compact only delays the visible mismatch to index 4. gfx1100 is stale and cannot select gfx1151. | none | Every width is green or explicitly serial; no gfx1100 evidence silently selects gfx1151. |
+| `SOL-P2` | Run c8->c1 EOS/cancel shrink, ragged contexts, and sparse-slot transitions. | `open`: clean serial c8-to-c1 passes 8/8 rows; the c3-to-sparse-c2 serial transition passes and native fails. P1 localized the common native failure and made all c>N widths explicitly serial. Ragged contexts plus front/tail sparse cancellation and EOS coverage remain. | P1 | Per-row state/KV/output identity matches independent c1; no group-wide cancellation. |
 | `SOL-P3` | Remove the generator's compact-from-zero gate and use sorted sparse physical slots accepted by `step_batch_native()`. | `blocked`: CPU/runtime addressing supports sorted sparse slots, but native sparse decode is correctness-red. Production uses width-1 sessions, so holes do not select an uncertified native route. | P2 RED tests; native correctness | Holey live groups stay native and exact; no serial fallback solely because of slot holes. |
 | `SOL-P4` | Make selected-c1 MoE a named multi-row algorithm and compare it with grouped-compact at every supported width. | `blocked` | P1, scoped profiler | Full-layer/server wall, routed-lane counts, and correctness select the mode; c6's current advantage is rechecked. |
-| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `blocked`: the prior c3/c5/c6/c7 green rows used the invalid batch-shaped oracle. The common native c8 path fails before any width transition, so width-specific promotion evidence is reopened. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
+| `SOL-P5` | Close odd-width and c6 attention/linear/MoE/projection/sampler shapes with full identity keys. | `accepted by explicit serial classification`: the clean P1 catalog keys gfx1151/model/quant/KV/context/width and rejects c3/c5/c6/c7 native rows at the same index-2 gate. Production maps each to width-1 graph groups; rowchunk, selected-c1, grouped, projection, and sampler diagnostics cannot auto-select. | P1 | c3/c5/c6/c7 are retained-safe or serial; unproven rowchunk/grouped routes cannot auto-select. |
 | `SOL-P6` | Benchmark c6 direct versus sequential c4+c2 splitter with all-choice counts and latency distributions. | `blocked`: the splitter is default-off; neither direct c6 nor c4+c2 is independent-c1-certified on gfx1151. | E1-E2, P1 | Keep a splitter only for an explicitly chosen latency objective; aggregate throughput, makespan, and p95 are non-regressive for that policy. |
 | `SOL-P7` | Capture/replay decode buckets keyed by active rows, context, mask, variants, and replay length. | `blocked` | P1-P5 | Cache hit/miss/fallback telemetry is complete; exact replay improves server wall for retained shapes. |
 | `SOL-P8` | Retune gfx1151 prefill chunks, AOTriton threshold, projection, and sampler modes after the route is shape-safe. | `blocked` | B2, P1-P5 | Same-device profile and end-to-end matrix select values without gfx1100 regression. |
@@ -413,9 +413,10 @@ commands, and clean provenance are in
 
 The c6 splitter is an opt-in diagnostic policy. The schema-1 c2-c8 profile has
 `performance_claim=false` and an invalid batch-shaped oracle, so the loader
-rejects it. Production uses `scheduler_true_c1_fallback`. A schema-2 profile
-must pass independent-c1 packed-prefill, sparse-slot, and shrinking gates before
-the planner can select native groups.
+rejects it. The clean P1 catalog independently rejects every current native
+width and records production as `scheduler_true_c1_fallback`. A future schema-2
+profile must pass independent-c1 packed-prefill, sparse-slot, ragged, and
+shrinking gates before the planner can select native groups.
 
 For c9-c16, `scripts/qwen35_batch_retained_bench.py
 --batch-decode-execution=profile_partitioned` remains a diagnostic driver. Use
@@ -555,14 +556,11 @@ The optimization ledger can be called complete only when:
 - current dashboards contain only eligible claims, while rejected/diagnostic
   history remains discoverable.
 
-The next PARO GPU unit is `SOL-P1`: localize the native c8 token-index-2
-divergence with teacher-forced hidden, linear-state, KV, and token comparisons.
-Do not resume c3/c5/c7 or c>8 performance tuning until that common path matches
-independent c1.
+The next PARO GPU unit is `SOL-P2`: complete ragged-context, EOS/cancel, and
+front/middle/tail sparse-slot coverage on the production true-c1 route. Native
+c2-c8 tuning stays closed until a general algorithm changes the P1 exact gate;
+fixture-specific rounding repair is not an optimization target.
 
-The next PARO GPU unit is `SOL-P1`. G7/G8 now wait on the corrected baseline
-matrix and B2 profile plumbing; G9/G10 are parked because their triggers did
-not fire, so there is no independent GGUF unit ahead of P1.
-G2/G3 establish fused as the exact, measured prefill default. The matrix driver
-is ready, but its first clean repeated PARO/GGUF baseline is measurement work,
-not evidence implied by these correctness gates.
+G7/G8 now wait on B2 plus the corrected baseline matrix; G9/G10 are parked
+because their triggers did not fire. G2/G3 establish fused as the exact,
+measured GGUF prefill default.

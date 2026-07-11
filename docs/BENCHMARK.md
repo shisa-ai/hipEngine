@@ -785,6 +785,30 @@ and aggregate speculative decode is >1.10× that same-protocol AR. The checked-i
 `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
 is a synthetic schema fixture, not a performance claim.
 
+### PARO c1-c8 exact concurrency matrix
+
+Use one raw-token fixture for c1 and c>N; repeated token IDs or detokenized text
+are different protocols. The short matrix is prompt 512, 8 warmup decode steps,
+128 measured decode steps, greedy sampling, W4 PARO, BF16 KV, and all 40 layers.
+
+- Run c1 with `scripts/qwen35_paro_bench.py --prompt-fixture <fixture>
+  --prompt-row 0 --prompt-length 512 --warmup-decode-tokens 8
+  --decode-tokens 128 --graph-replay-decode`. Retain at least three fresh-process
+  runs and report the median plus exact prompt-ID SHA-256.
+- Run c2-c8 with `scripts/qwen35_batch_equality_matrix.py --batch-sizes
+  2,3,4,5,6,7,8` and the same fixture/shape. Each row must compare all 137 IDs
+  against independent single-request `prefill_native()+step()` sessions.
+- A failed native row may keep one timing as a diagnostic, but it cannot enter a
+  topline, scaling ratio, routing profile, or profiler-driven optimization queue.
+  Classify it explicitly serial until a general algorithm passes the full gate.
+- Keep gfx1100 and gfx1151 catalogs separate. A stale W7900 row cannot select a
+  gfx1151 route, and vice versa.
+
+The current gfx1151 catalog is
+`benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json`:
+c1 is retained; every c2-c8 native candidate fails at generated index 2 and
+production uses width-1 sessions.
+
 ### OPTIMAL MoE/PARO parity rows
 
 For the Qwen3.5-35B-A3B-PARO exercise, first keep source-lineage parent rows and hipEngine attempts as separate artifacts:
