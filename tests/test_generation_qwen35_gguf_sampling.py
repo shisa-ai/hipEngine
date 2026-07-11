@@ -83,6 +83,14 @@ def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatc
     assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is False
 
 
+def test_gguf_decode_graph_default_on_with_opt_out(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
+    assert qwen35_gguf._gguf_decode_graph_enabled() is True
+
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_GRAPH", "0")
+    assert qwen35_gguf._gguf_decode_graph_enabled() is False
+
+
 def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) -> None:
     calls: list[tuple] = []
 
@@ -2999,6 +3007,70 @@ def test_gguf_greedy_equivalent_request_uses_eager_step(monkeypatch) -> None:
     assert ("prefill", (10, 11), False) in calls
     assert ("step", 1, False) in calls
     assert not any(call[0] == "capture_decode_graph" for call in calls)
+
+
+def test_gguf_long_greedy_request_uses_backend_graph_capability(monkeypatch) -> None:
+    calls = []
+
+    class FakeGraph:
+        def __init__(self):
+            self.token = 1
+
+        def replay(self, steps):
+            calls.append(("graph_replay", int(steps)))
+            self.token += int(steps)
+
+        def read_sample(self, *, return_logits=True):
+            calls.append(("graph_read", bool(return_logits)))
+            return SimpleNamespace(token_id=self.token)
+
+        def close(self):
+            calls.append(("graph_close",))
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.position = 2
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def decode_graph_min_replay_steps(self):
+            return 2
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=1)
+
+        def capture_decode_graph(self, **kwargs):
+            calls.append(("capture_decode_graph", dict(kwargs)))
+            return FakeGraph()
+
+        def step(self, token_id, *, return_logits=True):  # pragma: no cover - graph must own the long route
+            raise AssertionError("long greedy route fell back to eager")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
+
+    generator = _generator()
+    out = generator.generate(_request(max_tokens=4))
+
+    assert out == ["BCD}"]
+    assert calls[0] == ("prefill", (10, 11), False)
+    assert calls[1] == (
+        "capture_decode_graph",
+        {
+            "position": 2,
+            "steps_per_replay": 1,
+            "max_replay_steps": 3,
+            "attention_max_context_len": 5,
+        },
+    )
+    assert calls.count(("graph_replay", 1)) == 3
+    assert calls.count(("graph_read", False)) == 3
+    assert calls[-1] == ("graph_close",)
 
 
 @pytest.mark.parametrize(

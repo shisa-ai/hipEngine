@@ -206,6 +206,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
 )
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     load_backend_kernel_package,
@@ -6977,8 +6978,9 @@ class Qwen35GGUFResidentSession:
     The session materializes GGUF weights once, owns reusable device scratch, and
     carries linear-attention recurrent state plus paged full-attention K/V cache
     across decode steps. Full-attention q/k norm, RoPE, KV append, softmax, gate
-    application, lm-head argmax, full-model bulk prefill, and one-step decode
-    graph replay stay on GPU for the resident path.
+    application, lm-head argmax, and full-model bulk prefill stay on GPU for the
+    resident path. Backends may additionally admit state-bound decode replay for
+    measured long greedy windows.
     """
 
     model_path: str | Path
@@ -7087,6 +7089,8 @@ class Qwen35GGUFResidentSession:
     int8_kv_value_bf16: bool = field(default=False, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
+    _decode_graphs: list[object] = field(default_factory=list, init=False)
+    _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -7252,12 +7256,45 @@ class Qwen35GGUFResidentSession:
         # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
         self._moe_graph: MoeGraphCache | None = None
         self.reset()
+        self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
 
     @property
     def position(self) -> int:
         """Next token position that will be consumed by :meth:`step`."""
 
         return int(self._position)
+
+    def decode_graph_min_replay_steps(self) -> int | None:
+        """Return this backend package's admitted graph break-even, if any."""
+
+        return self._decode_graph_min_replay_steps_cache
+
+    def _resolve_decode_graph_min_replay_steps(self) -> int | None:
+        """Resolve backend graph capability once after resident initialization."""
+
+        if (
+            self.runner is None
+            or self.runner.weights is None
+            or self.scratch is None
+            or self.host_token_embedding_enabled
+            or self.kv_storage_dtype != DType.BF16
+            or not bool(self.use_gemv_decode)
+            or _gguf_moe_graph_enabled()
+        ):
+            return None
+        quant_keys = [str(weight.spec.quant_key) for weight in self.runner.weights.weights]
+        if not any(key.endswith("_t16_v1") or key.endswith("_x8_v1") for key in quant_keys):
+            return None
+        raw = backend_package_capability(
+            self.backend,
+            "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+        )
+        if raw is None:
+            return None
+        minimum = int(raw)
+        if minimum <= 0:
+            raise RuntimeError("backend GGUF decode graph minimum must be positive")
+        return minimum
 
     @property
     def last_pre_output_norm_hidden(self) -> np.ndarray | None:
@@ -12117,9 +12154,45 @@ class Qwen35GGUFResidentSession:
             logits=logits,
         )
 
+    def capture_decode_graph(
+        self,
+        *,
+        position: int,
+        steps_per_replay: int = 1,
+        max_replay_steps: int | None = None,
+        record_steps: int = 0,
+        attention_max_context_len: int | None = None,
+        capture_hidden_seed_fp32: bool = False,
+        record_hidden_seeds: bool = False,
+    ):
+        """Capture one session-bound GGUF decode transition window.
+
+        The returned graph owns a full shape/state key and refuses replay after
+        any cursor drift. Whole-step capture is incompatible with the optional
+        nested per-layer MoE graph diagnostic.
+        """
+
+        if _gguf_moe_graph_enabled():
+            raise RuntimeError("whole-step GGUF graph cannot nest the per-layer MoE graph diagnostic")
+        from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
+
+        return capture_qwen35_gguf_decode_graph(
+            self,
+            position=int(position),
+            steps_per_replay=int(steps_per_replay),
+            max_replay_steps=max_replay_steps,
+            record_steps=int(record_steps),
+            attention_max_context_len=attention_max_context_len,
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+            record_hidden_seeds=bool(record_hidden_seeds),
+        )
+
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
         self._release_int8_prefill_oracle_buffers()
+        for graph in tuple(self._decode_graphs):
+            graph.close()
+        self._decode_graphs.clear()
         if self._moe_graph is not None:
             self._moe_graph.close()
             self._moe_graph = None

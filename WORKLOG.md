@@ -150435,3 +150435,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   overhead (`49.122` eager vs `29.138 tok/s` stable capture-inclusive). The next
   retained run will use a 128-token window so one-time capture is amortized
   under the same p512/d128 workload as SOL-G4.
+
+## 2026-07-11 - SOL-G5 long-replay admission and production path
+
+- Clean detached `eac8b1fa` p512/d128 passed every one of 128 stable-key graph
+  checkpoints against eager: generated token, FP32 hidden seed, all 30 Conv/GDN
+  state pairs, and all 10 live BF16 K/V pairs are byte-exact through launches
+  1-128. Conservative state-generation recapture is also 128/128 exact with 128
+  distinct keys.
+- Four rotated capture-inclusive samples measure eager median
+  `20.283521 ms/token` (`49.3011 tok/s`) and stable graph median
+  `20.270060 ms/token` (`49.3338 tok/s`), a small exact **+0.0664%** edge.
+  Stable capture is `14.07-14.36 ms/window`; replay-only is
+  `20.1407-20.1573 ms/token`. Per-token recapture is correctly rejected at
+  `34.7302 ms/token` (`28.7934 tok/s`). The 212,070-byte clean `/tmp` artifact
+  is not yet published because it predates the production runtime surface.
+- RED-first production coverage added a complete runtime shape/state-key test,
+  a long-greedy generator selection test, and a gfx1151 backend capability
+  assertion. Implemented `hipengine/runtime/gguf_decode_graph.py` with mandatory
+  replay-window cap, resident weight/buffer/route/sampler/recording identity,
+  state-generation and cumulative-budget guards, token/hidden recording, and
+  session-owned cleanup. Repacked weights key every actually resident
+  allocation rather than assuming a removed `raw` allocation.
+- gfx1151 advertises a backend-package break-even of 128 transitions. Public
+  non-streaming c1 greedy generation uses one state-bound graph at/above that
+  horizon; `HIPENGINE_GGUF_DECODE_GRAPH=0` is the rollback. gfx1100, short,
+  sampled, streaming, c>N, INT8-KV, host-embedding, and nested per-layer-MoE
+  graph routes remain eager without backend branches in generation.
+- GREEN: 75 focused/runtime/generation/backend/bench-metadata tests pass; the
+  optional local runner/LLM model bundle skips 13/13; Python compilation and
+  `git diff --check` pass. A dirty-tree real 35B explicit graph smoke captured
+  and replayed eight launches exactly (`final_token_id=9707`, finite logits),
+  `50.137 tok/s` replay-only, and closed without tracked allocation leakage.
+  The production code still needs a clean p512/d128 eager/default A/B before
+  the artifact/docs/README rollup is committed.

@@ -22,6 +22,9 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+# Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
+# only when at least 128 decode transitions amortize capture/instantiate/close.
+GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
@@ -63,6 +66,7 @@ register_backend_kernels = register_gfx1151_kernels
 
 __all__ = [
     "BACKEND",
+    "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",
