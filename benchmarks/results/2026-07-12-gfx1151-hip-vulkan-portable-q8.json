@@ -1,0 +1,222 @@
+{
+  "kind": "hipengine_benchmark_result",
+  "schema_version": 1,
+  "date": "2026-07-12",
+  "status": "accepted_complete_matrices",
+  "performance_claim": true,
+  "bench": "hip_vulkan_timing_contract_v2_bounded_matrix",
+  "scope": "gfx1151_portable_vulkan_q8_rounding_refresh",
+  "ratio_definition": "HIP burst GPU median divided by Vulkan burst GPU median; values greater than 1 favor Vulkan",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T18:16:15.357078+00:00",
+    "repo_root": "/tmp/hipengine-clean-50bea8f3",
+    "hipengine_commit": "50bea8f330fe93420422a904927ea24d374edbc1",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip+vulkan",
+    "resolved_backend": "hip_gfx1151+radv_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": null,
+    "model_revision": null,
+    "model_fingerprint": null,
+    "quant": "mixed_synthetic_q4_k_q6_k_q8_0",
+    "kv_dtype": null,
+    "command": [
+      "bash",
+      "/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-20260712/run_full.sh"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "VK_ICD_FILENAMES": null,
+      "RADV_PERFTEST": null
+    },
+    "rocm_version": "TheRock 7.15.0a20260711; HIP 7.15.0-0000000",
+    "hipcc_version": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96; patch 440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "build_profile": "micro_timing_contract_v2",
+    "timing_protocol": "complete matched 10/3/5 + dispatch 20/5 matrix and complete strict 20/5/7 + dispatch 50/10 matrix; four independent lanes",
+    "warmups": null,
+    "repetitions": null,
+    "profiler": {
+      "enabled": false,
+      "reason": "HIP events and Vulkan device timestamps are the protocol clocks; this retained matrix is not a profiler trace"
+    }
+  },
+  "source": {
+    "repo": "/tmp/hipengine-clean-50bea8f3",
+    "canonical_repo": "/home/lhl/hipEngine-main",
+    "commit": "50bea8f330fe93420422a904927ea24d374edbc1",
+    "detached": true,
+    "dirty": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "device_id": "0x1586",
+    "gfx_arch": "gfx1151",
+    "compute_units": 40,
+    "clock_policy": "automatic"
+  },
+  "software": {
+    "hip": "TheRock 7.15.0a20260711",
+    "hipcc": "HIP 7.15.0-0000000",
+    "amd_clang_commit": "aa451e1fe6a793394d6733051b1778633063ae96",
+    "kernel": "7.1.3-2-cachyos",
+    "mesa_radv": "26.1.4-arch3.1",
+    "vulkan_loader": "1.4.350",
+    "vulkan_device_api": "1.4.354",
+    "device_packages": [
+      "rocm-sdk-device-gfx1151 7.15.0a20260711",
+      "amd-torch-device-gfx1151 2.10.0+rocm7.15.0a20260711",
+      "amd-torchvision-device-gfx1151 0.25.0+rocm7.15.0a20260711"
+    ]
+  },
+  "runs": {
+    "gfx1100_matched_protocol": {
+      "paired_family_repetitions": 10,
+      "paired_family_warmups": 3,
+      "paired_family_samples": 5,
+      "dispatch_repetitions": 20,
+      "dispatch_warmups": 5,
+      "independent_lanes": 4,
+      "raw_root": "/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-matched-20260712",
+      "environment_sha256": "03ae3659edc8c3e511cf2f210cfffb6166e6fab6cb902ce46209229d60916dd8",
+      "wall_seconds": 246.705,
+      "wall_human": "4m06.705s",
+      "valid_comparisons": 22,
+      "requested_comparisons": 22,
+      "valid_burst_gpu_rows": 232,
+      "complete": true
+    },
+    "current_strict_protocol": {
+      "paired_family_repetitions": 20,
+      "paired_family_warmups": 5,
+      "paired_family_samples": 7,
+      "dispatch_repetitions": 50,
+      "dispatch_warmups": 10,
+      "independent_lanes": 4,
+      "raw_root": "/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-20260712",
+      "environment_sha256": "7212570a2aff9988e5d7f75af03c3eecb876fd85f75339c22a8adb07e6ef2c45",
+      "wall_seconds": 298.786,
+      "wall_human": "4m58.786s",
+      "valid_comparisons": 22,
+      "requested_comparisons": 22,
+      "valid_burst_gpu_rows": 232,
+      "complete": true
+    }
+  },
+  "matched_protocol_ranges": {
+    "serial_latency": {
+      "dispatch_grid": [1.12754157040727, 11.1249215587104],
+      "geometry": [0.708192757340231, 0.989924577983849],
+      "reduction": [0.661599480917408, 0.986588177447086],
+      "memory_waitcnt": [0.877355018382618, 1.08705184228478],
+      "packed_dot": [3.04940719775802, 3.20964619675688],
+      "vopd": [1.08526209772496, 1.18142015400834],
+      "sampler": [0.507885908359127, 1.16656477330337],
+      "two_stage_reduction": [0.68542776795531, 0.940600260079127],
+      "q4_selected_dual_combined": [0.931874607415061, 1.00732880803982],
+      "q6_selected_down_x8_combined": [0.549868420068501, 0.549868420068501],
+      "dense_q8_0_combined": [0.544681528882575, 0.902179678073645]
+    },
+    "independent_throughput": {
+      "dispatch_grid": [1.10008819551606, 149.20745815019],
+      "geometry": [2.61649761719858, 21.3279039523587],
+      "reduction": [2.54522499863424, 20.7935057215223],
+      "memory_waitcnt": [0.969521478064749, 1.14911924142639],
+      "packed_dot": [3.76447870866842, 4.15120919530545],
+      "vopd": [1.00099301362507, 1.10801170821897],
+      "sampler": [1.52176772460999, 3.97295042460087],
+      "two_stage_reduction": [0.679146758520209, 4.0953953306141],
+      "q4_selected_dual_combined": [0.874214479302569, 0.921006787544909],
+      "q6_selected_down_x8_combined": [0.477492322943881, 0.477492322943881],
+      "dense_q8_0_combined": [0.457067225312899, 1.19357100601141]
+    }
+  },
+  "strict_protocol_ranges": {
+    "serial_latency": {
+      "dispatch_grid": [1.1280305738256, 10.8746163982372],
+      "geometry": [0.703711026991028, 0.99621717402412],
+      "reduction": [0.663063039378014, 0.997975042003389],
+      "memory_waitcnt": [0.935251920757203, 1.14398120485103],
+      "packed_dot": [3.06017176566839, 3.20461044795587],
+      "vopd": [1.03770986846716, 1.183583862354],
+      "sampler": [0.512940444976356, 1.25223062809565],
+      "two_stage_reduction": [0.697152235759088, 0.941534115635786],
+      "q4_selected_dual_combined": [0.92454261218304, 0.999741234888106],
+      "q6_selected_down_x8_combined": [0.572514510783461, 0.572514510783461],
+      "dense_q8_0_combined": [0.554915911337232, 0.920471442780077]
+    },
+    "independent_throughput": {
+      "dispatch_grid": [1.1174951162522, 160.079564698458],
+      "geometry": [4.2256455181165, 27.8122034605142],
+      "reduction": [4.05024665116507, 18.5710545247712],
+      "memory_waitcnt": [0.895969523243109, 1.02373791638432],
+      "packed_dot": [3.6096412803058, 3.80549003697918],
+      "vopd": [0.984609497623044, 1.12653410906583],
+      "sampler": [2.58847393486047, 5.04302915740029],
+      "two_stage_reduction": [0.688415063959292, 0.98481217504823],
+      "q4_selected_dual_combined": [0.846397250722373, 0.947605545089013],
+      "q6_selected_down_x8_combined": [0.41384628218329, 0.41384628218329],
+      "dense_q8_0_combined": [0.386892436862161, 0.856178436697877]
+    }
+  },
+  "correctness": {
+    "status": "pass",
+    "portable_q8_change": "software FP32-to-FP16 round-to-nearest-even packing for d/s plus explicit ties-away-from-zero integer quantization",
+    "strict_q4": {
+      "serial_kl": 0.004180817473,
+      "independent_kl": 0.004180817473,
+      "top1": 1.0,
+      "d_mismatches_across_5120_blocks": 0,
+      "q_mismatches_max_abs_1": 85,
+      "unused_s_mismatches": 260
+    },
+    "strict_q6": {
+      "serial_kl": 0.00001574600576,
+      "independent_kl": 0.0002289689978,
+      "top1": 1.0,
+      "d_mismatches_across_2560_blocks": 0,
+      "q_mismatches_max_abs_1": 7,
+      "unused_s_mismatches": 149
+    },
+    "matched_q4_independent_kl": 0.000002158304589,
+    "matched_q6_independent_kl": 0.0002289689978,
+    "dense_q8_rows_per_mode_per_protocol": 52,
+    "dense_q8_all_pass": true,
+    "interpretation": "The systematic one-FP16-code d-scale error is eliminated. Sparse one-integer q differences and unused s differences remain within the downstream KL/top-1 gate. Every matched and strict comparison is claim-eligible."
+  },
+  "interleaved_stock_fixed_diagnostic": {
+    "timing_mode": "independent_throughput",
+    "runs_per_variant": 2,
+    "samples_per_run": 21,
+    "repetitions": 20,
+    "warmups": 5,
+    "queues": 4,
+    "q4_quantize_us": [0.419797621, 0.439835693],
+    "q4_quantize_delta_percent": 4.773,
+    "q4_combined_us": [270.97786, 265.26801],
+    "q4_combined_delta_percent": -2.107,
+    "q6_quantize_us": [0.323614872, 0.32862439],
+    "q6_quantize_delta_percent": 1.548,
+    "q6_combined_us": [30.01603, 29.99699],
+    "q6_combined_delta_percent": -0.063,
+    "interpretation": "The explicit conversion adds 0.005-0.020 us to standalone q8_1. Combined movement is flat or favorable and smaller than unchanged-dot run variance; this is not claimed as a speedup."
+  },
+  "gfx1100_validation": {
+    "status": "pending_hardware_access",
+    "local_devices": ["gfx1151"],
+    "remote_alias": "epyc",
+    "attempt": "ssh -o BatchMode=yes -o ConnectTimeout=5 epyc",
+    "result": "connection timed out",
+    "interpretation": "No gfx1100 runtime result is inferred from the gfx1151 pass. The previously retained W7900 matrix remains valid for its measured stock source."
+  },
+  "interpretation": "Portable q8_1 rounding removes the deterministic gfx1151 Q4/Q6 fixture-coverage failures without an observed combined-path regression. The core HIP-versus-Vulkan conclusions persist: Vulkan leads dispatch replay, independent geometry/reduction, and packed-dot diagnostics, while production-shaped combined operations remain HIP-favored or near parity on gfx1151."
+}

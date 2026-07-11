@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`d1231ee081d9cc6799f59632a8e8db96de4c61c3`
+`50bea8f330fe93420422a904927ea24d374edbc1`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -180,7 +180,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF OpenAI server automatic-route gate | 2026-07-11 | tracked-clean hipEngine `d2b1e742`; TheRock HIP `7.13.60980-c76140fa27`; exact GGUF and prompt-suite fingerprints retained; unrelated untracked files disclosed | **Diagnostic correctness rejection**: compatibility MTP is faster at c1/c2 but changes true-AR IDs on heldouts, so it cannot select automatic routing. One c8 AR repetition also exposes the separate exact-concurrency blocker. | Diagnostic link only | Implement an exact/default server MTP hook, then rerun full plus category-heldout realized-group economics before admitting it to `auto`. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean detached hipEngine `0e566a45`, TheRock ROCm `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, RADV/Mesa `26.1.4`, corrected gfx1151 device wheels | **22/22 retained** with sampling matched to gfx1100; stricter Q4/Q6 misses are isolated to Vulkan q8_1 FP16/half-tie rounding, while CPU-prequantized Vulkan dot passes every boundary slice | Linked, not copied here | Promote and measure a portable q8_1 rounding fix before using the stricter matrix for claims |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-12 | clean detached hipEngine `50bea8f3`, TheRock ROCm `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, RADV/Mesa `26.1.4`, corrected gfx1151 device wheels | **Matched and strict matrices retained**: each passes 22/22 comparisons and 232 burst GPU rows after portable q8_1 RNE/ties-away rounding eliminates the systematic scale mismatch | Linked, not copied here | Run the portable shader's strict gate on gfx1100 when W7900 access returns; otherwise rerun after a timed kernel/harness, ROCm, Mesa, or clock-policy change |
 | Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean hipEngine `c57f21b5`; TheRock ROCm `7.15.0a20260711`; RADV/Mesa `26.1.4` | **Retained**, 22/22 comparisons and 232 burst GPU rows pass provenance, correctness, exact-matrix, device, and clock gates | Linked, not copied here | Rerun after a timed kernel/harness, ROCm, Mesa, or device clock-policy change |
 
 ## Current Eligible Toplines
@@ -795,11 +795,13 @@ timing contract and exact bounded rerun commands are in
 [`benchmarks/micro/README.md`](micro/README.md). Retained evidence is
 [`gfx1100/W7900`](micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json)
 and
-[`gfx1151/Strix Halo`](results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json).
-The stricter Q4/Q6 correctness misses are isolated in
+[`gfx1151/Strix Halo`](results/2026-07-12-gfx1151-hip-vulkan-portable-q8.json).
+The original stricter Q4/Q6 correctness misses are isolated in
 [`2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`](results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json): both Vulkan dot kernels pass
 when given CPU q8_1 blocks, while stock packed-FP16 activation scales are
-systematically one code below the CPU/HIP oracle.
+systematically one code below the CPU/HIP oracle. The retained portable shader
+eliminates those scale mismatches; both the gfx1100-matched and current strict
+gfx1151 matrices now pass 22/22 comparisons and all 232 burst rows.
 
 ## Update Checklist
 
