@@ -62,6 +62,7 @@ Do not use a new HIP kernel as its own oracle. CPU-reference exists so correctne
 | Runtime / memory / build | Import-time no-side-effect tests, fake-runtime tests, dry-run build planning tests, and real HIP smoke only after GPU clearance. |
 | Public API / server behavior | Unit/integration tests for success and failure paths; include user-visible output assertions once `LLM.generate()` exists. |
 | Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; exact-ID mismatch, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |
+| Profiler window/report contract | Synthetic marker/kernel CSVs proving exact window containment, family bucketing, per-token accounting, Amdahl arithmetic, and exact-token failure behavior. |
 | Perf claim | Exact benchmark command from `docs/BENCHMARK.md`, correctness gate, hardware/software context, and compact JSON artifact. |
 
 ## Numerical fixture policy

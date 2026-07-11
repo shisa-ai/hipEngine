@@ -150300,3 +150300,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   already selects fused. Updated the benchmark/root README, changelog, SOL,
   env/refactor/kernel docs; the exact chain remains the required unfused
   fallback and diagnostic route. SOL-G4 is the next local GGUF unit.
+
+## 2026-07-11 - SOL-G4 exact eager audit harness and revision localization
+
+- Before changing the old profiler, same-device controls resolved the apparent
+  eager regression. Current HEAD measures `55.167/55.157/55.141 tok/s` at the
+  original 8-token context but `49.626/49.667/49.647 tok/s` at the G1-aligned
+  512-token context. Clean `b4edca09` and `69a6fe72` p512/d64 controls both
+  remain in the same `49.58-49.74 tok/s` band. The old ~55 figure and current
+  p512 figure are different contexts, not a post-July regression.
+- The direct-parent performance edge is real and exact. With graph replay off,
+  decode repack on, WMMA bulk prefill, GEMV eager decode, repeated token 9707,
+  p8/d32, one discarded full run, and four measured runs, `74b11dbc` records
+  `19.687/19.851/19.683/19.815 tok/s`; its child `4499fb13` records
+  `54.843/54.961/55.033/54.984 tok/s`. This localizes the first performance-
+  changing revision to loaded-HIP-library memoization, a roughly `2.78x` eager
+  speedup with no intervening commit. The production route had already changed
+  to eager at `e8521a2a`; invalid graph-relaunch speed is not used as a control.
+- RED: `tests/test_gguf_decode_rocprof.py` initially failed collection because
+  the legacy whole-process profiler had no marker-window, Amdahl, wall-summary,
+  or child-command contracts. Reworked `scripts/gguf_decode_rocprof.py` into a
+  SOL-G4 v2 audit: one clean resident p512/d128 repeated baseline; current and
+  direct-parent short-context comparison; every generated ID retained and
+  checked; cached-only profiled child; synchronized per-step ROCTX markers;
+  strict timestamp containment; per-token layer-family shares and 2x/4x/
+  infinite Amdahl ceilings; canonical provenance; and a linked G1 artifact.
+- GREEN: the new focused contract passes `5/5`; Python compilation and
+  `git diff --check` pass. SOL-G4 remains in progress until this committed
+  harness is run from a detached clean worktree and emits the retained compact
+  artifact.
