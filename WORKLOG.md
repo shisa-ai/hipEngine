@@ -151172,3 +151172,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   lifetime regression clears a fake session runner after the snapshot and
   preserves `hip_gfx1151` / `gfx1151` identity. The focused module passes 5/5,
   Python compilation and `git diff --check` pass.
+
+## 2026-07-11 - Reuse one PARO graph per topline workload
+
+- The clean `d847719f` refresh reached the PARO 512/128 component but stopped
+  after measured repetition 3: the old harness captured and destroyed a new
+  HIP graph for every resident repetition, and the next capture/replay left
+  the GPU at 100% without advancing for more than one minute. The process was
+  terminated, the device returned to 0% and `hipGetDeviceCount=1`, and no
+  partial component artifact was retained.
+- Production keeps a graph for a session/shape; make the topline harness match
+  that lifetime. Each workload now captures once, reuses the graph after each
+  same-shape reset/prefill/warmup, and closes it only when leaving the shape.
+  This changes benchmark orchestration only, not runtime graph math or routing.
+- A live dirty-tree 512/128 diagnostic reproduced the exact two-warmup/five-
+  measured protocol and completed all seven repetitions. Graph reuse flags are
+  `[false,true,true,true,true,true,true]`; all five measured final IDs are
+  stable at `17`; decode is tightly grouped at `66.663-66.691 tok/s`. The
+  numbers are diagnostic only because the source tree was dirty. The focused
+  graph-lifetime module passes 6/6, Python compilation and `git diff --check`
+  pass. The clean full refresh must be restarted from this fix.

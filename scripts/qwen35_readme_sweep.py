@@ -186,25 +186,32 @@ def _run_paro_sweep(
         for prompt_length, decode_tokens in workloads:
             label = _format_workload(prompt_length, decode_tokens)
             prompt_tokens = _prompt_tokens(model, "Hello", args.token_id, prompt_length)
+            graph_holder: dict[str, Any] = {}
             runs: list[dict[str, Any]] = []
-            for raw_index in range(args.warmup_runs + args.measured_runs):
-                measured = raw_index >= args.warmup_runs
-                run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
-                run = _run_existing_paro_session_once(
-                    session=session,
-                    model=model,
-                    runner=runner,
-                    prompt_tokens=prompt_tokens,
-                    decode_tokens=decode_tokens,
-                    warmup_decode_tokens=warmup_decode_tokens,
-                    graph_replay_decode=args.graph_replay_decode,
-                    graph_steps_per_replay=args.graph_steps_per_replay,
-                    measured=measured,
-                    run_index=run_index,
-                    load_seconds=load_seconds,
-                )
-                runs.append(run)
-                _print_run(label, run)
+            try:
+                for raw_index in range(args.warmup_runs + args.measured_runs):
+                    measured = raw_index >= args.warmup_runs
+                    run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+                    run = _run_existing_paro_session_once(
+                        session=session,
+                        model=model,
+                        runner=runner,
+                        prompt_tokens=prompt_tokens,
+                        decode_tokens=decode_tokens,
+                        warmup_decode_tokens=warmup_decode_tokens,
+                        graph_replay_decode=args.graph_replay_decode,
+                        graph_steps_per_replay=args.graph_steps_per_replay,
+                        measured=measured,
+                        run_index=run_index,
+                        load_seconds=load_seconds,
+                        graph_holder=graph_holder,
+                    )
+                    runs.append(run)
+                    _print_run(label, run)
+            finally:
+                graph = graph_holder.get("graph")
+                if graph is not None:
+                    graph.close()
             runs_by_workload[label] = runs
     finally:
         persistent_memory["before_close"] = _paro_memory_snapshot("before_close", session.runtime, session)
@@ -251,6 +258,7 @@ def _run_existing_paro_session_once(
     measured: bool,
     run_index: int,
     load_seconds: float,
+    graph_holder: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     memory_snapshots: dict[str, Any] = {
         "after_load": _paro_memory_snapshot("after_load", session.runtime, session),
@@ -283,14 +291,13 @@ def _run_existing_paro_session_once(
     decode_start_pos = len(prompt_tokens) + warmup_decode_tokens
     decode_graph_reused = False
     if graph_replay_decode and decode_tokens:
-        capture_start = time.perf_counter()
-        graph = session.capture_decode_graph(
+        graph, decode_graph_reused, graph_capture_seconds = _acquire_paro_readme_graph(
+            session=session,
+            graph_holder=graph_holder,
             position=decode_start_pos,
             steps_per_replay=graph_steps_per_replay,
             max_replay_steps=decode_tokens,
-            record_steps=0,
         )
-        graph_capture_seconds = time.perf_counter() - capture_start
         try:
             decode_start = time.perf_counter()
             graph.replay(decode_tokens)
@@ -298,7 +305,8 @@ def _run_existing_paro_session_once(
             final = graph.read_sample()
             generated.append(final.to_json_dict())
         finally:
-            graph.close()
+            if graph_holder is None:
+                graph.close()
     else:
         decode_start = time.perf_counter()
         for offset in range(decode_tokens):
@@ -355,6 +363,32 @@ def _run_existing_paro_session_once(
         "memory": _paro_memory_summary(memory_snapshots),
         "memory_snapshots": memory_snapshots,
     }
+
+
+def _acquire_paro_readme_graph(
+    *,
+    session: Qwen35ParoResidentSession,
+    graph_holder: dict[str, Any] | None,
+    position: int,
+    steps_per_replay: int,
+    max_replay_steps: int,
+) -> tuple[Any, bool, float]:
+    """Capture one graph per shape and reuse it across resident repetitions."""
+
+    graph = graph_holder.get("graph") if graph_holder is not None else None
+    if graph is not None:
+        return graph, True, 0.0
+    capture_start = time.perf_counter()
+    graph = session.capture_decode_graph(
+        position=position,
+        steps_per_replay=steps_per_replay,
+        max_replay_steps=max_replay_steps,
+        record_steps=0,
+    )
+    capture_seconds = time.perf_counter() - capture_start
+    if graph_holder is not None:
+        graph_holder["graph"] = graph
+    return graph, False, capture_seconds
 
 
 def _run_gguf_sweep(

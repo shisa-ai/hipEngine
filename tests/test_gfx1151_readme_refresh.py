@@ -8,7 +8,11 @@ import pytest
 
 from hipengine.util.amdgpu_vram import AmdgpuCard, VramSampler
 from scripts.llamacpp_bench_with_peak import parse_args
-from scripts.qwen35_readme_sweep import _gguf_session_identity, _summarize_runs
+from scripts.qwen35_readme_sweep import (
+    _acquire_paro_readme_graph,
+    _gguf_session_identity,
+    _summarize_runs,
+)
 
 
 def _fake_card(tmp_path: Path) -> AmdgpuCard:
@@ -93,6 +97,45 @@ def test_gguf_sweep_snapshots_identity_before_session_close() -> None:
     session.runner = None
 
     assert identity == ("hip_gfx1151", "gfx1151")
+
+
+def test_paro_sweep_reuses_one_graph_per_shape() -> None:
+    graph = object()
+    calls: list[dict[str, int]] = []
+
+    class Session:
+        def capture_decode_graph(self, **kwargs):
+            calls.append(kwargs)
+            return graph
+
+    holder: dict[str, object] = {}
+    first, first_reused, _ = _acquire_paro_readme_graph(
+        session=Session(),
+        graph_holder=holder,
+        position=516,
+        steps_per_replay=1,
+        max_replay_steps=128,
+    )
+    second, second_reused, second_capture_seconds = _acquire_paro_readme_graph(
+        session=Session(),
+        graph_holder=holder,
+        position=516,
+        steps_per_replay=1,
+        max_replay_steps=128,
+    )
+
+    assert first is second is graph
+    assert first_reused is False
+    assert second_reused is True
+    assert second_capture_seconds == 0.0
+    assert calls == [
+        {
+            "position": 516,
+            "steps_per_replay": 1,
+            "max_replay_steps": 128,
+            "record_steps": 0,
+        }
+    ]
 
 
 def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
