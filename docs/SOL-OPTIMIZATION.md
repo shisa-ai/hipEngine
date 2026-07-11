@@ -2,14 +2,18 @@
 
 Last updated: 2026-07-11.
 
-Status: local gfx1151 sprint closed. Every local item is accepted, rejected, or
-parked with a named reactivation gate. Cross-GPU V10 remains blocked on W7900
-hardware, and V11 remains blocked on a matched Q6 math/layout implementation.
-The P0 foundation is accepted on top of the `7ea21e98b097` release-default
-baseline; gfx1151 HIP/Vulkan v2 is clean at `ca241dae`, PARO P1/P2 are clean at
-`a18ff7bc` / `6f1910c9`, and the real DFlash profile is clean at `8eb27215`.
-The final six-shape c1/topline refresh is accepted at measured `d1231ee0`, with
-the four-column promotion gate assembled cleanly at `7e9aad21`.
+Status: the local gfx1151 evidence sprint is closed, and the post-topline
+recovery phase is ready for pickup. Every evidence-sprint item is accepted,
+rejected, or parked with a named reactivation gate; `SOL-R1` through `SOL-R9`
+below turn the remaining performance gaps into ordered experiments. Cross-GPU
+V10 remains blocked on W7900 hardware, V11 remains blocked until queued R7
+supplies matched Q6 math/layout, and DFlash R8 remains blocked on a materially
+better target-matched drafter. The P0 foundation is accepted on top of the
+`7ea21e98b097` release-default baseline; gfx1151 HIP/Vulkan v2 is clean at
+`ca241dae`, PARO P1/P2 are clean at `a18ff7bc` / `6f1910c9`, and the real
+DFlash profile is clean at `8eb27215`. The final six-shape c1/topline refresh is
+accepted at measured `d1231ee0`, with the four-column promotion gate assembled
+cleanly at `7e9aad21`.
 
 This is the active coordinator for making the PARO and GGUF paths correct,
 fast, memory-efficient, and scalable on gfx1151 without regressing gfx1100. It
@@ -84,9 +88,244 @@ The table names the source revision for each result.
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
 | HIP versus Vulkan | The gfx1151 timing-contract v2 matrix at `ca241dae` records `hipengine_dirty=false`, retains 22/22 comparisons, and separates `serial_latency` from `independent_throughput`. Serialized production slices are mostly HIP-favored; synthetic packed dot and dispatch retain Vulkan leads. | Keep HIP as the production backend. gfx1100 still needs the same bounded v2 matrix; Q6 lm-head remains incomparable because the implementations use different math/layouts. |
 
-The local sprint has therefore closed measurement/routing correctness, GGUF
-recovery, PARO shape safety, and the bounded speculative transfer audit. New
-work starts only when a recorded reactivation gate changes.
+The evidence sprint has therefore closed measurement/routing correctness, GGUF
+correctness recovery, PARO shape safety, and the bounded speculative transfer
+audit. The accepted topline comparison now activates the bounded recovery queue
+below. Parked P/G/S/V work still starts only through its recorded reactivation
+gate; the R queue does not authorize retrying a rejected implementation.
+
+## Post-Topline Regression Analysis And Recovery Plan
+
+This is the current pickup section. It separates measured regressions from
+invalid historical speed, identifies the smallest exact experiment that can
+change each premise, and delays the expensive public rerun until a default has
+actually changed.
+
+### Published Checkpoint And Comparison Limits
+
+The current public checkpoint is complete. The root [`README.md`](../README.md)
+and canonical [`benchmarks/README.md`](../benchmarks/README.md) contain separate
+six-shape prefill, decode, and peak-memory tables for hipEngine PARO, hipEngine
+GGUF, llama.cpp HIP, and llama.cpp Vulkan; the speculative section presents
+GGUF exact/default, GGUF `llama-compat`, and llama.cpp HIP side by side; and the
+concurrency section publishes the exact PARO production route. The accepted
+source is the
+[`d1231ee0` four-engine summary](../benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json).
+
+The comparison below uses the superseded
+[`2026-06-15` one-run summary](../benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json)
+only as a diagnostic lead. It is not a same-commit regression A/B: it used one
+measured run per shape, no measured warmup, incomplete source/build provenance,
+and unusable llama.cpp aperture-memory readings. The current sweep uses clean
+provenance, right-sized sessions, two discarded plus five measured hipEngine
+runs, and proper llama.cpp GTT sampling. Therefore old-to-current percentages
+are hypotheses to reproduce on current code, never promotion baselines.
+
+The control columns make broad hardware drift unlikely. Across the six shapes,
+llama.cpp HIP/Vulkan decode changes by at most 1.9% from the old diagnostic;
+prefill is within -2.5% to +2.4% except the llama.cpp HIP 512 row at +4.4%.
+The much larger hipEngine prefill movement is path/policy-sensitive.
+
+### Diagnostic Old-To-Current Movement
+
+Each cell is `2026-06-15 -> 2026-07-11 tok/s (delta)`. Decode length is 128.
+
+| Prompt | PARO prefill | PARO decode | GGUF prefill | GGUF decode |
+| --- | ---: | ---: | ---: | ---: |
+| 512 | `956.666 -> 994.866` (+3.99%) | `66.967 -> 66.753` (-0.32%) | `833.366 -> 430.767` (-48.31%) | `56.581 -> 49.536` (-12.45%) |
+| 1K | `1067.175 -> 810.029` (-24.10%) | `61.768 -> 61.628` (-0.23%) | `854.308 -> 437.467` (-48.79%) | `52.832 -> 52.192` (-1.21%) |
+| 4K | `1062.248 -> 671.985` (-36.74%) | `62.910 -> 62.715` (-0.31%) | `729.117 -> 403.946` (-44.60%) | `53.638 -> 52.999` (-1.19%) |
+| 32K | `822.255 -> 599.063` (-27.14%) | `50.368 -> 50.362` (-0.01%) | `619.570 -> 369.942` (-40.29%) | `44.383 -> 43.947` (-0.98%) |
+| 64K | `622.752 -> 511.248` (-17.91%) | `41.966 -> 42.032` (+0.16%) | `522.872 -> 334.395` (-36.05%) | `37.741 -> 37.477` (-0.70%) |
+| 128K | `425.727 -> 375.635` (-11.77%) | `30.286 -> 30.316` (+0.10%) | `384.011 -> 270.601` (-29.53%) | `28.043 -> 27.862` (-0.65%) |
+
+Interpretation:
+
+- PARO decode is stable to 0.32% at every shape. The actionable loss is c1
+  prefill, not a general PARO correctness tax.
+- The old PARO path forced every prefill family to chunk 256 at every shape.
+  Current code is unchunked at 512/1K and uses 1024 for linear/MoE/post/RoPE
+  plus a 4096 attention-query chunk at 4K and above. Reproducing the old rates
+  on current exact code would be worth +31.75% at 1K, +58.08% at 4K, +37.26%
+  at 32K, +21.81% at 64K, and +13.34% at 128K. These are diagnostic ceilings,
+  not promised wins. Current unchunked 512 is already 3.99% faster, so a global
+  force-256 rollback is specifically disallowed.
+- The old GGUF row is not a valid speed target. Its 512 run ended at token
+  `2814`; G1 proves the current exact model/llama.cpp continuation is repeated
+  `9707`. The old split-GDN route failed recurrent-state equality, and the old
+  graph corrupted state on third-and-later replays. G2 repaired an exact split
+  chain, but G3 measured it 5.19%/6.70% slower than fused at 512/4K; G5's exact
+  graph recovers only 0.112%. Do not restore either rejected path to chase the
+  old number.
+- Current GGUF decode is within +5.7%/-4.7% of llama.cpp HIP through 64K, then
+  is 13.2% behind at 128K. Current GGUF prefill is 30.7%-60.0% behind llama.cpp
+  HIP, so prefill needs a new exact algorithm rather than historical flag
+  restoration. PARO/GGUF 128K decode also needs a context-local profile before
+  transferring the short-context G4 Amdahl ordering.
+- Use the accepted peak-memory table rather than old-to-current memory deltas:
+  session sizing and llama.cpp measurement scope changed. Current PARO remains
+  below 24 GiB through 128K (`22.124 GiB` tracked), while GGUF crosses the
+  24 GiB-class line at 64K/128K (`24.203/25.493 GiB`). G6 proves no duplicate
+  512-shape replacement weights; R6 must attribute context-local KV/state/
+  scratch growth before selecting a lower-memory long-context policy.
+
+### Ordered Recovery Queue
+
+The R IDs coordinate existing P/G/S/V gates; they do not supersede their
+correctness contracts.
+
+| Priority | ID | Work package | Current state | Exit / handoff gate |
+| ---: | --- | --- | --- | --- |
+| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `open` | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
+| 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
+| 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
+| 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `open after R3`; RED fixture work may start earlier | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or G8. |
+| 5 | `SOL-R5` | Profile current fused GGUF prefill, then prototype a materially different parallel-exact GDN/layout schedule. | `open for profile`; candidate work is conditional on a named dominant bucket | Exact short/512/4K/segment/chunk oracles plus same-run wall beat fused; unchanged G2 split scheduling is not retried. |
+| 6 | `SOL-R6` | Profile 512 versus 128K PARO/GGUF decode and memory growth, then recover the context-local dominant family. | `open` | Exact ROCTX/Amdahl and allocation tables name the 128K speed/capacity gaps; retain only a family-local exact wall or residency win. |
+| 7 | `SOL-R7` | Implement matched HIP/Vulkan Q6 LM-head math/layout and close V11. | `open for implementation`; V11 comparison remains blocked | Rows 1/8, 2048->152064 use the same inputs/layout/output contract and pass correctness before any ratio. |
+| 8 | `SOL-R8` | Obtain/train and validate a materially higher-acceptance DFlash drafter for this exact target, then build exact transactional commit. | `blocked on drafter quality` | Full-suite acceptance changes the economics; exact state/KV commit enables graph hits and the complete route exceeds same-protocol AR. |
+| 9 | `SOL-R9` | Final validation and publication refresh after retained defaults settle. | `blocked until a default changes or recovery closes` | Full test gate passes; affected toplines, speculative/concurrency tables, artifacts, changelog, and both READMEs are regenerated together. |
+
+### Recovery Playbooks
+
+#### R1: PARO c1 Prefill
+
+Run the six standard shapes on current clean code with identical resident model,
+quant, KV dtype, prompt IDs, right-sized session, warmups, and repetition count.
+Compare the current bucket policy against forced 256 for linear, MoE, full
+attention query/post/RoPE; 512 is a required negative control. Before timing is
+eligible, require generated IDs plus final hidden, all 30 Conv/GDN state
+families, and all 10 live K/V families to match. Select chunks independently by
+shape/family rather than restoring one global policy. If a bucket wins, route it
+through the architecture profile/registry and rerun the affected six-shape PARO
+component before the final four-engine publication.
+
+#### R2: Exact GGUF MTP
+
+The
+[`natural24 exact/default baseline`](../benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
+is already close enough to justify one bounded recovery pass: B1 is `52.1308`
+versus true AR `54.8037 tok/s`
+(`19.2172` versus `18.2469 ms/output`), a `0.9703 ms/output` or 5.05% gap; B2 is
+`52.0410 tok/s`, a 5.20% wall gap. Run full-suite plus category-heldout natural
+64/128 first because horizon amortization may change the premise without code.
+Fixed 10-cycle B5 `1.1312x` remains diagnostic and cannot substitute.
+
+If longer horizons still lose, target B1's exact
+`target_block_replay_or_commit` bucket (`1.2762 ms/output`). A transactional
+prefix-state/KV commit that removes at least `0.9703 ms/output` in end-to-end
+wall has enough measured headroom in principle, but it must match serial-prefix
+hidden/Conv/GDN/KV and generated IDs through rejection and tail cases. After a
+direct exact win, add the exact/default server route, rerun realized groups and
+heldouts against true AR, and only then allow S1 `auto`. S3 hysteresis and wider
+verification stay parked until that static route is exact and profitable.
+`llama-compat` remains an explicit accuracy-traded comparison lane.
+
+#### R3-R4: Exact Production c2-c8
+
+First measure what production actually ships: c1-c8 HTTP requests advancing
+through reused width-1 sessions. The artifact must expose each backend call,
+aggregate and per-request tok/s, TTFT/inter-token/p50/p95 latency, occupancy,
+memory, and exact IDs. This is the baseline missing from P1; multiplying c1 by
+client width is not a measurement.
+
+Then start PARO with exact native c2, not c8. Freeze the
+[`P1 independent-c1 oracle`](../benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json)
+and preserve each row's c1 reduction/update/sampler order while sharing only work
+that cannot change its result. The current RED localizes the first numerical
+drift to layer-4 linear input/Conv state and the first K/V drift to layer 7;
+packed prefill itself is exact. Require byte-exact hidden, 30 Conv/GDN families,
+10 live K/V families, and the full 137-token sequence. The rejected native
+c2-c8 rates (`78.52/87.47/99.64/102.18/109.81/109.58/115.51 tok/s`) are only a
+1.17x-1.73x opportunity envelope over c1 `66.91`, never eligible results.
+
+After c2 is exact, extend the same algorithm through every integer width,
+ragged prompts, c8->c1 EOS/cancel shrink, and front/middle/tail sparse slots.
+Only then reopen sparse native admission (P3), selected/grouped policy (P4),
+graph buckets (P7), architecture tuning (P8), and weight-reusing
+MMQ/GEMM/WMMA/grouped MoE (P9), in that order.
+
+GGUF needs its own forced-serial R3 control and path-local c2 oracle; PARO
+exactness cannot certify Q*_K/T16/X8 math. Convert G8's intermittent realized-c4
+failure into a deterministic first-hidden/state/KV RED, implement the same
+shape/lifecycle contract with GGUF-specific kernels, then repeat c1-c8,
+ragged/shrink, and sparse-slot gates. Reopen G8 only for that exact algorithm.
+
+#### R5-R6: GGUF Prefill And Long-Context Decode
+
+Do not infer the current prefill bottleneck from the invalid old route. Add a
+clean fused-prefill family profile at 512, 4K, and 128K, including GDN,
+dense/selected MoE, attention, projection, launches, and host wall. If GDN is
+material, the next candidate must be a new parallel-exact schedule that keeps
+raw-Q/K scaling and recurrent update order while avoiding G2's split-chain
+materialization/launch cost. It must pass G2's short, 512, 1024/1025, and
+4095/4096 state oracles, then beat fused at both 512 and 4K before any broader
+shape sweep. The starting evidence is the
+[`G2 exact matrix`](../benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json)
+and [`G3 interleaved A/B`](../benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json).
+
+Separately profile exact decode and allocation growth at 512 and 128K for both
+PARO and GGUF. At 128K PARO is `30.316` versus llama.cpp HIP `32.114 tok/s`
+(-5.6%); GGUF is `27.862` (-13.2%). Attribute attention/KV growth separately
+from dense Q8, selected-MoE, Q6 head, recurrent state, and reusable scratch.
+G4's 512 ordering (dense Q8 44.25%, selected-MoE 21.72%, attention 10.68%, Q6
+10.06%) is a hypothesis, not a 128K profile. Choose one exact family-local
+change from the new table and stop if its end-to-end ceiling is immaterial. If
+24 GiB-class GGUF support is required beyond 32K, prove the chosen KV/scratch
+policy exact and report its speed/memory trade rather than comparing tracked
+hipEngine allocation with whole-device llama.cpp GTT.
+
+#### R7: Matched Q6 HIP/Vulkan
+
+V11 requires one shared Q6_K algorithm/layout/output contract at rows 1/8 and
+2048->152064. Today HIP T16 and Vulkan q8_1/X8 perform different work, so their
+ratio is prohibited. Implement the missing peer path, validate the actual timed
+N-repetition command and stable value/index output, then run both serialized
+latency and independent-throughput modes. Reopen V12 only if the matched result
+favors Vulkan and the corresponding production profile says Q6 is material.
+
+#### R8: PARO DFlash To Greater Than 1x AR
+
+The current
+[`S4 exact row`](../benchmarks/results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json)
+needs a qualitative premise change, not tuning around the edges. It is
+`3.3073 s` versus AR `0.4903 s`, so it needs a 6.745x speedup or
+85.18% wall reduction. Draft alone is `0.8337 s` (1.70x the complete AR wall),
+target verify is `2.4679 s` (5.03x), only 1/114 proposals is accepted, and the
+target evaluates 5.6875 rows/output. Even the incorrect graph-reusing
+branch-copy route reaches only `0.2214x` AR and still needs 4.52x.
+
+The required order is:
+
+1. Obtain or train a materially higher-acceptance drafter for the exact
+   target/tokenizer and validate acceptance/quality on every mtp-bench category
+   plus heldouts. Do not tune a fixed prompt or widen verification at the
+   current rejection rate.
+2. With improved acceptance, implement transactional scratch/prefix state and
+   KV commit/rollback that is byte-exact to canonical c1 replay. This must
+   enable repeat-shape graph hits without S5's token-1 divergence.
+3. Reprofile. Attack target linear layers (37.41%), drafter decoder+LM-head
+   (25.55%), and canonical replay/canonicalization (20.80%) in that measured
+   order. Commit scatter and readbacks are immaterial today.
+4. Consider wider draft/verifier batching only after a multi-request profile
+   shows serialization or group caps dominate and the full route is already
+   near break-even.
+
+#### R9: Final Rerun And README Publication
+
+Do not spend another full four-engine sweep merely to confirm an unchanged
+default. After the retained recovery units settle, run the narrow gates for
+each unit, then the repository-wide `uv run pytest -v` milestone gate. The last
+runtime milestone passed all 5,997 collected tests at `8d0e0f24`; later
+benchmark/docs work passed its focused suites, so any new runtime/kernel change
+requires a new full pass.
+
+Then rerun the complete gfx1151 four-engine six-shape protocol and regenerate
+the separate prefill, decode, and peak-memory tables. Rerun the exact/default,
+`llama-compat`, and llama.cpp HIP speculative lanes if MTP changed, and the exact
+production c1-c8 concurrency matrix if scheduling changed. Update compact
+artifacts, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, the synchronized
+root README, and this ledger in the same promotion unit.
 
 ## Non-Negotiable Gates
 
@@ -265,15 +504,16 @@ layout and profiled bottleneck.
 | `SOL-M1` | Add one matrix driver/report that joins exact tokens, scoped timings, path variants, latency, memory, and profiler summaries. | `accepted`: manifest/schema v1 normalizes PARO/GGUF direct/server rows, recomputes rates from exact IDs, deduplicates timing owners, preserves backend/verifier shapes, attaches memory/profiler artifacts, and rejects forged denominators or cross-scope ratios; the four-surface contract and real SOL-E5 PARO diagnostic smoke pass. | E1-E3, E5 | One artifact can compare direct/server and PARO/GGUF without manual denominator repair. |
 | `SOL-D1` | Split the three source docs into a short current dashboard and dated lab notebook/history; reconcile stale concurrency and "Done" wording. | `accepted`: MTP parity, PARO transfer, and HIP/Vulkan are 94/87/87-line current dashboards with retained/diagnostic/open/blocked language; their 6,812/597/2,602-line notebooks are linked `*-HISTORY.md` files whose blob hashes exactly match the originals. | E4 | Each current dashboard contains only eligible results and open blockers; historical diagnostics remain linked and unchanged. |
 
-The P0 foundation is accepted. Run the first baseline matrix before any
-architecture tuning; do not combine backend plumbing with kernel tuning.
+The P0 foundation is accepted. The initial local baseline matrix is complete;
+retain the matrix below as the rerun contract before future architecture
+tuning. Do not combine backend plumbing with kernel tuning.
 
 ## Baseline Matrix
 
-Run the first baseline immediately after the P0 foundation is green and before
-performance or routing changes. gfx1151 is local first; gfx1100/W7900 is a
-separate rerun when that hardware is available. Never merge the architectures
-into one dispatch decision.
+The first gfx1151 pass is represented by P1/P2, G1-G6, S1-S7, and the accepted
+topline. Use these rows as the minimum matrix after a relevant route changes.
+gfx1100/W7900 remains a separate rerun when that hardware is available. Never
+merge the architectures into one dispatch decision.
 
 ### AR Correctness And Throughput
 
@@ -322,7 +562,7 @@ and a true no-spec AR baseline.
 | `SOL-G7` | Tune gfx1151 chunk, workgroup, rowtile, attention split, and route thresholds. | `parked`: the corrected G4 profile supplies no safe broad-knob premise. G3 rejects the alternate GDN prefill chain, G9/G10 triggers are false, and the retained G5 graph threshold is already scoped by exact wall evidence. Reactivate only for a named dominant family and concrete candidate; do not run an undirected threshold sweep. | changed G4-family profile plus exact candidate | Same-device exact A/B selects profile values; gfx1100 remains unchanged. |
 | `SOL-G8` | Replace GGUF serial/row-replay concurrency with a true resident multi-row AR path across c1-c8 and sparse slots. | `parked on a named correctness blocker`: the corrected server matrix exposes client c8 as c4+c4+c2, not a width-8 backend, and one of three true-AR client-c8 runs changes `general_ja_explain` while the other two match. No true resident multi-row AR algorithm is registered. Reactivate with a deterministic realized-c4 RED plus first-hidden/state/KV localization, then require the full independent-c1 c1-c8/shrink/sparse gate. | deterministic GGUF multi-row correctness oracle and general algorithm | Exact c1-c8, shrink, sparse-slot, and profiler gates pass with aggregate scaling. |
 | `SOL-G9` | Narrow HIP Q4 selected-dual recovery using source/layout/reduction/waitcnt changes. | `parked`: corrected V6 serialized Q4 is parity/HIP-favored (`0.922x-0.973x` Vulkan/HIP), so the activation premise is false; G4 also identifies dense Q8 and selected-MoE GEMV as the dominant production families. | corrected V6 result and real profile | Activate only if serialized matched Q4 still favors Vulkan and Q4 is material in production wall. |
-| `SOL-G10` | Four-wave Q6 verifier LM-head rowtile: each wave owns four output columns to reduce accumulators. | `parked`: G4 attributes 10.06% of eager GPU time to Q6 LM-head, behind dense Q8 and selected-MoE; the exact small-B rowtile is already retained, while the later rowtile+top1 server experiment was flat/rejected. The “Q6 remains dominant” trigger is false. | E2, corrected profile | Activate only if Q6 head remains dominant; R6/R8/R12 show no spills, exact output, lower GPU event time, and server wall win. |
+| `SOL-G10` | Four-wave Q6 verifier LM-head rowtile: each wave owns four output columns to reduce accumulators. | `parked`: G4 attributes 10.06% of eager GPU time to Q6 LM-head, behind dense Q8 and selected-MoE; the exact small-B rowtile is already retained, while the later rowtile+top1 server experiment was flat/rejected. The “Q6 remains dominant” trigger is false. | E2, corrected profile | Activate only if Q6 head remains dominant; rowtile candidates R6/R8/R12 show no spills, exact output, lower GPU event time, and server wall win. |
 
 Do not restore the old GGUF graph as a shortcut. SOL-G1 proves the repeated
 `9707` stream is valid on gfx1151; it still does not make a stale timing row
@@ -525,33 +765,38 @@ small compounding win, as required by the project evidence policy.
 
 ## Execution Order
 
+This is the active pickup order. Closed P0/P/G/S/V evidence remains available
+in the item tables above; do not replay that historical order.
+
 | Order | Work package | Items | Why now |
 | ---: | --- | --- | --- |
-| 1 | Exact accounting and provenance | E1-E3, S2 | All later routing and wall decisions depend on correct denominators. |
-| 2 | Exact server route and backend identity | E5, B1 | Makes gfx1151 GGUF and direct/server comparisons real. |
-| 3 | Harness/report and evidence cleanup | M1, E4, D1 | Establishes one trustworthy dashboard. |
-| 4 | Current-HEAD baseline matrix | P1-P2 plus GGUF AR/spec matrices | Separates architecture, row, context, and lifecycle failures. |
-| 5 | gfx1100 GGUF recovery | G1-G6 | Largest plausible performance recovery; correctness first. |
-| 6 | PARO shape-safe native batching | P3-P8, then P9 if activated | Converts diagnostics into deployable c>N behavior. |
-| 7 | Batch-aware speculative routing | S1-S4, then conditional S5-S7 | Uses corrected economics rather than per-request guesses. |
-| 8 | Targeted non-backend kernel work | Activated P9/S items; G10 is parked | Only profiled, production-shaped kernels enter here. |
-| 9 | HIP/Vulkan portability rerun | V10 | gfx1151 V1-V9 are complete; W7900 remains. |
-| 10 | Backend/ISA decision | V11-V12 if activated; G9 is parked | Broad backend work requires a corrected production gate. |
+| 1 | Recover PARO c1 prefill buckets | R1 | Highest-confidence same-code recovery; decode is already stable. |
+| 2 | Close exact GGUF MTP horizon economics | R2 | A no-code 64/128 rerun may change the 5% natural24 premise; exact commit is bounded if it does not. |
+| 3 | Establish production serial concurrency, then exact native c2 | R3, R4 | A measured shipping control precedes algorithm work; c2 is the smallest general exact batch. |
+| 4 | Profile and replace the GGUF prefill bottleneck | R5 | The old fast route is invalid; a current family profile must select a new exact candidate. |
+| 5 | Localize long-context decode gaps | R6 | 128K cannot inherit the 512-token Amdahl table by assumption. |
+| 6 | Implement and close matched Q6 | R7, V11 | Lower-priority backend work starts with the missing peer implementation; unmatched HIP/Vulkan ratios remain prohibited. |
+| 7 | Reopen DFlash only when drafter quality changes | R8, S4-S7 | Current 0.14825x economics cannot be repaired by wider groups or readback tuning. |
+| 8 | Full validation and public rerun | R9 | Publish only after retained defaults settle. |
+
+V10's W7900 matrix is independent hardware work and may run whenever the GPU is
+available. It does not reorder local gfx1151 recovery.
 
 Cross-GPU work is not allowed to block useful local gfx1151 progress, but no
 gfx1100/gfx1151 shared default is promoted without both architectures or an
 explicit architecture-specific profile.
 
-## Definition Of Sprint Closure
+## Definition Of Evidence-Sprint Closure
 
-The optimization ledger can be called complete only when:
+The evidence sprint was called complete only when:
 
 - all P0 accounting, provenance, backend identity, and dashboard items pass;
 - PARO and GGUF have exact current-HEAD baselines with trustworthy denominators;
 - every PARO c1-c8 width and c8->c1 transition is retained-safe or explicitly
   serial with a named blocker;
-- gfx1100 GGUF repeated-token/state behavior is resolved and the correct eager
-  path is profiled; GDN chain and graph are accepted or rejected with evidence;
+- local gfx1151 GGUF repeated-token/state behavior is resolved and the correct
+  eager path is profiled; GDN chain and graph are accepted or rejected with
+  evidence; gfx1100 carries a named W7900-hardware rerun block;
 - MTP `auto` uses actual group/horizon economics and explicit opt-in
   remains available;
 - a real PARO DFlash profile either activates or parks each transfer candidate;
@@ -577,3 +822,30 @@ architecture-specific value or broad-threshold candidate. G8 is parked behind
 the intermittent realized-c4 exactness blocker and a missing general multi-row
 AR algorithm. G9/G10 remain parked because their triggers did not fire. G2/G3
 establish fused as the exact, measured GGUF prefill default.
+
+## Definition Of Recovery-Phase Closure
+
+The post-topline phase is pickup-complete only when each ready R item is
+accepted, rejected, or parked on new evidence rather than restating the old
+premise:
+
+- R1 has a current-code exact forced-256 A/B at all six shapes and a per-bucket
+  keep/reject decision;
+- R2 has natural 64/128 full-suite and heldout true-AR evidence, plus an exact
+  commit decision if the longer route still loses;
+- R3 publishes exact serial c1-c8 server controls for PARO and GGUF, and R4
+  either lands the general shape/lifecycle contract with path-specific exact
+  c2-to-c8 math or records each first unresolved hidden/state/KV blocker with
+  its RED fixture;
+- R5 records a current fused-prefill family profile and either accepts/rejects
+  one materially different exact candidate or parks candidate work because the
+  trigger is false; R6 records context-local 512/128K decode/allocation tables
+  and the resulting family/capacity decision;
+- R7 either lands the matched Q6 peer or records a concrete engineering
+  blocker; R8 either passes its full gate or remains blocked on materially
+  better target-matched drafter quality. Their dependent comparisons/tuning
+  stay closed while blocked;
+- R9 reruns the full test and publication gates after the last retained default
+  change. If no default changes, the existing `d1231ee0`/`7e9aad21` checkpoint
+  remains current and the no-rerun decision is recorded instead of generating
+  redundant toplines.

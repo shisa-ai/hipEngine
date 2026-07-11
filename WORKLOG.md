@@ -151374,3 +151374,38 @@ graphless decode launch-collapse path without regressing target/serial parity.
   artifacts. `uv run pytest -q tests/test_gfx1151_readme_refresh.py
   tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
   passes 20/20; README synchronization and `git diff --check` pass.
+
+## 2026-07-11 - Add the post-topline recovery plan to the SOL ledger
+
+- Reconciled the accepted `d1231ee0`/`7e9aad21` gfx1151 four-engine checkpoint
+  with the superseded 2026-06-15 one-run diagnostic. The ledger now records all
+  six old-to-current PARO/GGUF prefill/decode deltas and explicitly treats them
+  as leads rather than same-commit regressions. llama.cpp controls remain close,
+  PARO decode is stable within 0.32%, and the actionable PARO gap is the current
+  prefill chunk policy. The old GGUF row is ineligible because its 512 output
+  ends at `2814` rather than the G1/llama.cpp-correct `9707`, and its split-GDN
+  and graph-state routes are not exact.
+- Added `SOL-R1` through `SOL-R9` as the active pickup queue: current-code PARO
+  forced-256 per-bucket A/B; exact/default GGUF MTP natural64/128 plus bounded
+  exact commit recovery; measured PARO/GGUF serial c1-c8 controls; path-specific
+  exact native c2-to-c8 bring-up; current fused GGUF prefill profiling and a new
+  parallel-exact GDN candidate; 512/128K decode and allocation profiling;
+  matched HIP/Vulkan Q6; higher-acceptance DFlash drafter plus transactional
+  state/KV; and final validation/publication.
+- Preserved quantitative stop conditions: PARO's diagnostic recovery ceilings
+  are +31.75% to +58.08% at 1K-4K and taper to +13.34% at 128K; exact MTP B1 is
+  0.9703 ms/output (5.05% wall) from AR with a 1.2762 ms/output replay/commit
+  bucket; rejected native PARO widths expose only a 1.17x-1.73x opportunity
+  envelope; exact DFlash needs 6.745x/85.18% wall recovery and cannot justify
+  wider verification at 1/114 accepted proposals. GGUF 64K/128K tracked memory
+  (`24.203/25.493 GiB`) is now part of the long-context attribution gate.
+- Updated the ledger's active execution order and separated the completed
+  evidence-sprint definition from recovery-phase closure. The current root and
+  benchmark README exports are explicitly complete; a new full four-engine
+  sweep waits for retained default changes. The final promotion unit must rerun
+  `uv run pytest -v`, the affected model/speculative/concurrency protocols, and
+  update compact artifacts, both READMEs, the benchmark changelog, and the SOL
+  ledger together.
+- Docs-only validation: re-read `docs/SOL-OPTIMIZATION.md` end-to-end, verified
+  every newly linked local artifact exists, and ran `git diff --check`. No GPU
+  or benchmark rerun is required for this planning unit.
