@@ -150315,8 +150315,9 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `19.687/19.851/19.683/19.815 tok/s`; its child `4499fb13` records
   `54.843/54.961/55.033/54.984 tok/s`. This localizes the first performance-
   changing revision to loaded-HIP-library memoization, a roughly `2.78x` eager
-  speedup with no intervening commit. The production route had already changed
-  to eager at `e8521a2a`; invalid graph-relaunch speed is not used as a control.
+  speedup with no intervening commit. Production changed to the now-fast eager
+  route afterward at `e8521a2a`; invalid graph-relaunch speed is not used as a
+  control.
 - RED: `tests/test_gguf_decode_rocprof.py` initially failed collection because
   the legacy whole-process profiler had no marker-window, Amdahl, wall-summary,
   or child-command contracts. Reworked `scripts/gguf_decode_rocprof.py` into a
@@ -150345,3 +150346,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   current B1 route.
 - GREEN: the profiler/provenance bundle passes `12/12`; Python compilation and
   `git diff --check` pass. The retained audit will restart at the fix commit.
+
+## 2026-07-11 - SOL-G4 audit history-order correction
+
+- The compatibility-fixed run completed every GPU stage: current p512/d128
+  `49.223 tok/s`, current p8/d32 `55.208 tok/s`, direct parent `17.735 tok/s`,
+  `4499fb13` `54.828 tok/s`, and 24 exact profiled p512 steps. Finalization
+  rejected only the assertion that the production eager selector preceded the
+  speed boundary. Git proves the opposite linear order: `4499fb13` is the merge
+  base and ancestor of `e8521a2a`. The library cache first made eager fast;
+  `e8521a2a` then selected eager for production after graph/eager parity.
+- Reversed the ancestry gate to encode that true order. No workload, route,
+  timing, token, or profiler result changed; the clean retained audit will be
+  rerun at the correction commit.
