@@ -251,20 +251,43 @@ and [llama.cpp Vulkan](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231e
 ### Speculative decode
 
 The public table includes only contracts with a true same-protocol AR control.
-The MTP exact and `llama-compat` rows have different state semantics and output
-horizons; they must not be compared as two implementations of one contract.
+The exact/default and `llama-compat` columns are intentionally separate:
+exact/default is the semantic control, while `llama-compat` is the closer
+structural comparison with llama.cpp's B2 natural-output-horizon route.
 
 <!-- BEGIN TOPLINE:SPECULATIVE -->
+#### GGUF MTP comparison, Radeon 8060S/gfx1151
+
+| Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: |
+| Headline route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Headline MTP decode | 61.98 tok/s (1.1312x own AR) | 71.52 tok/s (1.3055x own AR) | 71.91 tok/s (1.3835x own AR) |
+| Matched natural24 B2 MTP decode | 52.04 tok/s (diagnostic) | 71.52 tok/s | 71.91 tok/s |
+| Matched natural24 own AR | 54.80 tok/s | 54.79 tok/s | 51.98 tok/s |
+| Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
+| State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+
+`llama-compat` is the closer 1:1 performance comparison with llama.cpp because
+both use B2 and the natural24 output horizon. It is still not an exact semantic
+comparison: `llama-compat` is not serial-prefix-equivalent. The llama.cpp HIP
+column is a locally instrumented, dirty-source diagnostic
+(`performance_claim=false`), not a promoted standalone topline. The exact B5
+headline uses a different fixed-cycle horizon and must not be ranked directly
+against the two natural24 columns; its matched natural24 B2 control is shown
+separately.
+
+#### Dense PARO DFlash
+
 | Path | Platform and protocol | Result | Evidence status |
 | --- | --- | ---: | --- |
 | DFlash B=4 online-gated | W7900/gfx1100; Qwen3.6-27B PARO target plus Qwen3.6-27B DFlash drafter; 9 prompts; 64 decode tokens | 40.10 vs 32.57 AR tok/s, **1.231x** | Retained under the recorded DFlash gate; source tree was dirty and must be refreshed before changing the claim |
-| GGUF MTP exact B5 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B Q4_K_M; 10-prompt category suite; fixed 10 cycles; exact/default state semantics | 61.98 vs 54.79 AR tok/s, **1.1312x** | Retained for this fixed-cycle contract |
-| GGUF MTP `llama-compat` B2 | Radeon 8060S/gfx1151; same GGUF and prompt suite; natural24/cyclecap24; direct-commit/dp4a compatibility semantics | 71.52 vs 54.79 AR tok/s, **1.3055x** | Retained for this compatibility contract; accuracy-traded and not serial-prefix-equivalent |
 <!-- END TOPLINE:SPECULATIVE -->
 
 Artifacts: [DFlash](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
 [exact MTP](results/2026-07-02-ar-mtp-default-parallelattn-full.json), and
 [`llama-compat` MTP](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
+The matched natural24 controls are [exact/default B1-B5](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
+and the [llama.cpp HIP B2 stage rerun](results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
 
 The current clean gfx1151 PARO DFlash profile remains outside this eligible
 table: it is exact but measures only `9.676` versus `65.266 tok/s` AR
