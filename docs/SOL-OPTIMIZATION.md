@@ -430,9 +430,9 @@ reused width-1 sessions until an accepted schema-2 profile exists.
 
 | ID | Work | Status | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- |
-| `SOL-S1` | Move `auto` MTP choice from per-request eligibility to the realized backend group. | `in_progress`: the clean-tracked gfx1151 full-suite/heldout matrix at `d2b1e742` records exact IDs and realized groups. The compatibility hook is diagnostic-fast at c1/c2 but is not true-AR exact; isolated heldout c3 groups are also 3.92% slower. The evidence therefore rejects compatibility MTP for automatic routing. The follow-up code unit makes `auto` choose exact AR with group/horizon/reason telemetry while preserving explicit MTP opt-in. | E1-E2 and corrected natural matrix complete; exact/default server MTP unavailable | Auto never selects a non-exact compatibility route; explicit opt-in always requests MTP. Policy records reason/group/horizon and can admit widths only after exact/default evidence exists. |
+| `SOL-S1` | Move `auto` MTP choice from per-request eligibility to the realized backend group. | `accepted`: the clean-tracked gfx1151 full-suite/heldout matrix at `d2b1e742` records exact IDs and realized groups. The compatibility hook is diagnostic-fast at c1/c2 but is not true-AR exact; isolated heldout c3 groups are also 3.92% slower. Automatic requests now carry a `speculative_mtp_auto` intent into the realized queue group, then select exact/default AR with reason, group-width, horizon, and evidence telemetry. A live gfx1151 smoke reports default/verifier-rows 0 for auto and preserves explicit compatibility-MTP/verifier-rows 3. | E1-E2 and corrected natural matrix complete; exact/default server MTP unavailable | Auto never selects a non-exact compatibility route; explicit opt-in always requests MTP. Policy records reason/group/horizon and can admit widths only after exact/default evidence exists. |
 | `SOL-S2` | Record route cap, actual backend group, queue grouping, and verifier rows separately. | `accepted`: non-streaming server responses emit `generation_shape` v1 with a request-scoped cap, queue-group ID/request/prompt counts and item slice, actual backend call widths, and deduplicated verifier rows; `mtp-bench.py` validates complete groups. The c8 regression produces two c4 queue/backend groups, never a width-8 verifier row. | E2 | A c8 client row cannot be mistaken for a width-8 verifier row. |
-| `SOL-S3` | Add context/output-length buckets and EWMA hysteresis only after static policy is stable. | `blocked` | S1 retained | Online policy beats/equals static on held-out full-suite traffic without prompt-conditioned branches. |
+| `SOL-S3` | Add context/output-length buckets and EWMA hysteresis only after static policy is stable. | `parked`: S1 admits no exact automatic MTP route, so there is no static MTP policy for context/output buckets or hysteresis to improve. Reactivate only after an exact/default route passes the full-suite heldout gate and establishes a stable static policy. | exact/default MTP route plus retained S1 static policy | Online policy beats/equals static on held-out full-suite traffic without prompt-conditioned branches. |
 | `SOL-S4` | Run a real PARO DFlash row using the landed coarse phase and graph-shape telemetry. | `open` | E1-E3 | Same-session AR, exact output, phase coverage, and shape hit/miss data identify the dominant parent bucket. |
 | `SOL-S5` | Compare GGUF deferred accepted-row scatter/tail discard with PARO verifier commit/canonicalization. | `conditional` | S4 profile | Activate only if commit/scatter/sync is material; exact state/KV and cycle/server wall must improve. |
 | `SOL-S6` | Add true draft-side batching and/or wider verifier groups. | `conditional` | S1-S4 profile | Activate only if current phase serialization/group caps dominate; retain on full suite and server wall. |
@@ -560,9 +560,11 @@ The optimization ledger can be called complete only when:
 
 The P3-P9 activation audit is closed. P2 supplies the exact production true-c1
 lifecycle; P3/P4/P7-P9 are parked until a general algorithm changes P1's native
-c2-c8 result, and P6 is rejected with its dead splitter removed. The next PARO
-coordinator unit is the corrected natural-economics/real-DFlash S1-S4 closure;
-fixture-specific rounding repair is not an optimization target.
+c2-c8 result, and P6 is rejected with its dead splitter removed. S1 now keeps
+automatic compatibility MTP on exact/default AR and S3 is parked until an
+exact/default MTP route establishes a stable static policy. The next PARO
+coordinator unit is the real-DFlash S4 profile; fixture-specific rounding repair
+is not an optimization target.
 
 G7/G8 now wait on B2 plus the corrected baseline matrix; G9/G10 are parked
 because their triggers did not fire. G2/G3 establish fused as the exact,

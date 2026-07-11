@@ -207,7 +207,8 @@ Historical OpenAI MTP server rows are excluded. The current raw-ID route counts
 exact completion IDs across every choice and owns batch timing once. The
 corrected 2026-07-11 server matrix finds that compatibility MTP changes true-AR
 IDs even at c1, so it must remain explicit-only despite diagnostic c1/c2 speed
-gains; the SOL-S1 follow-up routes automatic requests to exact/default AR. See the
+gains; SOL-S1 routes automatic requests to exact/default AR while keeping the
+compatibility hook explicit-only. See the
 [`route-gate artifact`](benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json)
 and canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-gguf-server-automatic-route-gate-2026-07-11).
 

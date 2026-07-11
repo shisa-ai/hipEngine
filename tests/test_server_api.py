@@ -47,6 +47,7 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _QueuedBatchResult,
+    _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
     _request_control,
@@ -1465,6 +1466,32 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "batch_route": "speculative_mtp",
     }
     assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
+
+
+def test_capabilities_endpoint_reports_auto_exact_fallback() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="auto",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+
+    assert payload["policy"] == "auto"
+    assert payload["default_enabled"] is False
+    assert payload["auto_route"] == {
+        "selected_route": "default",
+        "reason": "compatibility_mtp_not_exact",
+        "exact_default_required": True,
+        "compatibility_mtp_explicit_only": True,
+        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+    }
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -4285,6 +4312,7 @@ def test_server_auto_quant_keeps_gguf_route_group_limits() -> None:
     assert batcher._route_max_active_requests == {
         _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
         _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+        _SPECULATIVE_MTP_AUTO_ROUTE: 4,
     }
 
 
@@ -4819,6 +4847,67 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
         ],
         "verifier_rows": 6,
     }
+
+
+def test_completions_auto_keeps_compatibility_mtp_explicit_only() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="auto",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 24,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == [
+        "generated:one",
+        "generated:two",
+    ]
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
+    assert fake.calls[0][0] == ("one", "two")
+    shape = body["hipengine"]["generation_shape"]
+    assert shape["route"] == "default"
+    assert shape["route_decision"] == {
+        "requested_route": "speculative_mtp_auto",
+        "selected_route": "default",
+        "reason": "compatibility_mtp_not_exact",
+        "realized_group_rows": 2,
+        "output_horizon_tokens": 24,
+        "exact_default_required": True,
+        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+    }
+    explicit_response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "three",
+            "max_tokens": 24,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+    assert explicit_response.status_code == 200
+    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
+    assert len(fake.mtp_calls) == 1
+    assert fake.mtp_calls[0][0] == ("three",)
 
 
 def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:

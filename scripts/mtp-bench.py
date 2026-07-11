@@ -436,6 +436,50 @@ def generation_shape_from_response(response: dict[str, Any]) -> dict[str, Any] |
     if item_prompt_offset + item_prompt_rows > prompt_rows:
         raise BenchError("queue_group item prompt slice exceeds prompt_rows")
 
+    route_decision = None
+    raw_route_decision = raw.get("route_decision")
+    if raw_route_decision is not None:
+        if not isinstance(raw_route_decision, dict):
+            raise BenchError("hipengine.generation_shape.route_decision must be an object")
+        requested_route = raw_route_decision.get("requested_route")
+        selected_route = raw_route_decision.get("selected_route")
+        reason = raw_route_decision.get("reason")
+        evidence = raw_route_decision.get("evidence")
+        for label, value in (
+            ("requested_route", requested_route),
+            ("selected_route", selected_route),
+            ("reason", reason),
+            ("evidence", evidence),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise BenchError(f"generation_shape.route_decision.{label} must be non-empty")
+        if selected_route != route:
+            raise BenchError("generation_shape.route_decision.selected_route must match route")
+        realized_group_rows = _shape_int(
+            raw_route_decision.get("realized_group_rows"),
+            label="route_decision.realized_group_rows",
+            minimum=1,
+        )
+        if realized_group_rows != prompt_rows:
+            raise BenchError("generation_shape.route_decision.realized_group_rows must match prompt_rows")
+        output_horizon_tokens = _shape_int(
+            raw_route_decision.get("output_horizon_tokens"),
+            label="route_decision.output_horizon_tokens",
+            minimum=1,
+        )
+        exact_default_required = raw_route_decision.get("exact_default_required")
+        if not isinstance(exact_default_required, bool):
+            raise BenchError("route_decision.exact_default_required must be a bool")
+        route_decision = {
+            "requested_route": requested_route,
+            "selected_route": selected_route,
+            "reason": reason,
+            "realized_group_rows": realized_group_rows,
+            "output_horizon_tokens": output_horizon_tokens,
+            "exact_default_required": exact_default_required,
+            "evidence": evidence,
+        }
+
     raw_backend_groups = raw.get("backend_groups")
     if not isinstance(raw_backend_groups, list) or not raw_backend_groups:
         raise BenchError("hipengine.generation_shape.backend_groups must be non-empty")
@@ -508,7 +552,7 @@ def generation_shape_from_response(response: dict[str, Any]) -> dict[str, Any] |
     verifier_rows = _shape_int(raw.get("verifier_rows"), label="generation_shape.verifier_rows")
     if verifier_rows != sum(group["verifier_rows"] for group in backend_groups):
         raise BenchError("generation_shape.verifier_rows must equal the backend-group sum")
-    return {
+    normalized = {
         "schema_version": 1,
         "route": route,
         "route_cap": route_cap,
@@ -523,6 +567,9 @@ def generation_shape_from_response(response: dict[str, Any]) -> dict[str, Any] |
         "backend_groups": backend_groups,
         "verifier_rows": verifier_rows,
     }
+    if route_decision is not None:
+        normalized["route_decision"] = route_decision
+    return normalized
 
 
 def aggregate_generation_shapes(results: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -549,6 +596,7 @@ def aggregate_generation_shapes(results: list[dict[str, Any]]) -> dict[str, Any]
         invariant = {
             "route": first["route"],
             "route_cap": first["route_cap"],
+            "route_decision": first.get("route_decision"),
             "backend_groups": first["backend_groups"],
             "verifier_rows": first["verifier_rows"],
         }
@@ -559,6 +607,7 @@ def aggregate_generation_shapes(results: list[dict[str, Any]]) -> dict[str, Any]
             candidate = {
                 "route": shape["route"],
                 "route_cap": shape["route_cap"],
+                "route_decision": shape.get("route_decision"),
                 "backend_groups": shape["backend_groups"],
                 "verifier_rows": shape["verifier_rows"],
             }
@@ -595,6 +644,11 @@ def aggregate_generation_shapes(results: list[dict[str, Any]]) -> dict[str, Any]
                 "id": queue_id,
                 "route": first["route"],
                 "route_cap": first["route_cap"],
+                **(
+                    {"route_decision": first["route_decision"]}
+                    if "route_decision" in first
+                    else {}
+                ),
                 "request_count": request_count,
                 "prompt_rows": prompt_rows,
                 "backend_groups": first["backend_groups"],
