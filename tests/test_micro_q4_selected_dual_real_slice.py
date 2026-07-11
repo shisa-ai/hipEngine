@@ -253,6 +253,18 @@ def test_q4_vulkan_harness_records_calibrated_multi_queue_combined_path() -> Non
     assert "VK_ACCESS_SHADER_WRITE_BIT,\n            VK_ACCESS_SHADER_READ_BIT" in source
 
 
+def test_q4_vulkan_harness_isolates_q8_and_cpu_prequantized_dot() -> None:
+    source = (
+        REPO_ROOT / "benchmarks/micro/runners/vulkan_q4_selected_dual.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "q8_cpu_vs_vulkan" in source
+    assert "dot_with_cpu_prequantized_q8" in source
+    assert "VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT" in source
+    assert "compare_q8_slices" in source
+    assert "q8_dot_isolation_by_workgroup" in RUNNER.read_text(encoding="utf-8")
+
+
 def test_q4_comparison_emits_gpu_controls_and_rejects_host_wall() -> None:
     module = _load_runner()
     hip = _result(module, backend="hip")

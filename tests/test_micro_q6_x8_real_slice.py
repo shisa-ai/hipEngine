@@ -159,6 +159,22 @@ def test_q6_independent_vulkan_uses_multi_queue_lanes_and_max_allocation() -> No
     assert "top1 >= 0.90" in harness
 
 
+def test_q6_vulkan_harness_isolates_q8_and_cpu_prequantized_dot() -> None:
+    harness = (
+        REPO_ROOT
+        / "benchmarks"
+        / "micro"
+        / "runners"
+        / "vulkan_q6_x8_selected_down.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "q8_cpu_vs_vulkan" in harness
+    assert "dot_with_cpu_prequantized_q8" in harness
+    assert "VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT" in harness
+    assert "compare_q8_slices" in harness
+    assert "q8_dot_isolation" in RUNNER.read_text(encoding="utf-8")
+
+
 def test_q6_independent_lane_count_is_capped_by_timed_repetitions() -> None:
     module = _load_runner()
     args = _args(module, "independent_throughput")
