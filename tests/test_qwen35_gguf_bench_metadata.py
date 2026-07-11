@@ -54,7 +54,7 @@ def test_exact_command_payload_preserves_argv_and_shell_command() -> None:
     assert shlex.split(payload["command"]) == argv
 
 
-def test_decode_graph_disabled_reason_tracks_retired_gguf_graph_path() -> None:
+def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> None:
     class NoGraphSession:
         pass
 

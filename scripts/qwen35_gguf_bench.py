@@ -102,9 +102,9 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "Deprecated GGUF decode-graph diagnostic flag. Current GGUF resident "
-            "decode is eager by default; if graph support is unavailable, the "
-            "benchmark records the disabled reason and falls back to eager decode."
+            "Explicitly benchmark the production state-bound GGUF decode graph. "
+            "If the session cannot capture it, record the disabled reason and "
+            "fall back to eager decode."
         ),
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)

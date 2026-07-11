@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+from hipengine.core.dtype import DType
 from hipengine.runtime.gguf_decode_graph import build_qwen35_gguf_decode_graph_key
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
 def _buffer(ptr: int):
@@ -133,3 +136,30 @@ def test_decode_graph_key_serializes_complete_shape_state_axes() -> None:
     assert len(payload["buffer_identity_sha256"]) == 64
     assert len(payload["weight_role_sha256"]) == 64
     assert len(payload["key_sha256"]) == 64
+
+
+def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:
+    observed: list[str] = []
+
+    def capability(backend: str, name: str):
+        observed.append(backend)
+        assert name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS"
+        return 128
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
+    monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.backend = "auto"
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1151",
+        weights=SimpleNamespace(
+            weights=[SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q8_0_t16_v1"))]
+        ),
+    )
+    session.scratch = SimpleNamespace()
+    session.host_token_embedding_enabled = False
+    session.kv_storage_dtype = DType.BF16
+    session.use_gemv_decode = True
+
+    assert session._resolve_decode_graph_min_replay_steps() == 128
+    assert observed == ["hip_gfx1151"]

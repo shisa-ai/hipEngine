@@ -7105,9 +7105,12 @@ class Qwen35GGUFResidentSession:
             self._owns_runner = True
         else:
             self.runner = self.shared_runner
-            self.backend = self.runner.backend
             self.runtime = self.runner.runtime or self.runtime
             self._owns_runner = False
+        # ``auto`` is a load-time selector, never a registry/capability key.
+        # The full-stack runner has already resolved it against the detected
+        # device, so keep the resident session on that concrete identity too.
+        self.backend = self.runner.backend
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
         self.fastpath_safety = resolve_qwen35moe_fastpath_safety(
@@ -7286,7 +7289,7 @@ class Qwen35GGUFResidentSession:
         if not any(key.endswith("_t16_v1") or key.endswith("_x8_v1") for key in quant_keys):
             return None
         raw = backend_package_capability(
-            self.backend,
+            self.runner.backend,
             "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
         )
         if raw is None:
