@@ -387,6 +387,10 @@ and checks every persistent state/KV family through c8-to-c1 retirement.
 | 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
+No eligible native-batch timing row exists. The c2-c8 native measurements below
+are correctness-rejected diagnostics; production uses the exact serial groups
+shown above.
+
 Protocol: Qwen3.6-35B-A3B PARO snapshot
 `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV, 40 layers,
 8 warmup decode steps, 128 measured decode steps, and greedy sampling. Exact
@@ -431,7 +435,7 @@ Run record:
 | Production route | `true_c1_graph` for c1; `scheduler_true_c1_fallback` for c2-c8. No gfx1100 artifact may select this gfx1151 catalog. |
 | Lifecycle route | `per_segment_ragged_exact` prefill plus true-c1 decode; EOS and front/middle/tail sparse cancellation are exact. No throughput claim is attached to the fallback. |
 | Current artifacts | [`P1 exact catalog`](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json), [`P2 ragged lifecycle`](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json) |
-| Historical correction | [`2026-07-10...legacy timing summary`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json), [`true-c1 shrink gate`](results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json) |
+| Historical correction | [`2026-07-10...current-diagnostic-summary.json`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json), [`true-c1 shrink gate`](results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json) |
 
 Reproduce c2-c8 with `scripts/qwen35_batch_equality_matrix.py --batch-sizes
 2,3,4,5,6,7,8`; use `scripts/qwen35_paro_bench.py --prompt-fixture ...

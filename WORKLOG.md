@@ -150921,3 +150921,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Docs-only reconciliation; no benchmark value, artifact, default, or
   architecture plan changed. `git diff --check` passes and a status scan finds
   no local `open`, `in_progress`, `conditional`, or `blocked` SOL item row.
+
+## 2026-07-11 - Restore the native-batch scoreboard qualification
+
+- The milestone `uv run pytest -q` reached 85% before a fatal HIP abort in
+  `test_qwen35_linear_attn_segment_state_rows.py`; fail-fast then isolated the
+  first ordinary failure in `test_benchmark_readme_sync.py`. The new P1
+  c1/serial catalog had dropped the exact sentence that explicitly says no
+  native-batch timing row is eligible.
+- Restored that qualification next to the P1 table without changing any metric
+  or status: c2-c8 timings remain correctness-rejected diagnostics and
+  production uses the exact serial groups. This is a scoreboard/test contract
+  repair, not a benchmark update.
