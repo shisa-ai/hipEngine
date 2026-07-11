@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from hipengine.core import build as build_module
 from hipengine.core.build import build_hip, plan_hip_build
 
 
@@ -168,6 +169,50 @@ def test_build_hip_uses_version_file_for_cached_artifact(
     assert artifact.cache_key == expected.cache_key
     assert artifact.output_path == expected.output_path
     assert artifact.compiler_version == version
+
+
+def test_build_hip_loaded_cache_distinguishes_environment_target_arch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version = "hipcc cached test version"
+    artifacts = {
+        target_arch: plan_hip_build(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            cache_root=tmp_path / "cache",
+            compiler="definitely-not-a-real-hipcc",
+            compiler_version=version,
+            target_arch=target_arch,
+        )
+        for target_arch in ("gfx1100", "gfx1151")
+    }
+    for artifact in artifacts.values():
+        artifact.cache_dir.mkdir(parents=True)
+        artifact.output_path.write_bytes(b"not a real shared object")
+
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+
+    loaded = {}
+    for target_arch in ("gfx1100", "gfx1151"):
+        monkeypatch.setenv("HIPENGINE_HIP_ARCH", target_arch)
+        loaded[target_arch] = build_hip(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            cache_root=tmp_path / "cache",
+            compiler="definitely-not-a-real-hipcc",
+            compiler_version=version,
+            load=True,
+            require_cached=True,
+        )
+
+    assert loaded == {
+        target_arch: artifact.output_path for target_arch, artifact in artifacts.items()
+    }
 
 
 def test_build_hip_require_cached_rejects_missing_artifact_without_compiling(

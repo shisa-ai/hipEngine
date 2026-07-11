@@ -151033,3 +151033,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `uv run pytest -q tests/test_qwen35_kv_int8_accuracy.py` passes
   4/4; `git diff --check` passes. This changes test coverage only, not an INT8
   runtime default or quality decision.
+
+## 2026-07-11 - Key loaded HIP libraries by effective target arch
+
+- Tail validation reproduced the original milestone's fatal gfx1151 memory
+  fault in the segment-state Conv test. The device recovered immediately, and
+  the exact test passed when rerun with `HIPENGINE_HIP_ARCH=gfx1151`, isolating
+  the failure to JIT/library selection rather than the row-state math.
+- RED proved that `build_hip()`'s artifact plan included an environment-derived
+  target arch while its process-level loaded-library cache key retained the raw
+  `target_arch=None` argument. Switching one process from gfx1100/no-target to
+  gfx1151 could therefore return the previously loaded code object. The new
+  unit test loaded gfx1100 then gfx1151 and failed because both resolved to the
+  gfx1100 path.
+- `build_hip()` now resolves/normalizes the effective environment or explicit
+  target once, then uses that same value for both the loaded-library identity
+  and artifact plan. The segment-state GPU module keeps that target scoped for
+  its two launches instead of relying on an unqualified cache entry.
+- GREEN: build/backend tests pass 25/25, both segment-state Conv GPU tests pass
+  on gfx1151, and `git diff --check` passes. This is a correctness/cache fix;
+  kernel bodies and benchmark values are unchanged.

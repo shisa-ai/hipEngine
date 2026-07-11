@@ -25,6 +25,14 @@ def _hip_available() -> bool:
 HIP_AVAILABLE = _hip_available()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _build_for_detected_target(hip_test_target_arch):
+    from hipengine.kernels.backends import hip_target_arch_environment
+
+    with hip_target_arch_environment(hip_test_target_arch):
+        yield
+
+
 class _Buf:
     def __init__(self, nbytes: int) -> None:
         self.buffer = malloc(nbytes)
