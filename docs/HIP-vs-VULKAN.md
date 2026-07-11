@@ -1,6 +1,6 @@
 # HIP vs Vulkan Current Dashboard
 
-Last reviewed: 2026-07-11. Last retained measurement: 2026-07-11.
+Last reviewed: 2026-07-12. Last retained measurement: 2026-07-11.
 
 This file contains only the current cross-backend conclusions and open gates.
 The verbatim attribution notebook, including every pre-v2 hypothesis and local
@@ -193,7 +193,6 @@ backend order, and queue/kernel counters—not another version-matching pass.
 | Priority | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
 | 0 | Fix-clock W7900 dispatch/stream attribution | Open | Interleaved one/four-stream and graph controls plus queue/AQL traces separate runtime submission from clock residency. |
-| 0 | Resolve Q6 50-repetition independent correctness | Open | The Vulkan timed-sequence oracle passes the higher-repetition disjoint-output run before its timing is compared. |
 | 1 | Profile current PARO and GGUF server paths | Open | A shipped hot slice is identified by layer family and submission behavior before another Vulkan experiment is added. |
 | 1 | Match Q6 lm-head math/layout | Blocked on comparable implementation | HIP and Vulkan use identical quantization, activation layout, output coverage, and rowtile algorithm before any ratio is reported. |
 | 2 | Production Vulkan or hand ISA | Decision-gated | A clean matched production slice wins in the relevant timing mode and final combined operation, then improves end-to-end wall without a memory/correctness regression. |
