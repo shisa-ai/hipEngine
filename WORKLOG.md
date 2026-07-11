@@ -151238,3 +151238,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   every `decode_graph_reused` flag is false. The artifact is diagnostic only
   because the source tree was dirty. The focused suite passes 7/7, Python
   compilation and `git diff --check` pass.
+
+## 2026-07-11 - Add the gfx1151 four-engine topline promotion gate
+
+- The committed refresh runner produced independently gated hipEngine PARO and
+  GGUF rollups plus diagnostic-by-default llama.cpp artifacts, but it had no
+  machine-readable boundary that could promote all four columns together.
+  Added `scripts/assemble_gfx1151_readme_topline.py` and a `summary` runner
+  phase. The assembler requires the ordered six-shape matrix, accepted
+  hipEngine correctness/variance rollups, five successful and <=5%-variance
+  llama.cpp samples per phase, clean same-revision harness provenance,
+  detected gfx1151 / Radeon 8060S identity, one exact Q4_K_M fingerprint, named
+  llama.cpp builds, and 10 ms whole-device GTT sampling before setting
+  `performance_claim=true`.
+- The normalized table uses medians for every throughput column. hipEngine peak
+  memory remains tracked allocator high-water; llama.cpp peak memory remains
+  absolute whole-device GTT used. The artifact and generated Markdown retain
+  that scope distinction rather than implying allocator-equivalent columns.
+- RED: the focused test initially failed at import because the assembler did
+  not exist. GREEN: all 8 tests in `tests/test_gfx1151_readme_refresh.py` pass,
+  including a synthetic four-engine promotion and a deliberately high-variance
+  llama.cpp rejection. `bash -n scripts/run_gfx1151_readme_refresh.sh` passes.
+  Ruff is not installed in the environment, so that optional invocation could
+  not run; pytest completed before the missing-tool error.

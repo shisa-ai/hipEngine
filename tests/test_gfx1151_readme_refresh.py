@@ -8,6 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.util.amdgpu_vram import AmdgpuCard, VramSampler
+from scripts.assemble_gfx1151_readme_topline import (
+    _assemble_topline,
+    _render_markdown,
+)
 from scripts.llamacpp_bench_with_peak import parse_args
 from scripts.merge_readme_sweep_components import (
     STANDARD_WORKLOADS,
@@ -266,6 +270,7 @@ def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     assert "--warmup-runs 2 --measured-runs 5" in text
     assert "--memory-domain gtt" in text
     assert "merge_readme_sweep_components.py" in text
+    assert "assemble_gfx1151_readme_topline.py" in text
     assert "llamacpp-hip" in text
     assert "llamacpp-vulkan" in text
 
@@ -279,4 +284,168 @@ def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     assert result.returncode == 0, result.stderr
     assert "hipengine" in result.stdout
     assert "llamacpp" in result.stdout
+    assert "summary" in result.stdout
     assert "all" in result.stdout
+
+
+def _fake_hipengine_rollup(*, engine: str, quant: str) -> dict[str, object]:
+    provenance = _provenance()
+    provenance["quant"] = quant
+    if engine == "gguf":
+        provenance["model_path"] = "/model.gguf"
+        provenance["model_revision"] = None
+        provenance["model_fingerprint"] = {
+            "algorithm": "sha256-full-v1",
+            "value": "c" * 64,
+            "size_bytes": 2,
+            "sampled_bytes": 2,
+            "exists": True,
+            "path_type": "file",
+        }
+    return {
+        "schema": 1,
+        "kind": "gfx1151_readme_model_sweep_rollup",
+        "status": "accepted_topline",
+        "performance_claim": True,
+        "engine": engine,
+        "quant": quant,
+        "workloads": list(STANDARD_WORKLOADS),
+        "warmup_runs": 2,
+        "measured_runs": 5,
+        "summary_by_workload": {
+            workload: {
+                "prefill_tok_s": {"count": 5, "median": 1000.0 + index, "stdev": 1.0},
+                "decode_tok_s": {"count": 5, "median": 60.0 + index, "stdev": 0.1},
+                "tracked_peak_allocated_gib": {
+                    "count": 5,
+                    "median": 20.0 + index,
+                    "stdev": 0.0,
+                },
+                "final_token_ids_stable": True,
+            }
+            for index, workload in enumerate(STANDARD_WORKLOADS)
+        },
+        "correctness": {
+            "passed": True,
+            "all_measured_final_logits_finite": True,
+            "all_workload_final_ids_stable": True,
+            "all_workload_variance_gates_passed": True,
+            "all_component_provenance_clean": True,
+        },
+        "provenance": provenance,
+    }
+
+
+def _fake_llamacpp_artifact(*, backend: str) -> dict[str, object]:
+    provenance = _provenance()
+    provenance.update(
+        {
+            "configured_backend": f"llamacpp_{backend}",
+            "resolved_backend": "vulkan" if backend == "vulkan" else "hip_gfx1151",
+            "model_path": "/model.gguf",
+            "model_revision": None,
+            "model_fingerprint": {
+                "algorithm": "sha256-full-v1",
+                "value": "c" * 64,
+                "size_bytes": 2,
+                "sampled_bytes": 2,
+                "exists": True,
+                "path_type": "file",
+            },
+            "quant": "gguf_q4_k_m",
+            "kv_dtype": "f16/f16",
+            "warmups": 1,
+            "repetitions": 5,
+        }
+    )
+    rows = []
+    phase_records = []
+    for index, workload in enumerate(STANDARD_WORKLOADS):
+        prefill = 900.0 + index
+        decode = 50.0 + index
+        peak = 22.0 + index
+        rows.append(
+            {
+                "workload": workload,
+                "prefill_tok_s": prefill,
+                "decode_tok_s": decode,
+                "peak_vram_gib": peak,
+            }
+        )
+        for phase, center in (("prefill", prefill), ("decode", decode)):
+            phase_records.append(
+                {
+                    "phase": phase,
+                    "workload": workload,
+                    "returncode": 0,
+                    "tok_s": center,
+                    "vram": {"memory_domain": "gtt", "peak_gib": peak},
+                    "llamacpp_record": {
+                        "avg_ts": center,
+                        "stddev_ts": 0.1,
+                        "samples_ts": [center - 0.2, center - 0.1, center, center + 0.1, center + 0.2],
+                        "build_commit": "d" * 9,
+                        "build_number": 9999,
+                        "gpu_info": "Radeon 8060S Graphics",
+                    },
+                }
+            )
+    return {
+        "schema": 1,
+        "status": "diagnostic_retained",
+        "performance_claim": False,
+        "backend": f"llamacpp_{backend}",
+        "provenance": provenance,
+        "build_commit": "d" * 9,
+        "build_number": 9999,
+        "gpu_info": "Radeon 8060S Graphics",
+        "common_args": {
+            "ngl": 99,
+            "flash_attn": 1,
+            "cache_type_k": "f16",
+            "cache_type_v": "f16",
+            "repetitions": 5,
+            "no_warmup": False,
+        },
+        "workloads_requested": list(STANDARD_WORKLOADS),
+        "memory_domain": "gtt",
+        "poll_ms": 10.0,
+        "rows": rows,
+        "phase_records": phase_records,
+    }
+
+
+def test_topline_assembler_promotes_only_complete_stable_four_engine_matrix(
+    tmp_path: Path,
+) -> None:
+    sources = {
+        "hipengine_paro": (tmp_path / "paro.json", _fake_hipengine_rollup(engine="paro", quant="w4_paro")),
+        "hipengine_gguf": (tmp_path / "gguf.json", _fake_hipengine_rollup(engine="gguf", quant="gguf_q4_k_m")),
+        "llamacpp_hip": (tmp_path / "llama-hip.json", _fake_llamacpp_artifact(backend="hip")),
+        "llamacpp_vulkan": (tmp_path / "llama-vulkan.json", _fake_llamacpp_artifact(backend="vulkan")),
+    }
+    for path, payload in sources.values():
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    output = _assemble_topline(sources)
+    markdown = _render_markdown(output)
+
+    assert output["status"] == "accepted_topline"
+    assert output["performance_claim"] is True
+    assert output["measured_hipengine_commit"] == "a" * 40
+    assert output["gates"]["llamacpp_all_phase_variance_passed"] is True
+    assert output["tables"]["decode_tok_s"][0]["llamacpp_vulkan"] == pytest.approx(50.0)
+    assert output["tables"]["peak_gib"][-1]["hipengine_gguf"] == pytest.approx(25.0)
+    assert "#### Prefill tok/s" in markdown
+    assert "| 128K/128 |" in markdown
+
+    bad = json.loads(json.dumps(sources["llamacpp_vulkan"][1]))
+    bad["phase_records"][0]["llamacpp_record"]["samples_ts"][-1] *= 2
+    bad_sources = dict(sources)
+    bad_path = tmp_path / "bad.json"
+    bad_path.write_text(json.dumps(bad), encoding="utf-8")
+    bad_sources["llamacpp_vulkan"] = (bad_path, bad)
+    bad_output = _assemble_topline(bad_sources)
+    assert bad_output["status"] == "rejected_topline_gate"
+    assert bad_output["performance_claim"] is False
+    assert bad_output["gates"]["llamacpp_all_phase_variance_passed"] is False

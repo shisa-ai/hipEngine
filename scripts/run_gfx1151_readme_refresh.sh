@@ -10,7 +10,8 @@ Usage: scripts/run_gfx1151_readme_refresh.sh <phase>
 Phases:
   hipengine   hipEngine PARO + GGUF Q4_K_M resident sweeps
   llamacpp    llama.cpp HIP + Vulkan Q4_K_M split sweeps
-  all         hipengine + llamacpp
+  summary     validate and assemble the four-column README topline
+  all         hipengine + llamacpp + summary
 
 Useful overrides:
   RUN_TAG=20260711-120000
@@ -29,7 +30,7 @@ if [[ "$phase" == "-h" || "$phase" == "--help" || "$phase" == "help" ]]; then
   exit 0
 fi
 case "$phase" in
-  hipengine|llamacpp|all) ;;
+  hipengine|llamacpp|summary|all) ;;
   *) usage >&2; exit 2 ;;
 esac
 
@@ -235,10 +236,27 @@ run_llamacpp() {
     > "$LOGDIR/llamacpp-vulkan.log" 2>&1
 }
 
+run_summary() {
+  local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
+  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local hip_json="$OUTDIR/${DATE_PREFIX}-llamacpp-hip-q4km-f16kv.json"
+  local vulkan_json="$OUTDIR/${DATE_PREFIX}-llamacpp-vulkan-q4km-f16kv.json"
+  local summary_json="$OUTDIR/${DATE_PREFIX}-summary.json"
+
+  echo "[run] four-column promotion gate -> $summary_json" | tee -a "$LOGDIR/run.log"
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/assemble_gfx1151_readme_topline.py" \
+    --hipengine-paro "$paro_json" --hipengine-gguf "$gguf_json" \
+    --llamacpp-hip "$hip_json" --llamacpp-vulkan "$vulkan_json" \
+    --json "$summary_json" --markdown "$LOGDIR/topline-tables.md" \
+    > "$LOGDIR/topline-summary.log" 2>&1
+}
+
 case "$phase" in
   hipengine) run_hipengine ;;
   llamacpp) run_llamacpp ;;
-  all) run_hipengine; run_llamacpp ;;
+  summary) run_summary ;;
+  all) run_hipengine; run_llamacpp; run_summary ;;
 esac
 
 echo "[done] phase=$phase run_tag=$RUN_TAG logdir=$LOGDIR outdir=$OUTDIR" | tee -a "$LOGDIR/run.log"
