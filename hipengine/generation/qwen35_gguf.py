@@ -109,6 +109,7 @@ _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
+_GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
@@ -155,6 +156,10 @@ def _gguf_ar_stream_decode_enabled() -> bool:
 
 def _gguf_ar_stream_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_PREFILL_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_decode_graph_enabled() -> bool:
+    return os.environ.get(_GGUF_DECODE_GRAPH_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
@@ -3472,22 +3477,47 @@ class Qwen35GGUFBringupGenerator:
         if request.ignore_eos or int(result.token_id) != self.tokenizer.eos_token_id:
             remaining = request.max_tokens - 1
             if remaining > 0:
-                # Eager per-token decode. The HIP decode graph provided no speed
-                # benefit once build_hip loaded-library caching cut the per-launch
-                # Python tax (~61 us -> ~12 us); eager == single-launch graph and
-                # avoids the graph's 3rd-relaunch GDN corruption entirely. See
-                # WORKLOG 2026-06-28 "#8 moot".
                 decode_start = time.perf_counter()
-                for _ in range(remaining):
-                    raise_if_generation_deadline_expired(request)
-                    step = session.step(generated_ids[-1], return_logits=False)
-                    raise_if_generation_deadline_expired(request)
-                    generated_ids.append(int(step.token_id))
-                    if (
-                        not request.ignore_eos
-                        and int(step.token_id) == self.tokenizer.eos_token_id
-                    ):
-                        break
+                minimum_fn = getattr(session, "decode_graph_min_replay_steps", None)
+                minimum = minimum_fn() if callable(minimum_fn) else None
+                use_graph = bool(
+                    _gguf_decode_graph_enabled()
+                    and minimum is not None
+                    and remaining >= int(minimum)
+                    and callable(getattr(session, "capture_decode_graph", None))
+                )
+                if use_graph:
+                    graph = session.capture_decode_graph(
+                        position=int(session.position),
+                        steps_per_replay=1,
+                        max_replay_steps=remaining,
+                        attention_max_context_len=int(session.position) + remaining,
+                    )
+                    try:
+                        for _ in range(remaining):
+                            raise_if_generation_deadline_expired(request)
+                            graph.replay(1)
+                            step = graph.read_sample(return_logits=False)
+                            raise_if_generation_deadline_expired(request)
+                            generated_ids.append(int(step.token_id))
+                            if (
+                                not request.ignore_eos
+                                and int(step.token_id) == self.tokenizer.eos_token_id
+                            ):
+                                break
+                    finally:
+                        graph.close()
+                else:
+                    for _ in range(remaining):
+                        raise_if_generation_deadline_expired(request)
+                        step = session.step(generated_ids[-1], return_logits=False)
+                        raise_if_generation_deadline_expired(request)
+                        generated_ids.append(int(step.token_id))
+                        if (
+                            not request.ignore_eos
+                            and int(step.token_id) == self.tokenizer.eos_token_id
+                        ):
+                            break
                 if timing is not None:
                     _timing_add(timing, "decode_ms", decode_start)
         return generated_ids

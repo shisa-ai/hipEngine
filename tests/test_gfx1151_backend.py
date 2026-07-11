@@ -11,6 +11,7 @@ from hipengine.core.build import plan_hip_build
 from hipengine.generation import register_builtin_generators, resolve_text_generator
 from hipengine.kernels.backends import (
     CPU_BACKEND,
+    backend_package_capability,
     hip_target_arch_for_backend,
     resolve_backend,
     select_backend,
@@ -19,7 +20,11 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
     register_qwen35_rmsnorm_kernels,
 )
-from hipengine.kernels.hip_gfx1151 import TARGET_ARCH, register_gfx1151_kernels
+from hipengine.kernels.hip_gfx1151 import (
+    GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    TARGET_ARCH,
+    register_gfx1151_kernels,
+)
 from hipengine.kernels.registry import resolve
 
 
@@ -68,6 +73,11 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_gfx1151_kernels()
 
     assert TARGET_ARCH == "gfx1151"
+    assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    ) == 128
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
         resolve(

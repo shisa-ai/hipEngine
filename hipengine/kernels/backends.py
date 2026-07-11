@@ -84,6 +84,14 @@ def load_backend_kernel_package(backend: str) -> ModuleType:
     return module
 
 
+def backend_package_capability(backend: str, name: str, default=None):
+    """Read backend-package metadata without rerunning kernel registration."""
+
+    hip_target_arch_for_backend(backend)
+    module = import_module(f"hipengine.kernels.{backend}")
+    return getattr(module, str(name), default)
+
+
 def select_backend(
     backend: str | None = AUTO_BACKEND,
     *,
