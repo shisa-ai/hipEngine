@@ -576,20 +576,45 @@ retained refresh also needs the correctness and repetition gates from
 
 ### gfx1151 model and concurrency refresh
 
-No committed gfx1151 equivalent of
-[`run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh) exists.
-The 2026-06-15 model sweep used `/tmp/run_gfx1151_readme_udq4km.sh`, so it cannot
-serve as the next refresh command. Before updating the gfx1151 tables:
+The committed
+[`run_gfx1151_readme_refresh.sh`](../scripts/run_gfx1151_readme_refresh.sh)
+replaces the unreproducible 2026-06-15 `/tmp/run_gfx1151_readme_udq4km.sh`.
+Run it from a clean detached worktree so component provenance observes no
+tracked or untracked source changes:
 
-1. Add a committed wrapper that emits the same top-level source, environment,
-   model, command, correctness, and artifact-index fields as the W7900 runner.
-2. Detect and record `gfx1151` from the runtime/build output; do not fill the
+```bash
+RUN_TAG=$(date -u +%Y%m%d-%H%M%S)
+WORKTREE="/tmp/hipengine-readme-gfx1151-${RUN_TAG}"
+git worktree add --detach "$WORKTREE" HEAD
+
+OUTDIR="$PWD/benchmarks/results" \
+RUN_TAG="$RUN_TAG" \
+REPO_ROOT="$WORKTREE" \
+  "$WORKTREE/scripts/run_gfx1151_readme_refresh.sh" all
+```
+
+Subset commands are `... hipengine` and `... llamacpp`. The runner fixes the
+model identities, six standard shapes, native gfx1151 compiler target,
+torch-free hermetic TheRock environment, two discarded plus five measured
+hipEngine runs, and five internal llama-bench repetitions. It records a
+canonical provenance object in every component artifact.
+
+gfx1151 is a UMA APU: sysfs reports only a 512 MiB visible-VRAM aperture while
+the amdgpu GTT domain is 120 GiB and holds model allocations. The runner
+therefore samples `mem_info_gtt_used` for llama.cpp HIP/Vulkan. The public
+memory table must label that whole-device GTT scope and separately identify
+hipEngine tracked or HIP phase-sampled peaks; it must not relabel the 512 MiB
+aperture as total model memory.
+
+Before updating the gfx1151 tables:
+
+1. Detect and record `gfx1151` from the runtime/build output; do not fill the
    artifact from a CLI label alone.
-3. Run 2 discarded warmups and 5 measured repetitions for the six model-sweep
+2. Run 2 discarded warmups and 5 measured repetitions for the six model-sweep
    shapes.
-4. Run PARO concurrency for c=1 through c=8, including odd widths and dynamic
+3. Run PARO concurrency for c=1 through c=8, including odd widths and dynamic
    c=8 to c=1 shrinking, with exact all-choice generated-token counts.
-5. Keep comparison engines in separate columns when quant or timing scope
+4. Keep comparison engines in separate columns when quant or timing scope
    differs. Do not bold a cross-quant winner.
 
 The 2026-07-10 timing diagnostic at `4175dabf`/`02aec604` satisfies
@@ -620,8 +645,10 @@ python3 scripts/qwen35_readme_sweep.py \
   --json benchmarks/results/<date>-gfx1151-hipengine-paro-readme-sweep.json
 ```
 
-This lower-level command is not a complete refresh: it does not run GGUF,
-llama.cpp, vLLM, environment capture, or summary assembly.
+This lower-level command is not a complete refresh: use the committed wrapper
+for GGUF, llama.cpp, environment capture, and artifact assembly. Concurrency
+remains a separate gate because production c2-c8 is currently exact width-1
+fallback, not the rejected native timing path.
 
 ### Speculative decode refresh
 

@@ -151130,3 +151130,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   general exact native c>N algorithm, or an exact and profitable speculative
   route. No benchmark result or production routing default changed in this
   validation unit.
+
+## 2026-07-11 - Add the reproducible gfx1151 topline refresh runner
+
+- Added `scripts/run_gfx1151_readme_refresh.sh` as the committed replacement
+  for the June temporary wrapper. From a clean detached worktree it runs the
+  six standard 512/128 through 128K/128 shapes for hipEngine PARO, hipEngine
+  GGUF Q4_K_M, llama.cpp HIP Q4_K_M, and llama.cpp Vulkan Q4_K_M. hipEngine
+  uses two discarded plus five measured resident runs; llama-bench uses five
+  internal repetitions. The wrapper fixes the native gfx1151 TheRock library
+  environment, model paths, commands, logs, and component artifact names.
+- Extended the amdgpu sampler and llama-bench wrapper with an explicit GTT
+  domain. Radeon 8060S sysfs reports only a 512 MiB visible-VRAM aperture but
+  exposes the actual 120 GiB UMA allocation domain through
+  `mem_info_gtt_{total,used}`; a live 5 ms probe read that domain successfully.
+  The benchmark contract now requires scope labels rather than publishing the
+  aperture as model memory.
+- The persistent hipEngine sweep now passes `--backend` through GGUF session
+  creation, records its resolved backend/target rather than the old hard-coded
+  gfx1100 label, embeds canonical source/model/build provenance, and includes
+  phase-sampled HIP memory statistics in its workload rollup. The llama-bench
+  artifact embeds the same canonical source/model identity alongside its
+  external build and whole-device memory data.
+- RED: the new focused module initially failed all four contracts (no GTT
+  sampler, no llama GTT flag, no sampled-memory rollup, and no committed
+  runner). GREEN: `uv run pytest -q tests/test_gfx1151_readme_refresh.py
+  tests/test_benchmark_provenance.py tests/test_benchmark_readme_sync.py`
+  passes 12/12; Python compilation, `bash -n`, wrapper `--help`, the live GTT
+  probe, and `git diff --check` pass. No throughput result changed in this
+  runner-only unit; the retained refresh follows from a clean worktree.

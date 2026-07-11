@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -376,6 +377,7 @@ def _run_gguf_sweep(
     session = Qwen35GGUFResidentSession(
         model,
         runtime=runtime,
+        backend=args.backend,
         compiler_version=compiler_version,
         require_cached_build=args.require_cached_build,
         max_sequence_length=max_sequence_length,
@@ -454,7 +456,9 @@ def _run_gguf_sweep(
         compiler_version_file=args.compiler_version_file,
         compiler_version=compiler_version,
         extra={
-            "backend": "hip_gfx1100",
+            "backend": session.backend,
+            "requested_backend": args.backend,
+            "target_arch": session.runner.target_arch,
             "use_bulk_prefill": use_bulk_prefill,
             "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
             "use_wmma_prefill": args.use_wmma_prefill,
@@ -492,8 +496,36 @@ def _sweep_output(
         label: _summarize_runs([run for run in runs if run.get("measured")])
         for label, runs in runs_by_workload.items()
     }
+    resolved_backend = str(extra.get("backend") or "").strip()
+    target_arch = str(extra.get("target_arch") or "").strip()
+    if not resolved_backend or not target_arch:
+        raise RuntimeError(
+            "README sweep must report a concrete resolved backend and target arch"
+        )
+    kv_dtype = str(extra.get("kv_storage_dtype") or "").strip() or None
+    provenance = collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=str(extra.get("requested_backend") or "auto"),
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        model_path=model,
+        quant=quant,
+        kv_dtype=kv_dtype,
+        command=tuple(sys.argv),
+        build_profile="readme_resident_sweep",
+        timing_protocol=(
+            "single resident max-context session; per-shape reset; separate "
+            "prefill/decode wall; graph capture excluded where enabled"
+        ),
+        warmups=warmup_runs,
+        repetitions=measured_runs,
+        profiler={"enabled": False, "reason": "topline host-wall sweep"},
+        hipcc_version=compiler_version,
+    )
     return {
         "schema": 1,
+        "status": "diagnostic_retained_pending_rollup_gate",
+        "performance_claim": False,
         "mode": "qwen35_readme_persistent_resident_sweep",
         "engine": engine,
         "model": str(model),
@@ -508,6 +540,7 @@ def _sweep_output(
         "persistent_session_memory": persistent_memory,
         "compiler_version_file": None if compiler_version_file is None else str(compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
+        "provenance": provenance,
         "summary_by_workload": summaries,
         "runs_by_workload": runs_by_workload,
         "extra": extra,
@@ -523,11 +556,17 @@ def _summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     prefill = [run["throughput"]["prefill_tok_s"] for run in runs if run.get("throughput", {}).get("prefill_tok_s") is not None]
     decode = [run["throughput"]["decode_tok_s"] for run in runs if run.get("throughput", {}).get("decode_tok_s") is not None]
     peak = [run["memory"].get("tracked_peak_allocated_gib") for run in runs if run.get("memory", {}).get("tracked_peak_allocated_gib") is not None]
+    hip_peak = [
+        run["memory"].get("hip_used_peak_sampled_gib")
+        for run in runs
+        if run.get("memory", {}).get("hip_used_peak_sampled_gib") is not None
+    ]
     final_ids = [run.get("correctness_sanity", {}).get("final_token_id") for run in runs]
     return {
         "prefill_tok_s": _stats(prefill),
         "decode_tok_s": _stats(decode),
         "tracked_peak_allocated_gib": _stats(peak),
+        "hip_used_peak_sampled_gib": _stats(hip_peak),
         "final_token_ids": final_ids,
         "final_token_ids_stable": len(set(final_ids)) <= 1,
     }

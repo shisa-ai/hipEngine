@@ -637,6 +637,21 @@ Artifact notes may show TheRock HIP `hipMemGetInfo` totals that differ from
 `rocm-smi`; use hipEngine tracked/owned allocation peaks for per-session rollups
 and keep sampled HIP memory as auxiliary evidence.
 
+### gfx1151 README rows: use the committed UMA-aware wrapper
+
+For retained Radeon 8060S/gfx1151 comparison rows, use
+`scripts/run_gfx1151_readme_refresh.sh` from a clean detached worktree. The
+wrapper targets native `gfx1151`, uses the hermetic TheRock gfx1151 libraries,
+and emits canonical component provenance for PARO, GGUF, llama.cpp HIP, and
+llama.cpp Vulkan.
+
+The APU exposes a 512 MiB visible-VRAM aperture in
+`mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
+`mem_info_gtt_{total,used}`. Whole-device llama.cpp peak rows on gfx1151 must
+therefore sample `gtt`, not `vram`. Keep hipEngine tracked allocator, HIP
+phase-sampled, and whole-device GTT scopes explicitly labelled; none may be
+silently presented as the other.
+
 ## Baselines to Beat
 
 These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.
@@ -866,7 +881,9 @@ Minimum for E2E workloads:
 - `warmup_runs`: normally `1` for full workload shapes.
 - `measured_runs`: normally `3` for expensive E2E benchmarks unless cost is prohibitive; if fewer, explain in `notes`.
 - For each phase (`prefill`, `decode`, `wall`): sample list plus `median`, `p95`, `min`, `max`, `stdev`.
-- For memory: pre-run idle VRAM, post-run VRAM, peak allocator reservation when available, KV cache bytes/shape.
+- For memory: pre-run idle and post-run usage in the applicable amdgpu domain
+  (`vram` on discrete GPUs, `gtt` on UMA APUs), peak allocator reservation when
+  available, KV cache bytes/shape, and the exact measurement scope.
 
 Minimum for microbenchmarks:
 
