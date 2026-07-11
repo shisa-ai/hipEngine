@@ -150821,3 +150821,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   to improve. This unit changes routing correctness only and makes no new
   performance claim or benchmark artifact. Next is the real PARO DFlash S4
   profile.
+
+## 2026-07-11 - Give the real DFlash runner canonical provenance
+
+- S4 preflight found that `scripts/dflash_chain_e2e_bench.py` still emitted only
+  the legacy `software.hipengine_dirty` summary. That summary collapses tracked
+  and untracked state and did not satisfy the accepted E3 provenance contract.
+- Added the shared torch-free `collect_artifact_provenance()` block to every
+  full-model DFlash artifact. It records the concrete backend/arch/device,
+  target snapshot fingerprint, W4 PARO/BF16-KV identity, exact command and
+  relevant environment, build/timing mode, profiler/phase-telemetry state, and
+  all three dirty axes. The existing schema-2 measurements and legacy software
+  fields remain compatible.
+- RED failed because the DFlash module exposed no canonical collector. GREEN
+  passes the new collector-plumbing regression plus the full speculative schema
+  suite (`8/8`), Python compilation, and `git diff --check`. No GPU number or
+  performance claim is created by this harness-only unit. The S4 measurement
+  will run from a separate clean worktree so the primary checkout's unrelated
+  untracked benchmark files remain untouched and fully disclosed.

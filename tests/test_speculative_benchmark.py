@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from hipengine.benchmark.speculative import (
     SpeculativeBenchmarkModels,
@@ -193,3 +194,55 @@ def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> No
     assert artifact["decision_reason"] == artifact["decision"]["reason"]
     assert artifact["decision"]["accepted"] is False
     json.dumps(artifact)
+
+
+def test_dflash_chain_artifact_uses_canonical_provenance(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from scripts import dflash_chain_e2e_bench as tool
+
+    target = tmp_path / "target"
+    target.mkdir()
+    captured: dict[str, object] = {}
+
+    def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"kind": "hipengine_artifact_provenance"}
+
+    monkeypatch.setattr(tool, "collect_artifact_provenance", fake_collect)
+    command = ["python3", "scripts/dflash_chain_e2e_bench.py", "--json", "out.json"]
+
+    provenance = tool._collect_dflash_artifact_provenance(
+        configured_backend="auto",
+        resolved_backend="hip_gfx1151",
+        target_arch="gfx1151",
+        target_model=target,
+        target_revision="target-revision",
+        device_name="Radeon 8060S Graphics",
+        compiler_version="hipcc test",
+        command=command,
+        verifier_mode="native_bulk_bplus1",
+        verifier_graph_mode="auto",
+        sync_draft_phases=False,
+        roctx=False,
+        rocprof_selected_region="none",
+    )
+
+    assert provenance == {"kind": "hipengine_artifact_provenance"}
+    assert captured["repo_root"] == tool.REPO_ROOT
+    assert captured["model_path"] == target
+    assert captured["model_revision"] == "target-revision"
+    assert captured["resolved_backend"] == "hip_gfx1151"
+    assert captured["target_arch"] == "gfx1151"
+    assert captured["quant"] == "w4_paro_packed"
+    assert captured["kv_dtype"] == "bf16"
+    assert captured["command"] == command
+    assert captured["warmups"] == 0
+    assert captured["repetitions"] == 1
+    assert captured["environment"]["HIPENGINE_DFLASH_VERIFY_SYNC_PHASES"] is None
+    assert captured["profiler"] == {
+        "enabled": False,
+        "phase_telemetry": True,
+        "verifier_graph_mode": "auto",
+    }

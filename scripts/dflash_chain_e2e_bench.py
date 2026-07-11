@@ -37,6 +37,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.prompts import DEFAULT_STABLE_PROMPT_FIXTURE, file_sha256, load_prompt_records
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.benchmark.speculative import (
     DEFAULT_DFLASH_DRAFTER,
     DEFAULT_TARGET_MODEL,
@@ -3152,6 +3153,58 @@ def _git_context() -> dict[str, Any]:
     return {"hipengine_commit": run(["git", "rev-parse", "HEAD"]), "hipengine_branch": run(["git", "branch", "--show-current"]), "hipengine_dirty": bool(status), "hipengine_status_porcelain": status}
 
 
+def _collect_dflash_artifact_provenance(
+    *,
+    configured_backend: str,
+    resolved_backend: str,
+    target_arch: str,
+    target_model: Path,
+    target_revision: str | None,
+    device_name: str | None,
+    compiler_version: str | None,
+    command: Sequence[str],
+    verifier_mode: str,
+    verifier_graph_mode: str,
+    sync_draft_phases: bool,
+    roctx: bool,
+    rocprof_selected_region: str,
+) -> dict[str, Any]:
+    return collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=configured_backend,
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        device_name=device_name,
+        model_path=target_model,
+        model_revision=target_revision,
+        quant="w4_paro_packed",
+        kv_dtype="bf16",
+        command=command,
+        environment={
+            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
+            "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+            "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
+            "HIPENGINE_COMPILER_VERSION_FILE": os.environ.get("HIPENGINE_COMPILER_VERSION_FILE"),
+            "HIPENGINE_DFLASH_VERIFY_SYNC_PHASES": os.environ.get(
+                "HIPENGINE_DFLASH_VERIFY_SYNC_PHASES"
+            ),
+            "sync_draft_phases": "1" if sync_draft_phases else "0",
+        },
+        build_profile=f"dflash_chain_e2e:{verifier_mode}",
+        timing_protocol="same_process_same_session_ar_then_dflash_host_wall_with_phase_buckets_v1",
+        warmups=0,
+        repetitions=1,
+        profiler={
+            "enabled": rocprof_selected_region != "none",
+            "phase_telemetry": True,
+            "verifier_graph_mode": verifier_graph_mode,
+            **({"selected_region": rocprof_selected_region} if rocprof_selected_region != "none" else {}),
+            **({"roctx_markers": True} if roctx else {}),
+        },
+        hipcc_version=compiler_version,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-model", default=DEFAULT_TARGET_PATH)
@@ -3333,7 +3386,8 @@ def main(argv: list[str] | None = None) -> int:
     budgets = [int(x) for x in args.draft_budgets.split(",") if x.strip()]
     prefill_config = PrefillConfig(auto_tune_chunk_sizes=True)
     rows: list[dict[str, Any]] = []
-    commands = {"benchmark": " ".join(shlex.quote(part) for part in ["python3", "scripts/dflash_chain_e2e_bench.py", *(argv if argv is not None else sys.argv[1:])])}
+    command_parts = ["python3", "scripts/dflash_chain_e2e_bench.py", *(argv if argv is not None else sys.argv[1:])]
+    commands = {"benchmark": " ".join(shlex.quote(part) for part in command_parts)}
     roctx = _Roctx(enabled=args.roctx or args.rocprof_selected_region != "none")
     if args.rocprof_selected_region != "none" and not roctx.profiler_controls_available:
         print(
@@ -3418,6 +3472,23 @@ def main(argv: list[str] | None = None) -> int:
         default_name=DEFAULT_DFLASH_DRAFTER,
         default_revision=DEFAULT_DRAFTER_REVISION,
     )
+    resolved_backend = str(rows[0]["spec"].get("backend") if rows else args.backend)
+    target_arch = str(rows[0]["spec"].get("target_arch") if rows else os.environ.get("HIPENGINE_HIP_ARCH") or "")
+    provenance = _collect_dflash_artifact_provenance(
+        configured_backend=str(args.backend),
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        target_model=target,
+        target_revision=target_revision,
+        device_name=args.hardware_gpu,
+        compiler_version=compiler_version,
+        command=command_parts,
+        verifier_mode=args.verifier_mode,
+        verifier_graph_mode=args.verifier_graph,
+        sync_draft_phases=args.sync_draft_phases,
+        roctx=bool(args.roctx),
+        rocprof_selected_region=args.rocprof_selected_region,
+    )
     artifact = build_speculative_artifact(
         run_tag=run_tag,
         summary=artifact_summary,
@@ -3489,6 +3560,7 @@ def main(argv: list[str] | None = None) -> int:
             else "full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier"
         ),
     )
+    artifact["provenance"] = provenance
     aggregate = artifact["measurements"]["aggregate"]
     native_bulk_promotable = args.verifier_mode == "native_bulk_bplus1"
     gates_passed = bool(aggregate["all_correctness_passed"] and aggregate["speed_gate_gt_1p10"])
