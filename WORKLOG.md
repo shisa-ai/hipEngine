@@ -150715,3 +150715,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   README, benchmark protocol, changelog, and the refactor trigger. P2 is
   accepted on gfx1151; gfx1100 remains hardware-unverified. Next is the P3-P9
   activation/parking audit, not more tuning of the P1-rejected native widths.
+
+## 2026-07-11 - Close PARO P3-P9 activation audit and remove c6 splitter
+
+- Audited every P3-P9 trigger against the clean P1/P2 gates. P3/P4/P7/P8 are
+  parked until a general native c>N algorithm passes independent-c1 generated
+  IDs and lifecycle state; P9 is parked because no correctness-eligible c>N
+  profile can establish material weight reuse. P5 remains accepted by explicit
+  serial classification.
+- Rejected P6 rather than benchmarking invalid math. P1 rejects direct c6 and
+  both sequential c4/c2 native components, so their latency distributions
+  cannot select production policy. Removed
+  `HIPENGINE_QWEN35_AVOID_C6_GROUPS`, the c6 split/remap machinery, and its
+  stale scheduler-metadata tests. A RED regression first proved the old flag
+  still produced c4+c2 calls; GREEN now proves the same legacy env setting is
+  inert and c6 reaches the generator as one group, whose exact width-1 planner
+  owns execution.
+- Updated SOL, API/env documentation, the historical correction note, and the
+  refactor ledger. No benchmark artifact, benchmark README row, or performance
+  changelog entry is emitted because the removed branches are
+  correctness-ineligible and this unit makes no performance claim.
+- Validation at `0d3fd516`: focused generation-batcher tests `18/18`, full
+  `tests/test_server_api.py` `478/478`, Python compilation, and
+  `git diff --check` pass. The next PARO unit is corrected natural-economics
+  routing plus a real DFlash profile (S1-S4); native c>N tuning remains closed.

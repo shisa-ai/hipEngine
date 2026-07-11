@@ -568,6 +568,10 @@ dtype, decode-position range, and independent-c1 packed-prefill/sparse/shrinking
 gates. The c6-to-c4+c2 server policy remains default-off behind
 `HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`.
 
+2026-07-11 closure: SOL-P1 rejected direct c6 and both c4/c2 native
+components against independent c1, so SOL-P6 removed this flag and split path.
+The preceding statement is retained only as historical context.
+
 ## PARO MTP/DFlash Buckets To Add Next
 
 Add these buckets before porting GGUF verifier mechanisms:

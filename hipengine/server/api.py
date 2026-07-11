@@ -1680,7 +1680,6 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
-_QWEN35_AVOID_C6_GROUPS_ENV = "HIPENGINE_QWEN35_AVOID_C6_GROUPS"
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -1688,65 +1687,6 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if raw is None or raw.strip() == "":
         return bool(default)
     return raw.strip().lower() not in {"0", "false", "no", "off"}
-
-
-def _qwen35_retained_avoid_c6_groups_enabled() -> bool:
-    """Return whether the diagnostic c4+c2 split is explicitly requested."""
-
-    return _env_flag(_QWEN35_AVOID_C6_GROUPS_ENV, default=False)
-
-
-def _qwen35_retained_group_split_slices(
-    prompts: Sequence[PromptInput],
-    sampling: SamplingParams,
-    *,
-    route: str,
-) -> tuple[tuple[int, int], ...]:
-    """Split PARO c6 server work into c4+c2 groups for latency diagnostics.
-
-    Direct c6 has lower aggregate step cost than sequential c4+c2 in the
-    gfx1151 diagnostic profile. Keep this older split opt-in and narrow:
-    default route, deterministic greedy rows, and exactly six prompts.
-    """
-
-    rows = len(prompts)
-    if rows != 6:
-        return ((0, rows),)
-    if str(route) != _SPECULATIVE_MTP_DEFAULT_ROUTE:
-        return ((0, rows),)
-    if not _qwen35_retained_avoid_c6_groups_enabled():
-        return ((0, rows),)
-    if not _sampling_allows_retained_group_split(sampling):
-        return ((0, rows),)
-    return ((0, 4), (4, 6))
-
-
-def _sampling_allows_retained_group_split(sampling: SamplingParams) -> bool:
-    if float(sampling.temperature) != 0.0:
-        return False
-    if float(sampling.top_p) != 1.0 or int(sampling.top_k) != 0:
-        return False
-    if float(sampling.min_p) != 0.0:
-        return False
-    if float(sampling.repetition_penalty) != 1.0:
-        return False
-    if float(sampling.presence_penalty) != 0.0 or float(sampling.frequency_penalty) != 0.0:
-        return False
-    if sampling.logit_bias or sampling.suppress_token_ids:
-        return False
-    if int(sampling.min_tokens) != 0:
-        return False
-    if sampling.stop_token_ids or sampling.stop_token_sequences:
-        return False
-    if sampling.forced_tokens_pending or sampling.post_thinking_forced_tokens_pending:
-        return False
-    if sampling.force_sequence_completion_token_sequences:
-        return False
-    if bool(sampling.json_object_close_forcing):
-        return False
-    if bool(sampling.logprobs) or int(sampling.top_logprobs) != 0:
-        return False
-    return True
 
 
 def _next_stream_item(iterator: Iterator[Any]) -> object:
@@ -2135,7 +2075,7 @@ class _GenerationBatcher:
             route = str(group[0].route)
             route_cap = self._route_request_cap(route)
             try:
-                batch_result = await self._generate_prompt_group(
+                batch_result = await self._generate_prompts(
                     tuple(prompts),
                     self._sampling_for_group(group),
                     route=route,
@@ -2205,44 +2145,6 @@ class _GenerationBatcher:
                     input_rows=len(prompts),
                 ),
             ),
-        )
-
-    async def _generate_prompt_group(
-        self,
-        prompts: tuple[PromptInput, ...],
-        sampling: SamplingParams,
-        *,
-        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
-    ) -> _QueuedBatchResult:
-        split_slices = _qwen35_retained_group_split_slices(prompts, sampling, route=route)
-        if len(split_slices) == 1:
-            return await self._generate_prompts(prompts, sampling, route=route)
-        outputs: list[Any] = []
-        scheduler_token_chunks: list[dict[str, Any]] = []
-        backend_groups: list[dict[str, Any]] = []
-        for split_index, (start, end) in enumerate(split_slices):
-            chunk_result = await self._generate_prompts(prompts[start:end], sampling, route=route)
-            outputs.extend(chunk_result.outputs)
-            scheduler_token_chunks.extend(
-                _remap_split_scheduler_token_chunks(
-                    chunk_result.scheduler_token_chunks,
-                    request_id_offset=start,
-                    split_index=split_index,
-                    original_rows=len(prompts),
-                    chunk_rows=end - start,
-                )
-            )
-            backend_groups.extend(
-                _remap_backend_generation_groups(
-                    chunk_result.backend_groups,
-                    call_index_offset=len(backend_groups),
-                    prompt_offset=start,
-                )
-            )
-        return _QueuedBatchResult(
-            outputs=outputs,
-            scheduler_token_chunks=scheduler_token_chunks or None,
-            backend_groups=tuple(backend_groups),
         )
 
     async def _stream_single(self, item: _QueuedGeneration) -> None:
@@ -8281,21 +8183,6 @@ def _backend_generation_group_shape(engine: Any, *, input_rows: int) -> dict[str
     }
 
 
-def _remap_backend_generation_groups(
-    groups: Sequence[Mapping[str, Any]],
-    *,
-    call_index_offset: int,
-    prompt_offset: int,
-) -> list[dict[str, Any]]:
-    remapped: list[dict[str, Any]] = []
-    for local_index, group in enumerate(groups):
-        payload = deepcopy(dict(group))
-        payload["call_index"] = int(call_index_offset) + local_index
-        payload["prompt_offset"] = int(prompt_offset) + int(payload.get("prompt_offset", 0))
-        remapped.append(payload)
-    return remapped
-
-
 def _queue_generation_shape(
     *,
     route: str,
@@ -8336,36 +8223,6 @@ def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> 
         return None
     copied = [deepcopy(dict(chunk)) for chunk in chunks if isinstance(chunk, Mapping)]
     return copied or None
-
-
-def _remap_split_scheduler_token_chunks(
-    chunks: Sequence[Mapping[str, Any]] | None,
-    *,
-    request_id_offset: int,
-    split_index: int,
-    original_rows: int,
-    chunk_rows: int,
-) -> list[dict[str, Any]]:
-    copied = _copy_scheduler_token_chunks(chunks)
-    if not copied:
-        return []
-    for chunk in copied:
-        try:
-            chunk["request_id"] = int(chunk.get("request_id")) + int(request_id_offset)
-        except (TypeError, ValueError):
-            continue
-        hipengine_payload = chunk.get("hipengine")
-        if not isinstance(hipengine_payload, dict):
-            hipengine_payload = {}
-            chunk["hipengine"] = hipengine_payload
-        hipengine_payload["batch_split"] = {
-            "policy": "qwen35_retained_avoid_c6",
-            "split_index": int(split_index),
-            "request_id_offset": int(request_id_offset),
-            "original_rows": int(original_rows),
-            "chunk_rows": int(chunk_rows),
-        }
-    return copied
 
 
 def _buffered_delta_stream_chunk(
