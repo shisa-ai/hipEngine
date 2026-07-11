@@ -5,7 +5,7 @@
   "status": "correctness_blocked_partial_matrix",
   "performance_claim": false,
   "bench": "hip_vulkan_timing_contract_v2_bounded_matrix",
-  "scope": "gfx1151_version_snapshot",
+  "scope": "gfx1151_stricter_20_repetition_coverage_diagnostic",
   "ratio_definition": "HIP burst GPU median divided by Vulkan burst GPU median; values greater than 1 favor Vulkan",
   "source": {
     "repo": "/tmp/hipengine-gfx1151-micro-20260711",
@@ -94,5 +94,11 @@
       "dense_q8_0": [0.3908684423647929, 0.9062743912186887]
     }
   },
-  "interpretation": "The valid updated production-combined rows favor HIP. The incomplete matrix does not supersede the retained 2026-07-10 22/22 gfx1151 matrix and cannot support a broad new backend claim."
+  "root_cause_followup": {
+    "matched_old_protocol_result": "benchmarks/results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json",
+    "mesa_26_1_2_control": "The old RADV version reproduces the same failures at 20 repetitions.",
+    "queue_control": "One-, two-, and four-queue runs are identical.",
+    "sampling_control": "Both Q4 and Q6 pass with the prior 10-repetition sampling; the failures first enter through additional input slices 10 through 19."
+  },
+  "interpretation": "This run increases input coverage from 10 to 20 repetitions and exposes deterministic Vulkan numerical quality misses. It is not a matched comparison to the 2026-07-10 result and is not evidence of a Mesa, architecture, synchronization, or TheRock packaging regression."
 }

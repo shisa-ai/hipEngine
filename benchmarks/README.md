@@ -180,7 +180,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF OpenAI server automatic-route gate | 2026-07-11 | tracked-clean hipEngine `d2b1e742`; TheRock HIP `7.13.60980-c76140fa27`; exact GGUF and prompt-suite fingerprints retained; unrelated untracked files disclosed | **Diagnostic correctness rejection**: compatibility MTP is faster at c1/c2 but changes true-AR IDs on heldouts, so it cannot select automatic routing. One c8 AR repetition also exposes the separate exact-concurrency blocker. | Diagnostic link only | Implement an exact/default server MTP hook, then rerun full plus category-heldout realized-group economics before admitting it to `auto`. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | retained: clean detached hipEngine `ca241dae`, TheRock ROCm `7.13.0a20260411`, RADV/Mesa `26.1.2`; latest diagnostic: clean `18255d26`, active TheRock HIP `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, RADV/Mesa `26.1.4` | **Retained baseline remains 22/22**; latest matched-stack diagnostic is 20/22 because Vulkan independent Q4 and Q6 fail timed-sequence correctness | Linked, not copied here | Fix the two Vulkan independent correctness failures, then rerun the bounded matrix |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean detached hipEngine `0e566a45`, TheRock ROCm `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, RADV/Mesa `26.1.4`, corrected gfx1151 device wheels | **22/22 retained** with prior matched sampling; stricter 20-repetition diagnostic is 20/22 because added inputs expose deterministic Vulkan Q4 KL and Q6 top-1 misses, also reproduced on Mesa 26.1.2 | Linked, not copied here | Diagnose numerical misses on added input slices 10-19 before using the stricter matrix for claims |
 | Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean hipEngine `c57f21b5`; TheRock ROCm `7.15.0a20260711`; RADV/Mesa `26.1.4` | **Retained**, 22/22 comparisons and 232 burst GPU rows pass provenance, correctness, exact-matrix, device, and clock gates | Linked, not copied here | Rerun after a timed kernel/harness, ROCm, Mesa, or device clock-policy change |
 
 ## Current Eligible Toplines
@@ -795,7 +795,7 @@ timing contract and exact bounded rerun commands are in
 [`benchmarks/micro/README.md`](micro/README.md). Retained evidence is
 [`gfx1100/W7900`](micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json)
 and
-[`gfx1151/Strix Halo`](micro/results/gfx1151/strix-halo/2026-07-10-hip-vulkan-timing-v2-bounded.json).
+[`gfx1151/Strix Halo`](results/2026-07-11-gfx1151-hip-vulkan-matched-protocol.json).
 
 ## Update Checklist
 
