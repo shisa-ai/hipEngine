@@ -16,6 +16,7 @@ from scripts.merge_readme_sweep_components import (
 from scripts.qwen35_readme_sweep import (
     _acquire_paro_readme_graph,
     _gguf_session_identity,
+    _measured_graph_replay_requested,
     _summarize_runs,
 )
 
@@ -104,7 +105,7 @@ def test_gguf_sweep_snapshots_identity_before_session_close() -> None:
     assert identity == ("hip_gfx1151", "gfx1151")
 
 
-def test_paro_sweep_reuses_one_graph_per_shape() -> None:
+def test_paro_sweep_uses_fresh_measured_graphs() -> None:
     graph = object()
     calls: list[dict[str, int]] = []
 
@@ -113,17 +114,16 @@ def test_paro_sweep_reuses_one_graph_per_shape() -> None:
             calls.append(kwargs)
             return graph
 
-    holder: dict[str, object] = {}
     first, first_reused, _ = _acquire_paro_readme_graph(
         session=Session(),
-        graph_holder=holder,
+        graph_holder=None,
         position=516,
         steps_per_replay=1,
         max_replay_steps=128,
     )
     second, second_reused, second_capture_seconds = _acquire_paro_readme_graph(
         session=Session(),
-        graph_holder=holder,
+        graph_holder=None,
         position=516,
         steps_per_replay=1,
         max_replay_steps=128,
@@ -131,9 +131,15 @@ def test_paro_sweep_reuses_one_graph_per_shape() -> None:
 
     assert first is second is graph
     assert first_reused is False
-    assert second_reused is True
-    assert second_capture_seconds == 0.0
+    assert second_reused is False
+    assert second_capture_seconds >= 0.0
     assert calls == [
+        {
+            "position": 516,
+            "steps_per_replay": 1,
+            "max_replay_steps": 128,
+            "record_steps": 0,
+        },
         {
             "position": 516,
             "steps_per_replay": 1,
@@ -141,6 +147,8 @@ def test_paro_sweep_reuses_one_graph_per_shape() -> None:
             "record_steps": 0,
         }
     ]
+    assert _measured_graph_replay_requested(requested=True, measured=False) is False
+    assert _measured_graph_replay_requested(requested=True, measured=True) is True
 
 
 def _provenance() -> dict[str, object]:

@@ -601,6 +601,9 @@ canonical provenance object in every component artifact. Each hipEngine shape
 runs in its own process with a right-sized resident session, then the committed
 merge gate verifies and preserves all samples in one compact rollup. This keeps
 512/1K memory honest and avoids imposing a 128K allocation on every row.
+Discarded runs warm the same kernels through eager submission; each measured
+run captures and destroys a fresh state-bound graph after reset/prefill/warmup,
+so no captured graph crosses a session reset.
 
 gfx1151 is a UMA APU: sysfs reports only a 512 MiB visible-VRAM aperture while
 the amdgpu GTT domain is 120 GiB and holds model allocations. The runner

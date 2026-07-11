@@ -151216,3 +151216,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - The focused suite passes 7/7, including a synthetic six-shape promotion and
   the one-graph-per-shape lifetime check. Shell syntax, Python compilation, and
   `git diff --check` pass. The full clean matrix must restart from this runner.
+
+## 2026-07-11 - Keep topline graphs inside one measured reset
+
+- The clean `bc418718` per-workload retry completed PARO 512, 1K, 4K, and 32K
+  components. At 64K, warmup 1 completed at `518.101` prefill / `42.035`
+  decode tok/s, then carrying that captured graph across `session.reset()`
+  caused a GPU page-not-present memory access fault during repetition 2. HIP
+  recovered immediately. The merge never ran, so no incomplete rollup was
+  written; completed components remain raw `/tmp` evidence only.
+- Discarded repetitions now warm the same kernels through eager submission.
+  Each of the five measured repetitions captures a fresh state-bound graph
+  after reset/prefill/warmup, excludes capture from decode timing, and destroys
+  it before the next reset. This preserves graph-path topline measurements
+  without allowing graph state to cross a reset boundary.
+- A live dirty-tree 64K/128 validation completed the exact two-warmup/five-
+  measured protocol. All measured final IDs are `220`; prefill median is
+  `504.256 tok/s` (stdev `0.791`, 0.16%), decode median is `42.032 tok/s`
+  (stdev `0.031`, 0.07%), tracked peak is `20.403 GiB`, and sampled HIP peak is
+  `19.615 GiB`. Graph capture is `5.08-6.84 ms` per measured run and excluded;
+  every `decode_graph_reused` flag is false. The artifact is diagnostic only
+  because the source tree was dirty. The focused suite passes 7/7, Python
+  compilation and `git diff --check` pass.

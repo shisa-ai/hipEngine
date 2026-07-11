@@ -646,7 +646,9 @@ and emits canonical component provenance for PARO, GGUF, llama.cpp HIP, and
 llama.cpp Vulkan. Each hipEngine workload uses its own process and right-sized
 resident session, with two discarded and five measured resets inside that
 session; a merge gate rejects incomplete, dirty, unstable, non-finite, or
-high-variance components before emitting the six-shape rollup.
+high-variance components before emitting the six-shape rollup. Discarded runs
+warm kernels eagerly. Every measured reset captures a fresh state-bound graph,
+excludes capture from decode timing, and destroys it before the next reset.
 
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
