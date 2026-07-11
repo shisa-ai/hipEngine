@@ -151619,3 +151619,56 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - The local machine exposes only gfx1151. The documented gfx1100/W7900 SSH
   alias `epyc` timed out after five seconds, so runtime validation on gfx1100
   remains an explicit hardware-access gate rather than an inferred pass.
+
+## 2026-07-12 - Retain clean portable-q8 gfx1151 matrices
+
+- Created detached clean worktree `/tmp/hipengine-clean-50bea8f3` at
+  `50bea8f330fe93420422a904927ea24d374edbc1` and ran all 11 timing-contract-v2
+  families in both modes. The W7900-matched protocol used paired `10/3/5`,
+  dispatch `20/5`, and four independent lanes; it completed in `246.705s`
+  (`4m06.705s`) with 22/22 valid comparisons and 232/232 valid burst GPU rows.
+  Raw root:
+  `/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-matched-20260712`;
+  environment SHA-256
+  `03ae3659edc8c3e511cf2f210cfffb6166e6fab6cb902ce46209229d60916dd8`.
+- Repeated the full current strict protocol with paired `20/5/7`, dispatch
+  `50/10`, and four independent lanes. It completed in `298.786s`
+  (`4m58.786s`) with 22/22 valid comparisons and 232/232 valid burst GPU rows.
+  Raw root `/tmp/hipengine-micro-v2-gfx1151-rne-50bea8f3-20260712`;
+  environment SHA-256
+  `7212570a2aff9988e5d7f75af03c3eecb876fd85f75339c22a8adb07e6ef2c45`.
+- The strict run eliminates the former quality blockers. Q4 independent/serial
+  KL is `0.004180817473`, top-1 `1.0`; Q6 independent KL is
+  `0.0002289689978`, serial KL is `1.574600576e-05`, and both top-1 values are
+  `1.0`. Stored `d` mismatches are zero across 5,120 Q4 and 2,560 Q6 blocks.
+  Dense Q8_0 passes all 52 rows per mode. Sparse max-one integer `q`
+  differences and unused packed-`s` differences remain inside the downstream
+  quality gate.
+- Matched-protocol serial/independent burst ranges are dispatch
+  `1.128x-11.125x`/`1.100x-149.207x`, geometry
+  `0.708x-0.990x`/`2.616x-21.328x`, reduction
+  `0.662x-0.987x`/`2.545x-20.794x`, packed dot
+  `3.049x-3.210x`/`3.764x-4.151x`, Q4 combined
+  `0.932x-1.007x`/`0.874x-0.921x`, Q6 combined
+  `0.550x`/`0.477x`, and dense Q8_0 combined
+  `0.545x-0.902x`/`0.457x-1.194x`. Ratios are HIP GPU time divided by Vulkan
+  GPU time; values above one favor Vulkan. Automatic clocks and run variance
+  remain material, so same-source refresh deltas are not attributed solely to
+  the q8 shader change.
+- Retained both matrices and the stock/fixed A/B diagnostic in
+  `benchmarks/results/2026-07-12-gfx1151-hip-vulkan-portable-q8.json`; updated
+  the HIP/Vulkan dashboard, benchmark index, and changelog. gfx1100 runtime
+  validation remains pending because only gfx1151 is exposed locally and the
+  W7900 host alias timed out.
+- Updated `~/gfx1151-scratch.md` to preserve the old, matched pre-fix, matched
+  portable-q8, and strict portable-q8 snapshots. Updated
+  `~/ROCm-report-gfx1151.md` and `~/ROCm-report-combined.md` with the latest
+  ratios, runtimes, correctness resolution, and GitHub reproduction paths. The
+  combined report states the exact remaining source boundary: software stacks
+  and all synthetic sources match, while the portable q8 shader is pending a
+  W7900 run.
+- Validation: all 44 stored family/mode ranges reproduce exactly from the two
+  raw roots; the canonical provenance validator passes; `uv run pytest -q
+  tests/test_micro_*.py tests/test_benchmark_readme_sync.py
+  tests/test_benchmark_provenance.py` passes; benchmark README export blocks
+  are synchronized; JSON parsing and `git diff --check` pass.

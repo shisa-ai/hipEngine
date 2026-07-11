@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-12
 
+- [micro correctness fix + retained refresh] Radeon 8060S/gfx1151 Vulkan q8_1, Q4_K/Q6_K/dense Q8_0: strict valid comparisons `20/22 -> 22/22` (**+10.0% valid-comparison count; +9.09 percentage points of requested coverage**) after explicit FP16 RNE packing and ties-away-from-zero quantization. Strict independent Q4 KL changes `0.079520 -> 0.004181`; Q6 top-1 changes `0.875 -> 1.0`; systematic `d` mismatches fall to zero. The clean W7900-matched `10/3/5` matrix also passes 22/22 and refreshes Q4 combined serial/independent `0.916x-0.980x -> 0.932x-1.007x` / `0.854x-0.973x -> 0.874x-0.921x`; interleaved A/B finds no combined-path regression. Matched wall `246.705s`; strict wall `298.786s`; `benchmarks/results/2026-07-12-gfx1151-hip-vulkan-portable-q8.json`.
 - [micro correctness attribution] Radeon 8060S/gfx1151 Vulkan Q4/Q6 strict fixture boundaries: shared Vulkan-q8 input -> **CPU-prequantized q8 isolation**, changing Q4 KL `0.079520 -> 4.46e-51` with top-1 `1.0`, and Q6 top-1 `0.875 -> 1.0` with KL `0.007756 -> 3.20e-12`. Readback finds every mismatched `d` exactly one FP16 code low (`1,374/2,816` Q4 blocks; `1,686/2,304` Q6), while a temporary RNE-pack control clears both end-to-end gates. This attributes the misses to a portable q8_1 rounding contract, not dot math, synchronization, or a Mesa `.2 -> .4` regression; no performance row changes. Boundary wall `2.014s` Q4 / `0.877s` Q6; `benchmarks/results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`.
 
 ## 2026-07-11
