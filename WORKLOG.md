@@ -150886,3 +150886,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   source sizes and hashes. Updated SOL, PARO transfer/refactor ledgers,
   benchmark/root README, and benchmark changelog. S4-S7 are closed; this unit
   promotes no DFlash default or performance number.
+
+## 2026-07-11 - Park B2/G7/G8 on their measured activation gates
+
+- Re-audited the last local `blocked` GGUF rows after G1-G6, P1/P2, and S1-S7
+  closure. B2 has no concrete architecture value to carry: G3 rejects the
+  alternate prefill chain, G5 already scopes graph admission from exact wall,
+  and G9/G10 do not activate. An empty/equal tuning profile would add dead
+  indirection, so B2 and the broad G7 knob sweep are parked until a named
+  dominant family has an exact same-device candidate.
+- Parked G8 on the corrected clean server evidence rather than implying a
+  performance run is missing. Client c8 realizes c4+c4+c2, not a width-8
+  backend, and one of three true-AR c8 runs changes `general_ja_explain` while
+  two match. There is no registered true resident multi-row GGUF AR algorithm.
+  Reactivation requires a deterministic realized-c4 RED, first hidden/state/KV
+  localization, then a general implementation that passes independent-c1
+  c1-c8, shrinking, and sparse-slot gates.
+- This is an activation audit only: no code, benchmark metric, artifact,
+  changelog, or performance claim changes. The remaining blocked SOL items are
+  external portability/matched-layout rows (V10/V11) or hardware-local gfx1100
+  qualifications already named in accepted gfx1151 entries.
