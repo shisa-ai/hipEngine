@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from hipengine.util.amdgpu_vram import AmdgpuCard, VramSampler
 from scripts.llamacpp_bench_with_peak import parse_args
-from scripts.qwen35_readme_sweep import _summarize_runs
+from scripts.qwen35_readme_sweep import _gguf_session_identity, _summarize_runs
 
 
 def _fake_card(tmp_path: Path) -> AmdgpuCard:
@@ -80,6 +81,18 @@ def test_readme_sweep_summary_includes_sampled_device_peak() -> None:
     )
 
     assert summary["hip_used_peak_sampled_gib"]["median"] == pytest.approx(22.0)
+
+
+def test_gguf_sweep_snapshots_identity_before_session_close() -> None:
+    session = SimpleNamespace(
+        backend="hip_gfx1151",
+        runner=SimpleNamespace(target_arch="gfx1151"),
+    )
+
+    identity = _gguf_session_identity(session)
+    session.runner = None
+
+    assert identity == ("hip_gfx1151", "gfx1151")
 
 
 def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
