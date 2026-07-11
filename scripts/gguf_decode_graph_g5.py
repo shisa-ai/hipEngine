@@ -494,8 +494,45 @@ def _classify_candidate(
     return {
         **common,
         "status": "accepted",
-        "decision": "promote_state_keyed_graph_replay",
+        "decision": "promote_state_bound_graph_relaunch",
         "first_failing_launch": None,
+    }
+
+
+def _checkpoint_summary(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    linear_states = list(checkpoint.get("linear_states", ()))
+    kv_states = list(checkpoint.get("kv_states", ()))
+    digest_payload = {
+        "position": checkpoint.get("position"),
+        "input_token_id": checkpoint.get("input_token_id"),
+        "predicted_token_id": checkpoint.get("predicted_token_id"),
+        "hidden_seed": checkpoint.get("hidden_seed", {}).get("blake2b_128"),
+        "linear_states": [
+            {
+                "layer": row.get("layer"),
+                "conv": row.get("conv", {}).get("blake2b_128"),
+                "recurrent": row.get("recurrent", {}).get("blake2b_128"),
+            }
+            for row in linear_states
+        ],
+        "kv_states": [
+            {
+                "layer": row.get("layer"),
+                "live_positions": row.get("live_positions"),
+                "key": row.get("key", {}).get("blake2b_128"),
+                "value": row.get("value", {}).get("blake2b_128"),
+            }
+            for row in kv_states
+        ],
+    }
+    return {
+        "position": int(checkpoint["position"]),
+        "input_token_id": int(checkpoint["input_token_id"]),
+        "predicted_token_id": int(checkpoint["predicted_token_id"]),
+        "finite": bool(checkpoint["finite"]),
+        "linear_state_pairs": len(linear_states),
+        "full_attention_kv_pairs": len(kv_states),
+        "state_sha256": _canonical_sha256(digest_payload),
     }
 
 
@@ -760,7 +797,7 @@ def _run_relaunch_correctness(
         steps_per_launch=1,
         state_generation=start_position,
     )
-    checkpoints: list[dict[str, Any]] = []
+    checkpoint_summaries: list[dict[str, Any]] = []
     comparisons: list[dict[str, Any]] = []
     generated: list[int] = []
     with _capture_decode_graph(
@@ -785,7 +822,7 @@ def _run_relaunch_correctness(
                 predicted_token_id=current,
             )
             comparison = _compare_checkpoints(reference[launch_index - 1], checkpoint)
-            checkpoints.append(checkpoint)
+            checkpoint_summaries.append(_checkpoint_summary(checkpoint))
             comparisons.append(
                 {
                     "launch": launch_index,
@@ -804,7 +841,16 @@ def _run_relaunch_correctness(
         "graph_key": key,
         "generated_token_ids": generated,
         "comparisons": comparisons,
-        "checkpoints": checkpoints,
+        "checkpoint_summaries": checkpoint_summaries,
+    }
+
+
+def _compact_eager_correctness(eager: Mapping[str, Any]) -> dict[str, Any]:
+    checkpoints = list(eager.get("checkpoints", ()))
+    return {
+        "prefill_token_id": int(eager["prefill_token_id"]),
+        "generated_token_ids": [int(token) for token in eager["generated_token_ids"]],
+        "checkpoint_summaries": [_checkpoint_summary(checkpoint) for checkpoint in checkpoints],
     }
 
 
@@ -952,7 +998,8 @@ def _run_relaunch_timing(
         steps_per_launch=1,
         state_generation=start_position,
     )
-    capture_start_ns = time.perf_counter_ns()
+    inclusive_start_ns = time.perf_counter_ns()
+    capture_start_ns = inclusive_start_ns
     graph = _capture_decode_graph(
         session,
         position=start_position,
@@ -971,14 +1018,17 @@ def _run_relaunch_timing(
             generated.append(current)
             session._position = start_position + launch_index
         session.runtime.device_synchronize()
-        wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
+        replay_wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
     finally:
         graph.close()
+    inclusive_wall_ms = (time.perf_counter_ns() - inclusive_start_ns) / 1e6
     return {
         "steps": int(steps),
-        "wall_ms": wall_ms,
+        "wall_ms": inclusive_wall_ms,
         "generated_token_ids": generated,
-        "capture_ms_excluded": capture_ms,
+        "capture_ms": capture_ms,
+        "replay_wall_ms": replay_wall_ms,
+        "replay_ms_per_token": replay_wall_ms / int(steps),
     }
 
 
@@ -1057,16 +1107,28 @@ def _run(args: argparse.Namespace) -> int:
         )
 
         eager_warmups: list[dict[str, Any]] = []
+        relaunch_warmups: list[dict[str, Any]] = []
         recapture_warmups: list[dict[str, Any]] = []
         eager_runs: list[dict[str, Any]] = []
+        relaunch_runs: list[dict[str, Any]] = []
         recapture_runs: list[dict[str, Any]] = []
+        base_modes = ["eager", "relaunch", "recapture"] if bool(relaunch["passed"]) else ["eager", "recapture"]
         for run_index in range(int(args.warmups) + int(args.repetitions)):
             measured = run_index >= int(args.warmups)
-            modes = ("eager", "recapture") if run_index % 2 == 0 else ("recapture", "eager")
+            rotate = run_index % len(base_modes)
+            modes = [*base_modes[rotate:], *base_modes[:rotate]]
             for mode in modes:
                 if mode == "eager":
                     row = _run_eager_timing(session, prompt_ids=prompt_ids, steps=int(args.timing_steps))
                     (eager_runs if measured else eager_warmups).append(row)
+                elif mode == "relaunch":
+                    row = _run_relaunch_timing(
+                        session,
+                        prompt_ids=prompt_ids,
+                        steps=int(args.timing_steps),
+                        key_context=key_context,
+                    )
+                    (relaunch_runs if measured else relaunch_warmups).append(row)
                 else:
                     row = _run_recapture_timing(
                         session,
@@ -1075,18 +1137,6 @@ def _run(args: argparse.Namespace) -> int:
                         key_context=key_context,
                     )
                     (recapture_runs if measured else recapture_warmups).append(row)
-
-        relaunch_runs: list[dict[str, Any]] = []
-        if bool(relaunch["passed"]):
-            for _ in range(int(args.repetitions)):
-                relaunch_runs.append(
-                    _run_relaunch_timing(
-                        session,
-                        prompt_ids=prompt_ids,
-                        steps=int(args.timing_steps),
-                        key_context=key_context,
-                    )
-                )
 
     eager_summary = _summarize_runs(eager_runs, expected_token_id=int(args.expected_token_id))
     recapture_summary = _summarize_runs(recapture_runs, expected_token_id=int(args.expected_token_id))
@@ -1123,8 +1173,8 @@ def _run(args: argparse.Namespace) -> int:
         },
         build_profile="gguf_decode_graph_sol_g5_audit",
         timing_protocol=(
-            "one resident session; alternating eager vs per-token state-keyed capture; "
-            "capture/instantiate/launch/sync/destroy included"
+            "one resident session; rotating eager, state-bound relaunch, and per-token state-keyed capture; "
+            "capture/instantiate/launch/sync/destroy included for graph candidates"
         ),
         warmups=int(args.warmups),
         repetitions=int(args.repetitions),
@@ -1150,9 +1200,9 @@ def _run(args: argparse.Namespace) -> int:
             **classification,
             "evidence_valid": evidence_valid,
             "conclusion": (
-                "The state-bound composite graph is not promotable unless the same captured graph "
-                "survives third-and-later launches exactly and the conservative full-state-key route "
-                "beats eager with capture misses included."
+                "The state-bound composite graph is not promotable unless its declared transition "
+                "window survives third-and-later launches exactly and its capture-inclusive wall beats eager. "
+                "Per-generation recapture remains a separately measured conservative fallback."
             ),
         },
         "workload": {
@@ -1185,17 +1235,18 @@ def _run(args: argparse.Namespace) -> int:
                 "Byte-exact FP32 hidden seed, every Conv/GDN state pair, all live BF16 K/V rows, "
                 "and token after each launch versus current eager from the same resident session."
             ),
-            "eager": eager_correctness,
+            "eager": _compact_eager_correctness(eager_correctness),
             "stable_key_relaunch": relaunch,
             "state_generation_keyed_recapture": recapture,
         },
         "timing": {
             "protocol": (
-                "Alternating same-session full runs after reset/prefill; recapture wall includes one "
-                "capture, instantiate, launch, synchronize, and destroy per token."
+                "Rotating same-session full runs after reset/prefill; stable relaunch includes one "
+                "capture/instantiate and final destroy per window, while recapture includes those costs per token."
             ),
             "warmups": {
                 "eager": eager_warmups,
+                "stable_key_relaunch": relaunch_warmups,
                 "state_generation_keyed_recapture": recapture_warmups,
             },
             "eager": {"summary": eager_summary, "runs": eager_runs},
@@ -1205,6 +1256,7 @@ def _run(args: argparse.Namespace) -> int:
             },
             "stable_key_relaunch": {
                 "eligible": bool(relaunch["passed"]),
+                "capture_included_in_summary": True,
                 "summary": relaunch_summary,
                 "runs": relaunch_runs,
             },
@@ -1219,6 +1271,7 @@ def _run(args: argparse.Namespace) -> int:
         f"[sol-g5] {artifact['status']}: {classification['decision']}; "
         f"relaunch_passed={relaunch['passed']} first_failure={relaunch['first_failing_launch']}; "
         f"eager={eager_summary['median_tok_s']:.3f} tok/s "
+        f"relaunch={None if relaunch_summary is None else round(relaunch_summary['median_tok_s'], 3)} tok/s "
         f"recapture={recapture_summary['median_tok_s']:.3f} tok/s",
         flush=True,
     )
