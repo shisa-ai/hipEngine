@@ -9,6 +9,19 @@ import pytest
 _BASELINE_KERNELS: dict[Any, Any] | None = None
 
 
+@pytest.fixture(scope="session")
+def hip_test_target_arch() -> str:
+    """Return the detected device arch for tests that JIT and launch HIP kernels."""
+
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
+
+    for target_arch in detect_hip_target_arches():
+        if target_arch in HIP_TARGET_ARCH_BACKEND:
+            return target_arch
+    supported = ", ".join(sorted(HIP_TARGET_ARCH_BACKEND))
+    pytest.skip(f"no supported HIP target detected (expected one of: {supported})")
+
+
 @pytest.fixture(autouse=True)
 def _clear_mtp_weight_cache():
     """Clear the MTP weight cache before each test to avoid cross-test contamination."""

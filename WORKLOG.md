@@ -150946,3 +150946,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   block verifier, Q6 rowtile, and MTP dense-attention gates. This changes test
   isolation only; their HIP availability guards and in-test runtime imports are
   preserved.
+
+## 2026-07-11 - Build GPU test kernels for the detected target
+
+- The next milestone fail-fast failure was HIP error 98 (`invalid device
+  function`) in `test_dflash_add_rmsnorm.py`: its module fixture explicitly
+  loaded the cached `gfx1100` DFlash binary and launched it on the detected
+  `gfx1151` device. The same hard-coded build scope existed in ten other GPU
+  test modules.
+- Added a session-scoped test fixture that selects a detected, registered HIP
+  target (`gfx1100` or `gfx1151`) and skips when neither is present. The 16
+  affected JIT build scopes now use that target locally; no process-global
+  architecture environment survives the build fixture.
+- Validation: `uv run pytest -q tests/test_dflash_add_rmsnorm.py` passes 7/7;
+  the remaining ten changed GPU modules pass 88/88 together. `git diff --check`
+  passes. This is test architecture/cache isolation only; production dispatch,
+  kernel bodies, and benchmark values are unchanged.

@@ -358,7 +358,7 @@ def _cpu_process_reference(
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
-def test_logits_processors_match_host_order() -> None:
+def test_logits_processors_match_host_order(hip_test_target_arch) -> None:
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.sampling import build_sampler
@@ -406,7 +406,7 @@ def test_logits_processors_match_host_order() -> None:
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         lib = build_sampler(load=True, compiler_version=compiler_version)
 
     bufs = []
@@ -497,7 +497,9 @@ def _request_params(**overrides):
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
-def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() -> None:
+def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state(
+    hip_test_target_arch,
+) -> None:
     from hipengine.core.dtype import DType
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.generation.sampling import RowSamplingState
@@ -512,7 +514,7 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
     vocab_size = int(logits.shape[1])
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         lib = build_sampler(load=True, compiler_version=compiler_version)
 
     runtime = None
@@ -850,7 +852,9 @@ def _cpu_top_p_reference(
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
-def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
+def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic(
+    hip_test_target_arch,
+) -> None:
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.sampling import build_sampler
@@ -883,7 +887,7 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         lib = build_sampler(load=True, compiler_version=compiler_version)
 
     bufs = []
@@ -1062,7 +1066,9 @@ def _cpu_full_vocab_top_logprobs_reference(logits: np.ndarray, temperatures: np.
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
-def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
+def test_temperature_sampler_matches_cpu_reference_and_is_deterministic(
+    hip_test_target_arch,
+) -> None:
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.sampling import build_sampler
@@ -1086,7 +1092,7 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         lib = build_sampler(load=True, compiler_version=compiler_version)
 
     bufs = []
@@ -1191,7 +1197,9 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
-def test_topk_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
+def test_topk_temperature_sampler_matches_cpu_reference_and_is_deterministic(
+    hip_test_target_arch,
+) -> None:
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.sampling import build_sampler
@@ -1215,7 +1223,7 @@ def test_topk_temperature_sampler_matches_cpu_reference_and_is_deterministic() -
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         lib = build_sampler(load=True, compiler_version=compiler_version)
 
     bufs = []
