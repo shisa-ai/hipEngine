@@ -150976,3 +150976,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `uv run pytest -q tests/test_gguf_mtp_parity_precheck.py
   tests/test_gguf_mtp_b1_prompt_suite.py` passes 54/54; `git diff --check`
   passes.
+
+## 2026-07-11 - Pin the raw expert-sidecar plan test
+
+- Milestone fail-fast advanced to 80% before
+  `test_qwen35moe_plan_marks_expert_sidecar_eligible` expected raw expert
+  layouts but received the release-default T16 replacement. Commit `7ea21e98`
+  deliberately made decode repack default-on; the older sidecar unit had not
+  pinned the raw-layout mode it is intended to inspect.
+- Passed `decode_repack=False` explicitly to that plan test. This preserves its
+  raw expert-sidecar eligibility contract while the separate materialization
+  tests continue to cover the default T16 replacement and empty sidecar set.
+- Validation: the expert-sidecar and related plan/sidecar selection run passes
+  5 tests with 12 unavailable-model skips; `git diff --check` passes. No
+  materialization default, model data, or benchmark value changed.
