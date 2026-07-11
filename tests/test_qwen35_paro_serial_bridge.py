@@ -3,11 +3,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.runtime import qwen35_paro_runner
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
 from scripts.qwen35_batch_shrinking_correctness import (
     _cancellation_order,
+    _decode_counts_for_order,
+    _parse_prompt_lengths,
     build_parser as build_shrinking_parser,
 )
 from scripts.qwen35_batch_sparse_slot_correctness import build_parser as build_sparse_parser
@@ -136,5 +139,34 @@ def test_shrinking_correctness_defaults_cover_c8_to_c1_with_holes() -> None:
 
     assert args.batch_size == 8
     assert args.decode_execution == "serial"
+    assert args.prompt_lengths is None
+    assert args.survivor_slot == 0
+    assert args.eos_slot is None
     assert sorted(_cancellation_order(args.batch_size)) == list(range(1, 8))
     assert _cancellation_order(args.batch_size)[0] not in {0, 7}
+
+
+def test_shrinking_correctness_can_leave_a_middle_slot_and_remove_both_edges() -> None:
+    order = _cancellation_order(8, survivor_slot=4)
+
+    assert sorted(order) == [0, 1, 2, 3, 5, 6, 7]
+    assert 0 in order
+    assert 7 in order
+    assert _decode_counts_for_order(8, order, steps_per_width=1) == [
+        order.index(slot) + 1 if slot != 4 else 8
+        for slot in range(8)
+    ]
+
+
+def test_shrinking_correctness_parses_exact_ragged_prompt_vector() -> None:
+    assert _parse_prompt_lengths("449,458,467", batch_size=3, fallback_length=512) == (
+        449,
+        458,
+        467,
+    )
+    assert _parse_prompt_lengths(None, batch_size=3, fallback_length=512) == (512, 512, 512)
+
+    with pytest.raises(ValueError, match="exactly batch_size"):
+        _parse_prompt_lengths("449,458", batch_size=3, fallback_length=512)
+    with pytest.raises(ValueError, match="positive"):
+        _parse_prompt_lengths("449,0,467", batch_size=3, fallback_length=512)

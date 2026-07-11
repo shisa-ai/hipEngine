@@ -1067,8 +1067,34 @@ def test_qwen35_resident_trace_prefill_linear_input_copies_bits(monkeypatch) -> 
     )
 
 
-def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_linear(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", "1")
+@pytest.mark.parametrize(
+    ("force_per_segment", "cu_seqlens", "expected_path", "expected_blocker"),
+    (
+        (
+            True,
+            (0, 2, 3),
+            "per_segment",
+            "linear-attention packed prefill forced to per-segment diagnostic path",
+        ),
+        (
+            False,
+            (0, 1, 3),
+            "per_segment_ragged_exact",
+            "ragged linear-attention packed prefill uses exact per-segment fallback",
+        ),
+    ),
+)
+def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_linear_when_required(
+    monkeypatch,
+    force_per_segment,
+    cu_seqlens,
+    expected_path,
+    expected_blocker,
+) -> None:
+    if force_per_segment:
+        monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", raising=False)
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -1110,21 +1136,30 @@ def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_
     state = FakeState()
     session.runtime = FakeRuntime()
     session.states = [state]
-    slab = SimpleNamespace(rows=3, request_count=2, cu_seqlens_q=(0, 2, 3), physical_slot_ids=(0, 2))
+    slab = SimpleNamespace(rows=3, request_count=2, cu_seqlens_q=cu_seqlens, physical_slot_ids=(0, 2))
     metadata = SimpleNamespace()
 
     out = session._run_native_prefill_packed_layers(slab, metadata, stream=9)
 
     assert out.ptr == 0x1000
-    assert session._last_packed_prefill_linear_path == "per_segment"
-    assert session._last_packed_prefill_blockers == ["linear-attention packed prefill forced to per-segment diagnostic path"]
-    assert [call[0].ptr for call in state.calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
-    assert [call[1]["tokens"] for call in state.calls] == [2, 1]
+    assert session._last_packed_prefill_linear_path == expected_path
+    assert session._last_packed_prefill_blockers == [expected_blocker]
+    segment_rows = [cu_seqlens[index + 1] - cu_seqlens[index] for index in range(2)]
+    assert [call[0].ptr for call in state.calls] == [
+        0x1000,
+        0x1000 + segment_rows[0] * session.hidden_nbytes,
+    ]
+    assert [call[1]["tokens"] for call in state.calls] == segment_rows
     assert [call[1]["conv_state"].ptr for call in state.calls] == [0x3000, 0x3000 + 2 * conv_nbytes]
     assert [call[1]["recurrent_state"].ptr for call in state.calls] == [0x4000, 0x4000 + 2 * recurrent_nbytes]
     assert copies == [
-        (0x1000, 0x8100, 2 * session.hidden_nbytes, 9),
-        (0x1000 + 2 * session.hidden_nbytes, 0x8200, session.hidden_nbytes, 9),
+        (0x1000, 0x8100, segment_rows[0] * session.hidden_nbytes, 9),
+        (
+            0x1000 + segment_rows[0] * session.hidden_nbytes,
+            0x8200,
+            segment_rows[1] * session.hidden_nbytes,
+            9,
+        ),
     ]
 
 
@@ -1196,8 +1231,34 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_aotriton_varlen_w
     assert copies == [(0x1000, 0x9000, 4 * session.hidden_nbytes, 3)]
 
 
-def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_full_attention(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", "1")
+@pytest.mark.parametrize(
+    ("force_per_segment", "cu_seqlens", "expected_path", "expected_blocker"),
+    (
+        (
+            True,
+            (0, 2, 4),
+            "per_segment",
+            "full-attention packed prefill forced to per-segment diagnostic path",
+        ),
+        (
+            False,
+            (0, 1, 4),
+            "per_segment_ragged_exact",
+            "ragged full-attention packed prefill uses exact per-segment fallback",
+        ),
+    ),
+)
+def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_full_attention_when_required(
+    monkeypatch,
+    force_per_segment,
+    cu_seqlens,
+    expected_path,
+    expected_blocker,
+) -> None:
+    if force_per_segment:
+        monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", raising=False)
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -1244,13 +1305,17 @@ def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_
             self.calls.append((hidden, kwargs))
             return Tensor.from_handle(0x9000 + 0x100 * len(self.calls), hidden.shape, DType.FP16, device)
 
+        def run_full_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000 + 0x100 * len(self.calls), hidden.shape, DType.FP16, device)
+
     state = FakeState()
     session.runtime = FakeRuntime()
     session.states = [state]
     slab = SimpleNamespace(
         rows=4,
         request_count=2,
-        cu_seqlens_q=(0, 2, 4),
+        cu_seqlens_q=cu_seqlens,
         physical_slot_ids=(0, 2),
         block_count=1,
         block_tables=((0,), (0,), (0,), (0,)),
@@ -1261,19 +1326,50 @@ def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_
 
     assert out.ptr == 0x1000
     assert session._last_packed_prefill_linear_path == "packed_segments"
-    assert session._last_packed_prefill_full_attention_path == "per_segment"
-    assert session._last_packed_prefill_blockers == ["full-attention packed prefill forced to per-segment diagnostic path"]
-    assert [call[0].ptr for call in state.calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
-    assert [call[1]["tokens"] for call in state.calls] == [2, 2]
+    assert session._last_packed_prefill_full_attention_path == expected_path
+    assert session._last_packed_prefill_blockers == [expected_blocker]
+    segment_rows = [cu_seqlens[index + 1] - cu_seqlens[index] for index in range(2)]
+    second_start = segment_rows[0]
+    assert [call[0].ptr for call in state.calls] == [
+        0x1000,
+        0x1000 + second_start * session.hidden_nbytes,
+    ]
+    assert [call[1]["tokens"] for call in state.calls] == segment_rows
     assert [call[1]["key_cache"].ptr for call in state.calls] == [0x5000, 0x5000 + 2 * 0x100]
-    assert [call[1]["positions"].ptr for call in state.calls] == [0x7000, 0x7000 + 2 * 8]
-    assert [call[1]["append_spans"].base_offsets.shape for call in state.calls] == [(2, 1), (2, 1)]
-    assert [call[1]["append_spans"].base_offsets.ptr for call in state.calls] == [0xA000, 0xA000 + 2 * DType.INT32.itemsize]
-    assert [call[1]["prefill_spans"].live_counts.ptr for call in state.calls] == [0xB000, 0xB000 + 2 * DType.INT64.itemsize]
-    assert local_table_copies == [(0xA000, 2 * DType.INT32.itemsize), (0xA000 + 2 * DType.INT32.itemsize, 2 * DType.INT32.itemsize)]
+    assert [
+        call[1].get("positions", call[1].get("position")).ptr
+        for call in state.calls
+    ] == [0x7000, 0x7000 + second_start * 8]
+    assert [call[1]["append_spans"].base_offsets.shape for call in state.calls] == [
+        (segment_rows[0], 1),
+        (segment_rows[1], 1),
+    ]
+    assert [call[1]["append_spans"].base_offsets.ptr for call in state.calls] == [
+        0xA000,
+        0xA000 + second_start * DType.INT32.itemsize,
+    ]
+    assert [
+        call[1].get("prefill_spans", call[1].get("decode_spans")).live_counts.ptr
+        for call in state.calls
+    ] == [
+        0xB000,
+        0xB000 + second_start * DType.INT64.itemsize,
+    ]
+    assert local_table_copies == [
+        (0xA000, segment_rows[0] * DType.INT32.itemsize),
+        (
+            0xA000 + second_start * DType.INT32.itemsize,
+            segment_rows[1] * DType.INT32.itemsize,
+        ),
+    ]
     assert copies == [
-        (0x1000, 0x9100, 2 * session.hidden_nbytes, 5),
-        (0x1000 + 2 * session.hidden_nbytes, 0x9200, 2 * session.hidden_nbytes, 5),
+        (0x1000, 0x9100, segment_rows[0] * session.hidden_nbytes, 5),
+        (
+            0x1000 + second_start * session.hidden_nbytes,
+            0x9200,
+            segment_rows[1] * session.hidden_nbytes,
+            5,
+        ),
     ]
 
 

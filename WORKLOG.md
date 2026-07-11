@@ -150650,3 +150650,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   classification, benchmark/root README, benchmark protocol, and changelog.
   gfx1100 remains stale/non-selecting pending W7900 hardware. SOL-P2 ragged,
   EOS/cancel, and front/tail sparse transition coverage is next.
+
+## 2026-07-11 - Make ragged PARO lifecycle state exact
+
+- Extended `qwen35_batch_shrinking_correctness.py` into the SOL-P2 lifecycle
+  gate. It accepts exact per-row prompt lengths and a surviving physical slot,
+  retires one configured row through an EOS event while the others use explicit
+  cancellation/length completion, and checks every c=N-to-c=1 live width.
+  Each row is compared with an independent c1 run for generated tokens plus
+  SHA-256 identity of every linear conv/recurrent state and every live
+  full-attention K/V prefix at the row's retirement boundary.
+- The first gfx1151 c3 ragged probe (`8,9,10`, one step/width) exposed a real
+  packed-prefill state failure: packed segmented linear prefill changed slot 0
+  state; its existing per-segment diagnostic control was exact. At all 40
+  layers, packed varlen full attention likewise changed slot 0 tokens, all 30
+  linear states, and all 10 full-attention K/V families; the per-segment full
+  attention control was exact.
+- Made ragged packed-prefill slabs automatically select the exact per-segment
+  linear and full-attention fallbacks. Equal-length slabs retain
+  `packed_segments`/`packed_varlen`. The fallback is explicit in execution
+  metadata as `per_segment_ragged_exact`, with separate non-throughput blockers
+  for linear and full attention.
+- GREEN: the automatic c3 ragged all-40-layer smoke passes all token rows, all
+  30 linear-state and 10 full-KV families, EOS retirement, exact post-event
+  widths, and no group-wide cancellation. The full resident-layout plus serial
+  bridge regression set passes `143/143`; Python compilation and
+  `git diff --check` pass. These runs are dirty implementation validation only.
+  Next action is commit this logical unit, then run the clean c8 ragged
+  p449..p512/front+tail-hole retained SOL-P2 gate.
