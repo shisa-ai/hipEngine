@@ -150469,3 +150469,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `50.137 tok/s` replay-only, and closed without tracked allocation leakage.
   The production code still needs a clean p512/d128 eager/default A/B before
   the artifact/docs/README rollup is committed.
+
+## 2026-07-11 - SOL-G5 audit switched to the production graph API
+
+- Replaced the audit's private composite-capture reconstruction with the
+  committed `Qwen35GGUFResidentSession.capture_decode_graph()` surface for
+  stable relaunch, state-generation recapture, and both timing routes. Removed
+  the duplicate graph handle/capture/key-context implementation from the script;
+  the retained artifact will now serialize the runtime's actual full key.
+- The model-free full-key contract lives with the production runtime tests;
+  the audit tests now cover checkpoint localization, exact timing summaries,
+  and promotion classification only. Focused production+audit tests pass `5/5`,
+  compilation and `git diff --check` pass.
+- A dirty-tree three-launch production-API smoke is exact through hidden,
+  Conv/GDN, KV, and tokens. Its one-step timing correctly rejects capture cost
+  (`49.189` eager vs `27.247 tok/s` stable graph); it is validation only. The
+  next clean p512/d128 run is the first publishable production-path result.

@@ -26,7 +26,6 @@ import os
 import statistics
 import sys
 import time
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -54,91 +53,6 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _context_bucket(*, position: int, replay_steps: int, block_size: int, max_positions: int) -> int:
-    if position < 0:
-        raise ValueError("position must be non-negative")
-    if replay_steps <= 0:
-        raise ValueError("replay_steps must be positive")
-    if block_size <= 0:
-        raise ValueError("block_size must be positive")
-    if max_positions <= 0:
-        raise ValueError("max_positions must be positive")
-    replay_limit = int(position) + int(replay_steps)
-    bucket = ((replay_limit + int(block_size) - 1) // int(block_size)) * int(block_size)
-    if bucket > int(max_positions):
-        raise ValueError(
-            f"decode graph context bucket {bucket} exceeds resident cache capacity {max_positions}"
-        )
-    return bucket
-
-
-def _build_graph_key(
-    *,
-    backend: str,
-    target_arch: str,
-    model_fingerprint: str,
-    quant: str,
-    kv_dtype: str,
-    position: int,
-    replay_steps: int,
-    steps_per_launch: int,
-    block_size: int,
-    max_positions: int,
-    hidden_size: int,
-    vocab_size: int,
-    layer_types: Sequence[str],
-    weight_role_digest: str,
-    route: Mapping[str, Any],
-    buffer_ptrs: Sequence[int],
-    state_generation: int,
-) -> dict[str, Any]:
-    """Return the complete per-session shape/state identity for a capture.
-
-    Mutable state contents are validated separately by byte fingerprints.  The
-    operational key covers their resident buffer identities plus the monotonic
-    state generation, so a conservative cache cannot hit after a token mutates
-    Conv/GDN or K/V state.
-    """
-
-    if steps_per_launch <= 0:
-        raise ValueError("steps_per_launch must be positive")
-    if steps_per_launch > replay_steps:
-        raise ValueError("steps_per_launch cannot exceed replay_steps")
-    if state_generation < 0:
-        raise ValueError("state_generation must be non-negative")
-    context_bucket = _context_bucket(
-        position=int(position),
-        replay_steps=int(replay_steps),
-        block_size=int(block_size),
-        max_positions=int(max_positions),
-    )
-    pointer_payload = [int(pointer) for pointer in buffer_ptrs]
-    axes = {
-        "active_rows": 1,
-        "backend": str(backend),
-        "target_arch": str(target_arch),
-        "model_fingerprint": str(model_fingerprint),
-        "quant": str(quant),
-        "kv_dtype": str(kv_dtype),
-        "position": int(position),
-        "state_generation": int(state_generation),
-        "replay_steps": int(replay_steps),
-        "steps_per_launch": int(steps_per_launch),
-        "replay_context_limit": int(position) + int(replay_steps),
-        "context_bucket": int(context_bucket),
-        "block_size": int(block_size),
-        "max_positions": int(max_positions),
-        "hidden_size": int(hidden_size),
-        "vocab_size": int(vocab_size),
-        "layer_types": [str(layer_type) for layer_type in layer_types],
-        "weight_role_digest": str(weight_role_digest),
-        "route": dict(sorted((str(key), value) for key, value in route.items())),
-        "buffer_identity_sha256": _canonical_sha256(pointer_payload),
-        "buffer_count": len(pointer_payload),
-    }
-    return {"axes": axes, "key_sha256": _canonical_sha256(axes)}
 
 
 def _bf16_to_f32(raw: np.ndarray) -> np.ndarray:
@@ -536,210 +450,6 @@ def _checkpoint_summary(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-@dataclass
-class _CapturedDecodeGraph:
-    runtime: Any
-    graph: int
-    graph_exec: int
-    stream: int
-    key: dict[str, Any]
-    closed: bool = False
-
-    def launch(self) -> None:
-        if self.closed:
-            raise RuntimeError("decode graph is closed")
-        self.runtime.graph_launch(self.graph_exec, self.stream)
-        self.runtime.stream_synchronize(self.stream)
-
-    def close(self) -> None:
-        if self.closed:
-            return
-        self.runtime.graph_exec_destroy(self.graph_exec)
-        self.runtime.graph_destroy(self.graph)
-        self.runtime.stream_destroy(self.stream)
-        self.closed = True
-
-    def __enter__(self) -> "_CapturedDecodeGraph":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
-
-
-def _capture_decode_graph(
-    session: Any,
-    *,
-    position: int,
-    replay_steps: int,
-    steps_per_launch: int,
-    key: dict[str, Any],
-) -> _CapturedDecodeGraph:
-    from hipengine.kernels.hip_gfx1100.runtime.state import advance_decode_position_i64
-    from hipengine.runtime.gguf_linear import gemv_decode_session
-
-    if session.runner is None or session.scratch is None or session._lm_out_index is None:
-        raise RuntimeError("GGUF resident session is closed")
-    if session.host_token_embedding_enabled:
-        raise RuntimeError("device-resident decode graph requires device token embeddings")
-    if position < 0 or position + replay_steps > int(session.scratch.max_positions):
-        raise ValueError("decode graph replay span exceeds resident cache capacity")
-    runtime = session.runtime
-    stream = runtime.stream_create()
-    graph = 0
-    try:
-        session._set_full_attention_position_device(int(position), stream=stream)
-        runtime.stream_synchronize(stream)
-        runtime.stream_begin_capture(stream)
-        try:
-            with gemv_decode_session(session.use_gemv_decode):
-                for offset in range(int(steps_per_launch)):
-                    graph_position = int(position) + offset
-                    session.scratch.position_host[0] = graph_position
-                    session.scratch.context_host[0] = graph_position + 1
-                    session._set_token_embedding_from_ptr(session._lm_out_index.ptr, stream=stream)
-                    hidden_ptr = session._run_current_hidden_to_final_hidden(
-                        position=graph_position,
-                        stream=stream,
-                        attention_max_context_len=int(position) + int(replay_steps),
-                        capture_hidden_seed_fp32=True,
-                    )
-                    session._sample_device_from_hidden(hidden_ptr, stream=stream)
-                    advance_decode_position_i64(
-                        session.scratch.position_buf.ptr,
-                        session.scratch.context_buf.ptr,
-                        stream=stream,
-                        library=session._runtime_state_library,
-                        runtime=runtime,
-                    )
-            graph = runtime.stream_end_capture(stream)
-        except Exception:
-            try:
-                runtime.stream_end_capture(stream)
-            except Exception:
-                pass
-            raise
-        graph_exec = runtime.graph_instantiate(graph)
-    except Exception:
-        if graph:
-            try:
-                runtime.graph_destroy(graph)
-            except Exception:
-                pass
-        runtime.stream_destroy(stream)
-        raise
-    return _CapturedDecodeGraph(
-        runtime=runtime,
-        graph=graph,
-        graph_exec=graph_exec,
-        stream=stream,
-        key=key,
-    )
-
-
-def _buffer_ptrs(session: Any) -> tuple[int, ...]:
-    if session.scratch is None:
-        raise RuntimeError("GGUF resident session is closed")
-    buffers = [
-        session._hidden_a,
-        session._hidden_b,
-        session._token_buf,
-        session._logits_buf,
-        session._lm_block_values,
-        session._lm_block_indices,
-        session._lm_out_index,
-        session._lm_out_value,
-        session.scratch.position_buf,
-        session.scratch.context_buf,
-        session.scratch.hidden_seed_fp32,
-        session.scratch.norm,
-        session.scratch.attn_out,
-        *session.scratch.layer_conv_states,
-        *session.scratch.layer_recurrent_states,
-        *session.scratch.full_key_caches,
-        *session.scratch.full_value_caches,
-    ]
-    return tuple(int(buffer.ptr) for buffer in buffers if buffer is not None)
-
-
-def _weight_role_digest(session: Any) -> str:
-    if session.runner is None or session.runner.weights is None:
-        raise RuntimeError("GGUF resident session is closed")
-    roles = [
-        {
-            "slot_path": str(weight.spec.slot_path),
-            "quant_key": str(weight.spec.quant_key),
-            "shape": [int(dim) for dim in weight.spec.source.shape],
-        }
-        for weight in session.runner.weights.weights
-    ]
-    return _canonical_sha256(roles)
-
-
-def _session_key_context(
-    session: Any,
-    *,
-    backend: str,
-    target_arch: str,
-    model_fingerprint: str,
-    quant: str,
-) -> dict[str, Any]:
-    if session.runner is None or session.runner.weights is None or session.scratch is None:
-        raise RuntimeError("GGUF resident session is closed")
-    kv_dtype = getattr(session.kv_storage_dtype, "value", str(session.kv_storage_dtype))
-    weight_role_digest = _weight_role_digest(session)
-    roles = [str(weight.spec.quant_key) for weight in session.runner.weights.weights]
-    return {
-        "backend": str(backend),
-        "target_arch": str(target_arch),
-        "model_fingerprint": str(model_fingerprint),
-        "quant": str(quant),
-        "kv_dtype": str(kv_dtype),
-        "block_size": int(session.scratch.block_size),
-        "max_positions": int(session.scratch.max_positions),
-        "hidden_size": int(session.runner.hidden_size),
-        "vocab_size": int(session.runner.vocab_size),
-        "layer_types": tuple(str(item) for item in session.runner.weights.config.layer_types),
-        "weight_role_digest": weight_role_digest,
-        "route": {
-            "gemv_decode": bool(session.use_gemv_decode),
-            "wmma_prefill": bool(session.use_wmma_prefill),
-            "decode_repack": any(role.endswith("_t16_v1") or role.endswith("_x8_v1") for role in roles),
-            "host_token_embedding": bool(session.host_token_embedding_enabled),
-            "per_layer_moe_graph": False,
-        },
-        "buffer_ptrs": _buffer_ptrs(session),
-    }
-
-
-def _graph_key(
-    context: Mapping[str, Any],
-    *,
-    position: int,
-    replay_steps: int,
-    steps_per_launch: int,
-    state_generation: int,
-) -> dict[str, Any]:
-    return _build_graph_key(
-        backend=str(context["backend"]),
-        target_arch=str(context["target_arch"]),
-        model_fingerprint=str(context["model_fingerprint"]),
-        quant=str(context["quant"]),
-        kv_dtype=str(context["kv_dtype"]),
-        position=int(position),
-        replay_steps=int(replay_steps),
-        steps_per_launch=int(steps_per_launch),
-        block_size=int(context["block_size"]),
-        max_positions=int(context["max_positions"]),
-        hidden_size=int(context["hidden_size"]),
-        vocab_size=int(context["vocab_size"]),
-        layer_types=tuple(context["layer_types"]),
-        weight_role_digest=str(context["weight_role_digest"]),
-        route=dict(context["route"]),
-        buffer_ptrs=tuple(context["buffer_ptrs"]),
-        state_generation=int(state_generation),
-    )
-
-
 def _prefill(session: Any, prompt_ids: Sequence[int]) -> int:
     session.reset()
     result = session.prefill(
@@ -785,36 +495,25 @@ def _run_relaunch_correctness(
     *,
     prompt_ids: Sequence[int],
     steps: int,
-    key_context: Mapping[str, Any],
     reference: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     current = _prefill(session, prompt_ids)
     start_position = int(session.position)
-    key = _graph_key(
-        key_context,
-        position=start_position,
-        replay_steps=int(steps),
-        steps_per_launch=1,
-        state_generation=start_position,
-    )
     checkpoint_summaries: list[dict[str, Any]] = []
     comparisons: list[dict[str, Any]] = []
     generated: list[int] = []
-    with _capture_decode_graph(
-        session,
+    with session.capture_decode_graph(
         position=start_position,
-        replay_steps=int(steps),
-        steps_per_launch=1,
-        key=key,
+        max_replay_steps=int(steps),
+        steps_per_replay=1,
+        attention_max_context_len=start_position + int(steps),
+        capture_hidden_seed_fp32=True,
     ) as graph:
+        key = graph.bucket_key.as_dict()
         for launch_index in range(1, int(steps) + 1):
             input_token = current
-            graph.launch()
-            current = int(session._read_sample(return_logits=False).token_id)
-            session._position = start_position + launch_index
-            session.scratch.position_host[0] = int(session._position)
-            session.scratch.context_host[0] = int(session._position) + 1
-            session._hidden_seed_fp32_populated = True
+            graph.replay(1)
+            current = int(graph.read_sample(return_logits=False).token_id)
             checkpoint = _capture_checkpoint(
                 session,
                 position=int(session.position),
@@ -859,7 +558,6 @@ def _run_recapture_correctness(
     *,
     prompt_ids: Sequence[int],
     steps: int,
-    key_context: Mapping[str, Any],
     reference: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     current = _prefill(session, prompt_ids)
@@ -869,27 +567,16 @@ def _run_recapture_correctness(
     for step_index in range(int(steps)):
         position = int(session.position)
         input_token = current
-        key = _graph_key(
-            key_context,
+        with session.capture_decode_graph(
             position=position,
-            replay_steps=1,
-            steps_per_launch=1,
-            state_generation=position,
-        )
-        key_digests.append(str(key["key_sha256"]))
-        with _capture_decode_graph(
-            session,
-            position=position,
-            replay_steps=1,
-            steps_per_launch=1,
-            key=key,
+            max_replay_steps=1,
+            steps_per_replay=1,
+            attention_max_context_len=position + 1,
+            capture_hidden_seed_fp32=True,
         ) as graph:
-            graph.launch()
-        current = int(session._read_sample(return_logits=False).token_id)
-        session._position = position + 1
-        session.scratch.position_host[0] = int(session._position)
-        session.scratch.context_host[0] = int(session._position) + 1
-        session._hidden_seed_fp32_populated = True
+            key_digests.append(str(graph.bucket_key.key_sha256))
+            graph.replay(1)
+            current = int(graph.read_sample(return_logits=False).token_id)
         checkpoint = _capture_checkpoint(
             session,
             position=int(session.position),
@@ -936,7 +623,6 @@ def _run_recapture_timing(
     *,
     prompt_ids: Sequence[int],
     steps: int,
-    key_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     current = _prefill(session, prompt_ids)
     generated: list[int] = []
@@ -945,30 +631,19 @@ def _run_recapture_timing(
     start_ns = time.perf_counter_ns()
     for _ in range(int(steps)):
         position = int(session.position)
-        key = _graph_key(
-            key_context,
-            position=position,
-            replay_steps=1,
-            steps_per_launch=1,
-            state_generation=position,
-        )
         capture_start_ns = time.perf_counter_ns()
-        graph = _capture_decode_graph(
-            session,
+        graph = session.capture_decode_graph(
             position=position,
-            replay_steps=1,
-            steps_per_launch=1,
-            key=key,
+            max_replay_steps=1,
+            steps_per_replay=1,
+            attention_max_context_len=position + 1,
         )
         capture_ms.append((time.perf_counter_ns() - capture_start_ns) / 1e6)
         try:
-            graph.launch()
+            graph.replay(1)
+            current = int(graph.read_sample(return_logits=False).token_id)
         finally:
             graph.close()
-        current = int(session._read_sample(return_logits=False).token_id)
-        session._position = position + 1
-        session.scratch.position_host[0] = int(session._position)
-        session.scratch.context_host[0] = int(session._position) + 1
         generated.append(current)
     session.runtime.device_synchronize()
     wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
@@ -987,36 +662,26 @@ def _run_relaunch_timing(
     *,
     prompt_ids: Sequence[int],
     steps: int,
-    key_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     current = _prefill(session, prompt_ids)
     start_position = int(session.position)
-    key = _graph_key(
-        key_context,
-        position=start_position,
-        replay_steps=int(steps),
-        steps_per_launch=1,
-        state_generation=start_position,
-    )
     inclusive_start_ns = time.perf_counter_ns()
     capture_start_ns = inclusive_start_ns
-    graph = _capture_decode_graph(
-        session,
+    graph = session.capture_decode_graph(
         position=start_position,
-        replay_steps=int(steps),
-        steps_per_launch=1,
-        key=key,
+        max_replay_steps=int(steps),
+        steps_per_replay=1,
+        attention_max_context_len=start_position + int(steps),
     )
     capture_ms = (time.perf_counter_ns() - capture_start_ns) / 1e6
     generated: list[int] = []
     try:
         session.runtime.device_synchronize()
         start_ns = time.perf_counter_ns()
-        for launch_index in range(1, int(steps) + 1):
-            graph.launch()
-            current = int(session._read_sample(return_logits=False).token_id)
+        for _ in range(int(steps)):
+            graph.replay(1)
+            current = int(graph.read_sample(return_logits=False).token_id)
             generated.append(current)
-            session._position = start_position + launch_index
         session.runtime.device_synchronize()
         replay_wall_ms = (time.perf_counter_ns() - start_ns) / 1e6
     finally:
@@ -1073,13 +738,6 @@ def _run(args: argparse.Namespace) -> int:
         use_wmma_prefill=True,
         use_gemv_decode=True,
     ) as session:
-        key_context = _session_key_context(
-            session,
-            backend=str(args.backend),
-            target_arch=target_arch,
-            model_fingerprint=model_sha256,
-            quant=str(args.quant),
-        )
         eager_correctness = _run_eager_correctness(
             session,
             prompt_ids=prompt_ids,
@@ -1095,14 +753,12 @@ def _run(args: argparse.Namespace) -> int:
             session,
             prompt_ids=prompt_ids,
             steps=int(args.correctness_steps),
-            key_context=key_context,
             reference=reference_checkpoints,
         )
         recapture = _run_recapture_correctness(
             session,
             prompt_ids=prompt_ids,
             steps=int(args.correctness_steps),
-            key_context=key_context,
             reference=reference_checkpoints,
         )
 
@@ -1126,7 +782,6 @@ def _run(args: argparse.Namespace) -> int:
                         session,
                         prompt_ids=prompt_ids,
                         steps=int(args.timing_steps),
-                        key_context=key_context,
                     )
                     (relaunch_runs if measured else relaunch_warmups).append(row)
                 else:
@@ -1134,7 +789,6 @@ def _run(args: argparse.Namespace) -> int:
                         session,
                         prompt_ids=prompt_ids,
                         steps=int(args.timing_steps),
-                        key_context=key_context,
                     )
                     (recapture_runs if measured else recapture_warmups).append(row)
 
