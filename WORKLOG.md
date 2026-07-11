@@ -151588,3 +151588,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and updated `docs/HIP-vs-VULKAN.md`, the benchmark platform index, and the
   benchmark changelog. No timing row is superseded and the temporary RNE
   shader remains unpromoted pending a dedicated correctness/performance unit.
+
+## 2026-07-12 - Make Vulkan q8_1 rounding explicit and portable
+
+- Added a RED source-contract test and promoted the isolated Vulkan q8_1 fix:
+  software FP32-to-FP16 round-to-nearest-even packing for the stored `d`/`s`
+  pair plus explicit ties-away-from-zero integer quantization. This removes
+  dependence on driver lowering of GLSL packing and rounding builtins while
+  leaving the timed command topology and dot shaders unchanged.
+- On Radeon 8060S/gfx1151 with Mesa/RADV 26.1.4, strict 20-repetition Q4_K and
+  Q6_K runs now pass in both serial-latency and four-queue
+  independent-throughput modes. Independent Q4 reaches KL `0.004180817473`,
+  top-1 `1.0`; independent Q6 reaches KL `0.0002289689978`, top-1 `1.0`.
+  Serial Q4 reaches KL `0.004180817473`, top-1 `1.0`; serial Q6 reaches KL
+  `1.574600576e-05`, top-1 `1.0`. The shared Vulkan dense-Q8_0 wrapper also
+  passes all 52 correctness rows in each mode.
+- Interleaved stock/fixed A/B probes used 21 timing samples per run, two runs
+  per variant, 20 repetitions, five warmups, and four independent queues. The
+  median-of-run-medians standalone q8_1 cost changes by `+0.020038 us` Q4
+  (`+4.773%`) and `+0.005010 us` Q6 (`+1.548%`). Combined quantize+dot changes
+  by `-5.710 us` Q4 (`-2.107%`) and `-0.019 us` Q6 (`-0.063%`); unchanged dot
+  shader variance is larger than the measured conversion cost, so this is a
+  correctness fix with no observed combined-path regression, not a speedup.
+  Raw diagnostic files are under
+  `/tmp/hipengine-vulkan-rne-promote-dirty-20260712`.
+- Validation: `uv run pytest -q
+  tests/test_micro_q4_selected_dual_real_slice.py
+  tests/test_micro_q6_x8_real_slice.py` passes all 52 tests; `glslc` plus
+  `spirv-val` pass for Vulkan 1.1 and 1.2 SPIR-V.
+- The local machine exposes only gfx1151. The documented gfx1100/W7900 SSH
+  alias `epyc` timed out after five seconds, so runtime validation on gfx1100
+  remains an explicit hardware-access gate rather than an inferred pass.
