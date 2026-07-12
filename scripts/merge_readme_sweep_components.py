@@ -22,6 +22,7 @@ from hipengine.benchmark.provenance import (  # noqa: E402
 
 
 STANDARD_WORKLOADS = ("512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128")
+SUPPORTED_PLATFORMS = ("gfx1100", "gfx1151")
 
 
 def _sha256(path: Path) -> str:
@@ -74,7 +75,10 @@ def _merge_component_payloads(
     *,
     engine: str,
     provenance: dict[str, Any],
+    platform: str = "gfx1151",
 ) -> dict[str, Any]:
+    if platform not in SUPPORTED_PLATFORMS:
+        raise ValueError(f"unsupported README sweep platform {platform!r}")
     by_workload: dict[str, tuple[Path, dict[str, Any]]] = {}
     identities: set[tuple[Any, ...]] = set()
     component_rows: list[dict[str, Any]] = []
@@ -137,14 +141,17 @@ def _merge_component_payloads(
     if len(identities) != 1:
         raise ValueError("component source/model/backend identities do not match")
 
-    accepted = bool(all_clean and all_finite and all_ids_stable and all_variance_ok)
+    target_matches = provenance.get("target_arch") == platform
+    accepted = bool(
+        all_clean and all_finite and all_ids_stable and all_variance_ok and target_matches
+    )
     first = by_workload[STANDARD_WORKLOADS[0]][1]
     return {
         "schema": 1,
-        "kind": "gfx1151_readme_model_sweep_rollup",
+        "kind": f"{platform}_readme_model_sweep_rollup",
         "status": "accepted_topline" if accepted else "rejected_topline_gate",
         "performance_claim": accepted,
-        "performance_claim_scope": "gfx1151 six-shape per-workload resident sweep",
+        "performance_claim_scope": f"{platform} six-shape per-workload resident sweep",
         "engine": engine,
         "model": first["model"],
         "quant": first["quant"],
@@ -179,6 +186,7 @@ def _merge_component_payloads(
             "all_workload_final_ids_stable": all_ids_stable,
             "all_workload_variance_gates_passed": all_variance_ok,
             "all_component_provenance_clean": all_clean,
+            "target_arch_matches_platform": target_matches,
         },
         "components": component_rows,
         "provenance": provenance,
@@ -210,6 +218,7 @@ def _finalize_rollup(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", choices=("paro", "gguf"), required=True)
+    parser.add_argument("--platform", choices=SUPPORTED_PLATFORMS, default="gfx1151")
     parser.add_argument("--components", nargs="+", type=Path, required=True)
     parser.add_argument("--json", type=Path, required=True)
     return parser
@@ -233,7 +242,10 @@ def main(argv: list[str] | None = None) -> int:
         kv_dtype=str(first_provenance["kv_dtype"]),
         command=tuple(sys.argv),
         build_profile="readme_per_workload_rollup",
-        timing_protocol="six independent right-sized resident sessions; two warmups plus five measured runs per shape",
+        timing_protocol=(
+            f"{args.platform} six independent right-sized resident sessions; "
+            "two warmups plus five measured runs per shape"
+        ),
         warmups=2,
         repetitions=5,
         profiler={"enabled": False, "reason": "topline host-wall sweep"},
@@ -244,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         components,
         engine=args.engine,
         provenance=first_provenance,
+        platform=args.platform,
     )
     output = _finalize_rollup(
         output,

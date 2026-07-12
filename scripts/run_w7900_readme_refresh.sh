@@ -17,13 +17,15 @@ usage() {
 Usage: scripts/run_w7900_readme_refresh.sh <phase>
 
 Phases:
-  hipengine       hipEngine PARO + GGUF Q4_K_M resident README sweeps
+  hipengine       hipEngine PARO + GGUF Q4_K_M right-sized resident sweeps
   llamacpp        llama.cpp HIP + Vulkan Q4_K_M split prefill/decode sweeps
+  summary         validate and assemble the four-column W7900 topline
+  topline         hipengine + llamacpp + summary
   concurrency     hipEngine + llama.cpp Vulkan concurrency sweeps
   vllm-server     start the pinned local vLLM W7900 server and wait for readiness
   vllm-client     run the vLLM OpenAI concurrency client against an existing server
   vllm            start vLLM server, run client, then stop the server
-  all             hipengine + llamacpp + concurrency + vllm
+  all             topline + concurrency + vllm
 
 Useful overrides:
   RUN_TAG=20260614-141414
@@ -45,7 +47,7 @@ if [[ "$phase" == "-h" || "$phase" == "--help" || "$phase" == "help" ]]; then
 fi
 
 case "$phase" in
-  hipengine|llamacpp|concurrency|vllm-server|vllm-client|vllm|all) ;;
+  hipengine|llamacpp|summary|topline|concurrency|vllm-server|vllm-client|vllm|all) ;;
   *)
     usage >&2
     exit 2
@@ -60,8 +62,19 @@ LOGDIR="${LOGDIR:-/tmp/hipengine-readme-runs/$RUN_TAG}"
 DATE_PREFIX="${DATE_PREFIX:-$(date -u +%Y-%m-%d)-w7900-gpu0-readme-refresh-$RUN_TAG}"
 mkdir -p "$OUTDIR" "$LOGDIR"
 
+if ! git -C "$REPO_ROOT" diff --quiet --no-ext-diff ||
+   ! git -C "$REPO_ROOT" diff --cached --quiet --no-ext-diff; then
+  echo "ERROR: retained W7900 refresh requires a tracked-clean worktree" >&2
+  exit 2
+fi
+if [[ "${ALLOW_UNTRACKED:-0}" != "1" ]] &&
+   [[ -n "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard)" ]]; then
+  echo "ERROR: retained W7900 refresh requires no untracked files" >&2
+  exit 2
+fi
+
 HIP_VISIBLE_DEVICES_W7900="${HIP_VISIBLE_DEVICES_W7900:-0}"
-AMDGPU_CARD_NAME_W7900="${AMDGPU_CARD_NAME_W7900:-card1}"
+AMDGPU_CARD_NAME_W7900="${AMDGPU_CARD_NAME_W7900:-card0}"
 THEROCK_PY="${THEROCK_PY:-/home/lhl/mambaforge/envs/therock/bin/python3.12}"
 THEROCK_ROOT="${THEROCK_ROOT:-$("$THEROCK_PY" -m rocm_sdk path --root)}"
 HIPCC_VERSION_FILE="${HIPCC_VERSION_FILE:-$LOGDIR/hipcc-version-713.txt}"
@@ -75,7 +88,7 @@ if [[ ! -e "$DEFAULT_LLAMACPP_Q4KM_MODEL" && -e /home/lhl/hipEngine/Qwen3.6-35B-
   # exact W7900 README refresh setup.
   DEFAULT_LLAMACPP_Q4KM_MODEL=/home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 fi
-LLAMACPP_Q4KM_MODEL="${LLAMACPP_Q4KM_MODEL:-$DEFAULT_LLAMACPP_Q4KM_MODEL}"
+LLAMACPP_Q4KM_MODEL="${LLAMACPP_Q4KM_MODEL:-$GGUF_Q4KM_MODEL}"
 FIXTURE="${FIXTURE:-/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json}"
 
 LLAMACPP_HIP_BENCH="${LLAMACPP_HIP_BENCH:-/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench}"
@@ -242,27 +255,55 @@ run_hipengine() {
   run_prebuild_hipengine
   local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
   local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local workloads=(512/128 1K/128 4K/128 32K/128 64K/128 128K/128)
+  local paro_components=()
+  local gguf_components=()
+  local workload safe component
+
   echo "[run] hipEngine PARO -> $paro_json" | tee -a "$LOGDIR/run.log"
-  "${THEROCK_ENV[@]}" timeout "$TIMEOUT_LONG" "$THEROCK_PY" "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine paro --model "$PARO_MODEL" --backend hip_gfx1100 \
-    --shared-expert-format packed_paro_w4 --token-id 9707 \
-    --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
-    --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
-    --attn-aotriton-min-tokens 512 --graph-replay-decode \
-    --json "$paro_json" > "$LOGDIR/hipengine-paro.log" 2>&1
-  compact_readme_sweep_json "$paro_json"
+  for workload in "${workloads[@]}"; do
+    safe=${workload//\//-}
+    component="$LOGDIR/hipengine-paro-$safe.json"
+    paro_components+=("$component")
+    echo "[run] hipEngine PARO $workload" | tee -a "$LOGDIR/run.log"
+    "${THEROCK_ENV[@]}" timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
+      "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
+      --engine paro --model "$PARO_MODEL" --backend hip_gfx1100 \
+      --shared-expert-format packed_paro_w4 --token-id 9707 \
+      --workloads "$workload" \
+      --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
+      --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
+      --attn-aotriton-min-tokens 512 --graph-replay-decode \
+      --json "$component" > "$LOGDIR/hipengine-paro-$safe.log" 2>&1
+    compact_readme_sweep_json "$component"
+  done
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/merge_readme_sweep_components.py" \
+    --platform gfx1100 --engine paro --components "${paro_components[@]}" \
+    --json "$paro_json" > "$LOGDIR/hipengine-paro-merge.log" 2>&1
 
   echo "[run] hipEngine GGUF Q4_K_M -> $gguf_json" | tee -a "$LOGDIR/run.log"
-  "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 timeout "$TIMEOUT_LONG" "$THEROCK_PY" "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
-    --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
-    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-    --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
-    --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
-    --json "$gguf_json" > "$LOGDIR/hipengine-gguf.log" 2>&1
-  compact_readme_sweep_json "$gguf_json"
+  for workload in "${workloads[@]}"; do
+    safe=${workload//\//-}
+    component="$LOGDIR/hipengine-gguf-$safe.json"
+    gguf_components+=("$component")
+    echo "[run] hipEngine GGUF $workload" | tee -a "$LOGDIR/run.log"
+    "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 \
+      timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
+      "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
+      --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
+      --backend hip_gfx1100 --workloads "$workload" \
+      --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+      --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+      --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
+      --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
+      --json "$component" > "$LOGDIR/hipengine-gguf-$safe.log" 2>&1
+    compact_readme_sweep_json "$component"
+  done
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/merge_readme_sweep_components.py" \
+    --platform gfx1100 --engine gguf --components "${gguf_components[@]}" \
+    --json "$gguf_json" > "$LOGDIR/hipengine-gguf-merge.log" 2>&1
 
   printf 'PARO_JSON=%s\nGGUF_JSON=%s\n' "$paro_json" "$gguf_json" > "$LOGDIR/hipengine-results.env"
 }
@@ -271,26 +312,51 @@ run_llamacpp() {
   local hip_json="$OUTDIR/${DATE_PREFIX}-llamacpp-hip-q4km-f16kv.json"
   local vulkan_json="$OUTDIR/${DATE_PREFIX}-llamacpp-vulkan-q4km-f16kv.json"
   echo "[run] llama.cpp HIP -> $hip_json" | tee -a "$LOGDIR/run.log"
-  HIP_VISIBLE_DEVICES="$HIP_VISIBLE_DEVICES_W7900" PYTHONPATH="$REPO_ROOT" timeout "$TIMEOUT_LONG" python3 "$REPO_ROOT/scripts/llamacpp_bench_with_peak.py" \
+  HIP_VISIBLE_DEVICES="$HIP_VISIBLE_DEVICES_W7900" PYTHONPATH="$REPO_ROOT" \
+    timeout "$TIMEOUT_LONG" "$THEROCK_PY" "$REPO_ROOT/scripts/llamacpp_bench_with_peak.py" \
     --llama-bench "$LLAMACPP_HIP_BENCH" \
     --model "$LLAMACPP_Q4KM_MODEL" --backend hip \
     --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --repetitions 1 --ngl 99 --flash-attn 1 \
-    --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name "$AMDGPU_CARD_NAME_W7900" \
+    --repetitions 5 --ngl 99 --flash-attn 1 \
+    --cache-type-k f16 --cache-type-v f16 --poll 10 \
+    --card-name "$AMDGPU_CARD_NAME_W7900" --memory-domain vram \
     --extra-args "-dev ROCm0" \
     --output "$hip_json" > "$LOGDIR/llamacpp-hip.log" 2>&1
 
   echo "[run] llama.cpp Vulkan -> $vulkan_json" | tee -a "$LOGDIR/run.log"
-  PYTHONPATH="$REPO_ROOT" timeout "$TIMEOUT_LONG" python3 "$REPO_ROOT/scripts/llamacpp_bench_with_peak.py" \
+  PYTHONPATH="$REPO_ROOT" timeout "$TIMEOUT_LONG" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/llamacpp_bench_with_peak.py" \
     --llama-bench "$LLAMACPP_VULKAN_BENCH" \
     --model "$LLAMACPP_Q4KM_MODEL" --backend vulkan \
     --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-    --repetitions 1 --ngl 99 --flash-attn 1 \
-    --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name "$AMDGPU_CARD_NAME_W7900" \
+    --repetitions 5 --ngl 99 --flash-attn 1 \
+    --cache-type-k f16 --cache-type-v f16 --poll 10 \
+    --card-name "$AMDGPU_CARD_NAME_W7900" --memory-domain vram \
     --extra-args "-dev Vulkan0" \
     --output "$vulkan_json" > "$LOGDIR/llamacpp-vulkan.log" 2>&1
 
   printf 'LLAMACPP_HIP_JSON=%s\nLLAMACPP_VULKAN_JSON=%s\n' "$hip_json" "$vulkan_json" > "$LOGDIR/llamacpp-results.env"
+}
+
+run_summary() {
+  local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
+  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local hip_json="$OUTDIR/${DATE_PREFIX}-llamacpp-hip-q4km-f16kv.json"
+  local vulkan_json="$OUTDIR/${DATE_PREFIX}-llamacpp-vulkan-q4km-f16kv.json"
+  local summary_json="$OUTDIR/${DATE_PREFIX}-summary.json"
+  local gguf_correctness="${GGUF_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-gfx1100-gguf-eager-p512-d4.json}"
+  local paro_correctness="${PARO_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-gfx1100-paro-transfer-correctness.json}"
+
+  echo "[run] four-column W7900 promotion gate -> $summary_json" | tee -a "$LOGDIR/run.log"
+  "${THEROCK_ENV[@]}" "$THEROCK_PY" \
+    "$REPO_ROOT/scripts/assemble_gfx1151_readme_topline.py" \
+    --platform gfx1100 \
+    --hipengine-paro "$paro_json" --hipengine-gguf "$gguf_json" \
+    --llamacpp-hip "$hip_json" --llamacpp-vulkan "$vulkan_json" \
+    --gguf-correctness "$gguf_correctness" \
+    --paro-correctness "$paro_correctness" \
+    --json "$summary_json" --markdown "$LOGDIR/topline-tables.md" \
+    > "$LOGDIR/topline-summary.log" 2>&1
 }
 
 run_concurrency() {
@@ -401,6 +467,14 @@ case "$phase" in
   llamacpp)
     run_llamacpp
     ;;
+  summary)
+    run_summary
+    ;;
+  topline)
+    run_hipengine
+    run_llamacpp
+    run_summary
+    ;;
   concurrency)
     run_concurrency
     ;;
@@ -419,6 +493,7 @@ case "$phase" in
     trap stop_vllm_server EXIT
     run_hipengine
     run_llamacpp
+    run_summary
     run_concurrency
     start_vllm_server
     run_vllm_client
