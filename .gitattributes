@@ -8,3 +8,8 @@ WORKLOG.md merge=union
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/** -whitespace
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.aks2 filter=lfs diff=lfs merge=lfs -text
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.so* filter=lfs diff=lfs merge=lfs -text
+
+# Unified diffs encode blank context lines as one leading space. Do not flag
+# that patch syntax as trailing whitespace when the reproducibility bundle is
+# added or reviewed.
+benchmarks/llama.cpp/*.patch -whitespace

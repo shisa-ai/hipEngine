@@ -691,6 +691,15 @@ llama.cpp MTP rows are external comparison diagnostics, not accepted hipEngine
 performance claims. Use them to answer "what does current llama.cpp do on this
 model and prompt mix?" before comparing hipEngine changes.
 
+For cross-engine decode-only tables, follow the
+[`benchmarks/README.md` transition contract](../benchmarks/README.md#cross-engine-gguf-decode-timing-contract).
+llama.cpp starts `predicted_ms` after sampling the first output while including
+that token in `predicted_n`; native `predicted_per_second` is therefore a
+self-reported diagnostic, not the cross-engine rate. Request `N+1` outputs and
+use the runner's `aggregate_decode_transition_per_second` for `N` timed
+transitions. Compare it only with hipEngine complete MTP `cycle_wall_ms`, and
+keep client/HTTP wall separate.
+
 Default config:
 
 - Runner: `python3 scripts/llamacpp_mtp_bench.py`

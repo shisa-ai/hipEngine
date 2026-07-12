@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-07-12T14:00:00Z",
+  "upstream": {
+    "url": "https://github.com/ggerganov/llama.cpp",
+    "base_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30"
+  },
+  "instrumented_source": {
+    "head_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "describe": "gguf-v0.19.0-602-g1ebf790cd-dirty",
+    "local_commits": [
+      "6eb48cb70 tools: add MTP stage timing splits",
+      "dd7ec418c tools: add MTP ROCTX stage ranges",
+      "ef8050cec tools: add MTP token trace JSON",
+      "0f7d32267 tools: add MTP draft score trace",
+      "c0f750604 tools: add MTP hidden state trace",
+      "687c17d26 tools: add MTP tensor stage trace",
+      "1ebf790cd tools: trace MTP process tensor rows"
+    ],
+    "working_tree_files": [
+      "common/speculative.cpp",
+      "common/speculative.h",
+      "src/llama-context.cpp",
+      "src/llama-context.h",
+      "src/llama-ext.h",
+      "src/llama-graph.cpp",
+      "src/llama-graph.h",
+      "src/models/qwen35.cpp",
+      "src/models/qwen35moe.cpp",
+      "tools/server/server-context.cpp"
+    ]
+  },
+  "patches": [
+    {
+      "order": 1,
+      "path": "0001-mtp-instrumentation-committed.patch",
+      "sha256": "fee968cd5d1807ecf03e9a82d6e9f106d2fb52d592edb4f1e8ad1aaa58ee2922",
+      "bytes": 67928,
+      "lines": 1720,
+      "applies_to": "6e9007ae61f4e994c27484759caac6ef2aa32b30"
+    },
+    {
+      "order": 2,
+      "path": "0002-mtp-instrumentation-working-tree.patch",
+      "sha256": "357eb45eb4106e2251ea42517714bba2c2f6bc41c2fcf5440c8d93639e110cd8",
+      "bytes": 72675,
+      "lines": 1725,
+      "applies_after": "0001-mtp-instrumentation-committed.patch"
+    }
+  ],
+  "validation": {
+    "fresh_clone_git_apply_check": true,
+    "combined_diff_matches_captured_working_tree": true,
+    "validation_root": "/tmp/llama-cpp-mtp-patchcheck-20260712"
+  },
+  "reference_build": {
+    "build_number": 9648,
+    "self_reported_commit": "1ebf790cd",
+    "compiler": "GNU 16.1.1",
+    "cmake": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "GGML_HIP": true,
+      "GGML_NATIVE": true
+    },
+    "binaries": {
+      "llama-server": {
+        "path_at_measurement": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+        "sha256": "105a8712fc0d91cf496faa4701970779ad0ead0561fa51cd096b0fa0aa1eb8c5"
+      },
+      "llama-completion": {
+        "path_at_measurement": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-completion",
+        "sha256": "346164d14c03862ab01367b19440e513b24b349e871a57dfdf4a57c3cc9d3854"
+      },
+      "llama-tokenize": {
+        "path_at_measurement": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-tokenize",
+        "sha256": "65f263cdc7ce998ca2428007f3990b19b337363a7b2a7405a29fe1d5e2660a6c"
+      }
+    }
+  },
+  "notes": [
+    "Executable hashes are authoritative because the self-reported commit omits dirty-source state.",
+    "All captured source-file mtimes precede the retained llama-server binary mtime; the patchset reproduces the source state present at build time.",
+    "The patches are instrumentation for diagnostics and timing attribution; llama.cpp remains an external performance_claim=false comparator."
+  ]
+}
