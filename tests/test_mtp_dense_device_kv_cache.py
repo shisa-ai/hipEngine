@@ -14,6 +14,21 @@ def _hip_available() -> bool:
     return True
 
 
+def test_empty_mtp_weight_cache_cleanup_does_not_load_hip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.core import hip
+    from hipengine.kernels.hip_gfx1100.speculative import mtp_nextn
+
+    assert not mtp_nextn._WEIGHT_CACHE
+
+    def fail_runtime_load():
+        raise AssertionError("empty cache cleanup must not load HIP")
+
+    monkeypatch.setattr(hip, "get_hip_runtime", fail_runtime_load)
+    mtp_nextn.clear_weight_cache()
+
+
 @pytest.mark.skipif(not _hip_available(), reason="ROCm/HIP runtime is not available")
 def test_mtp_dense_device_kv_cache_matches_two_row_dense_attention() -> None:
     """Sequential device-cache writes should match the existing dense cache oracle.
