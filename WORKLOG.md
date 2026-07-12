@@ -152903,3 +152903,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   The quality row rejected (expected diagnostic result): matched KL by position
   was `0.0/0.78374/0.28920/0.58985/1.06016`, top-1 agreement `0.6`. Output:
   `/tmp/hipengine-kv-int8-accuracy-instrumentation-smoke.json`.
+
+## 2026-07-13 — Add bounded five-category KV quality smoke
+
+- Added `benchmarks/prompts/kv-int8-long-context-smoke.jsonl` with one compact
+  retrieval, multihop, aggregation, long-document, and code task. The runner
+  expands neutral filler to an exact token count while preserving distributed
+  evidence offsets and a Qwen chat suffix.
+- Added `scripts/qwen35_paro_kv_quality_smoke.py`. It loads model metadata once,
+  runs serial BF16 and candidate-KV resident sessions, scores strict `FINAL:`
+  answers, records prompt/output hashes and provenance, and distinguishes a
+  candidate regression from an unscorable BF16 reference. Exact token equality
+  is diagnostic only. No RED-first run was possible for this new standalone
+  harness; eleven focused CPU tests developed with it cover suite validation,
+  exact token expansion, scoring, task selection, and paired-result semantics.
+  The first live smoke caught and fixed an incorrect assumption that tokenizer
+  ownership/cleanup lived on `Qwen35ParoNextTokenRunner`; tokenizer and device
+  allocations actually belong to each resident session.
+- Live W7900 runner smoke command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3
+  scripts/qwen35_paro_kv_quality_smoke.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --suite benchmarks/prompts/kv-int8-long-context-smoke.jsonl --limit 1
+  --context-tokens 512 --max-new-tokens 48 --max-layers 40
+  --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --kv-storage int8_per_token_head --json
+  /tmp/hipengine-kv-quality-suite-smoke-chat.json`.
+- The smoke exercised both complete runtime paths and emitted a valid artifact,
+  but correctly returned `reference_unscorable`: the BF16 PARO output did not
+  produce a `FINAL:` answer and decoded as number/punctuation fragments. This is
+  now explicit baseline evidence to investigate rather than being misclassified
+  as an INT8 task-quality pass. Candidate output was also unscorable.
