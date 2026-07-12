@@ -1886,14 +1886,21 @@ class _QueuedGeneration:
 
 
 class _CompositeGenerationCancellationToken:
-    """Cancellation view that trips when any grouped request token trips."""
+    """Cancellation view that trips only when every grouped request is gone.
+
+    Coalesced requests share one backend call, but one disconnected client must
+    not abort unrelated rows in that call.  Until the model runners consume
+    row-scoped cancellation tokens and can reclaim individual slots, a
+    cancelled member is allowed to finish as discarded work; the shared call
+    is cancelled once no live member remains.
+    """
 
     def __init__(self, tokens: Sequence[GenerationCancellationToken]) -> None:
         self._tokens = tuple(tokens)
 
     @property
     def cancelled(self) -> bool:
-        return any(bool(token.cancelled) for token in self._tokens)
+        return bool(self._tokens) and all(bool(token.cancelled) for token in self._tokens)
 
     @property
     def finish_details(self) -> FinishDetails:

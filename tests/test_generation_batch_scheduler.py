@@ -4129,6 +4129,7 @@ def test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8(tmp_path: Path, m
     assert all("HIP_VISIBLE_DEVICES=1" in row["command"] for row in payload["commands"])
     assert all("scripts/qwen35_batch_retained_bench.py" in row["command"] for row in payload["commands"])
     assert "--batch-size 4" in payload["commands"][1]["command"]
+    assert all(shlex.split(row["command"]).count("--batch-size") == 1 for row in payload["commands"])
     assert "--require-cached-build" in payload["commands"][0]["command"]
     assert payload["commands"][2]["artifact_path"].endswith("native-equality-c8-p16-d2.json")
 
@@ -15837,6 +15838,96 @@ def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path, 
         for command in payload["independent_c1_commands"]
     )
     assert any("native GGUF c>N" in reason for reason in payload["blockers"])
+
+
+def test_gguf_cN_diagnostic_executes_independent_c1_equality(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+    prompt_suite = tmp_path / "prompts.jsonl"
+    prompt_suite.write_text(
+        '\n'.join(
+            (
+                json.dumps({"id": "first", "category": "code", "messages": [{"role": "user", "content": "alpha"}]}),
+                json.dumps({"id": "second", "category": "general_en", "prompt": "beta"}),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class FakeLLM:
+        instances: list["FakeLLM"] = []
+
+        def __init__(self, model_path, *, backend, quant):
+            self.model_path = str(model_path)
+            self.backend = str(backend)
+            self.quant = str(quant)
+            self._text_generator = SimpleNamespace(
+                inner=SimpleNamespace(last_batch_generation=None)
+            )
+            self.calls: list[tuple[Any, ...]] = []
+            self.instances.append(self)
+
+        def prepare(self, *, max_sequence_length, sampling_params):
+            assert max_sequence_length == 1024
+            assert sampling_params.max_tokens == 4
+            return max_sequence_length
+
+        def generate_detailed(self, prompts, sampling_params):
+            prompt_rows = tuple(prompts)
+            self.calls.append(prompt_rows)
+            outputs = [GenerationOutput(text="ok", generated_token_ids=(7, 8, 9, 10)) for _ in prompt_rows]
+            if len(prompt_rows) > 1:
+                self._text_generator.inner.last_batch_generation = {
+                    "path": "gguf_packed_ar_server_decode",
+                    "native_caware_decode": True,
+                    "serial_decode_fallback": False,
+                }
+            return outputs
+
+    monkeypatch.setattr(gguf_diagnostic, "LLM", FakeLLM)
+    args = build_gguf_diagnostic_parser().parse_args(
+        [
+            "--fixture",
+            "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json",
+            "--model",
+            str(model),
+            "--backend",
+            "hip_gfx1151",
+            "--rows",
+            "2",
+            "--repeat-runs",
+            "2",
+            "--prompt-suite",
+            str(prompt_suite),
+            "--execute",
+        ]
+    )
+
+    payload = run_gguf_diagnostic(args)
+
+    assert payload["status"] == "eq_ok"
+    assert payload["mode"] == "gguf_cN_generated_token_equality"
+    assert payload["performance_claim"] is False
+    assert payload["prompt_rows"] == [
+        {"id": "first", "category": "code"},
+        {"id": "second", "category": "general_en"},
+    ]
+    assert payload["independent_c1_token_ids"] == [[7, 8, 9, 10], [7, 8, 9, 10]]
+    assert len(payload["runs"]) == 2
+    assert all(run["all_rows_equal"] is True for run in payload["runs"])
+    assert all(run["native_caware_decode"] is True for run in payload["runs"])
+    assert all(run["serial_decode_fallback"] is False for run in payload["runs"])
+    assert all("scheduler_token_chunks" not in run["batch_execution"] for run in payload["runs"])
+    assert "--execute" in payload["command"]
+    assert "--repeat-runs 2" in payload["command"]
+    assert FakeLLM.instances[0].calls[:3] == [("alpha",), ("beta",), ("alpha", "beta")]
+
+    args.max_new_tokens = 0
+    blocked = run_gguf_diagnostic(args)
+    assert blocked["status"] == "blocked"
+    assert "max-new-tokens must be positive" in blocked["blockers"]
+    assert len(FakeLLM.instances) == 1
 
 
 def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

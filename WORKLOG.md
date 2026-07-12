@@ -152961,3 +152961,54 @@ graphless decode launch-collapse path without regressing target/serial parity.
   to the same commit. PR #3 already had the requested upstream/patience note, so
   posted only the non-duplicative release follow-up at
   `https://github.com/shisa-ai/hipEngine/pull/3#issuecomment-4952969565`.
+
+## 2026-07-13 - Re-baseline PARO and GGUF concurrency
+
+- Re-audited `docs/CONCURRENCY.md`, `docs/SOL-OPTIMIZATION.md`, the public loop
+  adapter, server coalescer, PARO generator/session path, and GGUF packed AR
+  path after v0.3.0 publication. The key correction is that host scheduler
+  scaffolding is not yet a production continuous model loop:
+  `SubmitPollTextGenerator` constructs a loop per API call and delegates one
+  complete inner batch. PARO production remains width-1; GGUF has a real packed
+  resident route that the old template-only status did not reflect.
+- Fixed cross-request cancellation coupling in `_GenerationBatcher` groups.
+  Previously either member token made `_CompositeGenerationCancellationToken`
+  cancel the whole PARO/GGUF backend call. The composite now cancels only when
+  every grouped request is gone. A cancelled row remains discarded work until
+  runners gain row-scoped tokens/reclaim; live neighbors complete normally.
+  Added property and in-flight regression coverage for default AR and MTP
+  groups.
+- Promoted `scripts/qwen35_batch_gguf_diagnostic.py` from template-only to a
+  dual-mode gate. Default mode remains CPU-safe planning; `--execute` now runs
+  production packed AR against independent c1, `--repeat-runs` checks
+  repeatability, and `--prompt-suite` accepts the canonical JSONL categories.
+  Artifacts stay `performance_claim=false` and explicitly do not claim
+  hidden/Conv/GDN/KV or lifecycle equality.
+- Measured on Radeon 8060S/gfx1151 with the documented TheRock overlay and
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. Exact command is embedded in
+  `benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`:
+  all 10 `mtpbench-code-general-ja` prompts across `code`, `general_en`,
+  `general_ja`, and `mixed_ja_en` match independent c1 for **3/3 c10 repeats**
+  at eight output tokens. Every repeat records
+  `gguf_packed_ar_server_decode`, `native_caware_decode=true`, and no serial
+  fallback; c10 executes the production c4+c4+c2 packed chunk schedule. This
+  narrows the prior intermittent G8 token blocker but does not close state/KV,
+  shrink/sparse, cancellation, long-context, profiler, or scaling gates.
+- Re-ran the current PARO native c2 gate on the same gfx1151 with the installed
+  35B packed model, 40 layers, BF16 KV, two 512-token fixture rows, and four
+  decode tokens:
+  `scripts/qwen35_batch_equality_matrix.py --model /home/lhl/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --fixture benchmarks/results/2026-06-04-hipengine-qwen35-c8-tailfront-rowchunk2-280/tail_front_45670123.json --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 0 --max-layers 40 --batch-sizes 2 --repeat-runs 1 --output-dir /tmp/hipengine-paro-c2-pass-20260713b --json /tmp/hipengine-paro-c2-pass-20260713b.json`.
+  Result remains `rejected_correctness`: both rows have equal-prefix length 1
+  and diverge on the first native decode transition. The active path is native
+  segmented linear state/projections, batch-GEMV output, selected-c1-batch MoE,
+  native full attention, and batched LM-head. No performance claim is made.
+- Updated `PLAN.md`, `CONCURRENCY.md`, and `SOL-OPTIMIZATION.md`: v0.3.0 makes
+  the unreproduced R0 report conditional rather than release-blocking; R3/R4
+  concurrency is the active pickup; PARO native cells are correctly marked
+  rejected; GGUF Q4_K_M is marked token-diagnostic-only; and G8 is in progress
+  behind deeper path-local lifecycle evidence.
+- Validation: the combined CPU suite
+  `tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_generation_batch_scheduler.py`
+  passes at 100%; focused in-flight cancellation tests pass; `py_compile`, JSON
+  parsing, and `git diff --check` pass. Ruff is not installed in the current
+  `uv --extra dev` environment, so no Ruff result is claimed.

@@ -2549,6 +2549,52 @@ def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> 
     assert generator.last_batch_generation["serial_decode_fallback"] is True
 
 
+def test_gguf_ar_batch_decode_fallback_advances_each_slot_once_per_cycle(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+
+        def step_batch_native(self, token_ids, **kwargs):
+            calls.append(("step_batch", self.slot_id, tuple(int(token) for token in token_ids)))
+            raise NotImplementedError("packed shape unavailable")
+
+        def step(self, token_id: int, *, return_logits=False):
+            calls.append(("step", self.slot_id, int(token_id), return_logits))
+            self.position += 1
+            return SimpleNamespace(token_id=int(token_id) + 1)
+
+    slots = [
+        qwen35_gguf._GGUFARServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+        )
+        for slot_id in range(2)
+    ]
+
+    generator = _generator()
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
+
+    assert generator._try_step_ar_serving_slots_batch(
+        slots,
+        _request(prompts=("long", "long2"), max_tokens=4),
+    ) is True
+
+    assert calls == [
+        ("step_batch", 0, (1, 1)),
+        ("step", 0, 1, False),
+        ("step", 1, 1, False),
+    ]
+    assert [slot.generated_ids for slot in slots] == [[1, 2], [1, 2]]
+    assert [slot.serial_decode_steps for slot in slots] == [1, 1]
+
+
 def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
     calls: list[tuple] = []
 
