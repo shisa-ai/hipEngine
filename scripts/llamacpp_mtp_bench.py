@@ -467,6 +467,10 @@ def _summarize_rows(
 ) -> dict[str, Any]:
     pred_n = sum((row.get("timings", {}).get("predicted_n") or 0) for row in rows)
     pred_ms = sum((row.get("timings", {}).get("predicted_ms") or 0.0) for row in rows)
+    first_output_tokens_untimed = sum(
+        1 for row in rows if int((row.get("timings", {}).get("predicted_n") or 0)) > 0
+    )
+    timed_decode_transitions = pred_n - first_output_tokens_untimed
     decode_ms = float(aggregate_decode_ms) if aggregate_decode_ms is not None else float(pred_ms)
     request_wall_s = sum(float(row.get("wall_s") or 0.0) for row in rows)
     aggregate_wall_s = float(client_wall_s) if client_wall_s is not None else request_wall_s
@@ -484,6 +488,14 @@ def _summarize_rows(
         "predicted_per_second_weighted": (1000.0 * pred_n / pred_ms) if pred_ms else None,
         "aggregate_decode_ms_total": decode_ms,
         "aggregate_decode_predicted_per_second": (1000.0 * pred_n / decode_ms) if decode_ms else None,
+        "first_output_tokens_untimed": first_output_tokens_untimed,
+        "timed_decode_transitions": timed_decode_transitions,
+        "transition_normalized_predicted_per_second": (
+            1000.0 * timed_decode_transitions / pred_ms
+        ) if pred_ms else None,
+        "aggregate_decode_transition_per_second": (
+            1000.0 * timed_decode_transitions / decode_ms
+        ) if decode_ms else None,
         "client_wall_s_total": aggregate_wall_s,
         "request_wall_s_total": request_wall_s,
         "client_aggregate_predicted_per_second": (pred_n / aggregate_wall_s) if aggregate_wall_s else None,
@@ -494,6 +506,16 @@ def _summarize_rows(
         "denominators": {
             "draft_acceptance": "draft_n_accepted / draft_n",
             "accepted_per_output": "draft_n_accepted / predicted_n",
+            "native_predicted_per_second": "predicted_n / predicted_ms",
+            "transition_normalized_predicted_per_second": (
+                "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+            ),
+        },
+        "timing_boundary": {
+            "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+            "first_output_token": "sampled before t_start_generation and included in predicted_n",
+            "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+            "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt",
         },
     }
 
@@ -547,6 +569,8 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
                 mtp_client_tps = mtp["summary"].get("client_aggregate_predicted_per_second")
                 base_agg_decode_tps = base["summary"].get("aggregate_decode_predicted_per_second")
                 mtp_agg_decode_tps = mtp["summary"].get("aggregate_decode_predicted_per_second")
+                base_transition_tps = base["summary"].get("aggregate_decode_transition_per_second")
+                mtp_transition_tps = mtp["summary"].get("aggregate_decode_transition_per_second")
                 summary[protocol] = {
                     "base_weighted_predicted_per_second": base_tps,
                     "mtp_weighted_predicted_per_second": mtp_tps,
@@ -556,6 +580,11 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
                     "aggregate_decode_speedup": (
                         mtp_agg_decode_tps / base_agg_decode_tps
                     ) if base_agg_decode_tps and mtp_agg_decode_tps else None,
+                    "base_transition_normalized_predicted_per_second": base_transition_tps,
+                    "mtp_transition_normalized_predicted_per_second": mtp_transition_tps,
+                    "transition_normalized_speedup": (
+                        mtp_transition_tps / base_transition_tps
+                    ) if base_transition_tps and mtp_transition_tps else None,
                     "base_client_aggregate_predicted_per_second": base_client_tps,
                     "mtp_client_aggregate_predicted_per_second": mtp_client_tps,
                     "client_aggregate_speedup": (
@@ -707,6 +736,9 @@ def _summary_text(artifact: dict[str, Any]) -> str:
             f"agg_decode_base={_fmt(row.get('base_aggregate_decode_predicted_per_second'))} "
             f"agg_decode_mtp={_fmt(row.get('mtp_aggregate_decode_predicted_per_second'))} "
             f"agg_decode_speedup={_fmt(row.get('aggregate_decode_speedup'), 3)}x "
+            f"transition_base={_fmt(row.get('base_transition_normalized_predicted_per_second'))} "
+            f"transition_mtp={_fmt(row.get('mtp_transition_normalized_predicted_per_second'))} "
+            f"transition_speedup={_fmt(row.get('transition_normalized_speedup'), 3)}x "
             f"client_base={_fmt(row.get('base_client_aggregate_predicted_per_second'))} "
             f"client_mtp={_fmt(row.get('mtp_client_aggregate_predicted_per_second'))} "
             f"client_speedup={_fmt(row.get('client_aggregate_speedup'), 3)}x "

@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_gguf_mtp_full_suite_refresh",
+  "created_at": "2026-07-12T13:58:29Z",
+  "status": "accepted_compat_with_exact_negative_and_external_diagnostic",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": "full ten-prompt GGUF AR/MTP suite plus transition-normalized llama.cpp HIP diagnostic",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "hip_visible_devices": "0"
+  },
+  "software": {
+    "hipengine_commit": "3ce60e5608ba62fa971af0b039b2483b723761d7",
+    "hipengine_clean": true,
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "python": "/home/lhl/miniforge3/envs/therock/bin/python3.12"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF with one embedded MTP block",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sampled_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype_hipengine": "bf16",
+    "kv_dtype_llamacpp": "f16"
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "reasoning": "off",
+    "sampling": "greedy"
+  },
+  "correctness": {
+    "status": "passed",
+    "clean_commit": "3ce60e5608ba62fa971af0b039b2483b723761d7",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "prompt": "[9707] * 512",
+    "decode_steps": 4,
+    "external_and_hipengine_tokens": [9707, 9707, 9707, 9707, 9707],
+    "serial_prefix_state_exact": true,
+    "hidden_exact": true,
+    "layer_outputs_exact": "40/40 at every transition",
+    "conv_gdn_families_exact": "30/30 at every transition",
+    "live_kv_families_exact": "10/10 at every transition",
+    "source_sha256": "6b6d3824080b3e7b0ffc33e1a645a3e89cf47886e15e62e37de6fdb09f1a4556",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3.12 scripts/gguf_eager_teacher_forced_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 --decode-steps 4 --compiler-version-file <hipcc-version.txt> --require-cached-build --json <oracle.json>",
+    "run_wall_seconds": 98.028
+  },
+  "timing_contract": {
+    "hipengine_true_ar": "first token from prefill and one warmup token excluded; host wall begins before the first of N measured session.step calls and ends after the Nth returns",
+    "hipengine_mtp_canonical": "visible output tokens divided by summed draft plus target stage wall; retained for same-harness MTP/AR history",
+    "hipengine_mtp_cross_engine": "visible output tokens divided by complete cycle_wall_ms from proposal-cycle entry through target verification, state commit, acceptance, and output accounting",
+    "llamacpp_native": "predicted_n divided by predicted_ms; not cross-engine comparable because t_start_generation is set after the first output token is sampled while predicted_n includes it",
+    "llamacpp_cross_engine": "request N+1 outputs and divide sum(predicted_n - 1) by sum(predicted_ms); N=24 timed transitions per prompt in this refresh",
+    "client_wall": "includes prompt processing, HTTP, and response handling and is reported only as a separate diagnostic",
+    "reference": "benchmarks/llama.cpp/README.md"
+  },
+  "hipengine_exact_default": {
+    "status": "accepted_current_negative",
+    "semantic_contract": "serial-prefix preserving exact/default",
+    "protocol": "full ten-prompt fixed 10-cycle suite; budgets B1-B5",
+    "route": "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+    "true_ar": {
+      "decode_tok_s": 54.13718913117794,
+      "total_output_tokens": 600
+    },
+    "budgets": {
+      "b1": {"decode_tok_s": 50.43468393214013, "vs_true_ar": 0.9316, "draft_acceptance": 0.75, "accepted_per_output": 0.375, "cycle_wall_ms_per_output": 19.900404375},
+      "b2": {"decode_tok_s": 50.86276301760341, "vs_true_ar": 0.9395, "draft_acceptance": 0.7631578947368421, "accepted_per_output": 0.46524064171123, "cycle_wall_ms_per_output": 19.725133689839573},
+      "b3": {"decode_tok_s": 50.41364394859825, "vs_true_ar": 0.9312, "draft_acceptance": 0.7092198581560284, "accepted_per_output": 0.5, "cycle_wall_ms_per_output": 19.896080500000004},
+      "b4": {"decode_tok_s": 51.02594188465672, "vs_true_ar": 0.9425, "draft_acceptance": 0.7039473684210527, "accepted_per_output": 0.5169082125603864, "cycle_wall_ms_per_output": 19.659593236714976},
+      "b5": {"decode_tok_s": 51.81309690495068, "vs_true_ar": 0.9571, "draft_acceptance": 0.7232704402515723, "accepted_per_output": 0.5348837209302325, "cycle_wall_ms_per_output": 19.36029069767442}
+    },
+    "best_budget": "b5",
+    "mtp_beats_ar": false,
+    "cross_engine_cycle_wall": {
+      "decode_tok_s": 51.65211698603891,
+      "vs_true_ar": 0.9540967644419526
+    },
+    "historical_comparison": {
+      "old_commit": "44c4d3d4ddb96f2d6da186df81ab5a572e1095d8",
+      "old_b5_decode_tok_s": 61.97912312513152,
+      "new_b5_decode_tok_s": 51.81309690495068,
+      "delta_pct": -16.40233954206861,
+      "old_cycle_wall_ms_per_output": 16.161671162790697,
+      "new_cycle_wall_ms_per_output": 19.36029069767442,
+      "cycle_wall_delta_pct": 19.791391018077142,
+      "replay_or_commit_ms_per_output_old": 0.01906186046511628,
+      "replay_or_commit_ms_per_output_new": 2.766330697674419
+    },
+    "apple_to_apple_ok": true,
+    "source_sha256": "2371d5b5dbdd5833bc73720e6a07d28fd6af96083b47c8404783d9ab5dd7bd2a",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3.12 scripts/gguf_ar_mtp_suite.py --scope full --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --record-cycle-stage-timings --require-cached-build --output <exact-full.json>",
+    "run_wall_seconds": 181.526
+  },
+  "hipengine_llama_compat": {
+    "status": "accepted_explicit_accuracy_traded",
+    "semantic_contract": "llama-compatible direct partial commit/dp4a; not serial-prefix-equivalent; explicit-only",
+    "protocol": "B2 natural24/cyclecap24; full ten-prompt suite plus fixed category heldouts",
+    "route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+    "true_ar": {
+      "decode_tok_s": 54.397048751950685,
+      "total_output_tokens": 240
+    },
+    "full": {"prompts": 10, "decode_tok_s": 69.49592290585619, "vs_true_ar": 1.2775678920148046, "draft_acceptance": 0.7771739130434783, "accepted_per_output": 0.5958333333333333, "cycle_wall_ms_per_output": 14.412994166666666},
+    "train": {"prompts": 6, "true_ar_decode_tok_s": 54.43928552499464, "decode_tok_s": 70.95553453169347, "vs_true_ar": 1.3033884234045605, "draft_acceptance": 0.8207547169811321, "accepted_per_output": 0.6041666666666666, "cycle_wall_ms_per_output": 14.116264583333333},
+    "heldout": {"prompts": 4, "true_ar_decode_tok_s": 54.33381633494649, "decode_tok_s": 67.41573033707866, "vs_true_ar": 1.2407692830094492, "draft_acceptance": 0.717948717948718, "accepted_per_output": 0.5833333333333334, "cycle_wall_ms_per_output": 14.858088541666667},
+    "categories": {
+      "code": {"prompts": 4, "true_ar_decode_tok_s": 54.420456940210364, "decode_tok_s": 74.81180156169636, "vs_true_ar": 1.374699989084788, "draft_acceptance": 0.9104477611940298, "accepted_per_output": 0.6354166666666666, "cycle_wall_ms_per_output": 13.386905208333333},
+      "general_en": {"prompts": 2, "true_ar_decode_tok_s": 54.499944305537, "decode_tok_s": 67.61610953809745, "vs_true_ar": 1.2406638281872133, "draft_acceptance": 0.717948717948718, "accepted_per_output": 0.5833333333333334, "cycle_wall_ms_per_output": 14.811368749999998},
+      "general_ja": {"prompts": 2, "true_ar_decode_tok_s": 54.39769538313543, "decode_tok_s": 66.59637049780787, "vs_true_ar": 1.2242498515562907, "draft_acceptance": 0.6923076923076923, "accepted_per_output": 0.5625, "cycle_wall_ms_per_output": 15.041604166666668},
+      "mixed_ja_en": {"prompts": 2, "true_ar_decode_tok_s": 54.247317881943545, "decode_tok_s": 64.90257852535933, "vs_true_ar": 1.1964200454408538, "draft_acceptance": 0.6923076923076923, "accepted_per_output": 0.5625, "cycle_wall_ms_per_output": 15.438187500000003}
+    },
+    "cross_engine_cycle_wall": {
+      "timed_decode_transitions": 240,
+      "decode_tok_s": 69.38183617063608,
+      "vs_true_ar": 1.275470595601899
+    },
+    "historical_comparison": {
+      "old_commit": "ca571bf6fd4926a7820bcb397c7b7a51847dc472",
+      "old_decode_tok_s": 71.52265778196318,
+      "new_decode_tok_s": 69.49592290585619,
+      "delta_pct": -2.8336962564862844,
+      "old_cycle_wall_ms_per_output": 14.004740416666664,
+      "new_cycle_wall_ms_per_output": 14.412994166666666,
+      "cycle_wall_delta_pct": 2.9151111541785513
+    },
+    "apple_to_apple_ok": true,
+    "source_sha256": "7b738fed5a69c363d9d00d988080146ff271f46e4b6e691f9f990b62af7688e6",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3.12 scripts/gguf_ar_mtp_suite.py --scope full --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output <compat-full.json>",
+    "run_wall_seconds": 114.932
+  },
+  "llamacpp_hip": {
+    "status": "diagnostic_retained",
+    "performance_claim": false,
+    "protocol": "llama-server c1, B2 draft-MTP, request natural25 to time 24 post-first-token transitions, reasoning off, greedy, f16 KV, flash attention",
+    "native_reported": {
+      "base_decode_tok_s": 50.49387044807856,
+      "mtp_decode_tok_s": 69.437674271203,
+      "mtp_vs_base": 1.3751703653338243,
+      "warning": "native rates count one untimed first output token per request"
+    },
+    "transition_normalized": {
+      "requests": 10,
+      "requested_outputs_per_prompt": 25,
+      "timed_decode_transitions_per_prompt": 24,
+      "timed_decode_transitions_total": 240,
+      "base_decode_ms_total": 4951.096,
+      "mtp_decode_ms_total": 3600.351,
+      "base_decode_tok_s": 48.47411563015543,
+      "mtp_decode_tok_s": 66.66016730035489,
+      "mtp_vs_base": 1.3751703653338243
+    },
+    "client_request_diagnostic": {
+      "base_output_tok_s": 37.74066111897332,
+      "mtp_output_tok_s": 46.786061416692064,
+      "mtp_vs_base": 1.2396725449298331
+    },
+    "draft_acceptance": 0.7955801104972375,
+    "accepted_per_output": 0.576,
+    "binary": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+      "version": "9648",
+      "self_reported_commit": "1ebf790cd",
+      "sha256": "105a8712fc0d91cf496faa4701970779ad0ead0561fa51cd096b0fa0aa1eb8c5",
+      "compiler": "GNU 16.1.1"
+    },
+    "source_checkout_at_measurement": {
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "dirty": true,
+      "patchset": "benchmarks/llama.cpp/manifest.json",
+      "note": "binary identity and hash are authoritative; repository-owned patches preserve the local instrumentation"
+    },
+    "source_sha256": "edec7c7fcc5f04ef142d54bdefae1af00575ce5a999699348b52e780b3882e85",
+    "command": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3.12 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --ctx-size 8192 --concurrency 1 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --draft-max 2 --mode both --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=--reasoning --server-extra-arg=off --output <llamacpp.json>",
+    "run_wall_seconds": 21.356
+  },
+  "cross_engine_comparison": {
+    "timed_decode_transitions_per_prompt": 24,
+    "hipengine_llama_compat_ar_tok_s": 54.397048751950685,
+    "llamacpp_base_tok_s": 48.47411563015543,
+    "hipengine_ar_vs_llamacpp": 1.1221875436982833,
+    "hipengine_llama_compat_mtp_tok_s": 69.38183617063608,
+    "llamacpp_mtp_tok_s": 66.66016730035489,
+    "hipengine_mtp_vs_llamacpp": 1.0408290134949407,
+    "qualification": "decode-only transition wall; different bf16 versus f16 KV types remain disclosed; client/end-to-end request wall is not compared"
+  },
+  "run_durations_seconds": {
+    "exact_cache_warm_smoke": 98.178,
+    "llama_compat_cache_warm_smoke": 94.118,
+    "exact_full": 181.526,
+    "llama_compat_full": 114.932,
+    "llamacpp_transition_match": 21.356,
+    "correctness_oracle_cached": 98.028,
+    "full_measurement_only_total": 317.814
+  },
+  "conclusions": [
+    "Current exact/default B5 is 51.813 versus 54.137 true-AR tok/s (0.9571x), so exact MTP no longer wins on gfx1151.",
+    "Explicit llama-compat B2 remains a full-suite win at 69.496 versus 54.397 true-AR tok/s (1.2776x); every category and heldout beat true AR.",
+    "The prior exact 61.979 tok/s row is historical: current exact cycle wall is 19.360 versus 16.162 ms/output, with replay/commit growing from 0.019 to 2.766 ms/output after the correctness/lifecycle pass.",
+    "For cross-engine decode boundaries, hipEngine llama-compat is 69.382 tok/s and llama.cpp is 66.660 tok/s over exactly 24 timed transitions per prompt.",
+    "llama.cpp native predicted_per_second is retained only as native reporting because it counts the prompt-produced first output token outside predicted_ms.",
+    "llama-compat remains explicit-only and accuracy-traded despite its speed because it is not serial-prefix-equivalent."
+  ]
+}

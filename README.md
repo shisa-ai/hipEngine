@@ -259,7 +259,9 @@ serial-prefix-equivalent. The exact row uses a fixed ten-cycle horizon; the AR,
 rank fixed-cycle exact directly against natural24 as one protocol. The
 llama.cpp column uses server-reported decode timing from prebuilt HIP binary
 `263cc04a5`/build 9600 and remains an external diagnostic with
-`performance_claim=false`.
+`performance_claim=false`. This W7900 row predates the transition-normalized
+contract and must not be ranked directly against hipEngine until it is rerun
+with `N+1` requested outputs for `N` timed decode transitions.
 
 ##### W7900 `llama-compat` full-suite transfer gate
 
@@ -283,21 +285,45 @@ automatic/default route.
 
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
 | --- | ---: | ---: | ---: |
-| Headline route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
-| Headline MTP decode | 61.98 tok/s (1.1312x own AR) | 71.52 tok/s (1.3055x own AR) | 71.91 tok/s (1.3835x own AR) |
-| Matched natural24 B2 MTP decode | 52.04 tok/s (diagnostic) | 71.52 tok/s | 71.91 tok/s |
-| Matched natural24 own AR | 54.80 tok/s | 54.79 tok/s | 51.98 tok/s |
-| Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
+| Route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural25 request / 24 timed transitions |
+| Canonical/native MTP decode | 51.81 tok/s (0.9571x own AR) | **69.50 tok/s (1.2776x own AR)** | 69.44 tok/s native (1.3752x own AR; not cross-engine comparable) |
+| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **69.38 tok/s** | 66.66 tok/s |
+| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **54.40 tok/s** | 48.47 tok/s |
+| Cross-engine MTP / own AR | n/a | 1.2755x | 1.3752x |
+| Draft acceptance | 72.33% | 77.72% | 79.56% |
+| Accepted draft/output | 53.49% | 59.58% | 57.60% |
+| Full-cycle/predicted wall per counted output or timed transition | 19.360 ms/output | 14.413 ms/output | 15.001 ms/transition |
 | State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
 
-`llama-compat` is the closer 1:1 performance comparison with llama.cpp on
-gfx1151 because both use B2 and the natural24 output horizon. It remains a
-separate semantic contract and is not serial-prefix-equivalent. The
-locally instrumented llama.cpp HIP column is a dirty-source diagnostic
-(`performance_claim=false`), not a promoted standalone topline. The exact B5
-headline uses a different fixed-cycle horizon and must not be ranked directly
-against the two natural24 columns; its matched natural24 B2 control is shown
-separately.
+The current exact/default B5 route no longer beats true AR after the
+correctness/state-lifecycle pass: **51.81 vs 54.14 tok/s (0.9571x)**. Its old
+61.98 tok/s row is retained only as history. `llama-compat` remains a separate,
+explicit-only semantic contract and is not serial-prefix-equivalent.
+
+The cross-engine rows use the canonical transition-matched timing contract:
+hipEngine uses complete cycle wall; llama.cpp requests 25 outputs and counts
+the 24 transitions inside `predicted_ms`. This removes llama.cpp's native
+one-untimed-token numerator advantage. hipEngine uses BF16 KV while llama.cpp
+uses F16 KV, which remains a model-execution difference even with matched timer
+boundaries. The captured llama.cpp source is dirty but fully preserved in the
+repository patchset; the binary hash is authoritative and
+`performance_claim=false`.
+
+##### gfx1151 `llama-compat` full-suite gate
+
+| Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full | 10 | 54.40 | **69.50** | **1.2776x** | 77.72% | 59.58% | 14.413 ms |
+| Train | 6 | 54.44 | **70.96** | **1.3034x** | **82.08%** | 60.42% | 14.116 ms |
+| Heldout | 4 | 54.33 | **67.42** | **1.2408x** | **71.79%** | 58.33% | 14.858 ms |
+| `code` | 4 | 54.42 | **74.81** | **1.3747x** | 91.04% | 63.54% | 13.387 ms |
+| `general_en` | 2 | 54.50 | **67.62** | **1.2407x** | 71.79% | 58.33% | 14.811 ms |
+| `general_ja` | 2 | 54.40 | **66.60** | **1.2242x** | 69.23% | 56.25% | 15.042 ms |
+| `mixed_ja_en` | 2 | 54.25 | **64.90** | **1.1964x** | 69.23% | 56.25% | 15.438 ms |
+
+All four categories and the heldout split beat their true same-protocol AR
+controls. Train/heldout draft acceptance is **82.08% / 71.79%**; the gap is
+kept visible rather than averaged away.
 
 #### Dense PARO DFlash
 

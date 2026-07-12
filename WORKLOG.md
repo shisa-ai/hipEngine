@@ -152478,3 +152478,85 @@ graphless decode launch-collapse path without regressing target/serial parity.
   full/train/heldout/category `llama-compat` gate, parity dashboard, platform
   index, and benchmark changelog. Fixed-cycle exact and natural24 rows are
   labelled as different protocols and are not ranked directly.
+
+## 2026-07-12 - Refresh gfx1151 GGUF MTP and fix cross-engine timing scope
+
+- Measured from clean detached hipEngine
+  `3ce60e5608ba62fa971af0b039b2483b723761d7` on Radeon 8060S/gfx1151,
+  TheRock HIP `7.15.0-0000000` / clang `aa451e1f`, kernel
+  `7.1.3-2-cachyos`, TuneD `accelerator-performance`, exact 22.663 GB
+  Q4_K_M sampled fingerprint `936659d6...64c89fb`, and prompt-suite SHA-256
+  `fac920be...6084a`. The detached tree stayed clean. Focused preflight passed
+  all 129 tests in `test_gguf_mtp_bench_metrics.py` and
+  `test_gguf_ar_mtp_suite.py`.
+- Cache-warm exact and `llama-compat` one-prompt smokes completed in
+  `98.178s` and `94.118s`; both had `apple_to_apple_ok=true`. Their one-prompt
+  ratios remain diagnostic only.
+- Exact/default full command:
+  `PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3.12
+  scripts/gguf_ar_mtp_suite.py --scope full --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route
+  resident-b1-probe-block-direct-cap32k-minrows2-pmin05
+  --record-cycle-stage-timings --require-cached-build --output
+  /tmp/hipengine-gfx1151-gguf-mtp-results-20260712/exact-full.json`.
+  Wall was `181.526s`. True AR is `54.1372 tok/s`; B1-B5 are
+  `50.4347/50.8628/50.4136/51.0259/51.8131 tok/s`. Best B5 is only
+  **0.9571x AR**, so current exact MTP does not win on gfx1151. Relative to
+  the old 61.9791 row, B5 is -16.40% and cycle wall grows
+  `16.1617 -> 19.3603 ms/output` (+19.79%). Replay/commit alone grows
+  `0.0191 -> 2.7663 ms/output`, explaining 2.7473 of the 3.1986 ms/output
+  cycle increase after the correctness/state-lifecycle pass.
+- `llama-compat` full command used the same model/prompts plus route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`,
+  `--budgets 2 --cycles 24 --max-output-tokens 24
+  --record-cycle-stage-timings --require-cached-build`; wall was `114.932s`.
+  It measures **69.4959 versus 54.3970 true-AR tok/s (1.2776x)**,
+  77.72% draft acceptance, 59.58% accepted/output, and
+  `14.413 ms/output`. Full/train/heldout ratios are
+  `1.2776x/1.3034x/1.2408x`; train/heldout acceptance is
+  `82.08%/71.79%`. Code/general-en/general-ja/mixed-ja-en all win at
+  `1.3747x/1.2407x/1.2242x/1.1964x`.
+- Audited the cross-engine denominator before ranking the local llama.cpp
+  build. hipEngine AR measures N returned post-prefill steps; hipEngine MTP
+  cross-engine wall is complete per-cycle wall. In llama.cpp
+  `server-context.cpp`, `t_start_generation` is assigned after sampling the
+  first output, while `predicted_n` includes it. Native
+  `predicted_n/predicted_ms` therefore counts one untimed token/request. The
+  initial natural24 run (`21.017s`) reported native `50.61 -> 68.83 tok/s`
+  but is not cross-engine comparable.
+- Reran llama.cpp HIP build 9648 / `1ebf790cd`, binary SHA-256
+  `105a8712...eb8c5`, with `--max-tokens 25`, B2, c1, F16 KV, flash
+  attention, reasoning off, greedy, and the same ten prompts. Wall was
+  `21.356s`. Native report is `50.4939 -> 69.4377 tok/s`; the corrected
+  24-transition numerator is **48.4741 -> 66.6602 tok/s (1.3752x)**.
+  hipEngine complete-cycle `llama-compat` is **69.3818 tok/s**, or +4.08%
+  versus llama.cpp at matched timing boundaries; hipEngine true AR is +12.22%.
+  BF16 versus F16 KV remains disclosed, and client request wall
+  (`37.74 -> 46.79 output tok/s`) remains a separate prompt+HTTP scope.
+- A clean current gfx1151 oracle was cache-warmed and rerun cache-only in
+  `98.028s`. llama.cpp and hipEngine emit `[9707] * 5`; all four fresh
+  serial-prefix transitions are byte-exact across hidden state, all 40 layer
+  outputs, 30 Conv/GDN state families, and 10 live K/V families.
+- Added transition-normalized fields and explicit source boundaries to
+  `scripts/llamacpp_mtp_bench.py`; all seven focused metric tests pass. Added
+  the durable contract to `benchmarks/README.md` and the parity dashboard.
+  Canonical measured wall for exact + compatibility + transition-matched
+  llama.cpp was `317.814s` (5m17.8s), excluding cache warm and correctness.
+- Preserved the local llama.cpp instrumentation under `benchmarks/llama.cpp/`:
+  upstream base `6e9007ae6`, seven local commits through `1ebf790cd`, and the
+  additional dirty working tree are two ordered patches totaling 140,603
+  bytes. A fresh shared-clone validation passed both `git apply --check`
+  stages and reproduced the captured combined diff exactly. The manifest
+  records patch/binary hashes, build flags, environment controls, and apply
+  order.
+- Compact retained artifact:
+  `benchmarks/results/2026-07-12-gfx1151-gguf-mtp-refresh.json`. Updated the
+  benchmark/root README tables, platform index, changelog, parity dashboard,
+  sync/metric tests, and historical labels. `llama-compat` remains explicit
+  and accuracy-traded; exact/default remains the semantic control despite its
+  current negative speed result.
+- Final docs/process validation passed: all 142 focused GGUF/MTP, llama.cpp
+  metric, suite, and README-sync tests; `git diff --check`; README block sync;
+  both compact JSON files; both recorded patch SHA-256 values; and the earlier
+  fresh-clone ordered patch replay/combined-diff equality check.

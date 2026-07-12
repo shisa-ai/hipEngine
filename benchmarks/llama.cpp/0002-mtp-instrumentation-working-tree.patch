@@ -1,0 +1,1725 @@
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index f95ad4dcfb140ef061373f97923b7dc0a086832b..1eb92ea17f243f42f6bdc1521db120409a63f717 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -124,6 +124,7 @@ static void common_speculative_mtp_roctx_pop() {
+ static thread_local std::map<std::string, double> common_speculative_mtp_stage_timings_ms;
+ static thread_local std::vector<common_speculative_mtp_draft_sample_trace> common_speculative_mtp_draft_sample_traces;
+ static thread_local std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hidden_state_traces;
++static thread_local std::vector<common_speculative_mtp_attention_trace> common_speculative_mtp_attention_traces;
+ 
+ static void common_speculative_mtp_stage_add(const char * name, int64_t dt_us) {
+     if (!common_speculative_mtp_stage_trace_enabled() || dt_us < 0) {
+@@ -166,6 +167,83 @@ static uint64_t common_speculative_mtp_fnv1a64(const float * row, int32_t n) {
+     return hash;
+ }
+ 
++static bool common_speculative_mtp_env_truthy(const char * name) {
++    const char * raw = std::getenv(name);
++    if (raw == nullptr) {
++        return false;
++    }
++    return std::strcmp(raw, "1") == 0 ||
++           std::strcmp(raw, "true") == 0 ||
++           std::strcmp(raw, "TRUE") == 0 ||
++           std::strcmp(raw, "yes") == 0 ||
++           std::strcmp(raw, "YES") == 0 ||
++           std::strcmp(raw, "on") == 0 ||
++           std::strcmp(raw, "ON") == 0;
++}
++
++static bool common_speculative_mtp_csv_contains_str(const char * raw, const char * value) {
++    if (raw == nullptr || raw[0] == '\0') {
++        return true;
++    }
++    std::string token;
++    for (const char * p = raw;; ++p) {
++        const char c = *p;
++        if (c == ',' || c == '\0') {
++            if (token == value) {
++                return true;
++            }
++            token.clear();
++            if (c == '\0') {
++                return false;
++            }
++            continue;
++        }
++        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
++            token.push_back(c);
++        }
++    }
++}
++
++static bool common_speculative_mtp_csv_contains_i32(const char * raw, int32_t value) {
++    if (raw == nullptr || raw[0] == '\0') {
++        return true;
++    }
++    std::string token;
++    for (const char * p = raw;; ++p) {
++        const char c = *p;
++        if (c == ',' || c == '\0') {
++            if (!token.empty() && std::atoi(token.c_str()) == value) {
++                return true;
++            }
++            token.clear();
++            if (c == '\0') {
++                return false;
++            }
++            continue;
++        }
++        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
++            token.push_back(c);
++        }
++    }
++}
++
++static bool common_speculative_mtp_hidden_state_trace_values_enabled(
++        const char * label,
++        int32_t row_index) {
++    if (!common_speculative_mtp_env_truthy("LLAMA_MTP_HIDDEN_TRACE_VALUES")) {
++        return false;
++    }
++    if (!common_speculative_mtp_csv_contains_str(
++                std::getenv("LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS"), label)) {
++        return false;
++    }
++    if (!common_speculative_mtp_csv_contains_i32(
++                std::getenv("LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS"), row_index)) {
++        return false;
++    }
++    return true;
++}
++
+ static void common_speculative_mtp_hidden_state_trace_add_row(
+         const char * label,
+         llama_seq_id seq_id,
+@@ -220,6 +298,10 @@ static void common_speculative_mtp_hidden_state_trace_add_row(
+         trace.last8.push_back(row[i]);
+     }
+ 
++    if (common_speculative_mtp_hidden_state_trace_values_enabled(label, row_index)) {
++        trace.values.assign(row, row + n);
++    }
++
+     common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
+ }
+ 
+@@ -284,9 +366,17 @@ static const char * common_speculative_mtp_tensor_trace_label(const char * label
+     if (std::strcmp(label, "mtp_post_ffn") == 0) {
+         return "llama_stage_post_ffn";
+     }
++    if (std::strcmp(label, "h_nextn_pre_output_norm") == 0) {
++        return "verify_pre_output_norm";
++    }
+     if (std::strcmp(label, "h_nextn") == 0) {
+         return "llama_stage_h_nextn";
+     }
++    if (std::strncmp(label, "l_out_", 6) == 0) {
++        static thread_local std::string layer_label;
++        layer_label = std::string("verify_layer_output_") + (label + 6);
++        return layer_label.c_str();
++    }
+     return label;
+ }
+ 
+@@ -334,6 +424,7 @@ static void common_speculative_mtp_tensor_trace_drain(
+         for (int32_t j = 0; j < src.last_count; ++j) {
+             trace.last8.push_back(src.last8[j]);
+         }
++        trace.values = src.values;
+ 
+         common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
+     }
+@@ -341,6 +432,110 @@ static void common_speculative_mtp_tensor_trace_drain(
+     llama_mtp_debug_tensor_trace_clear(ctx);
+ }
+ 
++static void common_speculative_mtp_attention_trace_drain(
++        llama_context * ctx,
++        llama_seq_id seq_id,
++        int32_t depth,
++        llama_token token_id,
++        llama_pos position) {
++    if (ctx == nullptr) {
++        return;
++    }
++
++    const size_t n_traces = llama_mtp_debug_attention_trace_count(ctx);
++    const llama_mtp_debug_attention_trace * traces = llama_mtp_debug_attention_trace_data(ctx);
++    if (!common_speculative_mtp_token_trace_enabled() || traces == nullptr || n_traces == 0) {
++        llama_mtp_debug_attention_trace_clear(ctx);
++        return;
++    }
++
++    for (size_t i = 0; i < n_traces; ++i) {
++        const auto & src = traces[i];
++        common_speculative_mtp_attention_trace trace;
++        trace.label = src.label;
++        trace.seq_id = src.has_row_metadata ? src.seq_id : seq_id;
++        trace.depth = depth;
++        trace.token_id = src.has_row_metadata ? src.token_id : token_id;
++        trace.position = src.has_row_metadata ? src.position : position;
++        trace.row_index = src.row_index;
++        trace.row_count = src.row_count;
++        trace.cache_tokens = src.cache_tokens;
++        trace.heads = src.heads;
++        trace.kv_heads = src.kv_heads;
++        trace.head_dim = src.head_dim;
++        trace.scale = src.scale;
++        trace.use_flash_attn = src.use_flash_attn != 0;
++        trace.cpu_device_mae_mean = src.cpu_device_mae_mean;
++        trace.cpu_device_max_abs = src.cpu_device_max_abs;
++        trace.q_shape.assign(src.q_ne, src.q_ne + 4);
++        trace.k_shape.assign(src.k_ne, src.k_ne + 4);
++        trace.v_shape.assign(src.v_ne, src.v_ne + 4);
++        trace.mask_shape.assign(src.mask_ne, src.mask_ne + 4);
++        trace.out_shape.assign(src.out_ne, src.out_ne + 4);
++
++        const int32_t head_count = std::min<int32_t>(src.head_count, LLAMA_MTP_DEBUG_ATTENTION_MAX_HEADS);
++        trace.per_head.reserve(head_count);
++        for (int32_t h = 0; h < head_count; ++h) {
++            const auto & src_head = src.heads_trace[h];
++            common_speculative_mtp_attention_head_trace head;
++            head.query_head = src_head.query_head;
++            head.kv_head = src_head.kv_head;
++            head.visible_count = src_head.visible_count;
++            head.max_score = src_head.max_score;
++            head.exp_sum = src_head.exp_sum;
++            head.cpu_device_mae = src_head.cpu_device_mae;
++            head.cpu_device_max_abs = src_head.cpu_device_max_abs;
++
++            const int32_t top_count = std::min<int32_t>(src_head.top_count, LLAMA_MTP_DEBUG_ATTENTION_TOP_K);
++            head.top_rows.reserve(top_count);
++            head.top_scores.reserve(top_count);
++            head.top_weights.reserve(top_count);
++            for (int32_t j = 0; j < top_count; ++j) {
++                head.top_rows.push_back(src_head.top_rows[j]);
++                head.top_scores.push_back(src_head.top_scores[j]);
++                head.top_weights.push_back(src_head.top_weights[j]);
++            }
++
++            const int32_t first_count = std::min<int32_t>(src_head.first_count, LLAMA_MTP_DEBUG_ATTENTION_FIRST_N);
++            head.query_first.reserve(first_count);
++            head.cpu_out_first.reserve(first_count);
++            head.device_out_first.reserve(first_count);
++            for (int32_t j = 0; j < first_count; ++j) {
++                head.query_first.push_back(src_head.query_first[j]);
++                head.cpu_out_first.push_back(src_head.cpu_out_first[j]);
++                head.device_out_first.push_back(src_head.device_out_first[j]);
++            }
++
++            const int32_t row_probe_count =
++                std::min<int32_t>(src_head.row_probe_count, LLAMA_MTP_DEBUG_ATTENTION_ROW_PROBES);
++            head.row_probes.reserve(row_probe_count);
++            for (int32_t j = 0; j < row_probe_count; ++j) {
++                const auto & src_probe = src_head.row_probes[j];
++                common_speculative_mtp_attention_row_probe probe;
++                probe.row = src_probe.row;
++                probe.score = src_probe.score;
++                probe.weight = src_probe.weight;
++                probe.mask = src_probe.mask;
++                const int32_t probe_first_count =
++                    std::min<int32_t>(src_probe.first_count, LLAMA_MTP_DEBUG_ATTENTION_FIRST_N);
++                probe.key_first.reserve(probe_first_count);
++                probe.value_first.reserve(probe_first_count);
++                for (int32_t k = 0; k < probe_first_count; ++k) {
++                    probe.key_first.push_back(src_probe.key_first[k]);
++                    probe.value_first.push_back(src_probe.value_first[k]);
++                }
++                head.row_probes.push_back(std::move(probe));
++            }
++
++            trace.per_head.push_back(std::move(head));
++        }
++
++        common_speculative_mtp_attention_traces.push_back(std::move(trace));
++    }
++
++    llama_mtp_debug_attention_trace_clear(ctx);
++}
++
+ static void common_speculative_mtp_tensor_trace_drain_batch(
+         llama_context * ctx,
+         const llama_batch & batch,
+@@ -397,6 +592,7 @@ static void common_speculative_mtp_tensor_trace_drain_batch(
+         for (int32_t j = 0; j < src.last_count; ++j) {
+             trace.last8.push_back(src.last8[j]);
+         }
++        trace.values = src.values;
+ 
+         common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
+     }
+@@ -408,6 +604,7 @@ void common_speculative_mtp_stage_trace_reset() {
+     common_speculative_mtp_stage_timings_ms.clear();
+     common_speculative_mtp_draft_sample_traces.clear();
+     common_speculative_mtp_hidden_state_traces.clear();
++    common_speculative_mtp_attention_traces.clear();
+ }
+ 
+ std::map<std::string, double> common_speculative_mtp_stage_trace_take() {
+@@ -428,6 +625,12 @@ std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hi
+     return result;
+ }
+ 
++std::vector<common_speculative_mtp_attention_trace> common_speculative_mtp_attention_trace_take() {
++    std::vector<common_speculative_mtp_attention_trace> result;
++    result.swap(common_speculative_mtp_attention_traces);
++    return result;
++}
++
+ struct common_speculative_config {
+     common_speculative_type type;
+     common_params_speculative params;
+@@ -1433,6 +1636,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             common_speculative_mtp_tensor_trace_drain_batch(ctx_dft, batch, -2);
+         }
+ 
++        common_speculative_mtp_tensor_trace_drain_batch(ctx_tgt, batch_in, -1);
++
+         const int64_t t_copy_us = ggml_time_us();
+         common_speculative_mtp_roctx_push("llama_process_copy_verify_h");
+         for (llama_seq_id seq_id = 0; seq_id < (llama_seq_id) n_seq; ++seq_id) {
+@@ -1445,8 +1650,19 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             verify_h[seq_id].resize((size_t) n_rows * n_embd);
+ 
+             for (int32_t i = 0; i < n_rows; ++i) {
+-                const float * h = llama_get_embeddings_nextn_ith(ctx_tgt, i_batch_beg[seq_id] + i);
++                const int32_t batch_index = i_batch_beg[seq_id] + i;
++                const float * h = llama_get_embeddings_nextn_ith(ctx_tgt, batch_index);
+                 std::memcpy(verify_h[seq_id].data() + (size_t) i * n_embd, h, row_bytes);
++                common_speculative_mtp_hidden_state_trace_add_row(
++                        "verify_h",
++                        seq_id,
++                        i,
++                        batch_in.token[batch_index],
++                        batch_in.pos[batch_index],
++                        h,
++                        n_embd,
++                        i,
++                        n_rows);
+             }
+ 
+             std::memcpy(pending_h[seq_id].data(),
+@@ -1513,6 +1729,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+         }
+         common_speculative_mtp_tensor_trace_drain(
+                 ctx_dft, initial_trace_seq_id, 0, initial_trace_token, initial_trace_pos);
++        common_speculative_mtp_attention_trace_drain(
++                ctx_dft, initial_trace_seq_id, 0, initial_trace_token, initial_trace_pos);
+ 
+         int i = 0;
+ 
+@@ -1615,6 +1833,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             }
+             common_speculative_mtp_tensor_trace_drain(
+                     ctx_dft, next_trace_seq_id, i + 1, next_trace_token, next_trace_pos);
++            common_speculative_mtp_attention_trace_drain(
++                    ctx_dft, next_trace_seq_id, i + 1, next_trace_token, next_trace_pos);
+ 
+             ++i;
+         }
+diff --git a/common/speculative.h b/common/speculative.h
+index cca6abefe3c1f492c4329a2639480aa7f743e187..419b55f97540aeee0feb9f7f00d7a61ba1e42528 100644
+--- a/common/speculative.h
++++ b/common/speculative.h
+@@ -101,6 +101,57 @@ struct common_speculative_mtp_hidden_state_trace {
+     double max = 0.0;
+     std::vector<float> first8;
+     std::vector<float> last8;
++    std::vector<float> values;
++};
++
++struct common_speculative_mtp_attention_row_probe {
++    int32_t row = -1;
++    float score = 0.0f;
++    float weight = 0.0f;
++    float mask = 0.0f;
++    std::vector<float> key_first;
++    std::vector<float> value_first;
++};
++
++struct common_speculative_mtp_attention_head_trace {
++    int32_t query_head = 0;
++    int32_t kv_head = 0;
++    int32_t visible_count = 0;
++    double max_score = 0.0;
++    double exp_sum = 0.0;
++    std::vector<int32_t> top_rows;
++    std::vector<float> top_scores;
++    std::vector<float> top_weights;
++    std::vector<float> query_first;
++    std::vector<common_speculative_mtp_attention_row_probe> row_probes;
++    std::vector<float> cpu_out_first;
++    std::vector<float> device_out_first;
++    double cpu_device_mae = 0.0;
++    double cpu_device_max_abs = 0.0;
++};
++
++struct common_speculative_mtp_attention_trace {
++    std::string label;
++    llama_seq_id seq_id = 0;
++    int32_t depth = 0;
++    llama_token token_id = LLAMA_TOKEN_NULL;
++    llama_pos position = 0;
++    int32_t row_index = -1;
++    int32_t row_count = 1;
++    int32_t cache_tokens = 0;
++    int32_t heads = 0;
++    int32_t kv_heads = 0;
++    int32_t head_dim = 0;
++    float scale = 0.0f;
++    bool use_flash_attn = false;
++    double cpu_device_mae_mean = 0.0;
++    double cpu_device_max_abs = 0.0;
++    std::vector<int64_t> q_shape;
++    std::vector<int64_t> k_shape;
++    std::vector<int64_t> v_shape;
++    std::vector<int64_t> mask_shape;
++    std::vector<int64_t> out_shape;
++    std::vector<common_speculative_mtp_attention_head_trace> per_head;
+ };
+ 
+ // Diagnostic-only stage accumulator used by server-context.cpp when
+@@ -111,6 +162,7 @@ void common_speculative_mtp_stage_trace_reset();
+ std::map<std::string, double> common_speculative_mtp_stage_trace_take();
+ std::vector<common_speculative_mtp_draft_sample_trace> common_speculative_mtp_draft_sample_trace_take();
+ std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hidden_state_trace_take();
++std::vector<common_speculative_mtp_attention_trace> common_speculative_mtp_attention_trace_take();
+ 
+ struct common_speculative_deleter {
+     void operator()(common_speculative * s) { common_speculative_free(s); }
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index f6929ceacc7bb54062d39e010f5bc825353e746a..2547e7880f475e866b0434a6b88c827664d498b6 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -38,6 +38,89 @@ static bool llama_mtp_debug_tensor_trace_enabled() {
+     return enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0;
+ }
+ 
++static bool llama_mtp_debug_env_truthy(const char * name) {
++    const char * raw = std::getenv(name);
++    if (raw == nullptr) {
++        return false;
++    }
++    return std::strcmp(raw, "1") == 0 ||
++           std::strcmp(raw, "true") == 0 ||
++           std::strcmp(raw, "TRUE") == 0 ||
++           std::strcmp(raw, "yes") == 0 ||
++           std::strcmp(raw, "YES") == 0 ||
++           std::strcmp(raw, "on") == 0 ||
++           std::strcmp(raw, "ON") == 0;
++}
++
++static bool llama_mtp_debug_csv_contains_str(const char * raw, const char * value) {
++    if (raw == nullptr || raw[0] == '\0') {
++        return true;
++    }
++    std::string token;
++    for (const char * p = raw;; ++p) {
++        const char c = *p;
++        if (c == ',' || c == '\0') {
++            if (token == value) {
++                return true;
++            }
++            token.clear();
++            if (c == '\0') {
++                return false;
++            }
++            continue;
++        }
++        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
++            token.push_back(c);
++        }
++    }
++}
++
++static bool llama_mtp_debug_csv_contains_i32(const char * raw, int32_t value) {
++    if (raw == nullptr || raw[0] == '\0') {
++        return true;
++    }
++    std::string token;
++    for (const char * p = raw;; ++p) {
++        const char c = *p;
++        if (c == ',' || c == '\0') {
++            if (!token.empty() && std::atoi(token.c_str()) == value) {
++                return true;
++            }
++            token.clear();
++            if (c == '\0') {
++                return false;
++            }
++            continue;
++        }
++        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
++            token.push_back(c);
++        }
++    }
++}
++
++static bool llama_mtp_debug_tensor_trace_values_enabled(const char * label, int32_t row_index) {
++    if (!llama_mtp_debug_env_truthy("LLAMA_MTP_TENSOR_TRACE_VALUES")) {
++        return false;
++    }
++    if (!llama_mtp_debug_csv_contains_str(
++                std::getenv("LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS"), label)) {
++        return false;
++    }
++    if (!llama_mtp_debug_csv_contains_i32(
++                std::getenv("LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS"), row_index)) {
++        return false;
++    }
++    return true;
++}
++
++static bool llama_mtp_debug_attention_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_ATTENTION_TRACE");
++    if (enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0) {
++        return true;
++    }
++    return llama_mtp_debug_tensor_trace_enabled();
++}
++
+ static uint64_t llama_mtp_debug_fnv1a64(const float * row, int32_t n) {
+     const auto * bytes = reinterpret_cast<const unsigned char *>(row);
+     const size_t n_bytes = (size_t) n * sizeof(float);
+@@ -49,6 +132,70 @@ static uint64_t llama_mtp_debug_fnv1a64(const float * row, int32_t n) {
+     return hash;
+ }
+ 
++static bool llama_mtp_debug_tensor_copy_raw(const ggml_tensor * tensor, std::vector<uint8_t> & raw) {
++    if (tensor == nullptr) {
++        return false;
++    }
++    if (tensor->type != GGML_TYPE_F32 &&
++            tensor->type != GGML_TYPE_F16 &&
++            tensor->type != GGML_TYPE_BF16) {
++        return false;
++    }
++
++    const size_t nbytes = ggml_nbytes(tensor);
++    if (nbytes == 0) {
++        return false;
++    }
++    raw.resize(nbytes);
++    ggml_backend_tensor_get(tensor, raw.data(), 0, raw.size());
++    return true;
++}
++
++static bool llama_mtp_debug_tensor_get_f32(
++        const ggml_tensor * tensor,
++        const std::vector<uint8_t> & raw,
++        int64_t i0,
++        int64_t i1,
++        int64_t i2,
++        int64_t i3,
++        float & value) {
++    if (tensor == nullptr ||
++            i0 < 0 || i0 >= tensor->ne[0] ||
++            i1 < 0 || i1 >= tensor->ne[1] ||
++            i2 < 0 || i2 >= tensor->ne[2] ||
++            i3 < 0 || i3 >= tensor->ne[3]) {
++        return false;
++    }
++
++    const size_t offset =
++        (size_t) i0 * tensor->nb[0] +
++        (size_t) i1 * tensor->nb[1] +
++        (size_t) i2 * tensor->nb[2] +
++        (size_t) i3 * tensor->nb[3];
++    const size_t type_size = ggml_type_size(tensor->type);
++    if (offset + type_size > raw.size()) {
++        return false;
++    }
++
++    if (tensor->type == GGML_TYPE_F32) {
++        std::memcpy(&value, raw.data() + offset, sizeof(value));
++        return true;
++    }
++    if (tensor->type == GGML_TYPE_F16) {
++        ggml_fp16_t v;
++        std::memcpy(&v, raw.data() + offset, sizeof(v));
++        value = ggml_fp16_to_fp32(v);
++        return true;
++    }
++    if (tensor->type == GGML_TYPE_BF16) {
++        ggml_bf16_t v;
++        std::memcpy(&v, raw.data() + offset, sizeof(v));
++        value = ggml_bf16_to_fp32(v);
++        return true;
++    }
++    return false;
++}
++
+ static int llama_mtp_debug_tensor_token_dim(const std::string & label) {
+     if (label == "mtp_Qcur_normed" ||
+             label == "mtp_Qcur_rope" ||
+@@ -57,6 +204,14 @@ static int llama_mtp_debug_tensor_token_dim(const std::string & label) {
+             label == "mtp_Vcur") {
+         return 2;
+     }
++    if (label.rfind("ffn_moe_gate_up_", 0) == 0 ||
++            label.rfind("ffn_moe_gate_", 0) == 0 ||
++            label.rfind("ffn_moe_up_", 0) == 0 ||
++            label.rfind("ffn_moe_swiglu_", 0) == 0 ||
++            label.rfind("ffn_moe_down_", 0) == 0 ||
++            label.rfind("ffn_moe_weighted_", 0) == 0) {
++        return 2;
++    }
+     return 1;
+ }
+ 
+@@ -77,13 +232,11 @@ static void llama_mtp_debug_tensor_copy_token_row(
+                     continue;
+                 }
+                 for (int64_t i0 = 0; i0 < tensor->ne[0]; ++i0) {
+-                    const size_t offset =
+-                        (size_t) i0 * tensor->nb[0] +
+-                        (size_t) i1 * tensor->nb[1] +
+-                        (size_t) i2 * tensor->nb[2] +
+-                        (size_t) i3 * tensor->nb[3];
+                     float value = 0.0f;
+-                    std::memcpy(&value, raw.data() + offset, sizeof(float));
++                    if (!llama_mtp_debug_tensor_get_f32(tensor, raw, i0, i1, i2, i3, value)) {
++                        row.clear();
++                        return;
++                    }
+                     row.push_back(value);
+                 }
+             }
+@@ -1019,6 +1172,14 @@ void llama_context::clear_mtp_debug_tensor_traces() {
+     mtp_debug_tensor_traces.clear();
+ }
+ 
++const std::vector<llama_mtp_debug_attention_trace> & llama_context::get_mtp_debug_attention_traces() const {
++    return mtp_debug_attention_traces;
++}
++
++void llama_context::clear_mtp_debug_attention_traces() {
++    mtp_debug_attention_traces.clear();
++}
++
+ float * llama_context::get_embeddings_layer_inp(uint32_t lid) {
+     output_reorder();
+ 
+@@ -2028,6 +2189,7 @@ int llama_context::decode(const llama_batch & batch_inp) {
+ 
+         extract_layer_inputs(res, n_tokens_prev, ubatch.n_tokens);
+         extract_mtp_debug_tensors(res);
++        extract_mtp_debug_attention(res);
+ 
+         // extract nextn embeddings before
+         // only meaningful in LLAMA_POOLING_TYPE_NONE (per-token); other pooling modes are ignored.
+@@ -2322,7 +2484,11 @@ void llama_context::extract_mtp_debug_tensors(const llm_graph_result * res) {
+ 
+     for (const auto & item : res->t_mtp_debug_tensors) {
+         const auto * tensor = item.second;
+-        if (tensor == nullptr || tensor->type != GGML_TYPE_F32) {
++        if (tensor == nullptr) {
++            continue;
++        }
++        const auto * storage = tensor->view_src != nullptr ? tensor->view_src : tensor;
++        if (storage->buffer == nullptr) {
+             continue;
+         }
+ 
+@@ -2331,9 +2497,10 @@ void llama_context::extract_mtp_debug_tensors(const llm_graph_result * res) {
+             continue;
+         }
+ 
+-        const size_t nbytes = ggml_nbytes(tensor);
+-        std::vector<uint8_t> raw(nbytes);
+-        ggml_backend_tensor_get(tensor, raw.data(), 0, raw.size());
++        std::vector<uint8_t> raw;
++        if (!llama_mtp_debug_tensor_copy_raw(tensor, raw)) {
++            continue;
++        }
+ 
+         const int token_dim = llama_mtp_debug_tensor_token_dim(item.first);
+         int32_t row_count = (int32_t) std::max<int64_t>(1, tensor->ne[token_dim]);
+@@ -2387,11 +2554,332 @@ void llama_context::extract_mtp_debug_tensors(const llm_graph_result * res) {
+                 trace.last8[i] = row[(size_t) (trace.size - trace.last_count + i)];
+             }
+ 
++            if (llama_mtp_debug_tensor_trace_values_enabled(item.first.c_str(), row_index)) {
++                trace.values = row;
++            }
++
+             mtp_debug_tensor_traces.push_back(trace);
+         }
+     }
+ }
+ 
++void llama_context::extract_mtp_debug_attention(const llm_graph_result * res) {
++    if (!llama_mtp_debug_attention_trace_enabled() || res == nullptr || res->t_mtp_debug_attention.empty()) {
++        return;
++    }
++
++    const llama_ubatch & ubatch = res->get_params().ubatch;
++    auto fill_row_metadata = [&](llama_mtp_debug_attention_trace & trace, int64_t row_index) {
++        if (row_index < 0 || row_index >= ubatch.n_tokens ||
++                ubatch.token == nullptr ||
++                ubatch.pos == nullptr ||
++                ubatch.n_seq_id == nullptr ||
++                ubatch.seq_id == nullptr ||
++                ubatch.n_seq_id[row_index] <= 0 ||
++                ubatch.seq_id[row_index] == nullptr) {
++            trace.has_row_metadata = 0;
++            trace.seq_id = -1;
++            trace.token_id = LLAMA_TOKEN_NULL;
++            trace.position = 0;
++            return;
++        }
++        trace.has_row_metadata = 1;
++        trace.seq_id = ubatch.seq_id[row_index][0];
++        trace.token_id = ubatch.token[row_index];
++        trace.position = ubatch.pos[row_index];
++    };
++
++    for (const auto & item : res->t_mtp_debug_attention) {
++        auto push_shape_only = [&]() {
++            llama_mtp_debug_attention_trace trace = {};
++            std::strncpy(trace.label, item.label.c_str(), sizeof(trace.label) - 1);
++            fill_row_metadata(trace, -1);
++            for (int i = 0; i < 4; ++i) {
++                trace.q_ne[i]    = item.q    ? item.q->ne[i]    : 0;
++                trace.k_ne[i]    = item.k    ? item.k->ne[i]    : 0;
++                trace.v_ne[i]    = item.v    ? item.v->ne[i]    : 0;
++                trace.mask_ne[i] = item.mask ? item.mask->ne[i] : 0;
++                trace.out_ne[i]  = item.out  ? item.out->ne[i]  : 0;
++            }
++            trace.q_type         = item.q    ? (int32_t) item.q->type    : -1;
++            trace.k_type         = item.k    ? (int32_t) item.k->type    : -1;
++            trace.v_type         = item.v    ? (int32_t) item.v->type    : -1;
++            trace.mask_type      = item.mask ? (int32_t) item.mask->type : -1;
++            trace.out_type       = item.out  ? (int32_t) item.out->type  : -1;
++            trace.use_flash_attn = item.use_flash_attn ? 1 : 0;
++            trace.row_index      = -1;
++            trace.row_count      = 0;
++            trace.scale          = item.scale;
++            mtp_debug_attention_traces.push_back(trace);
++        };
++
++        std::vector<uint8_t> q_raw;
++        std::vector<uint8_t> k_raw;
++        std::vector<uint8_t> v_raw;
++        std::vector<uint8_t> mask_raw;
++        std::vector<uint8_t> out_raw;
++        if (!llama_mtp_debug_tensor_copy_raw(item.q, q_raw) ||
++                !llama_mtp_debug_tensor_copy_raw(item.k, k_raw) ||
++                !llama_mtp_debug_tensor_copy_raw(item.v, v_raw) ||
++                !llama_mtp_debug_tensor_copy_raw(item.mask, mask_raw) ||
++                !llama_mtp_debug_tensor_copy_raw(item.out, out_raw)) {
++            push_shape_only();
++            continue;
++        }
++
++        const int64_t head_dim     = item.q->ne[0];
++        const int64_t query_tokens = item.q->ne[1];
++        const int64_t heads        = item.q->ne[2];
++        const int64_t streams      = item.q->ne[3];
++        const int64_t cache_tokens = item.k->ne[1];
++        const int64_t kv_heads     = item.k->ne[2];
++        if (head_dim <= 0 || query_tokens <= 0 || heads <= 0 ||
++                streams <= 0 || cache_tokens <= 0 || kv_heads <= 0 ||
++                heads % kv_heads != 0 || item.k->ne[0] != head_dim ||
++                item.k->ne[3] != streams) {
++            push_shape_only();
++            continue;
++        }
++        if (item.mask->ne[0] < cache_tokens ||
++                item.mask->ne[1] < query_tokens ||
++                item.mask->ne[3] < streams) {
++            push_shape_only();
++            continue;
++        }
++        const bool v_dim_first =
++            item.v->ne[0] == head_dim && item.v->ne[1] == cache_tokens &&
++            item.v->ne[2] == kv_heads && item.v->ne[3] == streams;
++        const bool v_dim_second =
++            item.v->ne[0] == cache_tokens && item.v->ne[1] == head_dim &&
++            item.v->ne[2] == kv_heads && item.v->ne[3] == streams;
++        if (!v_dim_first && !v_dim_second) {
++            push_shape_only();
++            continue;
++        }
++        if (item.out->ne[0] != head_dim ||
++                item.out->ne[1] < heads ||
++                item.out->ne[2] < query_tokens ||
++                item.out->ne[3] < streams) {
++            push_shape_only();
++            continue;
++        }
++
++        const int64_t kv_group = heads / kv_heads;
++        const int64_t row_count = query_tokens * streams;
++        for (int64_t stream = 0; stream < streams; ++stream) {
++            for (int64_t query_row = 0; query_row < query_tokens; ++query_row) {
++                llama_mtp_debug_attention_trace trace = {};
++                std::strncpy(trace.label, item.label.c_str(), sizeof(trace.label) - 1);
++                fill_row_metadata(trace, stream * query_tokens + query_row);
++                for (int i = 0; i < 4; ++i) {
++                    trace.q_ne[i]    = item.q->ne[i];
++                    trace.k_ne[i]    = item.k->ne[i];
++                    trace.v_ne[i]    = item.v->ne[i];
++                    trace.mask_ne[i] = item.mask->ne[i];
++                    trace.out_ne[i]  = item.out->ne[i];
++                }
++                trace.q_type         = (int32_t) item.q->type;
++                trace.k_type         = (int32_t) item.k->type;
++                trace.v_type         = (int32_t) item.v->type;
++                trace.mask_type      = (int32_t) item.mask->type;
++                trace.out_type       = (int32_t) item.out->type;
++                trace.use_flash_attn = item.use_flash_attn ? 1 : 0;
++                trace.row_index      = (int32_t) (stream * query_tokens + query_row);
++                trace.row_count      = (int32_t) row_count;
++                trace.cache_tokens   = (int32_t) cache_tokens;
++                trace.heads          = (int32_t) heads;
++                trace.kv_heads       = (int32_t) kv_heads;
++                trace.head_dim       = (int32_t) head_dim;
++                trace.scale          = item.scale;
++                trace.head_count     = (int32_t) std::min<int64_t>(heads, LLAMA_MTP_DEBUG_ATTENTION_MAX_HEADS);
++
++                double mae_sum = 0.0;
++                double max_abs_all = 0.0;
++                for (int32_t qh = 0; qh < trace.head_count; ++qh) {
++                    const int64_t kh = qh / kv_group;
++                    auto & head = trace.heads_trace[qh];
++                    head.query_head = qh;
++                    head.kv_head = (int32_t) kh;
++                    head.top_count = (int32_t) std::min<int64_t>(cache_tokens, LLAMA_MTP_DEBUG_ATTENTION_TOP_K);
++                    for (int i = 0; i < LLAMA_MTP_DEBUG_ATTENTION_TOP_K; ++i) {
++                        head.top_rows[i] = -1;
++                    }
++                    const int32_t first_count =
++                        (int32_t) std::min<int64_t>(head_dim, LLAMA_MTP_DEBUG_ATTENTION_FIRST_N);
++                    head.first_count = first_count;
++                    for (int32_t dim = 0; dim < first_count; ++dim) {
++                        float qv = 0.0f;
++                        if (llama_mtp_debug_tensor_get_f32(item.q, q_raw, dim, query_row, qh, stream, qv)) {
++                            head.query_first[dim] = qv;
++                        }
++                    }
++
++                    std::vector<float> scores((size_t) cache_tokens, -INFINITY);
++                    std::vector<float> weights((size_t) cache_tokens, 0.0f);
++                    std::vector<float> masks((size_t) cache_tokens, -INFINITY);
++                    float max_score = -INFINITY;
++                    int32_t visible_count = 0;
++                    for (int64_t row = 0; row < cache_tokens; ++row) {
++                        float mask = 0.0f;
++                        if (!llama_mtp_debug_tensor_get_f32(item.mask, mask_raw, row, query_row, 0, stream, mask)) {
++                            continue;
++                        }
++                        masks[(size_t) row] = mask;
++                        double dot = 0.0;
++                        bool ok = true;
++                        for (int64_t dim = 0; dim < head_dim; ++dim) {
++                            float qv = 0.0f;
++                            float kv = 0.0f;
++                            ok = ok &&
++                                llama_mtp_debug_tensor_get_f32(item.q, q_raw, dim, query_row, qh, stream, qv) &&
++                                llama_mtp_debug_tensor_get_f32(item.k, k_raw, dim, row, kh, stream, kv);
++                            if (!ok) {
++                                break;
++                            }
++                            dot += (double) qv * (double) kv;
++                        }
++                        if (!ok) {
++                            continue;
++                        }
++                        const float score = (float) (dot * (double) item.scale) + mask;
++                        scores[(size_t) row] = score;
++                        if (std::isfinite(score) && mask > -10000.0f) {
++                            max_score = std::max(max_score, score);
++                            ++visible_count;
++                        }
++                    }
++
++                    double exp_sum = 0.0;
++                    if (std::isfinite(max_score)) {
++                        for (int64_t row = 0; row < cache_tokens; ++row) {
++                            const float score = scores[(size_t) row];
++                            if (!std::isfinite(score)) {
++                                continue;
++                            }
++                            const double exp_score = std::exp((double) score - (double) max_score);
++                            weights[(size_t) row] = (float) exp_score;
++                            exp_sum += exp_score;
++                        }
++                    }
++                    if (exp_sum > 0.0) {
++                        for (int64_t row = 0; row < cache_tokens; ++row) {
++                            weights[(size_t) row] = (float) ((double) weights[(size_t) row] / exp_sum);
++                        }
++                    }
++
++                    double diff_sum = 0.0;
++                    double max_abs = 0.0;
++                    for (int64_t dim = 0; dim < head_dim; ++dim) {
++                        double cpu = 0.0;
++                        bool ok = true;
++                        for (int64_t row = 0; row < cache_tokens; ++row) {
++                            float vv = 0.0f;
++                            if (v_dim_first) {
++                                ok = llama_mtp_debug_tensor_get_f32(item.v, v_raw, dim, row, kh, stream, vv);
++                            } else {
++                                ok = llama_mtp_debug_tensor_get_f32(item.v, v_raw, row, dim, kh, stream, vv);
++                            }
++                            if (!ok) {
++                                break;
++                            }
++                            cpu += (double) weights[(size_t) row] * (double) vv;
++                        }
++                        float device = 0.0f;
++                        ok = ok && llama_mtp_debug_tensor_get_f32(item.out, out_raw, dim, qh, query_row, stream, device);
++                        if (!ok) {
++                            continue;
++                        }
++                        const double diff = std::fabs(cpu - (double) device);
++                        diff_sum += diff;
++                        max_abs = std::max(max_abs, diff);
++                        if (dim < first_count) {
++                            head.cpu_out_first[dim] = (float) cpu;
++                            head.device_out_first[dim] = device;
++                        }
++                    }
++
++                    auto add_probe_row = [&](int64_t row) {
++                        if (row < 0 || row >= cache_tokens ||
++                                head.row_probe_count >= LLAMA_MTP_DEBUG_ATTENTION_ROW_PROBES) {
++                            return;
++                        }
++                        for (int32_t i = 0; i < head.row_probe_count; ++i) {
++                            if (head.row_probes[i].row == row) {
++                                return;
++                            }
++                        }
++                        auto & probe = head.row_probes[head.row_probe_count++];
++                        probe.row = (int32_t) row;
++                        probe.score = scores[(size_t) row];
++                        probe.weight = weights[(size_t) row];
++                        probe.mask = masks[(size_t) row];
++                        probe.first_count = first_count;
++                        for (int32_t dim = 0; dim < first_count; ++dim) {
++                            float kv = 0.0f;
++                            if (llama_mtp_debug_tensor_get_f32(item.k, k_raw, dim, row, kh, stream, kv)) {
++                                probe.key_first[dim] = kv;
++                            }
++                            float vv = 0.0f;
++                            bool ok = false;
++                            if (v_dim_first) {
++                                ok = llama_mtp_debug_tensor_get_f32(item.v, v_raw, dim, row, kh, stream, vv);
++                            } else {
++                                ok = llama_mtp_debug_tensor_get_f32(item.v, v_raw, row, dim, kh, stream, vv);
++                            }
++                            if (ok) {
++                                probe.value_first[dim] = vv;
++                            }
++                        }
++                    };
++
++                    add_probe_row(0);
++                    add_probe_row(1);
++                    add_probe_row(2);
++                    add_probe_row(cache_tokens - 2);
++                    add_probe_row(cache_tokens - 1);
++                    for (int32_t top = 0; top < head.top_count; ++top) {
++                        int64_t best_row = -1;
++                        float best_weight = -1.0f;
++                        for (int64_t row = 0; row < cache_tokens; ++row) {
++                            bool used = false;
++                            for (int32_t prev = 0; prev < top; ++prev) {
++                                if (head.top_rows[prev] == row) {
++                                    used = true;
++                                    break;
++                                }
++                            }
++                            if (!used && weights[(size_t) row] > best_weight) {
++                                best_weight = weights[(size_t) row];
++                                best_row = row;
++                            }
++                        }
++                        if (best_row >= 0) {
++                            head.top_rows[top] = (int32_t) best_row;
++                            head.top_scores[top] = scores[(size_t) best_row];
++                            head.top_weights[top] = weights[(size_t) best_row];
++                            add_probe_row(best_row);
++                        }
++                    }
++
++                    head.visible_count = visible_count;
++                    head.max_score = max_score;
++                    head.exp_sum = exp_sum;
++                    head.cpu_device_mae = diff_sum / (double) head_dim;
++                    head.cpu_device_max_abs = max_abs;
++                    mae_sum += head.cpu_device_mae;
++                    max_abs_all = std::max(max_abs_all, max_abs);
++                }
++
++                if (trace.head_count > 0) {
++                    trace.cpu_device_mae_mean = mae_sum / (double) trace.head_count;
++                    trace.cpu_device_max_abs = max_abs_all;
++                }
++                mtp_debug_attention_traces.push_back(trace);
++            }
++        }
++    }
++}
++
+ void llama_context::output_reorder() {
+     const uint64_t n_vocab = model.vocab.n_tokens();
+     const uint64_t n_embd  = model.hparams.n_embd;
+@@ -3879,6 +4367,19 @@ void llama_mtp_debug_tensor_trace_clear(llama_context * ctx) {
+     ctx->clear_mtp_debug_tensor_traces();
+ }
+ 
++size_t llama_mtp_debug_attention_trace_count(const llama_context * ctx) {
++    return ctx->get_mtp_debug_attention_traces().size();
++}
++
++const llama_mtp_debug_attention_trace * llama_mtp_debug_attention_trace_data(const llama_context * ctx) {
++    const auto & traces = ctx->get_mtp_debug_attention_traces();
++    return traces.empty() ? nullptr : traces.data();
++}
++
++void llama_mtp_debug_attention_trace_clear(llama_context * ctx) {
++    ctx->clear_mtp_debug_attention_traces();
++}
++
+ float * llama_get_embeddings_layer_inp(llama_context * ctx, uint32_t lid) {
+     ctx->synchronize();
+ 
+diff --git a/src/llama-context.h b/src/llama-context.h
+index addaf924c7a84aa4a0cb2854e388fe796a900f4a..2ddbb1fbc0cd856dbc2075d211317f518b4fad4e 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -89,6 +89,8 @@ struct llama_context {
+     float * get_embeddings_nextn_ith(int32_t i);
+     const std::vector<llama_mtp_debug_tensor_trace> & get_mtp_debug_tensor_traces() const;
+     void clear_mtp_debug_tensor_traces();
++    const std::vector<llama_mtp_debug_attention_trace> & get_mtp_debug_attention_traces() const;
++    void clear_mtp_debug_attention_traces();
+ 
+     float * get_embeddings_layer_inp(uint32_t lid);
+ 
+@@ -235,6 +237,7 @@ private:
+     // from backend into host-side embd_layer_inp buffers
+     void extract_layer_inputs(const llm_graph_result * res, size_t token_offset, size_t n_tokens);
+     void extract_mtp_debug_tensors(const llm_graph_result * res);
++    void extract_mtp_debug_attention(const llm_graph_result * res);
+ 
+     //
+     // graph
+@@ -299,6 +302,7 @@ private:
+     buffer_view<float> embd_nextn = {nullptr, 0};
+ 
+     std::vector<llama_mtp_debug_tensor_trace> mtp_debug_tensor_traces;
++    std::vector<llama_mtp_debug_attention_trace> mtp_debug_attention_traces;
+ 
+     // host buffers for output layer input embeddings, per layer
+     // populated when cparams.output_layer_inp[il] is true
+diff --git a/src/llama-ext.h b/src/llama-ext.h
+index 30c36e59a79b99f68b3e71ea0dd7caf858b19be3..834f653c3f04344fa75f278e487a939970362401 100644
+--- a/src/llama-ext.h
++++ b/src/llama-ext.h
+@@ -8,6 +8,22 @@
+ 
+ #include <cstdint>
+ #include <map>
++#include <vector>
++
++static constexpr int32_t LLAMA_MTP_DEBUG_ATTENTION_MAX_HEADS = 64;
++static constexpr int32_t LLAMA_MTP_DEBUG_ATTENTION_TOP_K     = 5;
++static constexpr int32_t LLAMA_MTP_DEBUG_ATTENTION_FIRST_N   = 4;
++static constexpr int32_t LLAMA_MTP_DEBUG_ATTENTION_ROW_PROBES = 10;
++
++struct llama_mtp_debug_attention_row_probe {
++    int32_t row;
++    float score;
++    float weight;
++    float mask;
++    float key_first[LLAMA_MTP_DEBUG_ATTENTION_FIRST_N];
++    float value_first[LLAMA_MTP_DEBUG_ATTENTION_FIRST_N];
++    int32_t first_count;
++};
+ 
+ struct llama_mtp_debug_tensor_trace {
+     char label[64];
+@@ -25,6 +41,57 @@ struct llama_mtp_debug_tensor_trace {
+     float last8[8];
+     int32_t first_count;
+     int32_t last_count;
++    std::vector<float> values;
++};
++
++struct llama_mtp_debug_attention_head_trace {
++    int32_t query_head;
++    int32_t kv_head;
++    int32_t visible_count;
++    double max_score;
++    double exp_sum;
++    int32_t top_count;
++    int32_t top_rows[LLAMA_MTP_DEBUG_ATTENTION_TOP_K];
++    float top_scores[LLAMA_MTP_DEBUG_ATTENTION_TOP_K];
++    float top_weights[LLAMA_MTP_DEBUG_ATTENTION_TOP_K];
++    float query_first[LLAMA_MTP_DEBUG_ATTENTION_FIRST_N];
++    float cpu_out_first[LLAMA_MTP_DEBUG_ATTENTION_FIRST_N];
++    float device_out_first[LLAMA_MTP_DEBUG_ATTENTION_FIRST_N];
++    int32_t first_count;
++    int32_t row_probe_count;
++    llama_mtp_debug_attention_row_probe row_probes[LLAMA_MTP_DEBUG_ATTENTION_ROW_PROBES];
++    double cpu_device_mae;
++    double cpu_device_max_abs;
++};
++
++struct llama_mtp_debug_attention_trace {
++    char label[64];
++    int32_t has_row_metadata;
++    llama_seq_id seq_id;
++    llama_token token_id;
++    llama_pos position;
++    int64_t q_ne[4];
++    int64_t k_ne[4];
++    int64_t v_ne[4];
++    int64_t mask_ne[4];
++    int64_t out_ne[4];
++    int32_t q_type;
++    int32_t k_type;
++    int32_t v_type;
++    int32_t mask_type;
++    int32_t out_type;
++    int32_t use_flash_attn;
++    int32_t row_index;
++    int32_t row_count;
++    int32_t cache_tokens;
++    int32_t heads;
++    int32_t kv_heads;
++    int32_t head_dim;
++    float scale;
++    double cpu_device_mae_mean;
++    double cpu_device_max_abs;
++    int32_t head_count;
++    llama_mtp_debug_attention_head_trace heads_trace[LLAMA_MTP_DEBUG_ATTENTION_MAX_HEADS];
+ };
+ 
+ // Reserve a new compute graph. It is valid until the next call to llama_graph_reserve.
+@@ -125,6 +192,9 @@ LLAMA_API float * llama_get_embeddings_nextn_ith(struct llama_context * ctx, int
+ LLAMA_API size_t llama_mtp_debug_tensor_trace_count(const struct llama_context * ctx);
+ LLAMA_API const llama_mtp_debug_tensor_trace * llama_mtp_debug_tensor_trace_data(const struct llama_context * ctx);
+ LLAMA_API void llama_mtp_debug_tensor_trace_clear(struct llama_context * ctx);
++LLAMA_API size_t llama_mtp_debug_attention_trace_count(const struct llama_context * ctx);
++LLAMA_API const llama_mtp_debug_attention_trace * llama_mtp_debug_attention_trace_data(const struct llama_context * ctx);
++LLAMA_API void llama_mtp_debug_attention_trace_clear(struct llama_context * ctx);
+ 
+ // Set whether the context outputs the input embeddings of a specific layer
+ LLAMA_API void llama_set_embeddings_layer_inp(struct llama_context * ctx, uint32_t lid, bool value);
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index c9012433fad26e000fffe7912c05e4e915e8a97f..21c7c9f1f25204b52438c23aea98e52f325926c3 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -67,7 +67,44 @@ static bool llama_mtp_debug_tensor_trace_enabled() {
+     return enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0;
+ }
+ 
++static bool llama_mtp_debug_attention_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_ATTENTION_TRACE");
++    if (enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0) {
++        return true;
++    }
++    return llama_mtp_debug_tensor_trace_enabled();
++}
++
+ static bool llama_mtp_debug_tensor_trace_wants(const char * name) {
++    if (name != nullptr &&
++            (std::strncmp(name, "attn_norm_", 10) == 0 ||
++             std::strncmp(name, "attn_pregate_", 13) == 0 ||
++             std::strncmp(name, "attn_gated_", 11) == 0 ||
++             std::strncmp(name, "attn_output_", 12) == 0 ||
++             std::strncmp(name, "final_output_", 13) == 0 ||
++             std::strncmp(name, "linear_attn_out_", 16) == 0 ||
++             std::strncmp(name, "attn_residual_", 14) == 0 ||
++             std::strncmp(name, "attn_post_norm_", 15) == 0 ||
++             std::strncmp(name, "ffn_moe_logits_", 15) == 0 ||
++             std::strncmp(name, "ffn_moe_probs_", 14) == 0 ||
++             std::strncmp(name, "ffn_moe_topk_", 13) == 0 ||
++             std::strncmp(name, "ffn_moe_weights_", 16) == 0 ||
++             std::strncmp(name, "ffn_moe_gate_up_", 16) == 0 ||
++             std::strncmp(name, "ffn_moe_gate_", 13) == 0 ||
++             std::strncmp(name, "ffn_moe_up_", 11) == 0 ||
++             std::strncmp(name, "ffn_moe_swiglu_", 15) == 0 ||
++             std::strncmp(name, "ffn_moe_down_", 13) == 0 ||
++             std::strncmp(name, "ffn_moe_weighted_", 17) == 0 ||
++             std::strncmp(name, "ffn_moe_out_", 12) == 0 ||
++             std::strncmp(name, "ffn_shexp_", 10) == 0 ||
++             std::strncmp(name, "shared_expert_gate_", 19) == 0 ||
++             std::strncmp(name, "shared_expert_gate_sigmoid_", 27) == 0 ||
++             std::strncmp(name, "ffn_shexp_gated_", 16) == 0 ||
++             std::strncmp(name, "ffn_out_", 8) == 0 ||
++             std::strncmp(name, "post_moe_", 9) == 0 ||
++             std::strncmp(name, "l_out_", 6) == 0)) {
++        return true;
++    }
+     static const std::unordered_set<std::string> names = {
+         "mtp_tok_embd",
+         "mtp_enorm",
+@@ -85,6 +122,8 @@ static bool llama_mtp_debug_tensor_trace_wants(const char * name) {
+         "mtp_attn_post_norm",
+         "mtp_ffn_out",
+         "mtp_post_ffn",
++        "mtp_attention_debug_marker",
++        "h_nextn_pre_output_norm",
+         "h_nextn",
+     };
+     return name != nullptr && names.find(name) != names.end();
+@@ -942,6 +981,7 @@ void llm_graph_result::reset() {
+     t_sampled_logits.clear();
+     t_candidates.clear();
+     t_mtp_debug_tensors.clear();
++    t_mtp_debug_attention.clear();
+ 
+     params = {};
+ 
+@@ -967,8 +1007,38 @@ void llm_graph_result::set_inputs(const llama_ubatch * ubatch) {
+ }
+ 
+ void llm_graph_result::add_mtp_debug_tensor(const char * name, ggml_tensor * tensor) {
++    const bool target_tensor_trace =
++        name != nullptr &&
++        (std::strcmp(name, "h_nextn_pre_output_norm") == 0 ||
++         std::strcmp(name, "h_nextn") == 0 ||
++         std::strncmp(name, "attn_norm_", 10) == 0 ||
++         std::strncmp(name, "attn_pregate_", 13) == 0 ||
++         std::strncmp(name, "attn_gated_", 11) == 0 ||
++         std::strncmp(name, "attn_output_", 12) == 0 ||
++         std::strncmp(name, "final_output_", 13) == 0 ||
++         std::strncmp(name, "linear_attn_out_", 16) == 0 ||
++         std::strncmp(name, "attn_residual_", 14) == 0 ||
++         std::strncmp(name, "attn_post_norm_", 15) == 0 ||
++         std::strncmp(name, "ffn_moe_logits_", 15) == 0 ||
++         std::strncmp(name, "ffn_moe_probs_", 14) == 0 ||
++         std::strncmp(name, "ffn_moe_topk_", 13) == 0 ||
++         std::strncmp(name, "ffn_moe_weights_", 16) == 0 ||
++         std::strncmp(name, "ffn_moe_gate_up_", 16) == 0 ||
++         std::strncmp(name, "ffn_moe_gate_", 13) == 0 ||
++         std::strncmp(name, "ffn_moe_up_", 11) == 0 ||
++         std::strncmp(name, "ffn_moe_swiglu_", 15) == 0 ||
++         std::strncmp(name, "ffn_moe_down_", 13) == 0 ||
++         std::strncmp(name, "ffn_moe_weighted_", 17) == 0 ||
++         std::strncmp(name, "ffn_moe_out_", 12) == 0 ||
++         std::strncmp(name, "ffn_shexp_", 10) == 0 ||
++         std::strncmp(name, "shared_expert_gate_", 19) == 0 ||
++         std::strncmp(name, "shared_expert_gate_sigmoid_", 27) == 0 ||
++         std::strncmp(name, "ffn_shexp_gated_", 16) == 0 ||
++         std::strncmp(name, "ffn_out_", 8) == 0 ||
++         std::strncmp(name, "post_moe_", 9) == 0 ||
++         std::strncmp(name, "l_out_", 6) == 0);
+     if (!llama_mtp_debug_tensor_trace_enabled() ||
+-            params.gtype != LLM_GRAPH_TYPE_DECODER_MTP ||
++            (params.gtype != LLM_GRAPH_TYPE_DECODER_MTP && !target_tensor_trace) ||
+             !llama_mtp_debug_tensor_trace_wants(name) ||
+             tensor == nullptr) {
+         return;
+@@ -977,6 +1047,32 @@ void llm_graph_result::add_mtp_debug_tensor(const char * name, ggml_tensor * ten
+     t_mtp_debug_tensors.emplace_back(name, tensor);
+ }
+ 
++void llm_graph_result::add_mtp_debug_attention(
++        const char * name,
++        ggml_tensor * q,
++        ggml_tensor * k,
++        ggml_tensor * v,
++        ggml_tensor * mask,
++        ggml_tensor * out,
++        float scale,
++        bool use_flash_attn) {
++    if (!llama_mtp_debug_attention_trace_enabled() ||
++            params.gtype != LLM_GRAPH_TYPE_DECODER_MTP ||
++            name == nullptr ||
++            q == nullptr ||
++            k == nullptr ||
++            v == nullptr ||
++            mask == nullptr ||
++            out == nullptr) {
++        return;
++    }
++
++    t_mtp_debug_attention.push_back({name, q, k, v, mask, out, scale, use_flash_attn});
++    if (llama_mtp_debug_tensor_trace_enabled()) {
++        t_mtp_debug_tensors.emplace_back("mtp_attention_debug_marker", out);
++    }
++}
++
+ void llm_graph_result::set_outputs(const llm_graph_params & params) {
+     if (t_logits != nullptr) {
+         ggml_set_output(t_logits);
+@@ -1024,6 +1120,23 @@ void llm_graph_result::set_outputs(const llm_graph_params & params) {
+             ggml_set_output(item.second);
+         }
+     }
++    for (auto & item : t_mtp_debug_attention) {
++        if (item.q != nullptr) {
++            ggml_set_output(item.q);
++        }
++        if (item.k != nullptr) {
++            ggml_set_output(item.k);
++        }
++        if (item.v != nullptr) {
++            ggml_set_output(item.v);
++        }
++        if (item.mask != nullptr) {
++            ggml_set_output(item.mask);
++        }
++        if (item.out != nullptr) {
++            ggml_set_output(item.out);
++        }
++    }
+ }
+ 
+ bool llm_graph_result::can_reuse(const llm_graph_params & params) {
+@@ -1120,7 +1233,31 @@ void llm_graph_context::cb(ggml_tensor * cur, const char * name, int il) const {
+     if (cb_func) {
+         cb_func(ubatch, cur, name, il);
+     }
+-    res->add_mtp_debug_tensor(name, cur);
++    std::string debug_name;
++    const char * trace_name = name;
++    if (res->get_params().gtype != LLM_GRAPH_TYPE_DECODER_MTP &&
++            name != nullptr &&
++            (std::strcmp(name, "attn_norm") == 0 ||
++             std::strcmp(name, "attn_pregate") == 0 ||
++             std::strcmp(name, "attn_gated") == 0 ||
++             std::strcmp(name, "attn_output") == 0 ||
++             std::strcmp(name, "final_output") == 0 ||
++             std::strcmp(name, "linear_attn_out") == 0 ||
++             std::strcmp(name, "attn_residual") == 0 ||
++             std::strcmp(name, "attn_post_norm") == 0 ||
++             std::strncmp(name, "ffn_moe_", 8) == 0 ||
++             std::strcmp(name, "ffn_shexp") == 0 ||
++             std::strcmp(name, "shared_expert_gate") == 0 ||
++             std::strcmp(name, "shared_expert_gate_sigmoid") == 0 ||
++             std::strcmp(name, "ffn_shexp_gated") == 0 ||
++             std::strcmp(name, "ffn_out") == 0 ||
++             std::strcmp(name, "post_moe") == 0 ||
++             std::strcmp(name, "l_out") == 0) &&
++            il >= 0) {
++        debug_name = std::string(name) + "_" + std::to_string(il);
++        trace_name = debug_name.c_str();
++    }
++    res->add_mtp_debug_tensor(trace_name, cur);
+ }
+ 
+ ggml_tensor * llm_graph_context::build_cvec(
+@@ -2143,6 +2280,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+ 
+         ggml_flash_attn_ext_add_sinks(cur, sinks);
+         ggml_flash_attn_ext_set_prec (cur, GGML_PREC_F32);
++        res->add_mtp_debug_attention("mtp_attention_debug", q, k, v, kq_mask, cur, kq_scale, use_flash_attn);
+ 
+         if (v_mla) {
+ #if 0
+@@ -2217,6 +2355,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+         }
+ 
+         cur = ggml_permute(ctx0, kqv, 0, 2, 1, 3);
++        res->add_mtp_debug_attention("mtp_attention_debug", q, k, v, kq_mask, cur, kq_scale, use_flash_attn);
+ 
+         // recombine streams
+         cur = ggml_cont_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 6f50dc7a74d20bfcf034fa1c1d75195356af51e2..5056c4b255b495da1c3b5b7cb26152c39fc9cb4c 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -710,6 +710,7 @@ public:
+ 
+     ggml_cgraph  * get_gf()  const { return gf; }
+     ggml_context * get_ctx() const { return ctx_compute.get(); }
++    const llm_graph_params & get_params() const { return params; }
+ 
+     int64_t get_max_nodes() const;
+ 
+@@ -718,6 +719,15 @@ public:
+     void set_inputs(const llama_ubatch * ubatch);
+     void set_outputs(const llm_graph_params & params);
+     void add_mtp_debug_tensor(const char * name, ggml_tensor * tensor);
++    void add_mtp_debug_attention(
++            const char * name,
++            ggml_tensor * q,
++            ggml_tensor * k,
++            ggml_tensor * v,
++            ggml_tensor * mask,
++            ggml_tensor * out,
++            float scale,
++            bool use_flash_attn);
+ 
+     // try to update the existing graph result using the new graph parameters in order to reuse it
+     // this can only be done if we determine that the resulting graph using the new graph parameters
+@@ -745,6 +755,17 @@ public:
+     std::map<llama_seq_id, ggml_tensor *> t_sampled;
+     std::map<llama_seq_id, ggml_tensor *> t_sampled_probs;
+     std::vector<std::pair<std::string, ggml_tensor *>> t_mtp_debug_tensors;
++    struct mtp_debug_attention {
++        std::string label;
++        ggml_tensor * q = nullptr;
++        ggml_tensor * k = nullptr;
++        ggml_tensor * v = nullptr;
++        ggml_tensor * mask = nullptr;
++        ggml_tensor * out = nullptr;
++        float scale = 0.0f;
++        bool use_flash_attn = false;
++    };
++    std::vector<mtp_debug_attention> t_mtp_debug_attention;
+ 
+     std::vector<llm_graph_input_ptr> inputs;
+ 
+diff --git a/src/models/qwen35.cpp b/src/models/qwen35.cpp
+index 6783d98ec204885caba96184fc5b9c6bd47e071b..a184d3c74e8626b529852bec1d4383a9f08d1e4d 100644
+--- a/src/models/qwen35.cpp
++++ b/src/models/qwen35.cpp
+@@ -204,6 +204,8 @@ llama_model_qwen35::graph::graph(const llama_model & model, const llm_graph_para
+     }
+     cur = inpL;
+ 
++    cb(cur, "h_nextn_pre_output_norm", -1);
++
+     cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);
+ 
+     cb(cur, "h_nextn", -1);
+diff --git a/src/models/qwen35moe.cpp b/src/models/qwen35moe.cpp
+index cbeab10d9d6cd9dd421dca5cb262b2af241d93ed..640e1b6852dab3772bd35f6d2675341a86d03531 100644
+--- a/src/models/qwen35moe.cpp
++++ b/src/models/qwen35moe.cpp
+@@ -228,6 +228,8 @@ llama_model_qwen35moe::graph::graph(const llama_model & model, const llm_graph_p
+     cur = inpL;
+ 
+     // post-norm hidden state feeds both the LM head and the MTP seed below
++    cb(cur, "h_nextn_pre_output_norm", -1);
++
+     cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);
+ 
+     cb(cur, "h_nextn", -1);
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 17ec0d9566258c44bb8d0c0f45262e7c2763357c..d147754ea35f004b581464e15464865a95ca7b5e 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -133,6 +133,111 @@ static json mtp_draft_sample_trace_json(
+     return result;
+ }
+ 
++static int mtp_target_trace_top_k() {
++    const char * raw = std::getenv("LLAMA_MTP_TARGET_TRACE_TOP_K");
++    if (raw == nullptr || raw[0] == '\0') {
++        return 20;
++    }
++    return std::max(1, std::atoi(raw));
++}
++
++static llama_tokens mtp_target_trace_extra_candidates() {
++    llama_tokens result;
++    const char * raw = std::getenv("LLAMA_MTP_TARGET_TRACE_CANDIDATES");
++    if (raw == nullptr || raw[0] == '\0') {
++        return result;
++    }
++    const char * ptr = raw;
++    while (*ptr != '\0') {
++        char * end = nullptr;
++        const long value = std::strtol(ptr, &end, 10);
++        if (end == ptr) {
++            ++ptr;
++            continue;
++        }
++        if (value >= 0 && std::find(result.begin(), result.end(), (llama_token) value) == result.end()) {
++            result.push_back((llama_token) value);
++        }
++        ptr = end;
++    }
++    return result;
++}
++
++static json mtp_target_sample_trace_json(
++        llama_context * ctx,
++        const std::vector<int32_t> & idxs,
++        const llama_tokens & draft_tokens) {
++    json result = json::array();
++    if (!mtp_token_trace_enabled()) {
++        return result;
++    }
++
++    llama_tokens candidates = draft_tokens;
++    for (const auto token : mtp_target_trace_extra_candidates()) {
++        if (std::find(candidates.begin(), candidates.end(), token) == candidates.end()) {
++            candidates.push_back(token);
++        }
++    }
++
++    const int top_k = mtp_target_trace_top_k();
++    for (size_t row = 0; row < idxs.size(); ++row) {
++        std::vector<llama_token_data> cur = get_token_probabilities(ctx, idxs[row]);
++        const size_t top_n = std::min<size_t>(cur.size(), (size_t) top_k);
++        const float best = cur.empty() ? 0.0f : cur[0].logit;
++
++        json top = json::array();
++        for (size_t i = 0; i < top_n; ++i) {
++            top.push_back({
++                {"rank", (int) i + 1},
++                {"token_id", cur[i].id},
++                {"logit", cur[i].logit},
++                {"margin_from_top", best - cur[i].logit},
++                {"prob", cur[i].p},
++            });
++        }
++
++        json candidate_scores = json::array();
++        for (const auto token : candidates) {
++            json item = {
++                {"token_id", token},
++                {"in_vocab", false},
++            };
++            for (size_t i = 0; i < cur.size(); ++i) {
++                if (cur[i].id == token) {
++                    item = {
++                        {"token_id", token},
++                        {"in_vocab", true},
++                        {"rank", (int) i + 1},
++                        {"logit", cur[i].logit},
++                        {"margin_from_top", best - cur[i].logit},
++                        {"prob", cur[i].p},
++                    };
++                    break;
++                }
++            }
++            candidate_scores.push_back(item);
++        }
++
++        result.push_back({
++            {"row", (int) row},
++            {"i_batch", idxs[row]},
++            {"draft_token_at_depth", row < draft_tokens.size() ? json(draft_tokens[row]) : json(nullptr)},
++            {"top_k", top},
++            {"candidate_scores", candidate_scores},
++        });
++    }
++    return result;
++}
++
++static void mtp_target_sample_trace_add_sampled_tokens(json & target_trace, const llama_tokens & sampled_tokens) {
++    if (!target_trace.is_array()) {
++        return;
++    }
++    for (size_t i = 0; i < target_trace.size(); ++i) {
++        target_trace[i]["sampled_token"] = i < sampled_tokens.size() ? json(sampled_tokens[i]) : json(nullptr);
++    }
++}
++
+ static json mtp_hidden_state_trace_json(
+         const std::vector<common_speculative_mtp_hidden_state_trace> & traces) {
+     json result = json::array();
+@@ -152,7 +257,7 @@ static json mtp_hidden_state_trace_json(
+             shape.push_back(value);
+         }
+ 
+-        result.push_back({
++        json item = {
+             {"label", trace.label},
+             {"seq_id", trace.seq_id},
+             {"depth", trace.depth},
+@@ -169,6 +274,130 @@ static json mtp_hidden_state_trace_json(
+             {"max", trace.max},
+             {"first8", first8},
+             {"last8", last8},
++        };
++        if (!trace.values.empty()) {
++            json values = json::array();
++            for (const auto value : trace.values) {
++                values.push_back(value);
++            }
++            item["values"] = values;
++        }
++        result.push_back(std::move(item));
++    }
++    return result;
++}
++
++static json mtp_attention_trace_json(
++        const std::vector<common_speculative_mtp_attention_trace> & traces) {
++    json result = json::array();
++    for (const auto & trace : traces) {
++        json q_shape = json::array();
++        for (const auto value : trace.q_shape) {
++            q_shape.push_back(value);
++        }
++        json k_shape = json::array();
++        for (const auto value : trace.k_shape) {
++            k_shape.push_back(value);
++        }
++        json v_shape = json::array();
++        for (const auto value : trace.v_shape) {
++            v_shape.push_back(value);
++        }
++        json mask_shape = json::array();
++        for (const auto value : trace.mask_shape) {
++            mask_shape.push_back(value);
++        }
++        json out_shape = json::array();
++        for (const auto value : trace.out_shape) {
++            out_shape.push_back(value);
++        }
++
++        json per_head = json::array();
++        for (const auto & head : trace.per_head) {
++            json top_rows = json::array();
++            for (const auto value : head.top_rows) {
++                top_rows.push_back(value);
++            }
++            json top_scores = json::array();
++            for (const auto value : head.top_scores) {
++                top_scores.push_back(value);
++            }
++            json top_weights = json::array();
++            for (const auto value : head.top_weights) {
++                top_weights.push_back(value);
++            }
++            json query_first = json::array();
++            for (const auto value : head.query_first) {
++                query_first.push_back(value);
++            }
++            json row_probes = json::array();
++            for (const auto & probe : head.row_probes) {
++                json key_first = json::array();
++                for (const auto value : probe.key_first) {
++                    key_first.push_back(value);
++                }
++                json value_first = json::array();
++                for (const auto value : probe.value_first) {
++                    value_first.push_back(value);
++                }
++                row_probes.push_back({
++                    {"row", probe.row},
++                    {"score", probe.score},
++                    {"weight", probe.weight},
++                    {"mask", probe.mask},
++                    {"key_first4", key_first},
++                    {"value_first4", value_first},
++                });
++            }
++            json cpu_out_first = json::array();
++            for (const auto value : head.cpu_out_first) {
++                cpu_out_first.push_back(value);
++            }
++            json device_out_first = json::array();
++            for (const auto value : head.device_out_first) {
++                device_out_first.push_back(value);
++            }
++
++            per_head.push_back({
++                {"query_head", head.query_head},
++                {"kv_head", head.kv_head},
++                {"visible_count", head.visible_count},
++                {"max_score", head.max_score},
++                {"exp_sum", head.exp_sum},
++                {"query_first4", query_first},
++                {"top_rows", top_rows},
++                {"top_scores", top_scores},
++                {"top_weights", top_weights},
++                {"row_probes", row_probes},
++                {"cpu_out_first", cpu_out_first},
++                {"device_out_first", device_out_first},
++                {"cpu_device_mae", head.cpu_device_mae},
++                {"cpu_device_max_abs", head.cpu_device_max_abs},
++            });
++        }
++
++        result.push_back({
++            {"label", trace.label},
++            {"seq_id", trace.seq_id},
++            {"depth", trace.depth},
++            {"token_id", trace.token_id},
++            {"position", trace.position},
++            {"row_index", trace.row_index},
++            {"row_count", trace.row_count},
++            {"cache_tokens", trace.cache_tokens},
++            {"heads", trace.heads},
++            {"kv_heads", trace.kv_heads},
++            {"head_dim", trace.head_dim},
++            {"scale", trace.scale},
++            {"use_flash_attn", trace.use_flash_attn},
++            {"cpu_device_mae_mean", trace.cpu_device_mae_mean},
++            {"cpu_device_max_abs", trace.cpu_device_max_abs},
++            {"q_shape", q_shape},
++            {"k_shape", k_shape},
++            {"v_shape", v_shape},
++            {"mask_shape", mask_shape},
++            {"out_shape", out_shape},
++            {"per_head", per_head},
+         });
+     }
+     return result;
+@@ -244,6 +473,7 @@ struct mtp_stage_trace {
+     std::map<std::string, double> stage_timings_ms;
+     std::vector<common_speculative_mtp_draft_sample_trace> draft_sample_traces;
+     std::vector<common_speculative_mtp_hidden_state_trace> hidden_state_traces;
++    std::vector<common_speculative_mtp_attention_trace> attention_traces;
+ };
+ 
+ static void mtp_stage_add(mtp_stage_trace & trace, const char * name, int64_t dt_us) {
+@@ -2911,6 +3141,7 @@ private:
+             const auto draft_substages = common_speculative_mtp_stage_trace_take();
+             const auto draft_sample_traces = common_speculative_mtp_draft_sample_trace_take();
+             const auto hidden_state_traces = common_speculative_mtp_hidden_state_trace_take();
++            const auto attention_traces = common_speculative_mtp_attention_trace_take();
+             const int64_t draft_dt_us = ggml_time_us() - t_draft_us;
+             mtp_roctx_pop();
+ 
+@@ -2931,6 +3162,11 @@ private:
+                                 trace.hidden_state_traces.push_back(hidden_trace);
+                             }
+                         }
++                        for (const auto & attention_trace : attention_traces) {
++                            if (attention_trace.seq_id == slot.id) {
++                                trace.attention_traces.push_back(attention_trace);
++                            }
++                        }
+                     }
+                 }
+             }
+@@ -3864,6 +4100,7 @@ private:
+                 size_t n_discarded_rows        = 0;
+                 int64_t t_commit_us            = 0;
+                 const llama_tokens draft_tokens_trace = mtp_token_trace_enabled() ? slot.spec_draft : llama_tokens();
++                json target_sample_trace = json::array();
+ 
+                 // verify and try to accept the draft
+                 {
+@@ -3873,10 +4110,12 @@ private:
+                     common_sampler_ptr smpl_save(common_sampler_clone(slot.smpl.get()));
+ 
+                     GGML_ASSERT(slot.spec_i_batch.size() == n_draft + 1);
++                    target_sample_trace = mtp_target_sample_trace_json(slot.ctx_tgt, slot.spec_i_batch, slot.spec_draft);
+                     auto accepted = common_sampler_sample_and_accept_n(slot.smpl.get(), slot.ctx_tgt, slot.spec_i_batch, slot.spec_draft);
+                     slot.spec_i_batch.clear();
+ 
+                     GGML_ASSERT(accepted.size() >= 1);
++                    mtp_target_sample_trace_add_sampled_tokens(target_sample_trace, accepted);
+ 
+                     const uint32_t n_rollback = slot.spec_draft.size() + 1 - accepted.size();
+                     n_accepted_draft_tokens = accepted.size() - 1;
+@@ -3967,7 +4206,9 @@ private:
+                                     false);
+                                 if (mtp_token_trace_enabled()) {
+                                     event["draft_sample_trace"] = mtp_draft_sample_trace_json(stage_trace.draft_sample_traces);
++                                    event["target_sample_trace"] = target_sample_trace;
+                                     event["draft_hidden_state_trace"] = mtp_hidden_state_trace_json(stage_trace.hidden_state_traces);
++                                    event["draft_attention_trace"] = mtp_attention_trace_json(stage_trace.attention_traces);
+                                 }
+                                 mtp_stage_write_json(event);
+                             }
+@@ -4082,7 +4323,9 @@ private:
+                         true);
+                     if (mtp_token_trace_enabled()) {
+                         event["draft_sample_trace"] = mtp_draft_sample_trace_json(stage_trace.draft_sample_traces);
++                        event["target_sample_trace"] = target_sample_trace;
+                         event["draft_hidden_state_trace"] = mtp_hidden_state_trace_json(stage_trace.hidden_state_traces);
++                        event["draft_attention_trace"] = mtp_attention_trace_json(stage_trace.attention_traces);
+                     }
+                     mtp_stage_write_json(event);
+                 }

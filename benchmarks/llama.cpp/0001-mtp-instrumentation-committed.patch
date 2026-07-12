@@ -1,0 +1,1720 @@
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index d874315559b75e84b65717ae993192615ab73e1e..f95ad4dcfb140ef061373f97923b7dc0a086832b 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -13,10 +13,14 @@
+ 
+ #include <algorithm>
+ #include <cassert>
++#include <cmath>
++#include <cstdlib>
+ #include <cstring>
+ #include <iomanip>
++#include <limits>
+ #include <map>
+ #include <cinttypes>
++#include <dlfcn.h>
+ 
+ #define SPEC_VOCAB_MAX_SIZE_DIFFERENCE  128
+ #define SPEC_VOCAB_CHECK_START_TOKEN_ID 5
+@@ -45,6 +49,385 @@ static std::string common_speculative_get_devices_str(const std::vector<ggml_bac
+     return result.empty() ? "default" : result;
+ }
+ 
++static bool common_speculative_mtp_stage_trace_enabled() {
++    const char * path = std::getenv("LLAMA_MTP_STAGE_TIMINGS");
++    return path && path[0];
++}
++
++static bool common_speculative_mtp_token_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_TOKEN_TRACE");
++    return enabled && enabled[0] && std::strcmp(enabled, "0") != 0;
++}
++
++struct common_speculative_mtp_roctx_api {
++    using range_push_fn = int (*)(const char *);
++    using range_pop_fn  = int (*)();
++
++    void * handle = nullptr;
++    range_push_fn range_push = nullptr;
++    range_pop_fn  range_pop  = nullptr;
++    bool tried = false;
++};
++
++static bool common_speculative_mtp_roctx_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_ROCTX");
++    return enabled && enabled[0] && std::strcmp(enabled, "0") != 0;
++}
++
++static common_speculative_mtp_roctx_api & common_speculative_mtp_roctx_api_get() {
++    static common_speculative_mtp_roctx_api api;
++    if (api.tried) {
++        return api;
++    }
++    api.tried = true;
++
++    if (!common_speculative_mtp_roctx_enabled()) {
++        return api;
++    }
++
++    const char * libs[] = { "librocprofiler-sdk-roctx.so", "libroctx64.so" };
++    for (const char * lib : libs) {
++        api.handle = dlopen(lib, RTLD_LAZY | RTLD_LOCAL);
++        if (api.handle != nullptr) {
++            break;
++        }
++    }
++    if (api.handle == nullptr) {
++        return api;
++    }
++
++    api.range_push = reinterpret_cast<common_speculative_mtp_roctx_api::range_push_fn>(dlsym(api.handle, "roctxRangePushA"));
++    api.range_pop  = reinterpret_cast<common_speculative_mtp_roctx_api::range_pop_fn >(dlsym(api.handle, "roctxRangePop"));
++    if (api.range_push == nullptr || api.range_pop == nullptr) {
++        dlclose(api.handle);
++        api.handle = nullptr;
++        api.range_push = nullptr;
++        api.range_pop = nullptr;
++    }
++    return api;
++}
++
++static void common_speculative_mtp_roctx_push(const char * name) {
++    auto & api = common_speculative_mtp_roctx_api_get();
++    if (api.range_push != nullptr && api.range_pop != nullptr) {
++        api.range_push(name);
++    }
++}
++
++static void common_speculative_mtp_roctx_pop() {
++    auto & api = common_speculative_mtp_roctx_api_get();
++    if (api.range_push != nullptr && api.range_pop != nullptr) {
++        api.range_pop();
++    }
++}
++
++static thread_local std::map<std::string, double> common_speculative_mtp_stage_timings_ms;
++static thread_local std::vector<common_speculative_mtp_draft_sample_trace> common_speculative_mtp_draft_sample_traces;
++static thread_local std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hidden_state_traces;
++
++static void common_speculative_mtp_stage_add(const char * name, int64_t dt_us) {
++    if (!common_speculative_mtp_stage_trace_enabled() || dt_us < 0) {
++        return;
++    }
++    common_speculative_mtp_stage_timings_ms[name] += (double) dt_us / 1000.0;
++}
++
++static void common_speculative_mtp_draft_sample_trace_add(
++        llama_seq_id seq_id,
++        int32_t depth,
++        const llama_token_data_array * cur_p) {
++    if (!common_speculative_mtp_token_trace_enabled() || cur_p == nullptr || cur_p->data == nullptr) {
++        return;
++    }
++
++    common_speculative_mtp_draft_sample_trace trace;
++    trace.seq_id = seq_id;
++    trace.depth = depth;
++    const size_t limit = std::min<size_t>(10, cur_p->size);
++    trace.token_ids.reserve(limit);
++    trace.logits.reserve(limit);
++    trace.probs.reserve(limit);
++    for (size_t i = 0; i < limit; ++i) {
++        trace.token_ids.push_back(cur_p->data[i].id);
++        trace.logits.push_back(cur_p->data[i].logit);
++        trace.probs.push_back(cur_p->data[i].p);
++    }
++    common_speculative_mtp_draft_sample_traces.push_back(std::move(trace));
++}
++
++static uint64_t common_speculative_mtp_fnv1a64(const float * row, int32_t n) {
++    const auto * bytes = reinterpret_cast<const unsigned char *>(row);
++    const size_t n_bytes = (size_t) n * sizeof(float);
++    uint64_t hash = 1469598103934665603ULL;
++    for (size_t i = 0; i < n_bytes; ++i) {
++        hash ^= (uint64_t) bytes[i];
++        hash *= 1099511628211ULL;
++    }
++    return hash;
++}
++
++static void common_speculative_mtp_hidden_state_trace_add_row(
++        const char * label,
++        llama_seq_id seq_id,
++        int32_t depth,
++        llama_token token_id,
++        llama_pos position,
++        const float * row,
++        int32_t n,
++        int32_t row_index,
++        int32_t row_count) {
++    if (!common_speculative_mtp_token_trace_enabled() || row == nullptr || n <= 0) {
++        return;
++    }
++
++    double sum = 0.0;
++    double sum_sq = 0.0;
++    double min_v = std::numeric_limits<double>::infinity();
++    double max_v = -std::numeric_limits<double>::infinity();
++    for (int32_t i = 0; i < n; ++i) {
++        const double value = (double) row[i];
++        sum += value;
++        sum_sq += value * value;
++        min_v = std::min(min_v, value);
++        max_v = std::max(max_v, value);
++    }
++
++    common_speculative_mtp_hidden_state_trace trace;
++    trace.label = label;
++    trace.seq_id = seq_id;
++    trace.depth = depth;
++    trace.token_id = token_id;
++    trace.position = position;
++    trace.size = n;
++    trace.shape = {n};
++    trace.row_index = row_index;
++    trace.row_count = row_count;
++    trace.fnv1a64 = common_speculative_mtp_fnv1a64(row, n);
++    trace.mean = sum / (double) n;
++    trace.rms = std::sqrt(sum_sq / (double) n);
++    trace.min = min_v;
++    trace.max = max_v;
++
++    const int32_t first_count = std::min<int32_t>(8, n);
++    trace.first8.reserve(first_count);
++    for (int32_t i = 0; i < first_count; ++i) {
++        trace.first8.push_back(row[i]);
++    }
++
++    const int32_t last_count = std::min<int32_t>(8, n);
++    trace.last8.reserve(last_count);
++    for (int32_t i = n - last_count; i < n; ++i) {
++        trace.last8.push_back(row[i]);
++    }
++
++    common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
++}
++
++static void common_speculative_mtp_hidden_state_trace_add(
++        const char * label,
++        llama_seq_id seq_id,
++        int32_t depth,
++        llama_token token_id,
++        llama_pos position,
++        const float * row,
++        int32_t n) {
++    common_speculative_mtp_hidden_state_trace_add_row(
++            label, seq_id, depth, token_id, position, row, n, -1, 1);
++}
++
++static const char * common_speculative_mtp_tensor_trace_label(const char * label) {
++    if (std::strcmp(label, "mtp_tok_embd") == 0) {
++        return "draft_stage_token_embed";
++    }
++    if (std::strcmp(label, "mtp_enorm") == 0) {
++        return "draft_stage_e_norm";
++    }
++    if (std::strcmp(label, "mtp_hnorm") == 0) {
++        return "draft_stage_h_norm";
++    }
++    if (std::strcmp(label, "mtp_eh_proj") == 0) {
++        return "draft_stage_projected";
++    }
++    if (std::strcmp(label, "mtp_attn_norm") == 0) {
++        return "draft_stage_attn_normed";
++    }
++    if (std::strcmp(label, "mtp_Qcur_normed") == 0) {
++        return "llama_stage_query_normed";
++    }
++    if (std::strcmp(label, "mtp_Qcur_rope") == 0) {
++        return "draft_stage_query_rope";
++    }
++    if (std::strcmp(label, "mtp_Kcur_normed") == 0) {
++        return "llama_stage_key_normed";
++    }
++    if (std::strcmp(label, "mtp_Kcur_rope") == 0) {
++        return "draft_stage_key_cur_rope";
++    }
++    if (std::strcmp(label, "mtp_Vcur") == 0) {
++        return "draft_stage_value_cur";
++    }
++    if (std::strcmp(label, "mtp_attn_pregate") == 0) {
++        return "draft_stage_attn_pregate";
++    }
++    if (std::strcmp(label, "mtp_attn_out") == 0) {
++        return "draft_stage_attn_out";
++    }
++    if (std::strcmp(label, "mtp_attn_residual") == 0) {
++        return "draft_stage_attn_residual";
++    }
++    if (std::strcmp(label, "mtp_attn_post_norm") == 0) {
++        return "draft_stage_attn_post_norm";
++    }
++    if (std::strcmp(label, "mtp_ffn_out") == 0) {
++        return "draft_stage_ffn_out";
++    }
++    if (std::strcmp(label, "mtp_post_ffn") == 0) {
++        return "llama_stage_post_ffn";
++    }
++    if (std::strcmp(label, "h_nextn") == 0) {
++        return "llama_stage_h_nextn";
++    }
++    return label;
++}
++
++static void common_speculative_mtp_tensor_trace_drain(
++        llama_context * ctx,
++        llama_seq_id seq_id,
++        int32_t depth,
++        llama_token token_id,
++        llama_pos position) {
++    if (ctx == nullptr) {
++        return;
++    }
++
++    const size_t n_traces = llama_mtp_debug_tensor_trace_count(ctx);
++    const llama_mtp_debug_tensor_trace * traces = llama_mtp_debug_tensor_trace_data(ctx);
++    if (!common_speculative_mtp_token_trace_enabled() || traces == nullptr || n_traces == 0) {
++        llama_mtp_debug_tensor_trace_clear(ctx);
++        return;
++    }
++
++    for (size_t i = 0; i < n_traces; ++i) {
++        const auto & src = traces[i];
++        common_speculative_mtp_hidden_state_trace trace;
++        trace.label = common_speculative_mtp_tensor_trace_label(src.label);
++        trace.seq_id = seq_id;
++        trace.depth = depth;
++        trace.token_id = token_id;
++        trace.position = position;
++        trace.size = src.size;
++        trace.shape.assign(src.ne, src.ne + 4);
++        trace.row_index = src.row_index;
++        trace.row_count = src.row_count;
++        trace.fnv1a64 = src.fnv1a64;
++        trace.mean = src.mean;
++        trace.rms = src.rms;
++        trace.min = src.min;
++        trace.max = src.max;
++
++        trace.first8.reserve(src.first_count);
++        for (int32_t j = 0; j < src.first_count; ++j) {
++            trace.first8.push_back(src.first8[j]);
++        }
++
++        trace.last8.reserve(src.last_count);
++        for (int32_t j = 0; j < src.last_count; ++j) {
++            trace.last8.push_back(src.last8[j]);
++        }
++
++        common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
++    }
++
++    llama_mtp_debug_tensor_trace_clear(ctx);
++}
++
++static void common_speculative_mtp_tensor_trace_drain_batch(
++        llama_context * ctx,
++        const llama_batch & batch,
++        int32_t depth) {
++    if (ctx == nullptr) {
++        return;
++    }
++
++    const size_t n_traces = llama_mtp_debug_tensor_trace_count(ctx);
++    const llama_mtp_debug_tensor_trace * traces = llama_mtp_debug_tensor_trace_data(ctx);
++    if (!common_speculative_mtp_token_trace_enabled() || traces == nullptr || n_traces == 0) {
++        llama_mtp_debug_tensor_trace_clear(ctx);
++        return;
++    }
++
++    for (size_t i = 0; i < n_traces; ++i) {
++        const auto & src = traces[i];
++        int32_t batch_index = src.row_index;
++        if (src.row_count != batch.n_tokens || batch_index < 0 || batch_index >= batch.n_tokens) {
++            batch_index = batch.n_tokens == 1 ? 0 : -1;
++        }
++
++        llama_seq_id seq_id = -1;
++        llama_token token_id = LLAMA_TOKEN_NULL;
++        llama_pos position = 0;
++        if (batch_index >= 0) {
++            seq_id = batch.seq_id[batch_index][0];
++            token_id = batch.token[batch_index];
++            position = batch.pos[batch_index];
++        }
++
++        common_speculative_mtp_hidden_state_trace trace;
++        trace.label = common_speculative_mtp_tensor_trace_label(src.label);
++        trace.seq_id = seq_id;
++        trace.depth = depth;
++        trace.token_id = token_id;
++        trace.position = position;
++        trace.size = src.size;
++        trace.shape.assign(src.ne, src.ne + 4);
++        trace.row_index = src.row_index;
++        trace.row_count = src.row_count;
++        trace.fnv1a64 = src.fnv1a64;
++        trace.mean = src.mean;
++        trace.rms = src.rms;
++        trace.min = src.min;
++        trace.max = src.max;
++
++        trace.first8.reserve(src.first_count);
++        for (int32_t j = 0; j < src.first_count; ++j) {
++            trace.first8.push_back(src.first8[j]);
++        }
++
++        trace.last8.reserve(src.last_count);
++        for (int32_t j = 0; j < src.last_count; ++j) {
++            trace.last8.push_back(src.last8[j]);
++        }
++
++        common_speculative_mtp_hidden_state_traces.push_back(std::move(trace));
++    }
++
++    llama_mtp_debug_tensor_trace_clear(ctx);
++}
++
++void common_speculative_mtp_stage_trace_reset() {
++    common_speculative_mtp_stage_timings_ms.clear();
++    common_speculative_mtp_draft_sample_traces.clear();
++    common_speculative_mtp_hidden_state_traces.clear();
++}
++
++std::map<std::string, double> common_speculative_mtp_stage_trace_take() {
++    std::map<std::string, double> result;
++    result.swap(common_speculative_mtp_stage_timings_ms);
++    return result;
++}
++
++std::vector<common_speculative_mtp_draft_sample_trace> common_speculative_mtp_draft_sample_trace_take() {
++    std::vector<common_speculative_mtp_draft_sample_trace> result;
++    result.swap(common_speculative_mtp_draft_sample_traces);
++    return result;
++}
++
++std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hidden_state_trace_take() {
++    std::vector<common_speculative_mtp_hidden_state_trace> result;
++    result.swap(common_speculative_mtp_hidden_state_traces);
++    return result;
++}
++
+ struct common_speculative_config {
+     common_speculative_type type;
+     common_params_speculative params;
+@@ -965,6 +1348,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+         const int32_t n_tokens = batch_in.n_tokens;
+ 
+         // remember the frist and last batch index for each sequence
++        const int64_t t_scan_us = ggml_time_us();
++        common_speculative_mtp_roctx_push("llama_process_scan_batch");
+         std::fill(i_batch_beg.begin(), i_batch_beg.end(), -1);
+         std::fill(i_batch_end.begin(), i_batch_end.end(), -1);
+ 
+@@ -980,6 +1365,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+                 }
+             }
+         }
++        common_speculative_mtp_stage_add("llama_process_scan_batch", ggml_time_us() - t_scan_us);
++        common_speculative_mtp_roctx_pop();
+ 
+         auto * ctx_tgt = this->params.ctx_tgt;
+         auto * ctx_dft = this->params.ctx_dft;
+@@ -988,6 +1375,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+         // if kv is shared with target (e.g Gemma4), then we can skip this catch-up decode
+         if (!is_mem_shared) {
++            const int64_t t_build_us = ggml_time_us();
++            common_speculative_mtp_roctx_push("llama_process_build_draft_batch");
+             common_batch_clear(batch);
+ 
+             for (int k = 0; k < n_tokens; ++k) {
+@@ -1017,13 +1406,35 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+                 set_h(i_batch_beg[seq_id], pending_h[seq_id].data());
+             }
+ 
++            for (int k = 0; k < n_tokens; ++k) {
++                common_speculative_mtp_hidden_state_trace_add_row(
++                        "process_h_input",
++                        batch.seq_id[k][0],
++                        -2,
++                        batch.token[k],
++                        batch.pos[k],
++                        batch.embd + (size_t) k * n_embd,
++                        n_embd,
++                        k,
++                        n_tokens);
++            }
++            common_speculative_mtp_stage_add("llama_process_build_draft_batch", ggml_time_us() - t_build_us);
++            common_speculative_mtp_roctx_pop();
++
++            const int64_t t_decode_us = ggml_time_us();
++            common_speculative_mtp_roctx_push("llama_process_decode_ctx_dft");
+             const int32_t rc = llama_decode(ctx_dft, batch);
++            common_speculative_mtp_stage_add("llama_process_decode_ctx_dft", ggml_time_us() - t_decode_us);
++            common_speculative_mtp_roctx_pop();
+             if (rc != 0) {
+                 LOG_ERR("%s: llama_decode(ctx_dft) failed rc=%d (pos=%d)\n", __func__, (int) rc, (int) batch_in.pos[0]);
+                 return false;
+             }
++            common_speculative_mtp_tensor_trace_drain_batch(ctx_dft, batch, -2);
+         }
+ 
++        const int64_t t_copy_us = ggml_time_us();
++        common_speculative_mtp_roctx_push("llama_process_copy_verify_h");
+         for (llama_seq_id seq_id = 0; seq_id < (llama_seq_id) n_seq; ++seq_id) {
+             if (i_batch_end[seq_id] < 0) {
+                 continue;
+@@ -1041,6 +1452,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             std::memcpy(pending_h[seq_id].data(),
+                     verify_h[seq_id].data() + (size_t) (n_rows - 1) * n_embd, row_bytes);
+         }
++        common_speculative_mtp_stage_add("llama_process_copy_verify_h", ggml_time_us() - t_copy_us);
++        common_speculative_mtp_roctx_pop();
+ 
+         return true;
+     }
+@@ -1048,6 +1461,8 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+     void draft(common_speculative_draft_params_vec & dparams) override {
+         auto & ctx_dft = params.ctx_dft;
+ 
++        const int64_t t_prepare_initial_us = ggml_time_us();
++        common_speculative_mtp_roctx_push("llama_draft_prepare_initial_batch");
+         common_batch_clear(batch);
+ 
+         // keep track of which sequences are still drafting
+@@ -1056,6 +1471,10 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+         const float * h_row = nullptr;
+         const size_t row_bytes = (size_t) n_embd * sizeof(float);
++        llama_seq_id initial_trace_seq_id = -1;
++        llama_token initial_trace_token = LLAMA_TOKEN_NULL;
++        llama_pos initial_trace_pos = 0;
++        llama_mtp_debug_tensor_trace_clear(ctx_dft);
+ 
+         for (llama_seq_id seq_id = 0; seq_id < (llama_seq_id) n_seq; ++seq_id) {
+             auto & dp = dparams[seq_id];
+@@ -1069,21 +1488,39 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             common_sampler_reset(smpls[seq_id].get());
+ 
+             common_batch_add(batch, dp.id_last, dp.n_past, { seq_id }, true);
++            if (initial_trace_seq_id < 0) {
++                initial_trace_seq_id = seq_id;
++                initial_trace_token = dp.id_last;
++                initial_trace_pos = dp.n_past;
++            }
+ 
+             h_row = pending_h[seq_id].data();
++            common_speculative_mtp_hidden_state_trace_add(
++                    "draft_seed_input", seq_id, -1, dp.id_last, dp.n_past, h_row, n_embd);
+             std::memcpy(batch.embd + n_embd*(batch.n_tokens - 1), h_row, row_bytes);
+         }
++        common_speculative_mtp_stage_add("llama_draft_prepare_initial_batch", ggml_time_us() - t_prepare_initial_us);
++        common_speculative_mtp_roctx_pop();
+ 
++        const int64_t t_decode_initial_us = ggml_time_us();
++        common_speculative_mtp_roctx_push("llama_draft_decode_initial");
+         int ret = llama_decode(ctx_dft, batch);
++        common_speculative_mtp_stage_add("llama_draft_decode_initial", ggml_time_us() - t_decode_initial_us);
++        common_speculative_mtp_roctx_pop();
+         if (ret != 0) {
+             LOG_WRN("%s: llama_decode returned %d\n", __func__, ret);
+             return;
+         }
++        common_speculative_mtp_tensor_trace_drain(
++                ctx_dft, initial_trace_seq_id, 0, initial_trace_token, initial_trace_pos);
+ 
+         int i = 0;
+ 
+         while (n_drafting > 0) {
+             int i_batch = 0;
++            llama_seq_id next_trace_seq_id = -1;
++            llama_token next_trace_token = LLAMA_TOKEN_NULL;
++            llama_pos next_trace_pos = 0;
+ 
+             common_batch_clear(batch);
+ 
+@@ -1094,11 +1531,22 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+                 auto * smpl = smpls[seq_id].get();
+ 
++                const int64_t t_sample_us = ggml_time_us();
++                common_speculative_mtp_roctx_push("llama_draft_sample_topk");
+                 common_sampler_sample(smpl, ctx_dft, i_batch, true);
+                 h_row = llama_get_embeddings_nextn_ith(ctx_dft, i_batch);
+                 ++i_batch;
+ 
+                 const auto * cur_p = common_sampler_get_candidates(smpl, true);
++                auto & dp = dparams.at(seq_id);
++                auto & result = *dp.result;
++                const llama_token input_token = result.empty() ? dp.id_last : result.back();
++                const llama_pos input_pos = is_mem_shared ? dp.n_past : dp.n_past + i;
++                common_speculative_mtp_hidden_state_trace_add(
++                        "draft_next_seed", seq_id, i, input_token, input_pos, h_row, n_embd);
++                common_speculative_mtp_draft_sample_trace_add(seq_id, i, cur_p);
++                common_speculative_mtp_stage_add("llama_draft_sample_topk", ggml_time_us() - t_sample_us);
++                common_speculative_mtp_roctx_pop();
+ 
+                 for (int k = 0; k < std::min(3, (int) cur_p->size); ++k) {
+                     LOG_DBG(" - seq_id %d, draft candidate %3d, pos %3d: %6d (%8.3f) '%s'\n",
+@@ -1119,9 +1567,6 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+                 common_sampler_accept(smpl, id, true);
+ 
+-                auto & dp = dparams.at(seq_id);
+-                auto & result = *dp.result;
+-
+                 result.push_back(id);
+ 
+                 if (params.n_max <= (int) result.size()) {
+@@ -1130,14 +1575,28 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+                     continue;
+                 }
+ 
++                const int64_t t_prepare_next_us = ggml_time_us();
++                common_speculative_mtp_roctx_push("llama_draft_prepare_next_batch");
+                 if (is_mem_shared) {
+                     // note: with shared memory (e.g. Gemma4 assistants) we use the same position for all draft tokens
+                     // ref: https://github.com/huggingface/transformers/blob/effde20942e3f82a1b97449f60b3a48c5ff96145/docs/source/en/model_doc/gemma4_assistant.md?plain=1#L36-L37
+                     common_batch_add(batch, id, dp.n_past, { seq_id }, true);
++                    if (next_trace_seq_id < 0) {
++                        next_trace_seq_id = seq_id;
++                        next_trace_token = id;
++                        next_trace_pos = dp.n_past;
++                    }
+                 } else {
+                     common_batch_add(batch, id, dp.n_past + i + 1, { seq_id }, true);
++                    if (next_trace_seq_id < 0) {
++                        next_trace_seq_id = seq_id;
++                        next_trace_token = id;
++                        next_trace_pos = dp.n_past + i + 1;
++                    }
+                 }
+                 std::memcpy(batch.embd + n_embd*(batch.n_tokens - 1), h_row, row_bytes);
++                common_speculative_mtp_stage_add("llama_draft_prepare_next_batch", ggml_time_us() - t_prepare_next_us);
++                common_speculative_mtp_roctx_pop();
+             }
+ 
+             if (batch.n_tokens == 0) {
+@@ -1145,15 +1604,23 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             }
+ 
+             // evaluate the drafted tokens on the draft model
++            const int64_t t_decode_next_us = ggml_time_us();
++            common_speculative_mtp_roctx_push("llama_draft_decode_next");
+             ret = llama_decode(ctx_dft, batch);
++            common_speculative_mtp_stage_add("llama_draft_decode_next", ggml_time_us() - t_decode_next_us);
++            common_speculative_mtp_roctx_pop();
+             if (ret != 0) {
+                 LOG_WRN("%s: llama_decode[%d] returned %d\n", __func__, i, ret);
+                 break;
+             }
++            common_speculative_mtp_tensor_trace_drain(
++                    ctx_dft, next_trace_seq_id, i + 1, next_trace_token, next_trace_pos);
+ 
+             ++i;
+         }
+ 
++        const int64_t t_finalize_us = ggml_time_us();
++        common_speculative_mtp_roctx_push("llama_draft_finalize");
+         for (llama_seq_id seq_id = 0; seq_id < (llama_seq_id) n_seq; ++seq_id) {
+             auto & dp = dparams[seq_id];
+             if (!dp.drafting) {
+@@ -1166,9 +1633,12 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+             last_n_drafted[seq_id] = (uint16_t) dp.result->size();
+         }
++        common_speculative_mtp_stage_add("llama_draft_finalize", ggml_time_us() - t_finalize_us);
++        common_speculative_mtp_roctx_pop();
+     }
+ 
+     void accept(llama_seq_id seq_id, uint16_t n_accepted, bool /*is_other*/) override {
++        const int64_t t_accept_us = ggml_time_us();
+         if (seq_id < 0 || seq_id >= (llama_seq_id) n_seq) {
+             return;
+         }
+@@ -1180,7 +1650,10 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+         const int32_t i_h = std::min<int32_t>(n_accepted, n_rows - 1);
+         const size_t row_bytes = (size_t) n_embd * sizeof(float);
++        common_speculative_mtp_roctx_push("llama_accept_update_pending_h");
+         std::memcpy(pending_h[seq_id].data(), verify_h[seq_id].data() + (size_t) i_h * n_embd, row_bytes);
++        common_speculative_mtp_stage_add("llama_accept_update_pending_h", ggml_time_us() - t_accept_us);
++        common_speculative_mtp_roctx_pop();
+     }
+ 
+     bool need_embd() const override {
+diff --git a/common/speculative.h b/common/speculative.h
+index bf76ad709e26e861a865bb72de5de1d9e1635926..cca6abefe3c1f492c4329a2639480aa7f743e187 100644
+--- a/common/speculative.h
++++ b/common/speculative.h
+@@ -3,6 +3,11 @@
+ #include "llama.h"
+ #include "common.h"
+ 
++#include <cstdint>
++#include <map>
++#include <string>
++#include <vector>
++
+ struct common_speculative;
+ 
+ // comma separated list the provided types
+@@ -71,6 +76,42 @@ void common_speculative_accept(common_speculative * spec, llama_seq_id, uint16_t
+ // print statistics about the speculative decoding
+ void common_speculative_print_stats(const common_speculative * spec);
+ 
++struct common_speculative_mtp_draft_sample_trace {
++    llama_seq_id seq_id = 0;
++    int32_t depth = 0;
++    std::vector<llama_token> token_ids;
++    std::vector<float> logits;
++    std::vector<float> probs;
++};
++
++struct common_speculative_mtp_hidden_state_trace {
++    std::string label;
++    llama_seq_id seq_id = 0;
++    int32_t depth = 0;
++    llama_token token_id = LLAMA_TOKEN_NULL;
++    llama_pos position = 0;
++    int32_t size = 0;
++    std::vector<int64_t> shape;
++    int32_t row_index = -1;
++    int32_t row_count = 1;
++    uint64_t fnv1a64 = 0;
++    double mean = 0.0;
++    double rms = 0.0;
++    double min = 0.0;
++    double max = 0.0;
++    std::vector<float> first8;
++    std::vector<float> last8;
++};
++
++// Diagnostic-only stage accumulator used by server-context.cpp when
++// LLAMA_MTP_STAGE_TIMINGS is set.  It is intentionally independent from the
++// public speculative API and is empty unless common/speculative.cpp records
++// MTP internals in the current thread.
++void common_speculative_mtp_stage_trace_reset();
++std::map<std::string, double> common_speculative_mtp_stage_trace_take();
++std::vector<common_speculative_mtp_draft_sample_trace> common_speculative_mtp_draft_sample_trace_take();
++std::vector<common_speculative_mtp_hidden_state_trace> common_speculative_mtp_hidden_state_trace_take();
++
+ struct common_speculative_deleter {
+     void operator()(common_speculative * s) { common_speculative_free(s); }
+ };
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 168dbabd76678cb8f66086147373c919daa13b10..f6929ceacc7bb54062d39e010f5bc825353e746a 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -13,7 +13,10 @@
+ #include "llama.h"
+ 
+ #include <cinttypes>
++#include <algorithm>
+ #include <cmath>
++#include <cstdint>
++#include <cstdlib>
+ #include <cstring>
+ #include <limits>
+ #include <stdexcept>
+@@ -30,6 +33,64 @@ static llm_graph_type ctx_type_to_graph_type(llama_context_type ctx_type) {
+     throw std::runtime_error("Unsupported ctx type");
+ }
+ 
++static bool llama_mtp_debug_tensor_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_TENSOR_TRACE");
++    return enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0;
++}
++
++static uint64_t llama_mtp_debug_fnv1a64(const float * row, int32_t n) {
++    const auto * bytes = reinterpret_cast<const unsigned char *>(row);
++    const size_t n_bytes = (size_t) n * sizeof(float);
++    uint64_t hash = 1469598103934665603ULL;
++    for (size_t i = 0; i < n_bytes; ++i) {
++        hash ^= (uint64_t) bytes[i];
++        hash *= 1099511628211ULL;
++    }
++    return hash;
++}
++
++static int llama_mtp_debug_tensor_token_dim(const std::string & label) {
++    if (label == "mtp_Qcur_normed" ||
++            label == "mtp_Qcur_rope" ||
++            label == "mtp_Kcur_normed" ||
++            label == "mtp_Kcur_rope" ||
++            label == "mtp_Vcur") {
++        return 2;
++    }
++    return 1;
++}
++
++static void llama_mtp_debug_tensor_copy_token_row(
++        const ggml_tensor * tensor,
++        const std::vector<uint8_t> & raw,
++        int token_dim,
++        int32_t row_index,
++        std::vector<float> & row) {
++    row.clear();
++    for (int64_t i3 = 0; i3 < tensor->ne[3]; ++i3) {
++        for (int64_t i2 = 0; i2 < tensor->ne[2]; ++i2) {
++            if (token_dim == 2 && i2 != row_index) {
++                continue;
++            }
++            for (int64_t i1 = 0; i1 < tensor->ne[1]; ++i1) {
++                if (token_dim == 1 && i1 != row_index) {
++                    continue;
++                }
++                for (int64_t i0 = 0; i0 < tensor->ne[0]; ++i0) {
++                    const size_t offset =
++                        (size_t) i0 * tensor->nb[0] +
++                        (size_t) i1 * tensor->nb[1] +
++                        (size_t) i2 * tensor->nb[2] +
++                        (size_t) i3 * tensor->nb[3];
++                    float value = 0.0f;
++                    std::memcpy(&value, raw.data() + offset, sizeof(float));
++                    row.push_back(value);
++                }
++            }
++        }
++    }
++}
++
+ llama_context::llama_context(
+         const llama_model & model,
+               llama_context_params params) :
+@@ -950,6 +1011,14 @@ float * llama_context::get_embeddings_nextn_ith(int32_t i) {
+     }
+ }
+ 
++const std::vector<llama_mtp_debug_tensor_trace> & llama_context::get_mtp_debug_tensor_traces() const {
++    return mtp_debug_tensor_traces;
++}
++
++void llama_context::clear_mtp_debug_tensor_traces() {
++    mtp_debug_tensor_traces.clear();
++}
++
+ float * llama_context::get_embeddings_layer_inp(uint32_t lid) {
+     output_reorder();
+ 
+@@ -1958,6 +2027,7 @@ int llama_context::decode(const llama_batch & batch_inp) {
+         }
+ 
+         extract_layer_inputs(res, n_tokens_prev, ubatch.n_tokens);
++        extract_mtp_debug_tensors(res);
+ 
+         // extract nextn embeddings before
+         // only meaningful in LLAMA_POOLING_TYPE_NONE (per-token); other pooling modes are ignored.
+@@ -2245,6 +2315,83 @@ void llama_context::extract_layer_inputs(const llm_graph_result * res, size_t to
+     }
+ }
+ 
++void llama_context::extract_mtp_debug_tensors(const llm_graph_result * res) {
++    if (!llama_mtp_debug_tensor_trace_enabled() || res == nullptr || res->t_mtp_debug_tensors.empty()) {
++        return;
++    }
++
++    for (const auto & item : res->t_mtp_debug_tensors) {
++        const auto * tensor = item.second;
++        if (tensor == nullptr || tensor->type != GGML_TYPE_F32) {
++            continue;
++        }
++
++        const int64_t n = ggml_nelements(tensor);
++        if (n <= 0 || n > (int64_t) std::numeric_limits<int32_t>::max()) {
++            continue;
++        }
++
++        const size_t nbytes = ggml_nbytes(tensor);
++        std::vector<uint8_t> raw(nbytes);
++        ggml_backend_tensor_get(tensor, raw.data(), 0, raw.size());
++
++        const int token_dim = llama_mtp_debug_tensor_token_dim(item.first);
++        int32_t row_count = (int32_t) std::max<int64_t>(1, tensor->ne[token_dim]);
++        if (row_count <= 0 || n % row_count != 0 || token_dim < 0 || token_dim >= GGML_MAX_DIMS) {
++            row_count = 1;
++        }
++        const int32_t row_size = (int32_t) (n / row_count);
++
++        for (int32_t row_index = 0; row_index < row_count; ++row_index) {
++            std::vector<float> row;
++            row.reserve((size_t) row_size);
++            llama_mtp_debug_tensor_copy_token_row(tensor, raw, token_dim, row_index, row);
++            if ((int32_t) row.size() != row_size) {
++                continue;
++            }
++
++            double sum = 0.0;
++            double sum_sq = 0.0;
++            double min_v = std::numeric_limits<double>::infinity();
++            double max_v = -std::numeric_limits<double>::infinity();
++            for (int32_t j = 0; j < row_size; ++j) {
++                const double value = (double) row[(size_t) j];
++                sum += value;
++                sum_sq += value * value;
++                min_v = std::min(min_v, value);
++                max_v = std::max(max_v, value);
++            }
++
++            llama_mtp_debug_tensor_trace trace = {};
++            std::strncpy(trace.label, item.first.c_str(), sizeof(trace.label) - 1);
++            for (int i = 0; i < 4; ++i) {
++                trace.ne[i] = tensor->ne[i];
++            }
++            trace.type = (int32_t) tensor->type;
++            trace.size = row_size;
++            trace.row_index = row_index;
++            trace.row_count = row_count;
++            trace.fnv1a64 = llama_mtp_debug_fnv1a64(row.data(), trace.size);
++            trace.mean = sum / (double) row_size;
++            trace.rms = std::sqrt(sum_sq / (double) row_size);
++            trace.min = min_v;
++            trace.max = max_v;
++
++            trace.first_count = std::min<int32_t>(8, trace.size);
++            for (int32_t i = 0; i < trace.first_count; ++i) {
++                trace.first8[i] = row[(size_t) i];
++            }
++
++            trace.last_count = std::min<int32_t>(8, trace.size);
++            for (int32_t i = 0; i < trace.last_count; ++i) {
++                trace.last8[i] = row[(size_t) (trace.size - trace.last_count + i)];
++            }
++
++            mtp_debug_tensor_traces.push_back(trace);
++        }
++    }
++}
++
+ void llama_context::output_reorder() {
+     const uint64_t n_vocab = model.vocab.n_tokens();
+     const uint64_t n_embd  = model.hparams.n_embd;
+@@ -3719,6 +3866,19 @@ float * llama_get_embeddings_nextn_ith(llama_context * ctx, int32_t i) {
+     return ctx->get_embeddings_nextn_ith(i);
+ }
+ 
++size_t llama_mtp_debug_tensor_trace_count(const llama_context * ctx) {
++    return ctx->get_mtp_debug_tensor_traces().size();
++}
++
++const llama_mtp_debug_tensor_trace * llama_mtp_debug_tensor_trace_data(const llama_context * ctx) {
++    const auto & traces = ctx->get_mtp_debug_tensor_traces();
++    return traces.empty() ? nullptr : traces.data();
++}
++
++void llama_mtp_debug_tensor_trace_clear(llama_context * ctx) {
++    ctx->clear_mtp_debug_tensor_traces();
++}
++
+ float * llama_get_embeddings_layer_inp(llama_context * ctx, uint32_t lid) {
+     ctx->synchronize();
+ 
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 853052be2cadd9b99948e6c526dc287095dea945..addaf924c7a84aa4a0cb2854e388fe796a900f4a 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -87,6 +87,8 @@ struct llama_context {
+ 
+     float * get_embeddings_nextn();
+     float * get_embeddings_nextn_ith(int32_t i);
++    const std::vector<llama_mtp_debug_tensor_trace> & get_mtp_debug_tensor_traces() const;
++    void clear_mtp_debug_tensor_traces();
+ 
+     float * get_embeddings_layer_inp(uint32_t lid);
+ 
+@@ -232,6 +234,7 @@ private:
+     // async-copy enabled layer-input tensors (per cparams.output_layer_inp)
+     // from backend into host-side embd_layer_inp buffers
+     void extract_layer_inputs(const llm_graph_result * res, size_t token_offset, size_t n_tokens);
++    void extract_mtp_debug_tensors(const llm_graph_result * res);
+ 
+     //
+     // graph
+@@ -295,6 +298,8 @@ private:
+     // sets llm_graph_result::t_h_nextn
+     buffer_view<float> embd_nextn = {nullptr, 0};
+ 
++    std::vector<llama_mtp_debug_tensor_trace> mtp_debug_tensor_traces;
++
+     // host buffers for output layer input embeddings, per layer
+     // populated when cparams.output_layer_inp[il] is true
+     std::vector<buffer_view<float>> embd_layer_inp;
+diff --git a/src/llama-ext.h b/src/llama-ext.h
+index 8b5679b690bb286ce5b804426183e489605af55a..30c36e59a79b99f68b3e71ea0dd7caf858b19be3 100644
+--- a/src/llama-ext.h
++++ b/src/llama-ext.h
+@@ -9,6 +9,24 @@
+ #include <cstdint>
+ #include <map>
+ 
++struct llama_mtp_debug_tensor_trace {
++    char label[64];
++    int64_t ne[4];
++    int32_t type;
++    int32_t size;
++    int32_t row_index;
++    int32_t row_count;
++    uint64_t fnv1a64;
++    double mean;
++    double rms;
++    double min;
++    double max;
++    float first8[8];
++    float last8[8];
++    int32_t first_count;
++    int32_t last_count;
++};
++
+ // Reserve a new compute graph. It is valid until the next call to llama_graph_reserve.
+ LLAMA_API struct ggml_cgraph * llama_graph_reserve(
+         struct llama_context * ctx,
+@@ -102,6 +120,12 @@ LLAMA_API float * llama_get_embeddings_nextn(struct llama_context * ctx);
+ // LLAMA_API float * llama_get_embeddings_ith(struct llama_context * ctx, int32_t i);
+ LLAMA_API float * llama_get_embeddings_nextn_ith(struct llama_context * ctx, int32_t i);
+ 
++// Diagnostic-only summaries for selected MTP graph tensors.
++// Populated only when LLAMA_MTP_TENSOR_TRACE is set.
++LLAMA_API size_t llama_mtp_debug_tensor_trace_count(const struct llama_context * ctx);
++LLAMA_API const llama_mtp_debug_tensor_trace * llama_mtp_debug_tensor_trace_data(const struct llama_context * ctx);
++LLAMA_API void llama_mtp_debug_tensor_trace_clear(struct llama_context * ctx);
++
+ // Set whether the context outputs the input embeddings of a specific layer
+ LLAMA_API void llama_set_embeddings_layer_inp(struct llama_context * ctx, uint32_t lid, bool value);
+ 
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 7468bd9b79ef872592b56f0ab4e644b5007e597b..c9012433fad26e000fffe7912c05e4e915e8a97f 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <cassert>
+ #include <cmath>
++#include <cstdlib>
+ #include <cstring>
+ #include <numeric>
+ #include <sstream>
+@@ -61,6 +62,34 @@ static bool can_reuse_kq_mask(
+ 
+ // impl
+ 
++static bool llama_mtp_debug_tensor_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_TENSOR_TRACE");
++    return enabled != nullptr && enabled[0] != '\0' && std::strcmp(enabled, "0") != 0;
++}
++
++static bool llama_mtp_debug_tensor_trace_wants(const char * name) {
++    static const std::unordered_set<std::string> names = {
++        "mtp_tok_embd",
++        "mtp_enorm",
++        "mtp_hnorm",
++        "mtp_eh_proj",
++        "mtp_attn_norm",
++        "mtp_Qcur_normed",
++        "mtp_Qcur_rope",
++        "mtp_Kcur_normed",
++        "mtp_Kcur_rope",
++        "mtp_Vcur",
++        "mtp_attn_pregate",
++        "mtp_attn_out",
++        "mtp_attn_residual",
++        "mtp_attn_post_norm",
++        "mtp_ffn_out",
++        "mtp_post_ffn",
++        "h_nextn",
++    };
++    return name != nullptr && names.find(name) != names.end();
++}
++
+ static ggml_tensor * ggml_mul_mat_aux(
+         ggml_context * ctx,
+         ggml_tensor * cur,
+@@ -912,6 +941,7 @@ void llm_graph_result::reset() {
+     t_sampled_probs.clear();
+     t_sampled_logits.clear();
+     t_candidates.clear();
++    t_mtp_debug_tensors.clear();
+ 
+     params = {};
+ 
+@@ -936,6 +966,17 @@ void llm_graph_result::set_inputs(const llama_ubatch * ubatch) {
+     }
+ }
+ 
++void llm_graph_result::add_mtp_debug_tensor(const char * name, ggml_tensor * tensor) {
++    if (!llama_mtp_debug_tensor_trace_enabled() ||
++            params.gtype != LLM_GRAPH_TYPE_DECODER_MTP ||
++            !llama_mtp_debug_tensor_trace_wants(name) ||
++            tensor == nullptr) {
++        return;
++    }
++
++    t_mtp_debug_tensors.emplace_back(name, tensor);
++}
++
+ void llm_graph_result::set_outputs(const llm_graph_params & params) {
+     if (t_logits != nullptr) {
+         ggml_set_output(t_logits);
+@@ -978,6 +1019,11 @@ void llm_graph_result::set_outputs(const llm_graph_params & params) {
+             ggml_set_output(t);
+         }
+     }
++    for (auto & item : t_mtp_debug_tensors) {
++        if (item.second != nullptr) {
++            ggml_set_output(item.second);
++        }
++    }
+ }
+ 
+ bool llm_graph_result::can_reuse(const llm_graph_params & params) {
+@@ -1074,6 +1120,7 @@ void llm_graph_context::cb(ggml_tensor * cur, const char * name, int il) const {
+     if (cb_func) {
+         cb_func(ubatch, cur, name, il);
+     }
++    res->add_mtp_debug_tensor(name, cur);
+ }
+ 
+ ggml_tensor * llm_graph_context::build_cvec(
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index cc5cfe51dcdfeeca859ddcdf79b12dc70faf5ad2..6f50dc7a74d20bfcf034fa1c1d75195356af51e2 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -11,6 +11,7 @@
+ #include <set>
+ #include <functional>
+ #include <map>
++#include <string>
+ 
+ struct ggml_cgraph;
+ struct ggml_context;
+@@ -716,6 +717,7 @@ public:
+ 
+     void set_inputs(const llama_ubatch * ubatch);
+     void set_outputs(const llm_graph_params & params);
++    void add_mtp_debug_tensor(const char * name, ggml_tensor * tensor);
+ 
+     // try to update the existing graph result using the new graph parameters in order to reuse it
+     // this can only be done if we determine that the resulting graph using the new graph parameters
+@@ -742,6 +744,7 @@ public:
+     std::map<llama_seq_id, ggml_tensor *> t_candidates;
+     std::map<llama_seq_id, ggml_tensor *> t_sampled;
+     std::map<llama_seq_id, ggml_tensor *> t_sampled_probs;
++    std::vector<std::pair<std::string, ggml_tensor *>> t_mtp_debug_tensors;
+ 
+     std::vector<llm_graph_input_ptr> inputs;
+ 
+diff --git a/src/models/qwen35moe.cpp b/src/models/qwen35moe.cpp
+index eb5e9a406a156af811641d0fdfb2b86745de655d..cbeab10d9d6cd9dd421dca5cb262b2af241d93ed 100644
+--- a/src/models/qwen35moe.cpp
++++ b/src/models/qwen35moe.cpp
+@@ -649,9 +649,11 @@ llama_model_qwen35moe::graph_mtp::graph_mtp(const llama_model & model, const llm
+     Qcur = ggml_rope_multi(ctx0, Qcur, inp_pos, nullptr,
+             n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
+             ext_factor, attn_factor, beta_fast, beta_slow);
++    cb(Qcur, "mtp_Qcur_rope", il);
+     Kcur = ggml_rope_multi(ctx0, Kcur, inp_pos, nullptr,
+             n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
+             ext_factor, attn_factor, beta_fast, beta_slow);
++    cb(Kcur, "mtp_Kcur_rope", il);
+ 
+     const float kq_scale = hparams.f_attention_scale == 0.0f
+             ? 1.0f / sqrtf(float(n_embd_head)) : hparams.f_attention_scale;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 986b2f15d59a9581bff93c6ef790f16da46cf0ca..17ec0d9566258c44bb8d0c0f45262e7c2763357c 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -23,9 +23,14 @@
+ #include <algorithm>
+ #include <cstddef>
+ #include <cinttypes>
++#include <cstdlib>
++#include <cstring>
++#include <dlfcn.h>
+ #include <exception>
+ #include <memory>
+ #include <filesystem>
++#include <map>
++#include <mutex>
+ #include <utility>
+ #include <fstream>
+ 
+@@ -42,6 +47,241 @@ using json = nlohmann::ordered_json;
+ 
+ constexpr int HTTP_POLLING_SECONDS = 1;
+ 
++static const char * mtp_stage_timings_path() {
++    const char * path = std::getenv("LLAMA_MTP_STAGE_TIMINGS");
++    return path && path[0] ? path : nullptr;
++}
++
++static bool mtp_stage_timings_enabled() {
++    return mtp_stage_timings_path() != nullptr;
++}
++
++static bool mtp_token_trace_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_TOKEN_TRACE");
++    return enabled && enabled[0] && std::strcmp(enabled, "0") != 0;
++}
++
++static json mtp_tokens_json_range(const llama_tokens & tokens, size_t begin, size_t end) {
++    json result = json::array();
++    end = std::min(end, tokens.size());
++    for (size_t i = begin; i < end; ++i) {
++        result.push_back(tokens[i]);
++    }
++    return result;
++}
++
++static json mtp_tokens_json(const llama_tokens & tokens) {
++    return mtp_tokens_json_range(tokens, 0, tokens.size());
++}
++
++static void mtp_stage_add_token_trace(
++        json & event,
++        const llama_tokens & draft_tokens,
++        const llama_tokens & sampled_tokens,
++        size_t n_accepted_draft_tokens,
++        bool emitted_visible_tokens) {
++    if (!mtp_token_trace_enabled()) {
++        return;
++    }
++
++    event["draft_token_ids"] = mtp_tokens_json(draft_tokens);
++    event["sampled_token_ids"] = mtp_tokens_json(sampled_tokens);
++    event["accepted_token_ids"] = mtp_tokens_json_range(sampled_tokens, 0, n_accepted_draft_tokens);
++    event["output_token_ids"] = emitted_visible_tokens ? mtp_tokens_json(sampled_tokens) : json::array();
++    event["bonus_token_id"] = sampled_tokens.empty() ? json(nullptr) : json(sampled_tokens.back());
++    event["rejected_draft_token_id"] = n_accepted_draft_tokens < draft_tokens.size()
++        ? json(draft_tokens[n_accepted_draft_tokens])
++        : json(nullptr);
++}
++
++static json mtp_draft_sample_trace_json(
++        const std::vector<common_speculative_mtp_draft_sample_trace> & traces) {
++    json result = json::array();
++    for (const auto & trace : traces) {
++        json token_ids = json::array();
++        for (const auto id : trace.token_ids) {
++            token_ids.push_back(id);
++        }
++
++        json logits = json::array();
++        for (const auto logit : trace.logits) {
++            logits.push_back(logit);
++        }
++
++        json probs = json::array();
++        for (const auto prob : trace.probs) {
++            probs.push_back(prob);
++        }
++
++        json margins = json::array();
++        if (!trace.logits.empty()) {
++            const float best = trace.logits[0];
++            for (const auto logit : trace.logits) {
++                margins.push_back(best - logit);
++            }
++        }
++
++        result.push_back({
++            {"seq_id", trace.seq_id},
++            {"depth", trace.depth},
++            {"token_ids", token_ids},
++            {"logits", logits},
++            {"probs", probs},
++            {"logit_margins", margins},
++        });
++    }
++    return result;
++}
++
++static json mtp_hidden_state_trace_json(
++        const std::vector<common_speculative_mtp_hidden_state_trace> & traces) {
++    json result = json::array();
++    for (const auto & trace : traces) {
++        json first8 = json::array();
++        for (const auto value : trace.first8) {
++            first8.push_back(value);
++        }
++
++        json last8 = json::array();
++        for (const auto value : trace.last8) {
++            last8.push_back(value);
++        }
++
++        json shape = json::array();
++        for (const auto value : trace.shape) {
++            shape.push_back(value);
++        }
++
++        result.push_back({
++            {"label", trace.label},
++            {"seq_id", trace.seq_id},
++            {"depth", trace.depth},
++            {"token_id", trace.token_id},
++            {"position", trace.position},
++            {"size", trace.size},
++            {"shape", shape},
++            {"row_index", trace.row_index},
++            {"row_count", trace.row_count},
++            {"fnv1a64", trace.fnv1a64},
++            {"mean", trace.mean},
++            {"rms", trace.rms},
++            {"min", trace.min},
++            {"max", trace.max},
++            {"first8", first8},
++            {"last8", last8},
++        });
++    }
++    return result;
++}
++
++struct mtp_roctx_api {
++    using range_push_fn = int (*)(const char *);
++    using range_pop_fn  = int (*)();
++
++    void * handle = nullptr;
++    range_push_fn range_push = nullptr;
++    range_pop_fn  range_pop  = nullptr;
++    bool tried = false;
++};
++
++static bool mtp_roctx_enabled() {
++    const char * enabled = std::getenv("LLAMA_MTP_ROCTX");
++    return enabled && enabled[0] && std::strcmp(enabled, "0") != 0;
++}
++
++static mtp_roctx_api & mtp_roctx_api_get() {
++    static mtp_roctx_api api;
++    if (api.tried) {
++        return api;
++    }
++    api.tried = true;
++
++    if (!mtp_roctx_enabled()) {
++        return api;
++    }
++
++    const char * libs[] = { "librocprofiler-sdk-roctx.so", "libroctx64.so" };
++    for (const char * lib : libs) {
++        api.handle = dlopen(lib, RTLD_LAZY | RTLD_LOCAL);
++        if (api.handle != nullptr) {
++            break;
++        }
++    }
++    if (api.handle == nullptr) {
++        return api;
++    }
++
++    api.range_push = reinterpret_cast<mtp_roctx_api::range_push_fn>(dlsym(api.handle, "roctxRangePushA"));
++    api.range_pop  = reinterpret_cast<mtp_roctx_api::range_pop_fn >(dlsym(api.handle, "roctxRangePop"));
++    if (api.range_push == nullptr || api.range_pop == nullptr) {
++        dlclose(api.handle);
++        api.handle = nullptr;
++        api.range_push = nullptr;
++        api.range_pop = nullptr;
++    }
++    return api;
++}
++
++static void mtp_roctx_push(const char * name) {
++    auto & api = mtp_roctx_api_get();
++    if (api.range_push != nullptr && api.range_pop != nullptr) {
++        api.range_push(name);
++    }
++}
++
++static void mtp_roctx_pop() {
++    auto & api = mtp_roctx_api_get();
++    if (api.range_push != nullptr && api.range_pop != nullptr) {
++        api.range_pop();
++    }
++}
++
++struct mtp_stage_trace {
++    int64_t cycle_wall_t0_us = 0;
++    int64_t cycle = 0;
++    int slot_id = -1;
++    int task_id = -1;
++    std::map<std::string, double> stage_timings_ms;
++    std::vector<common_speculative_mtp_draft_sample_trace> draft_sample_traces;
++    std::vector<common_speculative_mtp_hidden_state_trace> hidden_state_traces;
++};
++
++static void mtp_stage_add(mtp_stage_trace & trace, const char * name, int64_t dt_us) {
++    if (dt_us < 0) {
++        return;
++    }
++    trace.stage_timings_ms[name] += (double) dt_us / 1000.0;
++}
++
++static void mtp_stage_add_ms(mtp_stage_trace & trace, const std::string & name, double ms) {
++    if (ms < 0.0) {
++        return;
++    }
++    trace.stage_timings_ms[name] += ms;
++}
++
++static void mtp_stage_merge(mtp_stage_trace & trace, const std::map<std::string, double> & stages) {
++    for (const auto & item : stages) {
++        mtp_stage_add_ms(trace, item.first, item.second);
++    }
++}
++
++static void mtp_stage_write_json(const json & record) {
++    const char * path = mtp_stage_timings_path();
++    if (path == nullptr) {
++        return;
++    }
++
++    static std::mutex mutex;
++    std::lock_guard<std::mutex> lock(mutex);
++
++    std::ofstream file(path, std::ios::app);
++    if (!file) {
++        return;
++    }
++    file << record.dump() << '\n';
++}
++
+ static uint32_t server_n_outputs_max(const common_params & params) {
+     const uint32_t n_batch  = params.n_batch;
+ 
+@@ -90,6 +330,7 @@ struct server_slot {
+     llama_tokens spec_prompt;
+     std::vector<int32_t> spec_i_batch;
+     common_prompt_checkpoint spec_ckpt;
++    int64_t mtp_stage_cycle = 0;
+ 
+     // TODO: move members that belong to the task (such as `generated_text`, `has_new_line`) to task_results_state
+     //       see https://github.com/ggml-org/llama.cpp/pull/18283#issuecomment-3710175837
+@@ -2506,6 +2747,20 @@ private:
+             queue_tasks.post(std::move(task));
+         }
+ 
++        const bool mtp_stage_trace_enabled = mtp_stage_timings_enabled();
++        std::map<int, mtp_stage_trace> mtp_stage_cycles;
++
++        auto mtp_stage_get_trace = [&](server_slot & slot) -> mtp_stage_trace & {
++            auto & trace = mtp_stage_cycles[slot.id];
++            if (trace.cycle_wall_t0_us == 0) {
++                trace.cycle_wall_t0_us = ggml_time_us();
++                trace.cycle            = slot.mtp_stage_cycle++;
++                trace.slot_id          = slot.id;
++                trace.task_id          = slot.task ? slot.task->id : -1;
++            }
++            return trace;
++        };
++
+         // apply context-shift if needed
+         // TODO: simplify and improve
+         for (server_slot & slot : slots) {
+@@ -2643,7 +2898,42 @@ private:
+ 
+         // generate the actual drafts (if any)
+         {
++            if (mtp_stage_trace_enabled) {
++                for (auto * slot_ptr : drafting) {
++                    mtp_stage_get_trace(*slot_ptr);
++                }
++            }
++
++            const int64_t t_draft_us = ggml_time_us();
++            mtp_roctx_push("draft_initial");
++            common_speculative_mtp_stage_trace_reset();
+             common_speculative_draft(spec.get());
++            const auto draft_substages = common_speculative_mtp_stage_trace_take();
++            const auto draft_sample_traces = common_speculative_mtp_draft_sample_trace_take();
++            const auto hidden_state_traces = common_speculative_mtp_hidden_state_trace_take();
++            const int64_t draft_dt_us = ggml_time_us() - t_draft_us;
++            mtp_roctx_pop();
++
++            if (mtp_stage_trace_enabled) {
++                for (auto * slot_ptr : drafting) {
++                    auto & slot = *slot_ptr;
++                    if (!slot.spec_draft.empty()) {
++                        auto & trace = mtp_stage_get_trace(slot);
++                        mtp_stage_add(trace, "draft_initial", draft_dt_us);
++                        mtp_stage_merge(trace, draft_substages);
++                        for (const auto & sample_trace : draft_sample_traces) {
++                            if (sample_trace.seq_id == slot.id) {
++                                trace.draft_sample_traces.push_back(sample_trace);
++                            }
++                        }
++                        for (const auto & hidden_trace : hidden_state_traces) {
++                            if (hidden_trace.seq_id == slot.id) {
++                                trace.hidden_state_traces.push_back(hidden_trace);
++                            }
++                        }
++                    }
++                }
++            }
+         }
+ 
+         // make checkpoints if needed
+@@ -2655,6 +2945,8 @@ private:
+ 
+             slot.n_draft_total += draft.size();
+ 
++            const int64_t t_snapshot_us = ggml_time_us();
++
+             // TODO: avoid restoring the draft context and re-evaluating the drafted tokens when not needed [TAG_SPEC_AVOID_DRAFT_REEVAL]
+             const bool use_ckpt_dft = ctx_dft_seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
+ 
+@@ -2692,12 +2984,23 @@ private:
+                     ckpt.update_dft(ctx_dft.get(), slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+                 }
+             }
++
++            if (mtp_stage_trace_enabled && !draft.empty()) {
++                mtp_stage_add(mtp_stage_get_trace(slot), "target_block_snapshot", ggml_time_us() - t_snapshot_us);
++            }
+         }
+ 
+         // update the batch with the sampled/drafted tokens
+         for (auto * slot_ptr : generating) {
+             auto & slot = *slot_ptr;
+ 
++            if (mtp_stage_trace_enabled && slot.can_speculate() && !slot.spec_draft.empty()) {
++                auto & trace = mtp_stage_get_trace(slot);
++                if (!trace.stage_timings_ms.count("target_block_verify_total")) {
++                    trace.stage_timings_ms["target_block_verify_total"] = 0.0;
++                }
++            }
++
+             slot.update_batch(batch);
+         }
+ 
+@@ -3294,7 +3597,17 @@ private:
+                 batch.logits   + i,
+             };
+ 
++            const int64_t t_target_forward_us = ggml_time_us();
++            mtp_roctx_push("target_block_forward");
+             const int ret = llama_decode(ctx_tgt, batch_view);
++            const int64_t target_forward_dt_us = ggml_time_us() - t_target_forward_us;
++            mtp_roctx_pop();
++
++            if (mtp_stage_trace_enabled) {
++                for (auto & item : mtp_stage_cycles) {
++                    mtp_stage_add(item.second, "target_block_forward", target_forward_dt_us);
++                }
++            }
+ 
+             metrics.on_decoded(slots);
+ 
+@@ -3392,12 +3705,32 @@ private:
+             //        }
+             //    }
+             //}
+-            if (!common_speculative_process(spec.get(), batch_view)) {
++            const int64_t t_mtp_context_us = ggml_time_us();
++            mtp_roctx_push("mtp_context_replay_append");
++            common_speculative_mtp_stage_trace_reset();
++            const bool process_ok = common_speculative_process(spec.get(), batch_view);
++            const auto process_substages = common_speculative_mtp_stage_trace_take();
++            const auto process_hidden_state_traces = common_speculative_mtp_hidden_state_trace_take();
++            mtp_roctx_pop();
++            if (!process_ok) {
+                 SRV_ERR("%s", "failed to process speculative batch\n");
+ 
+                 // TODO: handle error
+                 break;
+             }
++            const int64_t mtp_context_dt_us = ggml_time_us() - t_mtp_context_us;
++
++            if (mtp_stage_trace_enabled) {
++                for (auto & item : mtp_stage_cycles) {
++                    mtp_stage_add(item.second, "mtp_context_replay_append", mtp_context_dt_us);
++                    mtp_stage_merge(item.second, process_substages);
++                    for (const auto & hidden_trace : process_hidden_state_traces) {
++                        if (hidden_trace.seq_id == item.first) {
++                            item.second.hidden_state_traces.push_back(hidden_trace);
++                        }
++                    }
++                }
++            }
+ 
+             // move the head of the batch forward with the number of tokens we just processed
+             i_next = i + n_tokens;
+@@ -3526,8 +3859,16 @@ private:
+ 
+                 GGML_ASSERT(n_draft > 0);
+ 
++                size_t n_accepted_draft_tokens = 0;
++                size_t n_visible_output_tokens = 0;
++                size_t n_discarded_rows        = 0;
++                int64_t t_commit_us            = 0;
++                const llama_tokens draft_tokens_trace = mtp_token_trace_enabled() ? slot.spec_draft : llama_tokens();
++
+                 // verify and try to accept the draft
+                 {
++                    const int64_t t_accounting_us = ggml_time_us();
++
+                     // save the sampler sampler state in case we need to restore it
+                     common_sampler_ptr smpl_save(common_sampler_clone(slot.smpl.get()));
+ 
+@@ -3538,6 +3879,13 @@ private:
+                     GGML_ASSERT(accepted.size() >= 1);
+ 
+                     const uint32_t n_rollback = slot.spec_draft.size() + 1 - accepted.size();
++                    n_accepted_draft_tokens = accepted.size() - 1;
++                    n_visible_output_tokens = accepted.size();
++                    n_discarded_rows        = n_rollback;
++
++                    if (mtp_stage_trace_enabled) {
++                        mtp_stage_add(mtp_stage_get_trace(slot), "target_block_acceptance_accounting", ggml_time_us() - t_accounting_us);
++                    }
+ 
+                     const bool use_ckpt_tgt =
+                         ctx_tgt_seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_FULL ||
+@@ -3557,6 +3905,7 @@ private:
+ 
+                             SLT_DBG(slot, "restoring speculative checkpoint (pos_min = %d, pos_max = %d, size = %zu)\n", ckpt.pos_min, ckpt.pos_max, ckpt.size());
+ 
++                            const int64_t t_restore_us = ggml_time_us();
+                             {
+                                 ckpt.load_tgt(slot.ctx_tgt, slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+ 
+@@ -3572,6 +3921,57 @@ private:
+                             slot.prompt.tokens.keep_first(ckpt.n_tokens);
+                             slot.smpl = std::move(smpl_save);
+ 
++                            if (mtp_stage_trace_enabled) {
++                                auto & stage_trace = mtp_stage_get_trace(slot);
++                                mtp_stage_add(stage_trace, "target_block_replay_or_commit", ggml_time_us() - t_restore_us);
++
++                                double verify_total_ms = 0.0;
++                                for (const char * name : {
++                                        "target_block_snapshot",
++                                        "target_block_forward",
++                                        "mtp_context_replay_append",
++                                        "target_block_acceptance_accounting",
++                                        "target_block_replay_or_commit",
++                                    }) {
++                                    verify_total_ms += stage_trace.stage_timings_ms[name];
++                                }
++                                stage_trace.stage_timings_ms["target_block_verify_total"] = verify_total_ms;
++
++                                json stages = json::object();
++                                for (const auto & item : stage_trace.stage_timings_ms) {
++                                    stages[item.first] = item.second;
++                                }
++
++                                json event = {
++                                    {"schema", "llamacpp.mtp_stage_timing.v1"},
++                                    {"slot_id", stage_trace.slot_id},
++                                    {"task_id", stage_trace.task_id},
++                                    {"cycle", stage_trace.cycle},
++                                    {"checkpoint_restore", true},
++                                    {"generated_draft_tokens", n_draft},
++                                    {"accepted_draft_tokens", n_accepted_draft_tokens},
++                                    {"visible_output_tokens", 0},
++                                    {"target_verify_layer_passes", 1},
++                                    {"target_verify_rows_evaluated", n_draft + 1},
++                                    {"target_verify_block_passes", 1},
++                                    {"target_verify_block_rows", n_draft + 1},
++                                    {"target_verify_discarded_rows", n_discarded_rows},
++                                    {"cycle_wall_ms", (double) (ggml_time_us() - stage_trace.cycle_wall_t0_us) / 1000.0},
++                                    {"stage_timings_ms", stages},
++                                };
++                                mtp_stage_add_token_trace(
++                                    event,
++                                    draft_tokens_trace,
++                                    slot.spec_draft,
++                                    n_accepted_draft_tokens,
++                                    false);
++                                if (mtp_token_trace_enabled()) {
++                                    event["draft_sample_trace"] = mtp_draft_sample_trace_json(stage_trace.draft_sample_traces);
++                                    event["draft_hidden_state_trace"] = mtp_hidden_state_trace_json(stage_trace.hidden_state_traces);
++                                }
++                                mtp_stage_write_json(event);
++                            }
++
+                             continue;
+                         }
+                     }
+@@ -3580,7 +3980,13 @@ private:
+                         SLT_INF(slot, "accepted %2zu/%2zu draft tokens\n", accepted.size() - 1, n_draft);
+                     }
+ 
++                    t_commit_us = ggml_time_us();
++                    common_speculative_mtp_stage_trace_reset();
+                     common_speculative_accept(spec.get(), slot.id, accepted.size() - 1);
++                    const auto accept_substages = common_speculative_mtp_stage_trace_take();
++                    if (mtp_stage_trace_enabled) {
++                        mtp_stage_merge(mtp_stage_get_trace(slot), accept_substages);
++                    }
+ 
+                     slot.spec_draft = std::move(accepted);
+                 }
+@@ -3605,7 +4011,11 @@ private:
+                 if (slot.ctx_dft) {
+                     common_context_seq_rm(slot.ctx_dft, slot.id, slot.prompt.tokens.pos_next(), -1);
+                 }
++                if (mtp_stage_trace_enabled && t_commit_us > 0) {
++                    mtp_stage_add(mtp_stage_get_trace(slot), "target_block_replay_or_commit", ggml_time_us() - t_commit_us);
++                }
+ 
++                const int64_t t_emit_us = ggml_time_us();
+                 for (size_t i = 0; i < ids.size(); ++i) {
+                     completion_token_output result;
+ 
+@@ -3626,6 +4036,56 @@ private:
+                         break;
+                     }
+                 }
++                if (mtp_stage_trace_enabled) {
++                    auto & stage_trace = mtp_stage_get_trace(slot);
++                    mtp_stage_add(stage_trace, "accept_policy_and_seed", ggml_time_us() - t_emit_us);
++
++                    double verify_total_ms = 0.0;
++                    for (const char * name : {
++                            "target_block_snapshot",
++                            "target_block_forward",
++                            "mtp_context_replay_append",
++                            "target_block_acceptance_accounting",
++                            "target_block_replay_or_commit",
++                        }) {
++                        verify_total_ms += stage_trace.stage_timings_ms[name];
++                    }
++                    stage_trace.stage_timings_ms["target_block_verify_total"] = verify_total_ms;
++
++                    json stages = json::object();
++                    for (const auto & item : stage_trace.stage_timings_ms) {
++                        stages[item.first] = item.second;
++                    }
++
++                    json event = {
++                        {"schema", "llamacpp.mtp_stage_timing.v1"},
++                        {"slot_id", stage_trace.slot_id},
++                        {"task_id", stage_trace.task_id},
++                        {"cycle", stage_trace.cycle},
++                        {"checkpoint_restore", false},
++                        {"generated_draft_tokens", n_draft},
++                        {"accepted_draft_tokens", n_accepted_draft_tokens},
++                        {"visible_output_tokens", n_visible_output_tokens},
++                        {"target_verify_layer_passes", 1},
++                        {"target_verify_rows_evaluated", n_draft + 1},
++                        {"target_verify_block_passes", 1},
++                        {"target_verify_block_rows", n_draft + 1},
++                        {"target_verify_discarded_rows", n_discarded_rows},
++                        {"cycle_wall_ms", (double) (ggml_time_us() - stage_trace.cycle_wall_t0_us) / 1000.0},
++                        {"stage_timings_ms", stages},
++                    };
++                    mtp_stage_add_token_trace(
++                        event,
++                        draft_tokens_trace,
++                        ids,
++                        n_accepted_draft_tokens,
++                        true);
++                    if (mtp_token_trace_enabled()) {
++                        event["draft_sample_trace"] = mtp_draft_sample_trace_json(stage_trace.draft_sample_traces);
++                        event["draft_hidden_state_trace"] = mtp_hidden_state_trace_json(stage_trace.hidden_state_traces);
++                    }
++                    mtp_stage_write_json(event);
++                }
+ 
+                 slot.print_timings_tg();
+ 
