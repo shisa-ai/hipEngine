@@ -1,6 +1,6 @@
 # GGUF MTP / llama.cpp Parity Dashboard
 
-Last reviewed: 2026-07-11.
+Last reviewed: 2026-07-12.
 
 This file is the current decision surface for GGUF MTP parity. The verbatim
 experiment notebook is preserved in
@@ -11,9 +11,37 @@ this dashboard or [`benchmarks/README.md`](../benchmarks/README.md).
 
 ## Current Status
 
-The two hipEngine GGUF columns retained by the canonical scoreboard exercise
-different semantic contracts. The llama.cpp HIP column is included as an
-external diagnostic comparator, not promoted as a repository topline.
+The two hipEngine GGUF routes exercise different semantic contracts on both
+supported RDNA backends. Exact/default is serial-prefix preserving;
+`llama-compat` uses direct partial commit/dp4a and remains an explicit,
+accuracy-traded replication lane. llama.cpp HIP is an external diagnostic
+comparator, not a promoted hipEngine topline.
+
+### gfx1100 current transfer, Radeon Pro W7900
+
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: | ---: |
+| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Decode | 34.49 fixed / 34.28 natural24 tok/s | 45.96 tok/s | 52.58 tok/s | 119.05 tok/s |
+| MTP / own AR | 1.0000x | 1.3328x | 1.5337x | 1.4612x |
+| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
+| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
+| Cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+
+The full ten-prompt gate passes for both hipEngine routes. `llama-compat` beats
+its true AR control in every category and on heldouts: full/train/heldout are
+**1.5337x / 1.5761x / 1.4744x**, while train/heldout draft acceptance is
+**88.12% / 76.00%**. The W7900 oracle independently passes four byte-exact
+serial-prefix transitions across hidden state, all 30 Conv/GDN families, and
+all 10 live K/V families. The exact fixed-cycle row and natural24 columns use
+different output horizons and must not be ranked as one protocol. llama.cpp
+uses prebuilt HIP binary `263cc04a5`/build 9600 and remains
+`performance_claim=false`.
+
+Artifact: [W7900 GGUF MTP transfer](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json).
+
+### gfx1151 retained reference, Radeon 8060S
 
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
 | --- | ---: | ---: | ---: |
@@ -26,24 +54,20 @@ external diagnostic comparator, not promoted as a repository topline.
 
 The exact/default route remains the semantic control. Its retained 61.98 tok/s
 row uses a fixed-cycle horizon and cannot be ranked directly against the
-natural24 columns. `llama-compat` is the closer 1:1 performance comparison with
-llama.cpp because both use the B2 natural24 shape, but it is not
-serial-prefix-equivalent and remains an opt-in replication lane rather than the
-production default. The locally instrumented llama.cpp stage rerun has dirty
-source provenance and `performance_claim=false`; it is a comparison target,
-not an eligible standalone topline.
+natural24 columns. `llama-compat` is the closer structural comparison with
+llama.cpp, but remains opt-in. The locally instrumented llama.cpp stage rerun
+has dirty source provenance and `performance_claim=false`.
 
 Artifacts: [retained exact B5](../benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
 [exact natural24 B1-B5](../benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json),
 [retained `llama-compat` B2](../benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json),
 and [llama.cpp HIP B2 stage rerun](../benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
 
-The underlying gfx1151 eager target control is now correctness-certified by
+The gfx1151 eager target control remains correctness-certified by
 [`SOL-G1`](SOL-OPTIMIZATION.md): for the exact Q4_K_M model and
 `[9707] * 512`, llama.cpp and hipEngine emit the same five-token repeated
 trajectory, and four teacher-forced transitions match fresh serial prefixes
-byte-for-byte across hidden rows, Conv/GDN state, and live K/V. This validates
-the repeated stream; it does not refresh any MTP or AR speed row.
+byte-for-byte across hidden rows, Conv/GDN state, and live K/V.
 
 ## Server And Concurrency Status
 
@@ -70,7 +94,7 @@ not reconstruct completion counts from decoded text.
 | 0 | Exact-ID OpenAI c1/c2/c4/c8 refresh | Awaiting rerun | One clean artifact joins exact IDs, provenance, queue/backend/verifier shapes, owned timing, request wall, and same-server AR/MTP controls. |
 | 1 | Current verifier-stage attribution | Awaiting the corrected rerun | Profile the final child process after cache warmup; rank target verify, LM-head/sample, proposal/update, commit/scatter, and host synchronization by owned wall. |
 | 1 | Compatibility semantic decision | Open | Either preserve `llama-compat` as an explicitly accuracy-traded mode or produce an exact state lifecycle with the same end-to-end advantage. |
-| 2 | gfx1100 portability | Blocked on hardware | Rerun the same exact/default and compatibility contracts on W7900; do not transfer gfx1151 magnitudes. |
+| 2 | gfx1100 portability | **Closed 2026-07-12** | W7900 oracle plus full exact/default, `llama-compat`, and llama.cpp HIP comparator are published; rerun only when the named route/build/protocol changes. |
 
 No new kernel or route is retained from a single prompt. Acceptance, speed, and
 quality changes use the complete category suite plus held-outs, as required by
@@ -81,7 +105,7 @@ quality changes use the complete category suite plus held-outs, as required by
 Exact/default fixed-cycle suite:
 
 ```bash
-PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+PYTHONPATH=. HIP_VISIBLE_DEVICES=<device> HIPENGINE_HIP_ARCH=<gfx1100-or-gfx1151> \
 python3 scripts/gguf_ar_mtp_suite.py \
   --scope full \
   --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 \
@@ -93,7 +117,7 @@ python3 scripts/gguf_ar_mtp_suite.py \
 `llama-compat` natural24 suite:
 
 ```bash
-PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+PYTHONPATH=. HIP_VISIBLE_DEVICES=<device> HIPENGINE_HIP_ARCH=<gfx1100-or-gfx1151> \
 python3 scripts/gguf_ar_mtp_suite.py \
   --scope full \
   --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \

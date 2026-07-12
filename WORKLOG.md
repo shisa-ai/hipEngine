@@ -152434,3 +152434,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   only before the first block commit, the expected fallback reason afterward,
   and no state-generation failure. The one-prompt rate (`33.81` versus `33.88
   tok/s` AR, `0.9982x`) is a smoke diagnostic, not a performance claim.
+
+## 2026-07-12 - Publish W7900 GGUF AR/MTP transfer suite
+
+- The clean cached full exact/default rerun at `d50aa4d1` completed after the
+  stale-graph fix. Command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  python3.12 scripts/gguf_ar_mtp_suite.py --scope full --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route
+  resident-b1-probe-block-direct-cap32k-minrows2-pmin05
+  --record-cycle-stage-timings --require-cached-build --output
+  /tmp/hipengine-gfx1100-gguf-mtp-exact-fixed-20260712-201913/exact-full.json`.
+  True no-MTP AR is `34.4876 tok/s`; exact B1-B5 are
+  `41.1347/43.6472/45.9643/43.0417/44.4509 tok/s`. B3 wins at **1.3328x AR**,
+  `73.53%` draft acceptance, `50.00%` accepted/output, and
+  `21.8475 ms/output`. `apple_to_apple_ok=true` over all ten prompts.
+- The independently completed clean `b81102b4` B2 natural24 `llama-compat`
+  route measures **52.5774 versus 34.2808 true-AR tok/s (1.5337x)**, with
+  `82.95%` draft acceptance, `60.83%` accepted/output, and
+  `19.0453 ms/output`. Full/train/heldout ratios are
+  `1.5337x/1.5761x/1.4744x`; train/heldout draft acceptance is
+  **88.12%/76.00%**. Code/general-en/general-ja/mixed-ja-en all beat their
+  true-AR controls at `1.7001x/1.4505x/1.3665x/1.5073x`.
+- W7900 correctness is hardware-local rather than transferred: clean
+  `b81102b4` SOL-G1 repeats llama.cpp token `9707` and passes four byte-exact
+  serial-prefix transitions for hidden state, all 40 layer outputs, all 30
+  Conv/GDN state families, and all 10 live K/V families. The exact/default
+  route therefore remains the semantic control; `llama-compat` remains
+  explicit-only and accuracy-traded because direct partial commit is not
+  serial-prefix-equivalent.
+- Ran the same ten natural24 prompts through llama.cpp HIP on GPU0 with B2,
+  f16 KV, flash attention, reasoning off, and greedy sampling. Server-reported
+  backend decode is **81.4692 AR -> 119.0453 MTP tok/s (1.4612x)**;
+  client aggregate is `58.0072 -> 73.5850 tok/s (1.2685x)`, draft acceptance
+  is `81.18%`, and accepted/output is `57.50%`. The authoritative prebuilt
+  binary identity is self-reported `263cc04a5`, build 9600, SHA-256
+  `278dc572...cf2`; the current clean source checkout `e37abd6b` is newer and
+  is not claimed as the binary build. This external row remains
+  `performance_claim=false`.
+- Published compact artifact
+  `benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json` and
+  updated the canonical/root README four-column W7900 table, separate
+  full/train/heldout/category `llama-compat` gate, parity dashboard, platform
+  index, and benchmark changelog. Fixed-cycle exact and natural24 rows are
+  labelled as different protocols and are not ranked directly.

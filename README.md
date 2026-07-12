@@ -238,6 +238,47 @@ and `llama-compat` columns are separate because only `llama-compat` shares the
 B2 natural24 structure used by the llama.cpp comparison.
 
 <!-- BEGIN TOPLINE:SPECULATIVE -->
+#### GGUF MTP comparison, Radeon Pro W7900/gfx1100
+
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: | ---: |
+| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Decode | 34.49 tok/s fixed / 34.28 tok/s natural24 | **45.96 tok/s** | **52.58 tok/s** | 119.05 tok/s |
+| Own true AR | same route | 34.49 tok/s | 34.28 tok/s | 81.47 tok/s |
+| MTP / own AR | 1.0000x | **1.3328x** | **1.5337x** | 1.4612x |
+| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
+| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
+| MTP cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+
+Exact/default and `llama-compat` both pass the complete ten-prompt gfx1100
+transfer gate against their own true no-MTP controls. Exact is the semantic
+control. `llama-compat` is explicit-only because direct partial commit is not
+serial-prefix-equivalent. The exact row uses a fixed ten-cycle horizon; the AR,
+`llama-compat`, and llama.cpp natural24 rows use a 24-token output cap. Do not
+rank fixed-cycle exact directly against natural24 as one protocol. The
+llama.cpp column uses server-reported decode timing from prebuilt HIP binary
+`263cc04a5`/build 9600 and remains an external diagnostic with
+`performance_claim=false`.
+
+##### W7900 `llama-compat` full-suite transfer gate
+
+| Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full | 10 | 34.28 | **52.58** | **1.5337x** | 82.95% | 60.83% | 19.045 ms |
+| Train | 6 | 34.30 | **54.06** | **1.5761x** | **88.12%** | 61.81% | 18.522 ms |
+| Heldout | 4 | 34.25 | **50.49** | **1.4744x** | **76.00%** | 59.38% | 19.830 ms |
+| `code` | 4 | 34.12 | **58.01** | **1.7001x** | 95.38% | 64.58% | 17.263 ms |
+| `general_en` | 2 | 34.29 | **49.74** | **1.4505x** | 75.68% | 58.33% | 20.131 ms |
+| `general_ja` | 2 | 34.43 | **47.05** | **1.3665x** | 69.23% | 56.25% | 21.283 ms |
+| `mixed_ja_en` | 2 | 34.45 | **51.93** | **1.5073x** | 82.86% | 60.42% | 19.286 ms |
+
+All four categories and the heldout split beat true AR. Train/heldout draft
+acceptance is **88.12% / 76.00%**; the gap is disclosed rather than averaged
+away. This is a speed transfer result for the explicit accuracy-traded
+compatibility contract, not evidence that `llama-compat` should become the
+automatic/default route.
+
 #### GGUF MTP comparison, Radeon 8060S/gfx1151
 
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
@@ -249,10 +290,10 @@ B2 natural24 structure used by the llama.cpp comparison.
 | Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
 | State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
 
-`llama-compat` is the closer 1:1 performance comparison with llama.cpp because
-both use B2 and the natural24 output horizon. It is still not an exact semantic
-comparison: `llama-compat` is not serial-prefix-equivalent. The llama.cpp HIP
-column is a locally instrumented, dirty-source diagnostic
+`llama-compat` is the closer 1:1 performance comparison with llama.cpp on
+gfx1151 because both use B2 and the natural24 output horizon. It remains a
+separate semantic contract and is not serial-prefix-equivalent. The
+locally instrumented llama.cpp HIP column is a dirty-source diagnostic
 (`performance_claim=false`), not a promoted standalone topline. The exact B5
 headline uses a different fixed-cycle horizon and must not be ranked directly
 against the two natural24 columns; its matched natural24 B2 control is shown
@@ -265,10 +306,11 @@ separately.
 | DFlash B=4 online-gated | W7900/gfx1100; Qwen3.6-27B PARO target plus Qwen3.6-27B DFlash drafter; 9 prompts; 64 decode tokens | 40.10 vs 32.57 AR tok/s, **1.231x** | Retained under the recorded DFlash gate; source tree was dirty and must be refreshed before changing the claim |
 <!-- END TOPLINE:SPECULATIVE -->
 
-Artifacts: [`DFlash`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
-[`exact MTP`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
-and [`llama-compat` MTP](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
-Matched natural24 controls: [`exact/default B1-B5`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
+Artifacts: [`W7900 GGUF MTP transfer`](benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
+[`DFlash`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
+[`gfx1151 exact MTP`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
+and [`gfx1151 llama-compat` MTP](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
+The gfx1151 matched natural24 controls are [`exact/default B1-B5`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
 and [`llama.cpp HIP B2`](benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
 Historical hipEngine OpenAI MTP server rows are excluded. The current raw-ID
 route counts exact completion IDs across every choice and owns batch timing
