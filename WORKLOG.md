@@ -152228,3 +152228,53 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. pytest -q tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
   (`10 passed`), `python3 scripts/sync_benchmark_readme.py --check`, artifact
   canonical-provenance validation, and `git diff --check`.
+
+## 2026-07-12 - Extend AOTriton queue isolation through 128K
+
+- Ran clean detached `01e2cec5` on Radeon 8060S/gfx1151, Qwen3.6-35B-A3B
+  PARO snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV,
+  TheRock HIP `7.15.0-0000000` / clang `aa451e1f`, kernel
+  `7.1.3-2-cachyos`, and TuneD `accelerator-performance`. Performance uses
+  repeated token `9707`, graph decode, two discarded warmups, five measured
+  repetitions, and right-sized/max-shape resident sessions.
+- Exact performance command, with `<SHAPE>` and `<OUTPUT>` substituted per
+  invocation and `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0` present
+  only for control:
+  `python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads <SHAPE> --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json <OUTPUT>`.
+  The 32K invocation used `--workloads 1K/128 32K/128`; 32K is the max/right-
+  sized row, while 1K is a max-32K-session negative control.
+- Retained matched results:
+
+  | Shape | Control prefill | Isolated prefill | Delta | Decode delta | Tracked peak |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | 32K/128 | `765.316` (`764.416..765.912`) | `906.145` (`903.515..912.905`) | **+18.40%** | -0.157% | `19.729 GiB`, unchanged |
+  | 64K/128 | `621.691` (`618.457..626.949`) | `716.775` (`701.297..728.763`) | **+15.29%** | +0.110% | `20.403 GiB`, unchanged |
+  | 128K/128 | `418.838` (`415.735..423.616`) | `474.641` (`470.602..478.628`) | **+13.32%** | +0.116% | `22.124 GiB`, unchanged |
+
+  All five-run ranges are disjoint. Versus the previous retained rows, gains
+  are +19.07%/+15.73%/+8.72%. PARO is now the raw-prefill leader at 32K and
+  64K; 128K is 0.45% behind llama.cpp Vulkan. Every control/candidate final-ID
+  vector is `[220,220,220,220,220]`.
+- The 1K negative control measures `1180.652 -> 1191.136 tok/s` (+0.89%) with
+  overlapping ranges in a max-32K session. Both settings execute the same
+  256-query caller-stream route, so no causal win exists and the right-sized
+  `1208.343 tok/s` topline remains unchanged.
+- Exact correctness command, with prompt length/output substituted per shape:
+  `python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length <32768|65536|131072> --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json <OUTPUT>`.
+  All three gates are `accepted`, with zero mismatches across final hidden, 30
+  Conv/GDN, and 10 live K/V families. Final-hidden/state SHA-256 pairs are
+  32K `747b503a...b52c7` / `496af033...4a885`, 64K
+  `13378dcd...70690` / `acc07c0d...91b9`, and 128K
+  `87c78fba...acd00` / `886a68bc...63365`.
+- Raw SHA-256 control/candidate/exactness: 32K
+  `d2f11f44...a697` / `0e95c197...f336` / `70af69bd...b6a3`; 64K
+  `5c1c277d...2086` / `f8f0c1af...5975` / `2b5672da...daf8`; 128K
+  `afcbc115...2cd3` / `6c4eb993...7db8` / `82cf08e4...a785`.
+- Sequential 64K/128K queue wall was `6501 s` (1h48m21s): 64K control `775 s`,
+  candidate `679 s`, exactness `232 s`; 128K candidate `1977 s`, control
+  `2234 s`, exactness `604 s`. Including the preceding 1K/32K A/B and 32K
+  exactness, the full follow-up consumed about 2h01m20s.
+- Extended compact accepted evidence in
+  `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`;
+  4K/32K/64K/128K are retained, 512/1K are unchanged, and no gfx1151 shape
+  refresh remains pending. gfx1100 validation remains separate.

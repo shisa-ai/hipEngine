@@ -90,7 +90,7 @@ The table names the source revision for each result.
 | MTP server routing | The corrected clean-tracked `d2b1e742` natural24 matrix shows the current `llama-compat` hook is faster at c1/c2 but changes exact AR IDs on heldout `general_ja_explain` even at c1; wider groups add more mismatches. | Compatibility MTP cannot select `auto`. Automatic requests must remain on exact/default AR until an exact MTP hook exists; explicit opt-in keeps the documented compatibility contract. Actual groups, not client c, remain the routing key. |
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
-| gfx1151 c1 model toplines | The clean `d1231ee0` six-shape refresh passes stable finite-output, five-sample variance, matched Q4_K_M identity, and GTT-memory gates for hipEngine GGUF plus llama.cpp HIP/Vulkan. Clean `9944e481` separately refreshes exact PARO on HIP 7.15: 512/128 is `1140.101 prefill / 66.767 decode tok/s`; 128K/128 is `436.582 / 30.371`. | The repository and benchmark README tables use the newer retained PARO column and preserve the July 11 matched GGUF/llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. |
+| gfx1151 c1 model toplines | The clean `d1231ee0` six-shape refresh passes stable finite-output, five-sample variance, matched Q4_K_M identity, and GTT-memory gates for hipEngine GGUF plus llama.cpp HIP/Vulkan. Clean `9944e481` supplies exact PARO 512/1K rows; clean `01e2cec5` supplies exact queue-isolated 4K-128K rows. PARO 512/128 is `1140.101 prefill / 66.767 decode tok/s`; 128K/128 is `474.641 / 30.386`. | The repository and benchmark README tables use the newer retained PARO column and preserve the July 11 matched GGUF/llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. |
 | PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. `SOL-P2` closes ragged c8-to-c1 lifecycle safety at clean `6f1910c9`: all generated IDs, 30 linear-state families, and 10 full-KV families match independent c1 through EOS plus front/middle/tail sparse cancellation. | Production greedy and sampled batches use exact width-1 sessions; ragged packed prefill uses the explicit `per_segment_ragged_exact` fallback. gfx1100 is stale/non-selecting pending W7900 hardware. P3/P4/P7-P9 are parked behind a general exact native c>N algorithm; P6's invalid splitter is removed. |
 | PARO DFlash | Clean `8eb27215` S4 runs the curated 35B pair with same-session AR, exact output, coarse/fine phase buckets, and verifier graph shapes. Exact replay is `9.676` versus `65.266 tok/s` AR (`0.14825x`). | S5 branch-copy is correctness-red, S6 has no wider-group premise at 1/114 accepted proposals, and S7 fused LM-head is 5.16% slower. DFlash stays default-off. |
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
@@ -210,7 +210,7 @@ correctness contracts.
 | Priority | ID | Work package | Current state | Exit / handoff gate |
 | ---: | --- | --- | --- | --- |
 | 0 | `SOL-R0` | Reproduce, bisect, and recover the recent PARO decode regression across the point-release matrix while preserving the correctness/verification fixes. | `open`; **next-point-release blocker** | A clean matched known-good/current A/B names the first performance-changing revision or policy; every affected default route recovers its exact non-regressive wins, and the release matrix passes hidden/state/KV/token plus wall-time gates. |
-| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery retained at all six shapes; scoped AOTriton queue isolation closes the 4K residual; 32K-128K refresh pending | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
+| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery plus scoped AOTriton queue isolation retained across all six shapes; 1K negative control unchanged | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
 | 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `open after R3`; RED fixture work may start earlier | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or G8. |
@@ -267,11 +267,10 @@ repeated token `9707`, right-sized sessions, graph-replay decode, two discarded
 plus five measured repetitions, TheRock HIP 7.15 / clang `aa451e1f`, and TuneD
 `accelerator-performance`. The clean control is detached `240c5daf`; the clean
 six-shape exact candidate is detached `9944e481`. The 128K five-run
-control/candidate sweep is complete. The subsequent 4K-only queue-isolation
-control/candidate is clean detached `01e2cec5`; it supersedes the 4K row only.
-Because the new scheduling also applies to current 4096-row long-context
-attention chunks, the 32K-128K numbers remain pre-isolation snapshots until
-their long sweep is refreshed.
+control/candidate sweep is complete. The subsequent queue-isolation
+control/candidates are clean detached `01e2cec5`; they supersede the 4K,
+32K, 64K, and 128K rows. The 512/1K rows remain the right-sized `9944e481`
+results because those shapes use the proven-safe 256-query caller-stream route.
 
 Keep four checkpoints distinct. The June 15 old diagnostic used one measured
 run and the former all-256 route; it is history, not a promotion control. The
@@ -305,19 +304,31 @@ W4; it is an external throughput target, not a same-math control.
 | 64K/128 | `41.966` | `42.032` | `42.038` | `42.149` | +0.26% |
 | 128K/128 | `30.286` | `30.316` | `30.320` | `30.371` | +0.17% |
 
-###### Final 4K queue-isolation retention
+###### Final queue-isolation retention
 
-| Metric | Prior retained (`9944e481`) | Same-commit control (`01e2cec5`, isolation off) | Current default (`01e2cec5`) | Default vs control | Default vs prior |
+| Workload | Prior retained (`9944e481`) | Same-commit control (`01e2cec5`, isolation off) | Current default (`01e2cec5`) | Default vs control | Default vs prior |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Prefill tok/s | `854.346` | `885.141` | **`1089.031`** | **+23.03%** | **+27.47%** |
-| Decode tok/s | `62.765` | `62.705` | `62.715` | +0.017% | -0.08% |
-| Tracked peak GiB | `19.026` | `19.026` | `19.026` | `0.000` | `0.000` |
+| 4K/128 prefill tok/s | `854.346` | `885.141` | **`1089.031`** | **+23.03%** | **+27.47%** |
+| 32K/128 prefill tok/s | `761.011` | `765.316` | **`906.145`** | **+18.40%** | **+19.07%** |
+| 64K/128 prefill tok/s | `619.374` | `621.691` | **`716.775`** | **+15.29%** | **+15.73%** |
+| 128K/128 prefill tok/s | `436.582` | `418.838` | **`474.641`** | **+13.32%** | **+8.72%** |
 
-This is a right-sized 4K/128 session with two discarded warmups and five
-measured repetitions. The candidate range is `1070.490..1091.709 tok/s`; the
-same-commit control range is broader at `826.061..898.713 tok/s`, but the
-selection is corroborated by an independent clean `c3a03ed1` A/B
-(`883.600 -> 1114.634 tok/s`, +26.15%) and the isolated-kernel replay below.
+Every retained row uses a right-sized maximum-shape session, two discarded
+warmups, and five measured repetitions. Candidate/control ranges are fully
+separated: `1070.490..1091.709` versus `826.061..898.713` at 4K,
+`903.515..912.905` versus `764.416..765.912` at 32K,
+`701.297..728.763` versus `618.457..626.949` at 64K, and
+`470.602..478.628` versus `415.735..423.616 tok/s` at 128K. Decode deltas are
+`+0.017%/-0.157%/+0.110%/+0.116%`, respectively, and tracked peak memory is
+identical in every matched pair.
+
+The 1K follow-up is a required negative control, not a win. It shares the
+max-32K session and moves `1180.652 -> 1191.136 tok/s` (+0.89%) with overlapping
+ranges, but both settings execute the same 256-query caller-stream path; the
+isolation branch is never entered. Keep the right-sized `1208.343 tok/s` 1K
+topline from `9944e481`. The independent clean `c3a03ed1` 4K A/B
+(`883.600 -> 1114.634 tok/s`, +26.15%) and isolated-kernel replay continue to
+corroborate the 4K selection.
 
 The retained candidate is intentionally narrower than the old all-256 route.
 The gfx1151 architecture overlay changes only linear-attention and MoE layer
@@ -354,14 +365,13 @@ Correctness selected that narrower policy:
   fixture/snapshot mismatch remains separate work.
 
 Relative to the old diagnostic, the current retained rows are **+19.17% at
-512**, **+13.23% at 1K**, **+2.52% at 4K**, **-7.45% at 32K**, **-0.54% at
-64K**, and **+2.55% at 128K**. Relative to the published llama.cpp HIP prefill
-row, they are **+7.43%**, **+15.83%**, **+7.91%**, **+2.35%**, **+7.98%**, and
-**+11.82%**, respectively. The 4K residual is therefore closed and PARO is the
-raw-throughput leader at that shape. The 32K-128K comparisons still use the
-`9944e481` pre-isolation snapshots and must not be attributed to `01e2cec5`
-until refreshed. Decode is unchanged within the matched noise envelope; this
-is a prefill-only change.
+512**, **+13.23% at 1K**, **+2.52% at 4K**, **+10.20% at 32K**, **+15.10% at
+64K**, and **+11.49% at 128K**. Relative to the published llama.cpp HIP prefill
+row, they are **+7.43%**, **+15.83%**, **+7.91%**, **+21.87%**, **+24.96%**,
+and **+21.57%**, respectively. PARO is now the raw-prefill leader at 512, 1K,
+4K, 32K, and 64K; at 128K it is only **0.45%** behind llama.cpp Vulkan.
+Decode is unchanged within the matched noise envelope; this is a prefill-only
+change.
 
 The current implementation couples `full_attn_query_chunk_size` to the outer
 chunk for the entire full-attention layer. Reducing it to 256 therefore chunks
@@ -431,14 +441,21 @@ unchanged. `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0` remains the
 rollback control. Disabling AOTriton entirely is rejected: the 4K screen falls
 from `849.557` to `270.656 tok/s` with the same final token.
 
-The final clean differential gate samples the same seed `13743`, final-hidden
-SHA-256 `f2fd15eef23018a8cc4a4832a76491171e0ec3a434c5d640b7af3496c45d2678`,
-and aggregate persistent-state SHA-256
-`c2328617d0bd6512976e6c8a332be2827fe4f87ec4a7368d9e55523e335d2c5f`;
-all 30 Conv/GDN and 10 live K/V families match with zero mismatch paths.
+The final clean differential gates pass at every isolated shape. Control and
+candidate share the same sampled seed, final-hidden SHA-256, aggregate
+persistent-state SHA-256, all 30 Conv/GDN families, and all 10 live K/V
+families with zero mismatch paths:
+
+| Workload | Seed | Final hidden SHA-256 | Aggregate state SHA-256 |
+| --- | ---: | --- | --- |
+| 4K | `13743` | `f2fd15eef230...3063a434c5d640b7af3496c45d2678` | `c2328617d0bd...48d9e55523e335d2c5f` |
+| 32K | `13743` | `747b503a2dec...3eed80b28e180bdf7b52c7` | `496af033eb2e...fabdcee83f6ecc4a885` |
+| 64K | `4256` | `13378dcdb630...9175ca4886bf2f509570690` | `acc07c0d1dfd...d63d13413f4b991b9` |
+| 128K | `49556` | `87c78fbae561...498233c8c8952929acd00` | `886a68bc2294...3693b31ad253e63365` |
+
 Retained evidence is
 [`2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`](../benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json).
-The remaining bounded follow-up is the right-sized 32K/64K/128K refresh, then
+The gfx1151 shape refresh is complete. The remaining bounded follow-up is
 gfx1100 validation before transferring this scheduling policy as a W7900
 performance claim.
 

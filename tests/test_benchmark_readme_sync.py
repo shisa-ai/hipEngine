@@ -32,7 +32,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             encoding="utf-8"
         )
     )
-    paro_4k_isolation = json.loads(
+    paro_isolation = json.loads(
         (
             results_dir
             / "2026-07-12-gfx1151-paro-aotriton-stream-isolation.json"
@@ -60,12 +60,28 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     assert paro_recovery["correctness_claim"] is True
     assert paro_recovery["provenance"]["hipengine_commit"].startswith("9944e481")
     assert paro_recovery["provenance"]["dirty"] is False
-    assert paro_4k_isolation["status"] == "accepted"
-    assert paro_4k_isolation["performance_claim"] is True
-    assert paro_4k_isolation["correctness_claim"] is True
-    assert paro_4k_isolation["measured_revision"].startswith("01e2cec5")
-    assert paro_4k_isolation["provenance"]["dirty"] is False
-    assert paro_4k_isolation["correctness"]["mismatch_paths"] == []
+    assert paro_isolation["status"] == "accepted"
+    assert paro_isolation["performance_claim"] is True
+    assert paro_isolation["correctness_claim"] is True
+    assert paro_isolation["measured_revision"].startswith("01e2cec5")
+    assert paro_isolation["provenance"]["dirty"] is False
+    assert paro_isolation["correctness"]["mismatch_paths"] == []
+    assert paro_isolation["scope"]["refresh_pending"] == []
+    assert set(paro_isolation["shape_refresh"]["retained_results"]) == {
+        "32K/128",
+        "64K/128",
+        "128K/128",
+    }
+    assert all(
+        not result["mismatch_paths"]
+        for result in paro_isolation["shape_refresh"]["correctness"].values()
+    )
+    assert (
+        paro_isolation["shape_refresh"]["negative_control"][
+            "isolation_branch_entered"
+        ]
+        is False
+    )
 
     workloads = ["512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128"]
     columns = [
@@ -104,9 +120,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         for row in rows:
             paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
             if row["workload"] == "4K/128":
-                isolated = paro_4k_isolation["performance"][
-                    "candidate_isolated_stream"
-                ]
+                isolated = paro_isolation["performance"]["candidate_isolated_stream"]
                 isolation_keys = {
                     "prefill_tok_s": ("prefill_tok_s", "median"),
                     "decode_tok_s": ("decode_tok_s", "median"),
@@ -116,6 +130,18 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
                 paro_value = isolated[path[0]]
                 if len(path) == 2:
                     paro_value = paro_value[path[1]]
+            elif row["workload"] in paro_isolation["shape_refresh"][
+                "retained_results"
+            ]:
+                isolated = paro_isolation["shape_refresh"]["retained_results"][
+                    row["workload"]
+                ]["candidate"]
+                if table_key == "prefill_tok_s":
+                    paro_value = isolated["prefill_tok_s"]["median"]
+                elif table_key == "decode_tok_s":
+                    paro_value = isolated["decode_tok_s"]["median"]
+                else:
+                    paro_value = isolated["tracked_peak_allocated_gib"]
             published_row = (
                 f"| {row['workload']} | {paro_value:.3f} | "
                 f"{row['hipengine_gguf']:.3f} | {row['llamacpp_hip']:.3f} | "
@@ -124,8 +150,8 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             assert published_row in canonical_values
             assert published_row in root_values
 
-    assert "32K-128K are explicitly the last retained" in canonical
-    assert "pre-isolation snapshots pending refresh" in canonical
+    assert "The 1K follow-up shared a max-32K session" in canonical
+    assert "does not replace the existing right-sized 1K row" in canonical
 
     for name, component in artifact["components"].items():
         assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name
