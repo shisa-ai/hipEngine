@@ -19,6 +19,7 @@ def _args(**overrides):
         "port": 8019,
         "alias": "qwen",
         "reasoning": "off",
+        "mode": "mtp",
         "draft_max": 2,
         "server_extra_arg": [],
         "token_id": 9707,
@@ -50,6 +51,14 @@ def test_llamacpp_mtp_rocprof_server_command_enables_mtp() -> None:
     assert "--reasoning" in cmd
     assert cmd[cmd.index("--reasoning") + 1] == "off"
     assert cmd[-1] == "--no-host"
+
+
+def test_llamacpp_mtp_rocprof_server_command_disables_speculation_for_base() -> None:
+    cmd = rocprof.build_server_command(_args(mode="base"))
+
+    assert "--spec-type" not in cmd
+    assert "--spec-draft-n-max" not in cmd
+    assert cmd[cmd.index("--reasoning") + 1] == "off"
 
 
 def test_llamacpp_mtp_rocprof_completion_payload_is_bounded() -> None:
@@ -91,3 +100,14 @@ def test_llamacpp_mtp_rocprof_profile_env_enables_optional_traces() -> None:
     assert env["LLAMA_MTP_STAGE_TIMINGS"] == "/tmp/stage.jsonl"
     assert env["LLAMA_MTP_ROCTX"] == "1"
     assert env["LLAMA_MTP_TOKEN_TRACE"] == "1"
+
+
+def test_llamacpp_mtp_rocprof_base_env_uses_ranges_without_mtp_timing() -> None:
+    env = rocprof.build_profile_env(
+        _args(mode="base", roctx_ranges=True, token_trace=True),
+        stage_path=Path("/tmp/stage.jsonl"),
+    )
+
+    assert "LLAMA_MTP_STAGE_TIMINGS" not in env
+    assert env["LLAMA_MTP_ROCTX"] == "1"
+    assert "LLAMA_MTP_TOKEN_TRACE" not in env
