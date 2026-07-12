@@ -218,39 +218,43 @@ provenance, and path-specific correctness before setting
 three columns, this table is a current throughput rollup, not a same-math
 four-engine A/B.
 
+Bold marks the best raw value in each row (highest throughput or lowest
+reported peak memory). It is descriptive only: PARO uses W4 PARO rather than
+Q4_K_M, and the memory columns do not share one allocator scope.
+
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 1140.101 | 430.767 | 1061.260 | 1067.770 |
-| 1K/128 | 1208.343 | 437.467 | 1043.230 | 1069.870 |
-| 4K/128 | 854.346 | 403.946 | 1009.240 | 1016.580 |
-| 32K/128 | 761.011 | 369.942 | 743.547 | 814.923 |
-| 64K/128 | 619.374 | 334.395 | 573.611 | 660.974 |
-| 128K/128 | 436.582 | 270.601 | 390.441 | 476.788 |
+| 512/128 | **1140.101** | 430.767 | 1061.260 | 1067.770 |
+| 1K/128 | **1208.343** | 437.467 | 1043.230 | 1069.870 |
+| 4K/128 | 854.346 | 403.946 | 1009.240 | **1016.580** |
+| 32K/128 | 761.011 | 369.942 | 743.547 | **814.923** |
+| 64K/128 | 619.374 | 334.395 | 573.611 | **660.974** |
+| 128K/128 | 436.582 | 270.601 | 390.441 | **476.788** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 66.767 | 49.536 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 52.192 | 50.818 | 62.136 |
-| 4K/128 | 62.765 | 52.999 | 50.126 | 60.097 |
-| 32K/128 | 50.351 | 43.947 | 44.240 | 51.319 |
-| 64K/128 | 42.149 | 37.477 | 39.326 | 44.422 |
-| 128K/128 | 30.371 | 27.862 | 32.114 | 34.948 |
+| 512/128 | **66.767** | 49.536 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 52.192 | 50.818 | **62.136** |
+| 4K/128 | **62.765** | 52.999 | 50.126 | 60.097 |
+| 32K/128 | 50.351 | 43.947 | 44.240 | **51.319** |
+| 64K/128 | 42.149 | 37.477 | 39.326 | **44.422** |
+| 128K/128 | 30.371 | 27.862 | 32.114 | **34.948** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 18.039 | 21.478 | 21.375 | 21.551 |
-| 1K/128 | 18.051 | 21.710 | 21.387 | 21.501 |
-| 4K/128 | 19.026 | 22.995 | 21.444 | 21.507 |
-| 32K/128 | 19.729 | 23.559 | 21.987 | 22.191 |
-| 64K/128 | 20.403 | 24.203 | 22.666 | 22.627 |
-| 128K/128 | 22.124 | 25.493 | 23.862 | 24.254 |
+| 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
+| 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
+| 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
+| 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
+| 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
+| 128K/128 | **22.124** | 25.493 | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 The PARO column is W4 PARO/BF16 KV. The other three columns use the same
@@ -732,7 +736,9 @@ Before updating the gfx1151 tables:
 3. Run PARO concurrency for c=1 through c=8, including odd widths and dynamic
    c=8 to c=1 shrinking, with exact all-choice generated-token counts.
 4. Keep comparison engines in separate columns when quant or timing scope
-   differs. Do not bold a cross-quant winner.
+   differs. Bold may mark the raw row leader, but the nearby text must state
+   that a cross-quant or cross-memory-scope maximum is descriptive rather than
+   a controlled backend win.
 
 The clean P1/P2 artifacts now satisfy the current c1-c8 independent-c1 and
 ragged shrinking lifecycle gates. They retain c1 timing and classify c2-c8 as

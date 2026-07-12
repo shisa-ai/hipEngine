@@ -152056,3 +152056,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `SOL-R1` is accepted for the exact six-shape recovery; the accumulator-domain
   diagnostic remains the next bounded 4K optimization investigation, not part
   of this retained implementation.
+
+## 2026-07-12 - Emphasize raw gfx1151 row leaders
+
+- Bolded the raw per-row leader in the current gfx1151 prefill, decode, and
+  peak-memory tables and synchronized the root README export. PARO leads
+  512/1K prefill, 512/4K decode, and all six reported peak-memory rows; Vulkan
+  leads the other throughput rows.
+- Updated the root/table introductions and refresh checklist so the emphasis
+  is not misread as a same-math comparison: PARO is W4 PARO while the other
+  columns are Q4_K_M, and hipEngine tracked allocator peak is not the same
+  scope as llama.cpp whole-device GTT. No metric or evidence status changed.
+- `python3 scripts/sync_benchmark_readme.py --check` and `git diff --check`
+  pass.
