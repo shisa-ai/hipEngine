@@ -6,6 +6,7 @@ from scripts.qwen35_paro_kv_format_ablation import FormatSpec
 from scripts.qwen35_paro_kv_policy_ablation import (
     PolicySpec,
     _apply_policy_arrays,
+    _parse_index_list,
     _policy_memory_bytes,
     _select_policy_recommendation,
 )
@@ -85,6 +86,11 @@ def test_policy_memory_counts_layer_head_replacement_and_residual_side_cache() -
     assert memory["residual_rows"] == 192
     assert memory["residual_bytes"] == 192 * 3 * 1 * 256 * 2 * 2
     assert memory["total_bytes"] > memory["base_format_bytes"]
+
+
+def test_parse_index_list_supports_sorted_unique_indices_and_empty() -> None:
+    assert _parse_index_list("2,0,2,1") == (0, 1, 2)
+    assert _parse_index_list("none") == ()
 
 
 def test_policy_recommendation_prioritizes_gate_pass_then_top1_and_budget() -> None:

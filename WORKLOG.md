@@ -153055,3 +153055,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   emulation was KL `0.0014288`, top-1 `100%`. This is mechanics validation only.
 - Validation: `ruff check` passed; focused format/policy tests report `8 passed`;
   live artifact `/tmp/hipengine-kv-policy-ablation-smoke.json`.
+
+### Policy-screen follow-up
+
+- Clean `62045de0` W7900 `512/4` default sweep completed in `740.21 s`.
+  No policy passed both gates. Group64 plus BF16 full-attention ordinals `0,1`
+  came closest while fitting the reclaimed budget: KL `0.053324`, top-1 `100%`,
+  projected `+583,008,256` bytes at 256K. Per-head INT8 plus BF16 prefix 3 was
+  KL `0.066408`, top-1 `100%`, `+799,014,912` bytes. Four BF16 layers met KL
+  but flipped top-1 and nearly exhausted the budget. Sink/recent residuals were
+  non-monotonic; group64 plus 64 sink and 64 recent rows had KL `0.028494` but
+  only `80%` top-1.
+- Added a tested `--policies custom` route for explicit format, BF16 layer/head
+  sets, and sink/recent windows. This avoids rerunning the twelve-minute full
+  sensitivity matrix while checking the obvious near-gate combinations and
+  longer-context transfer.
