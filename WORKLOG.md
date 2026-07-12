@@ -152945,3 +152945,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   probe/skip, and supplied the fake runner a cached fake cast handle. All nine
   exact failed node IDs pass locally. The retry again stopped before artifact
   build or PyPI publication.
+- Published v0.3.0 from annotated tag commit
+  `ed52bad75068de637ce6cb81b6505c7b55802ab3`. Trusted-publish run
+  `https://github.com/shisa-ai/hipEngine/actions/runs/29210912390` passed the
+  complete Ubuntu/no-GPU release suite at 100%, built both exact artifacts,
+  passed Twine metadata checks, generated provenance attestations, and uploaded
+  through PyPI OIDC. PyPI exposes non-yanked
+  `hipengine-0.3.0-py3-none-manylinux_2_39_x86_64.whl` SHA-256
+  `55a6e854b8d83ccf41f3cd95c963c6db29f55e0a793327fdf3490da2b6854d3d`
+  and `hipengine-0.3.0.tar.gz` SHA-256
+  `f25060b807bc9f64d2860cb0d1b0eb960253379417ca6a02df06bdf1f6100890`.
+  A refreshed `uvx --from hipengine==0.3.0` install reports version 0.3.0 and
+  runs `hipengine serve --help`. The public GitHub release is
+  `https://github.com/shisa-ai/hipEngine/releases/tag/v0.3.0`; its tag dereferences
+  to the same commit. PR #3 already had the requested upstream/patience note, so
+  posted only the non-duplicative release follow-up at
+  `https://github.com/shisa-ai/hipEngine/pull/3#issuecomment-4952969565`.
