@@ -17,6 +17,7 @@ def test_qwen35_gguf_model_plugin_resolves_architecture() -> None:
 
     assert plugin.name == "qwen3_5_gguf"
     assert plugin.default_quant == "gguf_q4_k_m"
+    assert plugin.default_backend == "auto"
 
 
 def test_qwen35moe_gguf_model_plugin_resolves_architecture() -> None:
@@ -24,6 +25,7 @@ def test_qwen35moe_gguf_model_plugin_resolves_architecture() -> None:
 
     assert plugin.name == "qwen3_5_moe_gguf"
     assert plugin.default_quant == "gguf_q4_k_m"
+    assert plugin.default_backend == "auto"
 
 
 def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
@@ -31,24 +33,9 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
 
     calls = []
 
-    class FakeGraph:
-        def __enter__(self):
-            calls.append(("graph_enter",))
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            calls.append(("graph_exit", exc_type is None))
-
-        def replay(self, steps):
-            calls.append(("graph_replay", int(steps)))
-
-        def read_generated_token_ids(self, count):
-            calls.append(("graph_read", int(count)))
-            return [16]
-
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -61,24 +48,30 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
             calls.append(("prefill", tuple(int(token) for token in token_ids), bool(return_logits)))
             return type("Result", (), {"token_id": 220, "logit": 4.5})()
 
-        def capture_decode_graph(self, *, position, steps_per_replay, max_replay_steps, record_steps):
-            calls.append(("capture_decode_graph", position, steps_per_replay, max_replay_steps, record_steps))
-            return FakeGraph()
+        def step(self, token_id, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return type("Result", (), {"token_id": 16, "logit": 1.0})()
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
     assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
 
+    # Eager per-token decode (the HIP decode graph was retired; see WORKLOG
+    # 2026-06-28 "#8 moot" - the lib cache made eager == graph).
     assert calls == [
-        ("init", str(MODEL.resolve())),
+        (
+            "init",
+            str(MODEL.resolve()),
+            {
+                "backend": "hip_gfx1100",
+                "use_wmma_prefill": True,
+                "use_gemv_decode": True,
+            },
+        ),
         ("enter",),
         ("prefill", (760, 4087, 369), False),
-        ("capture_decode_graph", 3, 1, 1, 1),
-        ("graph_enter",),
-        ("graph_replay", 1),
-        ("graph_read", 1),
-        ("graph_exit", True),
+        ("step", 220, False),
         ("exit", True),
     ]
 
@@ -91,8 +84,8 @@ def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> 
     calls = []
 
     class FakeSession:
-        def __init__(self, model_path):
-            calls.append(("init", str(model_path)))
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", str(model_path), dict(kwargs)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -111,7 +104,15 @@ def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> 
     assert llm.generate("The answer is", SamplingParams(max_tokens=1)) == [" "]
 
     assert calls == [
-        ("init", str(MOE_MODEL.resolve())),
+        (
+            "init",
+            str(MOE_MODEL.resolve()),
+            {
+                "backend": "hip_gfx1100",
+                "use_wmma_prefill": True,
+                "use_gemv_decode": True,
+            },
+        ),
         ("enter",),
         ("prefill", (760, 4087, 369), False),
         ("exit", True),

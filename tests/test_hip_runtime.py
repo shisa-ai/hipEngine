@@ -42,12 +42,18 @@ class FakeHipLibrary:
         self.hipStreamCreateWithFlags = FakeFunction(self._stream_create_with_flags)
         self.hipStreamDestroy = FakeFunction(lambda stream: 0)
         self.hipStreamSynchronize = FakeFunction(lambda stream: 0)
+        self.hipStreamWaitEvent = FakeFunction(lambda stream, event, flags: 0)
         self.hipStreamBeginCapture = FakeFunction(lambda stream, mode: 0)
         self.hipStreamEndCapture = FakeFunction(self._stream_end_capture)
         self.hipGraphInstantiate = FakeFunction(self._graph_instantiate)
         self.hipGraphLaunch = FakeFunction(lambda graph_exec, stream: 0)
         self.hipGraphExecDestroy = FakeFunction(lambda graph_exec: 0)
         self.hipGraphDestroy = FakeFunction(lambda graph: 0)
+        self.hipEventCreateWithFlags = FakeFunction(self._event_create_with_flags)
+        self.hipEventDestroy = FakeFunction(lambda event: 0)
+        self.hipEventRecord = FakeFunction(lambda event, stream: 0)
+        self.hipEventSynchronize = FakeFunction(lambda event: 0)
+        self.hipEventElapsedTime = FakeFunction(self._event_elapsed_time)
         self.hipDeviceSynchronize = FakeFunction(lambda: 0)
         self.hipGetErrorString = FakeFunction(lambda code: b"fake hip error")
 
@@ -93,6 +99,14 @@ class FakeHipLibrary:
         out_exec._obj.value = 0x7000
         return 0
 
+    def _event_create_with_flags(self, out_event, flags):
+        out_event._obj.value = 0x8000 + int(flags.value)
+        return 0
+
+    def _event_elapsed_time(self, out_ms, start, stop):
+        out_ms._obj.value = 0.125
+        return 0
+
 
 def setup_function() -> None:
     reset_default_runtime_for_tests()
@@ -118,6 +132,7 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     graph = runtime.stream_end_capture(stream)
     graph_exec = runtime.graph_instantiate(graph)
     runtime.graph_launch(graph_exec, stream)
+    runtime.stream_wait_event(stream, 0x8100)
     runtime.stream_synchronize(stream)
     runtime.graph_exec_destroy(graph_exec)
     runtime.graph_destroy(graph)
@@ -135,6 +150,12 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
         (0x1000, 0x3000, 8, int(HipMemcpyKind.DEVICE_TO_DEVICE), stream),
     ]
     assert lib.sets == [(0x1000, 0, 16), (0x1000, 0xAB, 8, stream)]
+    wait_args = lib.hipStreamWaitEvent.calls[0]
+    assert (wait_args[0].value, wait_args[1].value, wait_args[2].value) == (
+        stream,
+        0x8100,
+        0,
+    )
     assert lib.freed == [0x1000]
 
 

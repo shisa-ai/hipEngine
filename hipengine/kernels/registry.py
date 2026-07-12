@@ -49,6 +49,19 @@ class MissingKernelError(LookupError):
 
 _KERNELS: dict[KernelKey, Kernel] = {}
 
+# Monotonic counter bumped on every registry mutation. Lets hot-path callers
+# (e.g. the GGUF linear dispatch cache) memoize resolution results and cheaply
+# detect when the registry changed and the memo must be invalidated. In
+# production the registry is populated once at import and never mutated, so the
+# generation is stable and memos stay valid for the process lifetime.
+_GENERATION: int = 0
+
+
+def generation() -> int:
+    """Return the current registry generation (bumped on any mutation)."""
+
+    return _GENERATION
+
 
 def register(key: KernelKey, kernel: Kernel, *, replace: bool = False) -> Kernel:
     """Register ``kernel`` under ``key`` and return the callable.
@@ -57,14 +70,18 @@ def register(key: KernelKey, kernel: Kernel, *, replace: bool = False) -> Kernel
     Tests may pass ``replace=True`` when deliberately overriding a fixture kernel.
     """
 
+    global _GENERATION
     if key in _KERNELS and not replace:
         raise DuplicateKernelError(f"kernel already registered for {key.display()}")
     _KERNELS[key] = kernel
+    _GENERATION += 1
     return kernel
 
 
 def unregister(key: KernelKey) -> None:
+    global _GENERATION
     _KERNELS.pop(key, None)
+    _GENERATION += 1
 
 
 def registered_keys() -> tuple[KernelKey, ...]:
@@ -153,4 +170,6 @@ def clear_registry_for_tests() -> None:
     Test-only helper. Production code should not call this.
     """
 
+    global _GENERATION
     _KERNELS.clear()
+    _GENERATION += 1

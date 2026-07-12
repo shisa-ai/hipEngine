@@ -1,0 +1,36 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "hardware": "AMD Radeon 8060S / gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "purpose": "Apple-to-apple audit of the llama 67.29 tok/s / 1.342x baseline vs hipEngine, per the CLAUDE.md evidence policy. llama was measured via llama-server --protocol natural --max-tokens 512; hipEngine suite uses cycles=10 in-process. Tests whether the gap is a protocol/length artifact.",
+ "hipengine_length_scaling": {
+  "ar_10cyc_60tok": 54.55,
+  "ar_40cyc_240tok": 53.54,
+  "ar_drop_pct": -1.9,
+  "mtp_b5_10cyc": {
+   "tok_s": 60.76,
+   "vs_ar": 1.114,
+   "acc_out": 0.535
+  },
+  "mtp_b5_40cyc": {
+   "tok_s": 58.15,
+   "vs_ar": 1.086,
+   "acc_out": 0.516
+  }
+ },
+ "llama_baseline": {
+  "mtp_b2_tok_s": 67.29,
+  "vs_ar": 1.342,
+  "ar_tok_s": 50.19,
+  "protocol": "llama-server natural max-tokens 512 (HTTP overhead INCLUDED in llama tok/s)"
+ },
+ "findings": [
+  "hipEngine AR scales well: 54.55 -> 53.54 over 4x longer context, still ABOVE llama AR 50.19. Faster-AR claim robust to length.",
+  "hipEngine MTP uplift STABLE ~1.086-1.114x across window length; the 10-cycle number does NOT understate it.",
+  "llama 67.29 measured via llama-server includes HTTP/server overhead -> llamas raw compute is if anything higher.",
+  "CONCLUSION: the 60.8 vs 67.3 gap is GENUINE, robust to generation length and conservative on llamas side. NOT a measurement artifact. The baseline comparison is validated as fair."
+ ]
+}

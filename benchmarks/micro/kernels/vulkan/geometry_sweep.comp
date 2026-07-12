@@ -1,0 +1,54 @@
+#version 450
+
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(set = 0, binding = 1) readonly buffer WBuffer {
+    float w[];
+};
+
+layout(set = 0, binding = 2) buffer OutBuffer {
+    float out_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint k;
+    uint rows;
+    uint body_repeats;
+    uint output_slice;
+    uint sequence_id;
+} pc;
+
+shared float scratch[256];
+
+void main() {
+    uint row = gl_WorkGroupID.x;
+    uint lid = gl_LocalInvocationID.x;
+    uint wg = gl_WorkGroupSize.x;
+    float sum = 0.0;
+
+    for (uint repeat = 0; repeat < pc.body_repeats; ++repeat) {
+        for (uint i = lid; i < pc.k; i += wg) {
+            uint j = (i + repeat) % pc.k;
+            sum = fma(x[j], w[row * pc.k + j], sum);
+        }
+    }
+
+    scratch[lid] = sum;
+    barrier();
+
+    for (uint offset = wg >> 1; offset > 0; offset >>= 1) {
+        if (lid < offset) {
+            scratch[lid] += scratch[lid + offset];
+        }
+        barrier();
+    }
+
+    if (lid == 0) {
+        out_values[pc.output_slice * pc.rows + row] =
+            scratch[0] + float(pc.sequence_id) * 0.125;
+    }
+}

@@ -1,0 +1,24 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "dual_engine_verify_mechanism",
+ "hardware": "gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "llama_mtp_b2_cli_tok_s": 75.4,
+ "llama_ar_tok_s": 51.38,
+ "hipengine_mtp_b5_tok_s": 60.8,
+ "hipengine_ar_tok_s": 54.95,
+ "rocprof_mtp_note": "rocprofv3 deadlocks at finalize on llama draft-mtp path (second-context/queue); not size/graph dependent. Verify profiled via equivalent batched B+1-row forward (llama-bench -p 4 -b 4).",
+ "verify_shape_4row": {
+  "llama_hip_kernels_pct": {
+   "mul_mat_vec_q_moe": 40.5,
+   "mul_mat_vec_q": 33.8
+  },
+  "llama_amortization": "batch is a grid dim in mul_mat_vec_q -> each block reads weight tile ONCE, computes all B+1 rows (weight read amortized across verify rows) + dp4a",
+  "hipengine_kernels": "q8_0_t16_dual_split etc. with blockIdx.y=row -> separate block per row, weight re-read B+1x (NO amortization). WMMA-amortized path slower at rows=4 (56.9 vs 42.3 ms)."
+ },
+ "attribution": "llama MTP uplift advantage = verify is cheaper PER ROW via (a) weight-read amortization across the B+1 batch in mul_mat_vec_q and (b) dp4a. hipEngine per-row exact verify re-reads weights B+1x. NOT AR decode (hipEngine wins AR).",
+ "lever": "vec-rowtile verify GEMV for q8_0 attn + q4_k/q5_k/q6_k MoE (read weight once, accumulate B+1 rows in registers) - the EXACT pattern that won for the Q6_K lm-head rowtile, at exact precision (no dp4a/ja-gate risk). Untested for the verify GEMVs (only WMMA tried, which is slower)."
+}

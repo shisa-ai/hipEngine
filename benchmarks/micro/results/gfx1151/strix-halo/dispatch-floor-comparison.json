@@ -1,0 +1,171 @@
+{
+  "bench": "dispatch_grid_floor",
+  "classification": "runtime_dispatch",
+  "commands": {
+    "hip": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "benchmarks/micro/runners/hip_dispatch_floor.py",
+      "--environment-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+      "--environment-ref",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+      "--gfx-arch",
+      "gfx1151",
+      "--hardware-gpu",
+      "Radeon 8060S Graphics",
+      "--counts",
+      "1,50,200,941",
+      "--kernels",
+      "tiny,wide",
+      "--grid-sweep",
+      "1,128,1024,8192",
+      "--reps",
+      "50",
+      "--warmup",
+      "10",
+      "--legacy-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor-raw.json",
+      "--pretty",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor.json"
+    ],
+    "vulkan": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "benchmarks/micro/runners/vulkan_dispatch_floor.py",
+      "--environment-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+      "--environment-ref",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+      "--gfx-arch",
+      "gfx1151",
+      "--hardware-gpu",
+      "Radeon 8060S Graphics",
+      "--counts",
+      "1,50,200,941",
+      "--grid-sweep",
+      "1,128,1024,8192",
+      "--reps",
+      "50",
+      "--warmup",
+      "10",
+      "--legacy-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor-raw.json",
+      "--pretty",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json"
+    ]
+  },
+  "count_comparison": [
+    {
+      "dispatch_count": 1,
+      "grid_blocks": 1,
+      "hip_tiny_direct_us_per_dispatch": 9.041978046298027,
+      "hip_tiny_graph_us_per_dispatch": 21.00938439834863,
+      "hip_wide_direct_us_per_dispatch": 8.060364052653313,
+      "hip_wide_graph_us_per_dispatch": 20.75947520788759,
+      "vulkan_command_buffer_us_per_dispatch": 17.2775,
+      "vulkan_vs_hip_tiny_direct_speedup": 0.5233383328779063,
+      "vulkan_vs_hip_tiny_graph_speedup": 1.2159967818462527,
+      "vulkan_vs_hip_wide_direct_speedup": 0.4665237478022464,
+      "vulkan_vs_hip_wide_graph_speedup": 1.2015323517805
+    },
+    {
+      "dispatch_count": 50,
+      "grid_blocks": 1,
+      "hip_tiny_direct_us_per_dispatch": 2.1738791838288307,
+      "hip_tiny_graph_us_per_dispatch": 1.8464821157976985,
+      "hip_wide_direct_us_per_dispatch": 2.200431190431118,
+      "hip_wide_graph_us_per_dispatch": 1.8941196147352457,
+      "vulkan_command_buffer_us_per_dispatch": 0.33042,
+      "vulkan_vs_hip_tiny_direct_speedup": 6.579139228342203,
+      "vulkan_vs_hip_tiny_graph_speedup": 5.588287984376547,
+      "vulkan_vs_hip_wide_direct_speedup": 6.659497580143811,
+      "vulkan_vs_hip_wide_graph_speedup": 5.732460549407559
+    },
+    {
+      "dispatch_count": 200,
+      "grid_blocks": 1,
+      "hip_tiny_direct_us_per_dispatch": 2.0668795332312584,
+      "hip_tiny_graph_us_per_dispatch": 1.8096709856763482,
+      "hip_wide_direct_us_per_dispatch": 2.116849645972252,
+      "hip_wide_graph_us_per_dispatch": 1.8557796021923423,
+      "vulkan_command_buffer_us_per_dispatch": 0.092547,
+      "vulkan_vs_hip_tiny_direct_speedup": 22.333295873785843,
+      "vulkan_vs_hip_tiny_graph_speedup": 19.55407507186995,
+      "vulkan_vs_hip_wide_direct_speedup": 22.87323895936391,
+      "vulkan_vs_hip_wide_graph_speedup": 20.05229345297354
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1,
+      "hip_tiny_direct_us_per_dispatch": 2.0087029543427173,
+      "hip_tiny_graph_us_per_dispatch": 1.806852724792431,
+      "hip_wide_direct_us_per_dispatch": 2.0583226037677873,
+      "hip_wide_graph_us_per_dispatch": 1.8561996868935262,
+      "vulkan_command_buffer_us_per_dispatch": 0.043621,
+      "vulkan_vs_hip_tiny_direct_speedup": 46.048989118606116,
+      "vulkan_vs_hip_tiny_graph_speedup": 41.421625473795444,
+      "vulkan_vs_hip_wide_direct_speedup": 47.18650658553879,
+      "vulkan_vs_hip_wide_graph_speedup": 42.552891655246924
+    }
+  ],
+  "grid_comparison": [
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1,
+      "hip_wide_direct_us_per_dispatch": 2.0650999301868342,
+      "hip_wide_graph_us_per_dispatch": 1.8585658705787713,
+      "vulkan_command_buffer_us_per_dispatch": 0.042902,
+      "vulkan_vs_hip_wide_direct_speedup": 48.13528344102453,
+      "vulkan_vs_hip_wide_graph_speedup": 43.32119413031493
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 128,
+      "hip_wide_direct_us_per_dispatch": 2.0747885056528856,
+      "hip_wide_graph_us_per_dispatch": 1.861427386406462,
+      "vulkan_command_buffer_us_per_dispatch": 0.230992,
+      "vulkan_vs_hip_wide_direct_speedup": 8.982079490427745,
+      "vulkan_vs_hip_wide_graph_speedup": 8.058406292886602
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1024,
+      "hip_wide_direct_us_per_dispatch": 3.291083540367586,
+      "hip_wide_graph_us_per_dispatch": 3.0760787093561253,
+      "vulkan_command_buffer_us_per_dispatch": 1.69237,
+      "vulkan_vs_hip_wide_direct_speedup": 1.9446595841143404,
+      "vulkan_vs_hip_wide_graph_speedup": 1.8176159523958269
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 8192,
+      "hip_wide_direct_us_per_dispatch": 13.23238640180398,
+      "hip_wide_graph_us_per_dispatch": 13.022593764757808,
+      "vulkan_command_buffer_us_per_dispatch": 11.977879,
+      "vulkan_vs_hip_wide_direct_speedup": 1.1047353543815213,
+      "vulkan_vs_hip_wide_graph_speedup": 1.0872203471714657
+    }
+  ],
+  "hardware": {
+    "gfx_arch": "gfx1151",
+    "gpu_name": "Radeon 8060S Graphics"
+  },
+  "inputs": {
+    "environment": "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+    "hip_raw": "benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor-raw.json",
+    "hip_result": "benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor.json",
+    "vulkan_raw": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor-raw.json",
+    "vulkan_result": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json"
+  },
+  "interpretation": "Vulkan pre-recorded command-buffer dispatch is much cheaper than HIP direct launches and HIP graph replay for one-block bursts on gfx1151/RADV. The gap narrows as grid size grows; at 8192 blocks Vulkan is only modestly faster than HIP graph/direct. This is runtime/command scheduling evidence only, not RADV/ACO shader-codegen evidence.",
+  "kind": "hipengine_micro_comparison",
+  "schema_version": 1,
+  "source": {
+    "branch": "benchmarks-micro",
+    "commit": "263d00b52e36e32c3363386532181134a9ccb359",
+    "dirty": false,
+    "repo": "/home/lhl/hipEngine-benchmarks-micro",
+    "source_hash": "sha256:57c03ca2751a1adec5e2072ccf1c4465301d73a64705803528c15d981a500d69"
+  }
+}

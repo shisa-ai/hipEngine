@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_recurrent_bf16_cast_error",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 266,
+  "source_capture": "benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json",
+  "source_iteration": 265,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "position": 16,
+  "token_id": 271,
+  "shape": [
+    4096
+  ],
+  "device_matches_expected_bf16": true,
+  "device_expected_bf16_diff": {
+    "count": 4096,
+    "max_abs_diff": 0.0,
+    "rms_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "reference_rms": 0.021449122577905655,
+    "candidate_rms": 0.021449122577905655,
+    "max_abs_reference": 1.265625,
+    "max_abs_candidate": 1.265625
+  },
+  "cast_error": {
+    "count": 4096,
+    "max_abs_diff": 0.0033036470413208008,
+    "rms_abs_diff": 5.343606244423427e-05,
+    "mean_abs_diff": 4.741546490549808e-06,
+    "reference_rms": 0.02149813249707222,
+    "candidate_rms": 0.021449122577905655,
+    "max_abs_reference": 1.2689286470413208,
+    "max_abs_candidate": 1.265625
+  },
+  "conclusion": "Device recurrent_bf16 exactly matches host BF16 rounding of recurrent_out; the cast itself contributes max_abs=0.00330365 and rms_abs=5.34361e-05, so downstream attn_out triage should focus on ssm_out/input precision or earlier GDN math, not a cast mismatch."
+}

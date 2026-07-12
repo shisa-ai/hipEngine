@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.local/schemas/micro/environment.schema.json",
+  "title": "hipEngine microbenchmark environment",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "collected_at_unix",
+    "collector",
+    "repo",
+    "host",
+    "commands",
+    "devices"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "hipengine_micro_environment"
+    },
+    "collected_at_unix": {
+      "type": "number"
+    },
+    "collector": {
+      "type": "object"
+    },
+    "repo": {
+      "type": "object",
+      "required": [
+        "root",
+        "branch",
+        "commit",
+        "dirty",
+        "status_short"
+      ],
+      "properties": {
+        "root": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "commit_short": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "status_short": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "host": {
+      "type": "object"
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "args",
+          "available",
+          "returncode",
+          "timed_out",
+          "stdout",
+          "stderr"
+        ],
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "returncode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "timed_out": {
+            "type": "boolean"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "devices": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

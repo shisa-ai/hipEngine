@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_capture_path_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 297,
+  "status": "audited",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "capture_path": "benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json",
+  "tap_compare_path": "benchmarks/results/mtp-gguf-iter296-llamacpp-tap-placement-compare.json",
+  "layer_sweep_path": "benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json",
+  "source_audit": {
+    "facts": {
+      "capture_calls_set_token_id_device": true,
+      "set_token_id_launches_embedding": true,
+      "embedding_launches_gguf_embedding": true,
+      "normal_decode_uses_hidden_a_after_embedding": true,
+      "capture_uses_hidden_a_after_embedding": true,
+      "capture_replays_preceding_layers": true,
+      "capture_full_attention_passes_position": true,
+      "capture_hidden_tap_copies_target_src_ptr": true,
+      "hidden_tap_dtype": "bf16_to_host_f32",
+      "capture_sets_embedding": true
+    },
+    "anchors": {
+      "capture_attention_layer": 3637,
+      "capture_set_token_id": 3542,
+      "capture_src_hidden_a": 3671,
+      "preceding_layer_loop": 3674,
+      "hidden_in_copy": 3755,
+      "set_token_embedding": 3886,
+      "launch_gguf_embedding": 757
+    }
+  },
+  "precision_audit": {
+    "available": true,
+    "layers": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "count": 14,
+    "records": [
+      {
+        "slot_path": "layers.0.ffn_gate_inp",
+        "source_name": "blk.0.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.0.ffn_gate_inp_shexp",
+        "source_name": "blk.0.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.0.ssm_alpha",
+        "source_name": "blk.0.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.0.ssm_beta",
+        "source_name": "blk.0.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.1.ffn_gate_inp",
+        "source_name": "blk.1.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.1.ffn_gate_inp_shexp",
+        "source_name": "blk.1.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.1.ssm_alpha",
+        "source_name": "blk.1.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.1.ssm_beta",
+        "source_name": "blk.1.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.2.ffn_gate_inp",
+        "source_name": "blk.2.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.2.ffn_gate_inp_shexp",
+        "source_name": "blk.2.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.2.ssm_alpha",
+        "source_name": "blk.2.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.2.ssm_beta",
+        "source_name": "blk.2.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.3.ffn_gate_inp",
+        "source_name": "blk.3.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.3.ffn_gate_inp_shexp",
+        "source_name": "blk.3.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      }
+    ]
+  },
+  "mismatch_evidence": {
+    "capture_layer_id": 3,
+    "capture_position": 16,
+    "capture_run_preceding_layers": true,
+    "capture_preceding_layer_count": 3,
+    "tap_compare_conclusion": "target_hidden_in_is_closest_but_mismatched",
+    "tap_compare_best_key": "hidden_in_f32",
+    "tap_compare_best_rmse": 0.023895301258143264,
+    "layer_sweep_conclusion": "target_layer_best_but_mismatched",
+    "layer_sweep_best_layer": 3,
+    "layer_sweep_best_rmse": 0.023895301258143264
+  },
+  "conclusion": "precision_contractions_or_preceding_layer_math_suspect",
+  "external_checkout_modified": false,
+  "next_action": "run_earliest_layer_hidden_in_sweep_and_audit_precision_contractors"
+}

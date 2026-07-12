@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "kind": "hipengine_sol_s4_paro_dflash_profile",
+  "status": "diagnostic_retained",
+  "date": "2026-07-11",
+  "performance_claim": false,
+  "summary": "Clean gfx1151 PARO DFlash profile closes SOL-S4 and selects the S5-S7 conditional decisions without promoting DFlash performance.",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "8eb272155703ca45ad126b68c593ab8dc1f3ec09",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "compiler_version_file_sha256": "508aa85cb3c11894d941b98393a78b85cdb61cd5ab0862148754004d365e5032",
+    "hip_version": "7.13.60980-c76140fa27"
+  },
+  "models": {
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "quant": "w4_paro_packed",
+      "kv_dtype": "bf16",
+      "fingerprint": "362ac5e97b22ed60e9c02a9b3b2341ad8ebedbc79b037289404812097d65e9d7"
+    },
+    "drafter": {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "dtype": "bf16"
+    },
+    "pair_validation_passed": true
+  },
+  "workload": {
+    "prompt_fixture": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt_fixture_sha256": "04a88c095fa0b05c81eaa09f62d58cac053272fc307e1dafae6ab076c214892f",
+    "prompt_group": "code_promotion",
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_tokens": 90,
+    "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+    "decode_tokens": 32,
+    "draft_budget": 4,
+    "draft_top_k": 1,
+    "verifier_mode": "native_bulk_bplus1",
+    "full_attention_chain_mode": "batched",
+    "same_process_control": true,
+    "same_session_ar_control": true,
+    "require_cached_build": true
+  },
+  "commands": {
+    "common_environment": [
+      "HIP_VISIBLE_DEVICES=0",
+      "HIPENGINE_HIP_ARCH=gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-sol-s4-hipcc-version.txt",
+      "PYTHONDONTWRITEBYTECODE=1",
+      "PYTHONPATH=/tmp/hipengine-sol-s4-clean-8eb27215"
+    ],
+    "coarse_exact_replay": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --prompt-fixture fixtures/dflash/stable_prompts.jsonl --prompt-groups code_promotion --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-sol-s4-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'Radeon 8060S Graphics' --json /tmp/2026-07-11-sol-s4-gfx1151-dflash-curated-coarse.json",
+    "synchronized_attribution_extra_environment": [
+      "HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1"
+    ],
+    "synchronized_attribution": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --prompt-fixture fixtures/dflash/stable_prompts.jsonl --prompt-groups code_promotion --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-sol-s4-hipcc-version.txt --require-cached-build --sync-draft-phases --verifier-mode native_bulk_bplus1 --verifier-graph off --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'Radeon 8060S Graphics' --json /tmp/2026-07-11-sol-s4-gfx1151-dflash-curated-sync-phases.json",
+    "s5_branch_copy": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --prompt-fixture fixtures/dflash/stable_prompts.jsonl --prompt-groups code_promotion --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-sol-s4-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'Radeon 8060S Graphics' --json /tmp/2026-07-11-sol-s5-gfx1151-dflash-branch-copy.json",
+    "s7_fused_lm_head_extra_environment": [
+      "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on"
+    ],
+    "s7_fused_lm_head": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --prompt-fixture fixtures/dflash/stable_prompts.jsonl --prompt-groups code_promotion --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-sol-s4-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'Radeon 8060S Graphics' --json /tmp/2026-07-11-sol-s7-gfx1151-dflash-fused-lm-head.json"
+  },
+  "measurements": {
+    "coarse_exact_replay": {
+      "ar_decode_seconds": 0.4903010060079396,
+      "ar_decode_tok_s": 65.26602965909846,
+      "dflash_decode_seconds": 3.3072646888904274,
+      "dflash_decode_tok_s": 9.675669476196614,
+      "speedup_vs_ar": 0.1482497024368598,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "generated_ids_sha256": "ef22f4fd9bec3ce134964a42b33cd26f32ea27c035998d49ab871c73d8ef202e",
+      "draft_cycles": 30,
+      "draft_tokens_proposed": 114,
+      "accepted_draft_tokens": 1,
+      "average_accept_length": 0.03333333333333333,
+      "target_verify_rows": 182,
+      "target_verify_rows_per_output_token": 5.6875,
+      "phase_seconds": {
+        "draft": 0.8336964920163155,
+        "target_verify": 2.4679473829455674,
+        "commit": 0.0037514823488891125,
+        "other": 0.0018693315796554089
+      },
+      "phase_fractions": {
+        "draft": 0.25208036563170183,
+        "target_verify": 0.7462200988133044,
+        "commit": 0.0011343157266761488,
+        "other": 0.00056521982831757
+      },
+      "target_verify_bucket_seconds": {
+        "target_verify_forward": 1.6704191020689905,
+        "canonical_commit_replay": 0.7143305707722902,
+        "host_sync_after_commit": 0.026015122886747122,
+        "target_verify_ar_step": 0.016217247117310762,
+        "state_copy_pre_verify": 0.011683856137096882,
+        "metadata_upload": 0.011025893036276102,
+        "commit_scatter": 0.008953712414950132,
+        "accept_summary": 0.005225282162427902,
+        "host_orchestration_unbucketed": 0.0035527735017240047,
+        "capture_prefix_copy": 0.0005238228477537632
+      },
+      "verifier_graph": {
+        "shape_count": 2,
+        "cycles": 30,
+        "captured_validated_misses": 30,
+        "cache_hits": 0,
+        "primary_shape": {
+          "rows": 5,
+          "capture_width": 10240,
+          "base_slot": 2,
+          "chain_attn_mode": "batched",
+          "linear_attn_mode": "chain_tloop",
+          "batch_mode": "verify_chain",
+          "cycles": 27
+        },
+        "tail_shape": {
+          "rows": 5,
+          "capture_width": 10240,
+          "base_slot": 2,
+          "chain_attn_mode": "batched",
+          "linear_attn_mode": "tree_tloop",
+          "batch_mode": "verify_chain",
+          "cycles": 3,
+          "active_budgets": [1, 2, 3]
+        }
+      }
+    },
+    "synchronized_attribution": {
+      "throughput_is_profiling_only": true,
+      "exact_match_ar": true,
+      "dflash_decode_seconds": 3.097219597082585,
+      "target_verify_bucket_seconds": {
+        "target_verify_linear_layers": 1.1586736752651632,
+        "canonical_commit_replay": 0.4996100994758308,
+        "target_verify_full_attention_layers": 0.2327377200126648,
+        "lm_head_top1": 0.16629748791456223,
+        "canonicalize_scratch": 0.14462207397446036,
+        "target_verify_ar_step": 0.01619582623243332,
+        "metadata_upload": 0.013038949575275183,
+        "state_copy_pre_verify": 0.00975852133706212,
+        "commit_scatter": 0.007717476226389408,
+        "host_orchestration_unbucketed": 0.003095212858170271,
+        "accept_summary_enqueue": 0.0018602106720209122,
+        "accept_readback": 0.0013139178045094013,
+        "target_verify_embedding": 0.0004516676999628544,
+        "host_sync_after_commit": 0.000025979243218898773
+      },
+      "drafter_bucket_seconds": {
+        "decoder_layers": 0.5074826925992966,
+        "lm_head": 0.28387631522491574,
+        "topk_and_readback": 0.012591228354722261
+      },
+      "dominant_wall_fractions": {
+        "target_verify_linear_layers": 0.37410123465464695,
+        "drafter_decoder_layers": 0.1638510530791288,
+        "canonical_commit_replay": 0.16130922713598891,
+        "drafter_lm_head": 0.09165521085179495,
+        "target_verify_full_attention_layers": 0.07514408091434371,
+        "target_lm_head_top1": 0.05369250797431527,
+        "canonicalize_scratch": 0.046694162115817235,
+        "drafter_topk_and_readback": 0.0040653327799496436,
+        "commit_scatter": 0.002491743315087783,
+        "accept_readback": 0.0004242249421859017
+      }
+    },
+    "s5_branch_copy": {
+      "status": "rejected_correctness",
+      "ar_decode_tok_s": 65.26918397591949,
+      "dflash_decode_tok_s": 14.449649503609148,
+      "change_vs_exact_replay_percent": 49.340048656655085,
+      "speedup_vs_ar": 0.22138547815980392,
+      "exact_match_ar": false,
+      "first_mismatch_index": 1,
+      "ar_generated_ids_sha256": "ef22f4fd9bec3ce134964a42b33cd26f32ea27c035998d49ab871c73d8ef202e",
+      "branch_copy_generated_ids_sha256": "70c3005e97864a704a23b7904fb7e7c6c65803c74bfa60f5c07e0479eb0cfd35",
+      "verifier_graph_status_counts": {
+        "captured_validated_miss": 2,
+        "replayed": 27
+      }
+    },
+    "s7_fused_target_lm_head": {
+      "status": "rejected_performance",
+      "ar_decode_tok_s": 65.22282648201617,
+      "dflash_decode_tok_s": 9.176691818354794,
+      "change_vs_unfused_percent": -5.157034963517193,
+      "speedup_vs_ar": 0.14069754890007832,
+      "exact_match_ar": true,
+      "generated_ids_sha256": "ef22f4fd9bec3ce134964a42b33cd26f32ea27c035998d49ab871c73d8ef202e",
+      "target_verify_forward_seconds": 1.8460083990357816,
+      "unfused_target_verify_forward_seconds": 1.6704191020689905
+    }
+  },
+  "raw_sources": {
+    "pair_validation": {
+      "path": "/tmp/2026-07-11-sol-s4-curated-pair-validation.json",
+      "bytes": 3280,
+      "sha256": "8fa616872a29f71987ad0bafc5ca4883d69050442ec6095233abfea827030335"
+    },
+    "coarse_exact_replay": {
+      "path": "/tmp/2026-07-11-sol-s4-gfx1151-dflash-curated-coarse.json",
+      "bytes": 103276,
+      "sha256": "18a4c1dccab5ad46ae72b91660a0f9c8a4ec02586dfbc73f3bc34b81c58b4461"
+    },
+    "synchronized_attribution": {
+      "path": "/tmp/2026-07-11-sol-s4-gfx1151-dflash-curated-sync-phases.json",
+      "bytes": 105350,
+      "sha256": "1f5c110b3a1c462947ef684a5c348ead526aa1e53671a664e79ae79e67d3e412"
+    },
+    "s5_branch_copy": {
+      "path": "/tmp/2026-07-11-sol-s5-gfx1151-dflash-branch-copy.json",
+      "bytes": 102001,
+      "sha256": "7babab0e328014334ed497444799b4c3c7752ce9cba3bf7e67dfdbdfd5bc2bdc"
+    },
+    "s7_fused_lm_head": {
+      "path": "/tmp/2026-07-11-sol-s7-gfx1151-dflash-fused-lm-head.json",
+      "bytes": 103269,
+      "sha256": "bbfbd7d4be1b16b1d88f2636d459aa83f8af71990452c0274d89fd3f8b26fc23"
+    }
+  },
+  "decisions": {
+    "SOL-S4": "accepted_profile_only: same-session exact output, complete parent/fine phase coverage, and verifier graph shape miss data identify target linear layers as the largest measured bucket; DFlash performance is rejected at 0.14825x AR",
+    "SOL-S5": "rejected_correctness: branch-copy removes exact replay work and enables graph hits but diverges at generated token 1; keep exact canonical replay",
+    "SOL-S6": "parked: only 1 of 114 proposed draft tokens is accepted and verification already spends 5.6875 rows per output token, so wider groups would amplify rejected work; no multi-request draft serialization/group-cap premise is established",
+    "SOL-S7": "rejected_and_parked: fused target LM-head is exact but 5.16% slower; synchronized top-k/readback and accept-readback are 0.407% and 0.042% of wall, so no readback/sampler rewrite is activated"
+  }
+}

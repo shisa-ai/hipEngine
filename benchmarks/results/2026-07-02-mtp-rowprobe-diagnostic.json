@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "mtp_llamacpp_rowprobe_semantic_parity",
+  "date": "2026-07-02",
+  "hardware": "gfx1151 / Radeon 8060S Graphics",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+  "commands": {
+    "hipengine": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --record-draft-stage-stats --record-draft-cache-rows 0,1,2,16,32,40,48,49 --record-draft-attention-debug --output /tmp/hipengine-mtp-rowprobe/hipengine-stage.json",
+    "llamacpp": "LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_ATTENTION_TRACE=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8042 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-rowprobe2/llamacpp.json --log-dir /tmp/hipengine-mtp-rowprobe2/logs"
+  },
+  "artifacts": {
+    "hipengine_stage_json": "/tmp/hipengine-mtp-rowprobe/hipengine-stage.json",
+    "llamacpp_stage_jsonl": "/tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl",
+    "llamacpp_summary_json": "/tmp/hipengine-mtp-rowprobe2/llamacpp.json"
+  },
+  "comparable_point": {
+    "depth": 0,
+    "token_id": 1103,
+    "position": 49
+  },
+  "summary": {
+    "hipengine_drafts": [65342, 18078],
+    "llamacpp_drafts": [8, 1411],
+    "hipengine_attention_recompute_mae_mean": 0.00000041,
+    "llamacpp_attention_recompute_mae_mean": 0.00048110979013147464,
+    "hipengine_top_row_histogram": {
+      "48": 7,
+      "49": 9
+    },
+    "llamacpp_top_row_histogram": {
+      "2": 1,
+      "48": 7,
+      "49": 8
+    },
+    "row_identity": {
+      "row": 2,
+      "token_id": 198,
+      "position": 2,
+      "llamacpp_metadata_source": "attention trace stamped from res->get_params().ubatch"
+    },
+    "interpretation": "The remaining semantic split is initial MTP prompt catch-up KV source. Late generated rows 48/49 agree closely; prompt row 2 K/V does not. hipEngine uses serial target hidden rows for initial prompt replay, while llama.cpp populates MTP context from target prompt-processing h_nextn rows."
+  },
+  "row2_probes": [
+    {
+      "query_head": 7,
+      "kv_head": 0,
+      "hipengine_score": 8.10264778,
+      "hipengine_weight": 0.00002697,
+      "llamacpp_score": 17.925905227661133,
+      "llamacpp_weight": 0.21814832091331482
+    },
+    {
+      "query_head": 10,
+      "kv_head": 1,
+      "hipengine_score": 10.31850529,
+      "hipengine_weight": 0.00108735,
+      "llamacpp_score": 15.452384948730469,
+      "llamacpp_weight": 0.14560456573963165
+    },
+    {
+      "query_head": 12,
+      "kv_head": 1,
+      "hipengine_score": 6.86656475,
+      "hipengine_weight": 0.00234264,
+      "llamacpp_score": 12.580912590026855,
+      "llamacpp_weight": 0.3910762071609497
+    },
+    {
+      "query_head": 13,
+      "kv_head": 1,
+      "hipengine_score": 3.80319357,
+      "hipengine_weight": 0.00061274,
+      "llamacpp_score": 9.855720520019531,
+      "llamacpp_weight": 0.19650912284851074
+    }
+  ],
+  "row2_kv_first4": {
+    "kv0": {
+      "hipengine_key": [0.13005713, 0.02132588, 0.71952033, 1.06844795],
+      "llamacpp_key": [0.047454833984375, -0.057037353515625, -0.00905609130859375, 0.10589599609375],
+      "hipengine_value": [-1.019979, -0.62122285, 0.7084254, -1.3695128],
+      "llamacpp_value": [-0.10723876953125, -0.257080078125, 4.6640625, 1.2294921875]
+    },
+    "kv1": {
+      "hipengine_key": [0.60783345, 1.22373021, 0.27724859, 2.12068844],
+      "llamacpp_key": [-0.0028896331787109375, -0.01326751708984375, -0.00629425048828125, 0.0182037353515625],
+      "hipengine_value": [1.24537289, 5.05037832, 1.24604857, -1.43244684],
+      "llamacpp_value": [7.609375, 5.27734375, 4.57421875, -9.15625]
+    }
+  },
+  "next_actions": [
+    "Add an all-row target h_nextn tap for hipEngine prompt/bulk prefill, or an equivalent replay path that exactly matches llama.cpp MTP process() input rows.",
+    "Populate initial MTP device KV from that source instead of serial target hidden-row replay.",
+    "Rerun row probes and require row 2 plus rows 48/49 to match before using llama-compat performance deltas for optimization."
+  ]
+}

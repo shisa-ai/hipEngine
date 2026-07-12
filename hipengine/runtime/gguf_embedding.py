@@ -6,6 +6,7 @@ import ctypes
 from dataclasses import dataclass
 from typing import Mapping
 
+from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     register_gguf_q6_k_embedding_kernels,
 )
@@ -35,18 +36,19 @@ def resolve_gguf_embedding_dispatch(
     weight: Qwen35GGUFDeviceWeight,
     *,
     output_dtype: str = GGUF_EMBEDDING_OUTPUT_BF16,
-    backend: str = "hip_gfx1100",
+    backend: str | None = None,
 ) -> GGUFEmbeddingDispatch:
+    resolved_backend = backend or getattr(weight, "backend", "hip_gfx1100")
     if output_dtype != GGUF_EMBEDDING_OUTPUT_BF16:
         raise ValueError(f"unsupported GGUF embedding output dtype {output_dtype!r}")
     if weight.spec.layout == LAYOUT_RAW_GGUF and weight.spec.quant_key in _RAW_EMBEDDING_QUANTS:
         return GGUFEmbeddingDispatch(
-            KernelKey(backend, "embedding", weight.spec.quant_key, "lookup_bf16_out"),
+            KernelKey(resolved_backend, "embedding", weight.spec.quant_key, "lookup_bf16_out"),
             "raw",
         )
     if weight.spec.layout == LAYOUT_DENSE_BF16:
         return GGUFEmbeddingDispatch(
-            KernelKey(backend, "embedding", "bf16", "lookup_bf16_out"),
+            KernelKey(resolved_backend, "embedding", "bf16", "lookup_bf16_out"),
             "dense_bf16",
         )
     raise ValueError(
@@ -64,7 +66,7 @@ def launch_gguf_embedding(
     vocab_size: int,
     *,
     output_dtype: str = GGUF_EMBEDDING_OUTPUT_BF16,
-    backend: str = "hip_gfx1100",
+    backend: str | None = None,
     threads: int = 0,
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
@@ -129,6 +131,7 @@ def _ensure_embedding_kernel_registered(key: KernelKey) -> None:
         return
     register_gguf_q6_k_embedding_kernels()
     register_runtime_state_kernels()
+    load_backend_kernel_package(key.backend)
 
 
 _LAUNCH_ABI = {

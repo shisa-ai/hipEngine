@@ -1,0 +1,115 @@
+{
+  "schema": 4,
+  "status": "ok",
+  "timestamp": "2026-06-19T04:10:14",
+  "run_tag": "mtp-bench-1781842214",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "What is the capital of France?",
+    "prompt_tokens": 14,
+    "cycles": 5,
+    "draft_n_max": 1,
+    "engine": "hipEngine GGUF MTP"
+  },
+  "metrics": {
+    "accept_per_draft": 0.2,
+    "accepted_per_output": 0.1667,
+    "visible_tokens_per_cycle": 1.2,
+    "avg_cycle_ms": 81.06,
+    "avg_decode_ms": 81.06,
+    "avg_ar_decode_ms": 55.06,
+    "avg_mtp_draft_ms": 26.0,
+    "avg_ms_per_visible_token": 67.55,
+    "tokens_per_sec": 14.8,
+    "ar_baseline_tokens_per_sec": 18.16,
+    "speedup_vs_ar_visible": 0.8151,
+    "total_accepted": 1,
+    "total_drafts": 5,
+    "total_output_tokens": 6,
+    "verify_cycle_count": 5,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.25,
+      "accepted_per_output": 0.2,
+      "visible_tokens_per_cycle": 1.25,
+      "avg_cycle_ms": 63.05,
+      "avg_ar_decode_ms": 55.59,
+      "avg_mtp_draft_ms": 7.47,
+      "avg_ms_per_visible_token": 50.44,
+      "tokens_per_sec": 19.82,
+      "speedup_vs_ar_visible": 1.1019,
+      "total_accepted": 1,
+      "total_drafts": 4,
+      "total_output_tokens": 5,
+      "verify_cycle_count": 4
+    }
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "target_token": 59,
+      "draft_token": 2037,
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "ar_decode_ms": 52.98,
+      "mtp_draft_ms": 100.12
+    },
+    {
+      "cycle": 1,
+      "target_token": 2037,
+      "draft_token": 84,
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "ar_decode_ms": 53.23,
+      "mtp_draft_ms": 8.77
+    },
+    {
+      "cycle": 2,
+      "target_token": 220,
+      "draft_token": 2037,
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "ar_decode_ms": 55.6,
+      "mtp_draft_ms": 7.35
+    },
+    {
+      "cycle": 3,
+      "target_token": 16,
+      "draft_token": 20,
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "ar_decode_ms": 63.46,
+      "mtp_draft_ms": 6.82
+    },
+    {
+      "cycle": 4,
+      "target_token": 15,
+      "draft_token": 15,
+      "accepted": true,
+      "generated_draft_tokens": 1,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "ar_decode_ms": 50.05,
+      "mtp_draft_ms": 6.94
+    }
+  ]
+}

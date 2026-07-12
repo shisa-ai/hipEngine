@@ -1,0 +1,228 @@
+{
+  "kind": "hipengine_gguf_q8_t16_waveblock_production",
+  "schema_version": 1,
+  "created_at": "2026-07-12T13:59:25+09:00",
+  "status": "accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "classification": {
+    "passed": true,
+    "decision": "promote_waveblock_bf16_dual_split",
+    "conclusion": "Promote explicit wave/block indexing for the production BF16 Q8_0 T16 dual-split GEMV. The kernel is bit-exact, wins the production-shaped microbenchmark, reduces the marked model leaf and total GPU window, and improves clean eager and graph-path wall time versus the scalar-indexed parent."
+  },
+  "source": {
+    "control_commit": "8184355c664479ac9dc1e380fecf6f667e7acfca",
+    "candidate_commit": "e20cdc1340c107b949aa6d50bfb6dc2a0208bd64",
+    "control_worktree": "/tmp/hipengine-q8-waveblock-control",
+    "candidate_worktree": "/tmp/hipengine-q8-waveblock-candidate",
+    "both_worktrees_clean": true,
+    "production_change": "BF16 dual-split launcher instantiates WAVE_BLOCK_INDEX=true; FP16 and other Q8T16 bodies unchanged"
+  },
+  "workload": {
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "prompt_source": "repeated_token_id",
+    "prompt_token_id": 9707,
+    "expected_token_id": 9707,
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "graph_replay_decode": false
+  },
+  "clean_eager_ab": {
+    "protocol": "clean detached control/candidate/control; each leg uses one discarded run plus four measured 128-token runs; cached builds only",
+    "control_first": {
+      "commit": "8184355c664479ac9dc1e380fecf6f667e7acfca",
+      "samples_ms_per_token": [20.59909146875, 20.595611109375, 20.5835087734375, 20.530496296875],
+      "median_ms_per_token": 20.58955994140625,
+      "median_tok_s": 48.568307881278486,
+      "all_tokens_exact": true
+    },
+    "candidate": {
+      "commit": "e20cdc1340c107b949aa6d50bfb6dc2a0208bd64",
+      "samples_ms_per_token": [20.4539420390625, 20.475726375, 20.5020824140625, 20.4660852265625],
+      "median_ms_per_token": 20.470905800781253,
+      "median_tok_s": 48.84981960176049,
+      "min_ms_per_token": 20.4539420390625,
+      "max_ms_per_token": 20.5020824140625,
+      "all_tokens_exact": true
+    },
+    "control_second": {
+      "commit": "8184355c664479ac9dc1e380fecf6f667e7acfca",
+      "samples_ms_per_token": [20.537906296875, 20.514315140625, 20.5119488203125, 20.515229671875],
+      "median_ms_per_token": 20.514772406250003,
+      "median_tok_s": 48.74536166885121,
+      "all_tokens_exact": true
+    },
+    "combined_control": {
+      "median_ms_per_token": 20.534201296875,
+      "median_tok_s": 48.69924013807078,
+      "min_ms_per_token": 20.5119488203125,
+      "max_ms_per_token": 20.59909146875
+    },
+    "candidate_vs_combined_control": {
+      "latency_reduction_pct": 0.30824425639277314,
+      "throughput_gain_pct": 0.3091973394324876,
+      "speedup": 1.0030919733943249,
+      "ranges_overlap": false
+    },
+    "raw_sha256": {
+      "control_first": "b02f147055f500ba969e7bb778364c0f56ce6af4b5cc9c598ed1c2af1ba15f85",
+      "candidate": "c471e30544a7aefe259144219f6db8680240e050eb034dda5ade1485b9a9c4a0",
+      "control_second": "80acfe47f1373c6c9e716e93c5395f1016c20b00815a58d2f74bcf8adcf9be7f"
+    }
+  },
+  "marked_profile_ab": {
+    "protocol": "24 exact ROCTX decode-step windows per clean commit under rocprofv3 kernel+marker trace",
+    "control": {
+      "host_ms_per_token": 20.950518583333334,
+      "host_tok_s": 47.73151538098561,
+      "gpu_us_per_token": 19256.082333333332,
+      "dual_split_us_per_token": 4245.423,
+      "dual_split_us_per_call": 141.5141,
+      "dual_split_calls_per_token": 30.0,
+      "dense_q8_us_per_token": 8540.765416666665,
+      "kernel_instantiation": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, false>"
+    },
+    "candidate": {
+      "host_ms_per_token": 20.87278183333333,
+      "host_tok_s": 47.90928243225462,
+      "gpu_us_per_token": 19199.161458333332,
+      "dual_split_us_per_token": 4188.172291666667,
+      "dual_split_us_per_call": 139.60574305555556,
+      "dual_split_calls_per_token": 30.0,
+      "dense_q8_us_per_token": 8476.436333333333,
+      "kernel_instantiation": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>"
+    },
+    "delta": {
+      "dual_split_latency_pct": -1.3485277752848912,
+      "dual_split_us_saved_per_token": 57.25070833333302,
+      "dense_q8_latency_pct": -0.7532004474423148,
+      "total_gpu_latency_pct": -0.29559945795135656,
+      "profiled_host_latency_pct": -0.3710492878292948
+    },
+    "raw_sha256": {
+      "control_child": "577d0753c0125c41d48ef8ccbb7dcb6fc7d746af217e3569ec6f0c2eecaefb2c",
+      "candidate_child": "d8e077bf8c8ade77afd90a67b1d702a8f0e104cecf38a3bf003ff72f02fb8b64",
+      "control_kernel_trace": "950a92c6829d02a2f77cc6ec8f2bc1df5185b205b8af8a362534f9c8201ce50f",
+      "control_marker_trace": "501a3c7f8b5e5a00a6c3c4ad66ee1fb4a892286b87b18b4363131da090347c4e",
+      "candidate_kernel_trace": "b7702ee33981ddaa6ddd78bd7c3fcdc90817f6e9bb7039105f4b140d8c77534e",
+      "candidate_marker_trace": "d3fe8472203a127c963a5dffc859f10ab160b4c5c6e2590346f56587c3fcc4d1"
+    }
+  },
+  "production_graph_ab": {
+    "protocol": "clean SOL-G5 one-session rotating eager/state-bound-relaunch/per-token-recapture; one warmup plus four measured 128-token runs per route; capture-inclusive",
+    "control": {
+      "eager_median_ms_per_token": 20.523032765624997,
+      "state_bound_graph_median_ms_per_token": 20.573610617187498,
+      "recapture_median_ms_per_token": 36.119051996093745,
+      "all_routes_exact": true,
+      "state_bound_graph_vs_eager_pct": 0.2464443347145906
+    },
+    "candidate": {
+      "eager_median_ms_per_token": 20.47234033984375,
+      "state_bound_graph_median_ms_per_token": 20.5324018828125,
+      "recapture_median_ms_per_token": 36.091132640625,
+      "all_routes_exact": true,
+      "state_bound_graph_vs_eager_pct": 0.293378978522818
+    },
+    "candidate_vs_control": {
+      "eager_latency_reduction_pct": 0.24700260609705596,
+      "state_bound_graph_latency_reduction_pct": 0.20029899049693792,
+      "recapture_latency_reduction_pct": 0.07729814024954518
+    },
+    "graph_policy_result": "Both clean ROCm 7.15 G5 runs reject a new graph-speed claim because capture-inclusive state-bound replay is slightly slower than same-run eager. The wave/block kernel still improves eager and graph routes across commits; graph default policy is a separate follow-up.",
+    "raw_sha256": {
+      "control": "80bd12d11bb608af6fffb6b11ef338f488642553fc3bc649e253a98f80a411a5",
+      "candidate": "efa2ba875d1c1cf67a2914b19b7bf84093883628305645054bf3d01de7daa9e9"
+    }
+  },
+  "correctness": {
+    "micro_bit_exact_threads": [64, 128],
+    "micro_fixture_result": "2 passed at diagnostic commit 8184355c",
+    "targeted_q8_t16_suite_result": "38 passed at measured candidate commit e20cdc13",
+    "final_cleanup_adjacent_suite_result": "180 passed",
+    "final_cleanup_production_micro_us": 132.22,
+    "final_cleanup_production_micro_sha256": "cb0f437837567eb14c11361e3c16a1331eb17aac813f5af3917a7f3ca7ade413",
+    "final_production_trace": {
+      "kernel": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>",
+      "workgroup_size_x": 128,
+      "grid_size_x": 98304,
+      "duration_ns": 138180,
+      "kernel_trace_sha256": "27cc5502784f24a79b2e93d2539486f2ebacaeeeb7ff52d2fe419cc2e311200b"
+    },
+    "clean_eager_measured_tokens_exact": 1536,
+    "clean_profile_tokens_exact": 48,
+    "g5_state_bound_relaunch_exact": true,
+    "g5_first_failing_launch": null,
+    "g1_oracle_artifact": "benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json",
+    "g1_oracle_sha256": "df324ec1620e1e89843572c9432a5b796ef9c1a3d2785b9b5e34f2e6fdee64c2",
+    "micro_artifact": "benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-micro.json",
+    "micro_artifact_sha256": "52aa35b63936d74893b46d8836c1bad032ee46081120e88675857c195e87f899"
+  },
+  "commands": [
+    "PYTHONPATH=<clean-worktree> HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_decode_rocprof.py --child-mode baseline --source-root <clean-worktree> --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 --expected-token-id 9707 --steps 128 --warmup-steps 1 --benchmark-warmups 1 --repetitions 4 --compiler-version-file /tmp/hipengine-hipcc-version-715-waveblock.txt --child-json <output> --require-cached",
+    "rocprofv3 --kernel-trace --marker-trace --output-format csv -d <trace-dir> -o <label> -- python3 scripts/gguf_decode_rocprof.py --child-mode profile --source-root <clean-worktree> --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 --expected-token-id 9707 --steps 24 --warmup-steps 4 --benchmark-warmups 0 --repetitions 1 --compiler-version-file /tmp/hipengine-hipcc-version-715-waveblock.txt --child-json <output> --require-cached",
+    "PYTHONPATH=<clean-worktree> HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_decode_graph_g5.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prompt-token-id 9707 --expected-token-id 9707 --prompt-length 512 --correctness-steps 128 --timing-steps 128 --warmups 1 --repetitions 4 --compiler-version-file /tmp/hipengine-hipcc-version-715-waveblock.txt --require-cached --out <output>"
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T13:59:25+09:00",
+    "repo_root": "/tmp/hipengine-q8-waveblock-candidate",
+    "hipengine_commit": "e20cdc1340c107b949aa6d50bfb6dc2a0208bd64",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/gguf_decode_rocprof.py",
+      "--child-mode", "baseline",
+      "--source-root", "/tmp/hipengine-q8-waveblock-candidate",
+      "--prompt-length", "512",
+      "--steps", "128",
+      "--benchmark-warmups", "1",
+      "--repetitions", "4",
+      "--require-cached"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "tuned_profile": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "build_profile": "GGUF eager decode; decode JIT profile; -mcumode",
+    "timing_protocol": "clean detached control/candidate/control eager A/B plus matching 24-step marker profiles and clean SOL-G5 route A/B",
+    "warmups": 1,
+    "repetitions": 4,
+    "profiler": {
+      "enabled": true,
+      "kind": "rocprofv3 kernel and marker trace",
+      "profile_steps": 24,
+      "marker_prefix": "hipengine_gguf_eager_decode_step_"
+    }
+  }
+}

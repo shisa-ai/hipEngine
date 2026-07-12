@@ -1,0 +1,270 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-07-02T02:06:34",
+  "scope": "smoke",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "b5313cd8d86e3a9fa19b1c08119ec517f4bfd3d0",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 3,
+    "budgets": [
+      2
+    ],
+    "prompt_limit": 1,
+    "ar_decode_tokens": 9,
+    "mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8",
+    "mtp_route_extra_args": [
+      "--llama-compat",
+      "--resident-mtp-device-chain",
+      "--verify-dp4a",
+      "--resident-mtp-draft-q6-top1-dp4a",
+      "--resident-mtp-draft-q6-top1-stage1-shape",
+      "x8",
+      "--selected-down-x8-repack",
+      "q6",
+      "--verify-dense-q8-dp4a-all",
+      "--verify-dense-q8-dp4a-f32",
+      "--resident-mtp-draft-router-row-parallel",
+      "--resident-mtp-draft-dense-q8-dp4a"
+    ],
+    "mtp_route_env": {},
+    "mtp_route_default_budgets": null,
+    "record_cycle_stage_timings": true
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.999239920510064,
+    "total_output_tokens": 9,
+    "decode_ms": 163.63862506113946,
+    "prompts": 1,
+    "per_category": {
+      "code": 54.999239920510064
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 80.32845412352732,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": null,
+      "cycle_wall_ms_per_output": null,
+      "cycle_wall_over_legacy_ms_total": null,
+      "cycle_wall_over_legacy_ms_per_output": null,
+      "stage_timing_totals_ms": null,
+      "stage_timing_per_output_ms": null,
+      "stage_timing_per_cycle_ms": null,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.4605
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 64.96787699415289,
+      "accepted_per_output": 0.6666666666666666,
+      "draft_acceptance": 1.0,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 6,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": 138.7509,
+      "cycle_wall_ms_per_output": 15.416766666666668,
+      "cycle_wall_over_legacy_ms_total": 0.22090000000000032,
+      "cycle_wall_over_legacy_ms_per_output": 0.02454444444444448,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.0234,
+        "draft_device_chain_drain": 21.6136,
+        "draft_device_chain_ensure_embed_table": 0.0023,
+        "draft_device_topk_gather": 0.0021,
+        "draft_initial": 23.922900000000002,
+        "draft_mtp_layer_forward": 1.7557999999999998,
+        "draft_prepare_inputs": 0.2415,
+        "draft_seed_upload": 0.1882,
+        "draft_topk_d2h": 0.0492,
+        "draft_topk_readback": 21.6704,
+        "mtp_context_replay_append": 0.0723,
+        "mtp_device_kv_commit": 2.5667,
+        "target_block_acceptance_accounting": 0.019799999999999998,
+        "target_block_cursor_update": 0.0218,
+        "target_block_embedding": 0.3019,
+        "target_block_forward": 109.3417,
+        "target_block_full_attn_layers": 19.6388,
+        "target_block_hidden_readback": 0.055600000000000004,
+        "target_block_layer_total": 86.6789,
+        "target_block_linear_attn_layers": 67.04,
+        "target_block_lm_head_sample": 9.2862,
+        "target_block_output_norm_hidden": 1.2885,
+        "target_block_replay_or_commit": 2.6494,
+        "target_block_setup": 11.4946,
+        "target_block_verify_total": 112.0426
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0026,
+        "draft_device_chain_drain": 2.401511111111111,
+        "draft_device_chain_ensure_embed_table": 0.00025555555555555553,
+        "draft_device_topk_gather": 0.00023333333333333333,
+        "draft_initial": 2.6581,
+        "draft_mtp_layer_forward": 0.19508888888888887,
+        "draft_prepare_inputs": 0.026833333333333334,
+        "draft_seed_upload": 0.020911111111111113,
+        "draft_topk_d2h": 0.0054666666666666665,
+        "draft_topk_readback": 2.4078222222222223,
+        "mtp_context_replay_append": 0.008033333333333333,
+        "mtp_device_kv_commit": 0.2851888888888889,
+        "target_block_acceptance_accounting": 0.0021999999999999997,
+        "target_block_cursor_update": 0.0024222222222222223,
+        "target_block_embedding": 0.033544444444444446,
+        "target_block_forward": 12.149077777777778,
+        "target_block_full_attn_layers": 2.182088888888889,
+        "target_block_hidden_readback": 0.0061777777777777786,
+        "target_block_layer_total": 9.630988888888888,
+        "target_block_linear_attn_layers": 7.44888888888889,
+        "target_block_lm_head_sample": 1.0317999999999998,
+        "target_block_output_norm_hidden": 0.14316666666666666,
+        "target_block_replay_or_commit": 0.2943777777777778,
+        "target_block_setup": 1.2771777777777777,
+        "target_block_verify_total": 12.449177777777777
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.0078000000000000005,
+        "draft_device_chain_drain": 7.204533333333334,
+        "draft_device_chain_ensure_embed_table": 0.0007666666666666667,
+        "draft_device_topk_gather": 0.0007,
+        "draft_initial": 7.9743,
+        "draft_mtp_layer_forward": 0.5852666666666666,
+        "draft_prepare_inputs": 0.0805,
+        "draft_seed_upload": 0.06273333333333334,
+        "draft_topk_d2h": 0.0164,
+        "draft_topk_readback": 7.223466666666667,
+        "mtp_context_replay_append": 0.0241,
+        "mtp_device_kv_commit": 0.8555666666666667,
+        "target_block_acceptance_accounting": 0.006599999999999999,
+        "target_block_cursor_update": 0.007266666666666667,
+        "target_block_embedding": 0.10063333333333334,
+        "target_block_forward": 36.44723333333334,
+        "target_block_full_attn_layers": 6.546266666666667,
+        "target_block_hidden_readback": 0.018533333333333336,
+        "target_block_layer_total": 28.892966666666666,
+        "target_block_linear_attn_layers": 22.346666666666668,
+        "target_block_lm_head_sample": 3.0953999999999997,
+        "target_block_output_norm_hidden": 0.4295,
+        "target_block_replay_or_commit": 0.8831333333333333,
+        "target_block_setup": 3.8315333333333332,
+        "target_block_verify_total": 37.34753333333333
+      },
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.1813
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.999239920510064,
+    "best_mtp_budget": "b2",
+    "best_mtp_vs_ar_ratio": 1.1813,
+    "mtp_beats_ar": true
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-smoke-1782925594/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-smoke-1782925594/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 2 --cycles 3 --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8 --record-cycle-stage-timings --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-smoke.json"
+}

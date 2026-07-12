@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "summary_type": "diagnostic_c6_retained_server_comparison",
+  "status": "blocked",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-packed",
+  "quant": "w4_paro",
+  "workload": "c=6 prompt=512 decode=128 direct retained plus forced OpenAI n=6 server request",
+  "direct_retained": {
+    "baseline_all_full_attention_rowchunks": {
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 107.89108672102992,
+      "median_step_ms": 55.29264360666275,
+      "full_attention_row_chunk_layers": "all",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json"
+    },
+    "native_full_attention_no_rowchunk": {
+      "generated_token_equality": false,
+      "min_equal_prefix_tokens": 7,
+      "decode_tok_s_aggregate": 114.32920662815116,
+      "median_step_ms": 52.13967990130186,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-full-no-rowchunk-smallbatch-shared-local-equality.json"
+    },
+    "selected_full_attention_rowchunks_manual": {
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 109.12244952510481,
+      "median_step_ms": 54.63957751635462,
+      "full_attention_row_chunk_layers": [3, 7, 11, 15, 19, 23, 27, 31],
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-full-rowchunk3-7-11-15-19-23-27-31-smallbatch-shared-local-equality.json"
+    },
+    "selected_full_attention_rowchunks_auto_default": {
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 108.92944158617416,
+      "median_step_ms": 54.71568997018039,
+      "full_attention_row_chunk_layers": [3, 7, 11, 15, 19, 23, 27, 31],
+      "linear_attention_row_chunk_size": 0,
+      "moe_decode_path": "selected_c1_batch",
+      "moe_c1_shared_expert_decode_path": "small_batch_forced",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json"
+    }
+  },
+  "server_forced_n6": {
+    "baseline_all_full_attention_rowchunks": {
+      "batch_decode_step_ms_avg": 51.053,
+      "backend_generated_tok_s": 9.16,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json"
+    },
+    "selected_full_attention_rowchunks": {
+      "batch_decode_step_ms_avg": 50.434,
+      "backend_generated_tok_s": 9.26,
+      "full_attention_row_chunk_layers": [3, 7, 11, 15, 19, 23, 27, 31],
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-selected-full-rowchunks.json"
+    }
+  },
+  "deltas": {
+    "direct_auto_vs_all_rowchunks_tok_s_percent": 0.9624102386039279,
+    "direct_auto_vs_all_rowchunks_step_ms_delta": -0.576953636482358,
+    "server_selected_vs_all_rowchunks_backend_tok_s_percent": 1.091703056768556,
+    "server_selected_vs_all_rowchunks_step_ms_delta": -0.6189999999999998
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "selected c6 full-attention rowchunk layers preserve generated-token equality and are faster than all-layer full-attention rowchunking; status remains diagnostic because retained primitive/profiler/scaling gates are still unresolved"
+  }
+}

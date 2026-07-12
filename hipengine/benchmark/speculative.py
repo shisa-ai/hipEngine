@@ -9,6 +9,7 @@ fields used by the parent ``~/amd-gpu-tuning`` DFlash/MTP harnesses.
 
 from __future__ import annotations
 
+import json
 import math
 import statistics
 from collections import Counter
@@ -332,6 +333,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "draft_kv_bytes": _optional_int(spec.get("draft_kv_bytes", spec.get("draft_context_kv_bytes"))),
             "draft_kv_capacity_tokens": _optional_int(spec.get("draft_kv_capacity_tokens", spec.get("draft_context_capacity_tokens"))),
             "target_verify_seconds": verify_seconds,
+            "target_verify_bucket_seconds": _float_dict(spec.get("target_verify_bucket_seconds")),
             "commit_seconds": commit_seconds,
             "phase_split": split,
             "target_verify_rows": target_verify_rows,
@@ -395,6 +397,7 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
     ar_seconds = 0.0
     spec_seconds = 0.0
     target_verify_rows = 0
+    target_verify_bucket_seconds: dict[str, float] = {}
     accepted_lengths: list[int] = []
     exact_count = 0
     correctness_count = 0
@@ -418,6 +421,11 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
         ar_seconds += float(ar.get("decode_seconds") or 0.0)
         spec_seconds += float(spec.get("decode_seconds") or 0.0)
         target_verify_rows += int(spec.get("target_verify_rows") or 0)
+        for name, seconds in (spec.get("target_verify_bucket_seconds") or {}).items():
+            parsed_seconds = _optional_float(seconds)
+            if parsed_seconds is not None:
+                key = str(name)
+                target_verify_bucket_seconds[key] = target_verify_bucket_seconds.get(key, 0.0) + parsed_seconds
         accepted_lengths.extend(expand_histogram(acceptance.get("accept_histogram") or {}))
         if correctness.get("exact_match_ar") is True:
             exact_count += 1
@@ -453,6 +461,7 @@ def aggregate_speculative_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
         "median_row_speedup_vs_ar": statistics.median(speedups) if speedups else None,
         "target_verify_rows": target_verify_rows,
         "target_verify_rows_per_output_token": _safe_div(target_verify_rows, decode_tokens),
+        "target_verify_bucket_seconds": dict(sorted(target_verify_bucket_seconds.items())),
         "acceptance": acceptance_summary(accepted_lengths),
         "d2h": {
             "scalar_reads": d2h_scalar,
@@ -562,6 +571,7 @@ def build_speculative_artifact(
                 "target_verify_rows_per_output_token",
                 "draft_seconds",
                 "target_verify_seconds",
+                "target_verify_bucket_seconds",
                 "commit_seconds",
                 "scalar_d2h_reads",
                 "vector_d2h_reads",
@@ -627,6 +637,13 @@ def schema_fixture_row() -> dict[str, Any]:
             "draft_kv_bytes": 576,
             "draft_kv_capacity_tokens": 6,
             "target_verify_seconds": 2.25,
+            "target_verify_bucket_seconds": {
+                "metadata_upload": 0.10,
+                "target_verify_forward": 1.50,
+                "accept_summary": 0.20,
+                "commit_scatter": 0.30,
+                "host_orchestration_unbucketed": 0.15,
+            },
             "commit_seconds": 0.40,
             "target_verify_rows": 16,
             "target_forward_calls": 4,
@@ -816,6 +833,102 @@ def _float_dict(value: Any) -> dict[str, float]:
         if parsed is not None:
             out[str(key)] = parsed
     return out
+
+
+def record_speculative_graph_shape_stats(
+    shape_stats: dict[str, Any],
+    graph: Mapping[str, Any] | None,
+    *,
+    verifier_mode: str,
+    tree_mode: str | None = None,
+    context_tokens: int | None = None,
+    active_budget: int | None = None,
+    target_verify_bucket_seconds: Mapping[str, Any] | None = None,
+) -> None:
+    """Accumulate per-shape verifier graph stats for DFlash/MTP artifacts.
+
+    The key mirrors the runtime graph bucket instead of exact context position,
+    while the entry records context min/max/sample.  That lets a run show
+    whether one replay shape is amortizing across changing decode positions.
+    """
+
+    if not isinstance(shape_stats, dict) or not isinstance(graph, Mapping):
+        return
+    raw_bucket_key = graph.get("bucket_key")
+    bucket_key = dict(raw_bucket_key) if isinstance(raw_bucket_key, Mapping) else {}
+    graph_mode = str(graph.get("mode", "unknown"))
+    status = str(graph.get("status", "unknown"))
+    key_payload = {
+        "verifier_mode": str(verifier_mode),
+        "tree_mode": None if tree_mode is None else str(tree_mode),
+        "graph_mode": graph_mode,
+        "bucket_key": bucket_key,
+    }
+    shape_key = json.dumps(key_payload, sort_keys=True, separators=(",", ":"), default=str)
+    entry = shape_stats.get(shape_key)
+    if not isinstance(entry, dict):
+        entry = {
+            "key": key_payload,
+            "cycles": 0,
+            "replayed_cycles": 0,
+            "status_counts": {},
+            "fallback_reasons": {},
+            "context_tokens_min": None,
+            "context_tokens_max": None,
+            "context_tokens_sample": [],
+            "active_budget_counts": {},
+            "validation_seen": False,
+            "validation_passed": None,
+            "replay_count_max": 0,
+            "target_verify_bucket_seconds": {},
+        }
+        shape_stats[shape_key] = entry
+
+    entry["cycles"] = int(entry.get("cycles", 0)) + 1
+    if bool(graph.get("replayed")):
+        entry["replayed_cycles"] = int(entry.get("replayed_cycles", 0)) + 1
+    status_counts = entry.setdefault("status_counts", {})
+    if isinstance(status_counts, dict):
+        status_counts[status] = int(status_counts.get(status, 0)) + 1
+
+    fallback_reason = graph.get("fallback_reason")
+    if fallback_reason:
+        fallback_reasons = entry.setdefault("fallback_reasons", {})
+        if isinstance(fallback_reasons, dict):
+            reason = str(fallback_reason)
+            fallback_reasons[reason] = int(fallback_reasons.get(reason, 0)) + 1
+
+    validation = _optional_bool(graph.get("validation_passed"))
+    if validation is not None:
+        entry["validation_seen"] = True
+        previous = entry.get("validation_passed")
+        entry["validation_passed"] = validation if previous is None else bool(previous and validation)
+
+    replay_count = _optional_int(graph.get("replay_count"))
+    if replay_count is not None:
+        entry["replay_count_max"] = max(int(entry.get("replay_count_max", 0)), replay_count)
+
+    parsed_context = _optional_int(context_tokens)
+    if parsed_context is not None:
+        current_min = _optional_int(entry.get("context_tokens_min"))
+        current_max = _optional_int(entry.get("context_tokens_max"))
+        entry["context_tokens_min"] = parsed_context if current_min is None else min(current_min, parsed_context)
+        entry["context_tokens_max"] = parsed_context if current_max is None else max(current_max, parsed_context)
+        sample = entry.setdefault("context_tokens_sample", [])
+        if isinstance(sample, list) and parsed_context not in sample and len(sample) < 8:
+            sample.append(parsed_context)
+
+    parsed_budget = _optional_int(active_budget)
+    if parsed_budget is not None:
+        active_budget_counts = entry.setdefault("active_budget_counts", {})
+        if isinstance(active_budget_counts, dict):
+            key = str(parsed_budget)
+            active_budget_counts[key] = int(active_budget_counts.get(key, 0)) + 1
+
+    bucket_totals = entry.setdefault("target_verify_bucket_seconds", {})
+    if isinstance(bucket_totals, dict):
+        for name, seconds in _float_dict(target_verify_bucket_seconds).items():
+            bucket_totals[name] = float(bucket_totals.get(name, 0.0)) + seconds
 
 
 def _json_list(value: Any) -> list[Any]:

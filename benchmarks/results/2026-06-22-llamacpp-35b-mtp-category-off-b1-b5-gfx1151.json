@@ -1,0 +1,473 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_category_matrix_rollup",
+  "date": "2026-06-22",
+  "status": "retained_reference_benchmark",
+  "performance_claim": true,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "hardware": "gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "requests": 10,
+  "max_tokens_per_request": 512,
+  "protocol": "natural",
+  "root": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215",
+  "raw_artifacts": {
+    "off": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-off.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-off/server-base.log"
+    },
+    "b1": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b1.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b1/server-mtp.log"
+    },
+    "b2": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b2.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b2/server-mtp.log"
+    },
+    "b3": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b3.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b3/server-mtp.log"
+    },
+    "b4": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b4.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b4/server-mtp.log"
+    },
+    "b5": {
+      "json": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b5.json",
+      "server_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b5/server-mtp.log"
+    }
+  },
+  "run_log": "/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/run.log",
+  "commands": [
+    "base command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode base --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-off.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-off",
+    "b1 command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode mtp --draft-max 1 --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b1.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b1",
+    "b2 command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode mtp --draft-max 2 --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b2.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b2",
+    "b3 command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode mtp --draft-max 3 --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b3.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b3",
+    "b4 command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode mtp --draft-max 4 --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b4.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b4",
+    "b5 command: /home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-start-timeout 600 --request-timeout 900 --mode mtp --draft-max 5 --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b5.json --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-b5"
+  ],
+  "totals": {
+    "off": {
+      "budget": 0,
+      "label": "off",
+      "requests": 10,
+      "prefill_tok_s_weighted": 323.27281675394113,
+      "decode_tok_s_weighted": 50.13251237166616,
+      "decode_tok_s_median": 50.07714713134408,
+      "mtp_vs_ar_decode_ratio": 1.0,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "draft_acceptance": null,
+      "accepted_per_output": 0.0
+    },
+    "b1": {
+      "budget": 1,
+      "label": "b1",
+      "requests": 10,
+      "prefill_tok_s_weighted": 302.32513166291716,
+      "decode_tok_s_weighted": 63.093758323031,
+      "decode_tok_s_median": 63.02998880929515,
+      "mtp_vs_ar_decode_ratio": 1.2585397247852725,
+      "draft_n": 2772,
+      "draft_n_accepted": 2333,
+      "draft_acceptance": 0.8416305916305916,
+      "accepted_per_output": 0.4556640625
+    },
+    "b2": {
+      "budget": 2,
+      "label": "b2",
+      "requests": 10,
+      "prefill_tok_s_weighted": 296.29610910772544,
+      "decode_tok_s_weighted": 67.29389837285981,
+      "decode_tok_s_median": 67.80399932943703,
+      "mtp_vs_ar_decode_ratio": 1.3423204860343865,
+      "draft_n": 4077,
+      "draft_n_accepted": 3064,
+      "draft_acceptance": 0.751532989943586,
+      "accepted_per_output": 0.5984375
+    },
+    "b3": {
+      "budget": 3,
+      "label": "b3",
+      "requests": 10,
+      "prefill_tok_s_weighted": 286.6574699941752,
+      "decode_tok_s_weighted": 65.70794750073598,
+      "decode_tok_s_median": 66.94956453745183,
+      "mtp_vs_ar_decode_ratio": 1.31068530963696,
+      "draft_n": 5133,
+      "draft_n_accepted": 3390,
+      "draft_acceptance": 0.6604324956165984,
+      "accepted_per_output": 0.662109375
+    },
+    "b4": {
+      "budget": 4,
+      "label": "b4",
+      "requests": 10,
+      "prefill_tok_s_weighted": 280.20542821841923,
+      "decode_tok_s_weighted": 61.36629956515265,
+      "decode_tok_s_median": 61.87310086776911,
+      "mtp_vs_ar_decode_ratio": 1.2240818714650255,
+      "draft_n": 6208,
+      "draft_n_accepted": 3550,
+      "draft_acceptance": 0.5718427835051546,
+      "accepted_per_output": 0.693359375
+    },
+    "b5": {
+      "budget": 5,
+      "label": "b5",
+      "requests": 10,
+      "prefill_tok_s_weighted": 277.2103535998336,
+      "decode_tok_s_weighted": 56.88912971953803,
+      "decode_tok_s_median": 56.19926819467132,
+      "mtp_vs_ar_decode_ratio": 1.1347751594370636,
+      "draft_n": 7331,
+      "draft_n_accepted": 3633,
+      "draft_acceptance": 0.4955667712453963,
+      "accepted_per_output": 0.7095703125
+    }
+  },
+  "categories": {
+    "code": {
+      "off": {
+        "budget": 0,
+        "label": "off",
+        "requests": 4,
+        "prefill_tok_s_weighted": 323.96866990277357,
+        "decode_tok_s_weighted": 50.11987411101464,
+        "decode_tok_s_median": 50.06307270628801,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null,
+        "accepted_per_output": 0.0
+      },
+      "b1": {
+        "budget": 1,
+        "label": "b1",
+        "requests": 4,
+        "prefill_tok_s_weighted": 302.0356535567618,
+        "decode_tok_s_weighted": 65.27301762291798,
+        "decode_tok_s_median": 65.86602626978788,
+        "mtp_vs_ar_decode_ratio": 1.3023380202100945,
+        "draft_n": 1074,
+        "draft_n_accepted": 969,
+        "draft_acceptance": 0.9022346368715084,
+        "accepted_per_output": 0.47314453125
+      },
+      "b2": {
+        "budget": 2,
+        "label": "b2",
+        "requests": 4,
+        "prefill_tok_s_weighted": 296.66149284652437,
+        "decode_tok_s_weighted": 72.19100075021537,
+        "decode_tok_s_median": 72.42416260706865,
+        "mtp_vs_ar_decode_ratio": 1.4403667613033817,
+        "draft_n": 1515,
+        "draft_n_accepted": 1284,
+        "draft_acceptance": 0.8475247524752475,
+        "accepted_per_output": 0.626953125
+      },
+      "b3": {
+        "budget": 3,
+        "label": "b3",
+        "requests": 4,
+        "prefill_tok_s_weighted": 284.4145538541315,
+        "decode_tok_s_weighted": 72.58755457313467,
+        "decode_tok_s_median": 72.2664922926345,
+        "mtp_vs_ar_decode_ratio": 1.4482788686251389,
+        "draft_n": 1845,
+        "draft_n_accepted": 1426,
+        "draft_acceptance": 0.77289972899729,
+        "accepted_per_output": 0.6962890625
+      },
+      "b4": {
+        "budget": 4,
+        "label": "b4",
+        "requests": 4,
+        "prefill_tok_s_weighted": 283.46935163824924,
+        "decode_tok_s_weighted": 68.03260954454328,
+        "decode_tok_s_median": 69.15510406972568,
+        "mtp_vs_ar_decode_ratio": 1.3573978536708262,
+        "draft_n": 2240,
+        "draft_n_accepted": 1480,
+        "draft_acceptance": 0.6607142857142857,
+        "accepted_per_output": 0.72265625
+      },
+      "b5": {
+        "budget": 5,
+        "label": "b5",
+        "requests": 4,
+        "prefill_tok_s_weighted": 277.2293605804356,
+        "decode_tok_s_weighted": 64.3829497853231,
+        "decode_tok_s_median": 66.86689237651349,
+        "mtp_vs_ar_decode_ratio": 1.2845792398184401,
+        "draft_n": 2609,
+        "draft_n_accepted": 1517,
+        "draft_acceptance": 0.5814488309697202,
+        "accepted_per_output": 0.74072265625
+      }
+    },
+    "general_en": {
+      "off": {
+        "budget": 0,
+        "label": "off",
+        "requests": 2,
+        "prefill_tok_s_weighted": 275.86815709036335,
+        "decode_tok_s_weighted": 50.193374386350456,
+        "decode_tok_s_median": 50.19379611404122,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null,
+        "accepted_per_output": 0.0
+      },
+      "b1": {
+        "budget": 1,
+        "label": "b1",
+        "requests": 2,
+        "prefill_tok_s_weighted": 257.902120987043,
+        "decode_tok_s_weighted": 60.36264865407504,
+        "decode_tok_s_median": 60.37685312489045,
+        "mtp_vs_ar_decode_ratio": 1.202601924896486,
+        "draft_n": 577,
+        "draft_n_accepted": 444,
+        "draft_acceptance": 0.7694974003466204,
+        "accepted_per_output": 0.43359375
+      },
+      "b2": {
+        "budget": 2,
+        "label": "b2",
+        "requests": 2,
+        "prefill_tok_s_weighted": 254.22177629839533,
+        "decode_tok_s_weighted": 63.82733111250789,
+        "decode_tok_s_median": 64.04748455634359,
+        "mtp_vs_ar_decode_ratio": 1.2716286141914588,
+        "draft_n": 861,
+        "draft_n_accepted": 590,
+        "draft_acceptance": 0.6852497096399536,
+        "accepted_per_output": 0.576171875
+      },
+      "b3": {
+        "budget": 3,
+        "label": "b3",
+        "requests": 2,
+        "prefill_tok_s_weighted": 248.96678783050342,
+        "decode_tok_s_weighted": 60.9778900363795,
+        "decode_tok_s_median": 61.5242998714068,
+        "mtp_vs_ar_decode_ratio": 1.2148593471125897,
+        "draft_n": 1129,
+        "draft_n_accepted": 645,
+        "draft_acceptance": 0.5713020372010629,
+        "accepted_per_output": 0.6298828125
+      },
+      "b4": {
+        "budget": 4,
+        "label": "b4",
+        "requests": 2,
+        "prefill_tok_s_weighted": 238.90524062535835,
+        "decode_tok_s_weighted": 53.10619647145628,
+        "decode_tok_s_median": 53.29548641983993,
+        "mtp_vs_ar_decode_ratio": 1.058032003640264,
+        "draft_n": 1403,
+        "draft_n_accepted": 670,
+        "draft_acceptance": 0.4775481111903065,
+        "accepted_per_output": 0.654296875
+      },
+      "b5": {
+        "budget": 5,
+        "label": "b5",
+        "requests": 2,
+        "prefill_tok_s_weighted": 240.95379148822698,
+        "decode_tok_s_weighted": 49.51671397028011,
+        "decode_tok_s_median": 49.75658604855724,
+        "mtp_vs_ar_decode_ratio": 0.9865189295530934,
+        "draft_n": 1677,
+        "draft_n_accepted": 685,
+        "draft_acceptance": 0.4084675014907573,
+        "accepted_per_output": 0.6689453125
+      }
+    },
+    "general_ja": {
+      "off": {
+        "budget": 0,
+        "label": "off",
+        "requests": 2,
+        "prefill_tok_s_weighted": 314.61260445522146,
+        "decode_tok_s_weighted": 50.01150655365629,
+        "decode_tok_s_median": 50.0115088171832,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null,
+        "accepted_per_output": 0.0
+      },
+      "b1": {
+        "budget": 1,
+        "label": "b1",
+        "requests": 2,
+        "prefill_tok_s_weighted": 294.78694453331985,
+        "decode_tok_s_weighted": 61.902727842843476,
+        "decode_tok_s_median": 61.91157613887793,
+        "mtp_vs_ar_decode_ratio": 1.2377697075857803,
+        "draft_n": 567,
+        "draft_n_accepted": 454,
+        "draft_acceptance": 0.800705467372134,
+        "accepted_per_output": 0.443359375
+      },
+      "b2": {
+        "budget": 2,
+        "label": "b2",
+        "requests": 2,
+        "prefill_tok_s_weighted": 282.8346934692779,
+        "decode_tok_s_weighted": 62.25383063200952,
+        "decode_tok_s_median": 62.25992763300475,
+        "mtp_vs_ar_decode_ratio": 1.2447901477476728,
+        "draft_n": 885,
+        "draft_n_accepted": 577,
+        "draft_acceptance": 0.6519774011299435,
+        "accepted_per_output": 0.5634765625
+      },
+      "b3": {
+        "budget": 3,
+        "label": "b3",
+        "requests": 2,
+        "prefill_tok_s_weighted": 277.03077068609036,
+        "decode_tok_s_weighted": 59.7437680802933,
+        "decode_tok_s_median": 59.778112990020844,
+        "mtp_vs_ar_decode_ratio": 1.1946004469230591,
+        "draft_n": 1133,
+        "draft_n_accepted": 641,
+        "draft_acceptance": 0.5657546337157988,
+        "accepted_per_output": 0.6259765625
+      },
+      "b4": {
+        "budget": 4,
+        "label": "b4",
+        "requests": 2,
+        "prefill_tok_s_weighted": 272.1720658523633,
+        "decode_tok_s_weighted": 56.13596525490743,
+        "decode_tok_s_median": 56.14228880354348,
+        "mtp_vs_ar_decode_ratio": 1.1224609919455304,
+        "draft_n": 1398,
+        "draft_n_accepted": 671,
+        "draft_acceptance": 0.4799713876967096,
+        "accepted_per_output": 0.6552734375
+      },
+      "b5": {
+        "budget": 5,
+        "label": "b5",
+        "requests": 2,
+        "prefill_tok_s_weighted": 264.78090994220025,
+        "decode_tok_s_weighted": 51.1273556966584,
+        "decode_tok_s_median": 51.133624485920116,
+        "mtp_vs_ar_decode_ratio": 1.02231184821047,
+        "draft_n": 1675,
+        "draft_n_accepted": 685,
+        "draft_acceptance": 0.408955223880597,
+        "accepted_per_output": 0.6689453125
+      }
+    },
+    "mixed_ja_en": {
+      "off": {
+        "budget": 0,
+        "label": "off",
+        "requests": 2,
+        "prefill_tok_s_weighted": 364.30986918216604,
+        "decode_tok_s_weighted": 50.218452721411026,
+        "decode_tok_s_median": 50.218548055663746,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null,
+        "accepted_per_output": 0.0
+      },
+      "b1": {
+        "budget": 1,
+        "label": "b1",
+        "requests": 2,
+        "prefill_tok_s_weighted": 341.9758371881755,
+        "decode_tok_s_weighted": 62.94971160241257,
+        "decode_tok_s_median": 62.96619488462417,
+        "mtp_vs_ar_decode_ratio": 1.2535175456645138,
+        "draft_n": 554,
+        "draft_n_accepted": 466,
+        "draft_acceptance": 0.8411552346570397,
+        "accepted_per_output": 0.455078125
+      },
+      "b2": {
+        "budget": 2,
+        "label": "b2",
+        "requests": 2,
+        "prefill_tok_s_weighted": 337.7916676336276,
+        "decode_tok_s_weighted": 67.26705137639293,
+        "decode_tok_s_median": 67.27129325190674,
+        "mtp_vs_ar_decode_ratio": 1.3394887283676324,
+        "draft_n": 816,
+        "draft_n_accepted": 613,
+        "draft_acceptance": 0.7512254901960784,
+        "accepted_per_output": 0.5986328125
+      },
+      "b3": {
+        "budget": 3,
+        "label": "b3",
+        "requests": 2,
+        "prefill_tok_s_weighted": 325.4957598586703,
+        "decode_tok_s_weighted": 64.91892330190576,
+        "decode_tok_s_median": 64.95920282621307,
+        "mtp_vs_ar_decode_ratio": 1.2927304563134634,
+        "draft_n": 1026,
+        "draft_n_accepted": 678,
+        "draft_acceptance": 0.6608187134502924,
+        "accepted_per_output": 0.662109375
+      },
+      "b4": {
+        "budget": 4,
+        "label": "b4",
+        "requests": 2,
+        "prefill_tok_s_weighted": 311.87283206719314,
+        "decode_tok_s_weighted": 64.78281529539983,
+        "decode_tok_s_median": 64.84275147353885,
+        "mtp_vs_ar_decode_ratio": 1.2900201377128286,
+        "draft_n": 1167,
+        "draft_n_accepted": 729,
+        "draft_acceptance": 0.6246786632390745,
+        "accepted_per_output": 0.7119140625
+      },
+      "b5": {
+        "budget": 5,
+        "label": "b5",
+        "requests": 2,
+        "prefill_tok_s_weighted": 313.38663298358426,
+        "decode_tok_s_weighted": 58.57569982516526,
+        "decode_tok_s_median": 58.64613186181812,
+        "mtp_vs_ar_decode_ratio": 1.166417853415684,
+        "draft_n": 1370,
+        "draft_n_accepted": 746,
+        "draft_acceptance": 0.5445255474452555,
+        "accepted_per_output": 0.728515625
+      }
+    }
+  },
+  "best": {
+    "total_by_decode_tok_s": "b2",
+    "total_by_accepted_per_output": "b5",
+    "categories_by_decode_tok_s": {
+      "code": "b3",
+      "general_en": "b2",
+      "general_ja": "b2",
+      "mixed_ja_en": "b2"
+    },
+    "categories_by_accepted_per_output": {
+      "code": "b5",
+      "general_en": "b5",
+      "general_ja": "b5",
+      "mixed_ja_en": "b5"
+    }
+  },
+  "notes": [
+    "llama.cpp HIP server reference matrix, not a hipEngine native result.",
+    "Model is the available MTP-bearing /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf (UD-Q4_K_M).",
+    "Total decode speed is best at B2; total accepted/output is best at B5."
+  ]
+}

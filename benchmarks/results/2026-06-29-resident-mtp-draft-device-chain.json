@@ -1,0 +1,45 @@
+{
+  "date": "2026-06-29",
+  "scope": "Resident MTP NextN draft device-chain (task #3 sub-win B): keep the draft chain on-device across depths, remove per-depth host round-trips",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151, Strix Halo APU, ~256 GB/s LPDDR5X)",
+  "change": "Each draft depth's top-1 is gathered from a resident FP32 embedding table (exact copy of token_embd_f32) via a new f32 row-gather kernel; top-k accumulates into a device buffer; per-depth device_synchronize + top-k D->H + host-embed H->D collapse to a single drain + readback at chain end; per-depth rope/pos/ctx precomputed and uploaded once. Gated HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN (default off).",
+  "correctness": {
+    "gate": "BIT-EXACT vs legacy host loop",
+    "unit_parity_top1_divergence": "0/5",
+    "unit_parity_topk_row_divergence": "0/5",
+    "e2e_total_accepted_off": "37/1008",
+    "e2e_total_accepted_on": "37/1008",
+    "e2e_drafts_identical_cycle_by_cycle": true,
+    "note": "Resident embedding rows + gather are an exact copy/select of token_embd_f32, and the rope scratch is zero-padded above rope_w (qk_head_dim=256, rope table 64-wide, kernel reads d/2=128) to match legacy's zeroed self.cos region. Draft tokens are therefore provably identical -> acceptance unchanged by construction."
+  },
+  "isolated_propose_chain_B5": {
+    "command": "scratchpad/draft_device_chain_parity.py (20 trials, warmed, device_synchronize per trial)",
+    "legacy_ms": 11.21, "legacy_p10": 11.18, "legacy_p90": 11.29,
+    "device_ms": 10.97, "device_p10": 10.91, "device_p90": 11.03,
+    "speedup": "1.022x", "delta_pct": -2.1,
+    "bands": "non-overlapping p10/p90 -> small but consistent win",
+    "per_depth_ms": "legacy 2.24 -> device 2.19"
+  },
+  "e2e_B3": {
+    "command": "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN={0,1} python scripts/gguf_mtp_bench.py --resident-mtp-draft --draft-n-max 3 --cycles 24",
+    "avg_cycle_ms_off": 63.48,
+    "avg_cycle_ms_on": 63.50,
+    "warm_tokens_per_sec_off": 39.81,
+    "warm_tokens_per_sec_on": 39.79,
+    "per_cycle_draft_ms": "~15.0-15.9 both; flat within noise",
+    "verdict": "non-regressive, acceptance-identical, headline flat"
+  },
+  "host_io_removed_per_B5_chain": {
+    "device_synchronize": "5 -> 1",
+    "topk_D2H": "5 -> 1",
+    "host_embed_H2D": "5 -> 1 (depth-0 only; depths 1+ device-gathered)",
+    "per_depth_cos_sin_pos_ctx_H2D": "4*n -> 4 (precomputed once)"
+  },
+  "memory_cost": "resident f32 embedding table = vocab_cap(32768) x hidden(2048) x 4 = 268 MB, lazily allocated only when the device-chain flag is on",
+  "conclusion": "The device-chain is exact and non-regressive and removes all per-depth host round-trips from the draft, but the draft is GPU-compute-bound (q6_k vocab GEMV + MoE), so the host-sync removal yields only a ~2% isolated sub-window win that is flat at e2e. Consistent with the session's bandwidth/compute-bound finding: host/launch/sync overhead is not the MTP draft bottleneck. Kept behind a default-off flag (concrete blocker for default-on: 268MB resident table not justified by a flat headline); available for rollback/bisection and as the clean resident-draft architecture.",
+  "next_levers": [
+    "#4 reduce partial-accept rollback cost (B5 ~303ms)",
+    "#10 raise verifier selected-expert GEMV achieved bandwidth toward peak (the actual 1.9x gap)"
+  ]
+}

@@ -1,0 +1,94 @@
+#version 450
+#extension GL_EXT_integer_dot_product : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+
+#ifndef HIPENGINE_DOT_MODE
+#define HIPENGINE_DOT_MODE 0
+#endif
+
+#ifndef HIPENGINE_DOT_GROUPS
+#define HIPENGINE_DOT_GROUPS 16
+#endif
+
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
+layout(local_size_x = HIPENGINE_BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint body_iters;
+    uint data_mask;
+    uint output_offset;
+    uint sequence_id;
+} pc;
+
+layout(set = 0, binding = 0) readonly buffer WeightBuffer {
+    uint weights[];
+};
+
+layout(set = 0, binding = 1) readonly buffer ActivationBuffer {
+    uint activations[];
+};
+
+layout(set = 0, binding = 2) buffer OutputBuffer {
+    int out_values[];
+};
+
+int dot_q8_s8_s8(uint a, uint b, int c) {
+    return c + dotPacked4x8EXT(int32_t(a), int32_t(b));
+}
+
+int dot_u8_s8(uint a, uint b, int c) {
+    return c + dotPacked4x8EXT(a, int32_t(b));
+}
+
+int byte_to_i8(uint value) {
+    int x = int(value & 0xffu);
+    return x >= 128 ? x - 256 : x;
+}
+
+int scalar_q4_dequant(uint a, uint b, int c) {
+    int acc = c;
+#pragma unroll
+    for (uint lane = 0u; lane < 4u; ++lane) {
+        int q = int((a >> (lane * 8u)) & 0x0fu) - 8;
+        int x = byte_to_i8(b >> (lane * 8u));
+        acc += q * x;
+    }
+    return acc;
+}
+
+int run_value(uint idx) {
+    int sum = 0;
+    for (uint iter = 0u; iter < pc.body_iters; ++iter) {
+        uint base = ((iter * pc.n + idx) * HIPENGINE_DOT_GROUPS) & pc.data_mask;
+#pragma unroll
+        for (uint group = 0u; group < HIPENGINE_DOT_GROUPS; ++group) {
+            uint offset = (base + group) & pc.data_mask;
+            uint a = weights[offset];
+            uint b = activations[offset];
+#if HIPENGINE_DOT_MODE == 0
+            sum = dot_q8_s8_s8(a, b, sum);
+#elif HIPENGINE_DOT_MODE == 1
+            sum = dot_u8_s8(a, b, sum);
+#elif HIPENGINE_DOT_MODE == 2
+            int dot_value = dot_u8_s8(a, b, 0);
+            int q8_sum = dot_u8_s8(0x01010101u, b, 0);
+            sum += dot_value - 32 * q8_sum;
+#elif HIPENGINE_DOT_MODE == 3
+            sum = scalar_q4_dequant(a, b, sum);
+#endif
+        }
+    }
+    return sum;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.n) {
+        return;
+    }
+    out_values[pc.output_offset + idx] = run_value(idx) + int(pc.sequence_id);
+}

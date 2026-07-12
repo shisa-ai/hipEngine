@@ -6,6 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from hipengine.benchmark.provenance import validate_artifact_provenance
+
 
 TOOL_PATH = Path("scripts/mtp-bench.py")
 
@@ -46,6 +50,540 @@ def test_record_from_llamacpp_timing_payload_matches_pr_columns() -> None:
     assert tool.format_result_line(record) == (
         "  code_python        pred= 192 draft= 177 acc= 131 rate=0.740 tok/s=303.7"
     )
+
+
+def test_loads_canonical_category_jsonl_with_train_and_heldout_identity() -> None:
+    tool = _load_tool()
+    path = Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl")
+
+    suite = tool.load_prompt_suite(path)
+    prompts = tool.select_prompts(suite)
+
+    assert len(prompts) == 10
+    assert prompts[0] == {
+        "name": "code_merge_intervals",
+        "prompt": (
+            "Write a Python function merge_intervals(intervals) that merges "
+            "overlapping closed integer intervals. Include a compact pytest-style "
+            "test block. Return only code."
+        ),
+        "category": "code",
+        "split": "train",
+    }
+    by_name = {prompt["name"]: prompt for prompt in prompts}
+    assert by_name["code_markdown_table"]["split"] == "heldout"
+    assert by_name["general_en_explain"]["split"] == "heldout"
+    assert by_name["general_ja_explain"]["split"] == "heldout"
+    assert by_name["mixed_ja_en_review"]["split"] == "heldout"
+    assert tool.prompt_suite_metadata(path, suite, prompts) == {
+        "schema_version": 1,
+        "source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "source_format": "jsonl",
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "selected_prompt_count": 10,
+        "selected_prompt_names": [prompt["name"] for prompt in prompts],
+        "category_counts": {
+            "code": 4,
+            "general_en": 2,
+            "general_ja": 2,
+            "mixed_ja_en": 2,
+        },
+        "split_counts": {"heldout": 4, "train": 6},
+    }
+
+
+def test_server_artifact_uses_canonical_provenance_schema(tmp_path: Path) -> None:
+    tool = _load_tool()
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"server-model")
+    args = tool.build_parser().parse_args(
+        [
+            "--artifact-model-path",
+            str(model),
+            "--artifact-quant",
+            "gguf_q4_k_m",
+            "--artifact-kv-dtype",
+            "bf16",
+            "--artifact-resolved-backend",
+            "hip_gfx1151",
+            "--artifact-target-arch",
+            "gfx1151",
+            "--artifact-device-name",
+            "AMD Radeon 8060S",
+        ]
+    )
+
+    provenance = validate_artifact_provenance(
+        tool.server_artifact_provenance(args),
+        require_model=True,
+    )
+
+    assert provenance["model_path"] == str(model.resolve())
+    assert provenance["model_fingerprint"]["exists"] is True
+    assert provenance["resolved_backend"] == "hip_gfx1151"
+    assert provenance["target_arch"] == "gfx1151"
+    assert provenance["timing_protocol"] == "client_makespan"
+
+
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--artifact-warmups", "-1", "--artifact-warmups must be >= 0"),
+        ("--artifact-repetitions", "0", "--artifact-repetitions must be >= 1"),
+    ],
+)
+def test_server_artifact_rejects_invalid_repetition_counts(
+    flag: str,
+    value: str,
+    message: str,
+) -> None:
+    tool = _load_tool()
+    args = tool.build_parser().parse_args([flag, value])
+
+    with pytest.raises(tool.BenchError, match=message):
+        tool.run(args)
+
+
+def test_concurrent_aggregate_uses_client_wall_not_request_wall_sum() -> None:
+    tool = _load_tool()
+
+    agg = tool.aggregate(
+        [
+            {"predicted_n": 24, "draft_n": 20, "draft_n_accepted": 12, "wall_s": 0.8},
+            {"predicted_n": 24, "draft_n": 22, "draft_n_accepted": 13, "wall_s": 0.9},
+        ],
+        client_wall_s=0.95,
+        concurrency=2,
+    )
+
+    assert agg == {
+        "n_requests": 2,
+        "concurrency": 2,
+        "total_predicted": 48,
+        "total_draft": 42,
+        "total_draft_accepted": 25,
+        "aggregate_accept_rate": 0.5952,
+        "wall_s_total": 0.95,
+        "request_wall_s_total": 1.7,
+        "aggregate_predicted_per_second": 50.53,
+    }
+
+
+def test_concurrent_aggregate_preserves_exact_generated_total() -> None:
+    tool = _load_tool()
+
+    agg = tool.aggregate(
+        [
+            {
+                "predicted_n": 9,
+                "total_generated_tokens": 9,
+                "backend_generated_tokens": 9,
+                "wall_s": 1.5,
+            },
+            {
+                "predicted_n": 3,
+                "total_generated_tokens": 3,
+                "backend_generated_tokens": 3,
+                "wall_s": 0.5,
+            },
+        ],
+        client_wall_s=1.6,
+        concurrency=2,
+    )
+
+    assert agg["total_generated_tokens"] == 12
+    assert agg["aggregate_generated_per_second"] == 7.5
+    assert agg["total_backend_generated"] == 12
+    assert agg["aggregate_backend_generated_per_second"] == 7.5
+
+
+def test_concurrent_shape_aggregate_distinguishes_c8_clients_from_c4_backend_groups() -> None:
+    tool = _load_tool()
+    records = []
+    for queue_group_index in range(2):
+        queue_group_id = f"queue-{queue_group_index}"
+        backend_group_id = f"backend-{queue_group_index}"
+        for item_index in range(4):
+            response = {
+                "usage": {"completion_tokens": 1},
+                "hipengine": {
+                    "generation_shape": {
+                        "schema_version": 1,
+                        "route": "speculative_mtp",
+                        "route_cap": {
+                            "scope": "queue_requests",
+                            "value": 4,
+                            "applied": True,
+                        },
+                        "queue_group": {
+                            "id": queue_group_id,
+                            "request_count": 4,
+                            "prompt_rows": 4,
+                            "item_index": item_index,
+                            "item_prompt_offset": item_index,
+                            "item_prompt_rows": 1,
+                        },
+                        "backend_groups": [
+                            {
+                                "id": backend_group_id,
+                                "call_index": 0,
+                                "prompt_offset": 0,
+                                "input_rows": 4,
+                                "actual_group_rows": [4],
+                                "max_actual_group_rows": 4,
+                                "verifier_rows": 12,
+                            }
+                        ],
+                        "verifier_rows": 12,
+                    }
+                },
+            }
+            records.append(tool.record_from_response(f"request-{len(records)}", response, 1.0))
+
+    aggregate = tool.aggregate(records, client_wall_s=2.0, concurrency=8)
+
+    assert aggregate["generation_shape"] == {
+        "queue_group_count": 2,
+        "queue_group_request_counts": [4, 4],
+        "queue_group_prompt_rows": [4, 4],
+        "route_cap_values": [4],
+        "backend_group_rows": [4, 4],
+        "max_backend_group_rows": 4,
+        "verifier_rows_total": 24,
+        "queue_groups": [
+            {
+                "id": "queue-0",
+                "route": "speculative_mtp",
+                "route_cap": {
+                    "scope": "queue_requests",
+                    "value": 4,
+                    "applied": True,
+                },
+                "request_count": 4,
+                "prompt_rows": 4,
+                "backend_groups": [
+                    {
+                        "id": "backend-0",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 4,
+                        "actual_group_rows": [4],
+                        "max_actual_group_rows": 4,
+                        "verifier_rows": 12,
+                    }
+                ],
+                "verifier_rows": 12,
+            },
+            {
+                "id": "queue-1",
+                "route": "speculative_mtp",
+                "route_cap": {
+                    "scope": "queue_requests",
+                    "value": 4,
+                    "applied": True,
+                },
+                "request_count": 4,
+                "prompt_rows": 4,
+                "backend_groups": [
+                    {
+                        "id": "backend-1",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 4,
+                        "actual_group_rows": [4],
+                        "max_actual_group_rows": 4,
+                        "verifier_rows": 12,
+                    }
+                ],
+                "verifier_rows": 12,
+            },
+        ],
+    }
+
+
+def test_generation_shape_preserves_automatic_route_decision() -> None:
+    tool = _load_tool()
+    response = {
+        "hipengine": {
+            "generation_shape": {
+                "schema_version": 1,
+                "route": "default",
+                "route_decision": {
+                    "requested_route": "speculative_mtp_auto",
+                    "selected_route": "default",
+                    "reason": "compatibility_mtp_not_exact",
+                    "realized_group_rows": 2,
+                    "output_horizon_tokens": 24,
+                    "exact_default_required": True,
+                    "evidence": "benchmarks/results/route-gate.json",
+                },
+                "route_cap": {"scope": "queue_requests", "value": 4, "applied": True},
+                "queue_group": {
+                    "id": "queue-auto",
+                    "request_count": 2,
+                    "prompt_rows": 2,
+                    "item_index": 0,
+                    "item_prompt_offset": 0,
+                    "item_prompt_rows": 1,
+                },
+                "backend_groups": [
+                    {
+                        "id": "backend-auto",
+                        "call_index": 0,
+                        "prompt_offset": 0,
+                        "input_rows": 2,
+                        "actual_group_rows": [2],
+                        "max_actual_group_rows": 2,
+                        "verifier_rows": 0,
+                    }
+                ],
+                "verifier_rows": 0,
+            }
+        }
+    }
+
+    shape = tool.generation_shape_from_response(response)
+
+    assert shape is not None
+    assert shape["route_decision"] == response["hipengine"]["generation_shape"]["route_decision"]
+    second_response = json.loads(json.dumps(response))
+    second_queue = second_response["hipengine"]["generation_shape"]["queue_group"]
+    second_queue["item_index"] = 1
+    second_queue["item_prompt_offset"] = 1
+    records = [
+        tool.record_from_response("one", response, 1.0),
+        tool.record_from_response("two", second_response, 1.0),
+    ]
+
+    aggregate = tool.aggregate(records, client_wall_s=1.0, concurrency=2)
+
+    assert aggregate["generation_shape"]["queue_groups"][0]["route_decision"] == shape[
+        "route_decision"
+    ]
+
+
+def test_concurrent_aggregate_deduplicates_copied_batch_timing_by_owner() -> None:
+    tool = _load_tool()
+    owner = tool.record_from_response(
+        "request_0",
+        {
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 12.5},
+                        "timing_scope": "batch",
+                        "batch_id": "shared-batch-7",
+                        "group_rows": 2,
+                        "timing_owner": True,
+                    }
+                }
+            ]
+        },
+        wall_s=0.4,
+    )
+    copied = tool.record_from_response(
+        "request_1",
+        {
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 12.5},
+                        "timing_scope": "batch",
+                        "batch_id": "shared-batch-7",
+                        "group_rows": 2,
+                        "timing_owner": False,
+                    }
+                }
+            ]
+        },
+        wall_s=0.4,
+    )
+
+    agg = tool.aggregate([owner, copied], client_wall_s=0.4, concurrency=2)
+
+    assert owner["backend_timing_ms"] == {"batch_decode_ms": 12.5}
+    assert "backend_timing_ms" not in copied
+    assert agg["backend_timing_totals_ms"] == {"batch_decode_ms": 12.5}
+    assert agg["backend_timing_mean_ms"] == {"batch_decode_ms": 12.5}
+    assert agg["backend_timing_dedup"] == {
+        "batch_ids": ["shared-batch-7"],
+        "batch_payloads_counted": 1,
+        "choice_payloads_counted": 0,
+        "non_owner_copies_ignored": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "group_rows": 2,
+                "timing_owner": True,
+            },
+            "without batch_id",
+        ),
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "batch_id": "batch-1",
+                "timing_owner": True,
+            },
+            "without group_rows",
+        ),
+        (
+            {
+                "timing": {"batch_decode_ms": 1.0},
+                "timing_scope": "batch",
+                "batch_id": "batch-1",
+                "group_rows": 2,
+            },
+            "without timing_owner",
+        ),
+    ],
+)
+def test_record_rejects_incomplete_batch_timing_ownership(
+    payload: dict[str, object],
+    message: str,
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(tool.BenchError, match=message):
+        tool.record_from_response(
+            "request_0",
+            {"choices": [{"hipengine": payload}]},
+            wall_s=0.1,
+        )
+
+
+def test_concurrent_aggregate_rejects_duplicate_batch_timing_owners() -> None:
+    tool = _load_tool()
+    rows = [
+        tool.record_from_response(
+            f"request_{index}",
+            {
+                "choices": [
+                    {
+                        "hipengine": {
+                            "timing": {"batch_decode_ms": 1.0},
+                            "timing_scope": "batch",
+                            "batch_id": "batch-1",
+                            "group_rows": 2,
+                            "timing_owner": True,
+                        }
+                    }
+                ]
+            },
+            wall_s=0.1,
+        )
+        for index in range(2)
+    ]
+
+    with pytest.raises(tool.BenchError, match="exactly one timing owner"):
+        tool.aggregate(rows, client_wall_s=0.1, concurrency=2)
+
+
+def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "code_python",
+        {
+            "usage": {"completion_tokens": 24},
+            "timings": {"predicted_per_second": 12.5},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                            "mtp_target_verify_rows": 27.0,
+                            "target_verify_ms": 123.4,
+                        },
+                        "decode_state": {
+                            "execution_path": "gguf_llama_compat_mtp_server",
+                            "generated_tokens": 24,
+                            "prompt_tokens": 50,
+                        },
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 18
+    assert record["draft_n_accepted"] == 11
+    assert record["accept_rate"] == 0.6111
+    assert record["backend_timing_ms"]["mtp_target_verify_rows"] == 27.0
+    assert record["backend_decode_state"] == {
+        "execution_path": "gguf_llama_compat_mtp_server",
+        "generated_tokens": 24,
+        "prompt_tokens": 50,
+    }
+
+
+def test_record_from_hipengine_response_uses_exact_all_choice_token_ids() -> None:
+    tool = _load_tool()
+    token_rows = [[101, 102], [201], [301, 302, 303], [], [501, 502], [601]]
+
+    record = tool.record_from_response(
+        "code_python",
+        {
+            "usage": {"completion_tokens": 6},
+            "timings": {"predicted_per_second": 999.0},
+            "choices": [{"hipengine": {"decode_state": {"generated_tokens": 2}}}],
+            "hipengine": {
+                "token_accounting": {
+                    "choice_generated_token_ids": token_rows,
+                    "choice_generated_tokens": [2, 1, 3, 0, 2, 1],
+                    "total_generated_tokens": 9,
+                    "retokenized_visible_tokens": 6,
+                }
+            },
+        },
+        wall_s=1.5,
+    )
+
+    assert record["predicted_n"] == 9
+    assert record["predicted_per_second"] == 6.0
+    assert record["choice_generated_token_ids"] == token_rows
+    assert record["choice_generated_tokens"] == [2, 1, 3, 0, 2, 1]
+    assert record["total_generated_tokens"] == 9
+    assert record["retokenized_visible_tokens"] == 6
+    assert record["backend_generated_tokens"] == 9
+    assert record["backend_generated_per_second"] == 6.0
+
+
+@pytest.mark.parametrize(
+    "accounting",
+    [
+        {
+            "choice_generated_token_ids": [[1, 2]],
+            "choice_generated_tokens": [1],
+            "total_generated_tokens": 2,
+        },
+        {
+            "choice_generated_token_ids": [[1, 2]],
+            "choice_generated_tokens": [2],
+            "total_generated_tokens": 3,
+        },
+    ],
+)
+def test_record_from_hipengine_response_rejects_inconsistent_exact_accounting(
+    accounting: dict[str, object],
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(tool.BenchError, match="match"):
+        tool.record_from_response(
+            "code_python",
+            {"hipengine": {"token_accounting": accounting}},
+            wall_s=1.0,
+        )
 
 
 def test_cli_lists_llamacpp_prompt_suite() -> None:

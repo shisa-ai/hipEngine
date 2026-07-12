@@ -1,0 +1,38 @@
+{
+  "kind": "hipengine_benchmark_matrix_manifest",
+  "schema_version": 1,
+  "name": "sol-m1-paro-e5-diagnostic",
+  "required_engines": [
+    "paro"
+  ],
+  "required_surfaces": [
+    "direct",
+    "server"
+  ],
+  "requirements": {
+    "performance_claim": false,
+    "clean_provenance": false,
+    "scoped_timing": false,
+    "memory": false,
+    "profiler": false,
+    "server_generation_shape": true
+  },
+  "rows": [
+    {
+      "id": "paro-direct",
+      "case_id": "paro-ar",
+      "engine": "paro",
+      "surface": "direct",
+      "path_variant": "ar",
+      "artifact": "../results/2026-07-11-sol-e5-gfx1151-paro-direct-exact-p512-d128.json"
+    },
+    {
+      "id": "paro-server",
+      "case_id": "paro-ar",
+      "engine": "paro",
+      "surface": "server",
+      "path_variant": "ar",
+      "artifact": "../results/2026-07-11-sol-e5-gfx1151-paro-http-exact-p512-d128.json"
+    }
+  ]
+}

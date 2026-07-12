@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-06-14
+Last updated: 2026-07-10
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -16,6 +16,11 @@ false unless the variable says otherwise.
 ### Normal local use
 
 - No hipEngine env vars required when `backend="auto"` detects a native target.
+- `LLM(model)` and `hipengine serve --model ...` resolve the model plugin's
+  quantization. Supported GGUF models also select decode-repack and the public
+  WMMA-prefill/GEMV-decode session profile.
+- Server metadata reports the concrete backend and quant after model load;
+  auto-selected GGUF routes retain their four-request grouping caps.
 - Set `HIPENGINE_BACKEND=hip_gfx1100` or `HIPENGINE_BACKEND=hip_gfx1151` only
   when auto-detection falls back or you are forcing a nearby target explicitly.
 - Leave diagnostic fusion/tuning knobs unset.
@@ -88,9 +93,8 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
 ```
 
-For GGUF Qwen3.6 MoE performance rows that intentionally use the accepted
-resident T16 decode-repack path, use explicit flags rather than making them
-process-global defaults:
+For reproducible GGUF Qwen3.6 MoE benchmark rows, keep the selected profile
+explicit in the command even though the public generator selects it by default:
 
 ```bash
 HIPENGINE_GGUF_DECODE_REPACK=1 \
@@ -121,6 +125,7 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_AOTRITON_HOME` | AOTriton discovery | unset | Explicit cache root containing `<version>/lib/libaotriton_v2.so`. Missing explicit roots fail loudly instead of falling back silently. |
 | `HIPENGINE_API_KEY` | OpenAI-compatible server | unset | Optional bearer token used by `hipengine serve` when `--api-key` is omitted. |
 | `HIPENGINE_GENERATION_BATCH_WINDOW_MS` | OpenAI-compatible server | `0` | Opt-in cold-path coalescing delay for compatible HTTP requests. Default `0` adds no intentional delay; same-event-loop-turn requests may still share the batcher worker, while positive values are for explicit coalescer experiments. |
+| `HIPENGINE_SPECULATIVE_MTP_SERVING` | OpenAI-compatible server | `off` | `off`, `opt_in`, or `auto`. `opt_in` exposes the current `llama-compat` route only when a request sends `speculative_mtp=true`. The corrected category gate proves that route is not true-AR exact, so `auto` records the realized group/horizon and selects exact/default AR until a separate exact MTP hook is admitted. |
 | `HIPENGINE_MAX_QUEUED_REQUESTS` | OpenAI-compatible server | unset | Optional generation queue cap. When set and the server batcher queue is full, new generation requests fail with HTTP 429 `engine_busy` and `Retry-After: 1`; equivalent CLI flag is `--max-queued-requests`. |
 | `HIPENGINE_METRICS` | OpenAI-compatible server | `off` | Metrics endpoint mode used by `hipengine serve --metrics`: `off` or `prometheus`. When `prometheus`, `/metrics` exposes additive request counters plus KV-pool and graph-bucket counters. |
 | `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `off` | Prefix-cache mode used by `hipengine serve --prefix-cache`: `off` or `radix`. `radix` enables the token-id trie scaffold for block-aligned shared-prefix admission; default remains `off` until C5 acceptance is broader. |
@@ -134,12 +139,13 @@ Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 
 | Variable | Default | Classification | Values / notes |
 | --- | --- | --- | --- |
-| `HIPENGINE_GGUF_DECODE_REPACK` | false | Performance / memory tradeoff | Materializes resident T16 decode layouts on load. Required for current accepted Qwen3.6 GGUF MoE decode performance rows, but costs load time and resident memory, so it remains explicit. |
-| `HIPENGINE_GGUF_WMMA_PREFILL` | false | Performance opt-in | Process-wide opt-in for GGUF rows>1 WMMA prefill kernels. CLI/session `--use-wmma-prefill` overrides are preferred for benchmarks. |
-| `HIPENGINE_GGUF_GEMV_DECODE` | false | Performance opt-in | Process-wide opt-in for GGUF rows=1 GEMV decode kernels. For qwen35moe, effective use is safety-gated unless decode-repack is active or the unsafe override is set. |
+| `HIPENGINE_GGUF_DECODE_REPACK` | true | Retained release default with rollback opt-out | Materializes resident T16 decode layouts on load. The public Qwen3.6 GGUF path uses this accepted layout despite its load-time and resident-memory cost because raw decode is substantially slower. Set false only for diagnostics or memory comparisons. |
+| `HIPENGINE_GGUF_WMMA_PREFILL` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_wmma_prefill=True`; benchmark CLI/session arguments remain explicit for artifact provenance. |
+| `HIPENGINE_GGUF_GEMV_DECODE` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_gemv_decode=True`. For qwen35moe, effective use is safety-gated unless decode-repack is active or the unsafe override is set. |
 | `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS` | false | Unsafe diagnostic | Bypasses qwen35moe GGUF fast-path safety. Do not set for normal use or promoted correctness claims. |
 | `HIPENGINE_GGUF_AOTRITON_PREFILL` | `v3` | Attention implementation selector | `v3`, `v2`, or `auto`/`v2-if-safe`. `v2` is rejected for chunked suffix prefill because it has the wrong causal-mask semantics there. |
 | `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT` | `1024` | Decode threshold | Context length where GGUF full-attention decode uses split/paged decode; `0` disables. Compatibility alias: `NANOVLLM_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`. |
+| `HIPENGINE_GGUF_GDN_PREFILL_MODE` | `auto` | Correctness diagnostic | Selects `auto`, `fused`, or `chain` for GGUF GDN prompt prefill. `chain` prefers the raw-Q/K-plus-scale exact split implementation and falls back to the legacy normalized-Q/K chain only when the exact registry members are absent. `auto` is the selected fused-first default: the exact chain passed SOL-G2 state correctness but lost the clean SOL-G3 512/4K wall gate by 5.19%/6.70%. Explicit selections fail closed if no complete implementation is available, and invalid values are errors. Use `chain` only for fallback/bisection unless its scheduler changes and the full gate is rerun. |
 | `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` | `1025` | Prefill threshold | Minimum rows for GGUF GDN recurrent-segments prefill routing; invalid values fall back to the default, values below 1 clamp to 1. |
 | `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` | false | Capacity diagnostic | Offloads the raw Q8_0 token embedding from device residency and serves exact Q8_0→BF16 embedding rows from host. This can make Q4_K_M 128K fit on 24 GiB, but disables GGUF HIP decode graph replay and is not a promoted performance path. |
 | `HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS` | `8` | Correctness fallback | Number of leading GGUF full-attention layers kept as BF16 primary storage for long explicit `int8_per_token_head` sessions. Long contexts require at least 8 BF16-prefix layers unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set. The 2026-06-24 W7900 gate accepts prefix 8 at `128K/128` after the layer-local BF16 prefill-oracle fix (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror); prefix 7 still fails `128K/16`, and pure INT8 fails `4K/1`. Short contexts (`<=8192` rounded max context) still use the exact BF16 mirror instead. |
@@ -150,6 +156,13 @@ Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 | `HIPENGINE_GGUF_COMPACT_MOE_C1` | false | Diagnostic fallback | Forces the older compact c=1 MoE decode scheduler; current retained default uses direct selected T16 kernels instead. |
 | `HIPENGINE_GGUF_SIDECAR_CACHE` | `~/.cache/hipengine/gguf_sidecars` (or `XDG_CACHE_HOME`) | Sidecar cache | Cache directory for optional GGUF expert pack8 sidecars. |
 | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` | unset | Kernel R&D | Optional launch-bounds macro for selected WMMA prefill builds; unset uses the retained defaults. |
+| `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` | false | Diagnostic instrumentation | Adds non-sync HIP-event intervals inside the GGUF packed target verifier and rolls them into `target_packed_verify_gpu_*` timing buckets. Leave unset for speed claims because event recording adds overhead. |
+| `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS` | `0` | Rejected diagnostic | Allows small selected-row compact-WMMA verifier probes to use a conservative `selected_rows * 16` WMMA row upper bound instead of reading `wmma_total` back to host. `0` disables it. The 2026-07-05 c=8 server reruns did not beat the retained path. |
+| `HIPENGINE_GGUF_AR_PACKED_PREFILL` | true | Retained default with rollback opt-out | Enables GGUF server greedy-AR packed final-row prompt prefill for c>N coalesced requests. Set `0`/`false`/`off` to force serial per-slot prefill fallback for bisection. |
+| `HIPENGINE_GGUF_AR_PACKED_DECODE` | true | Retained default with rollback opt-out | Enables GGUF server greedy-AR packed resident decode for c>N coalesced requests. Set `0`/`false`/`off` to force stream/scalar fallback for bisection. |
+| `HIPENGINE_GGUF_AR_STREAM_DECODE` | true | Retained fallback with rollback opt-out | Enables per-slot stream decode fallback and c>4 packed-decode chunk streams. Set false only for bisection. |
+| `HIPENGINE_GGUF_AR_STREAM_PREFILL` | false | Rejected diagnostic | Launches per-slot stream prompt prefill before stream decode. Rejected on the 2026-07-05 c=8 natural24 rerun; leave unset unless reproducing that diagnostic. |
+| `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` | true | Retained default with rollback opt-out | Enables the GGUF MTP server packed prompt-prefill opener for eligible c=2/c=4 serving batches, returning FP32 prompt hidden rows for MTP catch-up. Set false for bisection. The c=8 first wave still uses the serial opener because the packed prefill path keeps the four-slot safety cap; the trailing c=2 wave uses packed prefill. |
 | `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `32` / `16` | Kernel R&D | Q4_K selected WMMA tile override. Allowed tile pairs are validated by the build helper. |
 | `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q5_K selected WMMA tile override. |
 | `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q6_K selected WMMA tile override. |
@@ -188,12 +201,20 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 
 ## PARO variables
 
+Prompts shorter than `linear_conv_kernel_dim` use token-serial c1 prefill in
+the public generator. Longer prompts use native prefill; neither route requires
+an env variable.
+
 | Variable | Default | Classification | Values / notes |
 | --- | --- | --- | --- |
 | `HIPENGINE_PARO_MARLIN_K_REPLACE` | true | Retained default | Uses the retained PARO Marlin-K replacement path during loading. Set false only for bisection. |
 | `HIPENGINE_QWEN35_LM_HEAD_THREADS` | `128` | Runtime tuning | Valid values: `128`, `256`, `512`. |
 | `HIPENGINE_QWEN35_NATIVE_SAMPLER` | true | Retained default with rollback opt-out | Enables the scoped PARO native GPU sampler for supported c=1 and scheduler-owned serial per-slot c>N sampled requests (`top_k=0`, `1<=top_k<=64`, or exact `top_p`/`min_p` with `top_k=0`). Set `0`/`false`/`off` to force host sampling for rollback. Full-vocab `top_logprobs` with `top_k=0` and bounded `top_logprobs <= top_k <= 64` stay native; true batched c>N, GGUF, bounded `top_logprobs > top_k`, and unsupported processor/filter combinations fall back to host sampling. |
 | `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` | false | Experimental diagnostic | Enables the guarded Qwen/PARO `step_batch_native` c>N decode path. Leave unset for normal use; retained throughput claims require generated-token equality and currently keep this path ineligible. |
+| `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` | false | Experimental diagnostic | Selects the evidence-backed PARO c>N attention/MoE/projection/sampler repair routes. It does not activate native decode by itself. When native decode is active, unsupported live widths use the exact partition/serial planner below. |
+| `HIPENGINE_QWEN35_NATIVE_BATCH_WIDTH_PROFILE` | `benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json` | Correctness/performance gate | Relative regular JSON path under `benchmarks/results/`. The scheduler accepts native subgroup widths only when backend, target arch, model snapshot, quant, KV dtype, generated-token equality, primitive correctness, and decode-position range match. Missing, malformed, mismatched, or out-of-range evidence falls back to serial decode. The default artifact is diagnostic and does not create a retained throughput claim. |
+| `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP` | false | Experimental startup diagnostic | When `prepare_request_scratch(..., max_batch_size>1)` runs during server startup, also exercises tiny PARO packed c>N prefill widths 2/4/8 up to `max_batch_size` and records the warmed widths under `/ready` startup diagnostics. Native c>N decode warmup is attempted only when `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` is also set. |
+| `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS` | `64` | Experimental startup diagnostic | Prompt-token count used by the opt-in PARO server native-batch warmup, clamped to the scratch probe's `max_prompt_tokens`. Lower this for fast shape smoke; raise it only when measuring cold packed-prefill setup for a specific server protocol. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE` | `serial_lm_head` | Correctness diagnostic | `serial_lm_head` samples each native c>N row through the c=1 LM-head path; `batched_lm_head` requests batched LM-head buffers but falls back to serial for c>N unless the equality-evidence vars below are set. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK` | false | Correctness gate | Required true before `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=batched_lm_head` is honored for c>N rows. Leave false until generated-token equality vs independent c=1 is green. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT` | unset | Correctness gate | Relative regular `.json` path under `benchmarks/results/` to the generated-token equality artifact supporting `HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK=true`; missing, non-JSON, symlinked, non-regular, failed, wrong-row, self-mismatched `artifact_path`/`source_artifact_path`, skipped, mismatching sequence, or non-empty-mismatch artifacts keep batched LM-head on the serial fallback. |
@@ -210,7 +231,6 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT` | `auto` | Diagnostic fallback | Linear-attention output projection override: `auto`, `batch`, `batch_gemv`, or `selected_c1`. `auto` follows selected-c1 state replay; `batch_gemv` bypasses the row>1 AWQ prefill projection kernel while staying non-retained. Hidden-bisect equivalent: `--batch-decode-linear-output-path ...`. |
 | `HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE` | true when experimental decode is enabled | Diagnostic selector | Set `0` to force the existing per-row full-attention fallback in hidden-bisect/native-batch probes. Non-retained fallback metadata records `full_attention_decode_path=per_row_*`. |
 | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT` | false | Diagnostic fallback | Forces only the full-attention input RMSNorm/QKV-prep boundary through token-1 row kernels. Hidden-bisect equivalent: `--batch-decode-attn-input-path per_row`. Non-retained. |
-| `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN` | false | Diagnostic fallback | Forces only the post-attention add/RMSNorm boundary through token-1 row kernels. Hidden-bisect equivalent: `--batch-decode-post-attn-path per_row`. Non-retained. |
 | `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR` | false | Diagnostic fallback | Forces packed prefill linear-attention segments through per-segment c=1-style linear prefill in hidden-bisect probes. Non-retained. |
 | `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN` | false | Diagnostic fallback | Forces packed full-attention prefill through per-segment c=1-style full-attention prefill in hidden-bisect probes. Non-retained. |
 | `HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT` | `1024` | Decode threshold | Context length where PARO full-attention decode uses split/paged decode; `0` disables. Compatibility alias: `NANOVLLM_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`. |

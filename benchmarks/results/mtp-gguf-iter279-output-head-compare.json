@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_output_head_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 279,
+  "status": "compared",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "position": 16,
+  "token_id": 271,
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "chunk_rows": 1024,
+  "top_k": 8,
+  "api": "Qwen35GGUFResidentSession._run_token_to_final_hidden+_sample_from_hidden",
+  "note": "Runs the prompt through the resident full stack to get the exact BF16 post-output_norm hidden row consumed by the device lm_head and the device logits, then streams dequantized lm_head rows on CPU to compare logits/top-1 without materializing the full head matrix.",
+  "input_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "lm_head_tensor": "output.weight",
+  "lm_head_shape": [
+    248320,
+    2048
+  ],
+  "lm_head_ggml_type": "Q6_K",
+  "hidden_bf16_summary": {
+    "shape": [
+      2048
+    ],
+    "dtype": "float32",
+    "finite": true,
+    "min": -10.625,
+    "max": 18.5,
+    "mean": -0.08658640086650848,
+    "rms": 2.2378599643707275
+  },
+  "hidden_seed_fp32_vs_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.045429229736328125,
+    "mean_abs_diff": 0.002474376233294606,
+    "rms_abs_diff": 0.003794281044974923,
+    "device_rms": 2.238121509552002,
+    "cpu_rms": 2.2378599643707275
+  },
+  "comparison": {
+    "vocab_size": 248320,
+    "top_k": 8,
+    "device_top": [
+      {
+        "token_id": 271,
+        "logit": 12.593915939331055
+      },
+      {
+        "token_id": 64,
+        "logit": 12.227429389953613
+      },
+      {
+        "token_id": 198,
+        "logit": 12.12805461883545
+      },
+      {
+        "token_id": 77,
+        "logit": 10.951737403869629
+      },
+      {
+        "token_id": 248044,
+        "logit": 10.749099731445312
+      },
+      {
+        "token_id": 286,
+        "logit": 10.553889274597168
+      },
+      {
+        "token_id": 82,
+        "logit": 10.087991714477539
+      },
+      {
+        "token_id": 390,
+        "logit": 10.026192665100098
+      }
+    ],
+    "cpu_top": [
+      {
+        "token_id": 271,
+        "logit": 12.593917846679688
+      },
+      {
+        "token_id": 64,
+        "logit": 12.227429389953613
+      },
+      {
+        "token_id": 198,
+        "logit": 12.128057479858398
+      },
+      {
+        "token_id": 77,
+        "logit": 10.951736450195312
+      },
+      {
+        "token_id": 248044,
+        "logit": 10.749101638793945
+      },
+      {
+        "token_id": 286,
+        "logit": 10.553889274597168
+      },
+      {
+        "token_id": 82,
+        "logit": 10.087991714477539
+      },
+      {
+        "token_id": 390,
+        "logit": 10.026193618774414
+      }
+    ],
+    "device_top1_token_id": 271,
+    "cpu_top1_token_id": 271,
+    "top1_match": true,
+    "topk_overlap_count": 8,
+    "selected_logits": [
+      {
+        "token_id": 64,
+        "device_logit": 12.227429389953613,
+        "cpu_logit": 12.227429389953613,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "token_id": 77,
+        "device_logit": 10.951737403869629,
+        "cpu_logit": 10.951736450195312,
+        "diff": 9.5367431640625e-07,
+        "abs_diff": 9.5367431640625e-07
+      },
+      {
+        "token_id": 82,
+        "device_logit": 10.087991714477539,
+        "cpu_logit": 10.087991714477539,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "token_id": 198,
+        "device_logit": 12.12805461883545,
+        "cpu_logit": 12.128057479858398,
+        "diff": -2.86102294921875e-06,
+        "abs_diff": 2.86102294921875e-06
+      },
+      {
+        "token_id": 271,
+        "device_logit": 12.593915939331055,
+        "cpu_logit": 12.593917846679688,
+        "diff": -1.9073486328125e-06,
+        "abs_diff": 1.9073486328125e-06
+      },
+      {
+        "token_id": 286,
+        "device_logit": 10.553889274597168,
+        "cpu_logit": 10.553889274597168,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "token_id": 390,
+        "device_logit": 10.026192665100098,
+        "cpu_logit": 10.026193618774414,
+        "diff": -9.5367431640625e-07,
+        "abs_diff": 9.5367431640625e-07
+      },
+      {
+        "token_id": 248044,
+        "device_logit": 10.749099731445312,
+        "cpu_logit": 10.749101638793945,
+        "diff": -1.9073486328125e-06,
+        "abs_diff": 1.9073486328125e-06
+      }
+    ],
+    "diff": {
+      "count": 248320,
+      "max_abs_diff": 4.76837158203125e-06,
+      "mean_abs_diff": 5.229159114605864e-07,
+      "rms_abs_diff": 6.850778504485788e-07,
+      "device_rms": 2.887669086456299,
+      "cpu_rms": 2.887669086456299
+    }
+  },
+  "max_abs_tolerance": 2.0,
+  "within_tolerance": true,
+  "conclusion": "Final output_norm/lm_head boundary matches the streaming CPU dequant oracle: top1 token 271 agrees and max_abs_diff=4.76837e-06 <= 2. AR parity should continue narrowing earlier hidden-state/KV propagation."
+}

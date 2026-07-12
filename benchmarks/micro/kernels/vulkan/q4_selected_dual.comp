@@ -1,0 +1,185 @@
+#version 450
+#extension GL_EXT_integer_dot_product : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+#ifndef HIPENGINE_LOCAL_SIZE_X
+#define HIPENGINE_LOCAL_SIZE_X 64
+#endif
+
+layout(local_size_x = HIPENGINE_LOCAL_SIZE_X, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint in_features;
+    uint out_features;
+    uint experts;
+    uint q8_blocks_per_row;
+    uint out_packed;
+    uint blocks_per_row;
+    uint rep;
+    uint xq_slice;
+    uint output_slice;
+} pc;
+
+layout(set = 0, binding = 1) readonly buffer XQBuffer {
+    uint xq_words[];
+};
+
+layout(set = 0, binding = 2) readonly buffer SelectedBuffer {
+    uint selected[];
+};
+
+layout(set = 0, binding = 3) readonly buffer WeightBuffer {
+    uint weight_words[];
+};
+
+layout(set = 0, binding = 4) buffer OutBuffer {
+    uint16_t out_bf16[];
+};
+
+shared float partial_a[8];
+shared float partial_b[8];
+
+const uint QK_K = 256u;
+const uint Q4_K_BLOCK_BYTES = 144u;
+
+uint load_byte(uint byte_index) {
+    uint word = weight_words[byte_index >> 2];
+    return (word >> ((byte_index & 3u) * 8u)) & 0xffu;
+}
+
+uint load_u16(uint byte_index) {
+    return load_byte(byte_index) | (load_byte(byte_index + 1u) << 8);
+}
+
+uint load_u32(uint byte_index) {
+    return load_byte(byte_index) |
+        (load_byte(byte_index + 1u) << 8) |
+        (load_byte(byte_index + 2u) << 16) |
+        (load_byte(byte_index + 3u) << 24);
+}
+
+float fp16_at(uint byte_index) {
+    return unpackHalf2x16(load_u16(byte_index)).x;
+}
+
+uint q4_k_scale(uint scales_byte, uint subblock) {
+    if (subblock < 4u) {
+        return load_byte(scales_byte + subblock) & 0x3fu;
+    }
+    uint idx = subblock - 4u;
+    return (load_byte(scales_byte + 8u + idx) & 0x0fu) |
+        ((load_byte(scales_byte + idx) >> 2) & 0x30u);
+}
+
+uint q4_k_min(uint scales_byte, uint subblock) {
+    if (subblock < 4u) {
+        return load_byte(scales_byte + 4u + subblock) & 0x3fu;
+    }
+    uint idx = subblock - 4u;
+    return (load_byte(scales_byte + 8u + idx) >> 4) |
+        ((load_byte(scales_byte + 4u + idx) >> 2) & 0x30u);
+}
+
+uint q4_k_pack4(uint block_byte, uint subblock, uint lane4) {
+    uint pair = subblock >> 1;
+    uint packed = load_u32(block_byte + 16u + pair * 32u + lane4);
+    return (subblock & 1u) != 0u ? ((packed >> 4) & 0x0f0f0f0fu) : (packed & 0x0f0f0f0fu);
+}
+
+int dot_u8_s8(uint a, uint b, int c) {
+    return c + dotPacked4x8EXT(a, int32_t(b));
+}
+
+float q4_term(uint block_byte, uint subblock, uint lane4, uint x_pack, int q8_sum, float xd) {
+    int dot = dot_u8_s8(q4_k_pack4(block_byte, subblock, lane4), x_pack, 0);
+    float d = fp16_at(block_byte);
+    float dmin = fp16_at(block_byte + 2u);
+    uint scales = block_byte + 4u;
+    float scale = float(q4_k_scale(scales, subblock));
+    float minv = float(q4_k_min(scales, subblock));
+    return xd * (d * scale * float(dot) - dmin * minv * float(q8_sum));
+}
+
+uint float_to_bf16(float value) {
+    uint bits = floatBitsToUint(value);
+    uint lsb = (bits >> 16) & 1u;
+    bits += 0x7fffu + lsb;
+    return bits >> 16;
+}
+
+void reduce_and_store(uint row, uint out_col, float acc_a, float acc_b) {
+    float sum_a = subgroupAdd(acc_a);
+    float sum_b = subgroupAdd(acc_b);
+    if (subgroupElect()) {
+        partial_a[gl_SubgroupID] = sum_a;
+        partial_b[gl_SubgroupID] = sum_b;
+    }
+    barrier();
+    if (gl_LocalInvocationID.x == 0u) {
+        float total_a = 0.0;
+        float total_b = 0.0;
+        for (uint i = 0u; i < gl_NumSubgroups; ++i) {
+            total_a += partial_a[i];
+            total_b += partial_b[i];
+        }
+        uint out_idx = row * pc.out_features + out_col;
+        uint tensor_stride = pc.rows * pc.out_features;
+        uint output_base = pc.output_slice * 2u * tensor_stride;
+        out_bf16[output_base + out_idx] = uint16_t(float_to_bf16(total_a));
+        out_bf16[output_base + tensor_stride + out_idx] =
+            uint16_t(float_to_bf16(total_b));
+    }
+}
+
+void main() {
+    uint out_col = gl_WorkGroupID.x;
+    uint row = gl_WorkGroupID.y;
+    uint tid = gl_LocalInvocationID.x;
+    if (row >= pc.rows || out_col >= pc.out_features) {
+        return;
+    }
+
+    uint expert_id = selected[row];
+    // This Vulkan probe's push layout reuses out_packed for the activation row count.
+    uint x_rows = pc.out_packed;
+    if (expert_id >= pc.experts || x_rows == 0u || (pc.rows % x_rows) != 0u) {
+        return;
+    }
+
+    uint lanes_per_x_row = pc.rows / x_rows;
+    uint x_row = x_rows == 1u ? 0u : (row / lanes_per_x_row);
+    uint groups4 = pc.in_features >> 2;
+    uint row_bytes = pc.blocks_per_row * Q4_K_BLOCK_BYTES;
+    uint expert_bytes = pc.out_features * row_bytes;
+    uint tensor_bytes = pc.experts * expert_bytes;
+    uint weight_a = expert_id * expert_bytes + out_col * row_bytes;
+    uint weight_b = tensor_bytes + expert_id * expert_bytes + out_col * row_bytes;
+
+    float acc_a = 0.0;
+    float acc_b = 0.0;
+    for (uint group = tid; group < groups4; group += HIPENGINE_LOCAL_SIZE_X) {
+        uint k4 = group << 2;
+        uint block_idx = k4 / QK_K;
+        uint within = k4 - block_idx * QK_K;
+        uint subblock = within >> 5;
+        uint lane4 = within & 31u;
+        uint q8_index = block_idx * 8u + subblock;
+        uint xq_slice_words = x_rows * pc.q8_blocks_per_row * 9u;
+        uint xq_base = pc.xq_slice * xq_slice_words +
+            (x_row * pc.q8_blocks_per_row + q8_index) * 9u;
+        uint x_pack = xq_words[xq_base + 1u + (lane4 >> 2)];
+        int q8_sum = dot_u8_s8(0x01010101u, x_pack, 0);
+        float xd = unpackHalf2x16(xq_words[xq_base]).x;
+        uint block_a = weight_a + block_idx * Q4_K_BLOCK_BYTES;
+        uint block_b = weight_b + block_idx * Q4_K_BLOCK_BYTES;
+        acc_a += q4_term(block_a, subblock, lane4, x_pack, q8_sum, xd);
+        acc_b += q4_term(block_b, subblock, lane4, x_pack, q8_sum, xd);
+    }
+
+    reduce_and_store(row, out_col, acc_a, acc_b);
+}

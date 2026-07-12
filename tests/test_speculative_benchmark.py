@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from hipengine.benchmark.speculative import (
     SpeculativeBenchmarkModels,
@@ -10,6 +11,7 @@ from hipengine.benchmark.speculative import (
     build_speculative_artifact,
     first_mismatch,
     normalize_speculative_row,
+    record_speculative_graph_shape_stats,
     schema_fixture_row,
 )
 
@@ -52,6 +54,7 @@ def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
     assert row["correctness"]["passed"] is True
     assert row["acceptance"]["accept_histogram"] == {"1": 1, "2": 2, "3": 1}
     assert row["spec"]["target_verify_rows_per_output_token"] == 2.0
+    assert row["spec"]["target_verify_bucket_seconds"]["target_verify_forward"] == 1.50
     assert row["spec"]["phase_split"]["target_verify_fraction"] == 0.75
     assert row["spec"]["draft_context_phase_seconds"] == {
         "full_context_rebuild": 0.20,
@@ -81,6 +84,7 @@ def test_aggregate_speculative_rows_preserves_exact_and_speed_gates() -> None:
     assert aggregate["all_correctness_passed"] is True
     assert aggregate["all_finite_logits"] is True
     assert aggregate["target_verify_rows_per_output_token"] == 2.0
+    assert aggregate["target_verify_bucket_seconds"]["target_verify_forward"] == 1.50
     assert aggregate["d2h"]["scalar_reads"] == 4
     assert aggregate["speed_gate_gt_1p10"] is True
 
@@ -102,6 +106,58 @@ def test_aggregate_uses_explicit_decode_tokens_when_samples_are_truncated() -> N
     assert aggregate["ar_decode_tok_s"] == 16.0
     assert aggregate["spec_decode_tok_s"] == 8.0
     assert aggregate["target_verify_rows_per_output_token"] == 2.0
+
+
+def test_record_speculative_graph_shape_stats_groups_runtime_bucket() -> None:
+    shape_stats: dict[str, object] = {}
+    graph = {
+        "mode": "auto",
+        "status": "replayed",
+        "replayed": True,
+        "validation_passed": True,
+        "replay_count": 3,
+        "bucket_key": {
+            "rows": 5,
+            "capture_width": 8192,
+            "base_slot": 1,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "batch_mode": "verify_chain",
+        },
+    }
+
+    record_speculative_graph_shape_stats(
+        shape_stats,
+        graph,
+        verifier_mode="native_bulk_bplus1",
+        tree_mode="chain",
+        context_tokens=512,
+        active_budget=4,
+        target_verify_bucket_seconds={"graph_replay": 0.125, "accept_summary": 0.03125},
+    )
+    record_speculative_graph_shape_stats(
+        shape_stats,
+        {**graph, "replay_count": 4},
+        verifier_mode="native_bulk_bplus1",
+        tree_mode="chain",
+        context_tokens=516,
+        active_budget=4,
+        target_verify_bucket_seconds={"graph_replay": 0.125},
+    )
+
+    assert len(shape_stats) == 1
+    entry = next(iter(shape_stats.values()))
+    assert entry["cycles"] == 2
+    assert entry["replayed_cycles"] == 2
+    assert entry["status_counts"] == {"replayed": 2}
+    assert entry["context_tokens_min"] == 512
+    assert entry["context_tokens_max"] == 516
+    assert entry["context_tokens_sample"] == [512, 516]
+    assert entry["active_budget_counts"] == {"4": 2}
+    assert entry["validation_passed"] is True
+    assert entry["replay_count_max"] == 4
+    assert entry["target_verify_bucket_seconds"]["graph_replay"] == 0.25
+    assert entry["target_verify_bucket_seconds"]["accept_summary"] == 0.03125
 
 
 def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> None:
@@ -138,3 +194,56 @@ def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> No
     assert artifact["decision_reason"] == artifact["decision"]["reason"]
     assert artifact["decision"]["accepted"] is False
     json.dumps(artifact)
+
+
+def test_dflash_chain_artifact_uses_canonical_provenance(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from scripts import dflash_chain_e2e_bench as tool
+
+    target = tmp_path / "target"
+    target.mkdir()
+    captured: dict[str, object] = {}
+
+    def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"kind": "hipengine_artifact_provenance"}
+
+    monkeypatch.setattr(tool, "collect_artifact_provenance", fake_collect)
+    command = ["python3", "scripts/dflash_chain_e2e_bench.py", "--json", "out.json"]
+
+    provenance = tool._collect_dflash_artifact_provenance(
+        configured_backend="auto",
+        resolved_backend="hip_gfx1151",
+        target_arch="gfx1151",
+        target_model=target,
+        target_revision="target-revision",
+        device_name="Radeon 8060S Graphics",
+        compiler_version="hipcc test",
+        command=command,
+        verifier_mode="native_bulk_bplus1",
+        verifier_graph_mode="auto",
+        sync_draft_phases=False,
+        roctx=False,
+        rocprof_selected_region="none",
+    )
+
+    assert provenance == {"kind": "hipengine_artifact_provenance"}
+    assert captured["repo_root"] == tool.REPO_ROOT
+    assert captured["model_path"] == target
+    assert captured["model_revision"] == "target-revision"
+    assert captured["resolved_backend"] == "hip_gfx1151"
+    assert captured["target_arch"] == "gfx1151"
+    assert captured["quant"] == "w4_paro_packed"
+    assert captured["kv_dtype"] == "bf16"
+    assert captured["command"] == command
+    assert captured["warmups"] == 0
+    assert captured["repetitions"] == 1
+    assert captured["environment"]["HIPENGINE_DFLASH_VERIFY_SYNC_PHASES"] is None
+    assert captured["environment"]["HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD"] is None
+    assert captured["profiler"] == {
+        "enabled": False,
+        "phase_telemetry": True,
+        "verifier_graph_mode": "auto",
+    }

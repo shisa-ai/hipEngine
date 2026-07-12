@@ -1,0 +1,71 @@
+{
+  "schema": 3,
+  "status": "ok",
+  "timestamp": "2026-06-19T03:30:41",
+  "run_tag": "mtp-bench-1781839841",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "What is the capital of France?",
+    "prompt_tokens": 14,
+    "cycles": 5,
+    "draft_n_max": 1,
+    "engine": "hipEngine GGUF MTP"
+  },
+  "metrics": {
+    "accept_per_draft": 0.2,
+    "accepted_per_output": 0.2,
+    "avg_decode_ms": 74.86,
+    "tokens_per_sec": 13.36,
+    "total_accepted": 1,
+    "total_drafts": 5,
+    "total_output_tokens": 5
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "target_token": 59,
+      "draft_token": 2037,
+      "accepted": false,
+      "ar_decode_ms": 49.58,
+      "mtp_draft_ms": 96.5
+    },
+    {
+      "cycle": 1,
+      "target_token": 2037,
+      "draft_token": 84,
+      "accepted": false,
+      "ar_decode_ms": 50.17,
+      "mtp_draft_ms": 7.01
+    },
+    {
+      "cycle": 2,
+      "target_token": 220,
+      "draft_token": 2037,
+      "accepted": false,
+      "ar_decode_ms": 49.69,
+      "mtp_draft_ms": 6.7
+    },
+    {
+      "cycle": 3,
+      "target_token": 16,
+      "draft_token": 20,
+      "accepted": false,
+      "ar_decode_ms": 50.28,
+      "mtp_draft_ms": 7.33
+    },
+    {
+      "cycle": 4,
+      "target_token": 15,
+      "draft_token": 15,
+      "accepted": true,
+      "ar_decode_ms": 49.95,
+      "mtp_draft_ms": 7.09
+    }
+  ]
+}

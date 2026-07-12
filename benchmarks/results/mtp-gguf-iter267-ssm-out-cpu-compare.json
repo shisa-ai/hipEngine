@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_ssm_out_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 267,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_capture": "benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json",
+  "source_iteration": 265,
+  "layer_id": 0,
+  "weight_name": "blk.0.ssm_out.weight",
+  "weight_shape": [
+    2048,
+    4096
+  ],
+  "input_shape": [
+    4096
+  ],
+  "output_shape": [
+    2048
+  ],
+  "device_vs_cpu_bf16": {
+    "count": 2048,
+    "max_abs_diff": 9.5367431640625e-07,
+    "rms_abs_diff": 2.107342389479072e-08,
+    "mean_abs_diff": 4.656612873077393e-10,
+    "reference_rms": 0.010142592713236809,
+    "candidate_rms": 0.010142592713236809,
+    "max_abs_reference": 0.2255859375,
+    "max_abs_candidate": 0.2255859375
+  },
+  "cpu_f32_vs_cpu_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.00024111568927764893,
+    "rms_abs_diff": 1.5433086446137168e-05,
+    "mean_abs_diff": 8.990318747237325e-06,
+    "reference_rms": 0.010143328458070755,
+    "candidate_rms": 0.010142592713236809,
+    "max_abs_reference": 0.22556538879871368,
+    "max_abs_candidate": 0.2255859375
+  },
+  "within_bf16_tolerance": true,
+  "samples": {
+    "cpu_bf16": [
+      -0.007080078125,
+      0.0026397705078125,
+      0.004608154296875,
+      -0.0008392333984375,
+      -0.0125732421875,
+      0.0093994140625,
+      -0.0130615234375,
+      0.00110626220703125
+    ],
+    "device_attn_out": [
+      -0.007080078125,
+      0.0026397705078125,
+      0.004608154296875,
+      -0.0008392333984375,
+      -0.0125732421875,
+      0.0093994140625,
+      -0.0130615234375,
+      0.00110626220703125
+    ]
+  },
+  "conclusion": "Device attn_out matches CPU ssm_out(recurrent_bf16) after BF16 rounding; max_abs=9.53674e-07, rms_abs=2.10734e-08. Layer-0 triage should move earlier into GDN/conv/recurrent inputs or later layers."
+}

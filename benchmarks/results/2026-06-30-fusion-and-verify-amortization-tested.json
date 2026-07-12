@@ -1,0 +1,33 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "fusion_and_verify_amortization_tested",
+ "hardware": "gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "fusion": "already done - qkv fused (attn_qkv single GEMV); MoE pack8-consolidated, gate+up+silu fused. No new fusion available.",
+ "verify_rowtile": {
+  "built": true,
+  "bit_exact_rows_2_6": true,
+  "ab_vs_existing_rows_kernel": {
+   "rows4": {
+    "rows_kernel_us": 28.7,
+    "rowtile_us": 31.0,
+    "speedup": 0.93
+   },
+   "rows6": {
+    "rows_kernel_us": 38.0,
+    "rowtile_us": 40.3,
+    "speedup": 0.94
+   }
+  },
+  "ab_vs_naive_4x_separate_launches": {
+   "rows4": 1.36,
+   "rows6": 1.58
+  },
+  "verdict": "REFUTED, reverted. Existing q8_0_t16_gemv_kernel at rows=R (single launch grid.y=R) already amortizes via occupancy (R x more blocks). Rowtile single-block-per-tile underutilizes for small dense weights. Right tool only for the huge lm-head (already shipped)."
+ },
+ "dense_gemv_already_amortized": "q8_0_t16_dual_split 141us rows=1 -> 220us rows=4 = 1.56x for 4x rows = 2.5x cheaper per row (occupancy).",
+ "conclusion": "Both directed levers (fusion, verify amortization) already captured by hipEngine HIP kernels. No remaining correctness-preserving HIP-kernel lever for AR/verify dense path. Residual gap = Vulkan-vs-HIP backend + dp4a precision."
+}

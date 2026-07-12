@@ -1,1035 +1,993 @@
-# hipEngine Benchmark Rollup
+# hipEngine Topline Benchmarks
 
-Last updated: 2026-06-24 (W7900 GGUF Q4_K_M matched INT8 KV quality sweep: llama.cpp ROCm `q8_0` fails hipEngine-like KL/same-top rows at `128`, `512`, and `4K`; hipEngine pure per-token/head FP32 INT8 is mixed at `128/1` and `512/1` but passes `4K/1` and `4K/16`, so keep it diagnostic as a long-context relaxed candidate, not a general exact/user-facing option.)
+Last reviewed: **2026-07-12**
 
-Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
-attempts live under [`benchmarks/results/`](results/); this file tracks the
-current fastest accepted rows, external baselines, and source-lineage targets so
-humans can see what we are testing against without opening every JSON artifact.
+Latest measured hipEngine revision in this scoreboard:
+`d50aa4d13ff03f50537cfa7f7c5358ab321e43ad`
 
-Historical rollup changes are tracked in [`benchmarks/CHANGELOG.md`](CHANGELOG.md).
+This file is the source of truth for repository-level performance tables. It
+records which snapshots are eligible for use, the exact protocol behind each
+table, the measured source revision and build environment, and the command used
+to refresh it. [`README.md`](../README.md) contains copies of the marked export
+blocks below; update them with:
 
-## Maintenance contract
+```bash
+python3 scripts/sync_benchmark_readme.py --write
+python3 scripts/sync_benchmark_readme.py --check
+```
 
-Update this file whenever a benchmark artifact is retained or a comparison
-baseline changes:
+Machine-readable evidence is under [`benchmarks/results/`](results/). Promotion
+requirements are defined in [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
+Reverse-chronological changes are in [`benchmarks/CHANGELOG.md`](CHANGELOG.md).
+The previous experiment notebook is preserved in
+[`benchmarks/HISTORY.md`](HISTORY.md).
 
-1. Update the `Last updated` line at the top.
-2. Add or replace the row for the relevant `(model, quant, backend, workload,
-   policy)` tuple.
-3. Link the compact JSON artifact in `benchmarks/results/` when the row is a
-   hipEngine measurement.
-4. Include correctness status, memory, command/source, and the date the row was
-   last refreshed.
-5. Add a short reverse-chronological one-liner to `benchmarks/CHANGELOG.md` in the form: model / quant / workload, metric `old -> new`, percent delta, reason/change, and artifact/source.
-6. Keep blocked/rejected attempts in JSON artifacts and `WORKLOG.md`; do not put
-   them in "current fastest" tables unless clearly marked as blocked/rejected.
+## Status Rules
 
-A row is not retained unless it satisfies `docs/BENCHMARK.md`: exact command,
-hardware/software context, workload shape, correctness gate, repeated-run stats
-where applicable, and post-run quality gates.
+| Status | Meaning | May appear as a repository topline? |
+| --- | --- | --- |
+| **Retained** | The artifact passes the protocol's correctness, provenance, and performance gates. | Yes, for the named protocol only. |
+| **Diagnostic** | The run is useful but has a known comparability, correctness, repetition, or provenance limitation. | No. Link it from the separate diagnostic section; do not place its numbers in a current table. |
+| **Stale** | A measured path, dependency, or required evidence contract changed after the run. | No. It may remain as the last dated snapshot while a refresh is pending. |
+| **Blocked** | No row satisfies the protocol. | No numeric topline. Record the blocker and the next command. |
 
-## README sweep test procedure
+`Latest` means the newest artifact for one exact protocol tuple. A newer
+diagnostic does not replace a retained row. A row is identified by:
 
-Use this procedure for hardware comparison reports such as
-[`7900XTX.md`](7900XTX.md), and for refreshing the hipEngine-vs-llama.cpp sweep
-families represented in this rollup. Unless a row also satisfies the full
-`docs/BENCHMARK.md` correctness/repetition requirements, keep it in the hardware
-report and `WORKLOG.md` as diagnostic rather than promoting it to "current
-fastest".
+```text
+platform + GPU + model fingerprint + quant + KV type + backend +
+workload + concurrency + sampling/speculative policy + timing scope
+```
 
-### 0. Rerunnable W7900/GPU0 README suite
+Documentation-only commits do not make a row stale. Changes to a measured
+runtime path, model, quant, KV policy, compiler/runtime, benchmark timing scope,
+correctness gate, or comparison engine do.
 
-The exact local runner for the W7900/GPU0 README refresh is
-[`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh).
-It pins the current host's device mapping and binary paths while keeping repo
-assets relative to `$REPO_ROOT` rather than leaving them implicit in shell
-history:
+New server, retained PARO, GGUF, and micro artifacts must embed a valid
+`hipengine_artifact_provenance` v1 block. The canonical schema is
+[`schemas/artifact-provenance.schema.json`](schemas/artifact-provenance.schema.json).
+For retained model-performance rows, the resolved backend must be concrete,
+the selected target/device must be recorded, the model fingerprint must refer
+to existing content, and staged/unstaged/untracked dirtiness must all be false.
+Legacy provenance fields remain useful diagnostics but do not satisfy this
+contract for a new row.
 
-- GPU target: `HIP_VISIBLE_DEVICES=0`, the AMD Radeon Pro W7900.
-- amdgpu VRAM sampler target: `card1` (`44.984 GiB` on this host).
-- llama.cpp HIP device: `-dev ROCm0` after `HIP_VISIBLE_DEVICES=0` hides the
-  RX 7900 XTX.
-- llama.cpp Vulkan device: `-dev Vulkan0` / concurrency `--gpu 0`, which maps to
-  the W7900 in `llama-bench --list-devices` and `llama-server` on this host.
-- hipEngine stack: clean TheRock ROCm 7.13 from
-  `/home/lhl/mambaforge/envs/therock/bin/python3.12`.
-- vLLM stack: local source build in `/home/lhl/mambaforge/envs/vllm`, served via
-  OpenAI API on `127.0.0.1:8008`.
-- llama.cpp Q4_K_M model default: `$REPO_ROOT/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
-  with a host-local fallback to `/home/lhl/hipEngine/...` when running from a
-  clean detached worktree that does not contain the large untracked GGUF. Set
-  `LLAMACPP_Q4KM_MODEL=/path/to/model.gguf` to override explicitly.
+New non-streaming hipEngine server rows also require a complete
+`hipengine.generation_shape` v1 rollup. Route caps retain their
+`queue_requests` scope; queue request/prompt counts, actual backend calls and
+widths, and verifier rows remain separate and are deduplicated by queue-group
+ID. Client concurrency is never substituted for backend or verifier width.
 
-Recommended clean-worktree invocation:
+Direct/server comparisons additionally require the
+`hipengine_exact_token_oracle` v1 gate from
+[`scripts/exact_token_generation.py`](../scripts/exact_token_generation.py).
+The committed 512-ID fixture feeds both PARO/GGUF direct generation and
+`/v1/completions` without detokenization. HTTP input hashes/counts, exact usage,
+and every generated ID must match the direct oracle. The formal contract is
+[`schemas/exact-token-oracle.schema.json`](schemas/exact-token-oracle.schema.json).
+The 2026-07-11 gfx1151 PARO 512/128 correctness gate passed; it is not a
+throughput row and changes no topline.
+
+Unified direct/server reports use `hipengine_benchmark_matrix` v1 from
+[`scripts/benchmark_matrix.py`](../scripts/benchmark_matrix.py). The matrix
+recomputes exact-ID denominators, enforces timing ownership, preserves backend
+and verifier shapes, and attaches memory/profiler summaries. Its schemas are
+[`benchmark-matrix.schema.json`](schemas/benchmark-matrix.schema.json) and
+[`benchmark-matrix-manifest.schema.json`](schemas/benchmark-matrix-manifest.schema.json).
+The committed SOL-E5 PARO manifest is diagnostic: direct-call wall includes
+model/session setup while HTTP is client-E2E, so the report intentionally emits
+no direct/server speed ratio. A retained matrix requires the normal clean,
+repeated, scoped-timing, memory, profiler, correctness, and shape gates.
+
+The accepted gfx1151 GGUF eager correctness gate is
+[`2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json`](results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json).
+For the exact Q4_K_M file and `[9707] * 512` prompt, llama.cpp and hipEngine's
+bulk-prefill/eager route both emit five `9707` IDs. Four teacher-forced eager
+transitions are byte-exact against fresh serial-prefix recomputation for all 40
+layer outputs, 30 Conv/GDN state pairs, and 10 live K/V layer pairs. This
+classifies the repeated stream as valid model behavior on gfx1151; it is a
+correctness artifact with `performance_claim=false`, not a throughput row.
+
+The accepted SOL-G2 fused/chain prefill gate is
+[`2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json`](results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json).
+At committed revision `332f01f8`, the GGUF-only raw-Q/K-plus-scale split chain
+matches fused production prefill in all 6/6 clean gfx1151 cases: the exact
+17-token greeting, repeated-token 512, the 1024/1025 segment threshold, and the
+4095/4096 four-chunk boundary. Sampled tokens, FP32 hidden seeds, and all 30
+resident Conv/GDN state pairs are byte-exact; greeting and 512 also match every
+captured layer output. The earlier
+[`104fad87` prefix artifact](results/2026-07-11-sol-g2-gfx1151-gdn-prefill-greeting-prefix.json)
+preserves the normalized-Q/K layer-0 recurrent RED. Both artifacts set
+`performance_claim=false`; the repeated, interleaved G3 result below selects
+the default.
+
+That G3 protocol is now complete in
+[`2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json`](results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json).
+From a clean detached `ad773eba` worktree with one warmup and four balanced
+same-session repetitions per mode/context, the exact chain is slower than fused:
+`1248.436` versus `1186.842 ms` at 512 (**+5.19% wall**) and `10870.022` versus
+`10187.300 ms` at 4096 (**+6.70% wall**). Every timed pair returns exact token
+`9707`, and the artifact links the accepted state matrix by SHA-256. This is a
+valid retained negative result (`performance_claim=true`): fused remains the
+default, and the exact split remains a diagnostic/unfused fallback.
+
+SOL-G4 is accepted on gfx1151 in
+[`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
+At clean detached `5f4c6561`, the exact repacked/GEMV eager route measures
+**49.285 tok/s** (`20.290 ms/token`) for `[9707] * 512` plus 128 timed decode
+steps, using one discarded and four measured full runs; every recorded token is
+9707 and the artifact links the G1 state oracle by SHA-256. The same synchronized
+p8/d32 protocol localizes the first eager performance change to direct-parent
+commit `4499fb13`: **17.799 -> 54.963 tok/s** (**+208.79%, 3.088x**) from loaded
+HIP-library memoization. Current p8 remains **55.208 tok/s** (+0.45%). A
+24-step marker-only profile records **18.402 ms GPU kernels/token** versus
+**20.766 ms profiled host wall/token** (88.62%); raw trace CSVs remain under
+`/tmp`, while their hashes and the full family Amdahl table are retained.
+
+The current TheRock HIP 7.15 / TuneD refresh promotes explicit wave/block
+indexing for the BF16 Q8T16 dual-split leaf at clean detached `e20cdc13`.
+Against clean scalar parent `8184355c`, a control/candidate/control p512/d128
+eager A/B moves **20.5342 -> 20.4709 ms/token** (**-0.308%**, **48.699 ->
+48.850 tok/s**) with non-overlapping ranges and every token exact. Matching
+24-step profiles move the named leaf **4245.4 -> 4188.2 us/token** (**-1.349%**)
+and total marked GPU time **19256.1 -> 19199.2 us/token** (**-0.296%**). The
+state-bound graph path also improves **20.5736 -> 20.5324 ms/token** across
+commits, but current G5 runs on both commits find graph slightly slower than
+same-run eager; this refresh makes no new graph-over-eager speed claim.
+
+The historical HIP 7.13 SOL-G5 result is accepted on gfx1151 in
+[`2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
+At clean detached `7f611fe3`, the production state-bound graph matches eager
+byte-for-byte for all 128 launches across generated tokens, the FP32 hidden
+seed, 30 Conv/GDN state pairs, and 10 live BF16 K/V pairs. One warmup and four
+rotating same-session repetitions measure capture-inclusive graph wall at
+**20.311 ms/token** (**49.233 tok/s**) versus same-run eager at
+**20.334 ms/token** (**49.178 tok/s**), a **+0.112%** throughput improvement.
+The one capture/instantiate and final destroy are charged to every 128-token
+window. Per-token recapture is rejected at **35.429 ms/token**. That result
+introduced the graph default only for non-streaming c1 greedy gfx1151 windows
+with at least 128 remaining transitions. The current HIP 7.15 refresh above
+supersedes its speed-policy conclusion: graph replay remains exact but is
+slightly slower than same-run eager on both clean commits. The rollback remains
+available and a scoped default-policy follow-up is required.
+
+SOL-G6 is accepted on gfx1151 in
+[`2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json`](results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json).
+At clean detached `d70c9464`, the Q4_K_M p512/d128 BF16-KV production graph
+session owns **21.478 GiB**, leaving **2.522 GiB** to the explicit 24 GiB gate.
+Its 733 planned source tensors have zero raw+replacement duplicates and zero
+enabled optional replacement sidecars: **20.461 GiB** is replacement layout,
+**0.503 GiB** is the required raw token embedding, and **0.097 GiB** is dense
+metadata. Decode scratch is **0.080 GiB** (including **15 MiB** KV and
+**63.75 MiB** linear state), while session/prefill buffers are **0.337 GiB**.
+Production `record_steps=0` graph capture adds no tracked buffer and a measured
+**308 KiB** HIP graph/exec delta. G5 remains the cryptographically linked exact
+and performance non-regression gate; this G6 artifact makes no new speed claim.
+
+SOL-P2 is accepted on gfx1151 in
+[`2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json`](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json).
+At clean detached `6f1910c9`, exact prompt lengths 449 through 512 shrink from
+c8 to c1 without compaction. One row retires through EOS; explicit
+cancellations create middle, tail, then front holes while every post-event
+width remains exact. All eight generated sequences, all 30 linear recurrent
+state families, and all 10 live full-attention K/V families match independent
+c1. Ragged prefill uses the explicitly labelled `per_segment_ragged_exact`
+fallback; this is a correctness artifact with `performance_claim=false`.
+
+## Platform Index
+
+| Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
+| --- | --- | --- | --- | --- | --- | --- |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Diagnostic link only | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
+| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`. The repeated `9707` stream is externally validated on the exact model at gfx1151, but this old gfx1100 run predates the four-step state/KV oracle and current provenance contract. | Diagnostic link only | Run the G1 oracle and repeated performance protocol on W7900 at one clean revision; do not transfer the gfx1151 state result as hardware evidence. |
+| Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
+| Radeon Pro W7900, gfx1100 | GGUF MTP exact/default and `llama-compat` transfer | 2026-07-12 | clean hipEngine oracle/compat `b81102b4`, clean exact `d50aa4d1`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M and prompt-suite fingerprints retained; llama.cpp HIP binary `263cc04a5` build 9600 | **Retained for the named hipEngine contracts**: exact B3 is **45.96 vs 34.49 AR tok/s (1.3328x)**; explicit accuracy-traded `llama-compat` B2 is **52.58 vs 34.28 AR tok/s (1.5337x)** with **88.12% train / 76.00% heldout** draft acceptance. The W7900 hidden/Conv/GDN/KV oracle passes. llama.cpp HIP is a separate `performance_claim=false` diagnostic at **119.05 vs 81.47 tok/s**. | Yes, qualified | Rerun after GGUF/MTP route or verifier math, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
+| Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
+| Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained reference**: all six shapes pass clean provenance, finite/stable-ID correctness, five-sample variance, matched Q4_K_M identity, and the four-column promotion gate. The current table replaces only its PARO column with the separately retained recovery below. | Yes | Rerun GGUF/llama columns after a measured path/build/stack change; rerun all four together when a fully matched refresh is required. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1 prefill recovery | 2026-07-12 | clean control `240c5daf` and candidate `9944e481`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained**: exact linear/MoE 256-row architecture profile improves all six prefill shapes by **14.35%-51.11%**, leaves decode within **-0.25%..+0.26%**, and matches final hidden plus all Conv/GDN/KV state at 512/4K/128K. | Yes, PARO column | Rerun after PARO prefill chunk/staging/math, compiler, model, prompt, or tuned/clock policy changes; validate separately on gfx1100 before transfer. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO 4K-128K AOTriton queue isolation | 2026-07-12 | clean same-commit control/candidate `01e2cec5`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained at 4K/32K/64K/128K**: event-linked isolated AOTriton queue improves matched prefill by **13.32%-23.03%**, leaves decode within **-0.16%..+0.12%**, holds tracked peak unchanged, and matches final hidden plus all 30 Conv/GDN and 10 K/V families at every retained shape. The 1K 256-query negative control does not enter isolation and is unchanged. | Yes, PARO column | Validate separately on gfx1100 before transfer; 512/1K remain on the proven-safe caller-stream route. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-11 | hipEngine `c941c158`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: external and production tokens match; four hidden/layer/Conv/GDN/KV checkpoints are finite and byte-exact. `performance_claim=false`; unrelated untracked files are disclosed. | Diagnostic link only | Rerun after eager math/state/KV changes; run separately on W7900 before using it to refresh gfx1100 performance. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q8T16 dual-split wave/block indexing | 2026-07-12 | clean scalar `8184355c` and promoted `e20cdc13`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained**: clean p512/d128 eager **20.5342 -> 20.4709 ms/token** (-0.308%); marked dual-split leaf **4245.4 -> 4188.2 us/token** (-1.349%); graph route **20.5736 -> 20.5324 ms/token** (-0.200%); every token/state gate exact. | Yes, named repeated-token protocol | Rerun after Q8T16 indexing/layout, compiler, graph policy, or gfx1151 launch geometry changes; validate separately on gfx1100 before transfer. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 historical; 2026-07-12 refresh | clean detached hipEngine `7f611fe3` on HIP 7.13; clean `8184355c`/`e20cdc13` on HIP 7.15; exact Q4_K_M fingerprint retained | **Historical retained / current speed-policy stale**: all 128 graph launches remain byte-exact. HIP 7.13 measured +0.112% over eager; both current HIP 7.15 reruns reject at -0.246%/-0.293%. | Current table reports exact diagnostic wall, not a graph-over-eager win | Run a scoped balanced current-stack A/B; restore eager default if graph does not reproduce a win. Validate separately on gfx1100 before any admission. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF replacement-layout residency and 24 GiB-class gate | 2026-07-11 | clean detached hipEngine `d70c9464`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained memory/correctness gate**: 733 unique sources, no raw+replacement duplicates or optional sidecars, 21.478 GiB owned/tracked p512/d128 graph session, 2.522 GiB budget margin. `performance_claim=false`; G5 supplies linked speed non-regression. | Diagnostic link only | Rerun after weight materialization/layout, KV/state, prefill scratch, graph allocation, or max-sequence policy changes; context-specific capacity remains separate. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1-c8 shape/routing catalog | 2026-07-11 | clean detached hipEngine `a18ff7bc`; TheRock HIP `7.13.60980-c76140fa27`; exact model and prompt fingerprints retained | **Retained c1 performance and routing correctness**: exact-fixture c1 graph is 66.910 tok/s median; clean c2-c8 native rows all fail independent-c1 equality at index 2 and are explicitly serial. Native rates are diagnostic only. | Yes for c1 exact-fixture graph only | Rerun after c1 graph/prefill changes or any general native c>N algorithm change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO ragged c8-to-c1 lifecycle correctness | 2026-07-11 | clean detached hipEngine `6f1910c9`; TheRock HIP `7.13.60980-c76140fa27`; same exact model/fixture fingerprints as P1 | **Accepted correctness-only gate**: eight token sequences, 30 linear-state families, and 10 full-KV families match c1 through EOS and front/middle/tail sparse cancellation. `performance_claim=false`; ragged prefill uses an exact per-segment fallback. | Diagnostic link only | Rerun after ragged prefill, scheduler retirement, slot/state/KV addressing, or true-c1 decode changes; run independently on W7900. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO/llama.cpp concurrency | 2026-06-15 | measured hipEngine revision not recorded in summary; gfx1151 forced through `HIPENGINE_HIP_ARCH` | **Stale diagnostic**: `performance_claim=false`, mixed quant, and incomplete backend provenance | Diagnostic link only | Rerun c=1..8 plus shrinking batches at one clean revision with detected arch and all-choice token counts |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP exact, fixed 10-cycle suite | 2026-07-02 | hipEngine `44c4d3d4`; GGUF Q4_K_M | **Retained** for fixed-cycle exact/default semantics | Yes | Rerun when the exact MTP route or verifier math changes |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF MTP `llama-compat`, natural24 direct | 2026-07-03 | hipEngine `ca571bf6`; GGUF Q4_K_M | **Retained for the compatibility contract**: direct-commit/dp4a semantics are not serial-prefix-equivalent | Yes, qualified | Rerun when the compatibility route, budget, or output horizon changes |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF OpenAI server automatic-route gate | 2026-07-11 | tracked-clean hipEngine `d2b1e742`; TheRock HIP `7.13.60980-c76140fa27`; exact GGUF and prompt-suite fingerprints retained; unrelated untracked files disclosed | **Diagnostic correctness rejection**: compatibility MTP is faster at c1/c2 but changes true-AR IDs on heldouts, so it cannot select automatic routing. One c8 AR repetition also exposes the separate exact-concurrency blocker. | Diagnostic link only | Implement an exact/default server MTP hook, then rerun full plus category-heldout realized-group economics before admitting it to `auto`. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-12 | clean detached hipEngine `50bea8f3`, TheRock ROCm `7.15.0a20260711`, kernel `7.1.3-2-cachyos`, RADV/Mesa `26.1.4`, corrected gfx1151 device wheels | **Matched and strict matrices retained**: each passes 22/22 comparisons and 232 burst GPU rows after portable q8_1 RNE/ties-away rounding eliminates the systematic scale mismatch | Linked, not copied here | Run the portable shader's strict gate on gfx1100 when W7900 access returns; otherwise rerun after a timed kernel/harness, ROCm, Mesa, or clock-policy change |
+| Radeon Pro W7900, gfx1100 | HIP versus Vulkan timing-contract v2 micro matrix | 2026-07-11 | clean hipEngine `c57f21b5`; TheRock ROCm `7.15.0a20260711`; RADV/Mesa `26.1.4` | **Retained**, 22/22 comparisons and 232 burst GPU rows pass provenance, correctness, exact-matrix, device, and clock gates | Linked, not copied here | Rerun after a timed kernel/harness, ROCm, Mesa, or device clock-policy change |
+
+## Current Eligible Toplines
+
+Only rows with an eligible evidence status appear in this section. The sync
+script copies this marked block into the root README byte-for-byte.
+
+### gfx1151 model throughput
+
+The GGUF and llama.cpp columns are the clean 2026-07-11 matched refresh at
+hipEngine `d1231ee0`. PARO 512/1K are the clean six-shape exact recovery at
+`9944e481`; 4K and 32K-128K are the clean scoped AOTriton queue-isolation
+refresh at `01e2cec5`, all on TheRock HIP 7.15 and TuneD
+`accelerator-performance`. Each hipEngine shape uses its own right-sized
+resident session, two discarded warmups, and five measured repetitions; the
+tables report medians. The 1K follow-up shared a max-32K session and was a
+structural negative control: both settings use the same 256-query route, so it
+does not replace the existing right-sized 1K row.
+llama.cpp uses one internal warmup plus five samples per split prefill/decode
+phase. The linked artifacts check sample variance, model/build/device identity,
+clean provenance, and path-specific correctness before setting
+`performance_claim=true`. Because the PARO quant/path differs from the other
+three columns, this table is a throughput rollup, not a same-math four-engine
+A/B.
+
+Bold marks the best raw value in each row (highest throughput or lowest
+reported peak memory). It is descriptive only: PARO uses W4 PARO rather than
+Q4_K_M, and the memory columns do not share one allocator scope.
+
+<!-- BEGIN TOPLINE:GFX1151_SWEEP -->
+#### Prefill tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **1140.101** | 430.767 | 1061.260 | 1067.770 |
+| 1K/128 | **1208.343** | 437.467 | 1043.230 | 1069.870 |
+| 4K/128 | **1089.031** | 403.946 | 1009.240 | 1016.580 |
+| 32K/128 | **906.145** | 369.942 | 743.547 | 814.923 |
+| 64K/128 | **716.775** | 334.395 | 573.611 | 660.974 |
+| 128K/128 | 474.641 | 270.601 | 390.441 | **476.788** |
+
+#### Decode tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **66.767** | 49.536 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 52.192 | 50.818 | **62.136** |
+| 4K/128 | **62.715** | 52.999 | 50.126 | 60.097 |
+| 32K/128 | 50.342 | 43.947 | 44.240 | **51.319** |
+| 64K/128 | 42.094 | 37.477 | 39.326 | **44.422** |
+| 128K/128 | 30.386 | 27.862 | 32.114 | **34.948** |
+
+#### Peak memory GiB
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
+| 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
+| 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
+| 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
+| 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
+| 128K/128 | **22.124** | 25.493 | 23.862 | 24.254 |
+<!-- END TOPLINE:GFX1151_SWEEP -->
+
+The PARO column is W4 PARO/BF16 KV. The other three columns use the same
+Q4_K_M GGUF; hipEngine uses BF16 KV and llama.cpp uses f16 KV. Peak-memory
+scopes differ: hipEngine reports its tracked allocator high-water, while
+llama.cpp reports absolute whole-device amdgpu GTT used, sampled every 10 ms.
+Use the memory table for within-column context growth; small cross-column
+deltas are not allocator-efficiency claims. hipEngine load and graph capture
+are excluded from phase throughput, while the separate SOL-G5 row below is the
+capture-inclusive GGUF graph proof.
+
+Artifacts: [PARO exact prefill recovery](results/2026-07-12-gfx1151-paro-prefill-recovery.json),
+[PARO 4K-128K AOTriton queue isolation](results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
+[accepted July 11 matched summary](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
+[hipEngine PARO](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
+[hipEngine GGUF](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
+[llama.cpp HIP](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json),
+and [llama.cpp Vulkan](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json).
+
+### Speculative decode
+
+The public table includes only contracts with a true same-protocol AR control.
+The exact/default and `llama-compat` columns are intentionally separate:
+exact/default is the semantic control, while `llama-compat` is the closer
+structural comparison with llama.cpp's B2 natural-output-horizon route.
+
+<!-- BEGIN TOPLINE:SPECULATIVE -->
+#### GGUF MTP comparison, Radeon Pro W7900/gfx1100
+
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: | ---: |
+| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Decode | 34.49 tok/s fixed / 34.28 tok/s natural24 | **45.96 tok/s** | **52.58 tok/s** | 119.05 tok/s |
+| Own true AR | same route | 34.49 tok/s | 34.28 tok/s | 81.47 tok/s |
+| MTP / own AR | 1.0000x | **1.3328x** | **1.5337x** | 1.4612x |
+| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
+| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
+| MTP cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+
+Exact/default and `llama-compat` both pass the complete ten-prompt gfx1100
+transfer gate against their own true no-MTP controls. Exact is the semantic
+control. `llama-compat` is explicit-only because direct partial commit is not
+serial-prefix-equivalent. The exact row uses a fixed ten-cycle horizon; the AR,
+`llama-compat`, and llama.cpp natural24 rows use a 24-token output cap. Do not
+rank fixed-cycle exact directly against natural24 as one protocol. The
+llama.cpp column uses server-reported decode timing from prebuilt HIP binary
+`263cc04a5`/build 9600 and remains an external diagnostic with
+`performance_claim=false`.
+
+##### W7900 `llama-compat` full-suite transfer gate
+
+| Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full | 10 | 34.28 | **52.58** | **1.5337x** | 82.95% | 60.83% | 19.045 ms |
+| Train | 6 | 34.30 | **54.06** | **1.5761x** | **88.12%** | 61.81% | 18.522 ms |
+| Heldout | 4 | 34.25 | **50.49** | **1.4744x** | **76.00%** | 59.38% | 19.830 ms |
+| `code` | 4 | 34.12 | **58.01** | **1.7001x** | 95.38% | 64.58% | 17.263 ms |
+| `general_en` | 2 | 34.29 | **49.74** | **1.4505x** | 75.68% | 58.33% | 20.131 ms |
+| `general_ja` | 2 | 34.43 | **47.05** | **1.3665x** | 69.23% | 56.25% | 21.283 ms |
+| `mixed_ja_en` | 2 | 34.45 | **51.93** | **1.5073x** | 82.86% | 60.42% | 19.286 ms |
+
+All four categories and the heldout split beat true AR. Train/heldout draft
+acceptance is **88.12% / 76.00%**; the gap is disclosed rather than averaged
+away. This is a speed transfer result for the explicit accuracy-traded
+compatibility contract, not evidence that `llama-compat` should become the
+automatic/default route.
+
+#### GGUF MTP comparison, Radeon 8060S/gfx1151
+
+| Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| --- | ---: | ---: | ---: |
+| Headline route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
+| Headline MTP decode | 61.98 tok/s (1.1312x own AR) | 71.52 tok/s (1.3055x own AR) | 71.91 tok/s (1.3835x own AR) |
+| Matched natural24 B2 MTP decode | 52.04 tok/s (diagnostic) | 71.52 tok/s | 71.91 tok/s |
+| Matched natural24 own AR | 54.80 tok/s | 54.79 tok/s | 51.98 tok/s |
+| Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
+| State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+
+`llama-compat` is the closer 1:1 performance comparison with llama.cpp on
+gfx1151 because both use B2 and the natural24 output horizon. It remains a
+separate semantic contract and is not serial-prefix-equivalent. The
+locally instrumented llama.cpp HIP column is a dirty-source diagnostic
+(`performance_claim=false`), not a promoted standalone topline. The exact B5
+headline uses a different fixed-cycle horizon and must not be ranked directly
+against the two natural24 columns; its matched natural24 B2 control is shown
+separately.
+
+#### Dense PARO DFlash
+
+| Path | Platform and protocol | Result | Evidence status |
+| --- | --- | ---: | --- |
+| DFlash B=4 online-gated | W7900/gfx1100; Qwen3.6-27B PARO target plus Qwen3.6-27B DFlash drafter; 9 prompts; 64 decode tokens | 40.10 vs 32.57 AR tok/s, **1.231x** | Retained under the recorded DFlash gate; source tree was dirty and must be refreshed before changing the claim |
+<!-- END TOPLINE:SPECULATIVE -->
+
+Artifacts: [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
+[DFlash](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
+[gfx1151 exact MTP](results/2026-07-02-ar-mtp-default-parallelattn-full.json), and
+[gfx1151 `llama-compat` MTP](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
+The gfx1151 matched natural24 controls are [exact/default B1-B5](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
+and the [llama.cpp HIP B2 stage rerun](results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
+
+The current clean gfx1151 PARO DFlash profile remains outside this eligible
+table: it is exact but measures only `9.676` versus `65.266 tok/s` AR
+(`0.14825x`), so DFlash stays default-off. Branch-copy is faster but diverges
+at generated token 1, and fused target LM-head is 5.16% slower. The diagnostic
+artifact is [SOL-S4](results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json).
+
+### GGUF decode
+
+These are exact repeated-token SOL-G4/G5 rows, not natural-prompt quality or
+speculative-economics results. The graph delta uses its same-run eager control;
+the Q8T16 row is the current eager timing while SOL-G4 remains the historical
+revision-bisect/Amdahl baseline.
+
+<!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
+| Path | Platform and protocol | Result | Evidence status |
+| --- | --- | ---: | --- |
+| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; TheRock HIP 7.15; TuneD accelerator-performance; clean scalar/candidate/scalar, 1 discarded + 4 measured runs per leg; 128 eager steps; graph off | **48.850 tok/s** (`20.471 ms/token`), **+0.309%** vs clean scalar control | Retained for this exact repeated-token protocol; control/candidate ranges do not overlap, every output ID is 9707, and the G1 hidden/state/KV oracle is linked |
+| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same current model/KV/prompt/stack; 1 warmup + 4 measured rotating same-session runs; 128 steps; capture and destroy charged | **48.704 tok/s** (`20.532 ms/token`), **-0.293%** vs same-run eager; **+0.201%** vs scalar graph | Exact 128/128 state/KV/token replay, but current G5 rejects a graph-over-eager speed claim; graph default policy is tracked separately |
+<!-- END TOPLINE:GFX1151_GGUF_EAGER -->
+
+Artifacts: [`Q8T16 wave/block production A/B`](results/2026-07-12-gfx1151-q8-t16-waveblock-production.json),
+[`SOL-G4 eager audit`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json),
+and [`SOL-G5 production graph audit`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
+
+### PARO concurrency and production routing
+
+The current gfx1151 concurrency table publishes only the exact production
+classification. c1 has a retained exact-fixture timing; c2-c8 use independent
+width-1 sessions because every native candidate fails the independent-c1
+sequence at generated index 2. This is not a cross-engine concurrency-speed
+claim, and the rejected native rates remain in the detailed record below.
+
+<!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
+| Client c | Production backend groups | Exact classification | Retained aggregate decode |
+| ---: | --- | --- | ---: |
+| 1 | `1` | c1 oracle / accepted | **66.910 tok/s** (`14.946 ms/token`) |
+| 2 | `1+1` | explicitly serial | no separate c>N claim |
+| 3 | `1+1+1` | explicitly serial | no separate c>N claim |
+| 4 | `1+1+1+1` | explicitly serial | no separate c>N claim |
+| 5 | five width-1 groups | explicitly serial | no separate c>N claim |
+| 6 | six width-1 groups | explicitly serial | no separate c>N claim |
+| 7 | seven width-1 groups | explicitly serial | no separate c>N claim |
+| 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
+<!-- END TOPLINE:GFX1151_PARO_CURRENT -->
+
+Artifacts: [P1 exact catalog](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json)
+and [P2 ragged lifecycle](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json).
+
+The retained gfx1100 and gfx1151 HIP/Vulkan timing-contract v2 micro matrices
+are linked from the platform index and
+[`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); they are not
+model-throughput toplines.
+
+## Platform Records And Diagnostics
+
+The dated records below preserve protocols, blockers, commands, and artifact
+links without publishing their numeric rows as current results. Their removed
+tables remain recoverable from the linked compact artifacts, changelog, and
+[`benchmarks/HISTORY.md`](HISTORY.md).
+
+### W7900 PARO context capacity, 2026-05-19
+
+**Status: stale diagnostic.** The artifact records hipEngine `ae229513`, exact
+commands, immutable model snapshots, tracked allocator memory, sampled HIP VRAM,
+retained KV bytes, and no BF16 shadow. It does not record the compiler version,
+and its correctness gate uses a deterministic Qwen3.5 fixture rather than a
+Qwen3.6 long-rollout evaluation.
+
+<!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
+No eligible capacity row; the dated artifact remains linked below pending rerun.
+<!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
+
+Run record:
+
+| Field | Value |
+| --- | --- |
+| GPU/backend | AMD Radeon Pro W7900, gfx1100, `hip_gfx1100` |
+| Source | `ae22951377865f0db65b57c4641dc82bdf4db3f9`; artifact write had only `README.md` modified |
+| Model | Qwen3.6 packed PARO snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e`; W4 PARO; 40 layers |
+| Prompt/decode | Repeated token `9707`; 128 or 256K prompt; 128 decode tokens; 4 warmup decode tokens |
+| Prefill | AOTriton threshold 512; chunks `1024/1024/3072/1024/1024` for linear/MoE/full-attention query/post/RoPE |
+| KV | BF16 or INT8 per token/head with FP16 scales; fixed paged KV; no persistent BF16 shadow |
+| Memory | Sampled HIP whole-device peak and hipEngine tracked allocator peak are different scopes; retained KV is decimal GB as reported by the artifact |
+| Artifact | [`2026-05-19...memory-diagnostic.json`](results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json) |
+
+The artifact embeds all three original commands. The 256K INT8 command was:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --prompt-length 262144 --token-id 9707 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 3072 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json benchmarks/results/<date>-w7900-paro-256k-int8-kv.json
+```
+
+No artifact in the repository supports the former llama.cpp Q8_0 memory values
+printed in the root README. Those numeric tables were removed. A future
+llama.cpp memory row needs the model fingerprint, llama.cpp commit/build, GPU,
+exact command, whole-card sampling method, and compact artifact.
+
+### W7900 PARO gfx1151 transfer gate, 2026-07-12
+
+**Status: retained scoped-default validation and retained negative transfer
+decision.** Clean detached `255e5aca` on W7900/GPU0 used the exact packed W4
+PARO/BF16-KV model, repeated token `9707`, graph decode, TheRock HIP 7.15, two
+discarded plus five measured runs per leg, and cached JIT. Because the first
+off/on/off AOTriton sequence drifted with run order, the reverse on/off/on
+sequence completes a balanced 15-sample comparison per mode.
+
+| Workload | Same-stream prefill | Isolated prefill | Prefill delta | Total measured wall reduction |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `2843.083` | `2889.650` | **+1.638%** | **1.653%** |
+| 1K/128 | `2951.433` | `2966.051` | **+0.495%** | **0.127%** |
+| 4K/128 | `2924.276` | `2929.897` | **+0.192%** | **0.562%** |
+
+At 512, 1K, and 4K the isolated and same-stream legs match sampled seed, final
+hidden, all 30 Conv/GDN state families, and all 10 live K/V families
+byte-for-byte. This matrix was measured before queue isolation was narrowed by
+query shape, so its isolated leg includes the 256-query 512/1K route as well as
+the 4096-query 4K route. The merged runtime keeps 256-query AOTriton on the
+caller stream and isolates query rows >=512. The 4K result therefore directly
+validates the merged gfx1100 default; 512/1K remain supporting exact transfer
+diagnostics rather than claims for the final route. No additional runtime
+change is needed.
+
+The architecture-specific chunk profile does not transfer. With AOTriton queue
+mode held equally same-stream, linear/MoE-256 changes prefill by
+`-7.723%/-8.782%/-6.398%` at 512/1K/4K. Its `0.58%-1.72%` tracked-memory
+reduction does not offset disjoint, uniformly slower throughput ranges, so
+`gfx1100` keeps the generic chunk policy.
+
+Artifact:
+[`2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`](results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json).
+
+### W7900 model sweep, 2026-07-07
+
+**Status: stale diagnostic.** The linked artifact records the last complete
+same-host sweep. It is not a retained performance claim. hipEngine PARO is W4 PARO with
+BF16 KV; the other three columns use Q4_K_M GGUF with BF16/f16 KV. The PARO
+column is therefore not a same-quant comparison. The GGUF column repeatedly
+selected token `9707`. SOL-G1 proves that exact stream matches llama.cpp and
+has byte-exact four-step state on gfx1151, but the old W7900 row predates that
+hardware-local gate and sets `performance_claim=false`. Do not use its
+throughput as a baseline until the sweep and oracle are rerun together on
+W7900.
+
+<!-- BEGIN TOPLINE:W7900_SWEEP -->
+No eligible model-throughput row; the `performance_claim=false` sweep remains linked below pending correctness rerun.
+<!-- END TOPLINE:W7900_SWEEP -->
+
+Run record:
+
+| Field | Value |
+| --- | --- |
+| GPU | AMD Radeon Pro W7900, gfx1100, `HIP_VISIBLE_DEVICES=0`, amdgpu `card1`, 44.984 GiB |
+| hipEngine source | Clean detached worktree at `b4edca09f9553e5b3de755d2d0ada9e30f8c7d1e` (2026-07-07) |
+| hipEngine build | TheRock HIP `7.13.26162-1140233ffe`; cached JIT required during measurement |
+| hipEngine model/session | Qwen3.6-35B-A3B PARO snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; Qwen3.6-35B-A3B MTP-bearing `UD-Q4_K_M.gguf`; one resident session allocated for `128K/128` |
+| hipEngine repetitions | Repeated-token prompts; 2 discarded warmup runs and 5 measured runs per shape; medians reported; PARO uses 4 warmup decode tokens and graph replay; GGUF uses 1 warmup decode token and eager decode |
+| llama.cpp | Commit `263cc04a5`, build 9600; `-ngl 99 -fa 1 -ctk f16 -ctv f16`; `ROCm0` or `Vulkan0`; one `llama-bench` repetition per split prefill/decode phase |
+| Memory scope | hipEngine tracked allocator peak; llama.cpp whole-card amdgpu peak sampled every 10 ms. Compare memory columns only with this scope difference in view. |
+| Refresh runner | [`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh) |
+| Summary | [`2026-07-07...summary.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) |
+
+Component artifacts: [hipEngine PARO](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json),
+[hipEngine GGUF](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json),
+[llama.cpp HIP](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json), and
+[llama.cpp Vulkan](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json).
+
+### Superseded gfx1151 model sweep, 2026-06-15
+
+**Status: superseded diagnostic.** This was one measured run per shape with no
+measured warmup, incomplete summary provenance, and unusable 512 MiB aperture
+memory readings for llama.cpp. The accepted 2026-07-11 sweep above replaces
+every public row with five-sample, clean-provenance evidence and proper GTT
+sampling. Keep the old record only for history.
+
+Artifacts: [old summary](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json),
+[hipEngine PARO](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json),
+[hipEngine GGUF](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json),
+[llama.cpp HIP](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json),
+and [llama.cpp Vulkan](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json).
+
+### W7900 concurrency, 2026-07-07
+
+**Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV, llama.cpp uses Vulkan
+Q4_K_M/f16 KV, and vLLM uses GPTQ Int4. hipEngine and llama.cpp report backend
+decode timing; vLLM reports OpenAI client wall throughput. The artifact exposes
+scaling behavior within each column, not an apples-to-apples engine ranking.
+
+<!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
+No eligible concurrency row; the mixed-quant, mixed-timing sweep remains linked below pending rerun.
+<!-- END TOPLINE:W7900_CONCURRENCY -->
+
+Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. hipEngine
+`c=1` uses the single-sequence graph-replay benchmark and `c>1` uses the native
+batch benchmark. llama.cpp restarts `llama-server` for each concurrency and
+repetition with `-np c -c 1024*c`. vLLM uses the OpenAI completions endpoint.
+
+Artifacts: [hipEngine](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json),
+[llama.cpp Vulkan](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json),
+[vLLM](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json), and
+[combined summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json).
+
+### gfx1151 PARO exact shape/routing catalog, 2026-07-11
+
+**Status: retained for c1 performance, c1-c8 routing correctness, and production
+lifecycle safety.** P1 ran from clean detached hipEngine `a18ff7bc`; P2 ran from
+clean detached `6f1910c9` on the same Radeon 8060S and exact model/fixture.
+P1 uses the same 512-token row at every width and compares 137 generated IDs
+against true single-request sessions. P2 uses ragged lengths 449 through 512
+and checks every persistent state/KV family through c8-to-c1 retirement.
+
+No eligible native-batch timing row exists. The c2-c8 native measurements below
+are correctness-rejected diagnostics; production uses the exact serial groups
+shown in the current concurrency table above.
+
+Protocol: Qwen3.6-35B-A3B PARO snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV, 40 layers,
+8 warmup decode steps, 128 measured decode steps, and greedy sampling. Exact
+prompt-ID SHA-256 is `b162b2d0...2388`; model fingerprint is
+`995a8c67...d917`. c1 is the median of three fresh processes
+(`66.948/66.754/66.910 tok/s`). c2-c8 have one diagnostic native timing each;
+correctness rejection makes more repetitions immaterial.
+
+Rejected native diagnostics:
+
+| c | Candidate shape | Equal prefix per row | Aggregate tok/s | Decision |
+| ---: | --- | --- | ---: | --- |
+| 2 | full native, selected-c1 MoE, batch-GEMV output | `2,2` | 78.525 | reject at index 2 (`17` vs `220`) |
+| 3 | rowchunk2 full attention, selected-c1 MoE | `2,2,2` | 87.472 | reject at index 2 |
+| 4 | rowchunk2 full attention, selected-c1 MoE | `2 x4` | 99.641 | reject at index 2 |
+| 5 | rowchunk2 full attention, selected-c1 MoE | `2 x5` | 102.178 | reject at index 2 |
+| 6 | selected-layer rowchunk2, selected-c1 MoE | `2 x6` | 109.806 | reject at index 2 |
+| 7 | rowchunk2 full attention, selected-c1 MoE | `2 x7` | 109.580 | reject at index 2 |
+| 8 | rowchunk2 full attention, selected-c1 MoE | `2 x8` | 115.508 | reject at index 2 |
+
+The c8 teacher-forced bisect keeps packed-prefill hidden, recurrent state, and
+full-attention KV bit-exact. On decode step 0, the selected-c1 route first
+changes the input/state of linear layer 4; the visible token flips on the next
+step. Grouped-compact produces the correct token at index 2 but fails the full
+shrinking sequence at index 4, so it is not a replacement default.
+
+The retained P2 lifecycle gate keeps physical slots sparse and un-compacted.
+Slot 3 exits by EOS at c8; later explicit cancellation creates middle, tail,
+and front holes while slot 4 survives to c1. Every generated sequence, all 30
+linear Conv/GDN state pairs, and all 10 live K/V layer pairs are SHA-256 exact
+against independent c1 at each row's retirement boundary. Ragged packed prefill
+selects `per_segment_ragged_exact`; equal-length packed prefill is unchanged.
+
+Run record:
+
+| Field | Value |
+| --- | --- |
+| GPU/backend | AMD Ryzen AI MAX+ 395 / Radeon 8060S, detected gfx1151, target gfx1151 |
+| Source/build | clean hipEngine `a18ff7bc428833a5f3d87ed422d04633abbf0b10`; Python 3.12.13; TheRock HIP `7.13.60980-c76140fa27`; detected/target gfx1151 |
+| Timing scope | Direct resident backend decode wall; c1 median of 3; rejected native rows one run each |
+| Correctness | c1 endpoints repeat across 3/3 runs and match the independent sequence final ID. c2-c8 native rows fail every row at index 2. The production serial route passes ragged c8-to-c1 for 8/8 token/state/KV rows. |
+| Production route | `true_c1_graph` for c1; `scheduler_true_c1_fallback` for c2-c8. No gfx1100 artifact may select this gfx1151 catalog. |
+| Lifecycle route | `per_segment_ragged_exact` prefill plus true-c1 decode; EOS and front/middle/tail sparse cancellation are exact. No throughput claim is attached to the fallback. |
+| Current artifacts | [`P1 exact catalog`](results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json), [`P2 ragged lifecycle`](results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json) |
+| Historical correction | [`2026-07-10...current-diagnostic-summary.json`](results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json), [`true-c1 shrink gate`](results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json) |
+
+Reproduce c2-c8 with `scripts/qwen35_batch_equality_matrix.py --batch-sizes
+2,3,4,5,6,7,8`; use `scripts/qwen35_paro_bench.py --prompt-fixture ...
+--prompt-row 0` for the exact c1 control. Commands and raw SHA-256 values are
+embedded in the compact artifact. Reproduce P2 with
+`scripts/qwen35_batch_shrinking_correctness.py --batch-size 8
+--prompt-lengths 449,458,467,476,485,494,503,512 --steps-per-width 1
+--survivor-slot 4 --eos-slot 3` and the same model/fixture.
+
+### gfx1151 PARO DFlash S4 profile, 2026-07-11
+
+**Status: retained diagnostic profile; no performance claim.** Clean detached
+hipEngine `8eb27215` ran the curated 35B W4 PARO/BF16-KV target and 35B BF16
+DFlash drafter on the first `code_promotion` fixture, B4 and 32 output tokens.
+The exact/default replay route matches all AR IDs and finite-logit gates, but it
+is decisively slower:
+
+| Route | AR tok/s | DFlash tok/s | DFlash/AR | Exact | Decision |
+| --- | ---: | ---: | ---: | --- | --- |
+| Canonical replay, graph auto | 65.266 | 9.676 | 0.148x | yes | S4 profile accepted; speed rejected |
+| Branch-copy commit | 65.269 | 14.450 | 0.221x | no, first mismatch 1 | S5 correctness rejection |
+| Canonical replay + fused target LM-head | 65.223 | 9.177 | 0.141x | yes | S7 performance rejection (-5.16%) |
+
+The exact row accepts 1/114 proposed draft tokens and spends 5.6875 target rows
+per output. Coarse attribution is 74.62% target verify and 25.21% draft; the
+profiling-only synchronized companion identifies target linear layers (37.41%
+of total wall), drafter decoder+LM-head (25.55%), and canonical replay plus
+scratch canonicalization (20.80%) as the largest buckets. Commit scatter is
+0.25%, drafter top-k/readback 0.41%, and accept readback 0.04%.
+
+Exact replay records 30 validated verifier-graph misses and zero hits across
+two shapes. Branch-copy records 27 hits after two captures, but inherits the
+known non-canonical c>N state and fails output equality. S6 is therefore parked:
+wider verification would amplify rejected work, and this c1 row shows no
+multi-request draft group-cap bottleneck. Compact evidence:
+[`2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json`](results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json).
+
+### gfx1151 GGUF server automatic-route gate, 2026-07-11
+
+**Status: diagnostic correctness rejection; no performance claim.** The first
+post-E1/E2/E3 server matrix runs the committed ten-prompt category JSONL and its
+documented four-prompt heldout directly. It records exact choice IDs, canonical
+model/suite provenance, owned batch timing, and realized queue/backend groups.
+The source tree had no staged or unstaged changes; 255 unrelated untracked
+benchmark files are disclosed, so this diagnostic is not a clean retained
+performance row.
+
+| Client c | Realized groups (full suite) | AR median tok/s | Compatibility MTP median tok/s | MTP/AR | Exact vs c1 AR |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | ten c1 groups | 35.92 | 39.35 | 1.095x | fail `general_ja_explain` |
+| 2 | five c2 groups | 56.84 | 58.50 | 1.029x | fail 3/10 prompts |
+| 3 | c3+c3+c3+c1 | 60.83 | 61.47 | 1.011x | fail 2/10 prompts |
+| 4 | c4+c4+c2 | 69.70 | 66.13 | 0.949x | fail 3/10 prompts |
+| 8 | c4+c4+c2 (route cap 4) | 69.84 | 65.87 | 0.943x | fail 3/10 prompts |
+
+Full-suite values are medians of three after one discarded route/shape warmup;
+heldout values use five repetitions. The mixed client-c3 aggregate hides the
+reason realized groups matter: isolated full-suite c3 groups are +1.71% for
+MTP, but isolated heldout c3 groups are **-3.92%**, so c3 does not activate.
+More importantly, the current server hook is the documented
+`llama-compat` direct-commit/dp4a route and is not serial-prefix-equivalent.
+Its apparent c1/c2 speed benefit cannot enter automatic/default routing.
+
+True AR c1-c4 is exact across every repetition. One of three client-c8 AR runs
+changes `general_ja_explain` even though its actual backend groups are c4+c4+c2;
+that remains a separate SOL-G8 exact-concurrency blocker, not evidence for a
+width-8 backend. SOL-S1 now makes automatic MTP fall back to the default AR
+route until an exact/default hook exists; explicit opt-in keeps the
+compatibility contract. The compact artifact is
+[`2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json`](results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json).
+
+### gfx1151 historical cross-engine concurrency, 2026-06-15
+
+**Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV; llama.cpp uses
+Vulkan Q4_K_S/f16 KV. vLLM did not produce a healthy server. The summary lacks
+the measured hipEngine commit, and the then-used per-run device properties could
+report gfx1100 even though the run forced `HIPENGINE_HIP_ARCH=gfx1151`.
+
+<!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
+No eligible concurrency row; the `performance_claim=false` snapshot remains linked below pending rerun.
+<!-- END TOPLINE:GFX1151_CONCURRENCY -->
+
+Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. Primitive
+c>1 attention/KV checks passed. The generated-token field used the older
+batch-shaped reference and is not independent-c1 evidence. Profiler, scaling,
+and provenance gates also did not pass.
+
+Artifacts: [combined summary](results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
+[hipEngine](results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),
+[llama.cpp Vulkan](results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-llamacpp-vulkan/summary.json), and
+[vLLM blocker](results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-vllm-gptq-int4-blocked.json).
+
+## README Sweep Test Procedure
+
+### W7900 model and concurrency refresh
+
+Use a clean detached worktree. The wrapper fixes the GPU mapping, TheRock
+environment, model paths, llama.cpp binaries, JIT cache policy, and output
+layout.
 
 ```bash
 RUN_TAG=$(date -u +%Y%m%d-%H%M%S)
-git worktree add --detach "/tmp/hipengine-readme-w7900-${RUN_TAG}" HEAD
-OUTDIR=/home/lhl/hipEngine/benchmarks/results \
+WORKTREE="/tmp/hipengine-readme-w7900-${RUN_TAG}"
+git worktree add --detach "$WORKTREE" HEAD
+
+OUTDIR="$PWD/benchmarks/results" \
 RUN_TAG="$RUN_TAG" \
-REPO_ROOT="/tmp/hipengine-readme-w7900-${RUN_TAG}" \
-  "/tmp/hipengine-readme-w7900-${RUN_TAG}/scripts/run_w7900_readme_refresh.sh" all
+REPO_ROOT="$WORKTREE" \
+  "$WORKTREE/scripts/run_w7900_readme_refresh.sh" all
 ```
 
-Run individual phases when debugging or refreshing a subset:
+Subset commands:
 
 ```bash
 scripts/run_w7900_readme_refresh.sh hipengine
 scripts/run_w7900_readme_refresh.sh llamacpp
 scripts/run_w7900_readme_refresh.sh concurrency
-scripts/run_w7900_readme_refresh.sh vllm      # starts server, runs client, stops server
+scripts/run_w7900_readme_refresh.sh vllm
 ```
 
-The script writes compact artifacts under `benchmarks/results/` and detailed
-logs/env capture under `/tmp/hipengine-readme-runs/$RUN_TAG/`. It also prebuilds
-hipEngine JIT kernels once before the measured resident sweeps, then reruns the
-measured rows with `--require-cached-build` so compiler work is not part of the
-measurement path.
+Required W7900 settings:
 
-### 1. Capture environment first
+| Surface | Settings |
+| --- | --- |
+| Device mapping | `HIP_VISIBLE_DEVICES=0`; W7900 is amdgpu `card1`; llama.cpp uses `ROCm0` and `Vulkan0` after masking |
+| hipEngine environment | `/home/lhl/mambaforge/envs/therock/bin/python3.12`; hermetic TheRock root from `python -m rocm_sdk path --root`; `HSA_OVERRIDE_GFX_VERSION=11.0.0` |
+| Model sweep | `512/128 1K/128 4K/128 32K/128 64K/128 128K/128`; 2 warmups; 5 measured; resident max-context session |
+| PARO | snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `hip_gfx1100`; `packed_paro_w4`; BF16 KV; AOTriton threshold 512; graph replay decode |
+| hipEngine GGUF | MTP-bearing Qwen3.6-35B-A3B `UD-Q4_K_M`; decode repack; WMMA bulk prefill; GEMV eager decode; BF16 KV |
+| llama.cpp | Same GGUF; `-ngl 99 -fa 1 -ctk f16 -ctv f16`; split prefill/decode; one repetition per phase |
+| Concurrency | prompt 512; decode 128; warmup 8; c=1,2,4,8; 3 repetitions; fixed token-id fixture |
 
-Record the following before running benchmarks:
+Never add a combined summary with `performance_claim=false` to the current
+topline table. Keep its artifact linked in the diagnostic section instead. A
+retained refresh also needs the correctness and repetition gates from
+[`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
+
+### gfx1151 model and concurrency refresh
+
+The committed
+[`run_gfx1151_readme_refresh.sh`](../scripts/run_gfx1151_readme_refresh.sh)
+replaces the unreproducible 2026-06-15 `/tmp/run_gfx1151_readme_udq4km.sh`.
+Run it from a clean detached worktree so component provenance observes no
+tracked or untracked source changes:
 
 ```bash
-git status -sb
-uname -a
-python3 --version
-rocminfo | grep -E 'Name:|gfx' | head -12
-rocm-smi --showproductname --showdriverversion --showvbios --showpower \
-  --showmeminfo vram --showuse --showtemp --showclocks --showprofile \
-  --showvoltage --showpids
-rocm-smi -P -o -c -l -M --showmemvendor --showmclkrange --showsclkrange \
-  --showbus --showmetrics
-vulkaninfo --summary | head -80
-/opt/rocm/bin/hipcc --version > /tmp/hipengine-hipcc-version.txt
+RUN_TAG=$(date -u +%Y%m%d-%H%M%S)
+WORKTREE="/tmp/hipengine-readme-gfx1151-${RUN_TAG}"
+git worktree add --detach "$WORKTREE" HEAD
+
+OUTDIR="$PWD/benchmarks/results" \
+RUN_TAG="$RUN_TAG" \
+REPO_ROOT="$WORKTREE" \
+  "$WORKTREE/scripts/run_gfx1151_readme_refresh.sh" all
 ```
 
-Also record the exact hipEngine commit, llama.cpp HIP/Vulkan commits and
-`llama-bench --version`, GPU VBIOS, VRAM size/vendor, power limit, and any
-undervolt/overdrive settings (`OD_SCLK`, `OD_MCLK`, `OD_VDDGFX_OFFSET`).
+Subset commands are `... hipengine`, `... llamacpp`, and `... summary`. The runner fixes the
+model identities, six standard shapes, native gfx1151 compiler target,
+torch-free hermetic TheRock environment, two discarded plus five measured
+hipEngine runs, and five internal llama-bench repetitions. It records a
+canonical provenance object in every component artifact. Each hipEngine shape
+runs in its own process with a right-sized resident session, then the committed
+merge gate verifies and preserves all samples in one compact rollup. This keeps
+512/1K memory honest and avoids imposing a 128K allocation on every row.
+Discarded runs warm the same kernels through eager submission; each measured
+run captures and destroys a fresh state-bound graph after reset/prefill/warmup,
+so no captured graph crosses a session reset. The summary phase verifies all
+four component artifacts together and generates the Markdown tables only when
+their provenance, model/build identity, correctness, return-code, variance,
+and memory-scope gates pass.
 
-For W7900 PARO/GGUF topline refreshes, retained hipEngine JIT runs must use the
-hermetic TheRock ROCm 7.13 wrapper in `scripts/run_w7900_readme_refresh.sh`
-(or an exact `env -i` equivalent). Using only the TheRock Python plus a cached
-compiler-version file is not enough: on 2026-06-21, a non-hermetic direct shell
-GGUF Q4_K_M run reproduced the known W7900 symptom where prefill fell by
-`~8–23%` while decode and IDs stayed in-family. The system `/opt/rocm` 7.2 stack
-is useful as a diagnostic, but GGUF prefill is compiler/runtime-sensitive and
-must not be mixed into retained comparison tables.
+gfx1151 is a UMA APU: sysfs reports only a 512 MiB visible-VRAM aperture while
+the amdgpu GTT domain is 120 GiB and holds model allocations. The runner
+therefore samples `mem_info_gtt_used` for llama.cpp HIP/Vulkan. The public
+memory table must label that whole-device GTT scope and separately identify
+hipEngine tracked or HIP phase-sampled peaks; it must not relabel the 512 MiB
+aperture as total model memory.
 
-A follow-up ROCm 7.14 nightly diagnostic (`HIP version:
-7.14.60850-1b2a555677`) is recorded but not promoted: PARO changed within a
-mixed `+1.1%` to `-4.5%` band across the four README shapes, GGUF Q4_K_S prefill
-regressed `-14.2% / -12.9% / -9.8% / -4.4%`, and the retained MTP B=1 artifact
-stayed exact but slowed from `14.134 -> 14.595 ms/cycle`. See the ROCm 7.14
-diagnostic artifacts linked from the changelog.
+Before updating the gfx1151 tables:
 
-```bash
-PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
-ROOT=$("$PY" -m rocm_sdk path --root)
-env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
-  PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
-  LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
-  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" \
-  HSA_OVERRIDE_GFX_VERSION=11.0.0 \
-  "$ROOT/bin/hipcc" --version > /tmp/hipengine-hipcc-version-713.txt
-```
+1. Detect and record `gfx1151` from the runtime/build output; do not fill the
+   artifact from a CLI label alone.
+2. Run 2 discarded warmups and 5 measured repetitions for the six model-sweep
+   shapes.
+3. Run PARO concurrency for c=1 through c=8, including odd widths and dynamic
+   c=8 to c=1 shrinking, with exact all-choice generated-token counts.
+4. Keep comparison engines in separate columns when quant or timing scope
+   differs. Bold may mark the raw row leader, but the nearby text must state
+   that a cross-quant or cross-memory-scope maximum is descriptive rather than
+   a controlled backend win.
 
-### 2. Run the common sweep shapes
+The clean P1/P2 artifacts now satisfy the current c1-c8 independent-c1 and
+ragged shrinking lifecycle gates. They retain c1 timing and classify c2-c8 as
+exact width-1 production groups because every native candidate is
+correctness-red. A future cross-engine concurrency-speed table still requires
+one matched quant/timing protocol; do not republish the superseded 2026-06-15
+native numbers as production throughput.
 
-Use rows as workload shapes and columns as engines in the hardware report. The
-standard README sweep shapes are `512/128`, `1K/128`, `4K/128`, `32K/128`,
-`64K/128`, and `128K/128`; the compact root README table currently displays the
-subset with existing llama.cpp rows (`512/128`, `4K/128`, `32K/128`,
-`128K/128`). HipEngine sweeps should load each resident model once for the whole
-shape family and run 5 measured repetitions per shape, llama-bench style. Include
-max-context compressed-KV rows (`64K/128`, `128K/128`) for hipEngine PARO INT8
-KV and llama.cpp `Q8_0` KV when available. For retained W7900 hipEngine rows,
-prefer the wrapper command below over hand-copying snippets:
-
-```bash
-RUN_TAG=$(date -u +%Y%m%d-%H%M%S) scripts/run_w7900_readme_refresh.sh hipengine
-```
-
-The lower-level commands that follow are useful for shape-specific diagnostics,
-but they must be run inside the same hermetic `THEROCK_ENV` wrapper from that
-script before their numbers can replace README/rollup rows.
-
-hipEngine PARO BF16 KV:
+The lower-level hipEngine sweep command is:
 
 ```bash
-PARO=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
-# Historical artifacts before 2026-06-14 may show the older
-# Qwen3.6-35B-A3B-PARO-full4096-e5-packed snapshot name; it is the same packed
-# PARO architecture used by the canonical public topline model.
-HIP_VISIBLE_DEVICES=0 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
-  --engine paro --model "$PARO" --backend hip_gfx1100 \
-  --shared-expert-format packed_paro_w4 --token-id 9707 \
+PYTHONPATH=. \
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/qwen35_readme_sweep.py \
+  --engine paro \
+  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --backend hip_gfx1151 \
+  --shared-expert-format packed_paro_w4 \
+  --token-id 9707 \
   --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
   --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
-  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
   --attn-aotriton-min-tokens 512 --graph-replay-decode \
-  --json "benchmarks/results/<date>-<gpu>-hipengine-paro-bf16kv-readme-sweep.json"
+  --compiler-version-file /tmp/hipengine-hipcc-version-gfx1151.txt \
+  --require-cached-build \
+  --json benchmarks/results/<date>-gfx1151-hipengine-paro-readme-sweep.json
 ```
 
-For max-context PARO INT8 KV, add:
+This lower-level command is not a complete refresh: use the committed wrapper
+for GGUF, llama.cpp, environment capture, and artifact assembly. Concurrency
+remains a separate gate because production c2-c8 is currently exact width-1
+fallback, not the rejected native timing path.
+
+### Speculative decode refresh
+
+Exact/default GGUF MTP, fixed 10-cycle suite:
 
 ```bash
---kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/<date>-ar-mtp-exact-full.json
 ```
 
-hipEngine GGUF Q4_K_M:
+`llama-compat` natural24 direct contract:
 
 ```bash
-GGUF_M=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-HIPENGINE_GGUF_DECODE_REPACK=1 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
-PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
-  --engine gguf --model "$GGUF_M" --quant gguf_q4_k_m \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
-  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-  --use-wmma-prefill --use-gemv-decode \
-  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
-  --json "benchmarks/results/<date>-<gpu>-hipengine-gguf-q4km-readme-sweep.json"
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings \
+  --output benchmarks/results/<date>-ar-mtp-llama-compat-natural24.json
 ```
 
-llama.cpp HIP/Vulkan, with peak VRAM sampling:
+Dense DFlash B=4:
 
 ```bash
-MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-HIP_VISIBLE_DEVICES=0 python scripts/llamacpp_bench_with_peak.py \
-  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
-  --model "$MODEL" --backend hip \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --repetitions 1 --ngl 99 --flash-attn 1 \
-  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
-  --extra-args "-dev ROCm0" \
-  --output benchmarks/results/<date>-<gpu>-llamacpp-hip-q4km-f16kv-sweep.json
-
-python scripts/llamacpp_bench_with_peak.py \
-  --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
-  --model "$MODEL" --backend vulkan \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --repetitions 1 --ngl 99 --flash-attn 1 \
-  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
-  --extra-args "-dev Vulkan0" \
-  --output benchmarks/results/<date>-<gpu>-llamacpp-vulkan-q4km-f16kv-sweep.json
-```
-
-For llama.cpp max-context compressed-KV rows, rerun the wrapper with
-`--workloads 64K/128 128K/128 --cache-type-k q8_0 --cache-type-v q8_0`.
-
-Concurrency comparison rows use the same W7900/GPU0 mapping. The script's
-`concurrency` phase expands to these commands:
-
-```bash
-HIP_VISIBLE_DEVICES=0 PYTHONPATH=. "$PY" scripts/qwen35_concurrency_decode_sweep.py \
-  --model "$PARO" \
-  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
-  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt \
-  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
-  --concurrencies 1,2,4,8 --reps 3 \
-  --work-dir /tmp/hipengine-readme-runs/<run-tag>/hipengine-concurrency-work \
-  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-hipengine-concurrency-w7900/summary.json
-
-python scripts/llamacpp_vulkan_concurrency_sweep.py \
-  --repo /home/lhl/llama.cpp/llama.cpp-vulkan \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
-  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
-  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
-  --gpu 0 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
-  --concurrencies 1,2,4,8 --reps 3 \
-  --work-dir /tmp/hipengine-readme-runs/<run-tag>/llamacpp-vulkan-concurrency-work \
-  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-llamacpp-vulkan-concurrency-w7900/summary.json
-```
-
-The vLLM comparison is a server/client split. Start the pinned local source-build
-server on W7900/GPU0:
-
-```bash
-HIP_VISIBLE_DEVICES=0 \
-TORCHINDUCTOR_AUTOGRAD_CACHE=0 \
-HSA_NO_SCRATCH_RECLAIM=1 \
-/home/lhl/mambaforge/envs/vllm/bin/vllm serve \
-  palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
-  --host 127.0.0.1 --port 8008 \
-  --served-model-name qwen36-gptq-int4 \
-  --dtype bfloat16 \
-  --max-model-len 128000 \
-  --gpu-memory-utilization 0.90 \
-  --enforce-eager
-```
-
-Then run the OpenAI client sweep:
-
-```bash
-/home/lhl/mambaforge/envs/vllm/bin/python \
-  scripts/vllm_openai_concurrency_sweep.py \
-  --url http://127.0.0.1:8008 \
-  --model qwen36-gptq-int4 \
-  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
-  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
-  --concurrencies 1,2,4,8 --reps 3 \
-  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json
-```
-
-### 3. PARO regression spot-check
-
-When a sweep suggests PARO changed unexpectedly, compare the current tree against
-the v0.1.1/pre-GGUF tag on the same machine and ROCm environment rather than
-mixing W7900 and RX 7900 XTX artifacts:
-
-```bash
-git worktree add --detach /tmp/hipengine-v0.1.1-paro-check v0.1.1
-cd /tmp/hipengine-v0.1.1-paro-check
-PYTHONPATH=$PWD "$PY" scripts/qwen35_paro_bench.py \
-  --model "$PARO" --prompt-length 512 --token-id 9707 \
-  --decode-tokens 128 --warmup-decode-tokens 1 \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-  --attn-aotriton-min-tokens 512 --graph-replay-decode \
-  --json /home/lhl/hipEngine/benchmarks/results/<date>-<gpu>-v0.1.1-hipengine-paro-bf16kv-512-128.json
+  --max-prompts 9 --decode-tokens 64 --draft-budgets 4 \
+  --draft-top-k 2 --whole-cycle-gate 0.90 \
+  --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --full-attn-chain-mode batched --canonical-commit-mode branch_copy \
+  --adaptive-budget off --hardware-gpu "AMD Radeon Pro W7900" \
+  --json benchmarks/results/<date>-dflash-27b-b4.json
 ```
 
-Repeat for at least `4096/128`. Compare against the same-shape current-tree
-rerun and retain a compact summary artifact with the measured fields and exact
-commands. The 2026-05-23 RX 7900 XTX check found no GGUF
-merge code regression at those shapes: current prefill was `-0.61%` at both
-512/128 and 4K/128 versus v0.1.1, while decode was `+2.75%` at 512/128 and
-`-0.18%` at 4K/128. Both same-environment runs were much slower than older
-W7900/v0.1.1 artifacts and the 2026-05-21 RX diagnostic, which points to run
-environment / clocks / measurement protocol rather than the GGUF merge itself.
+Use equivalent immutable local snapshots only when the recorded fingerprints
+match these target and drafter revisions.
 
-### 4. Report and validation
+### HIP versus Vulkan microbenchmarks
 
-Create or update a per-hardware report (`benchmarks/7900XTX.md`, etc.) with:
+Microbenchmark claims do not belong in the model-throughput tables. The v2
+timing contract and exact bounded rerun commands are in
+[`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md) and
+[`benchmarks/micro/README.md`](micro/README.md). Retained evidence is
+[`gfx1100/W7900`](micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json)
+and
+[`gfx1151/Strix Halo`](results/2026-07-12-gfx1151-hip-vulkan-portable-q8.json).
+The original stricter Q4/Q6 correctness misses are isolated in
+[`2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json`](results/2026-07-12-gfx1151-vulkan-q8-isolation-diagnostic.json): both Vulkan dot kernels pass
+when given CPU q8_1 blocks, while stock packed-FP16 activation scales are
+systematically one code below the CPU/HIP oracle. The retained portable shader
+eliminates those scale mismatches; both the gfx1100-matched and current strict
+gfx1151 matrices now pass 22/22 comparisons and all 232 burst rows.
 
-- date, hardware, power/UC/OD settings, kernel/ROCm/Vulkan/llama.cpp metadata;
-- exact command templates and linked JSON artifacts;
-- topline tables with engines as columns and sweep shapes as rows;
-- blocked/OOM rows clearly marked with compact blocked artifacts;
-- a note distinguishing diagnostic single-run rows from accepted performance
-  rows.
+## Update Checklist
 
-Before committing, parse every new JSON and re-read the markdown:
+1. Choose one protocol tuple and record the old artifact before running.
+2. Create a clean detached worktree at the revision being measured.
+3. Capture the canonical provenance block: GPU identity, configured/resolved
+   backend, target arch, VBIOS, power/clock state, kernel, Python, ROCm/HIP
+   compiler, Vulkan driver, comparison-engine commit, existing model
+   fingerprint, exact argv/environment, and separate staged, unstaged, and
+   untracked source state.
+4. Run the named warmup, repetition, correctness, and memory protocol. Store raw
+   logs outside git and a compact artifact under `benchmarks/results/`.
+5. Reject artifacts with missing provenance or failed correctness. A diagnostic
+   may be recorded, but it cannot replace a retained row.
+6. Update the platform index, table, run record, artifact links, run date, and
+   measured revision in this file.
+7. Add the required entry to [`benchmarks/CHANGELOG.md`](CHANGELOG.md) and append
+   the commands and decision to `WORKLOG.md`.
+8. Run the root README sync and validation commands:
 
 ```bash
-python3 - <<'PY'
-import glob, json
-for p in glob.glob('benchmarks/results/<date>-<gpu>-*.json'):
-    json.load(open(p))
-print('json ok')
-PY
+python3 scripts/sync_benchmark_readme.py --write
+python3 scripts/sync_benchmark_readme.py --check
+python3 -m json.tool benchmarks/results/<new-artifact>.json >/dev/null
 git diff --check
 ```
 
-## Current fastest hipEngine rows
+Run `json.tool` once for each new or changed compact artifact. Do not scan
+untracked experiment files as part of the rollup gate.
 
-| Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |
-| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | `hip_gfx1100` RX 7900 XTX scheduler native compact batch | c=8 512/128 retained native E2E | 2647.181 | 212.093 | 20.499 | generated-token equality vs independent c=1 `[137×8]`; primitive c=8 GPU correctness passed; rocprof provenance, c=1/serial scaling, projection dispatch, observed buckets, and stable block-id gates passed | [`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json`](results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json) | 2026-06-02 | First accepted native c>1 retained PARO row. Exact `HIP_VISIBLE_DEVICES=1` c=8 command on RX 7900 XTX; per-request decode `26.512 tok/s`; aggregate decode is `1.584×` c=1 and `2.031×` serial bridge. Graph replay evidence is not required here because `replay_kernel_hits=0`. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | `hip_gfx1100` RX 7900 XTX scheduler native compact batch | c=4 512/128 retained native E2E | 3043.701 | 155.987 | 19.143 | generated-token equality vs independent c=1 `[137×4]`; primitive c=4 GPU correctness passed; rocprof provenance, c=1/serial scaling, projection dispatch, observed buckets, and stable block-id gates passed | [`benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json) | 2026-06-02 | Exact `HIP_VISIBLE_DEVICES=1` c=4 command on RX 7900 XTX; per-request decode `38.997 tok/s`; aggregate decode is `1.172×` c=1 and `1.414×` serial bridge. Projection dispatch uses c=4 `batch` evidence at `1.183×` row-GEMV. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 512/128 README sweep WMMA prefill + GEMV decode | 2109.6 | 106.5 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[318]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Corrected final current-tree W7900 rerun under the hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured. Prefill `2198.4 -> 2109.6 tok/s` (-4.0%) and decode `106.7 -> 106.5 tok/s` (-0.2%) vs the 2026-06-17 row; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 1K/128 README sweep WMMA prefill + GEMV decode | 2331.3 | 95.8 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `2436.7 -> 2331.3 tok/s` (-4.3%) and decode `96.2 -> 95.8 tok/s` (-0.4%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 4K/128 README sweep WMMA prefill + GEMV decode | 2332.8 | 97.1 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `2453.3 -> 2332.8 tok/s` (-4.9%) and decode `97.7 -> 97.1 tok/s` (-0.6%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 32K/128 README sweep auto-tune chunked prefill | 1799.8 | 84.9 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[332]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `1833.7 -> 1799.8 tok/s` (-1.8%) and decode `84.7 -> 84.9 tok/s` (+0.2%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 64K/128 README sweep auto-tune chunked prefill | 1398.1 | 72.4 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[22]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `1412.5 -> 1398.1 tok/s` (-1.0%) and decode `72.5 -> 72.4 tok/s` (-0.1%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 128K/128 README sweep auto-tune chunked prefill | 971.1 | 57.2 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[63]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `973.8 -> 971.1 tok/s` (-0.3%) and decode `57.3 -> 57.2 tok/s` (-0.1%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 | 3279.030 | 179.044 | 0.937 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +33.8% vs Qwen3.6 packed PARO comparison row (`2451.2 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
+<a id="natural24-mtp-vs-ar-concurrency-diagnostic"></a>
+<a id="blocked--diagnostic-benchmark-attempts"></a>
 
-## hipEngine vs llama.cpp HIP/Vulkan Q4_K_M comparison (W7900 GPU0, same model)
+## Blocked and Diagnostic Benchmark Attempts
 
-Same Qwen3.6-35B-A3B `UD-Q4_K_M.gguf` on the same AMD Radeon Pro W7900 (48 GiB).
-hipEngine: decode-repack + WMMA prefill + GEMV decode, hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured runs (2026-06-21 corrected final current-tree rerun; tracked peak 24.985 GiB).
-llama.cpp HIP: ngl=99, flash-attn=1, f16 KV cache, build `263cc04a5`.
-llama.cpp Vulkan: ngl=99, flash-attn=1, f16 KV cache, RADV NAVI31.
+- **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
+  has `performance_claim=false`. Repetition of token `9707` is confirmed as
+  valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900
+  measurement still needs its own current state/KV gate and repeated clean
+  performance rerun before it can become a baseline.
+- **OpenAI MTP server c=1/2/3/4/8:** the corrected
+  [2026-07-11 route gate](results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json)
+  supersedes the pre-contract 2026-07-06/07 timing rows. It counts exact IDs,
+  owns batch timing once, records canonical provenance, and separates client,
+  queue, backend, and verifier widths. Compatibility MTP is diagnostically
+  faster at c1/c2 but changes true-AR IDs, so no automatic-route performance
+  claim is eligible; explicit opt-in remains separately labelled.
+- **gfx1151 PARO native batching:** P1's clean direct matrix rejects every
+  native c2-c8 width at generated index 2; P2's clean ragged lifecycle gate
+  accepts the production true-c1 bridge through EOS and front/middle/tail
+  sparse slots. Production correctness is closed, but no native width is
+  routing-eligible until a general c>N algorithm passes the same independent-c1
+  token/state/KV gates. The 2026-07-10 native timing artifact remains diagnostic.
+- **gfx1151 model sweep:** the [committed summary](results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json) omits source/build provenance
+  and contains one measured repetition. Its values remain a dated diagnostic.
+- **llama.cpp 24 GiB Q8_0 memory:** the former root README tables had no compact
+  artifact, model fingerprint, llama.cpp revision, or run date. The numbers were
+  removed; rerun before publishing another capacity table.
 
-| Workload | hipEngine PF | llama HIP PF | llama VK PF | hipEngine DC | llama HIP DC | llama VK DC |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 2110 | 2516 (-16.1%) | **2823** (-25.3%) | **106.5** | 79.6 (+33.8%) | 106.2 (+0.2%) |
-| 1K/128 | 2331 | 2431 (-4.1%) | **2711** (-14.0%) | 95.8 | 79.3 (+20.9%) | **106.2** (-9.8%) |
-| 4K/128 | 2333 | 2303 (+1.3%) | **2582** (-9.6%) | 97.1 | 78.7 (+23.4%) | **102.6** (-5.3%) |
-| 32K/128 | 1800 | 1685 (+6.8%) | **1969** (-8.6%) | 84.9 | 71.8 (+18.1%) | **91.6** (-7.4%) |
-| 64K/128 | 1398 | 1325 (+5.5%) | **1412** (-1.0%) | 72.4 | 66.5 (+9.0%) | **83.3** (-13.1%) |
-| 128K/128 | 971 | 918 (+5.8%) | **1082** (-10.2%) | 57.2 | 57.7 (-0.9%) | **70.5** (-18.8%) |
+Rejected and superseded rows remain in JSON artifacts, `WORKLOG.md`,
+[`benchmarks/CHANGELOG.md`](CHANGELOG.md), and
+[`benchmarks/HISTORY.md`](HISTORY.md). Source-lineage targets and external
+baselines in the archive are reference values, not hipEngine toplines.
 
-Artifacts:
-- hipEngine: [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json)
-- llama.cpp HIP: [`2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json`](results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json)
-- llama.cpp Vulkan: [`2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json`](results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)
+## Table Conventions
 
-## MTP / DFlash Speculative Decode
-
-| Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
-| --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| Qwen3.6-27B dense PARO + z-lab DFlash | **accepted / positive** | W7900/gfx1100, 9 prompts, D64, `B=4`, `top_k=2`, `whole_cycle_gate=0.90`, `native_bulk_bplus1`, `full_attn_chain_mode=batched`, `canonical_commit_mode=branch_copy`, verifier graph `auto` | 32.569 | 40.101 | **1.231x** | exact `9/9`; finite AR/draft/verify logits; native bulk correctness and speed gates passed | [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json) | Current deployable dense-DFlash row. Rows/output `1.160`, avg accept `2.237`, multi-token acceptance `0.616`; supersedes the earlier 1.1615-1.164x gate rows. |
-| Qwen3.6-35B-A3B PARO + MTP-BF16 | **accepted / current D32 best 1.023x** | W7900/gfx1100, 9 prompts D32, B=1 persistent chain, `chain_attn_mode=decode_batched`, graph `off`, MTP canonicalize-after-verify skip default-on, fused 256-expert/top-8 proposer router top-k+softmax default-on, route-batched proposer expert loop default-on, linear shared SiLU+down-rotate fused default-on, linear A/B separate-output dual dense default-on for small-batch rows, one-split direct-gate full-attn decode default-on, proposer shared gate/up dual dense default-on, linear/full-attn shared-down+combine fused default-on, draft vocab cap 65536 default-on, device expert dispatch, retained P1/proposer/host-cache/reduced-DAG stack, selected-MoE down staged path default-off; tree default-off after negative B=3 replay | ~110.8 prompt mean | ~113.4 prompt mean | **1.023x** current D32 best; `14.134 ms/cycle`, `12.415 ms` verify, `1.700 ms` proposal/update; total-time cross-check `1.014x`; locked sprint baseline remains 0.758x / 27.8 ms | exact D32 `9/9`; visible `1.617/cycle`, accepted `0.617/cycle`, acceptance rate `0.617`; quicksort B=1 accepted lengths `[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`; D64 exact fallback is available in the row below | [`B=1 retained`](results/2026-06-12-hipengine-mtp-b1-budget-retained.json), [`proposer shared gate/up dual retained`](results/2026-06-13-hipengine-mtp-b1-proposer-shared-gate-up-dual-retained.json), [`3-run confirmation`](results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json), [`cap65536 retained`](results/2026-06-12-hipengine-mtp-vocab65536-retained.json), [`acceptance diagnostics`](results/2026-06-12-hipengine-mtp-acceptance-diagnostics-b123-d32-summary.json), [`AR fallback diagnostic`](results/2026-06-12-hipengine-mtp-ar-fallback-policy-diagnostic.json), [`confidence gate no-hold`](results/2026-06-13-hipengine-mtp-confidence-gate-nohold.json), [`D64 state-drift diagnostic`](results/2026-06-12-hipengine-mtp-d64-state-drift-diagnostic.json), [`D64 state-commit audit`](results/2026-06-13-hipengine-mtp-d64-state-commit-audit.json), [`D64 layer-drift audit`](results/2026-06-13-hipengine-mtp-d64-layer-drift-audit.json), [`D64 exact suffix fallback`](results/2026-06-13-hipengine-mtp-d64-decodebatched-exact-suffix-retained.json), [`full vocab no-hold`](results/2026-06-12-hipengine-mtp-full-vocab-nohold.json), [`direct gate retained`](results/2026-06-12-hipengine-mtp-direct-gate-retained.json), [`linear A/B dual separate retained`](results/2026-06-12-hipengine-mtp-linear-ab-dual-separate-retained.json), [`linear shared SiLU+rotate retained`](results/2026-06-12-hipengine-mtp-linear-shared-silu-rotate-fused-retained.json), [`route-batched proposer expert retained`](results/2026-06-12-hipengine-mtp-proposer-route-batched-expert-retained.json), [`full shared-down+combine retained`](results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-retained.json), [`linear shared-down+combine retained`](results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-retained.json), [`router fusion retained`](results/2026-06-12-hipengine-mtp-router-topk-fused-retained.json), [`decode_batched + skip`](results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-9prompt-d32.json), [`docs/MTP.md`](../docs/MTP.md) | Canonicalize skip made graph-off competitive, then `decode_batched` improved wall `24.076 -> 21.661 ms/cycle`. Fused proposer router top-k+softmax moved the stack ratio `0.8244x -> 0.8806x`, retained linear/full shared-down+combine epilogues moved ratio to `0.8910x`, route-batched proposer expert moved ratio `0.8939x -> 0.9135x`, linear shared SiLU+rotate moved `0.9173x -> 0.9194x`, linear A/B dual-separate dense moved `0.9201x -> 0.9240x`, and one-split direct-gate full-attn decode moved `0.9240x -> 0.9273x`. Raising the draft vocab cap `32768 -> 65536` retained the first large acceptance-density win: ratio `0.926x -> 0.967x`. The fixed-budget sweep then found the first break-even row: same-session B=1/B=3 exact D32 moved ratio `1.018x` vs `0.968x`, wall `14.173` vs `19.976 ms/cycle`, and cycle cost `1.574` vs `2.217` AR tokens. The B=1 proposer shared gate/up dual retune is exact D32 `9/9` and moved the 1-run prompt-mean ratio `1.018x -> 1.024x`; the 3-run current-default confirmation is `1.023x` prompt mean / `1.014x` total-time, wall `14.134 ms/cycle`, verify `12.415 ms`, and proposal/update `1.700 ms`. B=3 remains higher-density (`2.175` visible/cycle), but the opt-in AR fallback and whole-cycle confidence policies did not replace fixed B=1: resumable AR windows no-held on `translation`, fallback-until-end barely moved prompt mean, and confidence threshold `0.90` regressed exact D32 to `0.859x` prompt mean / `0.850x` total-time. The D64 exact suffix fallback proves longer-horizon exactness is recoverable, but it is slower than the D32 current-best row and remains opt-in. |
-| Qwen3.6-35B-A3B PARO + MTP-BF16 | **diagnostic / per-prompt budget oracle** | W7900/gfx1100, 9 prompts D32, each prompt run at one fixed budget selected from the prior B1/B2/B3 oracle map (`code_python=B3`, `code_cpp=B2`, `qa_factual=B2`, `creative_short=B3`, all others `B1`), `chain_attn_mode=decode_batched`, graph `off`, draft vocab cap 65536 default | ~111.3 prompt mean | ~116.0 prompt mean | **1.041x** prompt mean, **1.027x** total-time; `16.284 ms/cycle`, `13.910 ms` verify, `1.663 ms` proposal/update, `1.945` visible/cycle | exact D32 `9/9`; no live budget transition inside a prompt, so it avoids the B1->B2/B3 reshape hang path | [`per-prompt oracle`](results/2026-06-13-hipengine-mtp-prompt-budget-policy-oracle-d32.json) | Retained as adaptive-policy design evidence, not a default. It proves the fixed-budget prompt mix has real measured headroom above B=1, but the choices are oracle-selected from prior outcomes; next step is a deployable online prompt-level selector such as a cheap warmup probe or a stronger signal than the no-held whole-cycle confidence gate. |
-| Qwen3.6-35B-A3B PARO + MTP-BF16 | **accepted / opt-in D64 exact fallback** | W7900/gfx1100, 9 prompts D64, B=1 persistent chain, `chain_attn_mode=decode_batched`, graph `off`, `HIPENGINE_GDN_TLOOP_C1_EXACT=1`, `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`, `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1`, draft vocab cap 65536 default | 110.523 | 93.246 actual | **0.843x actual / 0.848x observed**; `15.817 ms/cycle`, `14.095 ms` verify, `1.704 ms` proposal/update, `1.482` visible/cycle | exact D64 `9/9`; current-HEAD rerun includes the prior `translation` fork prompt; cheap `VTILE=1` and no-linear-out exact-stack reductions no-held | [`current-HEAD D64 exact stack rerun`](results/2026-06-13-hipengine-mtp-d64-exact-stack-rerun.json), [`D64 exact suffix fallback`](results/2026-06-13-hipengine-mtp-d64-decodebatched-exact-suffix-retained.json), [`D64 c1 exact fallback`](results/2026-06-13-hipengine-mtp-d64-c1loop-exact-fallback.json) | Retained as a correctness fallback, not a speed row versus the D32 current best. The earlier retained suffix artifact measured `0.860x`; the latest current-HEAD rerun is the conservative rollup value and confirms exactness still holds. |
-
-Current MTP promoted micro-wins: `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS`
-defaults on after the 2026-06-11 D32 9-prompt gates. It preserves exact AR
-match `9/9` and identical acceptance/visible-token counts while skipping
-discarded proposer metadata, update-only result reads, and final draft snapshot
-saves. The read/result slice improved actual speed `0.664x -> 0.670x` AR
-(+0.96% relative), cycle wall `27.94 -> 27.68 ms`, and proposal/update
-`2.145 -> 2.052 ms`. The final-snapshot slice skips `142` D2D saves, keeps the
-suite exact `9/9`, and trims proposal/update `2.052 -> 2.045 ms` with actual
-ratio flat within run noise (`0.6701 -> 0.6699`). Artifacts:
-[`off`](results/2026-06-11-hipengine-mtp-proposer-skip-off-9prompt-d32.json),
-[`read/result default-on`](results/2026-06-11-hipengine-mtp-proposer-skip-on-9prompt-d32.json),
-[`snapshot default-on`](results/2026-06-11-hipengine-mtp-proposer-snapshot-skip-default-9prompt-d32.json).
-
-The proposer token/position scalar copies are also stream-ordered now. This
-keeps the D32 suite exact `9/9` with identical acceptance, trims cycle wall
-`27.408 -> 27.253 ms/cycle` and proposal/update `2.035 -> 1.999 ms/cycle`, and
-leaves AR-normalized throughput flat within run noise (`0.67845 -> 0.67830`).
-Artifact:
-[`async scalar H2D`](results/2026-06-11-hipengine-mtp-proposer-async-scalar-h2d-9prompt-d32.json).
-
-The proposer token+position metadata is now packed into one 16-byte H2D copy per
-advance. Same-tree opt-out/default A/B stays exact `9/9` with identical
-acceptance, trims wall `26.922 -> 26.869 ms/cycle` and proposal/update
-`1.9766 -> 1.9758 ms/cycle`, and keeps the ratio caveated because the AR control
-changed (`0.6911x -> 0.6875x`). Opt out with
-`HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=0`. Artifacts:
-[`pack token+position off`](results/2026-06-11-hipengine-mtp-proposer-pack-token-position-off-9prompt-d32.json),
-[`pack token+position on`](results/2026-06-11-hipengine-mtp-proposer-pack-token-position-on-9prompt-d32.json).
-
-The first sidecar MoE expert route now initializes the FP32 accumulator in
-`mtp_accumulate_route_bf16_to_f32`, removing the standalone `moe_accum` memset
-launch per proposer advance. The D32 opt-out/default A/B stays exact `9/9` with
-identical acceptance, keeps total wall flat/slightly down
-`27.081246 -> 27.079143 ms/cycle`, and trims proposal/update
-`1.96299 -> 1.95303 ms/cycle`; ratio is noisy/down because the AR control
-changed (`0.6865x -> 0.6840x`). Opt out with
-`HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT=0`. Artifacts:
-[`route0 accum-init off`](results/2026-06-11-hipengine-mtp-proposer-route0-accum-init-off-9prompt-d32.json),
-[`route0 accum-init on`](results/2026-06-11-hipengine-mtp-proposer-route0-accum-init-on-9prompt-d32.json).
-
-The persistent proposer chain also skips the unused lm-head top-1 logit-value
-D2H under the same unused-read default. The chain still reads the required token
-id. Exact `9/9`, identical acceptance, actual ratio `0.6783x -> 0.6876x`, cycle
-`27.253 -> 27.201 ms/cycle`, proposal/update `1.999 -> 1.973 ms/cycle`.
-Artifact:
-[`skip logit value`](results/2026-06-11-hipengine-mtp-proposer-skip-logit-value-9prompt-d32.json).
-
-The verifier accept path now packs accepted counts, commit row/token/position,
-next token, full-accept flag, and committed-output length into one int32 payload
-read while retaining the legacy device buffers for commit compatibility. The
-same-tree opt-out/default A/B stays exact `9/9` with identical accepted lengths
-and active budgets, cycle `27.279 -> 27.122 ms/cycle`, verify
-`22.162 -> 21.997 ms/cycle`, and flat/noisy AR-normalized ratio
-`0.6800 -> 0.6805`. Opt out with `HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD=0`.
-Artifacts:
-[`packed accept off`](results/2026-06-11-hipengine-mtp-accept-payload-off-9prompt-d32.json),
-[`packed accept default-on`](results/2026-06-11-hipengine-mtp-accept-payload-on-9prompt-d32.json).
-
-The verifier dynamic metadata path now packs token i64/i32, position i64/i32,
-and context-count i64 updates into one int64 H2D copy plus a tiny unpack kernel.
-The D32 opt-out/default A/B stays exact `9/9` with identical accepted lengths
-and active budgets, moves actual ratio `0.68417x -> 0.68898x`, cycle wall
-`27.02196 -> 26.99252 ms/cycle`, verify `21.87984 -> 21.85918 ms/cycle`, and
-proposal/update `1.95733 -> 1.95069 ms/cycle`. Rocprof confirms
-`unpack_verify_chain_dynamic_metadata_i64_kernel`; a 27B dense DFlash D16
-one-prompt shared-path smoke passed. Opt out with
-`HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA=0`. Artifacts:
-[`pack dynamic metadata off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-off-9prompt-d32.json),
-[`pack dynamic metadata on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-on-9prompt-d32.json),
-[`pack dynamic metadata rocprof`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-rocprof.json).
-No-hold follow-up: stream-ordering that packed H2D from a persistent host buffer
-stayed exact `9/9` with identical acceptance, but regressed actual ratio
-`0.68634x -> 0.68161x`, cycle wall `26.9165 -> 27.0911 ms/cycle`, and verify
-`21.7799 -> 21.9470 ms/cycle`; the experiment code was removed. Artifacts:
-[`async off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-off-9prompt-d32.json),
-[`async on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-on-9prompt-d32.json).
-
-The verifier now caches fixed-shape linear-attention and MLP scratch objects per
-`(layer_id, rows)` by default, with workspace-pointer validation and cache
-invalidation when prefill/graph state changes. The D32 opt-out/default A/B stays
-exact `9/9` with identical visible/accepted cycle aggregates, moves actual ratio
-`0.6860x -> 0.6987x`, cycle wall `27.0958 -> 26.7015 ms/cycle`, verify
-`21.9328 -> 21.5511 ms/cycle`, and proposal/update
-`1.9880 -> 1.9725 ms/cycle`. The graph-auto profile only moves host
-`18.290 -> 18.275 ms/pass` because replay skips most Python rebuild work; the
-graph-off control shows the raw host effect `33.469 -> 32.988 ms/pass`. Opt out
-with `HIPENGINE_VERIFY_SCRATCH_CACHE=0`. Artifacts:
-[`scratch cache off D32`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-9prompt-d32.json),
-[`scratch cache on D32`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-9prompt-d32.json),
-[`scratch cache off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-rocprof.json),
-[`scratch cache on rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-rocprof.json),
-[`scratch cache off graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-graphoff-rocprof.json),
-[`scratch cache on graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-graphoff-rocprof.json).
-
-The verifier also caches immutable Qwen3.5/PARO weight tensor lookups by raw
-caller name on each decode state. This avoids repeated prefix normalization and
-weight-map allocation unwraps without changing any device pointer or kernel
-math. The D32 opt-out/default A/B stays exact `9/9` with identical
-visible/accepted cycle aggregates, moves actual ratio `0.69160x -> 0.69200x`,
-cycle wall `26.6621 -> 26.6433 ms/cycle`, and verify
-`21.5290 -> 21.4984 ms/cycle`; graph-auto profile is neutral/noisy
-(`18.218 -> 18.236 ms/pass`) while graph-off isolates the raw host win
-(`34.757 -> 32.288 ms/pass`). Opt out with
-`HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0`. Artifacts:
-[`weight cache off D32`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-9prompt-d32.json),
-[`weight cache on D32`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-9prompt-d32.json),
-[`weight cache off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-rocprof.json),
-[`weight cache on rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-rocprof.json),
-[`weight cache off graph-off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-graphoff-rocprof.json),
-[`weight cache on graph-off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-graphoff-rocprof.json).
-
-The verifier now also caches resident non-owning Tensor views for
-`_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` by
-default. The D32 opt-out/default A/B stays exact `9/9` with identical
-visible/accepted cycle aggregates and identical per-prompt accepted lengths,
-moves actual ratio `0.69239x -> 0.69857x`, cycle wall
-`26.6424 -> 26.4259 ms/cycle`, and verify
-`21.5059 -> 21.2785 ms/cycle`; graph-auto profile is neutral/noisy
-(`18.235 -> 18.244 ms/pass`) while graph-off isolates the raw host win
-(`32.52 -> 31.70 ms/pass`). Opt out with
-`HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=0`. Artifacts:
-[`resident view cache off D32`](results/2026-06-12-hipengine-mtp-resident-view-cache-off-9prompt-d32.json),
-[`resident view cache on D32`](results/2026-06-12-hipengine-mtp-resident-view-cache-on-9prompt-d32.json),
-[`resident view cache off rocprof`](results/2026-06-12-hipengine-mtp-resident-view-cache-off-rocprof.json),
-[`resident view cache on rocprof`](results/2026-06-12-hipengine-mtp-resident-view-cache-on-rocprof.json),
-[`resident view cache off graph-off rocprof`](results/2026-06-12-hipengine-mtp-resident-view-cache-off-graphoff-rocprof.json),
-[`resident view cache on graph-off rocprof`](results/2026-06-12-hipengine-mtp-resident-view-cache-on-graphoff-rocprof.json).
-
-Verifier MLP scratch reservation is now aligned with the actual chain/tree
-t-loop MoE policy by default. At B=3 (`rows=4`) the runner reserves c1 scratch
-until `_verify_moe_grouped_min_tokens()` rather than grouped scratch that the
-layer immediately replaces. The D32 opt-out/default A/B stays exact `9/9` with
-identical visible/accepted cycle aggregates, accepted lengths, and active
-budgets, moves actual ratio `0.7003x -> 0.7172x`, cycle wall
-`26.3089 -> 25.6898 ms/cycle`, and verify
-`21.1757 -> 20.5228 ms/cycle`; graph-auto keeps `932` calls/pass and moves host
-`18.314 -> 18.246 ms/pass`, while graph-off host moves
-`32.445 -> 32.273 ms/pass`. Opt out with
-`HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=0`. Artifacts:
-[`MLP scratch policy off D32`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-off-9prompt-d32.json),
-[`MLP scratch policy on D32`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-on-9prompt-d32.json),
-[`MLP scratch policy off rocprof`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-off-rocprof.json),
-[`MLP scratch policy on rocprof`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-on-rocprof.json),
-[`MLP scratch policy off graph-off rocprof`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-off-graphoff-rocprof.json),
-[`MLP scratch policy on graph-off rocprof`](results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-on-graphoff-rocprof.json).
-
-Verifier scratch cache hits now use a generation stamp by default instead of
-re-running workspace-pointer validation on every hit. The generation is bumped
-whenever verifier scratch caches are cleared, preserving stale-pointer
-protection while removing hot metadata checks from steady state. The D32
-opt-out/default A/B stays exact `9/9` with identical visible/accepted cycle
-aggregates, accepted lengths, and active budgets, moves actual ratio
-`0.7145x -> 0.7252x`, cycle wall `25.7085 -> 25.5955 ms/cycle`, and verify
-`20.5460 -> 20.4342 ms/cycle`; graph-auto keeps `932` calls/pass and moves host
-`18.322 -> 18.298 ms/pass`, while graph-off host moves
-`32.659 -> 31.971 ms/pass`. Opt out with
-`HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=0`. Artifacts:
-[`scratch generation stamp off D32`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-off-9prompt-d32.json),
-[`scratch generation stamp on D32`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-on-9prompt-d32.json),
-[`scratch generation stamp off rocprof`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-off-rocprof.json),
-[`scratch generation stamp on rocprof`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-on-rocprof.json),
-[`scratch generation stamp off graph-off rocprof`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-off-graphoff-rocprof.json),
-[`scratch generation stamp on graph-off rocprof`](results/2026-06-12-hipengine-mtp-scratch-generation-stamp-on-graphoff-rocprof.json).
-
-The MTP harness now skips canonicalizing verifier scratch after verify cycles by
-default when the next step stays in the MTP verify/proposer loop. Real AR/c1
-handoff paths can still request canonical scratch through the new
-`canonicalize_after` argument. The graph-off batched D32 A/B stays exact `9/9`
-with identical accepted lengths and active budgets, moves actual ratio
-`0.4969x -> 0.7730x`, cycle wall `37.207 -> 24.076 ms/cycle`, and verify
-`32.069 -> 18.933 ms/cycle`. Rocprof proves this is host-side scratch
-canonicalization: calls/pass stay `932`, kernel stays about `14.33 ms/pass`, and
-host moves `32.505 -> 18.272 ms/pass`. Opt out with
-`HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=0`. Artifacts:
-[`canonicalize on graph-off D32`](results/2026-06-12-hipengine-mtp-canonicalize-after-on-graphoff-9prompt-d32.json),
-[`canonicalize skip graph-off D32`](results/2026-06-12-hipengine-mtp-canonicalize-after-skip-graphoff-9prompt-d32.json),
-[`canonicalize on rocprof`](results/2026-06-12-hipengine-mtp-canonicalize-after-on-graphoff-rocprof.json),
-[`canonicalize skip rocprof`](results/2026-06-12-hipengine-mtp-canonicalize-after-skip-graphoff-rocprof.json).
-
-With the graph-off host penalty removed, current-stack `decode_batched` is now
-the best exact MTP verifier mode. The D32 suite stays exact `9/9` with identical
-accepted lengths and active budgets relative to the batched graph-off skip row,
-and moves actual ratio `0.7730x -> 0.8252x`, cycle wall
-`24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`, and cycle cost
-`2.666 -> 2.411` AR-token equivalents. The profile moves calls/pass
-`932 -> 942`, kernel `14.330 -> 12.922 ms/pass`, and host
-`18.272 -> 16.849 ms/pass`. Artifacts:
-[`decode_batched + skip D32`](results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-9prompt-d32.json),
-[`decode_batched + skip rocprof`](results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-rocprof.json).
-
-`HIPENGINE_SELECTED_MOE_DOWN_STAGED` is now opt-in after the current graph-auto
-suite proved the unfused fallback faster: exact `9/9`, identical acceptance,
-actual speed `0.6699x -> 0.6784x` AR, cycle wall `27.648 -> 27.408 ms`, verify
-`22.377 -> 22.131 ms`, and every prompt faster. Artifact:
-[`selected-down default-off`](results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json).
-
-The graph-off current-best compound was also checked:
-`decode_batched + graph_off + skip + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` stayed
-exact `9/9` with unchanged accepted lengths/active budgets, but regressed actual
-ratio `0.8252x -> 0.8204x`, wall `21.661 -> 21.763 ms/cycle`, and verify
-`16.511 -> 16.628 ms/cycle`. Artifact:
-[`decode_batched + staged-down no-hold`](results/2026-06-12-hipengine-mtp-decode-batched-staged-down-on-9prompt-d32.json).
-
-Current MTP no-hold diagnostic: on the 2026-06-11 P1-default stack,
-`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` remains exact on locked quicksort
-with unchanged accepted lengths, but regresses the verifier profile: calls/pass
-`935 -> 934`, kernel `14.594 -> 15.236 ms/pass`, host window
-`18.621 -> 19.234 ms/pass`. It saves one argmax launch but makes the fused
-W8A16 body slower (`1.4435 -> 2.0953 ms/pass`), so keep it default-off for MTP.
-Artifacts: [`current default after packed`](results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json),
-[`fused LM-head rocprof`](results/2026-06-11-hipengine-mtp-fused-lm-head-rocprof.json).
-
-Also no-hold: on the same P1-default stack,
-`HIPENGINE_FUSED_RMSNORM_ROTATE=1` remained exact but regressed verifier kernel
-`13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass` despite calls
-`943.0 -> 915.9/pass`; keep the M15.4 RMSNorm+PARO rotate2 gate default-off.
-Artifacts: [`current P1 rocprof`](results/2026-06-11-hipengine-mtp-p1-current-rocprof.json),
-[`fused RMSNorm+rotate rocprof`](results/2026-06-11-hipengine-mtp-p1-fused-rmsrotate-rocprof.json).
-Also no-hold: current-stack `HIPENGINE_PARO_FFN_MEGAKERNEL=1` fired on the B=3
-MTP verifier but failed exact AR at token index 9 (`156973` vs `149315`), so it
-remains default-off regardless of any launch-count benefit. Artifact:
-[`PARO FFN megakernel exact blocked`](results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json).
-
-Superseded no-hold: before the canonicalize skip, current-stack
-`chain_attn_mode=decode_batched` with graph `off` was exact but lost badly to
-batched graph-auto because graph-off recanonicalized scratch after every verify.
-That old diagnostic remains in history, but it is no longer the active decision:
-[`decode_batched old no-hold`](results/2026-06-12-hipengine-mtp-decode-batched-current-9prompt-d32.json).
-
-Also no-hold: proposer partial-accept replay removed intermediate snapshot
-saves (`285 -> 148` across the D32 suite) but stayed slower because replaying
-accepted-token state on partial accepts costs more than the D2D copies it
-removes. Exact `9/9` with identical acceptance, but actual speed regressed
-`0.6784x -> 0.6691x`, cycle wall `27.408 -> 27.680 ms`, and proposal/update
-`2.035 -> 2.340 ms`; the experiment code was removed. Artifact:
-[`partial-accept replay no-hold`](results/2026-06-11-hipengine-mtp-proposer-replay-partial-accepts-9prompt-d32.json).
-
-Also no-hold: proposer device-chain candidate buffering kept deeper draft token
-ids on device and read them back once per cycle. It stayed exact `9/9` with
-identical acceptance and ran on all `142` draft cycles, but aggregate speed
-regressed `0.6876x -> 0.6795x`, cycle wall `27.201 -> 27.244 ms`, and
-proposal/update `1.973 -> 1.978 ms`; the experiment code was removed. Artifact:
-[`device-chain no-hold`](results/2026-06-11-hipengine-mtp-proposer-device-chain-9prompt-d32.json).
-
-Accepted 27B dense DFlash rerun:
-
-```bash
-HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
-  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
-  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
-  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-  --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 \
-  --whole-cycle-gate 0.90 --verifier-mode native_bulk_bplus1 --verifier-graph auto \
-  --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off \
-  --hardware-gpu 'AMD Radeon Pro W7900' \
-  --json benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json
-```
-
-## Concurrency decode snapshot (non-retained)
-
-Current-code PARO decode throughput vs number of concurrent sequences `c`, fixed
-512/128 per sequence, gfx1100 / W7900, BF16 KV, median of 3 runs. This remains a
-diagnostic throughput snapshot for the top-level README "Concurrency" table, not
-a retained row: it carries the native-batch generated-token equality and
-per-kernel CPU-reference gates, but not the full retained gate suite (rocprof
-provenance / scaling-reference / bucket gates) of the accepted c=4/c=8 rows
-above. This 2026-06-14 snapshot's llama.cpp column used the then-available
-Qwen3.6 GGUF `UD-Q4_K_S` under Vulkan/RADV with f16 KV and exact token-id
-prompts, so the table remains historical cross-quant until rerun. Future
-`run_w7900_readme_refresh.sh concurrency` runs use `UD-Q4_K_M` to match the
-current GGUF comparison target. The vLLM column uses a local
-`v0.22.1rc1.dev499+g470229c37.d20260613` source build,
-`palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, and OpenAI `/v1/completions`
-wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
-
-| Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 115.36 | 115.36 | 105.76 | 105.76 | 20.04 | 20.04 |
-| 2 | 115.35 | 57.67 | 157.38 | 78.69 | 38.42 | 19.21 |
-| 4 | 160.74 | 40.19 | 75.29 | 18.82 | 73.28 | 18.32 |
-| 8 | 190.15 | 23.77 | 25.15 | 3.14 | 116.56 | 14.57 |
-
-Artifacts: [`hipEngine W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json),
-[`llama.cpp Vulkan W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json),
-[`vLLM local build W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
-[`full W7900 refresh summary`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json).
-The current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 blocked with HIP OOM;
-see [`XTX partial`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
-Replicate with `scripts/run_w7900_readme_refresh.sh concurrency` and
-`scripts/run_w7900_readme_refresh.sh vllm`; the exact expanded commands are in
-this file's README sweep procedure and in the script.
-
-## Source-lineage target: Qwen3.5-35B-A3B-PARO
-
-These rows are **not hipEngine measurements**. They are the current parent
-source-lineage target from `~/amd-gpu-tuning/docs/OPTIMAL.md` that hipEngine's
-Qwen3.5/PARO port should reproduce or beat. Hardware: W7900/gfx1100. Engine:
-`nano-vllm-amd` PARO native c=1. Path: compact-WMMA prefill plus one-step
-graph-replay decode, all parent-listed quality gates passing.
-
-| Model | Quant | Backend/source | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Validation | Source | Last updated |
-| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 512/128 | 2696.4 | 116.05 | 18.80 | graph/step true | [`2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`](results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json) | 2026-05-13 |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 1K/128 | 2876 | 112.9 | 19.34 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 4K/128 | 2741.5 | 113.05 | 21.64 | graph/step true | [`2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`](results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json) | 2026-05-13 |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 32K/128 | 1880 | 98.8 | 21.37 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 128K/128 | 914 | 62.6 | 27.42 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
-
-## External comparison baselines
-
-Rows below are comparison targets, not hipEngine results. They stay here so a
-future hipEngine result can be interpreted quickly.
-
-### llama.cpp ROCm / Qwen3.6-35B-A3B Q8_K_XL
-
-Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 entry and
-`docs/BENCHMARK.md` baseline table.
-
-| Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | VRAM / memory | Source | Last updated | Notes |
-| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |
-| Qwen3.6-35B-A3B | Q8_K_XL GGUF | llama.cpp ROCm | pp512/tg128 | 949.89 ± 9.59 | 74.32 ± 0.02 | — | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | `llama-bench`, `-fa 1`. |
-| Qwen3.6-35B-A3B | Q8_K_XL GGUF | llama.cpp ROCm server | 4K/4K | 1139.72 | 71.49 | 44.94 GiB used | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | `/completion`, temp 0, `ignore_eos=true`. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 512/128 split (`-p 512 -n 0 -d 0` / `-p 0 -n 128 -d 512`) | 2436.049 | 85.487 | 21.125 | tok/s `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Peak measured via `scripts/llamacpp_bench_with_peak.py --poll 10` sampling `mem_info_vram_used`; tok/s rows kept from the original PLAN sweep (the new `-r 1` instrumented sweep is throughput-invalid). |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 4K/128 split | 2176.905 | 87.375 | 21.197 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 32K/128 split | 1496.409 | 76.994 | 21.738 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 128K/128 split | 710.213 | 57.341 | 23.605 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 512/128 split | 1816.927 | 127.515 | 20.844 | tok/s `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 4K/128 split | 1705.093 | 120.163 | 20.969 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 32K/128 split | 1128.554 | 98.073 | 21.533 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 128K/128 split | 480.539 | 64.478 | 23.596 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
-
-### llama.cpp ROCm / Qwen3.6-27B Q4_K_M MTP
-
-Source: [`benchmarks/MTP.md`](MTP.md) and
-[`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json).
-These are external llama.cpp diagnostics, not hipEngine performance claims.
-
-| Model | Quant | Backend | Workload | Base decode tok/s | MTP decode tok/s | MTP speedup / acceptance | Source | Last updated | Notes |
-| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |
-| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | 10-prompt code/general/JA suite, max 512 generated tokens | 25.21 | 40.17 | 1.593x / 0.745 | [`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json) | 2026-05-19 | `--spec-type draft-mtp --spec-draft-n-max 2`; natural prompt suite. |
-| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | token `9707` repeated, 512/128 | 25.61 | 48.96 | 1.912x / 1.000 | same as above | 2026-05-19 | Artificial perfect-acceptance MTP case; compare only as a diagnostic. |
-| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | token `9707` repeated, 4K/128 | 25.12 | 47.95 | 1.909x / 1.000 | same as above | 2026-05-19 | Artificial perfect-acceptance MTP case; compare only as a diagnostic. |
-
-### Host-architecture comparator: Qwen3-0.6B FP16 c=1
-
-Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry and
-`docs/BENCHMARK.md` baseline table.
-
-| Model | Quant | Engine/backend | Workload | Prefill tok/s | Decode tok/s | KV GiB | Source | Last updated | Notes |
-| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| Qwen3-0.6B | FP16 | nano-vllm / ROCm SDPA | 4K/4K | 30167.12 | 15.33 | 38.39 | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | Reference for host overhead to beat. |
-| Qwen3-0.6B | FP16 | mini-sglang / torch SDPA | 4K/4K | 20195.46 | 22.58 | 39.10 | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | Reference for host overhead to beat. |
-
-## GPU1 24GB max-context scratch gate (#88)
-
-The retained #88 memory gate is a scratch/headroom row, not a throughput row. It
-uses the same clean TheRock ROCm 7.13 GPU1 environment as the 24GB startup
-probes and exercises resident PARO `w4_paro` with `int8_per_token_head` KV at
-`max_sequence_length=262144`:
-
-```bash
-PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
-ROOT=$("$PY" -m rocm_sdk path --root)
-RUN=/tmp/hipengine-int8-prefill-gpu1-$(date -u +%Y%m%d-%H%M%S)
-mkdir -p "$RUN"
-"$ROOT/bin/hipcc" --version > "$RUN/hipcc-version.txt"
-env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" TERM="${TERM:-xterm}" \
-  PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
-  LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
-  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" \
-  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \
-  HIPENGINE_COMPILER_VERSION_FILE="$RUN/hipcc-version.txt" PYTHONPATH=. RUN_DIR="$RUN" \
-  "$PY" - <<'PY'
-import json, os, time
-from hipengine import LLM, SamplingParams
-
-model = "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
-sampling = SamplingParams(
-    max_tokens=1,
-    kv_storage="int8_per_token_head",
-    kv_scale_dtype="fp16",
-    kv_scale_granularity="per_token_head",
-)
-llm = LLM(model, backend="hip_gfx1100", quant="w4_paro")
-t0 = time.perf_counter()
-prepared = llm.prepare(max_sequence_length=262144, sampling_params=sampling)
-t1 = time.perf_counter()
-llm.generate(("one two three four",), sampling)
-t2 = time.perf_counter()
-scratch = llm.prepare_request_scratch(
-    max_prompt_tokens=262143,
-    max_new_tokens=0,
-    sampling_params=sampling,
-)
-t3 = time.perf_counter()
-out = {
-    "prepared_context": prepared,
-    "prepare_s": t1 - t0,
-    "warmup_s": t2 - t1,
-    "scratch_probe_s": t3 - t2,
-    "scratch": scratch,
-}
-path = os.path.join(os.environ["RUN_DIR"], "scratch-262k-gpu1.json")
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(out, f, indent=2, sort_keys=True)
-print(path)
-PY
-```
-
-Current retained result: prior BF16-oracle gate `int8_oracle_bytes=536870912`,
-`peak_used=23.320 GiB`, `min_free=0.664 GiB`, `scratch_probe_s=0.115`; #88
-streaming INT8 prefill-attention gate `int8_oracle_bytes=0`,
-`peak_used=22.846 GiB`, `min_free=1.139 GiB`, `scratch_probe_s=0.096`. The
-new kernel was also correctness-smoked against a NumPy causal INT8 reference and
-seen in `rocprofv3 --kernel-trace` as
-`qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel` (`DurationNs=10440`). See
-[`2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`](results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json)
-and [`docs/OOM.md`](../docs/OOM.md).
-
-## Smoke / non-throughput rows
-
-| Check | Backend | Command | Result | Artifact | Last updated | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| W7900 GGUF Q4_K_M matched pure INT8 KV vs llama.cpp Q8 KV | `hip_gfx1100` + llama.cpp ROCm | W7900/GPU0, same GGUF, same generated prompt file, contexts `128,512,4K`. llama.cpp: `scripts/llamacpp_q8_kv_quality_sweep.py --contexts 128,512,4K --reference-cache-type-{k,v} f16 --candidate-cache-type-{k,v} q8_0 --no-warmup`. hipEngine: `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 scripts/qwen35_gguf_int8_kv_correctness.py --prompt-file <same corpus> --max-sequence-length 131202 --kv-scale-dtype fp32 --require-no-bf16-mirror` for `128/1,512/1,4K/1`, plus `4K/16`. | **Diagnostic / not user-facing yet.** llama.cpp `q8_0` K+V fails all hipEngine-like rows: `128` KL `0.09076`, same-top `0.984`; `512` KL `0.9097`, same-top `0.839`; `4K` KL `1.4249`, same-top `0.846`. hipEngine pure per-token/head FP32 INT8 is mixed at short contexts (`128/1` KL `0.2265`, top-1 `1.0`; `512/1` KL `0.02564`, top-1 `0.5`) but passes `4K/1` (KL `0.00126`, top-1 `1.0`) and `4K/16` (KL `0.00781`, top-1 `0.941`) with no BF16 mirrors and all 10 full-attention layers INT8. | [`2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json) | 2026-06-24 | Do not expose a general pure GGUF INT8 KV option yet. The matched `4K+` result is promising enough to justify a broader long-context relaxed-mode suite; metric caveat: llama.cpp reports corpus chunk KL/same-top-p, hipEngine reports BF16-vs-INT8 logits at prefill/decode positions. |
-| W7900 GGUF Q4_K_M pure INT8 KV layout sweep | `hip_gfx1100` | W7900/GPU0, cached TheRock ROCm 7.13 compiler-version guard. Actual no-mirror runtime: `scripts/qwen35_gguf_int8_kv_correctness.py --max-sequence-length 131202 --kv-scale-dtype fp32 --require-no-bf16-mirror` at `128/1`, `512/1`, and `4K/1`. Host numerical QDQ: `scripts/qwen35_gguf_q8_format_sweep.py --prompt-length 4K --formats block16_fp32,block8_fp16,block8_fp32,block4_fp16,block4_fp32,block2_fp16,block2_fp32,block1_fp16,block1_fp32 --bf16-prefix-full-layers 0`. External comparison: llama.cpp ROCm `q8_0` K+V `4K` corpus KL. | **Rejected / not promoted.** Actual pure per-token/head FP32 fails all no-mirror gates: `128/1` `KL mean=0.0824`, top-1 `0.5`; `512/1` `KL mean=0.05698`, top-1 `1.0`; `4K/1` `KL mean=0.15398`, top-1 `0.5`. QDQ block2 and coarser formats fail; only per-scalar `block1_fp16`/`block1_fp32` pass exactly, and those are ~150%/~250% of BF16 KV. llama.cpp `q8_0` K+V completes but fails a hipEngine-like guard (`mean KLD=1.424879`, same-top-p `0.84563`). PARO per-token/head INT8 is still a passing control (`4K/1` mean KL `2.09e-7`, top-1 `1.0`). | [`2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json) | 2026-06-24 | If memory is ignored, per-scalar scales make INT8 payload exact enough; for any useful coarse layout, GGUF Q4_K_M still needs BF16-prefix hybrid or a different calibration/acceptance target. |
-| W7900 GGUF Q4_K_M INT8 KV block16 diagnostic | `hip_gfx1100` | W7900/GPU0, hermetic TheRock ROCm 7.13 env, cached compiler-version guard, `HIPENGINE_GGUF_INT8_KV_BLOCK16=1`, forced-long no-mirror `scripts/qwen35_gguf_int8_kv_correctness.py --prompt-lengths 4K --decode-steps 1 --max-sequence-length 131202 --require-cached-build --require-no-bf16-mirror`; prefixes `0`, `6`, `7`, and no-env admitted `8` were tested. | **Rejected / not promoted.** HIP block16 writer/decode kernels match CPU oracle (`max_abs <= 2.98e-08`), but model gates fail top-1 even at prefix `8`: prefix `0` `KL mean=0.2406`, top-1 `0.5`; prefix `6` `0.001113`, top-1 `0.5`; prefix `7` `0.000413`, top-1 `0.5`; prefix `8` `0.0001505`, top-1 `0.5`, candidate peak/current `25.298/24.797 GiB`. The prefix-8 block16 memory is not better than the admitted prefix-8 per-token/head path and fails the short no-mirror gate, so long gates were skipped. | [`2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`](results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json) | 2026-06-24 | `HIPENGINE_GGUF_INT8_KV_BLOCK16=1` remains diagnostic-only; default explicit long INT8 KV remains prefix `8` per-token/head. |
-| W7900 GGUF Q4_K_M INT8 KV key-only diagnostic | `hip_gfx1100` | W7900/GPU0, cached ROCm 7.13 compiler-version guard, correctness-only shell with `HIPENGINE_GGUF_INT8_KV_KEY_ONLY=1`. Primitive gate: `python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp32 --require-cached-build --require-int8-hip`. Model gates: `scripts/qwen35_gguf_int8_kv_correctness.py` at `4K/1` and `128K/16` with BF16-prefix overrides. | **Rejected / not promoted.** HIP key-only writer/decode kernels match the CPU oracle (`max_abs <= 3.36e-08`) and rocprof shows `qwen35_write_paged_kv_int8_key_bf16_value_kernel<float>` plus `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<float,8,16,2>`. Model quality: prefix `0` fails `4K/1` (`KL mean=0.8731`, top-1 `0.0` in landed-env rerun), prefix `6` passes `4K/1` but fails `128K/16` top-1 (`0.88235`), and prefix `7` passes `128K/16` (`KL mean=0.00741`, top-1 `0.94118`) while saving less memory than prefix-8 per-token/head and increasing prefill peak (`25.554 GiB` peak / `24.803 GiB` current). | [`2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`](results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json) | 2026-06-24 | `HIPENGINE_GGUF_INT8_KV_KEY_ONLY=1` remains diagnostic-only; the admitted long explicit-INT8 default remains prefix `8` per-token/head. |
-| W7900 GGUF Q4_K_M INT8 KV layer-local prefill oracle + prefix-8 quality gate | `hip_gfx1100` | W7900/GPU0, cached ROCm 7.13 compiler-version guard, correctness-only non-throughput shell. `python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202 --require-cached-build --require-no-bf16-mirror`. | **Accepted.** Layer-local temporary BF16 prefill oracles fix the chunk-outer shared-oracle corruption. New no-env default prefix `8` (8 BF16-primary / 2 INT8 layers) passes `128K/128`: `KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror, candidate peak/current `25.239/24.738 GiB`. Prefix `7` fails `128K/16` top-1 (`0.88235`), prefix `6` fails `128K/16`, and pure INT8 still fails `4K/1`; alternate KV formats remain the next memory-saving lane. | [`2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`](results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json) | 2026-06-24 | The previous shared-oracle prefix sweep was a false prefill rejection whenever more than one INT8 full-attention layer was active in chunk-outer prefill. Runtime safety fallback changed from prefix `9` to prefix `8`; lower prefixes require the unverified-long diagnostic env. |
-| W7900 GGUF Q4_K_M hybrid INT8 KV previous shared-oracle rejection | `hip_gfx1100` | W7900/GPU0, compiler-version env guards, `scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202 --require-cached-build --require-no-bf16-mirror`. | **Superseded/rejected.** The old 3-BF16/7-INT8 hybrid reported `KL mean=3.849`, `KL max=12.298`, top-1 `0.1628`, first mismatch at the prefill logit row. The 2026-06-24 fix shows this prefill-row failure was caused by a shared BF16 oracle being overwritten across full-attention layers in chunk-outer prefill, not by retained INT8 decode alone. | [`2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`](results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json) | 2026-06-24 | Kept as historical evidence for the original guard; do not use it to rank current prefix defaults. |
-| GPU1 GGUF Q4_K_M hybrid INT8 KV 24GB 128K diagnostic | `hip_gfx1100` | TheRock ROCm 7.13, `HIP_VISIBLE_DEVICES=1`, decode-repack + WMMA prefill + GEMV decode, compiler-version env guards (`HIPENGINE_COMPILER_VERSION_FILE` and `HIPENGINE_HIPCC_VERSION_FILE`), `scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --kv-storage int8_per_token_head`. | Diagnostic complete: `756.715` prefill tok/s, `66.053` decode tok/s, final ID `13`, finite logits, tracked peak `23.291 GiB`, elapsed `252s`. Not a promoted W7900/README row because it used the old prefix-3 diagnostic layout; the current W7900 quality-admitted path is prefix 8 and is still not a 24GB throughput row. | [`2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`](results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json) | 2026-06-23 | The prior timeout was not the benchmark itself: a manual detached run omitted the compiler-version env and stalled in a lazy `hipcc --version` probe from `paro_silu`; setting the env guards lets the same shape complete. |
-| GPU1 GGUF Q4_K_M 24GB mid-context memory policy | `hip_gfx1100` | TheRock ROCm 7.13, `HIP_VISIBLE_DEVICES=1`, decode-repack + WMMA prefill + GEMV decode, `scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m`; short gate `512/128 4K/128` uses 1 warmup + 3 measured, fit search uses one measured run per context. | Pass for mid-context policy. Baseline max-context window was `51K/128` pass (`1597.225/86.356 tok/s`, `23.434 GiB`) and `52K/128` fail. With <=26 GiB >=52K full-attn query chunks `4096 -> 1024`, observed pass moved to `103K/128` (`866.728/71.053 tok/s`, stable ID `[13]`, `23.484 GiB`); `104K/128` still OOM. Short 512/4K IDs/peak stayed stable and policy path is below threshold. | [`baseline`](results/2026-06-18-gpu1-gguf-q4km-memory-baseline.json), [`policy`](results/2026-06-18-gpu1-gguf-q4km-memory-policy-midcontext.json) | 2026-06-18 | Memory-policy gate with throughput evidence, not a W7900 README row. This BF16-primary policy stopped below 128K due KV/weight residency; the later hybrid INT8 KV diagnostic above supersedes the capacity step, while 512/4K prefill/decode floors remain separately guarded. |
-| GPU1 262K INT8 prefill streaming scratch gate (#88) | `hip_gfx1100` | See the exact TheRock/GPU1 Python heredoc in the preceding section; shape is `LLM(..., quant="w4_paro").prepare(max_sequence_length=262144)` + one-token warmup + `prepare_request_scratch(max_prompt_tokens=262143, max_new_tokens=0)` with `SamplingParams(kv_storage="int8_per_token_head")`. | Pass. BF16 INT8 prefill oracle removed: `int8_oracle_bytes 536870912 -> 0`; live peak moved from `full_prefill_scratch_live` to `linear_prefill_scratch_live`; min-free `0.664 -> 1.139 GiB`; peak used `23.320 -> 22.846 GiB`; scratch probe `0.115 -> 0.096s`. | [`2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`](results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json) | 2026-06-15 | Memory/scratch gate only, not a long-prompt throughput benchmark. Correctness: GPU NumPy reference smoke passed, focused host tests passed, and cached `rocprofv3 --kernel-trace` captured the INT8 prefill kernel (`DurationNs=10440`). |
-| MTP B=1 current post-dual profile refresh | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort D32 B=1 current defaults, `chain_attn_mode=decode_batched`, graph `off`, post proposer shared gate/up dual default. `scripts/mtp_verifier_rocprof.py --region verify_pass` and `--region proposer_all`. | Exact same-session AR with retained B=1 accepted trace. Verifier: `832.8` calls/pass, `9.380 ms/pass` kernel, `12.886 ms/pass` host marker; no material fill/copy bucket. Proposer-all: `40.0` calls/cycle, `1.509 ms/cycle` kernel, `1.759 ms/cycle` host marker; shared gate/up dual reduced dense-BF16 launches `7.5 -> 4.5/cycle` vs the pre-dual profile. | [`verify`](results/2026-06-13-hipengine-mtp-b1-current-postdual-verify-rocprof.json), [`proposer`](results/2026-06-13-hipengine-mtp-b1-current-postdual-proposer-all-rocprof.json) | 2026-06-13 | Diagnostic only, not a new speed row. Confirms proposer graph capture has only about `0.25 ms/cycle` host-only headroom and that the next code margin is still verifier reduced-DAG batching. |
-| E2E speculative vs AR (post-#107) | `hip_gfx1100` | W7900. MTP: smoke B=3 batched graph-auto quicksort D32. DFlash 35B: bench 4 prompts D32 gate 0.65 graph-auto. DFlash 27B: bench 4 prompts D64 gate 0.90 branch_copy graph-auto. | All exact. **35B-A3B MTP 0.67x** (72.6 vs 111.2 tok/s, C_B 3.57); **35B DFlash 0.30x** (drafter-bound); **27B-dense DFlash 1.164x** (38.9 vs 32.7 tok/s, per-prompt 0.94-1.42). 27B has no MTP head. | [`2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json`](results/2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json) | 2026-06-11 | Speculative beats AR only where AR is expensive (27B dense). 35B MTP break-even needs cycle 32.2->21.5 ms: proposer drafting + verify busy. |
-| MTP B=3 locked baseline/profile refresh | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort 90-token prompt, D32, `scripts/mtp_chain_e2e_smoke.py --proposal-impl persistent_device --chain-attn-mode batched --graph-mode auto` plus `scripts/mtp_verifier_rocprof.py --graph-mode auto --steady-state-skip 2`. | Exact same-session AR. Fresh baseline `84.314` vs `111.769 tok/s` = `0.754x` (best locked row remains `0.758x`); accepted lengths unchanged. Profile slice: `11` verifier passes, `19.73 ms/pass` host, `15.33 ms/pass` kernel, `972` calls/pass; top families are native prefill attention, MoE gate/up dual GEMV, GDN decode, MoE down, and lm-head. | [`baseline`](results/2026-06-11-hipengine-mtp-b3-locked-baseline.json), [`rocprof`](results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json) | 2026-06-11 | P0 audit for the MTP break-even sprint. The first graph/capture cycle makes all-cycle `decode_seconds/cycle` `29.19 ms`; steady cycle markers after warmup are about `23.3 ms`. |
-| MTP chunked linear-state commit default | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, locked quicksort D32 B=3 graph-auto verifier profile plus 9-prompt D32 exact suite; `HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED=0` is the old one-CTA-per-row control. | Exact quicksort and exact `9/9` prompt suite with identical accepted lengths and active budgets. Rocprof commit kernel `0.250 -> 0.203 ms/pass`, total verifier kernel `14.395 -> 14.341 ms/pass`, host marker `18.301 -> 18.263 ms/pass`. Prompt-suite verify improved `21.8518 -> 21.8308 ms/cycle`; whole-cycle wall was neutral/noisy `26.9920 -> 27.0228 ms/cycle` while proposal/update moved the other way. | [`off suite`](results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-off-9prompt-d32.json), [`on suite`](results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-on-9prompt-d32.json), [`off rocprof`](results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-off-rocprof.json), [`on rocprof`](results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-on-rocprof.json) | 2026-06-11 | Retained default-on verifier sub-window win. One 27B dense DFlash D16 shared-path smoke also passed. Treat as a micro verifier/commit slice, not a headline throughput row. |
-| MTP C-dispatch shared-down output-tiled default | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, locked quicksort D32 B=3 graph-auto verifier profile, no experiment env. C dispatcher uses existing `HIPENGINE_W4_OUTPUT_TILED_PREFILL` for linear-attn shared-down rows in `{2,4,8}`, with multi-row decode fallback. | Exact same-session AR with accepted lengths unchanged. The remaining 30/pass linear shared-down `awq_fusedw4_prefill_fp16` bucket disappears: `w4_single_prefill_smallbatch` `0.350 -> 0 ms/pass`, total verifier kernel `14.594 -> 14.538 ms/pass`, host marker window `18.621 -> 18.538 ms/pass`, calls unchanged at `935/pass`. | [`summary`](results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled.json), [`rocprof`](results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled-rocprof.json) | 2026-06-11 | Retained micro-win. This fixes a C-dispatch-only stale path; the Python fallback already had row-aware shared-down routing. |
-| MTP GDN VTILE=8 no-hold | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, locked quicksort D32 B=3 graph-auto verifier profile, transient opt-in `HIPENGINE_GDN_CHAIN_VTILE=8`; microbench T4/T8 against numpy f32 oracle. | Exact same-session AR with unchanged accepted lengths. Microbench: VTILE=4 T4/T8 `67.86/118.08 us`, VTILE=8 `67.41/119.31 us`; oracle unchanged (`out_max_abs=1.07e-6`, `leaf=5.96e-8`). Locked profile regressed GDN `1.7559 -> 1.7597 ms/pass` and total verifier kernel `14.5941 -> 14.6308 ms/pass`; VGPR rose `64 -> 80`. | [`summary`](results/2026-06-11-hipengine-mtp-gdn-vtile8-nohold.json), [`rocprof`](results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json) | 2026-06-11 | No code or runtime flag retained. Keep current GDN `VTILE=4`; reopen only for a different design that lowers both GDN and total verifier wall. |
-| MTP M16.4 dual split-output output-tiled diagnostic | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort D32 B=3 locked sprint config plus opt-in `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1`; C dispatcher routes linear-attn shared gate/up split outputs to `gemv_awq_dual_pack8_output_tiled_split_transposed_fp16`. | Exact same-session AR; accepted lengths unchanged. Smoke `87.537` vs `112.109 tok/s` = `0.781x` diagnostic. Rocprof slice: `w4_dual_prefill_smallbatch` `30 calls/0.917 ms/pass -> 0`, replaced by 30 output-tiled dual calls at `0.438 ms/pass`; total kernel `15.33 -> 14.87 ms/pass`, host `19.73 -> 19.16 ms/pass`, calls unchanged at `972/pass`. | [`smoke`](results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-smoke.json), [`rocprof`](results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-rocprof.json) | 2026-06-11 | Diagnostic/default-off until the 9-prompt exact suite passes. Useful banked headroom but not enough for break-even; next higher-yield levers remain glue launch removal and multi-stream overlap. |
-| MTP selected-MoE down staged default-off refresh | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, 9-prompt D32 B=3 prompt suite, persistent proposer, `chain_attn_mode=batched`, verifier graph `auto`, `HIPENGINE_SELECTED_MOE_DOWN_STAGED=0` A/B against the prior default stack. | Exact `9/9` with accepted lengths and visible tokens identical to the prior default. Every prompt improved cycle wall. Aggregate actual ratio `0.6699x -> 0.6784x`, cycle wall `27.648 -> 27.408 ms/cycle` (-0.240), verify `22.377 -> 22.131 ms/cycle` (-0.246), proposal/update `2.045 -> 2.035 ms/cycle` (-0.010). | [`2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json`](results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json) | 2026-06-11 | Promoted by flipping `HIPENGINE_SELECTED_MOE_DOWN_STAGED` to opt-in (`=1`). The staged path was an earlier verifier-window win, but current graph-auto capture-safe barrier/fill overhead makes the unfused fallback faster. |
-| MTP MoE C-dispatch selected/shared overlap spike | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, locked quicksort D32 B=3, persistent proposer, `chain_attn_mode=batched`, graph-auto and graph-off A/B. Experimental `HIPENGINE_MOE_C1_C_DISPATCH_OVERLAP=1` split selected/shared branches across main/aux streams inside the real C dispatcher. | **No-hold.** Naive overlap also touched linear-attn prompt prefill and changed the AR continuation; verifier-only gating restored exact locked AR/acceptance. Graph-auto target metric worsened: cycle `26.10 -> 28.29 ms/cycle`, verify `0.266 -> 0.295 s`, MTP `88.70 -> 82.25 tok/s`; steady markers improved `22.60 -> 21.30 ms` but first-cycle/capture cost rose `68.1 -> 112.1 ms`. Graph-off also worsened `37.77 -> 44.22 ms/cycle`. | [`2026-06-11-hipengine-mtp-moe-cdispatch-overlap-nohold.json`](results/2026-06-11-hipengine-mtp-moe-cdispatch-overlap-nohold.json) | 2026-06-11 | Experimental code was removed, not retained. Revisit only with a graph-capture/amortization design that improves all-cycle D32 economics, not just steady markers. |
-| MTP #107 verify graph replay exact (keyed-barrier capture fix) | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort 90-tok, decode 32, `scripts/mtp_chain_e2e_smoke.py --proposal-impl persistent_device --chain-attn-mode batched --graph-mode auto` B=1/B=3 | **exact_ar_match=true at B=1 and B=3 with graph replay on** (was false / rejected in #101). Root cause was not graph dispatch: (1) keyed staged-rotate barrier epochs (`SELECTED_MOE_DOWN_STAGED`, then default-on) are host-side by-value monotonic and frozen at capture (silent race -> 1.4-3.7 logit drift -> argmax flips; later direct passes spun forever on stale epochs); fixed by capture-safe memset-per-launch barriers when verify graphs are active. (2) `_canonicalize_decode_scratch` freed rows=B+1 scratch each cycle; fixed by capture-time scratch snapshot + keepalive. B=1 verify 40.88 -> 17.4 ms/cycle; B=3 33.3 -> 22.1 (-34%), cycle 43.3 -> 32.2, C_B 4.83 -> 3.57, MTP/AR 0.49 -> 0.67x, 55.95 -> 73.24 tok/s. | [`2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json`](results/2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json) | 2026-06-10 | Biggest single C_B move so far; not break-even (needs <=2.38). Remaining gap = ~10 ms/cycle proposer+draft host time + verify busy; next: graph the proposer drafts, p_min=0.5 (#100), gated tree (#99). |
-| MTP M16.6 verifier GDN chain dv-tiling (T1) | `hip_gfx1100` | W7900/gfx1100 (wavefront=32), Qwen3.6-35B-A3B-PARO packed MTP-BF16, B=3, `scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 8 --candidate-budget 3` (gate off; CSV post-processed, helper exits 1 on `exact_ar_mismatch` as expected under T1); `scripts/gdn_chain_microbench.py` HIP-graph GPU timing + numpy f32 oracle. | **T1 (KL-gated), adopted 2026-06-09.** Microbench vs cpu_reference `out_max_abs=1.07e-6`, `leaf_max_abs=5.96e-8` (**KL << 0.05**); 555 GDN/linear_attn tests pass. dv-tiling (VTILE=4): each chain block owns 4 consecutive dv columns, grid **4096 -> 1024 blocks**; per-(v_head,t) q/k load + q/k-scale reductions + beta/decay transcendentals computed once/tile; 4 dv state writes coalesce. Rocprof `qwen35_gdn_chain_recurrent` **72.0 -> 53.39 µs/call (-25.8%)** (-32% vs original 78.5), `2.16 -> 1.602 ms/pass` (-0.56 ms/pass); grid 1024 / VGPR 64 / Scratch 0 confirmed. Microbench T4 `86.99 -> 67.76 µs` (-22%), T8 `155.02 -> 118.42 µs` (-24%). `exact_ar_match` flips true->false (~1 ULP FP-reorder at degenerate-prompt boundary) -- accepted under T1, not a KL regression. Tree DFlash kernel untouched. | [`2026-06-09-hipengine-m16-gdn-chain-dvtiling.json`](results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json) | 2026-06-09 | First win landed under **T1** (verify-path KL gate replaces bit-exact `exact_ar_match`; see `docs/MEGAKERNEL.md` §5/§8.1, `docs/TESTING.md` §4). Combined dispatch + redundancy + coalescing lever. **T1 closed (real-prompt A/B, quicksort B=3, 3 runs):** acceptance byte-identical (0.4615) and `exact_ar_match=true` on the real prompt (flip is degenerate-1-token-only); **C_B unchanged within noise (4.81±0.14 -> 4.80±0.28)** — the -0.56 ms/pass saving is below the dispatch-floored cycle's noise (§9.2). Banked kernel-time headroom; first relaxed profile in `docs/RELAXED.md` §0.1. `2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json`. |
-| MTP M16.5 verifier GDN chain shuffle reductions | `hip_gfx1100` | W7900/gfx1100 (wavefront=32), Qwen3.6-35B-A3B-PARO packed MTP-BF16, B=3, `scripts/mtp_verifier_rocprof.py --decode-tokens 8 --candidate-budget 3` (6 passes, gate off); `scripts/gdn_chain_microbench.py` HIP-graph GPU timing + numpy f32 oracle. | Exact AR (`exact_ar_match=true` at decode-tokens=8); microbench vs numpy delta-rule oracle `out_max_abs=9.5e-7`, `state_max_abs=6.0e-8`; 30 GDN/linear_attn tests pass. Replaces the chain GDN recurrence's 4 per-token LDS+`__syncthreads` tree-reductions with single-wavefront warp-shuffle reductions (32-thread block when `head_k_dim<=128`; zero reduction LDS/syncs). Rocprof `qwen35_gdn_chain_recurrent` `78.5 -> 72.0 µs/call` (-8.3%), GDN `14.137 -> 12.959 ms / 180 calls` (`2.36 -> 2.16 ms/pass`), total kernel `13.84 -> 13.61 ms/pass`. Tree DFlash kernel untouched. | [`2026-06-09-hipengine-mtp-m16.5-gdn-chain-shuffle-reductions.json`](results/2026-06-09-hipengine-mtp-m16.5-gdn-chain-shuffle-reductions.json) | 2026-06-09 | GDN is the biggest verify-cycle family; the GPU is already saturated (4096 blocks) so the win is per-block sync removal. Exact-safe (f32-accumulated recurrence, reassociation only). Next lever: per-(v_head,t) scalars (q/k scales, beta, decay transcendentals) are recomputed by all 128 dv blocks per head -- a pre-pass could remove that redundancy. |
-| MTP M16.4 verifier single-W4 output-tiled prefill | `hip_gfx1100` | `HIPENGINE_W4_OUTPUT_TILED_PREFILL` default-on (opt-out `=0`). W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, B=3, `scripts/mtp_verifier_rocprof.py --decode-tokens 8 --candidate-budget 3` (5 passes); decode-tokens=4 cross-check (1 pass). | Exact AR (byte-exact gate 192/192; `exact_ar_match=true` at decode-tokens=8 default-on). Routes single-output W4 projections (`o_proj`/`v_proj`/`out_proj`, rows in {2,4,8}) from the WMMA `awq_fusedw4_prefill_*` small-batch kernel to the byte-exact output-column-tiled GEMV (`gemv_awq_pack8_output_tiled_(transposed_)fp16`, bit-identical to AR's per-row rows==1 GEMV). Rocprof B=3 decode-tokens=8: `w4_single_prefill_smallbatch` `60/2.553 -> 36/0.792 ms/pass`, net single-W4 `-1.17 ms/pass`, total kernel `17.02 -> 16.07 ms/pass` (-5.6%); decode-tokens=4: `13.60 -> 12.15` (-10.7%); launches/pass unchanged. | [`2026-06-09-hipengine-mtp-m16.4-w4-output-tiled-prefill.json`](results/2026-06-09-hipengine-mtp-m16.4-w4-output-tiled-prefill.json) | 2026-06-09 | First measured M16 gain (M16.1/M16.2 were diagnostics). Exact-safe (bit-identical kernel, no prompt can change output). Only the `project_pack8` rows-in-{2,4,8} single sites convert; the remaining single-prefill and the `w4_dual_prefill_smallbatch` duals (byte-exact dual output-tiled kernel exists) are the next M16.4 step. |
-| MTP M15.1 verifier projection weight-amortization | `hip_gfx1100` | Exact commands embedded in the artifact. W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP target, stable quicksort prompt, D32, `--chain-attn-mode decode_batched --graph-mode off`, B=3/B=5, 3 runs; rocprof B=3, `--steady-state-skip 2`. `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH` default-on (opt-out `=0`). | Exact same-session AR on every run. Switches the small-batch (`2<=tokens<=7`) linear QKV/Z (30 layers) and full Q/K (10 layers) projections from per-row single GEMVs to the bit-exact weight-amortized `gemv_awq_pack8_multi_row_decode_transposed_fp16` (weight tile read once for all B+1 rows). Rocprof B=3: `w4_single_gemv` family `2.460 -> 1.873 ms/pass` (-23.9%), total kernel `17.05 -> 16.33 ms/pass` (-4.2%), launches/pass unchanged (981). Economics `verify_ms/cycle` min `35.55 -> 34.71` (-2.4%) at B=3 and `42.45 -> 40.82` (-3.8%) at B=5; bit-exact for rows {2,3,4,5,6,8}. | [`2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`](results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json) | 2026-06-08 | Default-on exact-safe speed step (kernel is bit-identical to the per-row GEMV, so no prompt can change output). Modest overall because projection GEMVs are ~14% of verifier kernel time; the win scales with B. Historical larger prefill-style W4 sites are now covered on the exact path: `shared_gate_up` by M16.4 split-output output-tiled routing and `single_linear_out`/`single_full_v` by 2026-06-11 M12.6 exact gates. |
-| M16.1 HIP graph-replay per-node cost (dispatch floor) | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 HIP_VISIBLE_DEVICES=0 python3 scripts/graph_node_microbench.py --counts 50,100,200,500,941,2000 --reps 80 --warmup 20 --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version.txt`. Trivial one-block kernel issued back-to-back N times from a single C call (zero Python per-node); same C burst captured into one HIP graph + replayed steady-state. W7900/gfx1100, 3 runs. | **Clean per-node dispatch floor is ~`5.6 µs/node`** (converged 50→2000), and a HIP graph is **`1.00×`** vs a native launch loop at N=941 (`direct 5.61` vs `graph 5.61 µs/node`). graphs do **not** beat a native loop because the floor is GPU-side dispatch. **(The follow-up M16.2 row CORRECTS the residual read below: the gap above the 1-block floor is grid-size dispatch, not host overhead.)** | [`2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json`](results/2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json) | 2026-06-08 | Diagnostic (noop kernel; no correctness gate applies). Floor + graph-neutral confirmed; the *strategy* read ("native loop is the lever") was superseded by M16.2 — see that row. Re-confirms M12.1/M13.D "graph neutral" in clean isolation. |
-| M16.2 launch-cost arg+grid scaling (native loop predicted parity) | `hip_gfx1100` | `python3 scripts/graph_node_microbench.py --kernels tiny,wide --counts 200,941,2000 --grid-sweep 1,128,1024,2048,8192,65536 --grid-sweep-count 941 --reps 80 --warmup 20 --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version.txt`. Adds a 16-arg kernel + a forced grid-size sweep to the M16.1 harness. W7900/gfx1100. | **Per-launch cost is arg-count-independent** (2-arg `5.62` = 16-arg `5.62` µs/launch at N=941) but **scales with grid size**: `1024 blk → 7.27`, `2048 → 7.97`, `8192 → 12.19`, `65536 → 51.40` µs/launch; graph replay is only `1.02–1.13×` even at large grids. Real hot W4 GEMVs launch `dim3(out_packed, rows)` = thousands of blocks, so the ~`12–20 µs/op` residual is **GPU command-processor workgroup scheduling**, not host/Python (M14.dispatch.1 removed Python → parity) and not arg-marshaling. | [`2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json`](results/2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json) | 2026-06-08 | Diagnostic (noop kernels). **Disproves M16.2's premise:** a native verify loop issues the same `hipLaunchKernelGGL` with the same grids → predicted **parity**; graphs (M16.5) neutral. The sole launch-residual lever is **M16.3 (fewer/larger kernels)** — fewer dispatch payments + more compute-per-launch to hide dispatch — then **M16.4** for kernel time. |
-| MTP small-B decode full-attention verifier | `hip_gfx1100` | Exact commands are embedded in the artifact. W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP target, stable quicksort prompt, D32, `--chain-attn-mode decode_batched --graph-mode off`; rocprof uses B=3 and `rocprofv3 --kernel-trace --marker-trace`. | Exact same-session AR for B=3/B=5 and finite validated top-1 values in D8 smoke. MTP cycle cost improves vs prefill-batched baseline: B=3 `5.46 -> 4.39` (-19.6%), B=5 `6.83 -> 6.23` (-8.7%). Rocprof B=3 replaces native prefill attention `1.88 ms/pass` with decode context+reduce `0.42 ms/pass`; full-attn attention+KV is `1.91 -> 0.45 ms/pass` (-76.7%). | [`2026-06-07-hipengine-mtp-small-b-decode-full-attn.json`](results/2026-06-07-hipengine-mtp-small-b-decode-full-attn.json) | 2026-06-07 | Diagnostic/default-available mode, not a promoted throughput row: MTP remains below AR and `decode_batched` is graph-off-only until split-count graph buckets are implemented. Fallbacks remain `chain_attn_mode=c1_loop` and `batched`. |
-| MTP shared-verifier rocprof family rollup | `hip_gfx1100` | Exact commands are embedded in the artifact. W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP target, stable quicksort prompt, B=3/D32, `scripts/mtp_verifier_rocprof.py --chain-attn-mode batched --steady-state-skip 2` under `rocprofv3 --kernel-trace --marker-trace`. | Exact same-session AR. Steady-state verify window is `37.88 ms/pass`: summed kernels `18.46 ms/pass`, host/D2H/launch/sync residual `19.42 ms/pass` (51.3%). Biggest GPU buckets: shared+dense W4 projection `6.58 ms/pass` and 300 calls/pass, selected MoE `4.98 ms/pass` and 400 calls/pass, linear Conv/GDN `2.73 ms/pass`. LM-head/top1 is `1.45 ms/pass`; commit/copy/accept kernels are only `0.29 ms/pass`. | [`2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json`](results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json) | 2026-06-07 | Diagnostic profile for Task #29. Largest wall target is not a single kernel; it is launch/sync/D2H residual plus high call counts. Kernel names do not distinguish shared-expert vs dense/full projection W4 callsites, so callsite markers are the next profiling refinement. |
-| Economics re-run (current tree: merge-fix + M15.x + M16.4) | `hip_gfx1100` | W7900/gfx1100. MTP: `scripts/mtp_verifier_economics.py --decode-tokens 32 --candidate-budgets 3,5 --chain-attn-mode batched` (35B-A3B, quicksort). DFlash: `scripts/dflash_chain_e2e_bench.py --decode-tokens 32 --draft-budgets 4,8` (35B-A3B) and `--max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 --whole-cycle-gate 0.90` (27B-dense). | All rows exact same-session AR. **MTP 35B-A3B** B=3 `0.519x` (53.7 vs 103.5 tok/s, C_B `5.46->4.67`), B=5 `0.461x` (C_B `6.83->6.23`). **DFlash 35B-A3B** B=4 `0.400x` (40.4 vs 100.8 tok/s), B=8 `0.297x`. **DFlash 27B-dense + gate 0.90** `1.1615x` (37.78 vs 32.53 tok/s, 9/9 exact; prior `1.147x`). | [`2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json`](results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json) | 2026-06-09 | Picture unchanged: speculative wins on the dense 27B (expensive AR) but not the A3B MoE (cheap 3B-active AR ~103 tok/s). MTP 35B needs C_B `4.67 -> <=2.385` (~halve) for break-even at current accept — the M16.3 megakernel lever (verify cycle ~35 ms is dispatch-bound, not the ~16 ms kernel time M16.4 trimmed). |
-| Shared verifier economics baseline (MTP B=3/5 + DFlash B=4/8) | `hip_gfx1100` | Exact commands are embedded in the artifact. W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP target, z-lab DFlash drafter, stable quicksort prompt, D32, graph off. | Exact same-session AR on all 4 rows. MTP cycle cost `C_B`: B=3 `5.46`, B=5 `6.83`; DFlash: B=4 `5.56`, B=8 `6.65`. Target verify seconds: MTP `0.505/0.511`, DFlash `0.646/0.783`. Rows/output: MTP `1.625/2.000`, DFlash `2.531/4.531`. External peak VRAM: MTP `22.38 GiB`, DFlash `20.41 GiB`. | [`2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json`](results/2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json) | 2026-06-07 | Diagnostic baseline for Task #28. No priority-order change: budget growth and graph-off rows remain unattractive; keep focus on target verifier row/cycle cost and exact low-cost commit. |
-| MTP selected-MoE down staged historical default | `hip_gfx1100` | Exact commands are embedded in the artifact. W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP target, B=3/decode4 verifier rocprof via `scripts/mtp_verifier_rocprof.py --chain-attn-mode batched`; correctness via targeted pytest, tiny FP16 kernel parity, MTP exact smoke, and 35B DFlash chain smoke. | Exact MTP smoke and DFlash one-prompt smoke pass. The then-default path used 64-thread selected GEMV plus staged selected SiLU/down-rotate + ids-tensor down GEMV for verifier `tokens>1`: rocprof verifier kernel calls/pass `1019.00 -> 989.33` (-2.9%) and kernel time/pass `15.369 -> 14.949 ms` (-2.7%) vs prior 128-thread unfused selected-down baseline. | [`2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json`](results/2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json) | 2026-06-03 | Superseded on 2026-06-11: current graph-auto suite is faster with staged-down disabled, so `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` is now opt-in only. |
-| DFlash 27B deployable online confidence gate | `hip_gfx1100` | Exact commands in the artifact. GPU0/W7900, Qwen3.6-27B-PARO dense + z-lab DFlash, `--max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off`; gate via `--whole-cycle-gate <thr>` (CLI flag; env `HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=<thr>` retained as backward-compat override; resolved threshold recorded in artifact `workload.whole_cycle_gate`); oracle via `HIPENGINE_DFLASH_CONF_ORACLE_OUT=<jsonl>`. | Exact `9/9` on every row. The drafter's depth-1 top-1 softmax prob `p1` predicts acceptance (corr `0.705`; `p1` mean `0.669` when accept=0 vs `0.954` when accept≥1). A **whole-cycle** gate (full chain if `p1≥thr` else AR — not the mid-chain `--draft-p-min` which hurts at `0.92x`) lifts all-chain `1.027x` → **`1.147x` AR** at `thr=0.90` (sweep `0.85/0.90/0.95 = 1.099/1.147/1.106`), **online with no prompt history**. | [`2026-06-08-hipengine-dflash-deployable-confidence-gate.json`](results/2026-06-08-hipengine-dflash-deployable-confidence-gate.json) | 2026-06-08 | First deployable >1.10x exact DFlash row: online/per-cycle, no prior history, vs the non-deployable offline profile-route `1.35x`. Threshold is per-model (clean-separation ~0.9 here) calibrated from the oracle. CLI flag `--whole-cycle-gate` landed 2026-06-08 (exact-AR re-verified on a 1–2 prompt smoke; metric unchanged). Remaining follow-ups: engine DFlash decode API; threshold auto-calibration. |
-| DFlash 27B zero-probe graph-aware profile route + verifier graph | `hip_gfx1100` | Exact commands are embedded in the artifacts. Rows use GPU0/W7900 via `HIP_VISIBLE_DEVICES=0`, Qwen3.6-27B-PARO dense + z-lab DFlash, `--draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched`. The graph-aware manifest was regenerated from an exact all-chain verifier-graph row with `--min-chain-speedup 1.0 --default-route ar`; latest row uses `--canonical-commit-mode bulk_direct --drafter-query-mode budget_prefix --terminal-ar-tokens 5`, opt-in `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4`, and `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down`; the regenerated threshold4 manifest routes exact/profitable function-continuation to chain while keeping json-YAML and sort-third on AR. | Exact `9/9`. Profile-history routing selected 5 chain winners and 4 AR fallbacks before graph, reaching `1.061x` AR (`34.63 tok/s`). Adding verifier graph reached `1.137x` AR (`36.81 tok/s`). Rebuilding the manifest from graph-aware row speeds adds quicksort and short-GSM8K to chain, for 7 chain / 2 AR and `1.161x` AR (`37.55 tok/s`). `bulk_direct` stays exact on this gate and reaches `1.176x` AR (`38.22 tok/s`); budget-prefix drafter query nudges that to `1.183x` AR (`38.65 tok/s`); adding `single_full_v` reaches `1.201x` AR (`38.99 tok/s`); adding `single_linear_out` reaches `1.234x` AR (`40.22 tok/s`); threshold=4 with json-YAML routed to AR reaches `1.253x` AR (`40.69 tok/s`); regenerating the threshold4 route adds function-continuation as a chain winner and reaches `1.265x` AR (`40.94 tok/s`); default-off terminal AR tail routing reaches a 3-run median `1.298x` AR (`42.07 tok/s`); adding manifest-provided per-prompt terminal AR cutoffs lets json-YAML run chain for its safe prefix and AR for `terminal_ar_tokens=20`, reaching a 3-run median `1.350x` AR (`43.76 tok/s`). | [`profile route`](results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json), [`profile route + verifier graph`](results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json), [`graph-aware route + verifier graph`](results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json), [`graph-aware route + graph + bulk_direct`](results/2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json), [`graph-aware route + budget_prefix`](results/2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json), [`graph-aware route + single_full_v`](results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json), [`graph-aware route + single_linear_out`](results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-linear-out.json), [`threshold4 json→AR route`](results/2026-05-31-hipengine-dflash-27b-threshold4-json-ar-route.json), [`threshold4 regenerated route`](results/2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json), [`threshold4 terminal AR tail`](results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json), [`threshold4 json terminal20 route`](results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json) | 2026-05-31 | Diagnostic/non-promoted despite clearing the numeric `>1.10x` gate: it depends on prior prompt history rather than a deployable classifier, verifier graph auto remains opt-in, `bulk_direct` exactness is only established for this gate, budget-prefix proposals can differ from the z-lab block-query contract, threshold=4 has known non-exact chain rows, and prompt-specific terminal-tail AR routing is only proven on this D64 suite. `single_full_v` and `single_linear_out` were later promoted default-safe by the 2026-06-11 MTP D32 exact gates. |
-| DFlash 27B multi-row-decode down-projection default | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use GPU0/W7900 via `HIP_VISIBLE_DEVICES=0`, Qwen3.6-27B-PARO dense + z-lab DFlash, `--draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy`. | Exact `9/9`. The new no-env default `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode` keeps row-wise GEMV dequantization but shares W4 down-projection weights across verifier rows. Prior row-wise default `0.923x` AR (`30.20 tok/s`) -> new default `0.977x` AR (`31.74 tok/s`), +5.1% spec tok/s; summed target verify `15.75 -> 14.83 s` (-5.8%) with unchanged acceptance (`avg_accept=2.56`, rows/output `1.40`). | [`2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json`](results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json) | 2026-05-26 | Diagnostic/default-on exact speed work, not a promoted throughput claim because it remains below AR and the `>1.10x` speed gate. Force prior row-wise path with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv`; `multi_row` remains the rejected prefill-dequant diagnostic. |
-| DFlash GPU1 exact-dequant multi-row/profile route | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use GPU1 via `HIP_VISIBLE_DEVICES=1` (RX 7900 XTX), 35B A3B packed target + z-lab DFlash, `--draft-budgets 4 --decode-tokens 16 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy`; `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode` is opt-in. | Synthetic GPU test: `multi_row_decode` is bit-exact vs row-wise pack8 GEMV for rows `{2,5,8}`. Full-model 35B A3B B=4/D16 4-prompt slice stays exact `4/4`; opt-in multi-row decode moves all-chain DFlash `44.97 -> 46.87 tok/s` (+4.2%) and summed target verify seconds `1.200 -> 1.144` (-4.6%) but remains below AR. Generated zero-probe profile route selects AR for all four prompts and measures exact `1.021x` AR (plain-AR variance, no speculative win). | [`2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`](results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json) | 2026-05-26 | Diagnostic/non-promoted. 27B dense target+drafter OOMs on GPU1; route-manifest builder is retained as the zero-probe/profile-history path; this GPU1 slice has no chain-winning prompts. |
-| DFlash 27B adaptive probe guard | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use Qwen3.6-27B-PARO dense + z-lab DFlash, `scripts/dflash_chain_e2e_bench.py --adaptive-budget on --draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy`; default `--adaptive-probe-amortization-tokens` is now `128`. | Exact `9/9`. D64 adaptive with the old 64-token probe guard was `0.976x` AR (`32.03 tok/s`) because every prompt paid a startup probe; the new 128-token guard blocks unamortizable probes at D64 and reaches `0.998x` AR (`32.76 tok/s`), rows/output `1.00`, accepted draft tokens `0`. | [`2026-05-25-hipengine-dflash-27b-adaptive-probe128-guard.json`](results/2026-05-25-hipengine-dflash-27b-adaptive-probe128-guard.json) | 2026-05-25 | Diagnostic/default safety guard. This prevents short-horizon adaptive mode from being worse than AR; it is not a speculative speedup. The all-chain `{AR,chain}` oracle on the same rows is only `1.046x`, so online prompt classification remains the actual routing lever. |
-| DFlash 27B B=4 down-projection GEMV default | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use Qwen3.6-27B-PARO dense + z-lab DFlash, `scripts/dflash_chain_e2e_bench.py --draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy`; the retained row is default env after promoting verifier-sized W4 MLP down projections to row-wise pack8 GEMV for `B+1<=8`. | Exact `9/9`. Current B=4 D64 branch-copy 9-prompt suite improves from `0.867x` AR (`28.47 tok/s`) to `0.926x` AR (`30.40 tok/s`), +6.8% relative, with unchanged acceptance (`avg_accept=2.56`, rows/output `1.40`). Selected-region verifier profile moves kernel time `1413.8 -> 1285.1 ms`; `awq_fusedw4_prefill_fp16` drops `555.7 -> 149.3 ms`, while row-wise `gemv_awq_pack8` rises `215.6 -> 469.1 ms`. | [`2026-05-25-hipengine-dflash-27b-down-gemv-default.json`](results/2026-05-25-hipengine-dflash-27b-down-gemv-default.json) | 2026-05-25 | Diagnostic/default-on speed work, not a promoted throughput claim because it remains below AR and the `>1.10x` speed gate. Roll back with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill`; the faster `multi_row` mode stays diagnostic because it failed 9-prompt exactness. |
-| DFlash 27B B=4 verifier rocprof/down-projection diagnostic | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use Qwen3.6-27B-PARO dense + z-lab DFlash, `scripts/dflash_chain_e2e_bench.py --draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched`; selected-region profiler rows use `--rocprof-selected-region dflash_verify` under `rocprofv3 --kernel-trace --selected-regions`. | Verifier-only rocprof shows W4 target projection dominates B=4 verify: `awq_fusedw4_prefill_fp16` is `555.7 ms` (`39.3%`) of selected-region kernel time, with full attention only `62.0 ms` (`4.4%`). Routing shared+dense down projections through existing multi-row W4 cuts one-prompt verify wall `2.00 -> 1.62 s` and speed `0.817x -> 0.971x`, but 9-prompt exactness fails (`8/9`, `code:json_yaml_continuation` token 48). Shared-down-only is exact but not a suite win (`0.863x` vs `0.867x` baseline); canonical replay fixes dense-down exactness but falls to `0.498x` on the 4-prompt slice. | [`2026-05-25-hipengine-dflash-27b-verifier-rocprof-down-proj-diagnostic.json`](results/2026-05-25-hipengine-dflash-27b-verifier-rocprof-down-proj-diagnostic.json) | 2026-05-25 | Diagnostic/non-promoted. Dense-down multi-row is a real verifier-cost lever, but branch-copy canonical state is not exact with it. Next work is lower-cost exact canonicalization or a deterministic dense-down verifier path. |
-| DFlash 27B B=4 profile-routing diagnostic | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use Qwen3.6-27B-PARO dense + z-lab DFlash, `scripts/dflash_chain_e2e_bench.py --draft-budgets 4 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy`; policy rows compare all-chain, balanced `branching_topk K=2`, online one-cycle adaptive probing, and a no-probe profile manifest. | All rows exact. All-chain branch-copy reaches `0.867x` AR and has three prompt winners (`1.028/1.109/1.048x`). Balanced tree is worse on every prompt, aggregate `0.643x`. Existing adaptive probing improves safety but remains below AR (`0.960x`) because one failed probe is expensive and noisy. A no-probe `{AR, chain}` profile route selects the three measured chain winners and reaches `1.015x` AR; offline `{AR,chain,tree}` oracle is `1.019x` and selects tree `0/9`. | [`2026-05-25-hipengine-dflash-27b-routing-profile-diagnostic.json`](results/2026-05-25-hipengine-dflash-27b-routing-profile-diagnostic.json) | 2026-05-25 | Diagnostic/non-promoted. Routing can barely beat AR when the route is known in advance, but it is below the `>1.10x` speed gate and not a deployable online classifier. Next wall is B=4 verifier cost; branch-copy commit/state copies are ~`0.12 ms/cycle`. |
-| DFlash B+1=16 verifier prefill threshold | `hip_gfx1100` | Exact commands are embedded in the artifact. Rows use Qwen3.6-27B-PARO dense + z-lab DFlash, `scripts/dflash_chain_e2e_bench.py --draft-budgets 15 --decode-tokens 64 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct`, comparing default, `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=16`, and `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`. | All rows exact. Default B=15 already exercises the 16-row prefill-style W4 path and reaches `0.582x` AR, with avg accept `2.94`, rows/output `4.02`, and verifier `167.63 ms/cycle`. Forcing the affected sites back to the GEMV cutoff is slower (`0.519x`, verifier `194.19 ms/cycle`). Enabling the skinny A/B WMMA gate at 16 rows is neutral/slower (`0.580x`, verifier `169.51 ms/cycle`). | [`2026-05-25-hipengine-dflash-b15-verifier-prefill-threshold-diagnostic.json`](results/2026-05-25-hipengine-dflash-b15-verifier-prefill-threshold-diagnostic.json) | 2026-05-25 | Diagnostic/non-promoted. Prefill-at-16 is better than forced GEMV, but B=15 remains worse than B=4 because acceptance does not grow enough to amortize 16 verifier rows. |
-| DFlash canonical commit / tree topology / Q8 KV triage | `hip_gfx1100` | Exact commands are embedded in the artifact. Main rows use `scripts/dflash_chain_e2e_bench.py --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched`; canonical rows compare `--canonical-commit-mode replay` vs `branch_copy`, topology rows use `--tree-mode {chain_as_tree,branching_topk}`. | Lower-cost canonical commit is the only win in this pass. 27B B=4/D64 four-prompt exact speed improves from safe replay `0.451x` AR to branch-copy `0.859x`; 35B A3B B=4/D32 one-prompt exact speed improves `0.255x -> 0.340x` AR. Bounded live-KV copy is correct but neutral at D64 one-block capacity (`0.8591x -> 0.8595x`). Tree topology rejects promotion: 27B one-prompt `chain_as_tree=0.843x`, `branching_topk K=2 B=4=0.659x`, `B=8=0.612x`. Q8 KV is scoped as a future storage+attention kernel-family port, not an incremental toggle. | [`2026-05-25-hipengine-dflash-canonical-tree-q8-triage.json`](results/2026-05-25-hipengine-dflash-canonical-tree-q8-triage.json) | 2026-05-25 | Diagnostic/non-promoted. Branch-copy should replace replay as the conservative exact speed-work baseline where native chain mode is available; still below AR. |
-| DFlash verifier dense-GEMV WMMA gate (default-off) | `hip_gfx1100` | Exact commands are embedded in the artifact. Main A/B rows use `scripts/dflash_chain_e2e_bench.py --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --draft-budgets 4` with and without `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`; 27B uses direct-bulk B=4/D64 one prompt, 35B A3B uses safe replay B=4/D32 one prompt. | Added RDNA3 `v_wmma_f32_16x16x16_{f16,bf16}` dense GEMV variants for the true dense verifier family (`project_linear_attention_ab_fp16`) behind `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`. Correctness passed, but perf rejected promotion: microbench actual A/B shapes show GEMV faster than WMMA (`5x5120x48` `0.0066` vs `0.0322 ms`; `5x2048x32` `0.0062` vs `0.0159 ms`). Full-model 27B direct-bulk fell `0.862x -> 0.835x` AR and verifier mean `99.17 -> 102.47 ms/cycle`; 35B safe replay fell `0.255x -> 0.242x` AR with verifier `58.26 -> 58.50 ms/cycle`. Existing forced W4 prefill/WMMA dispatch was also exact but slower on 27B (`0.852x`). | [`2026-05-25-hipengine-dflash-verifier-dense-wmma-diagnostic.json`](results/2026-05-25-hipengine-dflash-verifier-dense-wmma-diagnostic.json) | 2026-05-25 | Diagnostic/default-off. The drafter R3.4 WMMA win does not transfer to the verifier's skinny dense A/B projections or current W4 verifier projection dispatch; next verifier work should target lower-cost commit/tree topology/Q8 KV rather than another small-row WMMA flip. |
-| DFlash Qwen3.6-27B dense PARO/DFLASH lane | `hip_gfx1100` | Exact validation and benchmark commands are embedded in the artifact. Main retained rows use `scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched` with `--canonical-commit-mode {replay,bulk_direct}`. | Dense 27B target validation now passes (`dense_paro_w4`, 2850 target tensors; drafter 58 tensors). B=4/D64 four-prompt safe replay is exact `4/4` but only `14.69 tok/s` vs AR `32.60 tok/s` (`0.451x`). B=4/D64 direct-bulk diagnostic is exact `4/4` and reaches `27.43 tok/s` vs AR `32.69 tok/s` (`0.839x`), avg accept `2.53`, rows/output `1.41`; D160 one-prompt direct-bulk also exact at `0.728x`. One-prompt D64 direct budget sweep exact `6/6`; B1/B2/B4/B8/B12/B15 = `0.556/0.686/0.823/0.706/0.644/0.582x`, so B=4 remains best. | [`2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`](results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json) | 2026-05-25 | Diagnostic/non-promoted. 27B dense PARO/DFLASH is materially better than the 35B A3B DFlash lane, but safe canonical replay is still far below AR; direct-bulk is promising only if canonical-state equivalence can be proven or replaced by lower-cost exact commit. |
-| MTP prompt rendering: raw vs Qwen thinking on/off | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompt-names code_python,code_cpp --max-tokens 64 --candidate-budgets 3 --runs 1 --prompt-render raw --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off`; thinking-on/off rows are identical except `--prompt-render qwen_chat_thinking_{on,off}`, with one D32 C++ off/on pair for exact apples-to-apples after the D64 off failure. | Raw D64 code prompts were exact `2/2`, aggregate `0.498x` MTP/AR, acceptance `0.504`, accepted/cycle `1.491`. On `code_python` D64, thinking-on was exact but slower (`0.410x`, acceptance `0.359`, accepted/cycle `1.065`) and thinking-off was worse (`0.352x`, acceptance `0.267`, accepted/cycle `0.778`). On `code_cpp` D32, thinking-on beat thinking-off (`0.496x` vs `0.312x`, acceptance `0.543` vs `0.211`). `code_cpp` D64 thinking-off failed exact-AR with a special-token tail, so it is rejected. | [`2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json`](results/2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json) | 2026-05-24 | Diagnostic/non-promoted. For current Qwen3.6 A3B PARO+MTP, explicit thinking-off is not an MTP acceptance win; raw prompt text remains strongest on this pair, and Qwen chat-template thinking-on is safer than thinking-off. |
-| DFlash R3.1 budget sweep (`B={1,2,4,8,12,15}`) | `hip_gfx1100` | Safe replay: `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 32 --draft-budgets 1,2,4,8,12,15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900'`; direct-bulk diagnostic is identical except `--canonical-commit-mode bulk_direct`. | Safe replay exact `24/24`, aggregate `0.291x` AR; per-budget mean speed B1/B2/B4/B8/B12/B15 = `0.292/0.321/0.343/0.307/0.271/0.273x`, so B=4 is best (quicksort alone prefers B=2). Acceptance saturates after B=4 (`avg_accept 1.89 -> 2.11`) while rows/output rises (`2.84 -> 4.09 -> 6.50`). Direct-bulk D32 diagnostic exact `24/24`, aggregate `0.417x` AR, same B=4 optimum (`0.524x` mean), but remains unsafe for promotion because prior D160 direct-bulk failed exactness on class/json. `--drafter-query-mode budget_prefix` at B=4 was exact but neutral (`0.340x`, drafter `8.91 -> 8.56 ms/cycle`). | [`safe-replay`](results/2026-05-24-hipengine-dflash-r3.1-w7900-budget-sweep-safe-replay-d32-4prompt.json), [`bulk-direct`](results/2026-05-24-hipengine-dflash-r3.1-w7900-budget-sweep-bulk-direct-d32-4prompt.json), [`budget-prefix`](results/2026-05-24-hipengine-dflash-r3.1-w7900-drafter-budget-prefix-b4-d32-4prompt.json) | 2026-05-24 | Diagnostic/non-promoted. Current z-lab drafter `block_size=16`, so native chain can sweep up to B=15 today, not B=24. The measured optimum is B=4; larger budgets do not recover enough acceptance to pay verifier row cost. |
-| DFlash R3.1 strict adaptive probe guard | `hip_gfx1100` | D160: `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 160 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900'`; D32 guard uses the same command with `--max-prompts 9 --decode-tokens 32`. | Adaptive mode now starts in `AR_PROBE`, uses one-cycle probes, demotes after one negative-profit cycle, and defaults `--adaptive-probe-amortization-tokens 64`, so startup/retry probes require `remaining >= min_remaining + 64`. With `--adaptive-min-remaining-tokens 128`, D160 4-prompt and D32 9-prompt both route entirely to AR: `draft_calls=0`, `target_verify_rows_per_output_token=1.0`, exact same-session AR. D160 improved from canonical long-probe `0.820x` AR to `0.995x` AR, per-row `0.991–1.004x`; D32 guard measured `0.991x` AR, row min `0.955x`. `performance_claim=false`. | [`d160`](results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-strict-probe-b4-d160-4prompt.json), [`d32-guard`](results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-strict-probe-b4-d32-9prompt-guard.json), [`prior-long-probe`](results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-canonical-b4-d160-4prompt-diagnostic.json) | 2026-05-24 | Safety diagnostic/non-promoted. This solves failed/negative-profit probe cost for these horizons by declining to speculate until enough remaining tokens exist to amortize a failed probe; DFlash speed promotion still requires a profitable long-horizon probe or lower-cost canonical commit. |
-| DFlash R3.7 fused LM-head + argmax rows (default-off) | `hip_gfx1100` | Fused-on: `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD Radeon Pro W7900'`; control omits the env flag. | Fused W8A16 LM-head + argmax rows removes the verifier-window full-vocab logits materialization and rocprof shows no `w8a16_linear_multi_row_kernel` or `argmax_rows_stage1_i32_kernel` when enabled. Correctness holds: 6-shape parity test is bit-exact and 9-prompt B=4 D=32 remains exact with identical `avg_accept_length=1.527`. Perf rejects promotion on W7900: fused-off `69.26 tok/s` (`0.637x` AR) vs fused-on `67.52 tok/s` (`0.621x` AR), with verifier `27.04 → 28.00 ms/cycle`. `performance_claim=false`. | [`off`](results/2026-05-24-hipengine-dflash-r3.7-w7900-fused-off-b4-d32-9prompt.json), [`on`](results/2026-05-24-hipengine-dflash-r3.7-w7900-fused-on-b4-d32-9prompt.json) | 2026-05-24 | Diagnostic/default-off. The fused stage-1 grid under-occupies gfx1100 (`243 × 5` long-running blocks instead of vocab-wide blocks), so the architectural gate is closed but the default path stays unfused. |
-| DFlash R3.1 adaptive short-horizon guard | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900'` | Adaptive controller now has a remaining-token horizon guard plus terminal AR bypass. On the 4-prompt B=4 D=16 gate it routes all cycles through AR with `decision_reason=remaining_tokens_guard`, skips unused drafter hidden-tap/context maintenance, preserves exact same-session AR on all rows, and records aggregate guarded decode `108.64 tok/s` vs AR `108.01 tok/s` (`1.006x`, row range `0.988–1.028x`). `draft_calls=0`, `target_verify_rows_per_output_token=1.0`, `performance_claim=false` because this is a controller safety diagnostic, not a speculative speedup. | [`2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-bypass-b4-d16-4prompt.json`](results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-bypass-b4-d16-4prompt.json) | 2026-05-24 | Confirms short prompts can avoid DFlash probe loss. Long-horizon prompts still need a separate retained guard with speculative cycles enabled before default-on promotion. |
-| DFlash R3.1 native-bulk→c=1 adaptive fallback handoff | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900'` | Native bulk verifier commits now canonicalize resident c=1 decode scratch (linear-attention split views plus MoE/MLP scratch) before adaptive AR fallback. Acceptance gate: exact same-session AR on all 4 prompts, finite logits, aggregate DFlash `57.96 tok/s` vs AR `109.60 tok/s` (`0.529x`, diagnostic only). AR fallback cycles: 24 total, mean/p50/min/max `9.90/9.60/9.57/13.15 ms`, replacing the interim root-only bulk fallback (`~18 ms/token`) and the pre-fix c=1 divergence. `performance_claim=false`. | [`2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json`](results/2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json) | 2026-05-24 | Correctness/perf diagnostic for Task #34. Handoff blocker fixed; adaptive controller remains default-off until the full 9-prompt guard passes and DFlash economics improve. |
-| DFlash R3.4 WMMA drafter dense kernels (default-on) | `hip_gfx1100` | `python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --max-prompts 9 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD Radeon Pro W7900'`; control runs the same with `HIPENGINE_DFLASH_DRAFTER_DENSE=naive` | RDNA3 native `v_wmma_f32_16x16x16_bf16` BF16-to-{BF16,F32} dense kernels for the DFlash drafter, registered as `KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_{bf16,f32}_wmma")` and dispatched default-on via `HIPENGINE_DFLASH_DRAFTER_DENSE=wmma` (set `naive` to revert). Microbench: BF16 16x2048x2048 `0.182 → 0.056 ms` (3.2x), 16x2048x6144 `0.523 → 0.091 ms` (5.7x), 16x6144x2048 `0.463 → 0.096 ms` (4.8x), 16x2048x512 `0.081 → 0.047 ms` (1.7x). 9-prompt same-session DFlash: aggregate `0.446 → 0.636x` AR (+42% relative), drafter wall `23.50 → 9.09 ms/cycle` (-61%), cycle wall `52.83 → 37.21 ms/cycle` (-29%); exact-AR holds on all 9 prompts; per-prompt delta `+0.14 → +0.25`, best prompt `0.911x` (class_continuation). `performance_claim=false` (still <1.0x AR). | [`microbench-naive`](results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json), [`microbench-wmma`](results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json), [`9p-on`](results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-on-b4-d32-9prompt.json), [`9p-off`](results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-off-b4-d32-9prompt-control.json) | 2026-05-23 | Diagnostic/default-on. Largest measured DFlash drafter lever to date; still does not break-even vs AR. R3.4 alone is necessary but insufficient; verifier-side work (R3.6/R3.7) and topology (R3.5) still required. |
-| DFlash R3.3 drafter dense roofline (paper + GPU sanity) | `hip_gfx1100` | `python3 scripts/dflash_dense_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --loops 20 --warmup 5 --hardware-gpu 'AMD Radeon Pro W7900' --json benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json` | Documented current naive `dflash_dense_bf16_to_{bf16,f32}` kernels at 3-6% of W7900 BW (`864 GB/s`) across the actual z-lab drafter shape mix. Per-cycle dense work measured at `16.32 ms`, ~83% of the R2.2 synchronized decoder wall (`19.60 ms`). 30% BW WMMA projection: dense `16.3 → ~3.0 ms`, decoder `19.6 → ~6.3 ms`, cycle `62.1 → ~48.8 ms` (later realized in R3.4). | [`microbench`](results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json), [doc](../docs/DRAFTER_DENSE_ROOFLINE.md) | 2026-05-23 | Diagnostic/non-promoted. Paper roofline + GPU sanity enabled the R3.4 implementation. |
-
-| DFlash R2.3 cross_bucket graph cache (rejected default-on, opt-in only) | `hip_gfx1100` | `python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --drafter-graph auto --drafter-bucket cross_bucket --hardware-gpu 'AMD Radeon Pro W7900'` | New bucketed GQA attention kernel (compact two-pass over `[0..live)` then `[bucket..bucket+B)`, device-resident `live_context_len` scalar) plus BeeLlama-style `cross_bucket()` graph cache key. Validation `0` failures across 4 buckets / 22 replays; 85% cache-hit replay rate; same-session AR exact-match preserved. Aggregate AR `0.389x` vs R2.2 `0.413x` (-6%); drafter `28.23 ms/cycle` mean vs R2.2 `23.87 ms/cycle` (+18%); verifier unchanged. Per-cycle replay math: replay `~24.2 ms` vs R2.2 direct `~23.75 ms` saves only `~0.45 ms` = `~3.6 us` per kernel launch over `~124` launches/cycle. W7900 DFlash drafter is GPU-kernel-bound (8 decoder layers `~19.6 ms/cycle` synced), not host-launch-bound. `performance_claim=false`. | [`r2.3-w7900`](results/2026-05-23-hipengine-dflash-r2.3-w7900-b4-d16-4prompt-diagnostic.json), [`r2.2-baseline`](results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d16-4prompt-diagnostic.json) | 2026-05-23 | Diagnostic/non-promoted. R2.3 architecture works end-to-end (correctness gated, bucket key reuses, bit-equivalent direct↔replay) but doesn't move the W7900 wallclock because drafter cycle is GPU-kernel-bound. Kept as `--drafter-bucket cross_bucket` opt-in for future workloads where launch overhead dominates (smaller drafter, more cycles per bucket). |
-| DFlash R2.2 z-lab drafter chain E2E | `hip_gfx1100` | `python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD Radeon Pro W7900'` | z-lab drafter is now available and validates (`91/91` tensors) with local target (`722/722`). Exact same-session AR equality and finite logits on quicksort + 3 representative code prompts. Aggregate AR `108.17 tok/s`; DFlash `44.69 tok/s` = `0.413x` AR, improving over Round-1 `0.289x` but still not promotable. Acceptance avg `1.42` draft tokens/cycle, visible `2.46` tokens/cycle; wall split: verifier `31.1 ms/cycle`, drafter `23.8 ms/cycle`, total `55.1 ms/cycle`. Sync-phase companion on one prompt shows drafter decoder layers dominate (`19.6 ms/cycle`), while context/KV cache update is already negligible (`0.022 ms/cycle`, rebuild rows `0`). `performance_claim=false`. | [`main`](results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d16-4prompt-diagnostic.json), [`sync-phase`](results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d8-sync-phase-diagnostic.json) | 2026-05-23 | Diagnostic/non-promoted. R2.2 is complete for correctness and model availability, but chain DFlash still loses to AR. R2.5-style K/V caching is already active; next levers are shape-safe drafter graphing/decoder kernels plus verifier cost reduction. |
-| MTP M14.dispatch.1 prewarm C-side MoE dispatcher | `hip_gfx1100` | Clean GPU-idle 9-prompt suite at B=3, batched, max-tokens=64 via `scripts/mtp-bench.py --mode hipengine-current`; env-off baseline and `HIPENGINE_MOE_C1_C_DISPATCH=1` post-fix. | Exact-AR holds on all 9 prompts. The prior env-on regression was a one-time lazy warmup artifact (`code_python` cycle 1 `271.8 ms` before prewarm vs `64.0 ms` after). Post-fix suite is parity: cycle_cost `off=3.707`, `on=3.696`; verify `24.92→24.81 ms/cycle`. `performance_claim=false`; dispatcher is default-on after this validation, with `HIPENGINE_MOE_C1_C_DISPATCH=0` opt-out. | [`off`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-off-baseline.json), [`on`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-on-diagnostic.json) | 2026-05-23 | Diagnostic/non-promoted. Key lesson: exclude one-time ctypes/build-cache setup from verifier-cycle economics; rocprof skipped first cycles and therefore masked the artifact. |
-| MTP M13.D graph replay re-eval after M13.B.0 | `hip_gfx1100` | 9-prompt suite at B=3, batched, max-tokens=64, three runs: `--graph-mode={off,auto,validate}` via `scripts/mtp-bench.py --mode hipengine-current`. | Exact-AR holds on all 3 modes. cycle_cost: `off=3.639`, `auto=3.782` (+3.9% worse), `validate=7.727` (+112%, validate overhead).  M13.D acceptance gate was `≥5% improvement` from graph capture; **failed** — auto is 3.9% worse than off.  Conclusion same as M12.1: ROCm 7.x graph-launch overhead is comparable to direct dispatch at >900 launches/pass. Graph capture infra stays opt-in pending further launch reductions (M14.dispatch.1 + M14.fuse.*). `performance_claim=false`. | [`off`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-graphoff.json), [`auto`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-graphauto-rejected.json), [`validate`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-graphvalidate-rejected.json) | 2026-05-23 | Diagnostic/non-promoted.  Closes the M13 phase: graph replay is parked until dispatch overhead drops enough to make it competitive. |
-| MTP M13.B.2 shared-expert fused rotate+dual GEMV (rejected default-on) | `hip_gfx1100` | rocprof via `scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3`, run with `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1` vs `=0`. | Exact-AR holds (identical token sequences) across `chain_attn_mode × graph_mode × fused-on/off`. Rocprof shows expected `moe_paro_rotate_in 190 → 180 (-10) calls/pass` but the staged kernel's launcher `hipMemsetAsync(barrier, 0, 8)` adds +10 launches in the `other` family. Net launches/pass `1011.55 → 1011.55` (0). Kernel time `17.315 → 17.407 ms/pass` (+0.5%, barrier spin overhead). Default `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=0`; kernel infra retained for a future keyed-barrier variant (tracked as M14.fuse.barrier in `docs/MTP.md`). `performance_claim=false`. | [`fused-on`](results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedon-rejected.json), [`baseline`](results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedoff-baseline.json) | 2026-05-23 | Diagnostic/non-promoted. Lesson: any per-launch barrier reset (`hipMemsetAsync` etc.) cancels the dispatch saving unless the barrier mechanism is keyed/double-buffered. |
-| MTP M13.B.1 fused rotate+selected_dual GEMV (rejected default-on) | `hip_gfx1100` | Suite: `HIPENGINE_MOE_FUSED_ROTATE=1 ... scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 1 --max-tokens 64 --chain-attn-mode batched --graph-mode off`; rocprof via `scripts/mtp_verifier_rocprof.py --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3` | All 9 prompts exact and IDENTICAL token sequences to fused-off baseline (Option-C LDS round-trip preserves bit-exactness). Launches/pass `1011.6 -> 971.6` (-40, -3.9%) as expected, but `moe_gate_up_dual_gemv` ms/pass `1.86 -> 14.21` (+664%) because the kernel re-does the full LDS rotation in every `(out_pack, row)` block; total kernel time `17.32 -> 29.76 ms/pass` (+71.8%); suite cycle cost `3.613 -> 3.658` (+1.2%). Default `HIPENGINE_MOE_FUSED_ROTATE=0`; kernel infra retained for a future HBM-staged variant (M14.fuse.1 / M13.B.3). `performance_claim=false`. | [`suite`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b1-fusedon-rejected.json), [`rocprof`](results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b1-fusedon-rejected.json) | 2026-05-23 | Diagnostic/non-promoted. Lesson: fuse cost model is `redundant_per_block_work × block_count` vs `launches_saved × launch_overhead`. For verifier shape (`out_packs ≈ 192`, top_k=8, B=3) the existing LDS-only design loses by ~30×; HBM-staged design is required. |
-| MTP M13.B.0 verifier next_hidden write-through | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/m13b0/suite --out /tmp/m13b0/suite.json`; rocprof via `scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3 --raw-root /tmp/m13b0/rocprof --out /tmp/m13b0/rocprof.json` | All 9 llama.cpp-compatible prompts exact. Suite cycle cost `3.716 -> 3.613` AR-token equivalents (-2.8%) vs M13.A baseline (W4 tileM=16); verifier rocprof launches/pass `1052 -> 1011.6` (-40.4, -3.8%), kernel time `17.38 -> 17.32 ms/pass` within noise, `runtime_copy` family `52 -> 12.6 calls/pass`. `performance_claim=false`. | [`suite`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b0.json), [`rocprof`](results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b0.json) | 2026-05-23 | Diagnostic/non-promoted. Wires `out=next_hidden` through `run_*_moe_*_layer_fp16` helpers + runner orchestrator so the final MoE combine writes straight into the trunk buffer instead of `scratch.moe_out` + D2D copy. Numerically identical to the prior path; 40 D2D `hipMemcpyAsync` launches/pass eliminated for the 40-layer Qwen3.5/3.6 trunk. Validated exact-AR at `chain_attn_mode` in {batched, c1_loop} and `graph_mode` in {off, auto, validate}. |
-| MTP W4 small-B prefill tileM=16 | `hip_gfx1100` | `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-w4tile16-default-suite --out /tmp/hipengine-mtp-w4tile16-default-suite.json`; rocprof via `scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3` | All 9 llama.cpp-compatible prompts exact. Suite cycle cost `3.756 -> 3.716` AR-token equivalents (−1.1%) vs current M12.6c baseline; verifier rocprof kernel time `17.70 -> 17.38 ms/pass` with W4 prefill families `4.11 -> 3.75 ms/pass`. `performance_claim=false`. | [`suite`](results/2026-05-23-hipengine-mtp-bench-suite-w7900-w4-prefill-tilem16.json), [`rocprof`](results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-w4-prefill-tilem16.json) | 2026-05-23 | Diagnostic/non-promoted. Keeps exact WMMA prefill numerics; only changes default small-B prefill output tile from 32 to 16, reducing VGPR pressure (`80 -> 48`) and dual-prefill latency. |
-| MTP prompt-suite exactness gate for M12.6 W4 safe-site mask | `hip_gfx1100` | Default: `python3 scripts/mtp-bench.py --mode hipengine-current --max-tokens 64 --candidate-budgets 3 --runs 1 --chain-attn-mode batched --graph-mode off`; off-control analogous with `HIPENGINE_W4_MULTI_ROW_PACK8=off` | All 9 llama.cpp-compatible prompts exact with the default M12.6 safe-site subset and with M12.6 disabled. Default safe subset improves one-run suite cycle cost `3.794 -> 3.742` AR-token equivalents vs off (`performance_claim=false`); full `SITES=all` remains risky and fails translation exactness. | [`default`](results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-prefill-dequant-default.json), [`off`](results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json) | 2026-05-22 | Diagnostic/non-promoted. Historical M12.6 safe sites: `full_qk`, `linear_qkv_z`, `dense_gate_up`, `single_full_o`, `single_shared_down`, `single_dense_down`; current 2026-06-11 defaults also include `single_linear_out` and `single_full_v` after exact D32 gates. Full `SITES=all` remains risky without current-stack prompt-suite evidence. |
-| DFlash native B+1 verifier warm-scratch speed gate | `hip_gfx1151` | Native: `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-verifier-speedgate-native-warmscratch-b1248-d8-clean.json`; serial control analogous with `--verifier-mode serial_in_place_single_slot` | Exact/finite rows for B={1,2,4,8}; GPU accept matches CPU oracle; warm scratch improves native verifier seconds from `0.332/0.404/0.524/0.881` to `0.231/0.264/0.387/0.619`, but serial fallback remains faster at `0.127/0.124/0.125/0.126`; `performance_claim=false` | [`2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json`](results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json) | 2026-05-18 | Diagnostic/non-promoted. Clean-tree artifact at `hipEngine@41ed27c`; keeping verifier-sized scratch live removes bulk↔c1 scratch churn and accept is queued before top-1 host readback, but native B+1 is still `1.8x–4.9x` slower than serial c=1, so task #30 remains open. |
-| DFlash chain batched (true bulk) verifier speed gate | `hip_gfx1151` | Batched: `... --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-batched-speedgate.json`; c1_loop and serial controls analogous with `--full-attn-chain-mode c1_loop` and `--verifier-mode serial_in_place_single_slot` | Exact/finite rows for B={1,2,4,8} in all three modes; GPU accept matches CPU oracle in batched and c1_loop. Batched verifier seconds `0.268/0.268/0.373/0.645` vs c1_loop `0.247/0.289/0.398/0.621` vs serial `0.128/0.133/0.131/0.130`. Batched is 6-8% faster than c1_loop at B=2/4, neutral or +4-8% slower at B=1/8, and still 2.0-5.0x slower than serial across all B; `performance_claim=false` | [`2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json`](results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. True batched chain full-attention verifier landed: one batched RMSNorm + rotate + QKV projection + multi-token RoPE + prompt-style K/V append + gated GQA prefill attention + batched O proj + post-norm + forced c=1 MoE per full-attention layer. Correctness equal to c1_loop and AR; speed slightly better at middle B but still loses to serial. Retained as infrastructure for DDTree where serial early-exit is structurally impossible. Task #30 remains open. |
-| DDTree verifier E2E correctness smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_tree_e2e_smoke.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --tree-shape {depth2_binary,chain_reduction,depth1_branch4}` | All three tree shapes pass finite_logits + gpu_accept_match_cpu + cpu_oracle_matches_verify_result. Root target_top1 is invariant across all three shapes (== 314 for the `code:quicksort_prefix` prompt), confirming the ancestor mask correctly isolates root-level attention from verifier rows. Single-cycle correctness only; multi-cycle decode + speed comparison covered by the next row | [`2026-05-19-hipengine-ddtree-verifier-e2e-smoke.json`](results/2026-05-19-hipengine-ddtree-verifier-e2e-smoke.json) | 2026-05-19 | Diagnostic/non-promoted. DDTree foundation landed: tree-aware GQA gate kernel + ancestor-mask metadata + per-row cache-slot disambiguation + verify_tree_bulk_and_commit + K/V commit compaction. `performance_claim=false`. |
-| DDTree verifier (chain_as_tree) vs chain DFlash speed gate | `hip_gfx1151` | `... --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode chain_as_tree --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-chainastree-speedgate.json`; chain c1_loop / chain batched / serial controls as in the row above | Exact/finite rows for B={1,2,4,8} in all four modes; GPU accept matches CPU oracle in tree mode. `chain_as_tree` verify seconds `0.252/0.268/0.354/0.633` vs chain batched `0.268/0.268/0.373/0.645` (-5.8% / equal / -5.3% / -1.9%, FASTER at B=1 and B=4) vs chain c1_loop `0.247/0.289/0.398/0.621` vs serial `0.128/0.133/0.131/0.130`. Tree-aware kernel adds NO meaningful overhead vs chain batched; still 2.0-4.9x slower than serial because B+1 per-cycle target compute is the bottleneck for the degenerate chain topology used here; `performance_claim=false` | [`2026-05-19-hipengine-ddtree-chain-as-tree-vs-chain-speedgate-diagnostic.json`](results/2026-05-19-hipengine-ddtree-chain-as-tree-vs-chain-speedgate-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. DDTree verifier path is correct, exact, and competitive with chain batched at the kernel level. Real speed win over serial requires a branching tree drafter (top-K expansion); current chain DFlash drafter only produces top-1 chains. |
-| DDTree branching top-K K=2 speed gate | `hip_gfx1151` | Branching: `... --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-branching-topk-b1-2-4-8.json`; fresh serial / chain_c1_loop / chain_batched / chain_as_tree controls in comparison artifact | Exact/finite rows for B={1,2,4,8}; GPU accept matches CPU oracle. Branching tok/s `15.43/14.65/12.73/9.29` vs chain_c1_loop `13.38/13.64/11.97/7.93`, chain_batched `15.66/14.19/10.70/8.42`, chain_as_tree `15.61/13.93/12.07/8.47`, and serial `19.61/19.70/17.98/17.22`. Branching beats c1_loop at all B, beats chain_batched and chain_as_tree at B=2/4/8, accepts `5` draft tokens in `3` cycles at B=4/8 (hist `{1:1,2:2}`), and branch utilization accepted/active-node is `0.750/0.500/0.417/0.227`; still loses to serial for every B; `performance_claim=false` | [`speedgate`](results/2026-05-19-hipengine-ddtree-branching-topk-k2-speedgate-diagnostic.json), [`comparison`](results/2026-05-19-hipengine-ddtree-branching-topk-k2-vs-baselines-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. First real non-linear DDTree proposal path: row-wise drafter top-K (`K=2`) compiled into a balanced breadth-first tree (`parents=[-1,-1,0,1]` for B=4). Confirms branching improves accept/cycle enough to beat chain c1_loop and chain/tree baselines at middle/high B, but verifier row cost still blocks a serial win. |
-| MTP chain readiness / shared-verifier contract | N/A (metadata-only) | Missing-tensor baseline: `python3 scripts/mtp_chain_e2e_bench.py --target-model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --draft-budgets 1,2,3 --json /tmp/hipengine-mtp-readiness.json`; assembled artifact: `python3 scripts/assemble_paro_mtp_bf16.py --target-model .../501ef8635e5cfb5a7497d232358ca8d1afc0c66e --mtp-source .../Qwen3.6-35B-A3B-FP8/.../mtp.safetensors --output /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --overwrite`, then `python3 scripts/mtp_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --draft-budgets 1,2,3,5 --json /tmp/hipengine-mtp-paro-bf16-readiness.json` | Original packed PARO target has `0/19` expected `mtp.*` tensors. A local PARO+MTP-BF16 artifact now validates `19/19`: trunk is reused, `mtp-bf16.safetensors` is generated from Qwen FP8 MTP by dequantizing FP8 block-128 projections/experts to BF16 and fusing expert gate/up tensors. Readiness status is now `blocked_native_mtp_proposal_kernels_not_ported`: model artifact is ready, native MTP proposal kernels are still needed. `performance_claim=false` | [`missing`](results/2026-05-19-hipengine-mtp-chain-readiness-missing-tensors-diagnostic.json), [`assembly`](results/2026-05-19-hipengine-qwen36-paro-mtp-bf16-assembly-diagnostic.json) | 2026-05-19 | Diagnostic/blocked-on-kernels. Landed provider-neutral chain compiler plus MTP metadata/loading/provider shell; assembled local `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16` so the next blocker is proposal execution, not missing weights. |
-| MTP native recursive B=2 proposal-chain smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_native_decode_step_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --root-token 151646 --root-position 0 --draft-budget 2 --torch-compare --json /tmp/hipengine-mtp-native-chain-b2.json` | Recursive native MTP proposal path produces the same candidate chain as the torch-reference path (`[12,4773]`) with finite torch logits. Verifier-facing metadata is candidate-only `DraftBatch` with `candidate_tokens=[12,4773]`; `TargetVerifyBatch` rows are `[root,d1,d2]` with parent rows `[-1,0,1]`, positions `[0,1,2]`, and all rows active. `performance_claim=false`; diagnostic native time `0.0163s` is not promoted because the harness still host-orchestrates selected expert ids and uses synthetic target hidden. | [`B=1`](results/2026-05-19-hipengine-mtp-native-decode-step-smoke-diagnostic.json), [`B=2`](results/2026-05-19-hipengine-mtp-native-chain-b2-smoke-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Adds MTP-specific native helper kernels for zero-centered RMSNorm, q/gate split, BF16 gate multiply, router softmax, MoE accumulation, and FP32-to-BF16 finalization; reuses existing BF16 dense/QKV/GQA/lm-head kernels. Remaining work: device-side/production expert dispatch and real captured target hidden from `Qwen35ParoResidentSession`. |
-| MTP native B=2 proposal-chain smoke with target-session hidden | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_native_decode_step_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --root-token 151646 --root-position 0 --draft-budget 2 --target-hidden-source target_session --target-backend hip_gfx1151 --torch-compare --json /tmp/hipengine-mtp-native-chain-b2-target-hidden.json` | Native MTP proposal consumes a BF16 hidden row captured from `Qwen35ParoResidentSession.step_with_hidden_taps`; native candidate chain `[27399,220]` matches torch reference exactly. Verifier-facing metadata remains candidate-only `DraftBatch(candidate_tokens=[27399,220])`; `TargetVerifyBatch` rows are `[root,d1,d2]` with parent rows `[-1,0,1]`. `performance_claim=false`; diagnostic proposal time `0.0162s` excludes target-session build and is not promoted. | [`2026-05-19-hipengine-mtp-native-chain-b2-target-hidden-smoke-diagnostic.json`](results/2026-05-19-hipengine-mtp-native-chain-b2-target-hidden-smoke-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Closes the synthetic-hidden gap for the native proposal smoke; remaining work is shared-verifier E2E wiring, correct prompt/MTP prefill alignment, and device-side/production expert dispatch before Task #40 speed/acceptance. |
-| MTP native proposal -> shared verifier E2E smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 3 --candidate-budget 2 --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-e2e-smoke.json` | Native MTP proposal rows reached `Qwen35ParoResidentSession.verify_chain_bulk_and_commit`; output matched exact AR for 3 tokens (`[180184,148897,205222]`). Accepted draft lengths were `[0,0]` so this is not an acceptance win. `performance_claim=false`; diagnostic timings are non-promoted because proposal hidden rows are copied D2H and MTP weights are reloaded per proposal call. | [`2026-05-19-hipengine-mtp-chain-e2e-shared-verifier-smoke-diagnostic.json`](results/2026-05-19-hipengine-mtp-chain-e2e-shared-verifier-smoke-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Establishes real shared-verifier wiring; next work is persistent native MTP provider state/cache and prompt/MTP prefill alignment to improve acceptance and remove D2H/reload overhead. |
-| MTP persistent native provider B=5 shared-verifier diagnostic | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-e2e-persistent-b5-stable1-final.json` | Persistent native MTP provider keeps weights/cache resident and target hidden on device. Exact AR matched for 8 tokens and MTP accepted all proposed draft tokens (`accepted_lengths=[5,1]`, acceptance rate 100%). It still loses: decode `31.34 tok/s` vs AR `52.98 tok/s` (`0.59x`), with `verify_seconds=0.2125` and proposal decode-update `0.0142s`. | [`2026-05-19-hipengine-mtp-persistent-b5-shared-verifier-diagnostic.json`](results/2026-05-19-hipengine-mtp-persistent-b5-shared-verifier-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Acceptance is solved on this prompt, but current bulk verifier is slower than serial AR and selected expert dispatch remains host-orchestrated; continue optimizing before any speed claim. |
-| MTP persistent native provider B=2 shared-verifier diagnostic | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 2 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-persistent-b2-diagnostic.json` | Persistent native MTP provider B=2 (llama.cpp MTP-2 baseline equivalent). Exact AR matched for 8 tokens and MTP accepted all proposed draft tokens (`accepted_lengths=[2,2,1]`, acceptance rate 100%). Still loses badly: decode `32.07 tok/s` vs AR `59.71 tok/s` (`0.54x`), with `verify_seconds=0.205` dominating `proposal_decode_update_seconds=0.029`. Each verifier pass averages ~68 ms while each AR pass is ~17 ms; 3 verifier passes for 8 tokens costs more than 8 AR passes. | [`2026-05-19-hipengine-mtp-persistent-b2-shared-verifier-diagnostic.json`](results/2026-05-19-hipengine-mtp-persistent-b2-shared-verifier-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Even with perfect acceptance at B=2, the bulk verifier per-pass overhead is ~4× a single AR pass. Graph capture or fused verifier layers needed before any speed claim. |
-| MTP persistent native provider B=3 shared-verifier diagnostic | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-persistent-b3-diagnostic.json` | Persistent native MTP provider B=3 (llama.cpp MTP-3 baseline equivalent). Exact AR matched for 8 tokens and MTP accepted all proposed draft tokens (`accepted_lengths=[3,3]`, acceptance rate 100%). Closer to AR but still loses: decode `39.45 tok/s` vs AR `45.14 tok/s` (`0.87x`), with `verify_seconds=0.154` dominating `proposal_decode_update_seconds=0.015`. Each verifier pass averages ~77 ms for B=3 rows while each AR pass is ~22 ms; 2 verifier passes for 6 tokens is still more expensive than 6 AR passes individually. | [`2026-05-19-hipengine-mtp-persistent-b3-shared-verifier-diagnostic.json`](results/2026-05-19-hipengine-mtp-persistent-b3-shared-verifier-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Higher B with perfect acceptance improves the ratio (0.87x vs 0.54x at B=2), but verifier per-pass cost still blocks a win. Graph capture or fused verifier layers needed. |
-| MTP batched verifier skip-current proposer restore (M12 loop iter 15) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-multiloop-m12-batched-c3-raw --out /tmp/hipengine-multiloop-m12-batched-c3.json` | Skipped redundant `NativeMtpChainProposer.restore_state()` in the proposal-update harness when the live proposer state already equals the needed snapshot (`accepted >= active_budget - 1`). Exact-AR-match preserved. Single-run batched B=3 loop metric improved **3.643 → 2.826 AR-token equivalents** (−22.4%) vs previous kept iter and **5.544 → 2.826** (−49.0%) vs loop baseline. `performance_claim=false`: low-confidence diagnostic only; cycle wall was not lower than iter 10 and target remains `C_3 <= 2.0` with repeated-run confirmation. | [`2026-05-21-hipengine-mtp-m12-batched-skip-current-restore.json`](results/2026-05-21-hipengine-mtp-m12-batched-skip-current-restore.json) | 2026-05-21 | Diagnostic/non-promoted. Harness/proposal-update cleanup; no target-verifier kernel math change. |
-| MTP batched verifier shared-expert kind cache (M12 loop iter 10) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-multiloop-m12-batched-c3-raw --out /tmp/hipengine-multiloop-m12-batched-c3.json` | Cached each layer's shared-expert implementation kind in `Qwen35ParoDecodeState.__init__`, removing repeated normalized-name dict probes from verifier MoE dispatch. Exact-AR-match preserved. Batched B=3 cycle cost improved **3.777 → 3.643 AR-token equivalents** (−3.6%) vs previous kept iter and **5.544 → 3.643** (−34.3%) vs loop baseline. This is a retained diagnostic improvement, not a final speed row; target remains `C_3 <= 2.0`. | [`2026-05-21-hipengine-mtp-m12-batched-shared-kind-cache.json`](results/2026-05-21-hipengine-mtp-m12-batched-shared-kind-cache.json) | 2026-05-21 | Diagnostic/non-promoted. Host/orchestration cleanup; no kernel math change. |
-| MTP batched verifier full-attn shared-expert GEMV (M12 loop iter 8) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-multiloop-m12-batched-c3-raw --out /tmp/hipengine-multiloop-m12-batched-c3.json` | Batched-mode-specific safe W4 shared-expert routing: use decode-shaped GEMV only for `full_attention` layers at `tokens <= HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD`; keep linear-attention layers on the legacy prefill path. Exact-AR-match preserved. Batched B=3 cycle cost improved **4.083 → 3.777 AR-token equivalents** (−7.5%) vs previous kept iter and **5.544 → 3.777** (−31.9%) vs loop baseline. This is a retained diagnostic improvement, not a final speed row; target remains `C_3 <= 2.0`. | [`2026-05-21-hipengine-mtp-m12-batched-fullattn-shared-gemv.json`](results/2026-05-21-hipengine-mtp-m12-batched-fullattn-shared-gemv.json) | 2026-05-21 | Diagnostic/non-promoted. First all-layer small-batch GEMV attempt was exact but slower; this full-attention-only gate is the retained variant. |
-| MTP batched verifier GPU-accept default (M12 loop iter 4) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-multiloop-m12-batched-c3-raw --out /tmp/hipengine-multiloop-m12-batched-c3.json` | Defaulted verifier accept to the existing GPU accept-summary path (`HIPENGINE_VERIFY_GPU_ACCEPT=0` restores the CPU-oracle/top1-read path; `=validate` cross-checks). Exact-AR-match preserved. Batched B=3 cycle cost improved **5.544 → 4.083 AR-token equivalents** (−26.4%) on the multiloop verify command. This is a retained diagnostic improvement, not a final speed row; target remains `C_3 <= 2.0`. Validate-mode smoke: B=3 batched 16-token decode exact AR true, accepted `[3,3,2,0,2]`. | [`2026-05-21-hipengine-mtp-m12-batched-gpu-accept-default.json`](results/2026-05-21-hipengine-mtp-m12-batched-gpu-accept-default.json) | 2026-05-21 | Diagnostic/non-promoted. First kept iteration in `m12-batched/run-20260521-060831`. Two preceding variants were rejected: shared/dense small-batch GEMV routing and hybrid batched+decode attention both exact but slower. |
-| MTP verifier economics sweep (M12.0) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1,2,3,5 --runs 1 --raw-root /tmp/hipengine-mtp-economics-m12-b1-b5 --out benchmarks/results/2026-05-21-hipengine-mtp-verifier-economics-m12.json` | Exact-AR-match passed for B={1,2,3,5}. New active metric is verifier cycle cost in AR-token equivalents: B=1 **3.20**, B=2 **4.96**, B=3 **4.33**, B=5 **6.87**. Corresponding MTP/AR ratios: 0.489 / 0.451 / 0.557 / 0.416; avg visible tokens/cycle: 1.55 / 2.21 / 2.38 / 2.82. Perfect-accept ceilings are still below 1× for all measured B (0.63× / 0.61× / 0.92× / 0.87×), proving the current verifier loop is not llama.cpp-shaped. `performance_claim=false`; this is the M12 planning baseline and supersedes M7/M9 as the top-level roadmap metric. | [`2026-05-21-hipengine-mtp-verifier-economics-m12.json`](results/2026-05-21-hipengine-mtp-verifier-economics-m12.json) | 2026-05-21 | Diagnostic/non-promoted. MTP can only beat AR when `avg_visible_tokens_per_cycle > cycle_cost_ar_tokens`; llama.cpp-like small-B MTP implies ~2 AR-token-equivalent cycle cost. Next work is M12.1 per-cycle timeline split, then small-B full-attention / lm-head / selected-expert verifier primitives. |
-| MTP small-batch dispatch split (M7.C.6) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=7 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-m7c6.json` (3 runs each at threshold=1 vs threshold=7) | Replaced the dual-GEMV multi-token path at `project_full_attention_qkv_fp16` and `project_linear_attention_qkv_z_fp16` with two single GEMVs writing the views’ backing pointers directly, mirroring the bf16 sibling at `project_linear_attention_qkv_z_bf16` line 1075+. **MTP decode tok/s 23.96 → 27.74 (+15.8%)**, MTP/AR ratio 0.457 → 0.524 (+14.7% relative). Exact AR match preserved on the quicksort fixture at B=3 (24-tok decode `accepted=[3,3,2,0,2,0,0,1,3]` identical to baseline) and on B=5 (24-tok decode `accepted=[5,4,0,2,0,0,1,4]` identical to baseline). Kernel-level: 30 `awq_fusedw4_prefill_dual_fp16` calls/pass replaced by ~70 `gemv_awq_pack8_transposed_fp16` calls/pass; per-pass kernel time delta within run-to-run noise (~+1 ms), wall-time improvement dominated by cache warmth + better-shaped dispatch. `performance_claim=true` (15.8% MTP tok/s); not promoted to “MTP beats AR” — still 0.52× AR. | [`2026-05-21-hipengine-mtp-m7c6-small-batch-dispatch-split.json`](results/2026-05-21-hipengine-mtp-m7c6-small-batch-dispatch-split.json) | 2026-05-21 | Diagnostic with retained performance claim. Architectural fix only — small-batch dispatch now correctly avoids the dual-GEMV row-stride aliasing bug that the bf16 sibling already documented. Unblocks future small-batch tuning via `_small_batch_decode_threshold()` env override. M7 phase reach revised to ~1 ms kernel + ~4 ms wall (was 6–8 ms kernel) — prefill kernels at 4 tokens are less wasteful than originally projected. |
-| MTP chain linear-attention t-loop verifier diagnostic | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-tloop-b5-d8-final.json` | Exact AR matched for 8 tokens, `accepted_lengths=[5,1]`, and verifier trace used `linear_attn_mode=chain_tloop` for both cycles. MTP still loses: decode `33.13 tok/s` vs AR `52.63 tok/s` (`0.63x`), with `verify_seconds=0.1977` and proposal decode-update `0.0148s`. | [`2026-05-19-hipengine-mtp-chain-linear-tloop-b5-diagnostic.json`](results/2026-05-19-hipengine-mtp-chain-linear-tloop-b5-diagnostic.json) | 2026-05-19 | Diagnostic/non-promoted. Single-chain linear verifier avoids parent-state global reloads and materializes row states for exact partial-accept commits; remaining blocker is overall target-verifier launch/row cost, not acceptance. |
-| DFlash drafter QKV fusion smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --drafter-fusion qkv --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json benchmarks/results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json` | 1 row, 16 decode tokens, same-session AR exact equality, finite logits, and GPU accept summary matching CPU oracle; fused Q/K/V projection ran 80 times; AR `64.46 tok/s`, DFlash `7.85 tok/s` (`0.122x`, `-87.8%` vs AR), drafter `69.6 ms/call`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json`](results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json) | 2026-05-18 | Diagnostic/non-promoted. Clean-tree artifact at `hipEngine@5aa4607`; qkv fusion is bit-exact vs unfused GPU in `scripts/dflash_qkv_fusion_correctness.py` and rocprofv3 confirms `dflash_qkv_proj_bf16_mixed_kernel`, but drafter time is neutral vs no-fusion nativebulk (`69.6` vs `68.9 ms/call`), so fusion stays opt-in. |
-| DFlash drafter HIP graph capture validate smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --drafter-graph validate --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json benchmarks/results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json` | 1 row, 16 decode tokens, same-session AR exact equality, finite logits, and GPU accept summary matching CPU oracle; drafter graph capture replay matched direct candidates for all 10 propose calls; no cache-hit replay because exact `context_tokens` buckets changed every cycle; AR `61.97 tok/s`, DFlash `6.04 tok/s` (`0.097x`, `-90.3%` vs AR), drafter `133.8 ms/call`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json`](results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json) | 2026-05-18 | Diagnostic/non-promoted. Clean-tree artifact at `hipEngine@6e65c48`; exact-context graph capture is correct (`validation_passed=true`, `replay_steps=10`) but slower than no-graph nativebulk (`68.9 ms/call`) because decode has no graph bucket reuse. Next step is context-bucket-safe kernels or fusion, not exact-context capture. |
-| DFlash full-model chain E2E smoke (native B+1 verifier) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json` | 1 row, 16 decode tokens, same-session AR exact equality, finite logits, and GPU accept summary matching CPU oracle; 10 native B+1 verifier forwards plus 1 serial tail step; accepted `5/34`; AR `64.60 tok/s`, DFlash `8.00 tok/s` (`0.124x`, `-87.6%` vs AR), fixed verifier rows `51`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json`](results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json) | 2026-05-18 | Diagnostic/non-promoted. Clean-tree artifact at `hipEngine@6892049`; default verifier is now `native_bulk_bplus1` with serial fallback. Native verifier is correct but slower than the Phase A+B+C serial diagnostic, so promotion remains blocked on graph/fusion/tiny-row verifier optimization. |
-| DFlash full-model chain E2E smoke (Phase A+B+C) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json /tmp/hipengine-dflash-chain-e2e-phaseABC-regenerated.json` | 1 row, 16 decode tokens, same-session AR exact equality and finite logits; 9 cycles, accepted `6/30`; AR `64.18 tok/s`, DFlash `18.53 tok/s` (`0.289x`, `-71.1%` vs AR), verify rows/output `2.5`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json`](results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json) | 2026-05-18 | Diagnostic/non-promoted. Clean-tree artifact at `hipEngine@97204d1`; single-slot in-place verifier + append-only `projected_context_norm` cache + append-only per-layer rotated K/V context cache.  Drafter `~68 ms/call` (median, sync mode) vs `~95-100 ms/call` for rope-fix baseline. |
-| DFlash full-model chain E2E smoke (rope-theta fixed) | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 4 --draft-budgets 4 --json /tmp/hipengine-dflash-chain-e2e-rope-fix.json` | 1 row, 4 decode tokens, same-session AR exact equality and finite logits; acceptance hist `{0:1,1:1}`; AR `64.228 tok/s`, DFlash `15.509 tok/s` (`0.241x`), verify rows/output `2.0`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-chain-full-model-e2e-rope-fix-diagnostic.json`](results/2026-05-18-hipengine-dflash-chain-full-model-e2e-rope-fix-diagnostic.json) | 2026-05-18 | Superseded by Phase A+B+C diagnostic above; kept for historical comparison.  Used `serial_branch_state_copy` verifier and full-context drafter rebuild per cycle. |
-| DFlash full-model chain E2E smoke | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 2 --draft-budgets 1 --json /tmp/hipengine-dflash-chain-e2e-smoke.json` | 1 row, 2 decode tokens, same-session AR exact equality and finite logits; AR `66.081 tok/s`, DFlash `16.761 tok/s` (`0.254x`), verify rows/output `1.5`, `performance_claim=false` | [`2026-05-18-hipengine-dflash-chain-full-model-e2e-smoke-diagnostic.json`](results/2026-05-18-hipengine-dflash-chain-full-model-e2e-smoke-diagnostic.json) | 2026-05-18 | Superseded diagnostic that used a hard-coded drafter RoPE theta; kept for historical comparison. Prompt fixture now covers code/general/multilingual rows. |
-| DFlash verify graph buckets | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_verify_graph_capture_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json` | Captured fixed-address replay buckets for N={2,4,8} match direct mode exactly; rare page bucket falls back to direct semantics; `performance_claim=false` | [`2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json`](results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json) | 2026-05-18 | Diagnostic graph-bucket validation; records bucket keys, replay steps, fixed buffer addresses/fingerprints, direct/replay output fingerprints, and fallback reason. |
-| DFlash chain gfx1151 correctness/benchmark schema sweep | `hip_gfx1151` | `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_bench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json` | 30 rows (code-promotion first, robustness second), budgets `N={2,4,8}`, exact same-session AR equality and GPU accept/commit-copy parity; `performance_claim=false` | [`2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json`](results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json) | 2026-05-18 | Diagnostic schema/acceptance sweep only; deterministic finite fixture logits, graph `not_captured`, full-logit readbacks `0`, no row promoted because this is not full-model throughput. |
-| P9.H1 qwen35moe GGUF fast-path safety correctness gate | `hip_gfx1100` | `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json` | `status=accepted`, KL `0.0`, top-1 `100%`, deterministic candidate tails and finite final logits over 512/128×3; candidate requested WMMA+GEMV but safety gate forced `effective_wmma_prefill=false`, `effective_gemv_decode=false` | [`2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json`](results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json) | 2026-05-19 | Correctness fallback only, not a WMMA/GEMV perf claim. Set `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` only for kernel R&D; accepted throughput rows need `effective_* = true` after #50/#51. |
-| P9.H2 qwen35moe GGUF decode repack design | `hip_gfx1100` | design artifact from `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` tensor inventory plus P9.B7 rocprof evidence | `status=design_retained`, `performance_claim=false`; replacement T16 layouts selected for Q4 gate/up, Q5/Q6 down, and Q8 dense/shared projections; estimated persistent delta `~+0.457 GiB`, expected tracked 512/128 peak `~21.34 GiB`, raw+packed duplication rejected | [`2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h2-decode-repack-design.json`](results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h2-decode-repack-design.json) | 2026-05-19 | Implementation acceptance: P9.E2 passes with effective fast paths true, 512/128 graph decode median `>=95 tok/s`, and rocprof decode trace shows T16 kernels dominate with legacy `prefill_out` absent except documented Q6_K lm-head fallback. |
-| P9.C14 qwen35moe GGUF Q4T16 selected-dual WMMA prototype | `hip_gfx1100` | `PYTHONPATH=. python3 -m pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py -q --tb=short`; rocprof smoke command and replay microbench in artifact | `status=accepted_prototype_diagnostic`, `performance_claim=false`; synthetic BF16/FP16 selected-MoE fixtures pass vs CPU GGUF Q4_K reference (`28 passed` adjacent bundle); rocprof saw `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>` with `VGPR=64`, `SGPR=128`, `Scratch=0`, one dispatch; first-layer replay measured raw `5.274 ms` vs Q4T16 `3.897 ms` (`-26.1%`) under unsafe R&D opt-in only | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json) | 2026-05-20 | Prototype only: `296 MiB` transient Q4T16 gate+up buffers for layer 0, not wired into default runtime or P9.E2 acceptance. #46 must integrate/tune before #27/#51 can use this path. |
-| P9.E2 qwen35moe GGUF unsafe WMMA+GEMV E2E fixture gate | `hip_gfx1100` | same command before P9.H1 safety gate | `status=rejected_correctness`; full 512/128×3 candidate tails deterministic and final logits finite, but KL `5.993` and top-1 `5.43%` fail the `0.05`/`90%` gate; first mismatch is prefill row `128449 -> 59639` | [`2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json`](results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json) | 2026-05-19 | Historical rejected unsafe opt-in evidence that motivated #49. Dependent P9.A3/P9.B7 performance rows remain blocked until repacked fast paths pass this gate with effective opt-ins enabled. |
-| Qwen3.5/PARO decode graph replay fixture gate | `hip_gfx1100` | `python3 scripts/qwen35_decode_graph_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task20-decode-graph-fixture-gate.json` | `passed=true`, graph IDs match eager and fixture, final KL `0`, final top-1 match | [`2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`](results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json) | 2026-05-16 | Correctness gate only; generated IDs are recorded on device inside replay. |
-| Qwen3.5 GGUF public `LLM.generate()` fixture gate | `hip_gfx1100` | `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture <fixture>` for Q4_K_M/Q8_0/Q4_1/UD-Q4_K_XL | all four fixtures `passed=true`, `torch_loaded_by_generate=false`; Q4_K_M outputs `[' 1.\n\n', ' 1.\n\n']` IDs `[220,16,13,271]`; Q8_0/Q4_1/UD-Q4_K_XL outputs `[' 1.\n', ' 1.\n']` IDs `[220,16,13,198]`; public path uses resident prefill plus decode graph replay/GPU sampling | [`profile`](results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json), [`resident`](results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json), [`gpu-full-attn`](results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json), [`aotriton-layer`](results/2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json), [`prefill-proj`](results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json), [`decode-graph`](results/2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json), [`local-quants`](results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json) | 2026-05-17 | Correctness gate only; Q8_0 uses native raw embedding/projection, while Q4_1/F16/IQ4_XS use explicitly named dense-BF16 fallbacks. Q4_K_M throughput is superseded by the accepted bulk-prefill rows above; other local-quant fixtures remain correctness-only. |
-| GGUF rows>1 prefill projection kernels | `hip_gfx1100` | `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_prefill_projection_smoke.py --rows 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` | Q4_K pack8 + raw Q8_0/Q5_K/Q6_K BF16→F32/FP16/BF16 all pass vs CPU refs with `worst_max_abs=0.0`; rocprof confirms `gguf_q4_k_pack8_prefill_out_kernel` and `gguf_k_prefill_out_kernel` | [`2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json`](results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json) | 2026-05-17 | Kernel correctness/profiler smoke only; measured-equivalent row-grid prefill surfaces, no throughput claim. |
-| Qwen3.5/PARO native single-request prefill fixture gate | `hip_gfx1100` | `python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json` | `passed=true`, `max_kl=0.0168`, `top1=100%`, fixture IDs match | [`2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`](results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json) | 2026-05-15 | Correctness gate only; native prefill timing is diagnostic and not a promoted throughput row. |
-| Qwen3.5/PARO segment-aware linear-attn prefill kernels | `hip_gfx1100` | `python3 scripts/smoke.py --mode qwen35-linear-attn-segments-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` | conv/state max abs `1.86e-09/0`, GDN/state max abs `1.86e-09/9.31e-10`; profiler confirms segment kernels launched | [`2026-05-15-hipengine-qwen35-linear-attn-segment-prefill-accepted.json`](results/2026-05-15-hipengine-qwen35-linear-attn-segment-prefill-accepted.json) | 2026-05-15 | Kernel correctness/profiler smoke only; no throughput claim. |
-| Qwen3.5/PARO varlen full-attn prefill kernel | `hip_gfx1100` | `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` | `varlen_prefill_gate_fp16_max_abs=0`, mismatch `0`; profiler confirms prompt KV writer + varlen prefill attention launched | [`2026-05-15-hipengine-qwen35-varlen-full-attn-prefill-accepted.json`](results/2026-05-15-hipengine-qwen35-varlen-full-attn-prefill-accepted.json) | 2026-05-15 | Kernel correctness/profiler smoke only; no throughput claim. |
-| Qwen3.5/PARO c=1 parent fixture equality | `hip_gfx1100` | `python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 32 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json` | `passed=true`, `expected_match=true`, generated `[1739, 220, 16, 15, …]` | [`2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`](results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json) | 2026-05-15 | Correctness fixture only; timings are diagnostic, no throughput claim. |
-| Qwen3.5/PARO native compact prefill c=N generated equality | `hip_gfx1100` | `python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json ...` | c=2/4/8 `finite_logits=true`, `generated_match=true`, `passed=true`; decode remains serial | [`c2`](results/2026-05-15-hipengine-qwen35-c2-native-compact-prefill-correctness-accepted.json), [`c4`](results/2026-05-15-hipengine-qwen35-c4-native-compact-prefill-correctness-accepted.json), [`c8`](results/2026-05-15-hipengine-qwen35-c8-native-compact-prefill-correctness-accepted.json) | 2026-05-15 | Correctness gate only; native compact prefill is wired, c-aware decode graph replay is still not a throughput path. |
-| Qwen3.5/PARO c=N generated equality | `hip_gfx1100` | `python3 scripts/qwen35_batch_serial_correctness.py --scheduler ...` for c=2/4/8; exact commands in artifact | c=2/4/8 `finite_logits=true`, `generated_match=true`, `passed=true` | [`2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`](results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json) | 2026-05-15 | Historical serial bridge correctness gate; superseded for prefill by native compact prefill equality above, decode remains serial. |
-| `smoke_add` HIP runtime/build | `hip_gfx1100` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` | `max_abs=0.0` | `~/.cache/hipengine/build/smoke-101db2a5ad5526c3/smoke_add.so` | 2026-05-13 | Correctness/build smoke only; no throughput claim. |
-
-## Blocked / diagnostic benchmark attempts
-
-These rows are **not** current-fastest hipEngine results. They are committed so
-we do not lose exact commands, hardware/software context, correctness status,
-and blocker evidence for attempted shapes. Their timing fields are diagnostic
-only unless a future artifact has `status="accepted"` and `performance_claim=true`.
-
-K1 dense INT8 KV status (2026-05-18): Qwen3.5-35B-A3B-PARO on W7900/gfx1100
-landed a retained `int8_per_token_head` KV path with FP16 per-token/head scales
-and no persistent BF16 KV shadow. The original 128K/128 comparison used the now-
-removed temporary BF16 INT8-prefill oracle plus AOTriton attention, so it was a
-storage/capacity diagnostic rather than a current speed claim: INT8 KV was
-`-0.99%` prefill and `-3.20%` decode vs BF16 while reducing sampled VRAM by
-`1.240 GiB` and retained KV by `49.6%`. The 256K/128 INT8 run passed both
-sampled and tracked 24GiB-class targets after replacing the persistent full-
-prompt prefill double buffer, releasing scratch around bulk prefill, reusing
-AOTriton BF16 query scratch, and retaining a 3072-row full-attention query chunk:
-sampled peak `24.330 -> 22.013 GiB`, tracked high-water `25.700 -> 23.766 GiB`.
-#88 removes the transient BF16 oracle entirely for the 262K scratch gate, but its
-direct streaming INT8 prefill kernel is a speed blocker at long context: the
-2026-06-15 GPU1 single-run throughput diagnostic measured 128K/128 prefill
-`1020.723 -> 23.425 tok/s` (`-97.7%`) vs the prior oracle/AOTriton INT8 row.
-The follow-up is now a memory-safe fast INT8 prefill path, not more scratch
-release work.
-
-Shared-expert format finding (2026-05-17): shisa's unstripped checkpoint can run
-with either packed PARO sidecars or the fp16 fallback shared expert. Packed is now
-the default comparison A-side because it wins prefill and memory on every swept
-shape, while legacy remains an explicit decode-only diagnostic B-side. After the
-approved packed-path decode fusions (`paro_rotate2` gate/up plus fused
-SiLU+down-rotate) and current long-context grouped-GQA defaults, packed vs legacy
-prefill is `+10.9%/+9.0%/+7.9%/+4.6%` at 512/4K/32K/128K, while packed decode is
-still `-3.1%/-3.0%/-2.0%/-1.9%`. Packed saves ~`0.052 GiB` tracked peak by
-omitting legacy W8A16 shared-expert buffers. Remaining hypothesis: packed sidecar
-decode still pays W4 unpack/dequant plus PARO rotation costs that legacy avoids
-via load-time W8A16-prepared shared-expert matrices; further recovery likely needs
-a deeper fused down-W4+combine path or precomputed rotation sin/cos, and still
-requires a shisa correctness gate before promotion.
-
-| Model | Quant | Workload | Path | Correctness / status | Diagnostic timing | Memory | Artifact | Last updated | Blocker / notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | GPU0 native sampler scalar-cache diagnostic: c1 repeated token `45` + warmup `4` / measured decode `64` | `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-scalar-cache.json`; same resident-session diagnostic after lazy caching for request-constant native sampler scalars and bias arrays. | `status=diagnostic_retained`, `performance_claim=true_for_copy_reduction`; GPU sampler suite passed `10/10`; script syntax and ruff checks passed; native route uses `sampler_mode=gpu_sample`; host route uses `sampler_mode=host_logits_sample`. | Greedy graph `116.369 tok/s`; greedy eager `111.348 tok/s`; native bounded top-k eager `94.596 tok/s`; host-logits top-k eager `32.180 tok/s`. Native is `0.813x` greedy graph, `0.850x` greedy eager, and `2.940x` host. Native measured decode H2D copies/token dropped `2 -> 0`; D2H stays `3` copies/token. Native `_sample_from_hidden_native` timing moved `4.550 -> 4.245 ms/token`; aggregate native tok/s is effectively neutral vs device-writeback (`94.842 -> 94.596`, `-0.3%`, run noise). | not measured in this diagnostic | [`2026-06-16-native-sampler-scalar-cache.json`](results/2026-06-16-native-sampler-scalar-cache.json) | 2026-06-16 | Retained because warmed sampled decode no longer performs per-token H2D scalar uploads. Next native overhead target is host result-readback coalescing or device-side continuation plumbing; sampler-kernel cost vs greedy argmax remains the broader gap. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | GPU0 native sampler device-writeback diagnostic: c1 repeated token `45` + warmup `4` / measured decode `64` | `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-device-writeback.json`; same resident-session diagnostic as the baseline row after sampler kernels gained optional direct writes to `lm_out_index` / `lm_out_value`. | `status=diagnostic_retained`, `performance_claim=true_for_copy_reduction`; GPU sampler suite passed `10/10`; script syntax and ruff checks passed; native route uses `sampler_mode=gpu_sample`; host route uses `sampler_mode=host_logits_sample`. | Greedy graph `116.509 tok/s`; greedy eager `111.996 tok/s`; native bounded top-k eager `94.842 tok/s`; host-logits top-k eager `33.600 tok/s`. Native is `0.814x` greedy graph, `0.847x` greedy eager, and `2.823x` host. Native measured decode H2D copies/token dropped `4 -> 2`; D2H stays `3` copies/token; the remaining H2D traffic is exactly `2` scalar uploads/token (`temperature`, `seed`). | not measured in this diagnostic | [`2026-06-16-native-sampler-device-writeback.json`](results/2026-06-16-native-sampler-device-writeback.json) | 2026-06-16 | Retained because it removes the legacy post-sample H2D token/logit writeback while preserving the existing `lm_out_index` / `lm_out_value` device contract. Next native overhead target is request-constant scalar-buffer caching; host result-readback coalescing is secondary. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | GPU0 native sampler overhead diagnostic: c1 repeated token `45` + warmup `4` / measured decode `64` | `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-overhead-profile.json`; one resident session, same repeated-token prompt for greedy graph, greedy eager, native bounded top-k eager, and host-logits top-k eager. | `status=diagnostic_retained`, `performance_claim=false`; all lanes generated 64 measured decode tokens; native route uses `sampler_mode=gpu_sample`; host route uses `sampler_mode=host_logits_sample`; script syntax and ruff checks passed. | Greedy graph `116.010 tok/s`; greedy eager `109.150 tok/s`; native bounded top-k eager `94.196 tok/s`; host-logits top-k eager `34.223 tok/s`. Native is `0.812x` greedy graph, `0.863x` greedy eager, and `2.752x` host. Native measured decode counts `4` H2D + `3` D2H Python-visible copies/token and `2` native scalar uploads/token (`temperature`, `seed`). | not measured in this diagnostic | [`2026-06-16-native-sampler-overhead-profile.json`](results/2026-06-16-native-sampler-overhead-profile.json) | 2026-06-16 | Graph replay explains only part of the native/greedy gap in this narrow control. Next higher-value overhead experiment is device-side selected-token/logit writeback; scalar-buffer caching is secondary. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | GPU0 native sampler scoped default promotion: c1 sampled prompt `45` / decode `64`, plus env-unset route smoke | `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=.`, inline `LLM.generate_detailed` diagnostic with one resident LLM, `max_tokens=64`, one warmup plus three measured runs for `greedy_fast`, host-logits sampling (`temperature=0.7`, `top_k=4`; now reproduced with `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`), and native GPU sampling. Default-route smoke ran with `env -u HIPENGINE_QWEN35_NATIVE_SAMPLER` and `max_tokens=16`. | `status=promoted_scoped_default`; `tests/test_gpu_sampler_kernel.py` passed `10/10`; PARO generator/sampler/capability regressions passed; host route reported `sampler_mode=host_logits_sample`, `full_vocab_logits_d2h=true`, `logits_d2h_bytes=993280`; native/default route reported `sampler_mode=gpu_sample`, `full_vocab_logits_d2h=false`, `logits_d2h_bytes=0`. | Median generated tok/s from the source benchmark: greedy `73.517`, host-logits sample `29.360`, native GPU sample `65.111`; native/host `2.218x`, native/greedy `0.886x`. | not measured in this smoke | [`default promotion`](results/2026-06-16-gpu0-native-sampler-default-promotion.json), [`source smoke`](results/2026-06-16-gpu0-native-sampler-promotion-smoke.json) | 2026-06-16 | Native sampling is default for supported PARO c=1 and scheduler-owned serial per-slot c>N sampled requests. True batched c>N, GGUF native sampling, `top_logprobs`, and unsupported processors/filter combinations remain host-fallback paths, not blockers for the scoped default. |
-| Qwen3.6-35B-A3B PARO | w4_paro INT8 KV | GPU1 post-#88 direct streaming INT8 prefill diagnostic: `512/128`, `4K/128`, `128K/128` | `HIP_VISIBLE_DEVICES=1` TheRock ROCm 7.13, `scripts/qwen35_readme_sweep.py --engine paro --workloads 512/128 4K/128 128K/128 --warmup-runs 0 --measured-runs 1 --require-cached-build --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head`; one resident session allocated for max sequence `131205`; exact expanded flags in artifact. | `status=diagnostic_retained_blocked`, `performance_claim=false`; final token IDs stable `[9707]` for all three shapes and KV memory audit passed; no KL/top-1 gate; single measured run only. | Prefill tok/s `2045.109 / 772.551 / 23.425`; decode tok/s `120.075 / 117.868 / 68.118`. 128K prefill is `-97.7%` vs the prior RX 7900 XTX INT8 oracle/AOTriton row (`1020.723 -> 23.425 tok/s`), while decode is `+12.8%` (`60.404 -> 68.118 tok/s`). | tracked peak `19.790 / 20.759 / 20.910 GiB`; sampled HIP used peak `19.893 / 19.895 / 19.896 GiB`; no persistent BF16 KV shadow. | [`2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json`](results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json) | 2026-06-15 | Not promoted. #88 solved the 262K transient-oracle memory gate, but the direct streaming INT8 prefill kernel is not a throughput replacement for the old BF16-oracle/AOTriton INT8 prefill. Next step is a memory-safe fast INT8 prefill path. |
-| Qwen3.6-35B-A3B README refresh | PARO w4 BF16 KV + GGUF Q4_K_S + llama.cpp Q4_K_M + vLLM GPTQ Int4 | W7900/GPU0 README comparison refresh: `512/128`, `1K/128`, `4K/128`, `32K/128`, `64K/128`, `128K/128`; concurrency `c=1,2,4,8` at 512/128 | [`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh) from clean detached worktree commit `fbbc7bf8`; exact expanded commands are documented in this file's README sweep procedure. | `status=diagnostic_retained`, `performance_claim=false`; all JSON artifacts parsed; hipEngine measured rows used cached JIT builds with final IDs/finite logits recorded in raw artifacts; no new KL/top-1 gate, and cross-engine columns are cross-quant. | PARO prefill `2729.701/2906.950/2879.578/2079.424/1559.096/1053.919`, decode `115.227/102.927/105.253/91.965/77.666/60.349`; GGUF Q4_K_S prefill `2226.422/2528.347/2515.478/1871.997/1442.153/994.989`, decode `108.173/97.357/98.516/86.287/73.734/58.023`; concurrency aggregate hipEngine `115.36/115.35/160.74/190.15`, llama.cpp Vulkan `105.76/157.38/75.29/25.15`, vLLM OpenAI wall `20.04/38.42/73.28/116.56`. | PARO tracked peak `21.029/21.241/21.973/22.082/22.082/22.124 GiB`; GGUF tracked peak `25.108 GiB`; llama.cpp HIP sampled peak `21.128/21.139/21.196/21.738/22.416/23.609 GiB`; llama.cpp Vulkan sampled peak `20.768/20.727/20.786/21.363/22.019/23.332 GiB`. | [`summary`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json), [`PARO`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json), [`GGUF`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json), [`llama.cpp HIP`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json), [`llama.cpp Vulkan`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json), [`hipEngine concurrency`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json), [`llama.cpp concurrency`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json), [`vLLM`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json) | 2026-06-14 | Historical 2026-06-14 refresh retained for audit; active GGUF comparison rows are now Q4_K_M and were refreshed on 2026-06-17. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=8 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 1,8` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=8, c=1 native scaling baseline, c=8 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=8 generated-token equality all passed (`prefixes=[137,137,137,137,137,137,137,137]`). | c=1 native decode `133.529 tok/s`; c=8 serial bridge decode `103.666 tok/s` aggregate / `12.958 tok/s` per request; c=8 native diagnostic decode `108.125 tok/s` aggregate / `13.516 tok/s` per request. Profiler compact trace totals `3.025s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`10.717 ms`). | c=1 native tracked peak `18.078 GiB`; c=8 native diagnostic allocator peak `20.499 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/profiler-c8.json), [`no-flag sampler matrix`](results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/summary.json), [`output-labeled matrix`](results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/summary.json), [`repeat2 matrix`](results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/summary.json), [`c2 variability fingerprint`](results/2026-06-02-hipengine-qwen35-native-c2-primary-variability/summary.json), [`auto-QKV/Z matrix`](results/2026-06-02-hipengine-qwen35-native-auto-qkvz-equality-matrix/summary.json), [`full-attn batch-GEMV output matrix`](results/2026-06-02-hipengine-qwen35-native-fullattn-batchgemv-output-matrix/summary.json), [`linear batch-GEMV output matrix`](results/2026-06-02-hipengine-qwen35-native-linear-batchgemv-output-matrix/summary.json), [`batched selected-c1 MoE matrix`](results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json), [`promoted selected-c1 MoE matrix`](results/2026-06-02-hipengine-qwen35-native-selected-moe-promoted-matrix/summary.json), [`grouped MoE red probe`](results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/summary.json), [`hidden MoE parity probe`](results/2026-06-02-hipengine-qwen35-native-hidden-moe-parity-probe/summary.json), [`promoted selected-QKV/Z matrix`](results/2026-06-02-hipengine-qwen35-native-selected-qkvz-promoted-matrix/summary.json), [`promoted equality gate matrix`](results/2026-06-02-hipengine-qwen35-native-equality-gate-promoted-matrix/summary.json), [`promoted context gate matrix`](results/2026-06-02-hipengine-qwen35-native-context-gate-promoted-matrix/summary.json), [`explicit batched sampler control`](results/2026-06-02-hipengine-qwen35-native-explicit-batched-sampler-control-matrix/summary.json), [`serial sampler control`](results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/summary.json) | 2026-06-02 | Completes c=2/c=4/c=8 profiler/scaling preflight coverage with sampler profiler provenance green; no-flag retained-bench equality matrix now also passes c=2/c=4/c=8 with row-aware sampler metadata, the output-labeled rerun records linear output as `batch_gemv`, the two-repeat matrix passed all six runs, the auto projection default now uses selected-QKV/Z with native A/B for c=8, row-aware batch-GEMV linear and full-attention outputs no longer contribute diagnostic blockers, batched selected-c1 MoE removes the per-row MoE blockers, promoted selected-c1 MoE metadata removes the selected-c1 MoE decode blocker while preserving the grouped-compact retained target, the grouped-MoE red probe shows row 0 stops at prefix 82 when grouped MoE is enabled in linear layers, full-attention layers, or both, the hidden MoE parity probe shows the default selected/per-row MoE path is hidden-green vs an independent c=1 native-batch oracle while each grouped variant is hidden-red, promoted selected-QKV/Z metadata removes the generic QKV/Z projection decode blocker while preserving native projection-dispatch gating, promoted equality-gate metadata removes the stale generated-equality blocker only inside artifacts whose generated-token equality passed, promoted context-gate metadata removes the stale BF16/context<1024 full-attention support caveat only inside artifacts with native full-attention context evidence, and explicit `batched_lm_head` plus `serial_lm_head` controls pass c=2/c=4/c=8. Retained promotion remains blocked by non-full-native projection/MoE and missing graph-replay profiler evidence; the c=2 variability fingerprint preserves one transient prefix-82/prefix-104 batched-sampler sample before reruns at 137, so no c>N throughput/scaling or deterministic-stability claim is made. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=4 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 1,4` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=4, c=1 native scaling baseline, c=4 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=4 generated-token equality all passed (`prefixes=[137,137,137,137]`). | c=1 native decode `133.146 tok/s`; c=4 serial bridge decode `110.347 tok/s` aggregate / `27.587 tok/s` per request; c=4 native diagnostic decode `99.890 tok/s` aggregate / `24.972 tok/s` per request. Profiler compact trace totals `1.652s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`5.856 ms`). | c=1 native tracked peak `18.078 GiB`; c=4 native diagnostic allocator peak `19.143 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json) | 2026-06-02 | Extends profiler/scaling preflight from c=2 to c=4 with sampler profiler provenance green; retained promotion remains blocked by non-full-native decode/projection/MoE and missing graph-replay profiler evidence, so no c>N throughput/scaling claim is made. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=2 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 2` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=2, c=1 native scaling baseline, c=2 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=2 generated-token equality all passed (`prefixes=[137,137]`). | c=1 native decode `134.112 tok/s`; c=2 serial bridge decode `79.851 tok/s` aggregate / `39.925 tok/s` per request; c=2 native diagnostic decode `62.941 tok/s` aggregate / `31.470 tok/s` per request. Profiler compact trace totals `0.994s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`3.337 ms`). | c=1 native tracked peak `18.078 GiB`; c=2 native diagnostic allocator peak `18.466 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profiler-c2.json) | 2026-06-02 | Profiler evidence is now present and sampler profiler provenance is green; retained promotion remains blocked by non-full-native decode/projection/MoE and missing graph-replay profiler evidence, so no c>N throughput/scaling claim is made. |
-| Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | W7900 TheRock 7.13 README persistent 5-run refresh: 512/128, 4K/128, 32K/128, 128K/128 | `scripts/qwen35_readme_sweep.py`; one resident PARO session allocated for max requested context, 2 warmups + 5 measured runs per shape, graph replay decode; measured code commit `c5c8bab1`, clean TheRock ROCm 7.13 (`HIP version: 7.13.26162-1140233ffe`). | `status=diagnostic_retained`, `performance_claim=false`; final token IDs stable `[9707,9707,9707,9707,9707]` and finite final logits in measured runs, KV memory audit passed, but no new KL/top-1 gate for shisa/PARO production rows. | Median prefill tok/s `2708.314 / 2871.122 / 2075.471 / 1054.427`; median decode tok/s `114.724 / 105.468 / 91.922 / 60.216`. | Max-context persistent-session tracked peak `23.098 / 25.113 / 25.222 / 25.222 GiB`; TheRock `hipMemGetInfo` reports invalid/low totals in the mixed userspace setup, so tracked allocator memory is retained. | [`2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`](results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json) | 2026-06-14 | Current PARO topline refresh. The matching system `/opt/rocm` 7.2 row remains diagnostic only; short-shape hipEngine peak is not a minimum-fit number because the session is allocated for the whole 128K sweep. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_s | W7900 TheRock 7.13 README persistent 5-run refresh: 512/128, 4K/128, 32K/128, 128K/128 | `HIPENGINE_GGUF_DECODE_REPACK=1 scripts/qwen35_readme_sweep.py`; one resident GGUF session allocated for max requested context, 2 warmups + 5 measured runs per shape, bulk prefill + GEMV graph decode; measured code commit `c5c8bab1`, clean TheRock ROCm 7.13. | `status=diagnostic_retained`, `performance_claim=false`; latest MTP-bearing local GGUF declares 41 blocks but maps 40 AR layers and ignores 20 trailing `blk.40.nextn.*` tensors; finite final logits; stable final IDs `[220]`, `[570]`, `[234921]`, `[1510]` across the four shapes; effective WMMA prefill and GEMV decode true. | Median prefill tok/s `2262.097 / 2544.475 / 1878.052 / 995.295`; median decode tok/s `109.347 / 99.873 / 86.486 / 58.066`. | Max-context persistent-session tracked peak `25.108 / 25.108 / 25.108 / 25.108 GiB`; TheRock `hipMemGetInfo` reports invalid/low totals in the mixed userspace setup, so tracked allocator memory is retained. | [`2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json`](results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json) | 2026-06-14 | Historical GGUF Q4_K_S topline refresh. The preceding system `/opt/rocm` 7.2 attempt reproduced the known W7900 GGUF prefill slowdown and was not promoted; this row is retained for audit only and is superseded as the active W7900 GGUF comparison by the 2026-06-17 Q4_K_M rows. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #32 P9.G1 final acceptance: 512/0 + 512/128 | Requested P8 WMMA prefill + P9 GEMV decode with resident decode-repack (`--use-wmma-prefill --use-gemv-decode`, `HIPENGINE_GGUF_DECODE_REPACK=1`). qwen35moe safety keeps `effective_wmma_prefill=false` and `effective_gemv_decode=true`. | `status=blocked_prefill_target_not_met`, `performance_claim=false`; P9.E2 accepted (`KL 0`, top-1 `100%`, deterministic tails); targeted dispatch/ops tests passed (`42 passed`). | 512/0 rocprof total prefill kernel time `1004.494 ms` vs acceptance `<=350 ms` (stretch `<=250 ms`); wall prefill median `505.132 tok/s`. 512/128 graph decode meets the decode floor: `98.144 tok/s` median vs `>=95`, but misses stretch `>=110`. | tracked peak `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json) | 2026-05-20 | Final P9 combined acceptance remains blocked by prefill: requested WMMA prefill is safety-disabled after P9.E2's unsafe-path rejection, so the 512/0 path stays far above target. Decode acceptance is covered by the P9.D18/P9.B7 row above. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #48 P9.C17 final #27 gate / no-wire decision | No runtime Q4 redesign wired: P9.C15 rejected Q4T16 compact32, and P9.C16 rejected compact tile-list/no-padding plus wider-column proxies. | `status=blocked_no_q4_redesign_to_wire`, `performance_claim=false`; carry forward P9.C11 correctness passing bundle (`143` tests, finite deterministic 512/128 final token `220`). | Final #27 combined bucket remains `140.110 ms` vs `<=110 ms` target (`gap 30.110 ms`): Q4 `58.126`, Q5 `27.043`, Q6 `2.656`, Q8 `52.285`. Candidate evidence: Q4T16 best `59.395 ms`, no-padding lower bound `54.775 ms`, `64x16=61.868 ms`, `64x32=91.831 ms`. | tracked peak carried forward `20.886 GiB`; HIP sampled `21.354 GiB`; no new memory path. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json) | 2026-05-20 | #27 must remain open/blocked. Further Q4 selected-MoE work should move to parent kernel R&D/new design before any hipENGINE runtime wiring; decode target is covered by the accepted P9.D18 row above. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #47 P9.C16 selected-MoE alternative evaluation: 512/0 replay/model | Evaluated alternatives after P9.C15: compact tile-list/no-padding ABI model from real routing counts, plus measured wider-column raw selected WMMA tile proxies (`64x16`, `64x32`). | `status=rejected_no_inrepo_alternative_selected`, `performance_claim=false`; no broad runtime change selected. | Raw Q4 selected gate+up `62.199 ms`; optimistic no-padding lower bound `54.775 ms`; measured `64x16` Q4 `61.868 ms`, `64x32` Q4 `91.831 ms`. Padding is only `13.45%` and residual tails `5.40%`, so metadata/tail compaction cannot hit `<=35-40 ms`. | no new memory path; modeled only. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json) | 2026-05-20 | No winning Q4 redesign for #48. Further Q4 selected-MoE work should move to parent kernel R&D/new design; hipENGINE can refocus on #51/#28 blockers. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #46 P9.C15 Q4T16 selected-dual WMMA replay sweep: 512/0 | Replayed qwen35moe real 512-token compact-MoE routing with the P9.C14 Q4T16 compact32 selected-dual WMMA consumer for all layers and launch-bound min-blocks `{1,2,4}`. | `status=rejected_target_not_met`, `performance_claim=false`; P9.C14 synthetic BF16/FP16 correctness bundle passes (`28 passed`), but full replay misses the continuation target. | Raw Q4 selected gate+up `62.199 ms`; best Q4T16 (min-blocks `1`) `59.395 ms` (`-4.5%`), all-layer min-blocks `2` `59.680 ms`, min-blocks `4` `59.689 ms`; selected-MoE total `93.138 -> 92.478 ms` (`-0.7%`) vs target Q4 `<=35-40 ms`. | all-layer Q4T16 replacement would be `11.5625 GiB` for gate+up tensors (replacement-style, not sidecar); replay materialized/freed per layer. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json) | 2026-05-20 | Rejected as too small to unblock #27. Continue with P9.C16 alternative selected-MoE design rather than wiring this compact32 Q4T16 path into default runtime. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #51 P9.D15 full-attention BF16-key RoPE decode: 512/128 | GGUF decode-repack + GEMV graph replay with a GGUF F32-weight Qwen head-RMSNorm+RoPE variant that consumes the full-attention K projection as BF16 input, removing the separate `bf16_to_f32` conversion launch. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; 16-token override also accepted; GGUF ops/dispatch tests passed (`40 passed`). | D14 baseline -> D15: median decode `90.149 -> 90.868 tok/s` (`+0.80%`); target remains `>=95`; prefill median `505.598 -> 506.218 tok/s` (`+0.12%`, noise). 512/16 rocprof diagnostic: total dispatches `10138 -> 9968`; removed `bf16_to_f32` decode work (`0.302 ms / 159` dispatches); total decode kernel time `150.736 -> 150.129 ms`. | tracked peak remains `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d17-key-bf16-rope.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d17-key-bf16-rope.json) | 2026-05-20 | Retained as a correctness-neutral launch removal at the time; superseded by the accepted P9.D18 split-K grouped-GQA decode row above, which reaches `>=95 tok/s`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #51 P9.D14 Q8T16 F32-input `ssm_out` decode: 512/128 | GGUF decode-repack + GEMV graph replay with qwen35moe rows=1 `ssm_out` routed through a Q8_0 T16 F32-input/BF16-output single GEMV variant directly from the FP32 GDN output, removing the preceding `f32_to_bf16` conversion launch. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; Q8T16 CPU-oracle/dispatch tests passed (`60 passed`). | D13 baseline -> D14: median decode `89.303 -> 90.149 tok/s` (`+0.95%`); target remains `>=95`; prefill median `505.539 -> 505.598 tok/s` (`+0.01%`, noise). 512/16 rocprof diagnostic: total dispatches `10648 -> 10138`; removed `f32_to_bf16` decode work (`0.860 ms / 478` dispatches); total decode kernel time `152.461 -> 150.736 ms`. | tracked peak remains `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d16-q8t16-f32-ssm-out.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d16-q8t16-f32-ssm-out.json) | 2026-05-20 | Retained as a correctness-neutral launch removal; #51/#52/#26 still need a deeper selected-MoE/T16 or lm-head/attention decode reduction to hit `>=95 tok/s`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #51 P9.D13 dense BF16 alpha/beta dual decode: 512/128 | GGUF decode-repack + GEMV graph replay with qwen35moe rows=1 linear-attention `ssm_alpha+ssm_beta` projections routed through one existing `dense_dual_gemv_out_bf16` launch into a tiny combined scratch buffer. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; targeted dispatch/dense tests passed (`40 passed`). | D10 baseline -> D13: median decode `88.801 -> 89.303 tok/s` (`+0.56%`); target remains `>=95`; prefill median `504.937 -> 505.539 tok/s` (`+0.12%`, noise). 512/16 rocprof diagnostic: dense alpha/beta work `2.950 ms / 960` singleton dispatches -> `1.667 ms / 478` dual dispatches; total decode kernel time `156.247 -> 152.461 ms`. | tracked peak `21.343 GiB` (+128 bytes); HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d15-dense-dual-alpha-beta.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d15-dense-dual-alpha-beta.json) | 2026-05-20 | Retained as a correctness-neutral launch reduction; #51/#52/#26 still need a deeper selected-MoE/T16 or lm-head/attention decode reduction to hit `>=95 tok/s`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D10 Q8T16 dual-split 64-thread launch: 512/128 | GGUF decode-repack + GEMV graph replay with separate-output Q8T16 dual-split decode pairs launched at 64 threads/block instead of 128; ABI and dispatch policy unchanged. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; Q8T16 CPU-oracle/dispatch tests passed. | D9 baseline -> D10: median decode `88.243 -> 88.801 tok/s` (`+0.63%`); target remains `>=95`; prefill median `499.356 -> 504.937 tok/s` (`+1.12%`, noise). 512/16 rocprof diagnostic: dual-split Q8T16 bucket `20.685 -> 19.460 ms` across 480 dispatches. | tracked peak unchanged at `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json) | 2026-05-20 | Retained as a tiny correctness-neutral launch-width win; #51/#52/#26 still need a deeper selected-MoE/T16 decode reduction to hit `>=95 tok/s`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D9 Q8T16 full-attention Q/K/V triple dispatch: 512/128 | GGUF decode-repack + GEMV graph replay with same-input Q8T16 `attn_q+attn_k+attn_v` projections routed through a new split-output triple GEMV while preserving Q/K/V scratch buffers. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; Q8T16 CPU-oracle, dispatch tests, and rocprof smoke passed. | D7 baseline -> D9: median decode `87.961 -> 88.243 tok/s` (`+0.32%`); target remains `>=95`; prefill median `500.480 -> 499.356 tok/s` (`-0.22%`, noise). | tracked peak unchanged at `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d9-q8t16-triple-qkv.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d9-q8t16-triple-qkv.json) | 2026-05-20 | Retained as a correctness-neutral full-attention launch reduction, but still too small to unblock #51/#52/#26 alone; remaining gap is selected-MoE/T16 decode dominated. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D7 Q8T16 qkv+gate pair dispatch: 512/128 | GGUF decode-repack + GEMV graph replay with unequal-width same-input Q8T16 `attn_qkv+attn_gate` projections routed through the D6 split-output dual GEMV while preserving `linear_qkv`/`linear_z` scratch buffers. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; dispatch tests passed. | D6 baseline -> D7: median decode `86.502 -> 87.961 tok/s` (`+1.69%`); target remains `>=95`; prefill median `501.384 -> 500.480 tok/s` (`-0.18%`, noise). | tracked peak unchanged at `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json) | 2026-05-20 | Largest retained #28 launch-dispatch win so far, but still too small to unblock #51/#52/#26 alone; remaining gap needs deeper Q8/full-attention decode reductions. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D6 Q8T16 split-output pair dispatch: 512/128 | GGUF decode-repack + GEMV graph replay with same-input Q8T16 projection pairs (`attn_k+attn_v`, `ssm_alpha+ssm_beta`) routed through a new split-output dual GEMV while preserving separate scratch buffers. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; unit CPU-oracle and rocprof smoke passed. | D4 baseline -> D6: median decode `86.025 -> 86.502 tok/s` (`+0.55%`); target remains `>=95`; prefill median `501.107 -> 501.384 tok/s` (`+0.06%`). | tracked peak unchanged at `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json) | 2026-05-20 | Retained because it removes Q8T16 launches for K/V and alpha/beta pairs, but it is still too small to unblock #51/#52/#26 alone; remaining gap needs deeper Q8/full-attention decode reductions. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D4 Q4T16 decode-only SiLU fusion: 512/128 | GGUF decode-repack + GEMV graph replay with rows=1 Q4T16 selected gate/up GEMV fused with split-kernel-equivalent BF16 SiLU*up; rows>1 bulk prefill remains split pair+SiLU. | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 accepted with KL `0`, top-1 `100%`, deterministic tails; unit bit-equality and rocprof smoke passed. | D1 baseline -> D4: median decode `85.817 -> 86.025 tok/s` (`+0.24%`); target remains `>=95`; prefill median `502.138 -> 501.107 tok/s` (`-0.21%`, split prefill path retained). | tracked peak unchanged at `21.343 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json) | 2026-05-20 | Retained because it removes one selected-expert SiLU launch per MoE layer/token in decode, but it is too small to unblock #51/#52/#26 alone; continue with D3/D5 or deeper Q8/full-attention reductions. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #28 P9.D1 split router cooperative decode: 512/128 | GGUF decode-repack + GEMV graph replay with qwen35moe c=1 router expert logits, shared-gate logit, and top-k selection fused into `qwen35_router_topk_split_shared_coop_out_kernel` (separate expert/shared BF16 weight pointers, no resident concatenation). | `status=accepted_small_op_optimization_target_still_blocked`, `performance_claim=true`; P9.E2 gate accepted with KL `0`, top-1 `100%`, deterministic tails; unit CPU-router fixture and rocprof smoke passed. | 512/128 graph replay median decode `85.728 -> 85.817 tok/s` (`+0.10%`), prefill `501.262 -> 502.138 tok/s`; target remains `>=95 tok/s`. | tracked peak unchanged at `21.343 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json) | 2026-05-20 | Retained because it removes two decode router launches per MoE layer/token and is correctness-neutral, but it is too small to unblock #51/#52/#26 alone; continue with D2/D3 or deeper Q8/full-attention reductions. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #26 P9.B7 decode GEMV retention: 512/128 | Graph replay decode with `--use-wmma-prefill` and the P9 rows=1 GEMV decode opt-in (`--use-gemv-decode`) after fixing graph capture to honor the session GEMV toggle and stream-capturable MoE scratch zeroing. | `status=rejected_correctness_and_perf`, `performance_claim=false`; pre-#49 unsafe P9.E2 rejected the real WMMA+GEMV opt-in combo (`KL 5.993`, top-1 `5.43%`) despite finite logits and deterministic tail. #49 now safety-disables those opt-ins, so this row remains blocked on repacked fast paths rather than correctness fallback. | 512/128 graph medians: prefill `1668.908 tok/s`, decode `63.033 tok/s` vs task #16/current `62.557` (`+0.8%`) and target `>=95`. 512/16-minus-512/0 rocprof decode deltas show selected pack8 GEMV kernels active (`85.235 ms` graph / `123.490 ms` eager) but legacy `prefill_out` remains a large bucket (`72.960 ms` graph / `94.725 ms` eager), so decode needs repacked/layout kernels rather than another launch-only tweak. | tracked peak `20.886 GiB`; HIP sampled peak `21.348 GiB` in the raw bench JSON. | [`2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json`](results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json) | 2026-05-19 | Blocked by (1) P9.E2 correctness drift, and (2) remaining raw-GGUF/`prefill_out` decode work. Reprioritized follow-up is a correctness fix plus resident GGUF decode repack/layout for Q4_K selected gate/up, Q5/Q6 selected down, and Q8_0 dense/shared paths. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #19 P9.A3 GDN k2/segments_k2 chain acceptance: 512/0 + 512/128 | Opt-in fast-bulk prefill keeps the P8.6 compact grouped scheduler + selected raw-Q4_K/Q5_K/Q6_K WMMA from task #16 and routes the qwen35moe GDN through the P9.A1 chain: `qwen35_linear_attn_prefill_prepare_f32_bf16` -> `qwen35_gdn_prefill_recurrent_segments_k2_f32` -> `qwen35_gdn_prefill_rmsnorm_gate_bf16`, all resolved via the registry-only dispatch added in P9.A1. Fused `decode_order_bf16` is fully gone from the qwen35moe prefill path. No sidecar/repack; raw GGUF expert bytes stay resident. | `status=accepted`, `performance_claim=true`; P9.A2 CPU-reference GDN fixture (18 tests) and P9.A1 routing tests pass; E2E parity on the GDN-isolated path (native_attention_bulk_ffn) is **bit-exact** with the row-GEMV serial reference (KL `0.0`, top-1 match token `4469`). 512/128 graph runs are finite + deterministic across 3 measured runs (final token `220`). Cumulative compact-MoE WMMA path keeps the P8 carryover KL `0.707` (down from KL `3.892` at task #16), tracked under tasks #28/#30 -- the GDN chain itself contributes zero KL drift. rocprof confirms only `qwen35_gdn_prefill_recurrent_segments_k2_kernel`, `qwen35_linear_attn_prefill_prepare_kernel`, and `qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel` on the linear-attention prefill path. | GDN prefill bucket `666.877 ms / 30 disp` -> `56.274 ms / 90 disp` across the chain (`~11.85x` reduction; well under the `<=200 ms` P9.A3 acceptance target). Total prefill kernel time `907.813 ms -> 296.756 ms` (`~3.06x`, `0.580 ms/prefill token`). 512/0 wall prefill `534.406 -> 1508.696 tok/s` (`+182.30%`). 512/128 graph medians: prefill/decode `529.598/62.584 -> 1505.969/62.688 tok/s` (decode unchanged; rewire is task #26 P9.B7). One remaining `gguf_k_pack8_prefill_out_kernel<unsigned short,float,6>` in 512/0 prefill is the Q6_K lm-head logits projection (~`1.06 ms`), not the MoE prefill path. | tracked peak `20.886 GiB`; HIP phase-sampled peak `21.342 GiB` (512/0) and `21.352 GiB` (512/128) on the available RX 7900 XTX/gfx1100. | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json) | 2026-05-18 | Acceptance target met on local gfx1100; W7900 rerun remains unverified. Decode wall-clock and rocprof bucket totals reflect the legacy `*_prefill_out_*` family (default-off P9.B6 dispatch); task #26 P9.B7 measures the opt-in route. 512/128 graph rocprof times out after 1800 s (same pathology as task #16), so the retained full-run trace is eager-decode for symbol visibility; graph wall-clock numbers above are from the 3-run wall bench, not rocprof. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #27 P9.C hot-expert selected-MoE final: 512/0 + 512/128 | P9.C retained defaults after rejected/blocked hot variants: Q4_K selected dual `32x16`, Q5_K/Q6_K selected down legacy `16x16`, selected launch-bound min-blocks `2`, Q8_0 shared gate+up dual concat WMMA `16x32`, Q8_0 shape-aware singles (`2048x8192`/`2048x4096` -> `16x32`, `4096x2048` -> `64x32`, `2048x512` -> `16x32`). Rejected/not retained: Q4 hot/full-tile, Q4 scale/min sidecar, Q5 decode-hoist, Q6 larger tiles, tail/no-padding hybrid. | `status=blocked_target_not_met`, `performance_claim=false`; final adjacent correctness bundle passes (`143` tests across Q8_0 dual/single, Q4_K selected, Q5_K/Q6_K selected, dispatch/routing, replay helpers); 512/128 graph bench final logits finite with deterministic final token `220`. | Current 512/0 combined target bucket Q8_0 WMMA + Q4_K selected dual + Q5/Q6 selected down: `140.110 ms` vs target `<=110 ms` (gap `30.110 ms`); previous P9.C1 blocked artifact was `139.442 ms`, so this is neutral/noise after rejected prototypes. Current 512/0 wall median prefill `1661.788 tok/s`; 512/128 medians prefill/decode `1677.561/62.557 tok/s`. rocprof buckets: Q8_0 `52.285 ms / 210`, Q4_K `58.126 ms / 40`, Q5_K `27.043 ms / 37`, Q6_K `2.656 ms / 3`. | tracked peak `20.886 GiB`; HIP sampled peak `21.348 GiB` (512/0) and `21.354 GiB` (512/128) on the available RX 7900 XTX/gfx1100. | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json) | 2026-05-18 | Blocked: #27 cannot close because target is missed. Next single bottleneck is Q4 selected dual (`58.1 ms`), but shallow hot/tail/scale-sidecar variants regressed; likely next direction is a deeper expert-weight repack/layout or different selected-MoE kernel design that avoids raw GGUF-K repeated decode without a large side stream. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #16 P8 compact-MoE WMMA acceptance: 512/0 + 512/128 (superseded by task #19) | Opt-in fast-bulk prefill uses the P8.6 compact grouped scheduler (`group_count/prefix/scatter_gather/wmma_tile_map`) plus selected raw-Q4_K dual gate+up WMMA, BF16 SiLU over concatenated gate/up, selected raw-Q5_K/Q6_K down WMMA, weighted lane scatter, and shared-gate residual combine. No sidecar/repack; raw GGUF expert bytes stay resident. | `status=accepted`, `performance_claim=true`; selected compact Q4_K/Q5_K/Q6_K CPU-reference fixtures and routing/dispatch tests pass (`68 passed`). 512/128 graph runs have finite deterministic final token `796`. Optional serial-vs-WMMA bulk parity probe drifts (`KL=3.89`, top-1 mismatch) because WMMA opt-in changes reduction order/half operands; retained as a diagnostic, not the P8 kernel correctness gate. rocprof confirms `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>` and `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5/6>` launch. | 512/0 3-run median wall prefill `534.406 tok/s` (`0.958 s`). Clean 512/0 rocprof total prefill kernel time `907.813 ms`, meeting the P8 acceptance target `<=1500 ms` but not stretch `<=700 ms`; remaining top bucket is GDN recurrent `666.877 ms`. 512/128 graph medians: prefill/decode `529.598/62.584 tok/s`. vs P8.1 512/0 Q8-only WMMA: total kernel `2953.6 -> 907.8 ms` (`-69.3%`), prefill `172.822 -> 534.406 tok/s` (`+209.2%`). | tracked peak `20.886 GiB`; HIP phase-sampled peak `21.348 GiB` for 512/0 and `21.354 GiB` for 512/128 on the available RX 7900 XTX/gfx1100. | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-p8-compact-moe-wmma-accepted.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p8-compact-moe-wmma-accepted.json) | 2026-05-18 | Acceptance target met on local gfx1100; W7900 rerun remains unverified. One remaining `gguf_k_pack8_prefill_out_kernel<unsigned short,float,6>` in 512/0 is the Q6_K lm-head logits projection (`0.976 ms`), not MoE prefill. 512/128 graph rocprof timed out after 1800 s, so the retained full-run trace is eager-decode for symbol visibility while graph-run wall timing is used for throughput. |
-| Qwen3.5-0.8B GGUF + raw tensor microbench | gguf_q4_k_m | task #10 P8.2 dense Q4_K WMMA prefill diagnostic | Raw dense Q4_K WMMA kernels from tasks #7-#9 benchmarked on Qwen3.5-0.8B-shaped 512-row prefill projections. Actual GGUF tensor microbench loads layer-0 `attn_gate.weight` and `ffn_gate.weight`/`ffn_up.weight` raw `block_q4_K` bytes and routes through `launch_gguf_linear` / `launch_gguf_linear_pair` with `use_wmma_prefill={False,True}`. Also ran the real Qwen3.5-0.8B-Q4_K_M 512/0 resident bench to verify full-model exercise. | `status=diagnostic_retained_raw_q4k_wmma_fast_full_model_not_yet_exercised`, `performance_claim=true`; correctness already gated by task #8 (`tests/test_gguf_q4_k_wmma_prefill.py`, 51 tests) and adjacent suite 158 passed. rocprof confirms targeted raw tensor runs replace `gguf_q4_k_prefill_out_kernel` with `gguf_q4_k_prefill_wmma_kernel` / `gguf_q4_k_prefill_dual_wmma_kernel`. Real full-model 512/0 shows **zero** Q4_K WMMA dispatches because all 98 dense 2D Q4_K tensors materialize as `q4_k_pack8`; qwen35moe Q4_K tensors are rank-3 selected experts and need P8.4 selected-MoE WMMA. | Actual GGUF `attn_gate` raw single: `5.236 -> 0.378 ms` (`13.87x`, tok/s `97.8k -> 1.356M`); actual GGUF `ffn_gate+ffn_up` raw dual: `15.604 -> 0.540 ms` (`28.88x`, tok/s `32.8k -> 947.5k`). rocprof targeted dual: `23.903 ms / 2` decode-shaped dispatches -> `0.345 ms / 1` dual WMMA dispatch. Real full-model 512/0: `3066.14 -> 3081.98 tok/s` (`+0.52%`, noise/mostly Q8_0 WMMA); total Q4 pack8 prefill bucket unchanged `61.60 -> 61.79 ms` (single-pack8 sub-bucket `24.43 -> 24.62 ms`), Q4 WMMA `0` dispatches. | Raw tensor bench memory unchanged: single `4.125 MiB`, dual `11.938 MiB` owned input+weights+outputs. Full-model tracked peak unchanged `0.955737 GiB`; HIP sampled `1.201 -> 1.203 GiB`. | [`2026-05-18-hipengine-p8_2-dense-q4k-wmma-prefill-diagnostic.json`](results/2026-05-18-hipengine-p8_2-dense-q4k-wmma-prefill-diagnostic.json) | 2026-05-18 | P8.2 raw kernel is performance-positive, but full-model dense Q4_K is still blocked by materialization policy (`q4_k_pack8` fallback). Do not count this toward qwen35moe P8 acceptance; next meaningful qwen35moe lever is P8.4 selected Q4_K MoE dual WMMA, followed by P8.5 Q5_K/Q6_K selected WMMA. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #5 P8.1 Q8_0 batched WMMA prefill: 512/0 | Landed the first kernel from the docs/GGUF.md P8 plan: `gguf_q8_0_prefill_wmma_kernel<scalar_t,out_t,TM,TN>` mirroring `awq_fusedw4_prefill_fp16_kernel` from `paro_awq_gemv.hip` with Q8_0 dequant in the inner K-loop. Wired into `gguf_linear.py` behind a three-axis opt-in (env `HIPENGINE_GGUF_WMMA_PREFILL=1`, `PrefillConfig.use_wmma_prefill`, `use_wmma_prefill=` per-call kwarg, plus a `set_wmma_prefill_enabled` / `wmma_prefill_session` session toggle). Default behavior unchanged; rows>1 Q8_0 still falls back to the decode-shaped `prefill_*` aliases unless the opt-in fires. Q4_K/Q5_K/Q6_K selected MoE bucket is NOT touched (P8.2/P8.4/P8.5 are the next levers). | `status=partial_optimization_retained_unblocked`, `performance_claim=true`; 69 tests in `tests/test_gguf_q8_0_wmma_prefill.py` pass on W7900 (bf16→f32 max|d| < 1.2e-6 vs `cpu_reference.gguf_q8_0_gemv`), 100 passed across the P8 + GGUF GEMV test files; dispatch unit tests `21 passed` across the opt-in matrix; rocprof confirms `gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, ...>` appears 250 times. | 512/0 3-run median wall-clock prefill: baseline `107.176 tok/s` (4.777 s) → WMMA `172.822 tok/s` (2.963 s), `+61.25%` / `-1814.6 ms`. Total prefill kernel time: `4768.0 → 2953.6 ms` (`-38.05%`). Q8_0 dense/shared bucket: `1929.244 ms / 251 dispatches` (decode-shaped `gguf_k_prefill_out_kernel` + pack8 family) → `81.133 ms / 250 dispatches` (`gguf_q8_0_prefill_wmma_kernel`), a `-95.8%` kernel-time reduction on that bucket. One lingering `1.24 ms` `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>` dispatch remains: that is the Q8_0 lm-head logits f32-output projection (not a regression). Selected MoE bucket (`2102.5 → 2119.9 ms`, +0.83% noise) and GDN recurrent (`663.0 → 676.4 ms`, +2% noise) unchanged as expected. P8 plan acceptance floor (≤1500 ms total prefill kernel time) NOT yet met because the Q4_K/Q5_K/Q6_K selected MoE bucket is the dominant cost. | `20.886 GiB` tracked peak unchanged on both runs; `21.342 → 21.344 GiB` HIP sampled (⁺0.01%). No new resident weight repack (raw GGUF stays as-is; dequant happens in registers inside the K-loop). | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-prefill-q8-wmma-p8_1.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-prefill-q8-wmma-p8_1.json) | 2026-05-18 | P8 plan partially closed by P8.1. Next: P8.2 (Q4_K dense single + dual WMMA prefill), P8.4 (Q4_K dual selected MoE WMMA prefill, uses existing `qwen35_moe_group_*` scheduling kernels), P8.5 (Q5_K/Q6_K selected WMMA prefill). With those three landing, the selected-MoE 2102 ms bucket and the dense Q4_K share should both collapse and put total prefill kernel time under the 1500 ms acceptance floor. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #63 partial decode optimization: raw pack8 + dual selected | Added correctness-safe raw-byte pack8 decode dispatch for GGUF Q8_0/Q5_K/Q6_K, Q4_K raw selected gate+up dual decode kernel, and Q8_0 raw shared gate+up dual dispatch while preserving graph replay and raw-weight residency. Q4 raw selected pack8 was tested but not used because it was slower; Q4 dual is decode-only (`x_rows==1`) because using it in bulk prefill slowed prefill. | `status=partial_optimization_retained_blocked`, `performance_claim=true`; targeted kernel/runtime tests `11 passed`, public qwen35moe `LLM.generate()` gate passed (`izio.`, IDs `[43482,13]`, no `torch`), bulk parity exact (`serial/default/native/fast` token `4469`, KL/max diff `0`), benchmark final logits finite and final token `11` in all runs. | 512/128 graph replay medians: prefill/decode `107.001/62.526 tok/s`; decode improves `49.864 -> 62.526 tok/s` (`+25.39%`, `20.05 -> 15.99 ms/token`) and prefill `99.898 -> 107.001` (`+7.11%`) vs task #62 baseline, but still `-37.47%` vs 100 tok/s floor and `-46.12%` vs PARO `116.05`. Final rocprof decode delta: Q4 selected dual gate/up `742.7 ms` (`28.6%`, 40 dispatch/token), Q8 raw-pack8 `471.0 ms` (`18.1%`, 170 dispatch/token) plus Q8 dual `57.3 ms`, Q5 selected raw-pack8 `363.5 ms`, full-attn/cache `348.8 ms`, lm-head Q6 raw-pack8 `198.1 ms`. | peak unchanged at `20.886 GiB` tracked / `21.346 GiB` HIP sampled; raw-pack8 kernels do not require the 23.8 GiB expert sidecar cache. | [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-pack8-raw-partial.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-pack8-raw-partial.json) | 2026-05-17 | Task #63 remains open: retained improvement is meaningful but target is not met. Remaining blockers are resident packed Q4 expert decode within the 24 GiB budget, grouped/tiled selected-MoE decode, named Q8 subfamily profiling/optimization, and then attention/cache if still material. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #62 512/128 decode profile after fast prefill | Reran 512/128 wall-clock decode with graph replay (`measured_runs=3`), eager decode without graph replay, graph replay granularity `steps_per_replay={1,2,4,8,16}`, and rocprof kernel traces. Because rocprof graph replay for 64/128 tokens timed out, the retained kernel profile uses a 512/128 eager trace for exact dispatch counts plus a 512/16 graph trace to verify the same per-token kernel DAG; decode deltas subtract a 512 prefill-only trace by kernel name. | `status=diagnostic_retained_blocked`, `performance_claim=false`; public qwen35moe `LLM.generate()` gate passed (`izio.`, IDs `[43482,13]`, no `torch`), bulk parity exact (`serial/default/native/fast` token `4469`, KL/max diff `0`), benchmark final logits finite and final token `11` for graph/eager/granularity runs. | Graph replay 512/128 median decode `49.864 tok/s` (`20.05 ms/token`, stdev `0.073%`), `-50.14%` vs 100 tok/s floor, `-57.03%` vs PARO `116.05`, `-41.67%` vs llama.cpp HIP Q4_K_M `85.487`; eager decode `6.470 tok/s`, so graph replay is `7.71x` faster. steps/replay `1..16` stays `49.735..49.866 tok/s` while capture grows `0.160 -> 2.405 s`. rocprof 128-token decode delta: selected expert Q4/Q5/Q6 `1279 ms` (`37.6%`, 120 dispatches/token), dense/shared Q8_0 `1003 ms` (`29.5%`, 250 dispatches/token), lm-head Q6_K `397 ms` (`11.7%`, 1 dispatch/token), full-attn/cache `332 ms` (`9.7%`, 50 dispatches/token). | graph path peak `20.886 GiB` tracked / `21.346 GiB` HIP sampled; no material decode allocation growth beyond graph recording buffers. Memory headroom is not the immediate 512/128 decode limiter, but remains too small for duplicate raw+packed expert residency. | [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-profile-diagnostic.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-profile-diagnostic.json) | 2026-05-17 | Blocker: graph replay removes most host overhead but device work still needs ~2.0x to hit 100 tok/s. Prioritize selected-MoE decode, Q8_0 dense/shared GEMV, and Q6_K lm-head/output projection; graph-launch granularity, argmax, and memory are not primary blockers at 512 context. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #61 PARO-range 512/128 blocker profile | Primary loop reran the default fast-bulk 512/128 benchmark (`measured_runs=3`) and rocprof prefill-only traces for both raw default and opt-in expert sidecar paths. A rejected wrapper probe changed `gguf_k_gemv` default reductions from 128 to 256 threads but was reverted before throughput benchmarking because deterministic probe token changed `4469 -> 451`. | `status=diagnostic_retained_blocked`, `performance_claim=false`; public qwen35moe `LLM.generate()` gate passed (`izio.`, IDs `[43482,13]`, no `torch`), bulk parity probe exact (`serial/default/native/fast` token `4469`, KL/max diff `0`), 512/128 benchmark final logits finite with final token `11` in all runs. | Raw fast-bulk default 512/128 median prefill/decode `99.920/49.857 tok/s` (stdev `0.10%/0.05%`), `-95.0%` vs the 2000 tok/s floor, `-96.29%` vs PARO `2696.4`, `-95.90%` vs llama.cpp HIP Q4_K_M `2436.049`; sidecar 512/128 one-run `62.400/49.484`, `-37.55%` vs raw. rocprof prefill-only raw wall/kernel `5124/5114 ms`: Q8_0 dense row-GEMV `1931 ms` (`37.8%`), selected expert row-GEMVs `2441 ms` (`47.7%`), GDN recurrent `664 ms` (`13.0%`), full attention `<1%`. | raw peak `20.886 GiB`, HIP sampled `21.346 GiB`; sidecar peak `21.511 GiB` and alloc/free churn `44.7/23.8 GiB` in one prefill because sidecars are copied transiently beside raw resident weights. | [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-512-128-paro-blocker-profile.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-512-128-paro-blocker-profile.json) | 2026-05-17 | Blocker: current GGUF prefill is row-GEMV-bound. Hitting 2000 tok/s needs matrix-tiled/dequant+GEMM Q8_0/Q5_K/Q6_K prefill plus grouped/tiled selected-MoE and a sidecar residency policy that avoids duplicate raw+packed experts; attention is not the limiting factor. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #60 expert pack8 sidecar kernels: 512/128 | Opt-in `--use-expert-sidecar` bulk prefill consumes explicit `gguf_expert_pack8_v1` sidecars through registered `moe_linear` kernels for Q4_K/Q5_K/Q6_K selected expert rows; raw GGUF fallback remains default and native row-serial attention remains diagnostic. Full sidecar cache is explicit under `/tmp/hipengine-task60-sidecar` (120 `.npz`, 23.844 GiB) and not committed. | `status=diagnostic_retained_blocked`, `performance_claim=false`; synthetic tests pass for Q4/Q5/Q6 and real layer-34 gate/up/down plus Q4 dual gate+up are bit-exact vs raw selected kernels; 4-token full raw-vs-sidecar prefill is exact (`KL=0`, token `4469`); rocprof shows `gguf_expert_pack8_selected_prefill_kernel` and `gguf_expert_pack8_q4_dual_selected_prefill_kernel`; public qwen35moe `LLM.generate()` smoke still passes (`izio.`, IDs `[43482,13]`, no `torch`). | Sidecar path 512/128 prefill/decode `62.458/49.539 tok/s`: `+303.8%` vs old native row baseline `15.469`, but `-37.5%` vs current raw fast-bulk default `99.941` and `-97.4%` vs llama.cpp HIP Q4_K_M; default raw path rerun stays `99.941/49.850`. | tracked peak sidecar `21.511 GiB` vs raw default `20.886 GiB`; transient sidecar copies allocate/free ~25.6 GiB during prefill because raw GGUF weights and full packed sidecars cannot both stay resident on the 24 GiB gfx1100 card. | [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-expert-pack8-sidecar-diagnostic.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-expert-pack8-sidecar-diagnostic.json) | 2026-05-17 | Blocker for task #61: correctness-safe pack8 sidecar kernels exist, but performance needs grouped-by-expert/tiled reuse or a memory policy that avoids duplicate raw+sidecar residency before sidecars can replace the raw selected GEMV default. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | qwen35moe fast-bulk default progress: 512/128 + 4K/128 | `scripts/qwen35_gguf_bench.py` with delegated/default prefill (`use_bulk_prefill=null`, `bulk_prefill_attention_mode=bulk`); c=1 resident session, repeated token id `9707`, fully bulk attention+MoE/FFN, graph replay decode enabled, cached builds, one measured run per shape | `status=diagnostic_retained`, `performance_claim=false`; selected Q4_K/Q8_0/Q5_K/Q6_K smoke bit-exact vs CPU BF16 expectation, public qwen35moe correctness gate passed (`Hello -> izio.`, IDs `[43482,13]`, external `llama-tokenize`, finite logits argmax `43482`, no `torch` import); parity probe has serial/default/native/fast-bulk exact (`KL=0`, max logit abs `0`, no hidden drift on probe) and `fast_bulk_attention_default_allowed=true`; benchmark shape final logits finite | 512/128 prefill/decode `99.851/49.798 tok/s`; 4K/128 `77.921/33.168`; vs prior parity-safe native-attention default row `+545%/-0.0%` at 512 and `+449%/+0.0%` at 4K, but still vs retained PARO `-96.30%/-57.09%` and `-97.16%/-70.66%` | tracked/owned peak: 512 `20.886 GiB`, 4K `22.122 GiB`; HIP phase-sampled peak `21.344/22.652 GiB` on the attached RX 7900 XTX/gfx1100 card | [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-fast-bulk-default-promoted-diagnostic.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-fast-bulk-default-promoted-diagnostic.json), [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json), [`2026-05-17-hipengine-qwen36-35b-a3b-q4km-linear-recurrent-parity-fixed-diagnostic.json`](results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-linear-recurrent-parity-fixed-diagnostic.json) | 2026-05-17 | Task #55 remains open: fast-bulk is now the qwen35moe long-prompt default, but matching PARO still needs grouped/packed MoE or GGUF-to-packed sidecars, then decode profiling/optimization. Comparisons to retained W7900 PARO/llama.cpp rows are directional, not strict same-card claims. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | parity benchmark: 512/128 + 4K/128 | `scripts/qwen35_gguf_bench.py`; resident token-serial prefill, multi-page resident KV/scratch capacity, one-step HIP decode graph replay with graph capture excluded; repeated token id `9707`, one warmup run, three measured runs, cached builds | `status=diagnostic_retained`, `performance_claim=false`; decode graph smoke passed (`KL=0`, graph/eager IDs `[220,16,13,271]`), public E2E Q4_K_M passed with no torch import, benchmark shape final logits finite in all runs, targeted tests `10 passed` | medians: 512/128 prefill `16.346 tok/s`, decode `171.844 tok/s`; 4K/128 prefill `16.196`, decode `83.838`; stdev <0.3% for prefill/decode; versus 35B-family baselines, prefill remains ~99% lower while 512 decode is faster only because the model is 0.8B | tracked/owned peak: 512 `0.568 GiB`, 4K `0.610 GiB`; HIP phase-sampled peak `0.832/0.895 GiB` on the attached RX 7900 XTX/gfx1100 card | [`2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json`](results/2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json) | 2026-05-17 | Retained as the pre-bulk diagnostic baseline; superseded for Q4_K_M throughput by the accepted bulk-prefill rows above. |
-| z-lab/Qwen3.6-27B-PARO | w4_paro | gfx1100 dense: 512/128 and 4K/128 c=1 | dense PARO MLP + AOTriton prefill; graph replay decode; 4K uses default >1K chunks `1024/1024/4096/1024/1024` | `status=diagnostic_retained`, `performance_claim=false`; prefill sample logits finite and graph/eager generated tokens match on repeated-token prompt, but no committed 27B KL/top-1 oracle or full `finite_prefill_logits` field yet | graph single-run: 512/128 `630.739` prefill / `32.955` decode; 4K/128 `631.673` / `29.567` tok/s; eager comparison decode `32.013` and `28.777` tok/s | tracked peak `24.233 / 26.839 GiB`, after-load tracked `23.788 / 24.083 GiB`, hipMemGetInfo sampled peak `24.925 / 25.926 GiB`; both full-model rows exceed the 24 GiB tracked-peak gate but fit W7900 | [`2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json`](results/2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json) | 2026-05-18 | W7900/gfx1100 run on commit `0d08b279`; single-run diagnostic only pending repeated stats and a 27B correctness oracle. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | INT8 KV quality/perf comparison: BF16 vs `int8_per_token_head`, 128K/128, max_layers=40 | W7900/gfx1100, AOTriton prefill threshold 512, graph replay decode, long-context chunks `1024/1024/4096/1024/1024`; INT8 retained prefill uses a temporary BF16 oracle K/V cache, writes retained INT8 K/V plus FP16 per-token-head scales, then releases prefill workspace before decode | `status=diagnostic_retained`, `performance_claim=false`; INT8 layer HIP gate accepted, E2E fixture gate `max_kl=0.015328`, top-1 `100%`, generated IDs match, 128K preview tokens match | BF16 `1021.180 / 63.299 tok/s`; INT8 `1011.064 / 61.275 tok/s` (`-0.99% / -3.20%`) | BF16 tracked/sampled peak `23.288 / 22.410 GiB`; INT8 `24.545 / 21.170 GiB` (tracked rises from transient BF16 oracle, sampled drops `1.240 GiB`); retained KV total `2.690 -> 1.355 GB`, INT8 payload `1.0 B/element` + `10.506 MB` scales, no persistent BF16 shadow | [`2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`](results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json) | 2026-05-18 | rocprof selected-region evidence: prefill INT8 writer 320 calls avg `54.8 us`; decode INT8 GQA 160 calls avg `621.5 us`, reduce-gate avg `159.3 us`, decode append writer avg `4.36 us`. Diagnostic because resident-runner throughput is not yet a public `LLM.generate()` accepted row. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | INT8 KV 256K/128 AOTriton query-reuse + q3072 capacity diagnostic, max_layers=40 | W7900/gfx1100, AOTriton prefill threshold 512, graph replay decode, long-context chunks `1024/1024/3072/1024/1024`; prefill uses one lazy full-prompt hidden buffer released before decode, token-1 decode scratch is freed before bulk prefill, linear-prefill scratch is released before full-attn prefill, and AOTriton BF16 query input reuses caller-owned prefill scratch; BF16 oracle K/V workspace is still reused across full-attn layers | `status=diagnostic_retained_followup_remaining`, `performance_claim=false`; run completed, INT8 layer HIP gate accepted, E2E fixture gate `max_kl=0.015328`, top-1 `100%`, generated IDs match, no-shadow audit passed | INT8 `651.636 / 40.827 tok/s` (diagnostic only; `+4.95%/+0.03%` vs scratch-release run) | sampled HIP peak `22.013 GiB` and tracked peak `23.766 GiB` both pass the 24 GiB-class target; tracked drops from `24.351 GiB` scratch-release / `25.700 GiB` blocked; retained KV total `2.708 GB` (`2.687 GB` payload at `1.0 B/element` + `20.992 MB` scales), no persistent BF16 shadow | [`2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`](results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json); supersedes [`scratch-release`](results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json) / [`single-buffer`](results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json) / [`blocked`](results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json) | 2026-05-18 | Persistent full-prompt prefill double buffer is gone and tracked high-water is now under 24 GiB. Future project: stream/remove the transient BF16 INT8-prefill oracle without regressing E2E correctness. |
-| shisa-ai/Qwen3.6-35B-A3B-PARO-packed | w4_paro | gfx1151 TUI chunk256 sweep: 512/128, 4K/128, 32K/128, 128K/128, plus 4K/4K c=1 | packed PARO sidecars, `hip_gfx1151`, graph replay decode, AOTriton threshold 512; 256-row prefill chunks for linear/MoE/full-attn surfaces | `status=diagnostic_retained`, `performance_claim=false`; generated previews finite/repeated token `9707`, but no shisa KL/top-1 gate yet | hipEngine prefill/decode tok/s: 512/128 `983.206 / 62.060`, 4K/128 `1029.402 / 63.605`, 32K/128 `792.296 / 50.629`, 128K/128 `413.489 / 30.245`, 4K/4K `1001.266 / 62.438`; upstream llama.cpp HIP: `1058.738 / 50.537`, `1004.220 / 49.379`, `735.534 / 43.435`, `376.070 / 31.286`, `990.726 / 49.071`; upstream Vulkan: `638.008 / 57.615`, `595.400 / 55.027`, `407.984 / 44.576`, `181.453 / 26.935`, `590.391 / 54.241` | hipEngine tracked peak `17.997 / 18.097 / 18.909 / 21.877 / 18.210 GiB`; Strix Halo sysfs/rocm-smi expose only a 512 MiB aperture, so llama.cpp peak sampling is invalid and omitted from compare-table output | [`chunk256 hipEngine`](results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-chunk256-sweep-diagnostic.json), [`llama.cpp upstream`](results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json), [`prior default`](results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json) | 2026-05-17 | TUI/headless Strix Halo (`Radeon 8060S`, ROCm 7.13). chunk256 fixes the 4K prefill gap: hipEngine now beats upstream HIP prefill at 4K/32K/128K/4K4K and decode except 128K; diagnostic only pending correctness/repetition. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | gfx1151 MoE: 512/128, 4K/128, 4K/4K c=1 | AOTriton prefill; graph replay decode for 512/128 and 4K/128; eager decode for 4K/4K | `status=diagnostic_retained`, `performance_claim=false`; max-layer smoke/generated logits finite, but no current gfx1151 KL/top-1 gate in this pass | single-run: 512/128 `450.436` prefill / `44.393` decode; 4K/128 `495.460` / `49.458`; 4K/4K eager `494.467` / `45.522` tok/s | tracked peak `18.587 / 20.458 / 20.572 GiB`; hipMemGetInfo sampled peak `18.564 / 19.034 / 19.152 GiB` | [`2026-05-17-hipengine-qwen35-35b-qwen36-27b-gfx1151-diagnostic.json`](results/2026-05-17-hipengine-qwen35-35b-qwen36-27b-gfx1151-diagnostic.json) | 2026-05-17 | 4K/4K graph replay timed out at 3600s with no JSON, so eager is reported for that row; shared/busy gfx1151 GPU, single-run diagnostic only. |
-| Qwen3.6-27B-PARO | w4_paro | gfx1151 dense: 512/128, 4K/128, 4K/4K c=1 | dense PARO MLP + AOTriton prefill; eager decode; 4K rows use 1024-row prefill chunking | `status=diagnostic_retained`, `performance_claim=false`; max-layer smoke/generated logits finite, but no committed 27B KL/top-1 oracle yet | single-run: 512/128 `86.568` prefill / `10.385` decode; 4K/128 chunked `98.190` / `9.724`; 4K/4K chunked `96.988` / `8.777` tok/s | tracked peak `26.484 / 27.223 / 27.557 GiB`; hipMemGetInfo sampled peak `27.258 / 27.692 / 28.032 GiB` | [`2026-05-17-hipengine-qwen35-35b-qwen36-27b-gfx1151-diagnostic.json`](results/2026-05-17-hipengine-qwen35-35b-qwen36-27b-gfx1151-diagnostic.json) | 2026-05-17 | Unchunked 4K prefill hit GPU memory-access faults; chunked 4K rows completed. Shared/busy gfx1151 GPU, single-run diagnostic only. |
-| Qwen3.5-0.8B-PARO | w4_paro | gfx1151 dense-text bring-up: 512/128, 4K/128, 4K/4K c=1 | dense PARO MLP + AOTriton prefill; eager decode (`--no-graph-replay-decode`) | `status=diagnostic_retained`, `performance_claim=false`; dense layout checks pass and generated logits finite, but no KL/top-1 oracle yet | single-run: 512/128 `703.238` prefill / `122.141` decode; 4K/128 `1556.392` / `113.403`; 4K/4K `1969.160` / `105.103` tok/s | tracked peak 512 `1.322 GiB`, 4K/128 `2.214 GiB`, 4K/4K `2.280 GiB`; hipMemGetInfo sampled peak `1.445/1.665/1.735 GiB` | [`2026-05-17-hipengine-qwen35-08b-gfx1151-dense-diagnostic.json`](results/2026-05-17-hipengine-qwen35-08b-gfx1151-dense-diagnostic.json) | 2026-05-17 | 4K/128 graph replay blocked/hung in clean reruns, so table reports eager decode; shared/busy gfx1151 GPU, single-run diagnostic only. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D3.1-D3.3 long-context grouped-GQA decode: 32K/128 + 128K/128, max_layers=40 | Default split decode now uses the grouped-GQA producer for Qwen3.5 GQA (`HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=1`) when splits/context warrant it, keeps the no-effective-cap split policy (`HIPENGINE_PAGED_ATTN_MAX_SPLITS=4096`), and lowers paged split-decode threshold to `1024`; opt-outs cover grouped GQA, old threshold, and 512 split cap | `status=diagnostic_retained`, `performance_claim=false`; GQA smoke matches NumPy/warp oracle (`gqa_max_abs=4.1e-08`, BF16 gated mismatch `0`), decode graph fixture passed (`final_kl=0`, generated/expected match), 1024 E2E sanity passed | grouped-GQA opt-out -> default decode: 32K/128 `70.064 -> 99.560 tok/s` (+42.1%), 128K/128 `30.789 -> 63.368` (+105.8%); forced split cap 512 rejected at 128K (`63.368 -> 62.647`, -1.14%); 1K/128 old threshold 4096 -> default 1024 `92.486 -> 113.242` (+22.4%); warmup-4 512/4K decode within 1% vs D1.5 baseline | tracked peak stays under guardrails: 32K `20.320 GiB` (A.3 <=20.69), 128K `23.288 GiB` (A.4 <24); cap512 saved only `0.034 GiB` at 128K | [`2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json`](results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json) | 2026-05-17 | Retain grouped-GQA and threshold defaults. Still diagnostic because resident-runner throughput is not yet a public `LLM.generate()` accepted row. |
-| shisa-ai/Qwen3.6-35B-A3B-PARO-packed | w4_paro | gfx1100 packed default >1K chunk policy refresh: 512/128 + 4K/128 + 32K/128 + 128K/128, max_layers=40 | Packed-only PARO sidecars on W7900/gfx1100, `shared_expert_format=packed_paro_w4`, graph replay decode, AOTriton threshold 512; default auto chunk policy keeps 512 unchunked and resolves >1K prompts to `1024/1024/4096/1024/1024` | `status=diagnostic_retained`, `performance_claim=false`; generated previews repeat token `9707`; no shisa KL/top-1 gate yet; legacy shared-expert comparison remains available from the previous refresh artifact | packed prefill/decode tok/s: 512 `2500.565 / 111.516`, 4K `2899.685 / 113.094`, 32K `2115.050 / 97.594`, 128K `1054.291 / 62.027`; vs previous packed refresh, 4K prefill `2711.013 -> 2899.685` (+6.96%) while 512/32K/128K are within single-run noise | tracked peak `18.123 / 19.455 / 20.267 / 23.235 GiB`; 4K peak drops `19.995 -> 19.455 GiB` from the now-default chunk policy | [`2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json`](results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json), previous legacy/packed refresh [`2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json`](results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json) | 2026-05-18 | Keep packed as default A for gfx1100 compare tables; update `scripts/qwen35_compare_tables.py --target shisa` to these rows. Diagnostic only pending shisa E2E correctness/repetition gates. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D2.1 Marlin-K qweight-neutral decode: 512/128 + 4K/128, max_layers=40 | Default `HIPENGINE_PARO_MARLIN_K_REPLACE=1` materializes `qweight_mk` as the canonical non-expert W4 buffer, exposes a zero-copy `qweight_pack8_decode` view for prefill/fused pack8 paths, and dispatches rows==1 single GEMV to `gemv_paro_marlin_k_fma_fp16`; env `0` is the pack8/raw-qweight fallback | `status=diagnostic_retained`, `performance_claim=false`; native fixture gate passed (`max_kl=0.0396`, top-1 `100%`), decode graph/eager gate passed (generated IDs match fixture, final KL `0`), unit tests/smoke pass; rocprof confirms `gemv_paro_marlin_k_fma_kernel<_Float16>` | 3-run medians, Marlin-K vs fallback decode: 512 `109.061 -> 115.137 tok/s` (+5.57%), 4K `110.088 -> 116.263` (+5.61%); prefill also nudges up `2209.588 -> 2231.018` (+0.97%) and `2436.294 -> 2468.623` (+1.33%) because duplicate prepared qweights are removed | tracked peak drops by `0.411 GiB` at both shapes: 512 `18.587 -> 18.176 GiB`, 4K `20.458 -> 20.047 GiB`; stays below 24 GiB guardrail | [`2026-05-17-hipengine-qwen35-d21-marlin-k-qweight-neutral-diagnostic.json`](results/2026-05-17-hipengine-qwen35-d21-marlin-k-qweight-neutral-diagnostic.json) | 2026-05-17 | Retain default. Still diagnostic because hipEngine has no accepted public `LLM.generate()` throughput row; resident runner is the Qwen3.5/PARO measurement surface. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D5.1 GDN recurrent decode vec8/occupancy audit: `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel` at c=1 Qwen3.5 shape | Synthetic decode-shape rocprof probe for BF16/FP16 lowp variants plus static source audit; no kernel/runtime default changes | `status=diagnostic_retained_stop_condition`, `performance_claim=false`; micro smoke max abs `2.98e-08/1.49e-08`, graph fixture gate passed (`final_kl=0`, generated match), GDN plan tests pass | no throughput change retained; M.4 shows GDN decode at `5.23%/5.39%/4.84%` of kernel time with 30 calls/token. Probe medians after warmup: BF16 `8.760 us`, FP16 `8.720 us`; rocprof metadata `VGPR=56`, `Scratch_Size=0`, workgroup `128`, grid work-items `4096`; wrapper dynamic shared for the actual shape is `3072 B` | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json`](results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json) | 2026-05-17 | Stop condition: current kernel already has vec8 head-k loops, 128 threads exactly cover 128 value lanes, and occupancy metadata is clean; reopen only for parent-proven multi-value/thread or barrier-reduced GDN R&D with correctness proof. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D5.2 W8A16 decode kernel tile/occupancy audit: lm-head and legacy shared-expert decode shapes | Synthetic decode-shape rocprof probe for `w8a16_linear_kernel` and `w8a16_linear_lowp_out_kernel`; no fused lm-head/argmax changes | `status=diagnostic_retained_stop_condition`, `performance_claim=false`; py_compile passes; M.4 graph profile shows W8A16 at ~16% short-context kernel time; ISA metadata has no spills/scratch | no throughput change retained; thread probes keep defaults: lm-head 128 threads median `674.285 us` vs 64 `688.765`, 256 `913.247`, 512 `1753.732`; shared lowp keeps 64 threads (`3.220/3.440 us` gate-up/down medians) while larger workgroups regress; fused c=1 shared gate/up+SiLU probe rejected (`~5.040 us` best vs generic lowp + measured SiLU `~4.5 us`) | n/a; confirms no new W8A16 shadow/packed-policy change | [`2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json`](results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json) | 2026-05-17 | Stop condition: W8A16 decode kernels are already occupancy/tile tuned for current shapes; remaining cost is lm-head int8 weight bandwidth plus small-kernel graph/reduction floor. Legacy W8A16 still explains the packed-vs-legacy shared-expert decode tradeoff, but D5.2 found no kernel micro-tune that changes the packed-checkpoint policy. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D1.2 RMSNorm/add-RMSNorm producer fusion profile gate: 512/128 + 4K/128 + 32K/128 selected-region decode profile, max_layers=40 | Proposed producer-into-projection fusion was **not implemented** because current dataflow has no material single-use RMSNorm/add-RMSNorm producer while preserving pack8/repacked layout; defaults stay as separate `paro_rmsnorm_out` / `paro_add_rmsnorm_out` launches | `status=diagnostic_deferred`, `performance_claim=false`; source profile is M.4 `2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`; RMSNorm smoke passed BF16/FP16 with zero mismatches; `pytest tests/test_qwen35_rmsnorm_plan.py tests/test_qwen35_paro_layout.py` = 23 passed, decode-state tests = 49 passed | M.4 RMSNorm bucket is only `3.30%/3.37%/2.97%` of decode kernel time at 512/4K/32K. The 40 input RMSNorm calls/token fan out to multiple attention projections; the 40 add-RMSNorm calls/token fan out to router + selected/shared expert paths; final RMSNorm -> lm-head is the only clear single-use slice (~`0.04%` kernel-time upper bound at 512) | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json`](results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json) | 2026-05-17 | Defer/no-op: revisit only after D1.3/D1.6 if a row-staged multi-consumer pack8/W8A16 design can stage RMS once without the D1.1 barrier regression. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D1.3 remaining same-input c=1 projection fusions: 512/128 + 4K/128 + 32K/128 selected-region decode profile, max_layers=40 | Proposed broad same-input pack8 widening was **not implemented** because all material adjacent pairs are already fused or lack a same-input neighbor; defaults stay on existing dual pack8/dense routes | `status=diagnostic_rejected_noop`, `performance_claim=false`; source profile is M.4 `2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`; parent docs reject full-attn Q/K/V widening; `pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py` passed (69 tests) | M.4 generic W4 single GEMV is `13.38%/13.56%/11.59%` of decode kernel time, but static inventory attributes only 10 of its 50 calls/token to full-attn V as an unfused same-input slice. Linear QKV/Z, full Q/K, dense A/B, selected gate/up, and shared gate/up are already fused; parent full-Q/K/V widening was correct but slower/no-win (`116.357/107.412` vs retained Q/K `116.721/107.703` tok/s at 512/4K) | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json`](results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json) | 2026-05-17 | Reject D1.3 as a broad no-op: do not add launch-count-only projection widening without arithmetic/data reuse; leave any narrower K/V-specific retest to D1.6. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D1.6 full-attention decode K/V dual-pack8 route: 512/128 + 4K/128 graph replay, max_layers=40 | Opt-in `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` routes full-attn decode as single Q plus dual K/V into contiguous KV scratch while preserving pack8/repacked qweights; default stays retained Q/K dual + single V | `status=diagnostic_rejected`, `performance_claim=false`; graph fixture gate passed (`final_kl=0`, generated match), tests passed (71), artifact JSON parses | Opt-in vs default decode: 512 `115.495 -> 115.627 tok/s` (`+0.11%`, noise), 4K `117.301 -> 117.053` (`-0.21%`). Prefill is neutral/regressed (`-1.40%` at 512, ~0 at 4K), and tracked peak rises slightly (`+0.0005/+0.0039 GiB`) because of contiguous KV scratch | neutral/slightly higher scratch under opt-in | [`2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json`](results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json) | 2026-05-17 | Reject as default: changing Q/K+V to Q+K/V does not reduce launch count and does not produce a robust decode win under graph replay. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D4.2 dispatch/token reduction plan from batched D1.1-D1.6 fusions: 512/128 + 4K/128 + 32K/128 M.4 profile, max_layers=40 | Proposed Vulkan-style batched D1 plan was **not implemented** because D1.2/D1.3/D1.6 provide no dataflow-safe launch-count reduction and the remaining D1 opt-in/countable paths regress or are already defaulted; defaults stay unchanged | `status=diagnostic_rejected_noop`, `performance_claim=false`; source profile is M.4, artifact JSON parses; no runtime/kernel code changed | M.4 reports `877 dispatches/token`; `<700` needs ≥`178` fewer dispatches/token. Safe D1 changes remove `0`; counting rejected D1.1 plus ideal router lands around `807`; adding rejected direct selected-combine still lands around `767`, above target | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json`](results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json) | 2026-05-17 | Reject D4.2 as a batched-D1 plan: reopen only as a new major data-flow design (multi-layer W4/MoE/attention megakernel or scheduler-level graph compaction) with fresh dispatch profiling. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | D4.4 `__launch_bounds__` retune after fusion changes: static launch-bound audit plus D1/D2/D5 evidence | Proposed per-kernel launch-bound retune was **not implemented** because no retained default D1 rotation/RMSNorm/projection fusion changes the resource envelope; defaults keep current W4/WMMA/Marlin-K launch bounds and thread guards | `status=diagnostic_deferred_noop`, `performance_claim=false`; artifact generator asserts source launch-bound inventory and wrapper guards; py_compile passed | Current wrappers do not bypass source bounds: pack8/selected/Marlin-K launch ≤128 under `__launch_bounds__(128,4)`, compact WMMA/fusedW4 launch 32 under `__launch_bounds__(32,*)`. D1.1 rotate-staged was correct but regressed; Marlin-K trace is VGPR `104`, scratch `0`, LDS `512`; prior compact-WMMA and fusedW4 stricter-bound trials regressed/spilled | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json`](results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json) | 2026-05-17 | Defer/no-op: reopen only after a default fusion is retained or parent kernel R&D produces stable launch-bound evidence to port. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P1.4 selected-MoE compact WMMA threshold sweep: z-lab legacy + shisa stripped-packed 512/128 + 4K/128, plus z-lab 128/256 probes | Default `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2` keeps c1 GEMV only for tokens=1/decode and uses grouped compact WMMA for all multi-token single-request prefill; diagnostic threshold `999999` forces c1 GEMV fallback | `status=diagnostic_retained`, `performance_claim=false`; default fixture gate passed (`max_kl=0.0396`, top-1 `100%`), generated IDs match in default-vs-forced GEMV previews but logits differ due selected-MoE order/reduction; tests `41 passed` | default compact WMMA vs forced GEMV prefill: z-lab 512 `2210.372 -> 811.378` fallback (default +172.4%), z-lab 4K `2452.941 -> 813.924` (+201.4%); shisa 512 `2403.645 -> 850.397` (+182.6%), shisa 4K `2664.070 -> 849.221` (+213.7%); z-lab 128/256 still default +106.6%/+147.1%; decode neutral | default peak is higher by grouped metadata/packed buffers but stable: +0.031 GiB at 512, +0.251 GiB at 4K vs GEMV fallback | [`2026-05-17-hipengine-qwen35-qwen36-p14-moe-wmma-threshold-diagnostic.json`](results/2026-05-17-hipengine-qwen35-qwen36-p14-moe-wmma-threshold-diagnostic.json) | 2026-05-17 | Retain threshold=2. The small-prompt probes show no useful GEMV crossover above tokens=1, so P1 threshold work is closed. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P1.3 shared-expert down+combine prefill prototype: z-lab legacy + shisa stripped-packed 512/128 + 4K/128, max_layers=40 | Legacy W8A16 shared down+combine uses token-tiled kernel (`token_tile=2`) for `tokens >= 2`; existing fused W8A16 down+combine remains fallback / opt-out and preserves precomputed sigmoid/shared-gate/residual semantics. Shisa packed sidecars stay on W4 shared expert + separate batch combine. | `status=diagnostic_retained`, `performance_claim=false`; fixture gate passed (`max_kl=0.0396`, top-1 `100%`), microcheck tile2/tile4 max_abs `0`, rocprof confirms `w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2>`, tests `40 passed` | two-run medians, tile2 vs previous default: z-lab 512 `+0.93%` prefill / `+0.09%` decode, z-lab 4K `+0.91%` / `-0.14%`; shisa packed 512 `-0.17%` / `+0.25%`, shisa packed 4K `-0.01%` / `-0.00%` (path unaffected/noise); tile4 rejected | tracked peak unchanged: z-lab 512/4K `18.587/20.458 GiB`, shisa 512/4K `18.535/20.406 GiB`; no fp16 shadow weights or dense down scratch | [`2026-05-17-hipengine-qwen35-qwen36-p13-shared-down-combine-token-tile-diagnostic.json`](results/2026-05-17-hipengine-qwen35-qwen36-p13-shared-down-combine-token-tile-diagnostic.json) | 2026-05-17 | Retain legacy prefill default; not a promoted public throughput row. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P1.2 shared-expert gate/up prefill prototype: z-lab legacy + shisa stripped-packed 512/128 + 4K/128, max_layers=40 | Legacy W8A16 shared gate/up uses token-tiled kernel (`token_tile=2`) only for `tokens >= 1024`; existing fused W8A16 per-token path remains fallback / opt-out. Shisa packed sidecars stay on W4 prefill kernels. | `status=diagnostic_retained`, `performance_claim=false`; fixture gate with threshold forced to 2 passed (`max_kl=0.0396`, top-1 `100%`), microcheck tile2/tile4 max_abs `0`, rocprof confirms `w8a16_shared_gate_up_silu_fp16_token_tiled_kernel<2>`, tests `39 passed` | two-run medians, tile2 vs previous default: z-lab 512 `+0.52%` prefill / `-0.07%` decode, z-lab 4K `+2.16%` / `+0.15%`; shisa packed 512 `-0.10%` / `-0.06%`, shisa packed 4K `-0.19%` / `-0.07%` (path unaffected/noise); tile4 rejected | tracked peak unchanged: z-lab 512/4K `18.587/20.458 GiB`, shisa 512/4K `18.535/20.406 GiB`; no fp16 shadow weights | [`2026-05-17-hipengine-qwen35-qwen36-p12-shared-gate-up-token-tile-diagnostic.json`](results/2026-05-17-hipengine-qwen35-qwen36-p12-shared-gate-up-token-tile-diagnostic.json) | 2026-05-17 | Retain conservative large-prompt legacy default; not a promoted public throughput row. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P1.1 rocBLAS A/B prefill prototype: z-lab legacy + shisa stripped-packed 512/128 + 4K/128, max_layers=40 | Default row-GEMV pair vs `HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2` routing multi-token `in_proj_a/b` through two `rocblas_gemm_ex` FP16/F32-accum row-major NT GEMMs; decode graph path unchanged | `status=diagnostic_rejected`, `performance_claim=false`; microcheck max_abs `0` vs NumPy for row-major NT wrapper; tests `38 passed`; generated IDs stayed `9707` but logits differed due reduction order; no KL/top-1 gate because perf regressed | rocBLAS vs default prefill: z-lab 512 `2227.421 -> 930.273` (-58.2%), z-lab 4K `2391.477 -> 1996.481` (-16.5%); shisa 512 `2468.194 -> 941.780` (-61.8%), shisa 4K `2677.951 -> 2204.678` (-17.7%); decode neutral/slightly negative | tracked peak unchanged: z-lab 512/4K `18.587/20.458 GiB`, shisa 512/4K `18.535/20.406 GiB` | [`2026-05-17-hipengine-qwen35-qwen36-p11-rocblas-ab-rejected.json`](results/2026-05-17-hipengine-qwen35-qwen36-p11-rocblas-ab-rejected.json) | 2026-05-17 | Reject P1.1 rocBLAS A/B: skinny N=32 projections are faster on current custom row-GEMV kernels. Keep env-off rocBLAS bridge only as diagnostic/prototype surface for wider future shapes. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | W.1 unroll-600 ablation: z-lab legacy + shisa stripped-packed 512/128 + 4K/128, max_layers=40 | Default build profiles vs `HIPENGINE_DISABLE_UNROLL600=1` (strips only `-mllvm -amdgpu-unroll-threshold-local=600`, preserves `-mcumode`); AOTriton threshold 512 + decode graph replay | `status=diagnostic_retained`, `performance_claim=false`; layout probes pass (`legacy_fp16`, `packed_paro_w4`), generated token/logit previews match default vs no-unroll, tests `63 passed`; no KL/top-1 gate in this benchmark-only pass | two-run medians, no-unroll vs default: z-lab 512 `+0.24%` prefill / `+0.08%` decode, z-lab 4K `-0.12%` / `+0.01%`; shisa 512 `+0.23%` / `-0.03%`, shisa 4K `-0.19%` / `-0.20%` | tracked peak unchanged: z-lab 512/4K `18.587/20.458 GiB`, shisa 512/4K `18.535/20.406 GiB`; hot-library metadata `private_segment_fixed_size=0`, no SGPR/VGPR spills, max VGPR unchanged | [`2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json`](results/2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json) | 2026-05-17 | W.1 is neutral/noisy; keep current default unroll-600 but remove it from the active optimization queue. Local true legacy path is z-lab Qwen3.5 35B; no z-lab Qwen3.6 35B PARO snapshot was present. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P1.6 selective prefill-profile `-mcumode`: z-lab legacy + shisa forced-packed 512/128 + 4K/128, max_layers=40 | `HIPENGINE_PREFILL_MCUMODE=1` appends `-mcumode` only to remaining prefill-profile artifacts (`aotriton_wrap`, `qwen35_moe_group_scatter`); dual-use decode/prefill kernels and compact WMMA already use `-mcumode` | `status=diagnostic_rejected`, `performance_claim=false`; P1.6 fixture gate with the knob passed (`max_kl=0.0396`, top-1 `100%`, generated match), generated previews/logits match default across the sweep, tests `27 passed` | two-run medians, prefill-mcumode vs default prefill: z-lab 512 `+0.23%`, z-lab 4K `-0.15%`; shisa packed 512 `+0.55%`, shisa packed 4K `+0.21%`; decode stays within `-0.12%..+0.15%` | tracked peak unchanged: z-lab 512/4K `18.176/20.047 GiB`, shisa 512/4K `18.123/19.995 GiB` | [`2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json`](results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json) | 2026-05-17 | Reject as a default build-profile change; keep the env knob only for future compiler diagnostics because the measured surface is neutral/noisy. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | P5.3 >1K prefill chunk policy sweep: 512, 1K/1.5K seam, 2K/3K/4K/6K/7K/8K/12K/14K/15K/16K, 17K-24K binary seam, max_layers=40 | Default `PrefillConfig.auto_tune_chunk_sizes=True` now resolves the **actual prompt length**: `<=1024` tokens stays unchunked, `>1024` uses the simple manual-long-equivalent chunks `linear=1024`, `moe=1024`, `full_attn_query=4096`, `full_attn_post=1024`, `full_attn_rope=1024`; manual non-zero chunk sizes still override | `status=diagnostic_retained`, `performance_claim=false`; explicit manual-long fixture gate passed (`max_kl=0.0395689`, top-1 `100%`, generated/expected match); unit tests `27 passed`; post-code smokes show 512 resolves zero chunks and 4K resolves manual-long chunks | manual-long vs prior baseline: 1.5K median `+0.64%`, 2K `+3.01%`, 3K `+5.57%`, 4K `+6.55%`, 8K `+8.46%`, 12K `+9.96%`, 16K `+11.04%`; default 4K/128 smoke after code: `2674.598 tok/s` prefill / `117.367 tok/s` decode | tracked peak stays below the 24 GiB guardrail on retained manual-long rows: 1.5K `18.62 GiB`, 2K `18.80`, 4K `19.51`, 8K `19.62`, 12K `19.74`, 16K `19.85`; linear-only was faster at a few single-pass points (6K/7K/14K) but was not special-cased because it costs more peak memory (up to `+3.27 GiB` vs manual-long at 14K) | [`2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json`](results/2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json) | 2026-05-18 | Supersedes the older P5.2 long-only/q8192 autotune row; keep the policy simple and memory-safe: unchunked through 1K, manual-long chunks above 1K. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | P3.3 MoE metadata fanout collapse profile gate: 512/128 + 4K/128 + 32K/128 selected-region prefill profile, max_layers=40 | Proposed fused prefix/tile-map/init kernel was **not implemented** because the prerequisite M.3 profile did not show material payoff; current default keeps the explicit `memset -> group_count -> group_prefix -> tile_expert memset -> wmma_tile_map -> scatter_offsets memset -> scatter_gather` sequence | `status=diagnostic_deferred`, `performance_claim=false`; current metadata smoke passes (`prefix_match=True`, `tile_match=True`), group-scatter plan tests pass; source profile is `2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json` | MoE metadata family share of prefill kernel time: 512 `0.84%`, 4K `0.77%`, 32K `0.57%`; optimistic upper bound for eliminating prefix+tile-map plus two average fill calls: `0.27%`, `0.12%`, `0.09%` of prefill kernel time | neutral/no new buffers | [`2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json`](results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json) | 2026-05-17 | Defer/no-op: do not add a diagnostic kernel for a below-noise c=1 prefill opportunity; revisit only if c>N or future scheduler profiling makes metadata multi-percent. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P3.2 prefill router shared-gate sigmoid fusion: z-lab legacy + shisa forced-packed 512/128 + 4K/128, max_layers=40 | `HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1` routes only tokens>1 legacy-FP16 shared-expert prefill through `qwen35_router_select_sigmoid_shared_kernel`, overwrites the shared-gate column with `sigmoid(logit)` inside router select, and skips `w8a16_shared_gate_sigmoid_fp32`; c=1 decode and packed shared-expert paths keep raw logits | `status=diagnostic_rejected`, `performance_claim=false`; router smoke checks sigmoid logits/select/routing, rocprof confirms `qwen35_router_select_sigmoid_shared_kernel` (`Scratch_Size=0`), Qwen3.5 fixture gate passed (`max_kl=0.0396`, top-1 `100%`, generated match) | two-run medians, fused vs default prefill: z-lab 512 `+0.21%`, z-lab 4K `-0.23%`; shisa packed 512 `+0.66%`, shisa packed 4K `-0.18%` (path intentionally not routed; noise); decode ranges `-0.08%..+0.29%` | tracked peak unchanged: z-lab 512/4K `18.176/20.047 GiB`, shisa 512/4K `18.123/19.995 GiB` | [`2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json`](results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json) | 2026-05-17 | Reject as a default fusion: removing the extra legacy sigmoid launch is correct but not a robust E2E win; keep the env knob as diagnostic-only. |
-| Qwen3.5 legacy + Qwen3.6 packed PARO | w4_paro | P3.1 GDN prefill RMSNorm+gate+rotate fusion: z-lab legacy + shisa forced-packed 4K/128 + 32K/128, max_layers=40 | `HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1` uses `qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16` to write `out_rot` directly before the unchanged `awq_fusedw4_prefill_strided_fp16`; fallback remains default | `status=diagnostic_rejected`, `performance_claim=false`; fused kernel smoke bit-exact (`fused_rotate_mismatch=0`), Qwen3.5 fixture gate passed (`max_kl=0.0396`, top-1 `100%`, generated match), generated previews/logits match default across the sweep | two-run medians, fused vs default prefill: z-lab 4K `+0.53%`, z-lab 32K `-0.40%`; shisa packed 4K `+0.52%`, shisa packed 32K `-0.30%`; decode ranges `-0.54%..+0.16%` | tracked peak unchanged: z-lab 4K/32K `20.047/20.320 GiB`, shisa 4K/32K `19.995/20.267 GiB` | [`2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json`](results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json) | 2026-05-17 | Reject as a default fusion: the 4K gain is small, 32K regresses, and memory does not drop because the resident scratch still reserves `recurrent_bf16`. |
-| Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped | w4_paro | packed shared-expert decode fusion: 512/128 + 4K/128, max_layers=40 | AOTriton threshold 512 + decode graph replay; packed sidecars only, no W8A16 shadow | `status=diagnostic_retained`, `performance_claim=false`; layout/decode tests `57 passed`; `paro-silu` + `paro-rotate` smoke mismatches 0; no shisa KL/top-1 gate | packed decode `101.717 -> 105.636 tok/s` (+3.9%) at 512 and `103.041 -> 106.777` (+3.6%) at 4K; prefill `2425.637 -> 2451.213` (+1.1%) and `2653.477 -> 2666.743` (+0.5%) | tracked peak unchanged: 512 `18.535 GiB`, 4K `20.406 GiB` | [`2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json`](results/2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json) | 2026-05-17 | True packed-W4 optimization recovers about half the forced-legacy decode gap; remaining gap vs legacy is ~`-3.3%/-3.3%` at 512/4K. |
-| Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped | w4_paro | forced shared-expert format check: 512/128 + 4K/128, max_layers=40 | AOTriton threshold 512 + decode graph replay; same unstripped shisa checkpoint forced to `packed_paro_w4` vs `legacy_fp16` | `status=diagnostic_retained`, `performance_claim=false`; layout/decode tests `57 passed`; no shisa KL/top-1 gate in this benchmark-only pass | 512/128 packed `2425.637` prefill / `101.717` decode vs legacy `2196.276` / `109.230`; 4K/128 packed `2653.477` / `103.041` vs legacy `2359.452` / `110.412` | tracked peak packed vs legacy: 512 `18.535 -> 18.587 GiB`, 4K `20.406 -> 20.458 GiB` | [`2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json`](results/2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json) | 2026-05-17 | Confirms the tradeoff: forced legacy lowers prefill by `-9.5%/-11.1%` but raises decode by `+7.4%/+7.2%` at 512/4K vs packed sidecars. |
-| Qwen3.5/Qwen3.6-35B-A3B-PARO | w4_paro | dual shared-expert format check: z-lab legacy 512/128 + 4K/128; shisa unstripped vs stripped-packed 512/128 + 4K/128, max_layers=40 | AOTriton threshold 512 + decode graph replay; z-lab uses restored `legacy_fp16` W8A16 shared expert, shisa unstripped and stripped-packed both use packed sidecars | `status=diagnostic_retained`, `performance_claim=false`; layout/decode tests `55 passed`; no shisa KL/top-1 gate in this benchmark-only pass | z-lab medians: 512/128 `2185.814` prefill / `109.288` decode, 4K/128 `2371.502` / `110.364`; shisa unstripped vs stripped medians: 512/128 `2417.232` / `101.547` vs `2418.130` / `101.634`; 4K/128 `2655.734` / `102.795` vs `2653.591` / `103.057` | tracked peak z-lab 512 `18.587 GiB`, 4K `20.458 GiB`; shisa 512 `18.535 GiB`, 4K `20.406 GiB` for both variants; shisa safetensors size `21.686 -> 19.068 GiB` (-12.1%) | [`2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json`](results/2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json) | 2026-05-17 | Original z-lab checkpoint runs again; decode is unchanged vs the prior graph row (512 `-0.05%`, 4K `+0.06%`). Shisa timing deltas are within noise because the unstripped checkpoint already has packed sidecars and the loader prefers them. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1 comparison checkpoint: 512/128, 4K/128, 32K/128, 128K/128, max_layers=40 | baseline AOTriton threshold 512 + decode graph replay; chunked rows use linear/MoE/post/RoPE `1024`, full-attn query `4096` | `status=diagnostic_retained`, Task 26 fixture gates passed, `performance_claim=false`; resident-runner diagnostic now matches the default `LLM.generate()` AOTriton/graph policy, but this historical artifact was captured before the public-API default flip | current/chunked: 512/128 `2216.487` prefill / `109.105` decode; 4K/128 `2504.959` / `110.117`; 32K/128 `1886.344` / `93.923`; 128K/128 `1002.409` / `61.051`; chunked vs unchunked: 4K `+5.7%`, 32K `+8.9%`, 128K `OOM -> 1002.409` | tracked peak 512 `18.581 GiB`, 4K `19.875 GiB`, 32K `20.688 GiB`, 128K `23.656 GiB`; vs nano parent docs: 512 prefill/decode `-13.3%/-5.7%`, 32K `+0.3%/-4.9%`, 128K `+9.7%/-2.5%` | [`chunking`](results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json), [`comparison tables`](results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json) | 2026-05-16 | Run `python3 scripts/qwen35_compare_tables.py {nano-vllm-amd,llama.cpp-hip,llama.cpp-vulkan,all}` for separate prefill/decode/memory tables; chunking fixes 128K OOM, long-context prefill is at/above parent docs, decode remains slightly behind. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1 long checkpoint: 4K/4K, 32K/128, attempted 128K/128, max_layers=40 | baseline AOTriton threshold 512 + decode graph replay | `status=diagnostic_retained_with_blocker`, inherited threshold-512 fixture gates, `performance_claim=false`; 128K blocked by OOM | 4K/4K prefill `2379.818 tok/s`, decode `108.930 tok/s`; 32K/128 prefill `1718.308 tok/s`, decode `93.933 tok/s`; 128K/128 OOM during prefill scratch reservation | tracked peak 4K/4K `20.53 GiB`, 32K/128 `35.10 GiB`; 128K blocked at `linear_attn.out_rot` allocation | [`2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`](results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json) | 2026-05-16 | Superseded for 32K/128 and 128K/128 by the chunking checkpoint above; retained as the pre-chunk baseline and 4K/4K context. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1 prompt sweep 32/64/128/256/512/1024/4096 plus 512/128 + 4K/128 graph rows, max_layers=40 | AOTriton threshold sweep | `status=diagnostic_retained`, prefill fixture `max_kl=0.0396`, top-1 `100%`, graph fixture final KL `0`, `performance_claim=false` | Forced AOTriton vs native prefill: 32 `-16.7%`, 64 `-16.6%`, 128 `-10.9%`, 256 `-3.5%`, 512 `+6.4%`, 1024 `+37.6%`, 4096 `+255.7%`; graph rows: 512/128 prefill `2270.750 tok/s`, decode `109.123 tok/s`; 4K/128 prefill `2345.670 tok/s`, decode `110.091 tok/s` | graph rows tracked peak 512 `18.58 GiB`, 4K `20.42 GiB`; AOTriton adds `+0.039/+0.315 GiB` vs native at 512/4K | [`2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`](results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json) | 2026-05-16 | Crossover is between 256 and 512 prompt tokens; baseline/default AOTriton policy is `--attn-aotriton-min-tokens 512`. Native attention (`0`) is a diagnostic override only now that the pruned AOTriton runtime is vendored through Git LFS. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 512/4096 / decode 128, max_layers=40 | baseline `aotriton_v3_prefill` + decode graph replay | `status=diagnostic_retained`, graph fixture gate `passed=true`, final KL `0`, generated IDs match eager/fixture, `performance_claim=false` | 512/128 prefill `2312.754 tok/s`, decode `109.340 tok/s`; 4K/128 prefill `2372.725 tok/s`, decode `110.303 tok/s` | tracked peak 512 `18.58 GiB`, 4K `20.42 GiB`; sampled HIP used peak 512 `18.60 GiB`, 4K `19.01 GiB` | [`2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`](results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json) | 2026-05-16 | One-step HIP graph replay closes the opt-in AOTriton decode gap to parent from roughly -12%/-10% to -5.8%/-2.4%; threshold policy is now covered by the sweep artifact above. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 512/4096 / decode 128, max_layers=40 | opt-in `aotriton_v3_prefill_gate_rotate` | `status=diagnostic_retained`, fixture `max_kl=0.0396`, top-1 `100%`, generated IDs match, `performance_claim=false` | 512/128 prefill `2312.857 tok/s`, decode `101.703 tok/s`; 4K/128 prefill `2371.534 tok/s`, decode `102.211 tok/s` | tracked peak 512 `18.58 GiB`, 4K `20.42 GiB`; sampled HIP used peak 512 `18.60 GiB`, 4K `19.01 GiB` | [`2026-05-16-hipengine-qwen35-aotriton-gate-rotate-diagnostic.json`](results/2026-05-16-hipengine-qwen35-aotriton-gate-rotate-diagnostic.json) | 2026-05-16 | AOTriton threshold 512 is now the default (`attn_aotriton_min_tokens=512`); native attention (`0`) is diagnostic only. Gate is fused into PARO rotate and BF16 attention output aliases the old gated scratch, saving memory while throughput is neutral/slightly negative. |
-| synthetic GEMV fixture | gguf_q4_k | rows=1 K/N 512/128 + 4096/128 | lossless pack8 repack vs raw GGUF/PARO/BF16 | `status=diagnostic_retained`, synthetic pack8 smoke max abs `0`, real Qwen3.5 Q4_K_M tensor pack8 vs raw CPU max abs `0`, GPU vs CPU max abs `1.79e-07`, `performance_claim=false` | 512/128 pack8 `3.033 us` vs raw `3.494`, PARO `3.814`, dense `3.325`; 4096/128 pack8 `4.262 us` vs raw `9.490`, PARO `6.654`, dense `3.434` | n/a | [`2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json`](results/2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json) | 2026-05-16 | Kernel microbench only, not an `LLM.generate()` throughput row; pack8 stores FP32 scale/min terms and emits FP32 output. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m / gguf_q8_0 / gguf_q4_1 / gguf_ud_q4_k_xl | local quant E2E coverage | Q8_0 keeps raw native GGUF materialization and adds Q8_0 embedding lookup; Q4_1/F16/IQ4_XS materialize as explicit dense-BF16 fallback records and use registered BF16 dense GEMV; public generator keys registered for all four local quant names | `status=diagnostic_retained`, `performance_claim=false`; all four `LLM.generate()` fixtures pass repeat=2 with no torch import. Q4_K_M IDs `[220,16,13,271]`; Q8_0/Q4_1/UD-Q4_K_XL IDs `[220,16,13,198]`; targeted materialization/embedding/dispatch tests `32 passed` | E2E wall times diagnostic only: Q4_K_M `0:23.71`, Q8_0 `0:04.29`, Q4_1 `0:09.77`, UD-Q4_K_XL `0:14.57` | n/a | [`2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`](results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json) | 2026-05-17 | Correctness coverage only; dense-BF16 fallback is not a throughput path, and public full-model prefill is still token-serial. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | fixture prompt decode graph replay + GPU sampling | public `LLM.generate()` uses resident prefill, then `capture_decode_graph(..., steps_per_replay=1)` for remaining greedy decode tokens; graph consumes device lm-head argmax token IDs, advances device position/context, records generated IDs on device, and runs GGUF Q6_K lm-head + `argmax_f32` on GPU | `status=diagnostic_retained`, `performance_claim=false`; graph/eager IDs `[220,16,13,271]` match fixture; final logits finite with top-1 `271`, `max_abs=0.0`, KL `0.0`; public E2E repeat=2 remains exact; rocprof shows runtime-state advance/record kernels and resident KV append/decode counts | graph smoke: capture `0.0717 s` excluded from replay decode `0.0225 s` for 3 graph replays; diagnostic only | n/a | [`2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json`](results/2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json) | 2026-05-17 | Public decode graph wiring only: full-model prefill is still token-serial; no throughput row promoted. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | rows>1 prefill projection surfaces | `launch_gguf_linear(..., rows>1)` routes to Q4_K pack8 `pack8_prefill_*` and raw Q8_0/Q5_K/Q6_K `prefill_*` variants with BF16/FP16/F32 output surfaces; row-grid measured-equivalent kernels keep exact GGML quant math | `status=diagnostic_retained`, `performance_claim=false`; rows=4 projection smoke worst max abs `0.0`; E2E repeat=2 remains exact; rocprof microbench shows all Q4_K pack8 and raw Q8_0/Q5_K/Q6_K prefill kernels, and Qwen layer-3 profile shows six Q4_K pack8 prefill launches with `Grid_Size_Y=4` plus `attn_fwd` | synthetic rows=4 durations: Q4 pack8 BF16→F32/FP16/BF16 `6.24/6.28/6.48 us`, Q8_0 `3.44/2.92/2.88 us`, Q5_K `5.48/4.76/4.72 us`, Q6_K `4.88/4.60/4.28 us`; diagnostic only | n/a | [`2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json`](results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json) | 2026-05-17 | Layer-level projection wiring only: public full-model prefill is still token-serial until linear-attention bulk scheduler lands; no throughput row promoted. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | layer-3 full-attention prefill threshold/AOTriton V3 | `run_full_attention_prefill_layer(...)` uses `PrefillConfig.attn_aotriton_min_tokens` style selection; below threshold uses native sequential fallback, eligible rows use GGUF Q/K/V projection + multi-position q/k RMSNorm+RoPE + BF16 prompt KV append + AOTriton V3 compact-varlen + BF16 gate | `status=diagnostic_retained`, `performance_claim=false`; threshold sweep selects native for rows 1/2 and AOTriton for rows 4 at threshold 3; final-row CPU-bridge oracle passes hidden tolerance/top-1/KL; E2E repeat=2 remains exact; rocprof shows `attn_fwd` | sweep rows 1/2 native, row 4 AOTriton; row-4 layer probe `0.0446 s` diagnostic only | n/a | [`2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json`](results/2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json) | 2026-05-17 | Historical layer-level AOTriton wiring; superseded by rows>1 projection variant evidence above for the projection blocker. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | fixture prompt resident decode + GPU full-attention prelude | public `LLM.generate()` uses resident `prefill()`/`step()`; full-attention q/gate split, BF16->FP32 K cast, F32-weight q/k RMSNorm+RoPE, KV append, softmax, and gate now run on GPU with `KVLiveSpans` | `status=diagnostic_retained`, `performance_claim=false`; layer CPU-bridge oracle passes hidden tolerance/top-1/KL gate; E2E repeat=2 passes expected text/IDs and no `torch` import; rocprof confirms expected kernels | prompt prefill `14.65 tok/s`; resident decode steps `15.75/15.57/15.85 tok/s`; historical resident CPU-bridge row was `16.59/16.71/16.77 tok/s` and old full replay was `5.58 -> 2.82 tok/s` | tracked peak `0.561 GiB`; allocations return to zero after close | [`2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`](results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json) | 2026-05-17 | Historical diagnostic: removes host full-attention bridge copies, but predates AOTriton layer prefill above. |
-| Qwen3.5-0.8B GGUF | gguf_q4_k_m | fixture prompt resident decode | public `LLM.generate()` now uses resident `prefill()`/`step()` instead of `sample_next_token(context_ids)` full replay | `status=diagnostic_retained`, `performance_claim=false`; E2E repeat=2 passes expected text/IDs and no `torch` import | prompt prefill `15.76 tok/s`; resident decode steps `16.59/16.71/16.77 tok/s` vs old full-replay context trend `5.58 -> 2.82 tok/s` | tracked peak `0.558 GiB`; allocations return to zero after close | [`2026-05-17-hipengine-gguf-resident-session-diagnostic.json`](results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json) | 2026-05-17 | Historical diagnostic: still used CPU-hosted full-attention bridge; superseded by GPU-full-attn diagnostic above. |
-| Qwen3.5-0.8B GGUF vs Qwen3.5-35B PARO | GGUF Q4_K_M vs w4_paro | GGUF fixture prompt + retained PARO 512/128/4K diagnostics | cross-model diagnostic comparison | `status=diagnostic_retained`, `performance_claim=false`; GGUF E2E fixture passes, PARO rows sourced from existing accepted/diagnostic artifacts | GGUF prefill `15.71 tok/s`, decode step1 `5.58 tok/s` → step4 `2.82 tok/s`; PARO native fixture prefill `46.96 tok/s`, decode `101.61 tok/s`; PARO AOTriton 512/128 prefill `2183.26 tok/s`, decode `101.46 tok/s`; parent target prefill `2682.66 tok/s`, decode `116.26 tok/s` | GGUF resident estimate `0.355 GiB`; GGUF file `0.496 GiB`; hipENGINE PARO owned `1.514 GiB`; parent PARO peak `18.797 GiB` | [`2026-05-16-hipengine-gguf-vs-paro-diagnostic.json`](results/2026-05-16-hipengine-gguf-vs-paro-diagnostic.json) | 2026-05-16 | Historical pre-resident diagnostic; not apples-to-apples: GGUF is 0.8B and correctness-first with CPU full-attention bridge, PARO rows are 35B retained artifacts. No throughput row promoted. |
-| synthetic GEMV fixture | gguf_q4_k | rows=1 K/N 512/128 + 4096/128 | lossless pack8 BF16 output vs FP32 output plus cast | `status=diagnostic_retained`, synthetic pack8 BF16-output smoke bit mismatch `0`, real Qwen3.5 Q4_K_M tensor BF16-output smoke max abs `1.22e-04` with `1/2048` bit mismatch, `performance_claim=false` | 512/128 BF16 out `3.033 us` vs FP32+cast `5.821 us`; 4096/128 BF16 out `4.400 us` vs FP32+cast `7.046 us` | n/a | [`2026-05-16-hipengine-gguf-q4k-pack8-bf16out-diagnostic.json`](results/2026-05-16-hipengine-gguf-q4k-pack8-bf16out-diagnostic.json) | 2026-05-16 | Kernel microbench only; direct BF16 output is about equal to FP32 output alone but avoids a separate cast kernel. |
-| synthetic GEMV fixture | gguf_q4_k | rows=1 K/N 512/128 + 4096/128 | lossless pack8 repack vs raw GGUF/PARO/BF16 | `status=diagnostic_retained`, synthetic pack8 smoke max abs `0`, real Qwen3.5 Q4_K_M tensor pack8 vs raw CPU max abs `0`, GPU vs CPU max abs `1.79e-07`, `performance_claim=false` | 512/128 pack8 `3.033 us` vs raw `3.494`, PARO `3.814`, dense `3.325`; 4096/128 pack8 `4.262 us` vs raw `9.490`, PARO `6.654`, dense `3.434` | n/a | [`2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json`](results/2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json) | 2026-05-16 | Kernel microbench only, not an `LLM.generate()` throughput row; pack8 stores FP32 scale/min terms and originally emitted FP32 output. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 512/4096 / decode 128, max_layers=40 | `native_prefill_c1_multiloop` | `status=diagnostic_retained`, fixture `max_kl=0.0341`, top-1 `100%`, dual fused-W4 trace confirms launch, `performance_claim=false` | 512/128 prefill median `2077.262 tok/s`, decode `~101.2 tok/s`; 4K/128 prefill median `659.950 tok/s`, decode `102.146 tok/s` | fixture owned device `1.51 GiB` diagnostic accounting | [`2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`](results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json) | 2026-05-16 | Active multiloop retained diagnostic after fusing paired transposed W4 prefill projections into one dual fused-W4 launch; not an accepted `LLM.generate()` throughput row and still below parent target. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=8, prompt 8 first compact slab | `native_prefill_compact_cN_plan` | `status=blocked`, slab metadata valid, `performance_claim=false` | no packed prefill launched; metadata only | n/a | [`2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json`](results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json) | 2026-05-15 | Historical plan-only blocker, superseded by native compact prefill correctness artifacts above. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 512 / decode 32, max_layers=40 | `single_request_native_full` | `status=accepted`, `max_kl=0.0168`, `top1=100%`, `performance_claim=false` | fixture native prefill 45.72 tok/s; repeated-token bench prefill 46.96 tok/s, decode 101.61 tok/s | owned device 1.51 GiB (diagnostic accounting) | [`2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`](results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json) | 2026-05-15 | Correctness accepted, but slower than serial c=1 fixture prefill 117.24 tok/s and parent 2682.66 tok/s; no throughput row promoted. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 90.464 tok/s; aggregate decode 106.765 tok/s; per-request decode 106.765 tok/s | peak allocator n/a; max batch 1, max sequence 10 | [`2026-05-15-hipengine-qwen35-c1-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c1-scheduler-serial-bench-blocked.json) | 2026-05-15 | Reduced diagnostic shape and serial row execution; not the c=N 512/128 retained protocol. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=2, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 103.567 tok/s; aggregate decode 107.149 tok/s; per-request decode 53.575 tok/s | peak allocator n/a; max batch 2, max sequence 10 | [`2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json) | 2026-05-15 | `batch_execution.throughput_claim_eligible=false`; native compact/c-aware c>N kernels remain Task #15. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=4, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 111.226 tok/s; aggregate decode 108.434 tok/s; per-request decode 27.108 tok/s | peak allocator n/a; max batch 4, max sequence 10 | [`2026-05-15-hipengine-qwen35-c4-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-bench-blocked.json) | 2026-05-15 | Aggregate decode stays flat because rows execute serially; do not compare as throughput win. |
-| Qwen3.5-35B-A3B-PARO | w4_paro | c=8, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 115.080 tok/s; aggregate decode 108.904 tok/s; per-request decode 13.613 tok/s | peak allocator n/a; max batch 8, max sequence 10 | [`2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json) | 2026-05-15 | Confirms serial bridge blocker: per-request decode falls with c while aggregate stays ~109 tok/s. |
-
-## Table conventions
-
-- Workload format is `prompt_tokens/decode_tokens` unless otherwise stated.
-- `Peak GiB` means peak allocated/reserved as emitted by the benchmark; note the
-  exact field in the linked artifact when ambiguous.
-- `Validation` summarizes correctness quality gates; detailed KL/top-1 or
-  fixture results belong in the JSON artifact.
-- For parent/source-lineage rows, use the parent doc path as `Source` and keep
-  them clearly separated from hipEngine measurements.
+- Workload format is `prompt_tokens/decode_tokens`.
+- `tok/s` is reported separately for prefill, backend decode, and full request
+  wall. Never compare those scopes without labeling them.
+- Aggregate concurrency throughput is total generated tokens divided by the
+  concurrent group wall. Per-sequence throughput is aggregate divided by live
+  rows only when every row generates the same number of tokens.
+- `Peak GiB` names the allocator or whole-card scope in the run record.
+- Bold ratios in retained speculative rows identify speedup against the true
+  same-protocol AR control. Plain maxima in diagnostic cross-engine tables are
+  not promoted as wins.

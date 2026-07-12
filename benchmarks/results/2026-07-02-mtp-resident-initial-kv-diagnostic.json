@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "mtp_llamacpp_resident_initial_kv_parity",
+  "timestamp": "2026-07-02T00:00:00Z",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "purpose": "Verify that hipEngine llama-compat initial prompt MTP KV is written through the resident draft path instead of the legacy run_draft kv_write_only path.",
+  "commands": {
+    "hipengine": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --record-draft-stage-stats --record-draft-cache-rows 0,1,2,16,32,40,48,49 --record-draft-attention-debug --output /tmp/hipengine-mtp-rowprobe-residentinit/hipengine-stage.json",
+    "llamacpp_reference": "LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_ATTENTION_TRACE=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8042 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-rowprobe2/llamacpp.json --log-dir /tmp/hipengine-mtp-rowprobe2/logs"
+  },
+  "artifacts": {
+    "hipengine_full_trace": "/tmp/hipengine-mtp-rowprobe-residentinit/hipengine-stage.json",
+    "llamacpp_stage_trace": "/tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl",
+    "prior_hipengine_trace": "/tmp/hipengine-mtp-rowprobe/hipengine-stage.json"
+  },
+  "hipengine_workload": {
+    "prompt_tokens": 40,
+    "initial_prev_token": 71093,
+    "initial_prev_position": 40,
+    "target_prefill_mode": "bulk_prefill_hidden_rows",
+    "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+    "mtp_initial_kv_writer": "resident_write_kv_rows",
+    "mtp_device_kv_rows": 50,
+    "mtp_device_kv_capacity": 68
+  },
+  "cycle3_position49": {
+    "input_token": 1103,
+    "position": 49,
+    "target_tokens": [
+      65342
+    ],
+    "hipengine_draft_tokens": [
+      8,
+      1411
+    ],
+    "llamacpp_draft_tokens": [
+      8,
+      1411
+    ],
+    "prior_hipengine_draft_tokens": [
+      65342,
+      18078
+    ],
+    "hipengine_depth0_top10": [
+      8,
+      65342,
+      13787,
+      18078,
+      58,
+      1590,
+      16793,
+      9409,
+      3863,
+      15050
+    ],
+    "depth0_margin_token8_over_65342": 0.16852188110351562,
+    "accepted_draft_tokens": 0,
+    "generated_draft_tokens": 2
+  },
+  "row_probe_comparison": {
+    "head0_row2": {
+      "hipengine_score": 9.7154026,
+      "llamacpp_score": 9.72042465209961,
+      "hipengine_weight": 0.04522794,
+      "llamacpp_weight": 0.04207084700465202,
+      "k_first4_max_abs_delta": 0.012277,
+      "v_first4_max_abs_delta": 0.037705
+    },
+    "head7_row2": {
+      "hipengine_score": 17.88542747,
+      "llamacpp_score": 17.925905227661133,
+      "hipengine_weight": 0.22718564,
+      "llamacpp_weight": 0.21814832091331482,
+      "k_first4_max_abs_delta": 0.012277,
+      "v_first4_max_abs_delta": 0.037705
+    },
+    "head12_row2": {
+      "hipengine_score": 12.59264755,
+      "llamacpp_score": 12.580912590026855,
+      "hipengine_weight": 0.40789741,
+      "llamacpp_weight": 0.3910762071609497,
+      "k_first4_max_abs_delta": 0.003415,
+      "v_first4_max_abs_delta": 0.012721
+    },
+    "rows48_49": {
+      "max_k_first4_abs_delta": 0.061304,
+      "max_v_first4_abs_delta": 0.04573,
+      "status": "close"
+    },
+    "row0": {
+      "status": "still different",
+      "interpretation": "Initial zero-pending prompt boundary row differs, but decisive cycle-3 draft token and high-weight row2/48/49 probes now match closely."
+    }
+  },
+  "diagnostic_metrics": {
+    "tokens_per_sec": 50.59,
+    "cycle_wall_ms_per_output": 19.8511,
+    "accept_per_draft": 0.75,
+    "accepted_per_output": 0.6,
+    "total_accepted": 6,
+    "total_drafts": 8,
+    "total_output_tokens": 10,
+    "note": "Single-prompt row-probe diagnostic with forced cycle-3 rejection; do not use as a headline performance row."
+  },
+  "conclusion": "The active hipEngine llama-compat path now mirrors llama.cpp at the seq-position-49 draft divergence when initial prompt MTP KV is seeded by resident_write_kv_rows. The previous row2 mismatch came from using the legacy run_draft kv_write_only writer for initial prompt catch-up."
+}

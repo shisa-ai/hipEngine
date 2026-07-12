@@ -1,0 +1,350 @@
+{
+  "architecture": "qwen35moe",
+  "file_type_name": "MOSTLY_Q4_K_M",
+  "generated_by": "scripts/inspect_gguf.py --json",
+  "qwen35_mtp_inventory": {
+    "ar_block_count": 40,
+    "blocks": [
+      {
+        "layer_id": 40,
+        "nextn_optional_status": {
+          "nextn.embed_tokens": {
+            "fallback_nbytes": 540344320,
+            "fallback_shape": [
+              248320,
+              2048
+            ],
+            "fallback_slot": "token_embedding",
+            "fallback_tensor_name": "token_embd.weight",
+            "fallback_type": "Q8_0",
+            "status": "fallback",
+            "tensor_name": null
+          },
+          "nextn.shared_head_head": {
+            "fallback_nbytes": 417177600,
+            "fallback_shape": [
+              248320,
+              2048
+            ],
+            "fallback_slot": "lm_head",
+            "fallback_tensor_name": "output.weight",
+            "fallback_type": "Q6_K",
+            "status": "fallback",
+            "tensor_name": null
+          },
+          "nextn.shared_head_norm": {
+            "fallback_slot": null,
+            "fallback_tensor_name": null,
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "status": "present",
+            "tensor_name": "blk.40.nextn.shared_head_norm.weight",
+            "type": "F32"
+          }
+        },
+        "nextn_tensor_count": 4,
+        "nextn_tensor_names": [
+          "blk.40.nextn.eh_proj.weight",
+          "blk.40.nextn.enorm.weight",
+          "blk.40.nextn.hnorm.weight",
+          "blk.40.nextn.shared_head_norm.weight"
+        ],
+        "optional_fallback_tensor_names": {
+          "nextn.embed_tokens": "token_embd.weight",
+          "nextn.shared_head_head": "output.weight"
+        },
+        "optional_missing": [
+          "blk.40.nextn.embed_tokens.weight",
+          "blk.40.nextn.shared_head_head.weight"
+        ],
+        "required_missing": [],
+        "tensor_count": 20,
+        "tensor_names": [
+          "blk.40.attn_k.weight",
+          "blk.40.attn_k_norm.weight",
+          "blk.40.attn_norm.weight",
+          "blk.40.attn_output.weight",
+          "blk.40.attn_q.weight",
+          "blk.40.attn_q_norm.weight",
+          "blk.40.attn_v.weight",
+          "blk.40.ffn_down_exps.weight",
+          "blk.40.ffn_down_shexp.weight",
+          "blk.40.ffn_gate_exps.weight",
+          "blk.40.ffn_gate_inp.weight",
+          "blk.40.ffn_gate_inp_shexp.weight",
+          "blk.40.ffn_gate_shexp.weight",
+          "blk.40.ffn_up_exps.weight",
+          "blk.40.ffn_up_shexp.weight",
+          "blk.40.nextn.eh_proj.weight",
+          "blk.40.nextn.enorm.weight",
+          "blk.40.nextn.hnorm.weight",
+          "blk.40.nextn.shared_head_norm.weight",
+          "blk.40.post_attention_norm.weight"
+        ],
+        "tensors": [
+          {
+            "byte_shape": [
+              512,
+              2176
+            ],
+            "name": "blk.40.attn_k.weight",
+            "nbytes": 1114112,
+            "shape": [
+              512,
+              2048
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              256
+            ],
+            "name": "blk.40.attn_k_norm.weight",
+            "nbytes": 1024,
+            "shape": [
+              256
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.attn_norm.weight",
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              2048,
+              4352
+            ],
+            "name": "blk.40.attn_output.weight",
+            "nbytes": 8912896,
+            "shape": [
+              2048,
+              4096
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              8192,
+              2176
+            ],
+            "name": "blk.40.attn_q.weight",
+            "nbytes": 17825792,
+            "shape": [
+              8192,
+              2048
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              256
+            ],
+            "name": "blk.40.attn_q_norm.weight",
+            "nbytes": 1024,
+            "shape": [
+              256
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              512,
+              2176
+            ],
+            "name": "blk.40.attn_v.weight",
+            "nbytes": 1114112,
+            "shape": [
+              512,
+              2048
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              256,
+              2048,
+              352
+            ],
+            "name": "blk.40.ffn_down_exps.weight",
+            "nbytes": 184549376,
+            "shape": [
+              256,
+              2048,
+              512
+            ],
+            "type": "Q5_K"
+          },
+          {
+            "byte_shape": [
+              2048,
+              544
+            ],
+            "name": "blk.40.ffn_down_shexp.weight",
+            "nbytes": 1114112,
+            "shape": [
+              2048,
+              512
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              256,
+              512,
+              1152
+            ],
+            "name": "blk.40.ffn_gate_exps.weight",
+            "nbytes": 150994944,
+            "shape": [
+              256,
+              512,
+              2048
+            ],
+            "type": "Q4_K"
+          },
+          {
+            "byte_shape": [
+              256,
+              2048
+            ],
+            "name": "blk.40.ffn_gate_inp.weight",
+            "nbytes": 1048576,
+            "shape": [
+              256,
+              2048
+            ],
+            "type": "BF16"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.ffn_gate_inp_shexp.weight",
+            "nbytes": 4096,
+            "shape": [
+              2048
+            ],
+            "type": "BF16"
+          },
+          {
+            "byte_shape": [
+              512,
+              2176
+            ],
+            "name": "blk.40.ffn_gate_shexp.weight",
+            "nbytes": 1114112,
+            "shape": [
+              512,
+              2048
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              256,
+              512,
+              1152
+            ],
+            "name": "blk.40.ffn_up_exps.weight",
+            "nbytes": 150994944,
+            "shape": [
+              256,
+              512,
+              2048
+            ],
+            "type": "Q4_K"
+          },
+          {
+            "byte_shape": [
+              512,
+              2176
+            ],
+            "name": "blk.40.ffn_up_shexp.weight",
+            "nbytes": 1114112,
+            "shape": [
+              512,
+              2048
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              2048,
+              4352
+            ],
+            "name": "blk.40.nextn.eh_proj.weight",
+            "nbytes": 8912896,
+            "shape": [
+              2048,
+              4096
+            ],
+            "type": "Q8_0"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.nextn.enorm.weight",
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.nextn.hnorm.weight",
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.nextn.shared_head_norm.weight",
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "type": "F32"
+          },
+          {
+            "byte_shape": [
+              2048
+            ],
+            "name": "blk.40.post_attention_norm.weight",
+            "nbytes": 8192,
+            "shape": [
+              2048
+            ],
+            "type": "F32"
+          }
+        ],
+        "unexpected_tensor_names": []
+      }
+    ],
+    "declared_block_count": 41,
+    "ignored_block_ids": [
+      40
+    ]
+  },
+  "schema": 1,
+  "source_model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "tensor_count": 753,
+  "total_tensor_nbytes": 22652396032
+}

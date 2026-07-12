@@ -43,13 +43,13 @@ def _from_bf16(x_u16: np.ndarray) -> np.ndarray:
 
 
 @pytest.fixture(scope="module")
-def _drafter_lib():
+def _drafter_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.speculative import build_dflash_drafter
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_dflash_drafter(load=True, compiler_version=compiler_version)
 
 

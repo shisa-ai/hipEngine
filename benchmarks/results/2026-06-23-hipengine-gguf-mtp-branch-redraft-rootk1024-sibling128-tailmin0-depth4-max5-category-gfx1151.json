@@ -1,0 +1,931 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_branch_redraft_max5_rootk1024_sibling128_tailmin0_depth4_retained",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit_before_artifact": "7132dc210b021091263e7cc854796a2841df94ca",
+  "artifact_commit_note": "Committed with root_topk_accept=1024, sibling_topk_accept=128, sibling_tail_min_prev_accepted=0 defaults under sibling_topk_max_depth=4/topk_branch_redraft_max_branches=5; use containing git commit for retained revision.",
+  "hardware": "gfx1151/Radeon 8060S (per existing GGUF-MTP category diagnostics)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M",
+  "policy": {
+    "draft_n_max": 5,
+    "draft_p_min": 0.0,
+    "root_topk_accept": 1024,
+    "topk_candidate_count": 1024,
+    "root_tail_max_prev_accepted": -1,
+    "sibling_topk_accept": 128,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5,
+    "root_tail_gate": "disabled, allowing generic root ranks 1..1024",
+    "sibling_tail_gate": "sibling candidates beyond rank 8 require previous cycle accepted >= 0, effectively allowing rank 9..128 for every non-root row reached by the verifier",
+    "redraft_acceptance": "allow up to five exact-verified top-k branch accepts per B-window; after each non-final branch accept, redraft remaining B-window from accepted target token and accept verified proposals only"
+  },
+  "baseline_policy": {
+    "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk1024-sibling28-tailmin0-depth4-max5-category-gfx1151.json",
+    "draft_n_max": 5,
+    "draft_p_min": 0.0,
+    "root_topk_accept": 1024,
+    "topk_candidate_count": 1024,
+    "root_tail_max_prev_accepted": -1,
+    "sibling_topk_accept": 28,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5
+  },
+  "commands": {
+    "focused_b5_default": "python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-rootk1024-sibling128-tailmin0-depth4-default-iter230-b5-20.json",
+    "category_full": "python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk1024-sibling128-tailmin0-depth4-full-iter230/raw --output /tmp/hipengine-branch-redraft-rootk1024-sibling128-tailmin0-depth4-full-iter230/summary.json",
+    "verify": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "guard": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "syntax_and_collect": "python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py && python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5"
+  },
+  "focused_b5_baseline": {
+    "accept_per_draft": 0.0033,
+    "accepted_per_output": 0.7895,
+    "visible_tokens_per_cycle": 4.75,
+    "avg_cycle_ms": 322.64,
+    "avg_decode_ms": 322.64,
+    "avg_ar_decode_ms": 243.86,
+    "avg_mtp_draft_ms": 78.78,
+    "avg_ms_per_visible_token": 67.92,
+    "tokens_per_sec": 14.72,
+    "ar_baseline_tokens_per_sec": 19.48,
+    "speedup_vs_ar_visible": 0.7558,
+    "total_accepted": 75,
+    "total_drafts": 22835,
+    "total_output_tokens": 95,
+    "verify_cycle_count": 20,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.0034,
+      "accepted_per_output": 0.7935,
+      "visible_tokens_per_cycle": 4.8421,
+      "avg_cycle_ms": 322.16,
+      "avg_ar_decode_ms": 248.77,
+      "avg_mtp_draft_ms": 73.39,
+      "avg_ms_per_visible_token": 66.53,
+      "tokens_per_sec": 15.03,
+      "speedup_vs_ar_visible": 0.7722,
+      "total_accepted": 73,
+      "total_drafts": 21692,
+      "total_output_tokens": 92,
+      "verify_cycle_count": 19
+    }
+  },
+  "focused_b5": {
+    "accept_per_draft": 0.0024,
+    "accepted_per_output": 0.7895,
+    "visible_tokens_per_cycle": 4.75,
+    "avg_cycle_ms": 323.4,
+    "avg_decode_ms": 323.4,
+    "avg_ar_decode_ms": 247.2,
+    "avg_mtp_draft_ms": 76.2,
+    "avg_ms_per_visible_token": 68.08,
+    "tokens_per_sec": 14.69,
+    "ar_baseline_tokens_per_sec": 19.22,
+    "speedup_vs_ar_visible": 0.7644,
+    "total_accepted": 75,
+    "total_drafts": 30822,
+    "total_output_tokens": 95,
+    "verify_cycle_count": 20,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.0025,
+      "accepted_per_output": 0.7935,
+      "visible_tokens_per_cycle": 4.8421,
+      "avg_cycle_ms": 322.53,
+      "avg_ar_decode_ms": 251.92,
+      "avg_mtp_draft_ms": 70.61,
+      "avg_ms_per_visible_token": 66.61,
+      "tokens_per_sec": 15.01,
+      "speedup_vs_ar_visible": 0.7811,
+      "total_accepted": 73,
+      "total_drafts": 29279,
+      "total_output_tokens": 92,
+      "verify_cycle_count": 19
+    }
+  },
+  "focused_b5_branch_counts": {
+    "topk_branch_accepts": 16,
+    "branch_redrafts": 16,
+    "branch_accept_count_total": 47,
+    "multi_branch_cycles": 13,
+    "triple_branch_cycles": 11,
+    "quad_branch_cycles": 6,
+    "quint_branch_cycles": 1,
+    "branch_depths": {
+      "0": 12,
+      "1": 3,
+      "2": 1,
+      "3": 0,
+      "4": 0,
+      "5": 0
+    },
+    "topk_lens": [
+      1024
+    ],
+    "sibling_rank29_to_128_hits": [
+      {
+        "cycle": 11,
+        "previous_cycle_accepted": 5,
+        "accepted_draft_tokens": 5,
+        "visible_output_tokens": 6,
+        "topk_branch_depths": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "target_rank_in_draft_topk": [
+          4,
+          107,
+          12,
+          2,
+          95,
+          null
+        ]
+      },
+      {
+        "cycle": 16,
+        "previous_cycle_accepted": 1,
+        "accepted_draft_tokens": 5,
+        "visible_output_tokens": 6,
+        "topk_branch_depths": [
+          0,
+          1,
+          3
+        ],
+        "target_rank_in_draft_topk": [
+          76,
+          2,
+          1,
+          29,
+          1,
+          null
+        ]
+      }
+    ]
+  },
+  "category_b5": {
+    "baseline_branch_redraft_rootk1024_sibling28_tailmin0_depth4_max5": {
+      "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk1024-sibling28-tailmin0-depth4-max5-category-gfx1151.json",
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 482,
+        "total_accepted": 382,
+        "total_drafts": 114198,
+        "decode_ms": 33266.35,
+        "decode_tok_s_weighted": 14.48911587835756,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.523378435577914,
+        "mtp_vs_ar_decode_ratio": 0.7421418340154541,
+        "draft_acceptance": 0.0033450673391828226,
+        "accepted_per_output": 0.7925311203319502,
+        "avg_output_tokens_per_prompt": 48.2
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 287,
+        "total_accepted": 227,
+        "total_drafts": 68537,
+        "decode_ms": 19940.11,
+        "decode_tok_s_weighted": 14.393100138364332,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.617747841535078,
+        "mtp_vs_ar_decode_ratio": 0.7336774972655618,
+        "draft_acceptance": 0.0033120796066358317,
+        "accepted_per_output": 0.7909407665505227,
+        "avg_output_tokens_per_prompt": 47.833333333333336
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 195,
+        "total_accepted": 155,
+        "total_drafts": 45661,
+        "decode_ms": 13326.24,
+        "decode_tok_s_weighted": 14.632784641429241,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.386125896484053,
+        "mtp_vs_ar_decode_ratio": 0.7548070573545126,
+        "draft_acceptance": 0.0033945818094216072,
+        "accepted_per_output": 0.7948717948717948,
+        "avg_output_tokens_per_prompt": 48.75
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 189,
+          "total_accepted": 149,
+          "total_drafts": 45708,
+          "decode_ms": 13229.33,
+          "decode_tok_s_weighted": 14.28643778634292,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.740717684758494,
+          "mtp_vs_ar_decode_ratio": 0.7237040726930237,
+          "draft_acceptance": 0.0032598232256935327,
+          "accepted_per_output": 0.7883597883597884,
+          "avg_output_tokens_per_prompt": 47.25
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 108,
+          "total_accepted": 88,
+          "total_drafts": 22849,
+          "decode_ms": 7347.849999999999,
+          "decode_tok_s_weighted": 14.698177017767103,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.390144061588842,
+          "mtp_vs_ar_decode_ratio": 0.7580230951911104,
+          "draft_acceptance": 0.003851372051293273,
+          "accepted_per_output": 0.8148148148148148,
+          "avg_output_tokens_per_prompt": 54.0
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 85,
+          "total_accepted": 65,
+          "total_drafts": 22827,
+          "decode_ms": 5931.280000000001,
+          "decode_tok_s_weighted": 14.330802120284321,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.650543973293754,
+          "mtp_vs_ar_decode_ratio": 0.729282718064229,
+          "draft_acceptance": 0.0028475051474131513,
+          "accepted_per_output": 0.7647058823529411,
+          "avg_output_tokens_per_prompt": 42.5
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 100,
+          "total_accepted": 80,
+          "total_drafts": 22814,
+          "decode_ms": 6757.890000000001,
+          "decode_tok_s_weighted": 14.79751816025416,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.161456347328222,
+          "mtp_vs_ar_decode_ratio": 0.7722543574991602,
+          "draft_acceptance": 0.0035066187428771808,
+          "accepted_per_output": 0.8,
+          "avg_output_tokens_per_prompt": 50.0
+        }
+      }
+    },
+    "branch_redraft_rootk1024_sibling128_tailmin0_depth4_max5": {
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 511,
+        "total_accepted": 411,
+        "total_drafts": 154209,
+        "decode_ms": 35105.479999999996,
+        "decode_tok_s_weighted": 14.556131977115825,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.30554443146494,
+        "mtp_vs_ar_decode_ratio": 0.7539871267961583,
+        "draft_acceptance": 0.002665214092562691,
+        "accepted_per_output": 0.8043052837573386,
+        "avg_output_tokens_per_prompt": 51.1
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 308,
+        "total_accepted": 248,
+        "total_drafts": 92556,
+        "decode_ms": 21478.94,
+        "decode_tok_s_weighted": 14.339627560764173,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.17712691771269,
+        "mtp_vs_ar_decode_ratio": 0.7477463971685755,
+        "draft_acceptance": 0.00267945892216604,
+        "accepted_per_output": 0.8051948051948052,
+        "avg_output_tokens_per_prompt": 51.333333333333336
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 203,
+        "total_accepted": 163,
+        "total_drafts": 61653,
+        "decode_ms": 13626.539999999999,
+        "decode_tok_s_weighted": 14.897398752728133,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.503702821215416,
+        "mtp_vs_ar_decode_ratio": 0.763824125566725,
+        "draft_acceptance": 0.0026438291729518433,
+        "accepted_per_output": 0.8029556650246306,
+        "avg_output_tokens_per_prompt": 50.75
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 204,
+          "total_accepted": 164,
+          "total_drafts": 61713,
+          "decode_ms": 14308.529999999999,
+          "decode_tok_s_weighted": 14.257229778321044,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.19947596724419,
+          "mtp_vs_ar_decode_ratio": 0.7425843185847881,
+          "draft_acceptance": 0.002657462771215141,
+          "accepted_per_output": 0.803921568627451,
+          "avg_output_tokens_per_prompt": 51.0
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 113,
+          "total_accepted": 93,
+          "total_drafts": 30857,
+          "decode_ms": 7665.5199999999995,
+          "decode_tok_s_weighted": 14.741335225790293,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.376754410783764,
+          "mtp_vs_ar_decode_ratio": 0.7607742201442302,
+          "draft_acceptance": 0.0030139028421427875,
+          "accepted_per_output": 0.8230088495575221,
+          "avg_output_tokens_per_prompt": 56.5
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 88,
+          "total_accepted": 68,
+          "total_drafts": 30812,
+          "decode_ms": 6013.42,
+          "decode_tok_s_weighted": 14.633935431085805,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.50860484655817,
+          "mtp_vs_ar_decode_ratio": 0.750127215461418,
+          "draft_acceptance": 0.0022069323640140203,
+          "accepted_per_output": 0.7727272727272727,
+          "avg_output_tokens_per_prompt": 44.0
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 106,
+          "total_accepted": 86,
+          "total_drafts": 30827,
+          "decode_ms": 7118.01,
+          "decode_tok_s_weighted": 14.891802624609968,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.268418153758343,
+          "mtp_vs_ar_decode_ratio": 0.7728606731375762,
+          "draft_acceptance": 0.0027897622214292667,
+          "accepted_per_output": 0.8113207547169812,
+          "avg_output_tokens_per_prompt": 53.0
+        }
+      },
+      "sibling_rank29_to_128_prompt_hits": {
+        "code_markdown_table": [
+          {
+            "cycle": 1,
+            "previous_cycle_accepted": 0,
+            "accepted_draft_tokens": 2,
+            "visible_output_tokens": 3,
+            "topk_branch_depths": [
+              1
+            ],
+            "target_rank_in_draft_topk": [
+              1,
+              98,
+              913
+            ]
+          },
+          {
+            "cycle": 5,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              94,
+              14,
+              5,
+              65,
+              16,
+              null
+            ]
+          }
+        ],
+        "code_merge_intervals": [
+          {
+            "cycle": 0,
+            "previous_cycle_accepted": 0,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              10,
+              2,
+              12,
+              2,
+              55,
+              null
+            ]
+          }
+        ],
+        "code_topological_sort": [
+          {
+            "cycle": 0,
+            "previous_cycle_accepted": 0,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              3,
+              98,
+              3,
+              13,
+              9,
+              null
+            ]
+          },
+          {
+            "cycle": 1,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              1,
+              7,
+              18,
+              19,
+              31,
+              null
+            ]
+          },
+          {
+            "cycle": 2,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              8,
+              10,
+              1,
+              2,
+              45,
+              null
+            ]
+          }
+        ],
+        "general_en_plan": [
+          {
+            "cycle": 1,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              12,
+              5,
+              5,
+              43,
+              4,
+              null
+            ]
+          },
+          {
+            "cycle": 4,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              156,
+              40,
+              8,
+              2,
+              2,
+              null
+            ]
+          },
+          {
+            "cycle": 7,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              2,
+              3,
+              41,
+              1,
+              5,
+              null
+            ]
+          }
+        ],
+        "general_ja_explain": [
+          {
+            "cycle": 0,
+            "previous_cycle_accepted": 0,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              1,
+              3
+            ],
+            "target_rank_in_draft_topk": [
+              1,
+              75,
+              1,
+              2,
+              1,
+              null
+            ]
+          },
+          {
+            "cycle": 5,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              2,
+              3,
+              4
+            ],
+            "target_rank_in_draft_topk": [
+              2,
+              1,
+              3,
+              13,
+              128,
+              null
+            ]
+          }
+        ],
+        "mixed_ja_en_translate": [
+          {
+            "cycle": 5,
+            "previous_cycle_accepted": 5,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              2,
+              3
+            ],
+            "target_rank_in_draft_topk": [
+              1,
+              1,
+              29,
+              11,
+              1,
+              null
+            ]
+          }
+        ]
+      },
+      "topk_branch_accept_count_histograms": {
+        "code_lru_cache": {
+          "2": 2,
+          "3": 3,
+          "4": 3,
+          "5": 2
+        },
+        "code_markdown_table": {
+          "0": 3,
+          "1": 1,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 3
+        },
+        "code_merge_intervals": {
+          "1": 1,
+          "2": 1,
+          "3": 3,
+          "4": 2,
+          "5": 3
+        },
+        "code_topological_sort": {
+          "1": 3,
+          "2": 2,
+          "3": 1,
+          "4": 2,
+          "5": 2
+        },
+        "general_en_explain": {
+          "2": 4,
+          "3": 5,
+          "5": 1
+        },
+        "general_en_plan": {
+          "0": 1,
+          "2": 1,
+          "3": 1,
+          "4": 4,
+          "5": 3
+        },
+        "general_ja_explain": {
+          "0": 1,
+          "2": 4,
+          "4": 4,
+          "5": 1
+        },
+        "general_ja_plan": {
+          "0": 4,
+          "1": 1,
+          "2": 2,
+          "3": 2,
+          "4": 1
+        },
+        "mixed_ja_en_review": {
+          "0": 2,
+          "2": 3,
+          "3": 4,
+          "5": 1
+        },
+        "mixed_ja_en_translate": {
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 3,
+          "5": 1
+        }
+      },
+      "accepted_draft_tokens_by_cycle": {
+        "code_lru_cache": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          2,
+          5,
+          5,
+          4,
+          5
+        ],
+        "code_markdown_table": [
+          0,
+          2,
+          0,
+          5,
+          5,
+          5,
+          5,
+          0,
+          2,
+          4
+        ],
+        "code_merge_intervals": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          2
+        ],
+        "code_topological_sort": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          4,
+          1,
+          5,
+          3
+        ],
+        "general_en_explain": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "general_en_plan": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          0,
+          5,
+          5,
+          5,
+          3
+        ],
+        "general_ja_explain": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          0
+        ],
+        "general_ja_plan": [
+          5,
+          0,
+          2,
+          0,
+          5,
+          0,
+          1,
+          5,
+          5,
+          0
+        ],
+        "mixed_ja_en_review": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          0,
+          0,
+          5,
+          5,
+          5
+        ],
+        "mixed_ja_en_translate": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          1,
+          5
+        ]
+      }
+    }
+  },
+  "deltas": {
+    "full": {
+      "accepted_per_output": 0.011774163425388395,
+      "draft_acceptance": -0.0006798532466201317,
+      "total_accepted": 29,
+      "total_drafts": 40011,
+      "total_output_tokens": 29,
+      "decode_tok_s_weighted": 0.06701609875826442,
+      "mtp_vs_ar_decode_ratio": 0.01184529278070423
+    },
+    "train": {
+      "accepted_per_output": 0.01425403864428254,
+      "draft_acceptance": -0.0006326206844697916,
+      "total_accepted": 21,
+      "total_drafts": 24019,
+      "total_output_tokens": 21,
+      "decode_tok_s_weighted": -0.053472577600159,
+      "mtp_vs_ar_decode_ratio": 0.014068899903013743
+    },
+    "heldout": {
+      "accepted_per_output": 0.008083870152835737,
+      "draft_acceptance": -0.000750752636469764,
+      "total_accepted": 8,
+      "total_drafts": 15992,
+      "total_output_tokens": 8,
+      "decode_tok_s_weighted": 0.2646141112988918,
+      "mtp_vs_ar_decode_ratio": 0.009017068212212376
+    },
+    "focused_b5": {
+      "accepted_per_output": 0.0,
+      "accept_per_draft": -0.0009000000000000002,
+      "total_accepted": 0,
+      "total_drafts": 7987,
+      "total_output_tokens": 0,
+      "visible_tokens_per_cycle": 0.0,
+      "tokens_per_sec": -0.030000000000001137,
+      "speedup_vs_ar_visible": 0.008599999999999941
+    },
+    "categories": {
+      "code": {
+        "accepted_per_output": 0.01556178026766264,
+        "draft_acceptance": -0.0006023604544783917,
+        "total_accepted": 15,
+        "total_drafts": 16005,
+        "total_output_tokens": 15,
+        "decode_tok_s_weighted": -0.029208008021877063,
+        "mtp_vs_ar_decode_ratio": 0.018880245891764402
+      },
+      "general_en": {
+        "accepted_per_output": 0.008194034742707301,
+        "draft_acceptance": -0.0008374692091504855,
+        "total_accepted": 5,
+        "total_drafts": 8008,
+        "total_output_tokens": 5,
+        "decode_tok_s_weighted": 0.043158208023189815,
+        "mtp_vs_ar_decode_ratio": 0.002751124953119799
+      },
+      "general_ja": {
+        "accepted_per_output": 0.008021390374331583,
+        "draft_acceptance": -0.000640572783399131,
+        "total_accepted": 3,
+        "total_drafts": 7985,
+        "total_output_tokens": 3,
+        "decode_tok_s_weighted": 0.3031333108014831,
+        "mtp_vs_ar_decode_ratio": 0.020844497397189077
+      },
+      "mixed_ja_en": {
+        "accepted_per_output": 0.01132075471698113,
+        "draft_acceptance": -0.000716856521447914,
+        "total_accepted": 6,
+        "total_drafts": 8013,
+        "total_output_tokens": 6,
+        "decode_tok_s_weighted": 0.09428446435580717,
+        "mtp_vs_ar_decode_ratio": 0.0006063156384160662
+      }
+    }
+  },
+  "correctness": {
+    "exact_target_verification": true,
+    "finite_logits": true,
+    "prompt_verifier": "passed: generic sibling top-k width only; no prompt/token/candidate-pattern hardcoding, no fixture IDs, no benchmark detection, no depth-specific target-token rescue, and no verifier-derived speed claim retained",
+    "verify_result": "passed (321 tests)",
+    "guard_result": "passed (321 tests)"
+  },
+  "retention_reason": "Sibling-K128 under root-K1024 improves full-suite, train, heldout, and every per-category accepted/output metric. Focused accepted/output is flat versus root-K1024/sibling-K28, so the gain is full-suite rather than focused-prompt-only. Diagnostic weighted decode tok/s and verifier-derived ratio are non-regressive, but speed remains verifier-derived diagnostic only; retained as accepted-output/correctness improvement, not as a true-AR speed row."
+}

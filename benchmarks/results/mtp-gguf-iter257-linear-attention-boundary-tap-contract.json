@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_linear_attention_boundary_tap_contract",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 257,
+  "status": "diagnostic_contract_only_no_real_gguf_capture",
+  "api": "Qwen35GGUFResidentSession.capture_linear_attention_boundary(token_id, position, layer_id=0)",
+  "snapshot_type": "Qwen35GGUFLinearAttentionBoundaryCapture",
+  "captured_buffers": [
+    {
+      "name": "attn_norm_f32",
+      "source": "scratch.norm BF16 after layer attn_norm",
+      "shape": ["hidden_size"]
+    },
+    {
+      "name": "ssm_alpha_f32",
+      "source": "scratch.linear_alpha or scratch.linear_alpha_beta[0:rank] BF16 after ssm_alpha projection",
+      "shape": ["ssm_time_step_rank"]
+    },
+    {
+      "name": "ssm_beta_f32",
+      "source": "scratch.linear_beta or scratch.linear_alpha_beta[rank:2*rank] BF16 after ssm_beta projection",
+      "shape": ["ssm_time_step_rank"]
+    },
+    {
+      "name": "attn_out_f32",
+      "source": "scratch.attn_out BF16 after GDN/ssm_out linear-attention attention branch",
+      "shape": ["hidden_size"]
+    }
+  ],
+  "runtime_side_effects": "mutates resident decode state exactly like _run_linear_attention_attn_only for the selected layer/token; intended for correctness diagnostics, not generation fast path",
+  "test": "tests/test_qwen35_gguf_hidden_seed_contract.py::test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers",
+  "next_step": "use this tap in a real GGUF prompt capture and compare host-visible buffers against the CPU boundary fixture/probe before changing runtime precision"
+}

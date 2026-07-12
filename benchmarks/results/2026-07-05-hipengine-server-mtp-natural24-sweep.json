@@ -1,0 +1,108 @@
+{
+  "schema": "hipengine.server_mtp_natural24_sweep.v1",
+  "created_utc": "2026-07-04T16:35:55.412783+00:00",
+  "status": "diagnostic_blocked_not_retained_perf_win",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "backend": "hip_gfx1100",
+  "quant": "gguf_q4_k_m",
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151",
+  "branch": "mtp-server",
+  "server": {
+    "port": 18080,
+    "flags": [
+      "--speculative-mtp-serving opt_in",
+      "--generation-batch-window-ms 100",
+      "--max-active-requests 8",
+      "--served-model-name llama"
+    ],
+    "env": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+      "HIPENGINE_GGUF_GEMV_DECODE": "1"
+    }
+  },
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl converted to /tmp/hipengine-mtpbench-code-general-ja-suite.json for scripts/mtp-bench.py",
+  "request_shape": {
+    "endpoint": "/v1/chat/completions",
+    "prompts": 10,
+    "max_tokens": 24,
+    "temperature": 0,
+    "top_p": 1,
+    "mtp_extra_payload": {
+      "speculative_mtp": true
+    }
+  },
+  "commands": {
+    "ar": "python3 scripts/mtp-bench.py --url http://127.0.0.1:18080 --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json --max-tokens 24 --temperature 0 --top-p 1 --concurrency C --timeout 1200 --out benchmarks/results/2026-07-05-hipengine-server-ar-natural24-cC.json",
+    "mtp": "python3 scripts/mtp-bench.py --url http://127.0.0.1:18080 --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json --max-tokens 24 --temperature 0 --top-p 1 --concurrency C --timeout 1200 --extra-payload {\"speculative_mtp\":true} --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-cC.json"
+  },
+  "notes": [
+    "Initial pre-fix short requests took about 46 seconds because the GGUF server path rematerialized weights per request/batch.",
+    "After adding prepared shared-runner reuse, short AR/MTP requests dropped to sub-second / low-second request time, but MTP remains slower than AR on this server protocol.",
+    "scripts/mtp-bench.py records OpenAI usage.completion_tokens; hipEngine chat usage includes reasoning/synthetic accounting, so generated-token rows also report the max-token denominator 10*24.",
+    "MTP route was confirmed separately with stream_options.include_hipengine=true: execution_path=gguf_llama_compat_mtp_server, serial_decode_fallback=false."
+  ],
+  "rows": [
+    {
+      "concurrency": 1,
+      "ar_usage_completion_tok_s": 35.21,
+      "mtp_usage_completion_tok_s": 27.0,
+      "usage_ratio_mtp_over_ar": 0.766828,
+      "ar_generated_tok_s_max_token_denominator": 30.848329,
+      "mtp_generated_tok_s_max_token_denominator": 23.64532,
+      "generated_ratio_mtp_over_ar": 0.766502,
+      "ar_wall_s": 7.78,
+      "mtp_wall_s": 10.15,
+      "raw_artifacts": {
+        "ar": "benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c1.json",
+        "mtp": "benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c1.json"
+      }
+    },
+    {
+      "concurrency": 2,
+      "ar_usage_completion_tok_s": 35.21,
+      "mtp_usage_completion_tok_s": 28.54,
+      "usage_ratio_mtp_over_ar": 0.810565,
+      "ar_generated_tok_s_max_token_denominator": 30.848329,
+      "mtp_generated_tok_s_max_token_denominator": 25.0,
+      "generated_ratio_mtp_over_ar": 0.810417,
+      "ar_wall_s": 7.78,
+      "mtp_wall_s": 9.6,
+      "raw_artifacts": {
+        "ar": "benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2.json",
+        "mtp": "benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2.json"
+      }
+    },
+    {
+      "concurrency": 4,
+      "ar_usage_completion_tok_s": 35.16,
+      "mtp_usage_completion_tok_s": 29.06,
+      "usage_ratio_mtp_over_ar": 0.826507,
+      "ar_generated_tok_s_max_token_denominator": 30.808729,
+      "mtp_generated_tok_s_max_token_denominator": 25.450689,
+      "generated_ratio_mtp_over_ar": 0.826087,
+      "ar_wall_s": 7.79,
+      "mtp_wall_s": 9.43,
+      "raw_artifacts": {
+        "ar": "benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4.json",
+        "mtp": "benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4.json"
+      }
+    },
+    {
+      "concurrency": 8,
+      "ar_usage_completion_tok_s": 35.14,
+      "mtp_usage_completion_tok_s": 29.28,
+      "usage_ratio_mtp_over_ar": 0.833238,
+      "ar_generated_tok_s_max_token_denominator": 30.769231,
+      "mtp_generated_tok_s_max_token_denominator": 25.641026,
+      "generated_ratio_mtp_over_ar": 0.833333,
+      "ar_wall_s": 7.8,
+      "mtp_wall_s": 9.36,
+      "raw_artifacts": {
+        "ar": "benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8.json",
+        "mtp": "benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8.json"
+      }
+    }
+  ]
+}

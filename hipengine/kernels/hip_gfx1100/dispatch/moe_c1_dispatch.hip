@@ -315,6 +315,7 @@ struct MoeC1Args {
     int64_t shared_prefill_tile_m;  // linear-attn only
     int64_t shared_prefill_tile_n;  // linear-attn only
     int64_t shared_down_mode;       // linear-attn: 0=prefill, 1=multi-row decode, 2=output-tiled auto, 3=gemv, 4=multi-row
+    int64_t force_small_batch_shared_expert; // linear-attn: use decode-style shared expert
     int64_t combine_threads;
 };
 
@@ -491,164 +492,205 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
             args->stream));
     }
 
-    // ---- 7a. Shared gate+up W4 prefill (separate outputs, linear-attn) ----
-    {
-        const bool output_tiled_rows =
-            args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
-        if (fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 != nullptr &&
-            output_tiled_rows) {
-            auto fn = reinterpret_cast<gemv_awq_dual_pack8_output_tiled_split_transposed_fp16_fn>(
-                fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16);
+    bool combined_in_shared_down = false;
+    const bool output_tiled_rows =
+        args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
+    if (args->force_small_batch_shared_expert) {
+        // Match shared_expert_paro_w4_fp16(force_small_batch=True): packed
+        // gate||up GEMV, fused SiLU/down-rotate, shared-down GEMV, then the
+        // normal combine.  This repairs c6 selected-c1 MoE while retaining the
+        // bundled C launch path for the rest of the MoE pipeline.
+        auto dual_fn = reinterpret_cast<gemv_awq_dual_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_dual_pack8_transposed_fp16);
+        DISPATCH_CHECK(dual_fn(
+            args->shared_gate_input, args->shared_up_input,
+            args->shared_gate_qweight, args->shared_gate_qzeros,
+            args->shared_gate_scales,
+            args->shared_up_qweight, args->shared_up_qzeros,
+            args->shared_up_scales,
+            args->shared_up_packed,
+            args->tokens, args->hidden_size,
+            args->out_packed_shared_gate, args->out_packed_shared_up,
+            args->group_size, args->shared_threads,
+            args->stream));
+
+        auto silu_fn = reinterpret_cast<silu_mul_dual_rotate_out_fp16_fn>(
+            fns->silu_mul_dual_rotate_out_fp16);
+        DISPATCH_CHECK(silu_fn(
+            args->shared_up_packed,
+            args->shared_down_pairs, args->shared_down_theta,
+            args->shared_down_channel_scales,
+            args->shared_down_input,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->group_size, args->krot_shared_down,
+            args->stream));
+
+        auto down_fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_transposed_fp16);
+        DISPATCH_CHECK(down_fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->shared_out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->shared_threads,
+            args->stream));
+    } else {
+        // ---- 7a. Shared gate+up W4 prefill (separate outputs, linear-attn) ----
+        {
+            if (fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 != nullptr &&
+                output_tiled_rows) {
+                auto fn = reinterpret_cast<gemv_awq_dual_pack8_output_tiled_split_transposed_fp16_fn>(
+                    fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16);
+                DISPATCH_CHECK(fn(
+                    args->shared_gate_input, args->shared_up_input,
+                    args->shared_gate_qweight, args->shared_gate_qzeros,
+                    args->shared_gate_scales,
+                    args->shared_up_qweight, args->shared_up_qzeros,
+                    args->shared_up_scales,
+                    args->shared_gate_out, args->shared_up_out,
+                    args->tokens, args->hidden_size,
+                    args->out_packed_shared_gate, args->out_packed_shared_up,
+                    args->group_size,
+                    128,
+                    args->stream));
+            } else {
+                auto fn = reinterpret_cast<awq_fusedw4_prefill_dual_fp16_fn>(
+                    fns->awq_fusedw4_prefill_dual_fp16);
+                DISPATCH_CHECK(fn(
+                    args->shared_gate_input, args->shared_up_input,
+                    args->shared_gate_qweight, args->shared_gate_qzeros,
+                    args->shared_gate_scales,
+                    args->shared_up_qweight, args->shared_up_qzeros,
+                    args->shared_up_scales,
+                    args->shared_gate_out, args->shared_up_out,
+                    args->tokens, args->hidden_size,
+                    args->out_packed_shared_gate, args->out_packed_shared_up,
+                    args->group_size,
+                    args->shared_prefill_tile_m, args->shared_prefill_tile_n,
+                    args->stream));
+            }
+        }
+
+        // ---- 8a-9. Shared silu/mul + optional down rotate fusion ----
+        if (fns->silu_mul_pair_rotate_out_fp16 != nullptr) {
+            auto fn = reinterpret_cast<silu_mul_pair_rotate_out_fp16_fn>(
+                fns->silu_mul_pair_rotate_out_fp16);
             DISPATCH_CHECK(fn(
-                args->shared_gate_input, args->shared_up_input,
-                args->shared_gate_qweight, args->shared_gate_qzeros,
-                args->shared_gate_scales,
-                args->shared_up_qweight, args->shared_up_qzeros,
-                args->shared_up_scales,
                 args->shared_gate_out, args->shared_up_out,
-                args->tokens, args->hidden_size,
-                args->out_packed_shared_gate, args->out_packed_shared_up,
-                args->group_size,
-                128,
+                args->shared_down_pairs, args->shared_down_theta,
+                args->shared_down_channel_scales,
+                args->shared_down_input,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->group_size, args->krot_shared_down,
                 args->stream));
         } else {
-            auto fn = reinterpret_cast<awq_fusedw4_prefill_dual_fp16_fn>(
-                fns->awq_fusedw4_prefill_dual_fp16);
+            auto fn = reinterpret_cast<silu_mul_separate_out_fp16_fn>(
+                fns->silu_mul_separate_out_fp16);
+            // silu_mul_separate uses a default `threads=256` in the Python wrapper;
+            // expose via shared_threads here for cache-locality.  256 matches the
+            // default; pass through args->combine_threads (also 256).
             DISPATCH_CHECK(fn(
-                args->shared_gate_input, args->shared_up_input,
-                args->shared_gate_qweight, args->shared_gate_qzeros,
-                args->shared_gate_scales,
-                args->shared_up_qweight, args->shared_up_qzeros,
-                args->shared_up_scales,
                 args->shared_gate_out, args->shared_up_out,
-                args->tokens, args->hidden_size,
-                args->out_packed_shared_gate, args->out_packed_shared_up,
-                args->group_size,
+                args->shared_intermediate,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->combine_threads,  // 256
+                args->stream));
+
+            // Shared down rotate (linear-attn only): intermediate -> shared_down_input.
+            auto rotate_fn = reinterpret_cast<paro_rotate1_fp16_fn>(fns->paro_rotate1_fp16);
+            DISPATCH_CHECK(rotate_fn(
+                args->shared_intermediate, args->shared_down_input,
+                args->shared_down_pairs, args->shared_down_theta,
+                args->shared_down_channel_scales,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->group_size, args->krot_shared_down,
+                args->stream));
+        }
+
+        // ---- 10a. Shared down W4: shared_down_input -> shared_out ----
+        if (args->shared_down_mode == 2 && output_tiled_rows &&
+            fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16) {
+            auto fn = reinterpret_cast<gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16_fn>(
+                fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->down_out, args->routing_weights,
+                shared_gate_logits_ptr(args),
+                args->residual, args->out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
+                args->num_experts_per_tok, args->num_experts + 1,
+                args->shared_threads,
+                args->stream));
+            combined_in_shared_down = true;
+        } else if (args->shared_down_mode == 2 && output_tiled_rows) {
+            auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+                fns->gemv_awq_pack8_output_tiled_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->shared_out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
+                args->shared_threads,
+                args->stream));
+        } else if (args->shared_down_mode == 1 || args->shared_down_mode == 2) {
+            auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+                fns->gemv_awq_pack8_multi_row_decode_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->shared_out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
+                args->shared_threads,
+                args->stream));
+        } else if (args->shared_down_mode == 3) {
+            auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+                fns->gemv_awq_pack8_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->shared_out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
+                args->shared_threads,
+                args->stream));
+        } else if (args->shared_down_mode == 4) {
+            auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+                fns->gemv_awq_pack8_multi_row_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->shared_out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
+                args->shared_threads,
+                args->stream));
+        } else {
+            auto fn = reinterpret_cast<awq_fusedw4_prefill_fp16_fn>(
+                fns->awq_fusedw4_prefill_fp16);
+            // Linear-attn shared down prefill: tile_m = same as gate-up,
+            // tile_n = 32 if rows>=32 else 16 — but for verifier tokens=4
+            // both are 16.  Reuse the gate-up tile choice.
+            DISPATCH_CHECK(fn(
+                args->shared_down_input,
+                args->shared_down_qweight, args->shared_down_qzeros,
+                args->shared_down_scales,
+                args->shared_out,
+                args->tokens, args->shared_expert_intermediate_size,
+                args->out_packed_shared_down, args->group_size,
                 args->shared_prefill_tile_m, args->shared_prefill_tile_n,
                 args->stream));
         }
-    }
-
-    // ---- 8a-9. Shared silu/mul + optional down rotate fusion ----
-    if (fns->silu_mul_pair_rotate_out_fp16 != nullptr) {
-        auto fn = reinterpret_cast<silu_mul_pair_rotate_out_fp16_fn>(
-            fns->silu_mul_pair_rotate_out_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_gate_out, args->shared_up_out,
-            args->shared_down_pairs, args->shared_down_theta,
-            args->shared_down_channel_scales,
-            args->shared_down_input,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->group_size, args->krot_shared_down,
-            args->stream));
-    } else {
-        auto fn = reinterpret_cast<silu_mul_separate_out_fp16_fn>(
-            fns->silu_mul_separate_out_fp16);
-        // silu_mul_separate uses a default `threads=256` in the Python wrapper;
-        // expose via shared_threads here for cache-locality.  256 matches the
-        // default; pass through args->combine_threads (also 256).
-        DISPATCH_CHECK(fn(
-            args->shared_gate_out, args->shared_up_out,
-            args->shared_intermediate,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->combine_threads,  // 256
-            args->stream));
-
-        // Shared down rotate (linear-attn only): intermediate -> shared_down_input.
-        auto rotate_fn = reinterpret_cast<paro_rotate1_fp16_fn>(fns->paro_rotate1_fp16);
-        DISPATCH_CHECK(rotate_fn(
-            args->shared_intermediate, args->shared_down_input,
-            args->shared_down_pairs, args->shared_down_theta,
-            args->shared_down_channel_scales,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->group_size, args->krot_shared_down,
-            args->stream));
-    }
-
-    // ---- 10a. Shared down W4: shared_down_input -> shared_out ----
-    const bool output_tiled_rows =
-        args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
-    bool combined_in_shared_down = false;
-    if (args->shared_down_mode == 2 && output_tiled_rows &&
-        fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16) {
-        auto fn = reinterpret_cast<gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16_fn>(
-            fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->down_out, args->routing_weights,
-            shared_gate_logits_ptr(args),
-            args->residual, args->out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->num_experts_per_tok, args->num_experts + 1,
-            args->shared_threads,
-            args->stream));
-        combined_in_shared_down = true;
-    } else if (args->shared_down_mode == 2 && output_tiled_rows) {
-        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_pack8_output_tiled_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->shared_out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->shared_threads,
-            args->stream));
-    } else if (args->shared_down_mode == 1 || args->shared_down_mode == 2) {
-        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_pack8_multi_row_decode_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->shared_out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->shared_threads,
-            args->stream));
-    } else if (args->shared_down_mode == 3) {
-        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_pack8_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->shared_out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->shared_threads,
-            args->stream));
-    } else if (args->shared_down_mode == 4) {
-        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_pack8_multi_row_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->shared_out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->shared_threads,
-            args->stream));
-    } else {
-        auto fn = reinterpret_cast<awq_fusedw4_prefill_fp16_fn>(
-            fns->awq_fusedw4_prefill_fp16);
-        // Linear-attn shared down prefill: tile_m = same as gate-up,
-        // tile_n = 32 if rows>=32 else 16 — but for verifier tokens=4
-        // both are 16.  Reuse the gate-up tile choice.
-        DISPATCH_CHECK(fn(
-            args->shared_down_input,
-            args->shared_down_qweight, args->shared_down_qzeros,
-            args->shared_down_scales,
-            args->shared_out,
-            args->tokens, args->shared_expert_intermediate_size,
-            args->out_packed_shared_down, args->group_size,
-            args->shared_prefill_tile_m, args->shared_prefill_tile_n,
-            args->stream));
     }
 
     // ---- 11. Combine batch: down_out + routing + shared + residual -> out ----

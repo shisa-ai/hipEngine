@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ctypes
+import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -9,14 +11,23 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_f32_f32_weight,
     gguf_bf16_add,
+    gguf_f32_bf16_add_out_f32,
     gguf_gate_repeat_value_bf16,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
+    gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rmsnorm_f32_f32_weight,
+    gguf_rmsnorm_f32_f32_weight_out_f32,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
+
+
+HIDDEN_SEED_FIXTURE = Path("benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json")
 
 
 def _hip_available() -> bool:
@@ -25,6 +36,59 @@ def _hip_available() -> bool:
     except OSError:
         return False
     return True
+
+
+def test_gguf_hidden_seed_output_norm_fixture_matches_cpu_reference() -> None:
+    fixture = _load_hidden_seed_fixture()
+    source_hidden = np.asarray(fixture["source_hidden"], dtype=np.float32)
+    output_norm_weight = np.asarray(fixture["output_norm_weight"], dtype=np.float32)
+    expected = np.asarray(fixture["expected_hidden_seed_fp32"], dtype=np.float32)
+
+    assert fixture["provenance"] == "post_output_norm"
+    assert fixture["dtype"] == "FP32"
+    assert fixture["rows"] == source_hidden.shape[0] == 1
+    assert fixture["hidden_size"] == source_hidden.shape[1]
+    actual = _rmsnorm(source_hidden, output_norm_weight).astype(np.float32)
+    assert np.isfinite(actual).all()
+    np.testing.assert_allclose(actual, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_hidden_seed_output_norm_f32_tap_matches_fixture() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _load_hidden_seed_fixture()
+    runtime = get_hip_runtime()
+    library = build_gguf_ops(load=True)
+    source_hidden = np.asarray(fixture["source_hidden"], dtype=np.float32)
+    source_hidden_bf16 = float_array_to_bf16_bits(source_hidden)
+    output_norm_weight = np.asarray(fixture["output_norm_weight"], dtype=np.float32)
+    expected = np.asarray(fixture["expected_hidden_seed_fp32"], dtype=np.float32)
+    actual = np.empty_like(expected)
+    bufs = []
+    try:
+        dx = _dev(source_hidden_bf16, runtime, bufs)
+        dw = _dev(output_norm_weight, runtime, bufs)
+        dout = malloc(actual.nbytes, runtime=runtime)
+        bufs.append(dout)
+        gguf_rmsnorm_bf16_f32_weight_out_f32(
+            dx.ptr,
+            dw.ptr,
+            dout.ptr,
+            int(fixture["rows"]),
+            int(fixture["hidden_size"]),
+            float(fixture["eps"]),
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), dout, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    assert np.isfinite(actual).all()
+    np.testing.assert_allclose(actual, expected, rtol=1.0e-6, atol=1.0e-6)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -40,21 +104,56 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
     y = float_array_to_bf16_bits(y_f32)
     add_out = np.empty_like(x)
     norm_out = np.empty_like(x)
+    norm_out_f32 = np.empty_like(x_f32)
     add_norm = np.empty_like(x)
     residual = np.empty_like(x)
+    f32_norm_out = np.empty_like(x)
+    f32_norm_out_f32 = np.empty_like(x_f32)
+    f32_add_norm = np.empty_like(x)
+    f32_f32_add_norm = np.empty_like(x)
+    f32_residual = np.empty_like(x_f32)
+    f32_f32_residual = np.empty_like(x_f32)
+    f32_add = np.empty_like(x_f32)
     bufs = []
     try:
         dx = _dev(x, runtime, bufs)
+        dx_f32 = _dev(x_f32, runtime, bufs)
         dy = _dev(y, runtime, bufs)
         dw = _dev(weight, runtime, bufs)
         dadd = malloc(add_out.nbytes, runtime=runtime)
         dnorm = malloc(norm_out.nbytes, runtime=runtime)
+        dnorm_f32 = malloc(norm_out_f32.nbytes, runtime=runtime)
         dadd_norm = malloc(add_norm.nbytes, runtime=runtime)
         dres = malloc(residual.nbytes, runtime=runtime)
-        bufs.extend((dadd, dnorm, dadd_norm, dres))
+        df32_norm = malloc(f32_norm_out.nbytes, runtime=runtime)
+        df32_norm_f32 = malloc(f32_norm_out_f32.nbytes, runtime=runtime)
+        df32_add_norm = malloc(f32_add_norm.nbytes, runtime=runtime)
+        df32_f32_add_norm = malloc(f32_f32_add_norm.nbytes, runtime=runtime)
+        df32_res = malloc(f32_residual.nbytes, runtime=runtime)
+        df32_f32_res = malloc(f32_f32_residual.nbytes, runtime=runtime)
+        df32_add = malloc(f32_add.nbytes, runtime=runtime)
+        bufs.extend(
+            (
+                dadd,
+                dnorm,
+                dnorm_f32,
+                dadd_norm,
+                dres,
+                df32_norm,
+                df32_norm_f32,
+                df32_add_norm,
+                df32_f32_add_norm,
+                df32_res,
+                df32_f32_res,
+                df32_add,
+            )
+        )
         gguf_bf16_add(dx.ptr, dy.ptr, dadd.ptr, x.size, library=library, runtime=runtime)
         gguf_rmsnorm_bf16_f32_weight(
             dx.ptr, dw.ptr, dnorm.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
+        )
+        gguf_rmsnorm_bf16_f32_weight_out_f32(
+            dx.ptr, dw.ptr, dnorm_f32.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
         )
         gguf_add_rmsnorm_bf16_f32_weight(
             dx.ptr,
@@ -68,27 +167,85 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
             library=library,
             runtime=runtime,
         )
+        gguf_rmsnorm_f32_f32_weight(
+            dx_f32.ptr, dw.ptr, df32_norm.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
+        )
+        gguf_rmsnorm_f32_f32_weight_out_f32(
+            dx_f32.ptr, dw.ptr, df32_norm_f32.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
+        )
+        gguf_add_rmsnorm_f32_bf16_f32_weight(
+            dx_f32.ptr,
+            dy.ptr,
+            dw.ptr,
+            df32_add_norm.ptr,
+            df32_res.ptr,
+            1,
+            x.shape[1],
+            1.0e-6,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_add_rmsnorm_f32_f32_f32_weight(
+            dx_f32.ptr,
+            _dev(y_f32, runtime, bufs).ptr,
+            dw.ptr,
+            df32_f32_add_norm.ptr,
+            df32_f32_res.ptr,
+            1,
+            x.shape[1],
+            1.0e-6,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_f32_bf16_add_out_f32(dx_f32.ptr, dy.ptr, df32_add.ptr, x.size, library=library, runtime=runtime)
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(add_out), dadd, runtime=runtime)
         copy_device_to_host(host_array_ptr(norm_out), dnorm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(norm_out_f32), dnorm_f32, runtime=runtime)
         copy_device_to_host(host_array_ptr(add_norm), dadd_norm, runtime=runtime)
         copy_device_to_host(host_array_ptr(residual), dres, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_norm_out), df32_norm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_norm_out_f32), df32_norm_f32, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_add_norm), df32_add_norm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_f32_add_norm), df32_f32_add_norm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_residual), df32_res, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_f32_residual), df32_f32_res, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_add), df32_add, runtime=runtime)
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
     expected_add = bf16_to_float32(float_array_to_bf16_bits(x_f32 + y_f32))
     np.testing.assert_array_equal(bf16_to_float32(add_out), expected_add)
+    expected_norm = _rmsnorm(x_f32, weight)
     np.testing.assert_allclose(
         bf16_to_float32(norm_out),
-        bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(x_f32, weight))),
+        bf16_to_float32(float_array_to_bf16_bits(expected_norm)),
     )
+    np.testing.assert_allclose(norm_out_f32, expected_norm, rtol=1.0e-6, atol=1.0e-6)
     expected_residual = bf16_to_float32(float_array_to_bf16_bits(x_f32 + y_f32))
     np.testing.assert_array_equal(bf16_to_float32(residual), expected_residual)
     np.testing.assert_allclose(
         bf16_to_float32(add_norm),
         bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(x_f32 + y_f32, weight))),
     )
+    np.testing.assert_allclose(
+        bf16_to_float32(f32_norm_out),
+        bf16_to_float32(float_array_to_bf16_bits(expected_norm)),
+    )
+    np.testing.assert_allclose(f32_norm_out_f32, expected_norm, rtol=1.0e-6, atol=1.0e-6)
+    expected_f32_residual = x_f32 + y_f32
+    np.testing.assert_allclose(f32_residual, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)
+    np.testing.assert_allclose(
+        bf16_to_float32(f32_add_norm),
+        bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(expected_f32_residual, weight))),
+    )
+    np.testing.assert_allclose(f32_f32_residual, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)
+    np.testing.assert_allclose(
+        bf16_to_float32(f32_f32_add_norm),
+        bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(expected_f32_residual, weight))),
+    )
+    np.testing.assert_allclose(f32_add, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -205,15 +362,19 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
-    expected_query = _apply_rope(_rmsnorm_offset(query, q_weight), cos[2], sin[2], 4)
-    expected_key = _apply_rope(_rmsnorm_offset(key, k_weight), cos[2], sin[2], 4)
+    expected_query = _apply_rope(_rmsnorm(query, q_weight), cos[2], sin[2], 4)
+    expected_key = _apply_rope(_rmsnorm(key, k_weight), cos[2], sin[2], 4)
     expected_key_bf16_input = _apply_rope(
-        _rmsnorm_offset(bf16_to_float32(key_bf16), k_weight), cos[2], sin[2], 4
+        _rmsnorm(bf16_to_float32(key_bf16), k_weight), cos[2], sin[2], 4
     )
     np.testing.assert_allclose(query_out, expected_query, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(key_out, expected_key, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(query_out_bf16_key, expected_query, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(key_out_bf16_key, expected_key_bf16_input, rtol=1e-6, atol=1e-6)
+
+
+def _load_hidden_seed_fixture() -> dict[str, object]:
+    return json.loads(HIDDEN_SEED_FIXTURE.read_text())
 
 
 def _dev(array: np.ndarray, runtime, bufs: list):
@@ -232,10 +393,6 @@ def _rmsnorm(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
 def _sigmoid(value: float) -> float:
     return float(1.0 / (1.0 + np.exp(-value)))
 
-
-def _rmsnorm_offset(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
-    inv_rms = 1.0 / np.sqrt(np.mean(x.astype(np.float32) ** 2, axis=-1, keepdims=True) + 1.0e-6)
-    return x.astype(np.float32) * inv_rms * (1.0 + weight.astype(np.float32))
 
 
 def _apply_rope(x: np.ndarray, cos: np.ndarray, sin: np.ndarray, rotary_dim: int) -> np.ndarray:

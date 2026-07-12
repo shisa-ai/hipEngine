@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "Record row-aware hipEngine-vs-llama.cpp MTP K/V history comparison at the first seq-position-49 draft attention divergence.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD gfx1151 HIP host",
+  "software": {
+    "hipengine_base_commit": "c3ce7df2bfeb9c1260b3a7fdc27e373348cb4908",
+    "hipengine_dirty_at_run": true,
+    "llama_cpp_tensor_trace_commit": "687c17d26f6773fdf2db6f3de519a016a4d43ff7",
+    "llama_cpp_process_row_trace_commit": "1ebf790cd",
+    "llama_cpp_dirty_after_commit": false
+  },
+  "source_artifacts": {
+    "hipengine_stage_trace_kv_history_tmp": "/tmp/hipengine-mtp-kv-history/hipengine-stage.json",
+    "llamacpp_row_trace_jsonl_tmp": "/tmp/hipengine-mtp-llama-kvrow-trace2/llamacpp-stage.jsonl",
+    "llamacpp_f32_cache_jsonl_tmp": "/tmp/hipengine-mtp-llama-kvrow-f32cache/llamacpp-stage.jsonl",
+    "llamacpp_no_flash_attn_jsonl_tmp": "/tmp/hipengine-mtp-llama-kvrow-noFA/llamacpp-stage.jsonl",
+    "prior_tensor_stage_artifact": "benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json"
+  },
+  "commands": {
+    "hipengine_validation": "python3 -m py_compile scripts/gguf_mtp_bench.py hipengine/speculative/mtp_resident_draft.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py && PYTHONPATH=. python3 -m pytest tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_record_draft_cache_rows_diagnostic tests/test_mtp_resident_draft_device_commit.py::test_record_stage_stats_passes_requested_cache_rows tests/test_mtp_resident_draft_device_commit.py::test_stage_cache_row_summaries_include_requested_history_without_duplicates -q",
+    "hipengine_validation_broad": "PYTHONPATH=. python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py -q",
+    "llamacpp_validation": "git -C /home/lhl/llama.cpp/llama.cpp-hip diff --check && cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16",
+    "hipengine_kv_history_trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --record-draft-stage-stats --record-draft-cache-rows 0,1,2,16,32,40,48,49 --output /tmp/hipengine-mtp-kv-history/hipengine-stage.json"
+  },
+  "alignment": {
+    "same_prompt": "diag_merge_intervals",
+    "hipengine_cycle": 3,
+    "llamacpp_task_id": 9,
+    "llamacpp_cycle": 9,
+    "seq_position": 49,
+    "depth0_input_token": 1103,
+    "hipengine_draft_tokens": [65342, 18078],
+    "llamacpp_draft_tokens": [8, 1411],
+    "target_token": 65342,
+    "proposal_parity": "not_closed"
+  },
+  "new_instrumentation": {
+    "hipengine": "--record-draft-cache-rows ROWS emits additional dense MTP K/V cache history summaries when --record-draft-stage-stats is enabled. Current and previous rows remain emitted by default and requested duplicates are suppressed.",
+    "llamacpp": "commit 1ebf790cd adds row_index/row_count fields, process_h_input rows, and ctx_dft process tensor rows to the existing MTP trace stream."
+  },
+  "row_comparisons": [
+    {
+      "cache_row_or_position": 40,
+      "tensor": "key",
+      "hipengine_rms": 1.87000386,
+      "llamacpp_rms": 1.869944,
+      "first8_mae": 0.011814,
+      "llamacpp_source": "process row and single-row draft agree"
+    },
+    {
+      "cache_row_or_position": 40,
+      "tensor": "value",
+      "hipengine_rms": 1.12403626,
+      "llamacpp_rms": 1.117155,
+      "first8_mae": 0.046811,
+      "llamacpp_source": "single-row draft value; multi-row process V row is marked low-confidence"
+    },
+    {
+      "cache_row_or_position": 48,
+      "tensor": "key",
+      "hipengine_rms": 1.85111412,
+      "llamacpp_rms": 1.850622,
+      "first8_mae": 0.01944,
+      "llamacpp_source": "process row 2/3"
+    },
+    {
+      "cache_row_or_position": 48,
+      "tensor": "value",
+      "hipengine_rms": 1.34563529,
+      "llamacpp_rms": 1.346136,
+      "first8_mae": 0.02127,
+      "llamacpp_source": "process row 2/3"
+    },
+    {
+      "cache_row_or_position": 49,
+      "tensor": "key",
+      "hipengine_rms": 1.8806853,
+      "llamacpp_rms": 1.879979,
+      "first8_mae": 0.013736,
+      "llamacpp_source": "process row and single-row draft agree"
+    },
+    {
+      "cache_row_or_position": 49,
+      "tensor": "value",
+      "hipengine_rms": 1.14677103,
+      "llamacpp_rms": 1.144939,
+      "first8_mae": 0.018544,
+      "llamacpp_source": "single-row draft value; multi-row process V row is marked low-confidence"
+    }
+  ],
+  "negative_ab_results": [
+    {
+      "ab": "llama.cpp FA-on default cache vs --cache-type-k f32 --cache-type-v f32",
+      "result": "No proposal or attention-row movement at the seq-position-49 divergence.",
+      "reading": "llama.cpp FA-on casts K/V to F16 inside build_attn_mha when needed; explicit F32 KV cache storage is not the missing parity lever."
+    },
+    {
+      "ab": "llama.cpp FA-on vs --flash-attn off",
+      "result": "No-FA changes the proposal/acceptance path before the seq-position-49 FA-on divergence and drafts [198, 262] at the comparable later cycle instead of [8, 1411].",
+      "reading": "Flash attention changes semantics enough that hipEngine should keep targeting the FA-on llama.cpp baseline unless the route decision changes explicitly."
+    }
+  ],
+  "finding": {
+    "depth0_attention_output_still_differs": {
+      "label": "draft_stage_attn_pregate",
+      "hipengine_rms": 1.056160,
+      "llamacpp_rms": 1.409786,
+      "first8_mae": 0.147055
+    },
+    "interpretation": "Sampled K/V history rows around the visible window match closely, so the remaining large depth-0 jump is now past K/V generation and sampled cache contents. The next split is effective attention execution: visible length/mask, GQA head mapping, score scaling/softmax, or FA-on math.",
+    "next_target": "Instrument attention visible-count/mask and per-head attention score or top-weight summaries for hipEngine and llama.cpp FA-on at seq position 49."
+  }
+}

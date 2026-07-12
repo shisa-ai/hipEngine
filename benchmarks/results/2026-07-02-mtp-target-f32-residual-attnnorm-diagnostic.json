@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_f32_residual_attnnorm_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T04:19:55.946303+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "91bca97723fb4d37de11a79f780382435cdcb840",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151 host setting",
+  "diagnostic_mode": {
+    "env": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+      "PYTHONPATH": "."
+    },
+    "description": "Verifier-only FP32 residual-boundary slice extended to feed layer-entry attention RMSNorm from FP32 residual rows when available. The attention norm output and existing projection inputs still use the established BF16 scratch buffers.",
+    "limitations": [
+      "Not full llama.cpp F32 graph parity: attention norm output still feeds existing BF16 projection-input buffers.",
+      "Selected expert and shared expert projection inputs still consume BF16 post-attention norm mirrors.",
+      "The mode disables compact MoE residual-output shortcuts that only write BF16 layer outputs.",
+      "The mode is default-off and diagnostic only."
+    ]
+  },
+  "source_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+  "source_raw_files": {
+    "f32_residual_attnnorm_cycle12": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual-attnnorm.json"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual-attnnorm.json",
+  "results": {
+    "cycle12_replay_attempt": {
+      "status": "complete",
+      "sampled_tokens": [
+        15495,
+        539,
+        1151
+      ],
+      "accepted_draft_tokens": 2,
+      "reading": "Unlike the earlier residual-only slice, carrying FP32 residuals into layer-entry attention RMSNorm input reaches the old cycle-12 branch point."
+    },
+    "row1": {
+      "position": 73,
+      "input_token": 15495,
+      "draft_token_at_depth": 539,
+      "sampled_token": 539,
+      "trace_target_token": 539,
+      "trace_output_token": 539,
+      "top2": [
+        {
+          "rank": 1,
+          "token_id": 539,
+          "logit": 26.05736541748047,
+          "prob": 0.5353513870812928
+        },
+        {
+          "rank": 2,
+          "token_id": 26126,
+          "logit": 25.91427993774414,
+          "margin_from_top": 0.14308547973632812,
+          "prob": 0.46397833060104937
+        }
+      ],
+      "margin_539_minus_26126": 0.14308547973632812
+    },
+    "known_reference_margins": {
+      "hipengine_serial_exact_cycle12_539_minus_26126": 0.11822,
+      "llamacpp_hip_cycle18_539_minus_26126": -0.00896,
+      "reading": "The attention-norm extension moves the hipEngine row farther from llama.cpp on the active near-tie, so layer-entry attention RMSNorm input precision is not the missing parity fix."
+    }
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py",
+      "result": "pass"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    },
+    {
+      "command": "python3 -m pytest tests/test_qwen35_decode_state.py -q",
+      "result": "65 passed"
+    },
+    {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q",
+      "result": "9 passed"
+    },
+    {
+      "command": "python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q",
+      "result": "21 passed"
+    }
+  ],
+  "conclusion": "The FP32 residual plus attention-norm-input slice is semantically active and can replay to the old pair-12 branch, but it still accepts token 539 and increases the wrong 539-over-26126 margin. The next semantic target is the remaining BF16 projection-input/internal FFN-MoE boundary, not layer-entry attention RMSNorm input alone."
+}

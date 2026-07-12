@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
+
 from hipengine.generation import (
     DecodePhase,
     DecodeState,
@@ -97,6 +99,26 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
     }
 
 
+def test_generation_output_normalizes_exact_generated_token_ids() -> None:
+    output = GenerationOutput(
+        text="decoded text that does not round-trip",
+        generated_token_ids=[101, "202", 303],
+    )
+
+    assert output.generated_token_ids == (101, 202, 303)
+    assert output.generated_tokens == 3
+
+
+def test_generation_output_distinguishes_known_empty_ids_from_unknown_ids() -> None:
+    assert GenerationOutput(text="", generated_token_ids=[]).generated_tokens == 0
+    assert GenerationOutput(text="legacy output").generated_tokens is None
+
+
+def test_generation_output_rejects_negative_generated_token_ids() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        GenerationOutput(text="invalid", generated_token_ids=(1, -2))
+
+
 def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
     telemetry = GenerationTelemetry.from_decode_counts(
         prompt_tokens=5,
@@ -150,7 +172,42 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "native_sampler_rows": True,
     }
     assert payload["timing"] == {"prefill_ms": 12.5, "decode_ms": 3.0}
+    assert payload["timing_scope"] == "choice"
+    assert payload["group_rows"] == 1
+    assert payload["timing_owner"] is True
     assert payload["usage"] == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
+
+
+def test_generation_telemetry_serializes_batch_timing_ownership() -> None:
+    telemetry = GenerationTelemetry.from_decode_counts(
+        prompt_tokens=8,
+        generated_tokens=4,
+        timing={"batch_decode_ms": 12.5},
+        timing_scope="batch",
+        batch_id="paro-batch-17",
+        group_rows=6,
+        timing_owner=False,
+    )
+
+    assert telemetry.timing_scope == "batch"
+    assert telemetry.batch_id == "paro-batch-17"
+    assert telemetry.group_rows == 6
+    assert telemetry.timing_owner is False
+    assert telemetry.to_json_dict() == {
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 8,
+            "generated_tokens": 4,
+            "phase": "done",
+            "continuation_eligible": False,
+        },
+        "timing": {"batch_decode_ms": 12.5},
+        "timing_scope": "batch",
+        "batch_id": "paro-batch-17",
+        "group_rows": 6,
+        "timing_owner": False,
+    }
 
 
 def test_generation_output_accepts_finish_details_mapping() -> None:

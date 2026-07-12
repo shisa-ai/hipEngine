@@ -12,10 +12,19 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
-from hipengine.kernels.registry import KernelKey, register, registered_keys, resolve
+from hipengine.kernels.registry import (
+    KernelKey,
+    is_registered,
+    register,
+    registered_keys,
+    resolve,
+)
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+# Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
+# only when at least 128 decode transitions amortize capture/instantiate/close.
+GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
@@ -35,20 +44,30 @@ _GFX1100_MODULES = (
 )
 
 
-def register_gfx1151_kernels(*, replace: bool = True) -> None:
+def register_gfx1151_kernels(*, replace: bool = False) -> None:
     """Register gfx1151 aliases for the current gfx1100 kernel key space."""
 
     for module_name in _GFX1100_MODULES:
         import_module(module_name)
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
+        target_key = KernelKey(BACKEND, key.layer, key.quant, key.variant)
+        if not replace and is_registered(target_key):
+            continue
         register(
-            KernelKey(BACKEND, key.layer, key.quant, key.variant),
+            target_key,
             resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant),
             replace=replace,
         )
 
 
 register_gfx1151_kernels()
+register_backend_kernels = register_gfx1151_kernels
 
-__all__ = ["BACKEND", "TARGET_ARCH", "register_gfx1151_kernels"]
+__all__ = [
+    "BACKEND",
+    "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "TARGET_ARCH",
+    "register_backend_kernels",
+    "register_gfx1151_kernels",
+]

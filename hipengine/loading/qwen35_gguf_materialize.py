@@ -30,6 +30,7 @@ from hipengine.quant.gguf_t16 import (
     repack_gguf_q6_k_tile16,
     repack_gguf_q8_0_tile16,
 )
+from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8, repack_gguf_q5_k_x8, repack_gguf_q6_k_x8
 
 LAYOUT_DENSE_F32 = "dense_f32"
 LAYOUT_DENSE_BF16 = "dense_bf16"
@@ -37,10 +38,20 @@ LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
 LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
+LAYOUT_GGUF_Q4_K_X8 = "gguf_q4_k_x8_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
 LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
+LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
+LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
 HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
+HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
+HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
+HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"
+HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
+HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
+HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
+HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV = "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,19 @@ class Qwen35GGUFWeightSpec:
     layout: str
     allocation_names: tuple[str, ...]
     sidecar_layouts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFPrecisionContraction:
+    """Diagnostic record for a source GGUF tensor planned at lower precision."""
+
+    slot_path: str
+    source_name: str
+    source_type: str
+    resident_layout: str
+    resident_quant_key: str
+    llama_cpp_contract: str
+    hipengine_contract: str
 
 
 @dataclass(frozen=True)
@@ -91,6 +115,7 @@ class Qwen35GGUFDeviceWeight:
 
     spec: Qwen35GGUFWeightSpec
     allocations: Mapping[str, DeviceTensorAllocation]
+    backend: str
 
     def allocation(self, name: str = "raw") -> DeviceTensorAllocation:
         return self.allocations[name]
@@ -121,6 +146,7 @@ class Qwen35GGUFResidentWeights:
     config: Qwen35GGUFConfig
     root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
+    backend: str
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -166,6 +192,37 @@ def plan_qwen35_gguf_materialization(
     )
 
 
+def audit_qwen35_gguf_precision_contractions(
+    plan: Qwen35GGUFMaterializationPlan,
+) -> tuple[Qwen35GGUFPrecisionContraction, ...]:
+    """Return source F32 GGUF tensors intentionally planned as BF16 residents.
+
+    This is a parity diagnostic, not a failure by itself: current kernels may
+    require BF16 resident inputs, while llama.cpp's GGML graph consumes these
+    GGUF F32 tensors as F32 graph tensors.  The audit lets target-AR triage
+    name those contractions explicitly before changing math or kernels.
+    """
+
+    findings: list[Qwen35GGUFPrecisionContraction] = []
+    for spec in plan.specs:
+        if spec.layout != LAYOUT_DENSE_BF16:
+            continue
+        if GGMLQuantizationType(spec.source.ggml_type) != GGMLQuantizationType.F32:
+            continue
+        findings.append(
+            Qwen35GGUFPrecisionContraction(
+                slot_path=spec.slot_path,
+                source_name=spec.source.name,
+                source_type=spec.source.ggml_type_name,
+                resident_layout=spec.layout,
+                resident_quant_key=spec.quant_key,
+                llama_cpp_contract="GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+                hipengine_contract=_precision_contraction_contract(spec.slot_path),
+            )
+        )
+    return tuple(findings)
+
+
 def materialize_qwen35_gguf_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
@@ -173,6 +230,7 @@ def materialize_qwen35_gguf_weights(
     decode_repack: bool | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    backend: str = "hip_gfx1100",
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -188,7 +246,15 @@ def materialize_qwen35_gguf_weights(
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
     try:
         root_weights = {
-            slot: _materialize_or_alias(spec, reader, materialized, selected, device=device, runtime=runtime)
+            slot: _materialize_or_alias(
+                spec,
+                reader,
+                materialized,
+                selected,
+                device=device,
+                runtime=runtime,
+                backend=backend,
+            )
             for slot, spec in plan.root_specs.items()
             if selected is None or spec.slot_path in selected
         }
@@ -205,6 +271,7 @@ def materialize_qwen35_gguf_weights(
                             selected,
                             device=device,
                             runtime=runtime,
+                            backend=backend,
                         )
                         for slot in plan.layer_specs[layer.layer_id]
                         if selected is None or plan.layer_specs[layer.layer_id][slot].slot_path in selected
@@ -221,6 +288,7 @@ def materialize_qwen35_gguf_weights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),
         layers=layers,
+        backend=backend,
     )
 
 
@@ -234,26 +302,155 @@ def _plan_layer(layer: Qwen35GGUFLayerMap, *, decode_repack: bool) -> dict[str, 
 def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
     if value is not None:
         return bool(value)
-    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "")
+    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def gguf_selected_x8_repack_mode(value: bool | str | None = None) -> str:
+    """Return selected-down X8 repack mode: ``off``, ``q5``, ``q6``, or ``both``."""
+
+    raw = os.environ.get(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "")
+    if value is not None:
+        raw = str(value)
+    mode = raw.strip().lower()
+    if mode in {"", "0", "false", "no", "off"}:
+        return "off"
+    if mode in {"1", "true", "yes", "on", "both", "all"}:
+        return "both"
+    if mode in {"q5", "q5_k", "gguf_q5_k"}:
+        return "q5"
+    if mode in {"q6", "q6_k", "gguf_q6_k"}:
+        return "q6"
+    raise ValueError(
+        f"{HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV} must be off, q5, q6, both, or a boolean value"
+    )
+
+
+def gguf_selected_x8_repack_enabled(value: bool | str | None = None) -> bool:
+    return gguf_selected_x8_repack_mode(value) != "off"
+
+
+def _gguf_selected_x8_repack_enabled_for(quant: str) -> bool:
+    mode = gguf_selected_x8_repack_mode()
+    return mode == "both" or mode == quant
+
+
+def gguf_selected_down_raw_mode(value: bool | str | None = None) -> str:
+    """Return selected-down raw-GGUF mode: ``off``, ``q5``, ``q6``, or ``both``."""
+
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "")
+    elif isinstance(value, bool):
+        raw = "both" if value else ""
+    else:
+        raw = str(value)
+    normalized = raw.strip().lower()
+    if normalized in {"", "0", "false", "off", "no"}:
+        return "off"
+    if normalized in {"1", "true", "yes", "on", "both", "all"}:
+        return "both"
+    if normalized in {"q5", "q5_k", "gguf_q5_k"}:
+        return "q5"
+    if normalized in {"q6", "q6_k", "gguf_q6_k"}:
+        return "q6"
+    raise ValueError(
+        f"{HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV} must be one of off, q5, q6, or both; got {raw!r}"
+    )
+
+
+def gguf_selected_down_raw_enabled(value: bool | str | None = None) -> bool:
+    return gguf_selected_down_raw_mode(value) != "off"
+
+
+def _gguf_selected_down_raw_enabled_for(quant: str) -> bool:
+    mode = gguf_selected_down_raw_mode()
+    return mode == "both" or mode == quant
+
+
+def gguf_selected_gate_up_raw_enabled(value: bool | str | None = None) -> bool:
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def gguf_selected_gate_up_x8_enabled(value: bool | str | None = None) -> bool:
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def gguf_q8_0_raw_sidecar_enabled(value: bool | str | None = None) -> bool:
+    """Return whether T16 dense Q8_0 residents should retain raw GGUF bytes too.
+
+    This is a default-off llama-compat diagnostic sidecar. The pair-only route
+    retains raw bytes only for linear-attention ``attn_qkv`` and ``attn_gate``;
+    ``HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=1`` broadens the sidecar to every dense
+    Q8_0 T16 tensor so verifier Q/K/V and singleton projections can be tested.
+    """
+
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def gguf_q8_0_raw_sidecar_all_enabled() -> bool:
+    raw = os.environ.get(HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV, "")
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def gguf_lm_head_q6_x8_sidecar_enabled(value: bool | str | None = None) -> bool:
+    """Return whether the Q6_K lm-head T16 resident keeps an X8 top-1 sidecar."""
+
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
-        bf16_linear_weight = slot_path.endswith(
-            (".ffn_gate_inp", ".ffn_gate_inp_shexp", ".ssm_alpha", ".ssm_beta")
-        )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="bf16" if bf16_linear_weight else "f32",
-            layout=LAYOUT_DENSE_BF16 if bf16_linear_weight else LAYOUT_DENSE_F32,
+            quant_key="f32",
+            layout=LAYOUT_DENSE_F32,
             allocation_names=("raw",),
         )
     if qtype == GGMLQuantizationType.Q4_K:
         if len(tensor.shape) != 2:
             if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+                if gguf_selected_gate_up_raw_enabled() and not _is_selected_down_expert_tensor(slot_path, tensor):
+                    return Qwen35GGUFWeightSpec(
+                        slot_path=slot_path,
+                        source=tensor,
+                        quant_key="gguf_q4_k",
+                        layout=LAYOUT_RAW_GGUF,
+                        allocation_names=("raw",),
+                    )
+                if gguf_selected_gate_up_x8_enabled() and not _is_selected_down_expert_tensor(slot_path, tensor):
+                    return Qwen35GGUFWeightSpec(
+                        slot_path=slot_path,
+                        source=tensor,
+                        quant_key="gguf_q4_k_x8_v1",
+                        layout=LAYOUT_GGUF_Q4_K_X8,
+                        allocation_names=("tiles",),
+                    )
                 return Qwen35GGUFWeightSpec(
                     slot_path=slot_path,
                     source=tensor,
@@ -278,6 +475,22 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
         )
     if qtype == GGMLQuantizationType.Q5_K:
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+            if _gguf_selected_down_raw_enabled_for("q5") and _is_selected_down_expert_tensor(slot_path, tensor):
+                return Qwen35GGUFWeightSpec(
+                    slot_path=slot_path,
+                    source=tensor,
+                    quant_key="gguf_q5_k",
+                    layout=LAYOUT_RAW_GGUF,
+                    allocation_names=("raw",),
+                )
+            if _gguf_selected_x8_repack_enabled_for("q5") and _is_selected_down_expert_tensor(slot_path, tensor):
+                return Qwen35GGUFWeightSpec(
+                    slot_path=slot_path,
+                    source=tensor,
+                    quant_key="gguf_q5_k_x8_v1",
+                    layout=LAYOUT_GGUF_Q5_K_X8,
+                    allocation_names=("tiles",),
+                )
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
@@ -294,15 +507,34 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q6_K and decode_repack and slot_path == "root.lm_head" and len(tensor.shape) == 2:
+        allocation_names = ("tiles",)
+        if gguf_lm_head_q6_x8_sidecar_enabled():
+            allocation_names = ("tiles", "x8")
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q6_k_t16_v1",
             layout=LAYOUT_GGUF_Q6_K_T16,
-            allocation_names=("tiles",),
+            allocation_names=allocation_names,
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+            if _gguf_selected_down_raw_enabled_for("q6") and _is_selected_down_expert_tensor(slot_path, tensor):
+                return Qwen35GGUFWeightSpec(
+                    slot_path=slot_path,
+                    source=tensor,
+                    quant_key="gguf_q6_k",
+                    layout=LAYOUT_RAW_GGUF,
+                    allocation_names=("raw",),
+                )
+            if _gguf_selected_x8_repack_enabled_for("q6") and _is_selected_down_expert_tensor(slot_path, tensor):
+                return Qwen35GGUFWeightSpec(
+                    slot_path=slot_path,
+                    source=tensor,
+                    quant_key="gguf_q6_k_x8_v1",
+                    layout=LAYOUT_GGUF_Q6_K_X8,
+                    allocation_names=("tiles",),
+                )
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
@@ -319,12 +551,17 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
+        allocation_names = ("tiles",)
+        if gguf_q8_0_raw_sidecar_enabled() and (
+            gguf_q8_0_raw_sidecar_all_enabled() or _is_linear_attention_q8_pair_tensor(slot_path, tensor)
+        ):
+            allocation_names = ("tiles", "raw")
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q8_0_t16_v1",
             layout=LAYOUT_GGUF_Q8_0_T16,
-            allocation_names=("tiles",),
+            allocation_names=allocation_names,
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
@@ -355,8 +592,49 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
 
 
+def _precision_contraction_contract(slot_path: str) -> str:
+    known = {}
+    for suffix, contract in known.items():
+        if slot_path.endswith(suffix):
+            return contract
+    return "source F32 tensor is stored as BF16 by the current resident materialization plan"
+
+
+def _gguf_ssm_a_to_kernel_a_log(raw: object):
+    """Convert GGUF Qwen3.5 ``ssm_a`` coefficients to the GDN kernel ABI.
+
+    llama.cpp treats GGUF ``blk.*.ssm_a`` as the direct negative decay
+    coefficient used in ``exp(ssm_a * softplus(alpha + dt_bias))``.  The shared
+    hipEngine GDN kernels are also used by PARO, where the ABI is ``A_log`` and
+    the kernel computes ``exp(-exp(A_log) * softplus(...))``.  Materialize GGUF
+    ``ssm_a`` as ``log(-ssm_a)`` so the existing kernel math is exactly the same
+    as llama.cpp without changing the PARO ABI.
+    """
+
+    import numpy as np
+
+    coeff = np.asarray(raw, dtype=np.float32)
+    if not np.all(np.isfinite(coeff)):
+        raise ValueError("GGUF qwen35 ssm_a contains non-finite values")
+    if np.any(coeff >= 0.0):
+        raise ValueError("GGUF qwen35 ssm_a must contain negative decay coefficients")
+    return np.ascontiguousarray(np.log(-coeff), dtype=np.float32)
+
+
 def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
     return len(tensor.shape) == 3 and slot_path.endswith((".ffn_gate_exps", ".ffn_up_exps", ".ffn_down_exps"))
+
+
+def _is_selected_down_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
+    return len(tensor.shape) == 3 and slot_path.endswith(".ffn_down_exps")
+
+
+def _is_linear_attention_q8_pair_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
+    return (
+        len(tensor.shape) == 2
+        and GGMLQuantizationType(tensor.ggml_type) == GGMLQuantizationType.Q8_0
+        and slot_path.endswith((".attn_qkv", ".attn_gate"))
+    )
 
 
 def _sidecar_layouts_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> tuple[str, ...]:
@@ -377,12 +655,19 @@ def _materialize_or_alias(
     *,
     device: Device | None,
     runtime: HipRuntime | None,
+    backend: str,
 ) -> Qwen35GGUFDeviceWeight:
     del selected  # selection is handled by callers before materialization.
     key = (spec.source.name, spec.layout)
     weight = materialized.get(key)
     if weight is None:
-        weight = _materialize_spec(spec, reader, device=device, runtime=runtime)
+        weight = _materialize_spec(
+            spec,
+            reader,
+            device=device,
+            runtime=runtime,
+            backend=backend,
+        )
         materialized[key] = weight
     return weight
 
@@ -393,10 +678,13 @@ def _materialize_spec(
     *,
     device: Device | None,
     runtime: HipRuntime | None,
+    backend: str,
 ) -> Qwen35GGUFDeviceWeight:
     import numpy as np
 
     raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+    if spec.slot_path.endswith(".ssm_a"):
+        raw = _gguf_ssm_a_to_kernel_a_log(raw)
     allocations: dict[str, DeviceTensorAllocation]
     if spec.layout == LAYOUT_Q4_K_PACK8:
         packed = repack_gguf_q4_k_pack8(raw)
@@ -428,16 +716,25 @@ def _materialize_spec(
         }
     elif spec.layout in {
         LAYOUT_GGUF_Q4_K_T16,
+        LAYOUT_GGUF_Q4_K_X8,
         LAYOUT_GGUF_Q5_K_T16,
         LAYOUT_GGUF_Q6_K_T16,
         LAYOUT_GGUF_Q8_0_T16,
+        LAYOUT_GGUF_Q5_K_X8,
+        LAYOUT_GGUF_Q6_K_X8,
     }:
         if spec.layout == LAYOUT_GGUF_Q4_K_T16:
             packed = repack_gguf_q4_k_tile16(raw)
+        elif spec.layout == LAYOUT_GGUF_Q4_K_X8:
+            packed = repack_gguf_q4_k_x8(raw)
         elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
             packed = repack_gguf_q5_k_tile16(raw)
         elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
             packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        elif spec.layout == LAYOUT_GGUF_Q5_K_X8:
+            packed = repack_gguf_q5_k_x8(raw)
+        elif spec.layout == LAYOUT_GGUF_Q6_K_X8:
+            packed = repack_gguf_q6_k_x8(raw)
         else:
             packed = repack_gguf_q8_0_tile16(raw)
         allocations = {
@@ -450,6 +747,28 @@ def _materialize_spec(
                 runtime=runtime,
             )
         }
+        if "x8" in spec.allocation_names:
+            if spec.layout != LAYOUT_GGUF_Q6_K_T16:
+                raise ValueError("X8 sidecar is only supported for Q6_K T16 residents")
+            x8_packed = repack_gguf_q6_k_x8(raw if raw.ndim == 3 else raw[None, ...])
+            x8_tiles = x8_packed.tiles[0] if raw.ndim == 2 else x8_packed.tiles
+            allocations["x8"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.x8_sidecar",
+                x8_tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        if "raw" in spec.allocation_names:
+            allocations["raw"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.raw_sidecar",
+                raw,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
     elif spec.layout == LAYOUT_RAW_GGUF:
         allocations = {
             "raw": load_host_array_to_device_as_dtype(
@@ -489,26 +808,52 @@ def _materialize_spec(
         }
     else:
         raise ValueError(f"unsupported materialization layout {spec.layout!r}")
-    return Qwen35GGUFDeviceWeight(spec=spec, allocations=MappingProxyType(allocations))
+    return Qwen35GGUFDeviceWeight(
+        spec=spec,
+        allocations=MappingProxyType(allocations),
+        backend=backend,
+    )
 
 
 __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
+    "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
+    "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV",
+    "HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV",
     "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
     "LAYOUT_GGUF_Q4_K_T16",
+    "LAYOUT_GGUF_Q4_K_X8",
     "LAYOUT_GGUF_Q5_K_T16",
+    "LAYOUT_GGUF_Q5_K_X8",
     "LAYOUT_GGUF_Q6_K_T16",
+    "LAYOUT_GGUF_Q6_K_X8",
     "LAYOUT_GGUF_Q8_0_T16",
     "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",
     "Qwen35GGUFDeviceWeight",
     "Qwen35GGUFMaterializationPlan",
+    "Qwen35GGUFPrecisionContraction",
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
+    "_gguf_ssm_a_to_kernel_a_log",
+    "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
+    "gguf_lm_head_q6_x8_sidecar_enabled",
+    "gguf_q8_0_raw_sidecar_all_enabled",
+    "gguf_q8_0_raw_sidecar_enabled",
+    "gguf_selected_down_raw_enabled",
+    "gguf_selected_down_raw_mode",
+    "gguf_selected_gate_up_raw_enabled",
+    "gguf_selected_gate_up_x8_enabled",
+    "gguf_selected_x8_repack_enabled",
+    "gguf_selected_x8_repack_mode",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
 ]

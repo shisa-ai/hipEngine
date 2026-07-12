@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from numbers import Integral
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+
+PromptInput = str | tuple[int, ...]
+
+
+def normalize_prompt_input(value: Any) -> PromptInput:
+    """Normalize one text or exact-token prompt without retokenizing it."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bytes, bytearray)) or not isinstance(value, Sequence):
+        raise TypeError("prompt must be text or a sequence of token IDs")
+    row = tuple(value)
+    if not row:
+        raise ValueError("prompt token IDs must not be empty")
+    normalized: list[int] = []
+    for token in row:
+        if isinstance(token, bool) or not isinstance(token, Integral):
+            raise TypeError("prompt token IDs must be integers")
+        token_id = int(token)
+        if token_id < 0:
+            raise ValueError("prompt token IDs must be non-negative")
+        normalized.append(token_id)
+    return tuple(normalized)
 
 
 @dataclass(frozen=True)
@@ -23,7 +48,7 @@ class GenerationKey:
 class GenerationRequest:
     """Normalized public generation request."""
 
-    prompts: tuple[str, ...]
+    prompts: tuple[PromptInput, ...]
     max_tokens: int
     temperature: float
     top_p: float
@@ -62,7 +87,7 @@ class GenerationRequest:
     def __post_init__(self) -> None:
         from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
 
-        object.__setattr__(self, "prompts", tuple(str(prompt) for prompt in self.prompts))
+        object.__setattr__(self, "prompts", tuple(normalize_prompt_input(prompt) for prompt in self.prompts))
         object.__setattr__(self, "max_tokens", int(self.max_tokens))
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_p", float(self.top_p))
@@ -122,6 +147,21 @@ class GenerationRequest:
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
+
+    @property
+    def prompt_input_kind(self) -> str:
+        kinds = {"text" if isinstance(prompt, str) else "token_ids" for prompt in self.prompts}
+        if not kinds:
+            return "empty"
+        return next(iter(kinds)) if len(kinds) == 1 else "mixed"
+
+    def prompt_token_ids(self, index: int, encode_text: Callable[[str], Sequence[int]]) -> tuple[int, ...]:
+        """Return the exact row, invoking the tokenizer only for text input."""
+
+        prompt = self.prompts[int(index)]
+        if isinstance(prompt, str):
+            return tuple(int(token) for token in encode_text(prompt))
+        return prompt
 
 
 @dataclass(frozen=True)
@@ -474,15 +514,56 @@ class GenerationTelemetry:
     decode_state: DecodeState
     event: str | None = None
     timing: Mapping[str, float] | None = None
+    timing_scope: str | None = None
+    batch_id: str | None = None
+    group_rows: int | None = None
+    timing_owner: bool | None = None
     usage: Mapping[str, int] | None = None
+    diagnostics: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decode_state", DecodeState.from_value(self.decode_state))
         object.__setattr__(self, "event", None if self.event is None else str(self.event))
         timing = None if self.timing is None else {str(key): float(value) for key, value in self.timing.items()}
+        timing_scope = None if self.timing_scope is None else str(self.timing_scope)
+        if timing is not None and timing_scope is None:
+            timing_scope = "choice"
+        if timing_scope is not None and timing_scope not in {"choice", "batch", "request", "client"}:
+            raise ValueError("timing_scope must be choice, batch, request, or client")
+        batch_id = None if self.batch_id is None else str(self.batch_id).strip()
+        if batch_id == "":
+            raise ValueError("batch_id must be non-empty when provided")
+        group_rows = None if self.group_rows is None else int(self.group_rows)
+        if timing is not None and timing_scope != "batch" and group_rows is None:
+            group_rows = 1
+        if group_rows is not None and group_rows <= 0:
+            raise ValueError("group_rows must be positive when provided")
+        timing_owner = None if self.timing_owner is None else bool(self.timing_owner)
+        if timing is not None and timing_scope != "batch" and timing_owner is None:
+            timing_owner = True
+        if timing is None and any(
+            value is not None for value in (timing_scope, batch_id, group_rows, timing_owner)
+        ):
+            raise ValueError("timing ownership metadata requires a timing payload")
+        if timing_scope == "batch" and batch_id is None:
+            raise ValueError("batch-scoped timing requires batch_id")
+        if timing_scope == "batch" and group_rows is None:
+            raise ValueError("batch-scoped timing requires group_rows")
+        if timing_scope == "batch" and timing_owner is None:
+            raise ValueError("batch-scoped timing requires timing_owner")
         usage = None if self.usage is None else {str(key): max(0, int(value)) for key, value in self.usage.items()}
+        diagnostics = (
+            None
+            if self.diagnostics is None
+            else {str(key): value for key, value in self.diagnostics.items()}
+        )
         object.__setattr__(self, "timing", timing)
+        object.__setattr__(self, "timing_scope", timing_scope)
+        object.__setattr__(self, "batch_id", batch_id)
+        object.__setattr__(self, "group_rows", group_rows)
+        object.__setattr__(self, "timing_owner", timing_owner)
         object.__setattr__(self, "usage", usage)
+        object.__setattr__(self, "diagnostics", diagnostics)
 
     @classmethod
     def from_value(cls, value: Any) -> "GenerationTelemetry":
@@ -493,13 +574,23 @@ class GenerationTelemetry:
                 decode_state=value.get("decode_state", value),
                 event=value.get("event"),
                 timing=value.get("timing"),
+                timing_scope=value.get("timing_scope"),
+                batch_id=value.get("batch_id"),
+                group_rows=value.get("group_rows"),
+                timing_owner=value.get("timing_owner"),
                 usage=value.get("usage"),
+                diagnostics=value.get("diagnostics"),
             )
         return cls(
             decode_state=getattr(value, "decode_state", value),
             event=getattr(value, "event", None),
             timing=getattr(value, "timing", None),
+            timing_scope=getattr(value, "timing_scope", None),
+            batch_id=getattr(value, "batch_id", None),
+            group_rows=getattr(value, "group_rows", None),
+            timing_owner=getattr(value, "timing_owner", None),
             usage=getattr(value, "usage", None),
+            diagnostics=getattr(value, "diagnostics", None),
         )
 
     @classmethod
@@ -539,7 +630,12 @@ class GenerationTelemetry:
         continuation_eligible: bool = False,
         event: str | None = None,
         timing: Mapping[str, float] | None = None,
+        timing_scope: str | None = None,
+        batch_id: str | None = None,
+        group_rows: int | None = None,
+        timing_owner: bool | None = None,
         usage: Mapping[str, int] | None = None,
+        diagnostics: Mapping[str, Any] | None = None,
     ) -> "GenerationTelemetry":
         return cls(
             decode_state=DecodeState(
@@ -578,7 +674,12 @@ class GenerationTelemetry:
             ),
             event=event,
             timing=timing,
+            timing_scope=timing_scope,
+            batch_id=batch_id,
+            group_rows=group_rows,
+            timing_owner=timing_owner,
             usage=usage,
+            diagnostics=diagnostics,
         )
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -587,8 +688,18 @@ class GenerationTelemetry:
             payload["event"] = self.event
         if self.timing is not None:
             payload["timing"] = dict(self.timing)
+        if self.timing_scope is not None:
+            payload["timing_scope"] = self.timing_scope
+        if self.batch_id is not None:
+            payload["batch_id"] = self.batch_id
+        if self.group_rows is not None:
+            payload["group_rows"] = self.group_rows
+        if self.timing_owner is not None:
+            payload["timing_owner"] = self.timing_owner
         if self.usage is not None:
             payload["usage"] = dict(self.usage)
+        if self.diagnostics is not None:
+            payload["diagnostics"] = dict(self.diagnostics)
         return payload
 
 
@@ -732,6 +843,7 @@ class GenerationOutput:
     token_logprobs: tuple[TokenLogprob, ...] = ()
     finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
+    generated_token_ids: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
@@ -740,6 +852,19 @@ class GenerationOutput:
             object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
         if self.telemetry is not None:
             object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
+        if self.generated_token_ids is not None:
+            token_ids = tuple(int(token_id) for token_id in self.generated_token_ids)
+            if any(token_id < 0 for token_id in token_ids):
+                raise ValueError("generated_token_ids must contain non-negative integers")
+            object.__setattr__(self, "generated_token_ids", token_ids)
+
+    @property
+    def generated_tokens(self) -> int | None:
+        """Return the exact generated-token count, or ``None`` when unavailable."""
+
+        if self.generated_token_ids is None:
+            return None
+        return len(self.generated_token_ids)
 
     def __str__(self) -> str:
         return self.text

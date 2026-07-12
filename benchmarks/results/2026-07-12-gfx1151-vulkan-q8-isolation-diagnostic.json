@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_correctness_diagnostic",
+  "classification": "diagnostic",
+  "date": "2026-07-12",
+  "performance_claim": false,
+  "source": {
+    "repo": "https://github.com/shisa-ai/hipEngine",
+    "commit": "67df43adbdce91104393486bb71e2f317adc73a7",
+    "dirty": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+    "gfx_arch": "gfx1151"
+  },
+  "software": {
+    "therock_rocm": "7.15.0a20260711",
+    "kernel": "7.1.3-2-cachyos",
+    "vulkan_api": "1.4.354",
+    "vulkan_driver": "radv",
+    "mesa": "26.1.4-arch3.1",
+    "glslc": "2026.2 / SPIR-V tools 1.4.350.1"
+  },
+  "protocol": {
+    "timing_mode": "independent_throughput",
+    "queue_count": 4,
+    "warmup": 0,
+    "samples": 1,
+    "purpose": "correctness attribution only; timings are not retained performance rows",
+    "method": [
+      "dispatch Vulkan q8_1 into one disjoint buffer slice per fixture repetition",
+      "read back and compare packed d, s, and qs fields against the CPU q8_1 oracle",
+      "upload CPU-prequantized q8_1 blocks and validate the unchanged Vulkan dot shader"
+    ]
+  },
+  "reproduction": {
+    "build_q4": [
+      "glslc --target-env=vulkan1.2 -O benchmarks/micro/kernels/vulkan/q8_1_quantize.comp -o /tmp/q4/q8_1_quantize.spv",
+      "glslc --target-env=vulkan1.2 -O -DHIPENGINE_LOCAL_SIZE_X=64 benchmarks/micro/kernels/vulkan/q4_selected_dual.comp -o /tmp/q4/q4_selected_dual.spv",
+      "c++ -O2 -std=c++17 benchmarks/micro/runners/vulkan_q4_selected_dual.cpp -o /tmp/q4/vulkan_q4_selected_dual -lvulkan"
+    ],
+    "generate_q4_fixture": "python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py --backend vulkan --out /tmp/q4-wrapper/result.json --build-dir /tmp/q4-wrapper --gfx-arch gfx1151 --hardware-gpu 'AMD Radeon 8060S Graphics' --workgroups 64 --reps 11 --warmup 0 --samples 1 --timing-mode independent_throughput --independent-streams 4 --skip-device-probes (the expected strict-gate failure leaves q4_selected_dual_x_bf16.bin and the raw isolation JSON in the build directory)",
+    "run_q4": "/tmp/q4/vulkan_q4_selected_dual --quantize-spirv /tmp/q4/q8_1_quantize.spv --dot-spirv /tmp/q4/q4_selected_dual.spv --json /tmp/q4/reps-11.json --x-bf16 /tmp/q4-wrapper/q4_selected_dual_x_bf16.bin --x-rows 4 --rows 32 --experts 256 --in-features 2048 --out-features 512 --input-scale 0.1 --local-size 64 --reps 11 --warmup 0 --samples 1 --independent-queues 4 --timing-mode independent_throughput --device-index 0",
+    "build_q6": [
+      "glslc --target-env=vulkan1.1 -O benchmarks/micro/kernels/vulkan/q8_1_quantize.comp -o /tmp/q6/q8_1_quantize.spv",
+      "glslc --target-env=vulkan1.1 -O -DHIPENGINE_LOCAL_SIZE_X=64 benchmarks/micro/kernels/vulkan/q6_x8_selected_down.comp -o /tmp/q6/q6_x8_selected_down.spv",
+      "c++ -O2 -std=c++17 benchmarks/micro/runners/vulkan_q6_x8_selected_down.cpp -o /tmp/q6/vulkan_q6_x8_selected_down -lvulkan"
+    ],
+    "run_q6": "/tmp/q6/vulkan_q6_x8_selected_down --quantize-spirv /tmp/q6/q8_1_quantize.spv --dot-spirv /tmp/q6/q6_x8_selected_down.spv --json /tmp/q6/reps-18.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 64 --reps 18 --warmup 0 --samples 1 --timing-mode independent_throughput --independent-lanes 4 --device-index 0"
+  },
+  "results": {
+    "q4_slice_10_boundary": {
+      "repetitions": 11,
+      "wall_seconds": 2.014,
+      "stock_quantize_plus_dot": {
+        "max_abs": 2.0,
+        "mean_abs": 0.05738973618,
+        "max_kl": 0.07952005314,
+        "top1": 1.0,
+        "exact_bf16_mismatches": 82944,
+        "pass": false
+      },
+      "q8_cpu_vs_vulkan": {
+        "blocks_checked": 2816,
+        "word_mismatches": 2149,
+        "d_mismatches": 1374,
+        "d_actual_lower": 1374,
+        "d_actual_higher": 0,
+        "max_d_bits_abs_diff": 1,
+        "s_mismatches": 1322,
+        "q_mismatches": 91,
+        "max_q_abs_diff": 1
+      },
+      "dot_with_cpu_prequantized_q8": {
+        "max_abs": 0.5,
+        "mean_abs": 0.000244140625,
+        "max_kl": 4.456077219e-51,
+        "top1": 1.0,
+        "exact_bf16_mismatches": 96,
+        "slices_checked": 11,
+        "pass": true
+      },
+      "raw_sha256": "9d7e2ba2ff1408550e398e9d9fbb56419649c15931529a011ecaba7c98b717fe"
+    },
+    "q6_slice_17_boundary": {
+      "repetitions": 18,
+      "wall_seconds": 0.877,
+      "stock_quantize_plus_dot": {
+        "max_abs": 0.25,
+        "mean_abs": 0.003485817113,
+        "max_kl": 0.007755592208,
+        "top1": 0.875,
+        "exact_bf16_mismatches": 45955,
+        "pass": false
+      },
+      "q8_cpu_vs_vulkan": {
+        "blocks_checked": 2304,
+        "word_mismatches": 1975,
+        "d_mismatches": 1686,
+        "d_actual_lower": 1686,
+        "d_actual_higher": 0,
+        "max_d_bits_abs_diff": 1,
+        "s_mismatches": 1058,
+        "q_mismatches": 6,
+        "max_q_abs_diff": 1
+      },
+      "dot_with_cpu_prequantized_q8": {
+        "max_abs": 0.0625,
+        "mean_abs": 4.798406735e-06,
+        "max_kl": 3.204991408e-12,
+        "top1": 1.0,
+        "exact_bf16_mismatches": 48,
+        "slices_checked": 18,
+        "pass": true
+      },
+      "raw_sha256": "7dc45363ffd70e829c4da016c23d772405f6f7519f40f4425fe587fd8493237d"
+    }
+  },
+  "temporary_rne_control": {
+    "retained": false,
+    "shader_source_sha256": "8d41c4607c8a02eb7f7d33934815263e554677e07155cd1175c301f2a2b5646a",
+    "change": "replace packHalf2x16 with software FP32-to-FP16 round-to-nearest-even and make integer half-tie rounding explicitly away from zero",
+    "q4": {
+      "max_kl": 2.158304589e-06,
+      "top1": 1.0,
+      "pass": true,
+      "d_mismatches": 0
+    },
+    "q6": {
+      "max_kl": 0.0002289689978,
+      "top1": 1.0,
+      "pass": true,
+      "d_mismatches": 0
+    }
+  },
+  "conclusion": {
+    "dot_math": "passes both failing boundaries when given CPU q8_1 blocks",
+    "q8_quantizer": "causal for both fixture misses",
+    "primary_difference": "stock Vulkan stored d is systematically one FP16 code below the CPU/HIP oracle on every mismatched block",
+    "mesa_regression": false,
+    "synchronization_instability": false,
+    "compiler_bug_established": false,
+    "classification": "portable shader numerical-contract bug: the shader relied on implementation rounding for packed FP16 and integer half ties"
+  }
+}

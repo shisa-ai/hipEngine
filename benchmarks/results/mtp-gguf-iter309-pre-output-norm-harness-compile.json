@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_hidden_seed_harness_compile",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 309,
+  "status": "compiled",
+  "harness_kind": "capture",
+  "build_result_path": "benchmarks/results/mtp-gguf-iter309-pre-output-norm-llamacpp-build-result.json",
+  "source_dir": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src",
+  "build_dir": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build",
+  "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build/bin",
+  "compiler": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+  "header_validation": {
+    "llama_h": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/include/llama.h",
+      "exists": true
+    },
+    "llama_ext_h": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/src/llama-ext.h",
+      "exists": true
+    },
+    "ggml_include": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/ggml/include",
+      "exists": true
+    }
+  },
+  "link_symbols": [
+    "llama_set_embeddings_nextn",
+    "llama_get_embeddings_nextn",
+    "llama_get_embeddings_nextn_ith"
+  ],
+  "compile": {
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "-std=c++17",
+      "-O2",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/include",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/src",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/ggml/include",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture.cpp",
+      "-L",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build/bin",
+      "-Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build/bin",
+      "-Wl,--enable-new-dtags",
+      "-lllama",
+      "-o",
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture"
+    ],
+    "command_shell": "/home/lhl/miniforge3/envs/therock/bin/amdclang++ -std=c++17 -O2 -I /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/include -I /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/src -I /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/ggml/include /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture.cpp -L /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build/bin -Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build/bin -Wl,--enable-new-dtags -lllama -o /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture",
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 0.3,
+    "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/compile.stdout.log",
+    "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/compile.stderr.log",
+    "stdout_tail": "",
+    "stderr_tail": ""
+  },
+  "probe_run": {
+    "command": [
+      "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture"
+    ],
+    "command_shell": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture",
+    "returncode": null,
+    "timed_out": false,
+    "elapsed_seconds": 0.0,
+    "stdout_log": null,
+    "stderr_log": null,
+    "stdout_tail": "",
+    "stderr_tail": "compile_only_capture_harness"
+  },
+  "outputs": {
+    "source": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture.cpp",
+    "executable": "/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness/llamacpp_hidden_seed_capture",
+    "executable_exists": true,
+    "executable_bytes": 23080
+  },
+  "external_checkout_modified": false,
+  "next_action": "run_hidden_seed_capture_harness_with_model_prompt_position"
+}

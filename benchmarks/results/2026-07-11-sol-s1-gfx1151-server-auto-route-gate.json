@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "kind": "sol_s1_gfx1151_server_auto_route_gate",
+  "created_at": "2026-07-11T03:52:30Z",
+  "status": "diagnostic_correctness_rejection",
+  "performance_claim": false,
+  "decision": {
+    "compatibility_mtp_auto_eligible": false,
+    "auto_route": "default_ar_exact_fallback",
+    "explicit_opt_in_route": "speculative_mtp_llama_compat",
+    "implementation_state": "pending follow-up code removal from auto",
+    "reason": "The current server MTP hook is the documented llama-compat direct-commit/dp4a lane. It changes exact generated IDs versus true AR on the full category suite at every measured client concurrency, including one heldout mismatch at c1. Its diagnostic speed gains at c1/c2 therefore cannot select automatic/default routing. Explicit opt-in remains a separate compatibility contract."
+  },
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "detected_arch": "gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "d2b1e7426d9de21068e32d708e9730c030ec951a",
+    "tracked_tree_clean": true,
+    "untracked_files_disclosed": 255,
+    "python": "3.12.13",
+    "hip": "7.13.60980-c76140fa27",
+    "amd_clang": "23.0.0git"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "categories": {
+      "code": 4,
+      "general_en": 2,
+      "general_ja": 2,
+      "mixed_ja_en": 2
+    },
+    "heldout_prompt_names": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "sampling": {
+      "mode": "greedy",
+      "seed": 42,
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "max_tokens": 24
+    },
+    "client_concurrency": [1, 2, 3, 4, 8],
+    "server_route_cap_requests": 4,
+    "full_suite_repetitions": 3,
+    "heldout_repetitions": 5,
+    "discarded_warmup_per_route_shape": 1,
+    "timing_scope": "client makespan with exact generated-ID totals",
+    "correctness_oracle": "per-prompt exact choice_generated_token_ids from the true no-MTP c1 AR route",
+    "server_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name llama --speculative-mtp-serving opt_in --generation-batch-window-ms 5 --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning",
+    "client_command_template": "python3 scripts/mtp-bench.py --mode server --url http://127.0.0.1:18082 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl [--prompt-names HELDOUT] --max-tokens 24 --temperature 0 --top-p 1 --concurrency C [--extra-payload {speculative_mtp:true}] --artifact-model-path /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --artifact-quant gguf_q4_k_m --artifact-kv-dtype bf16 --artifact-configured-backend hip_gfx1151 --artifact-resolved-backend hip_gfx1151 --artifact-target-arch gfx1151 --artifact-device-name Radeon_8060S_Graphics --artifact-build-profile release --artifact-warmups 1 --artifact-repetitions 1 --out RAW_JSON"
+  },
+  "client_matrix": {
+    "full_suite_median_generated_tok_s": [
+      {"client_c": 1, "actual_group_rows": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "ar": 35.92, "mtp": 39.35, "mtp_over_ar": 1.095490, "mtp_delta_percent": 9.549},
+      {"client_c": 2, "actual_group_rows": [2, 2, 2, 2, 2], "ar": 56.84, "mtp": 58.50, "mtp_over_ar": 1.029205, "mtp_delta_percent": 2.920},
+      {"client_c": 3, "actual_group_rows": [3, 3, 3, 1], "ar": 60.83, "mtp": 61.47, "mtp_over_ar": 1.010521, "mtp_delta_percent": 1.052},
+      {"client_c": 4, "actual_group_rows": [4, 4, 2], "ar": 69.70, "mtp": 66.13, "mtp_over_ar": 0.948780, "mtp_delta_percent": -5.122},
+      {"client_c": 8, "actual_group_rows": [4, 4, 2], "ar": 69.84, "mtp": 65.87, "mtp_over_ar": 0.943156, "mtp_delta_percent": -5.684}
+    ],
+    "heldout_median_generated_tok_s": [
+      {"client_c": 1, "actual_group_rows": [1, 1, 1, 1], "ar": 35.44, "mtp": 38.94, "mtp_over_ar": 1.098758, "mtp_delta_percent": 9.876},
+      {"client_c": 2, "actual_group_rows": [2, 2], "ar": 56.51, "mtp": 57.97, "mtp_over_ar": 1.025836, "mtp_delta_percent": 2.584},
+      {"client_c": 3, "actual_group_rows": [3, 1], "ar": 53.94, "mtp": 55.32, "mtp_over_ar": 1.025584, "mtp_delta_percent": 2.558},
+      {"client_c": 4, "actual_group_rows": [4], "ar": 73.84, "mtp": 58.27, "mtp_over_ar": 0.789139, "mtp_delta_percent": -21.086},
+      {"client_c": 8, "actual_group_rows": [4], "ar": 73.99, "mtp": 66.03, "mtp_over_ar": 0.892418, "mtp_delta_percent": -10.758}
+    ]
+  },
+  "realized_group_diagnostic": {
+    "method": "For each queue_group.id, sum exact response tokens and divide by the maximum request wall in that group; medians therefore use realized groups rather than the client concurrency label. Response walls are rounded to 1 ms, so these rows select direction only.",
+    "full_suite": [
+      {"group_rows": 1, "samples": 30, "ar_tok_s": 36.363636, "mtp_tok_s": 40.268456, "mtp_over_ar": 1.107383},
+      {"group_rows": 2, "samples": 15, "ar_tok_s": 57.831325, "mtp_tok_s": 59.627329, "mtp_over_ar": 1.031056},
+      {"group_rows": 3, "samples": 9, "ar_tok_s": 67.289720, "mtp_tok_s": 68.441065, "mtp_over_ar": 1.017110},
+      {"group_rows": 4, "samples": 6, "ar_tok_s": 75.650118, "mtp_tok_s": 73.282443, "mtp_over_ar": 0.968702}
+    ],
+    "heldout": [
+      {"group_rows": 1, "samples": 20, "ar_tok_s": 36.474164, "mtp_tok_s": 39.408867, "mtp_over_ar": 1.080460},
+      {"group_rows": 2, "samples": 10, "ar_tok_s": 57.074911, "mtp_tok_s": 61.459667, "mtp_over_ar": 1.076825},
+      {"group_rows": 3, "samples": 5, "ar_tok_s": 68.311195, "mtp_tok_s": 65.633546, "mtp_over_ar": 0.960802},
+      {"group_rows": 4, "samples": 5, "ar_tok_s": 73.959938, "mtp_tok_s": 58.358663, "mtp_over_ar": 0.789058}
+    ],
+    "c3_decision": "The full client-c3 aggregate is positive only because its c1 tail also uses MTP. Isolated heldout width-3 groups are 3.920% slower, so c3 does not activate."
+  },
+  "correctness": {
+    "true_ar_reference": "full-ar-c1-r2.json and heldout-ar-c1-r2.json",
+    "ar_c1_to_c4_exact_vs_c1_all_repetitions": true,
+    "ar_c8_client_exact_vs_c1_all_repetitions": false,
+    "ar_c8_observation": "One of three full-suite c8 client runs changed general_ja_explain while the other two matched c1. The server actually executed c4+c4+c2 groups; this remains a separate SOL-G8 exact-concurrency blocker and is not attributed to an eight-row backend.",
+    "mtp_exact_vs_true_ar": false,
+    "full_suite_mtp_mismatches_by_client_c": {
+      "1": ["general_ja_explain"],
+      "2": ["general_en_plan", "general_ja_explain", "mixed_ja_en_review"],
+      "3": ["general_en_plan", "general_ja_explain"],
+      "4": ["general_en_plan", "general_ja_explain", "mixed_ja_en_review"],
+      "8": ["general_en_plan", "general_ja_explain", "mixed_ja_en_review"]
+    },
+    "heldout_mtp_mismatches_by_client_c": {
+      "1": ["general_ja_explain"],
+      "2": ["general_ja_explain", "mixed_ja_en_review"],
+      "3": ["general_ja_explain"],
+      "4": ["general_ja_explain", "mixed_ja_en_review"],
+      "8": ["general_ja_explain", "mixed_ja_en_review"]
+    },
+    "representative_first_mismatches": [
+      {"prompt": "general_en_plan", "generated_index": 1, "ar_id": 198, "mtp_id": 271},
+      {"prompt": "general_ja_explain", "generated_index": 7, "ar_id": 175437, "mtp_id": 104119},
+      {"prompt": "mixed_ja_en_review", "generated_index": 4, "ar_id": 9, "mtp_id": 12}
+    ]
+  },
+  "sources": {
+    "raw_root": "/tmp/2026-07-11-sol-s1-raw-d2b1e742",
+    "measured_raw_files": 80,
+    "raw_manifest_sha256": "6a318baef4bc5384c8f7c10b9d1cd15e0c1e6151947a0f42c0f50b4402f504a0",
+    "group_manifest_sha256": {
+      "full_ar_c1": "b86af79ac5b58eb8a0d727a9c5769d68e7811e965d2b987854203573d13bfa14",
+      "full_ar_c2": "6b96d2240eb7559853fce80300f7217a7888ab4f203d025c26e28cf431744564",
+      "full_ar_c3": "919f89e22a2c907746e3fc73521236291ce9b2efc7e8b43bed7d8746e6b60928",
+      "full_ar_c4": "f1b1986fe9ba9cd4820eca75103950552ca11b3ecf0f57b3a593028fa9d698f8",
+      "full_ar_c8": "5d9031da86196d9380327a40a06b6c537e30e42beb3e4864285b6d1292132979",
+      "full_mtp_c1": "f2ae15a9c4481f4baaee479eaa9f216697e6367c6704a0d380d0b1530d007558",
+      "full_mtp_c2": "bb4b0889de67c3174fdc433c0b73cc7a3258301ecc201f2d51066058659dffa6",
+      "full_mtp_c3": "d9e59e0d84565bdcba43b37a163739b2f4e4e36f0e2b3a5f3b6961f5273c241a",
+      "full_mtp_c4": "1e75524153fd315a75d9ed1f1aaedd4814551d6c3e6e42f80e663f71e328874c",
+      "full_mtp_c8": "d5237e494e166d7e3b636a44126145b8784bcd0f1b86b2f47b30c086d0bb8aa1",
+      "heldout_ar_c1": "4dfa04757cec2fa2eed50c3a6597902d486036570ec51cca0120d3b49e050153",
+      "heldout_ar_c2": "405e175c37917f9013cad8d6115fa8ce79551d6a57aaa8d90dc5af76eb3f8359",
+      "heldout_ar_c3": "dd0832899badd3031ca2356e88aab1476967ef70a4ace6ad7a9f81b35bea6c5c",
+      "heldout_ar_c4": "001b4234029e109d66b9f350f0d8a36c8d50165e12a5a1abe0ac8b693f1b7845",
+      "heldout_ar_c8": "16cd2d332b6abc283f007ecf076fe510733021f742526c71617891ba1280d242",
+      "heldout_mtp_c1": "308cad168c49bbf3348dcb59fc8fde7489b9fb0866d0cda5ecaa98e63d30f8d8",
+      "heldout_mtp_c2": "9c8b10f856f66a3bacd2be4333e6e959a93756c1310c559c67cc0dd8e3d83ce8",
+      "heldout_mtp_c3": "3fadfb470850875b7049fb08903f577b24e2726dfdc8ed6bb7b129a5e1e78b5e",
+      "heldout_mtp_c4": "562049db8de199631b006eb7fc67da2bc70b83db226b3e6c399890a81594b9cc",
+      "heldout_mtp_c8": "095d3103feefc9d4a22b1bb54a786c220e4976e135cab1e42f1aa63af29a1615"
+    }
+  },
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T03:45:08.528430+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "d2b1e7426d9de21068e32d708e9730c030ec951a",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 255,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "scripts/mtp-bench.py",
+      "--mode", "server",
+      "--url", "http://127.0.0.1:18082",
+      "--model", "llama",
+      "--prompts-file", "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--max-tokens", "24",
+      "--temperature", "0",
+      "--top-p", "1",
+      "--concurrency", "1",
+      "--extra-payload", "{\"speculative_mtp\":true}",
+      "--artifact-model-path", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--artifact-quant", "gguf_q4_k_m",
+      "--artifact-kv-dtype", "bf16",
+      "--artifact-configured-backend", "hip_gfx1151",
+      "--artifact-resolved-backend", "hip_gfx1151",
+      "--artifact-target-arch", "gfx1151",
+      "--artifact-device-name", "Radeon 8060S Graphics",
+      "--artifact-build-profile", "release",
+      "--artifact-warmups", "1",
+      "--artifact-repetitions", "1",
+      "--out", "/tmp/2026-07-11-sol-s1-raw-d2b1e742/full-mtp-c1-r2.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "release",
+    "timing_protocol": "client_makespan",
+    "warmups": 1,
+    "repetitions": 1,
+    "profiler": null
+  }
+}

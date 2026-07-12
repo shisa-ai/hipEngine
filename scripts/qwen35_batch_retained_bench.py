@@ -10,6 +10,7 @@ resident runs before marking a row accepted.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import ctypes
 import json
@@ -29,17 +30,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance, collect_repo_state
 from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
     BatchSamplerMode,
     ProjectionDispatchEvidence,
     batch_sampler_equality_payload_blockers,
     plan_batch_sampler_dispatch,
+    plan_batch_width_partition,
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
+from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
@@ -94,7 +98,7 @@ _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
-    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json"
+    "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
 )
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
@@ -141,7 +145,11 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMIT
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 _UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
-_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+_COMMAND_ENV_KEYS = (
+    "HIP_VISIBLE_DEVICES",
+    "HIPENGINE_HIP_ARCH",
+    "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
+)
 
 
 def _argv_has_flag(argv: Sequence[str], flag: str) -> bool:
@@ -3613,13 +3621,16 @@ def _run_capture(command: Sequence[str], *, timeout: float = 5.0) -> dict[str, A
 
 
 def _software_context() -> dict[str, Any]:
-    commit = _run_capture(["git", "rev-parse", "HEAD"])
-    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
+    repo = collect_repo_state(REPO_ROOT)
     return {
         "python": sys.version.split()[0],
         "hipcc_version": _run_capture(["hipcc", "--version"], timeout=10.0)["output"],
-        "hipengine_commit": commit["output"],
-        "hipengine_dirty": dirty,
+        "hipengine_commit": repo["hipengine_commit"],
+        "hipengine_dirty": repo["dirty"],
+        "staged_dirty": repo["staged_dirty"],
+        "unstaged_dirty": repo["unstaged_dirty"],
+        "untracked_dirty": repo["untracked_dirty"],
+        "untracked_count": repo["untracked_count"],
         "torch_rocm": _run_capture(
             ["python3", "-c", "import torch; print(torch.__version__, torch.version.hip)"],
             timeout=10.0,
@@ -3670,10 +3681,16 @@ def _hardware_context() -> dict[str, Any]:
     visible_device = _visible_hip_device_context()
     visible_device_name = visible_device.get("device_name")
     gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
+    detected_arches = detect_hip_target_arches()
+    target_arch = (os.environ.get("HIPENGINE_HIP_ARCH") or "").strip() or None
+    detected_arch = detected_arches[0] if detected_arches else None
+    arch = detected_arch or target_arch or "gfx1100"
     return {
         "gpu": gpu_name,
-        "arch": "gfx1100",
-        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "arch": arch,
+        "detected_arches": list(detected_arches),
+        "target_arch": target_arch,
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900" and arch == "gfx1100",
         "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
         "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
@@ -3693,6 +3710,35 @@ def _command(argv: Sequence[str] | None) -> str:
     parts = [*_command_env_prefix_parts(), "python3", _RETAINED_BENCH_SCRIPT]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _artifact_provenance(
+    args: argparse.Namespace,
+    argv: Sequence[str] | None,
+    *,
+    hardware: Mapping[str, Any],
+    kv_policy: ResolvedKVPolicy,
+    profiler: Mapping[str, Any],
+) -> dict[str, Any]:
+    arch = str(hardware.get("arch") or "").strip()
+    resolved_backend = HIP_TARGET_ARCH_BACKEND.get(arch)
+    return collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=os.environ.get("HIPENGINE_BACKEND", "auto"),
+        resolved_backend=resolved_backend,
+        detected_arches=tuple(str(item) for item in hardware.get("detected_arches", ())),
+        target_arch=str(hardware.get("target_arch") or arch).strip() or None,
+        device_name=str(hardware.get("gpu") or "").strip() or None,
+        model_path=args.model,
+        quant="w4_paro",
+        kv_dtype=kv_policy.storage_dtype.value,
+        command=tuple(shlex.split(_command(argv))),
+        build_profile="decode",
+        timing_protocol="scheduler_batch_wall",
+        warmups=None,
+        repetitions=1,
+        profiler=profiler,
+    )
 
 
 def _primitive_correctness_command(path: Path | None, *, rows: int, seed: int = 1234) -> str:
@@ -3727,7 +3773,12 @@ def _decode_scheduler_step_native(
     layer_plan: str = "all",
     scheduler_metadata: dict[str, Any] | None = None,
     device_resident: bool = False,
-) -> tuple[int, bool]:
+    execution_mode: str = "direct_native",
+) -> tuple[int, bool, dict[str, Any]]:
+    if execution_mode not in {"direct_native", "profile_partitioned", "serial"}:
+        raise ValueError(f"unsupported batch decode execution mode {execution_mode!r}")
+    if device_resident and execution_mode != "direct_native":
+        raise ValueError("device-resident decode requires direct_native execution")
     work = scheduler.next_decode_work(
         kv_storage_dtype=kv_storage_dtype,
         layer_plan=layer_plan,
@@ -3747,15 +3798,87 @@ def _decode_scheduler_step_native(
             observed_shapes.append(shape_payload)
     request_ids = tuple(request_id for request_id in work.request_ids if request_id in next_token_by_request)
     slots = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids]
-    if tuple(slots) != tuple(range(len(slots))):
+    positions = [scheduler.active_batch.requests[request_id].context_len for request_id in request_ids]
+    token_ids = [next_token_by_request[request_id] for request_id in request_ids]
+    if execution_mode == "direct_native" and tuple(slots) != tuple(range(len(slots))):
         raise RuntimeError(f"native retained benchmark requires compact slots, got {slots!r}")
-    results = session.step_batch_native(
-        [next_token_by_request[request_id] for request_id in request_ids],
-        positions=[scheduler.active_batch.requests[request_id].context_len for request_id in request_ids],
-        slots=slots,
-        sample=True,
-        device_resident=device_resident,
+
+    sorted_rows = sorted(
+        zip(slots, request_ids, token_ids, positions, strict=True),
+        key=lambda item: item[0],
     )
+    if execution_mode == "profile_partitioned":
+        profile_provider = getattr(session, "native_batch_width_profile", None)
+        profile = profile_provider() if callable(profile_provider) else None
+        plan = plan_batch_width_partition(
+            len(sorted_rows),
+            profile=profile,
+            positions=tuple(int(item[3]) for item in sorted_rows),
+        )
+        requested_plan = plan.to_json_dict()
+        requested_groups = tuple((group.mode, group.width) for group in plan.groups)
+    else:
+        mode = "native" if execution_mode == "direct_native" else "serial"
+        requested_groups = ((mode, len(sorted_rows)),)
+        requested_plan = {
+            "requested_rows": len(sorted_rows),
+            "path": execution_mode,
+            "groups": [{"mode": mode, "width": len(sorted_rows)}],
+            "group_widths": [len(sorted_rows)],
+            "profile_source": None,
+            "blockers": [],
+        }
+
+    result_by_request: dict[int, Any] = {}
+    effective_groups: list[tuple[str, int]] = []
+    native_group_calls = 0
+    serial_rows = 0
+    cursor = 0
+    for requested_mode, width in requested_groups:
+        group_rows = sorted_rows[cursor : cursor + width]
+        cursor += width
+        group_slots = [int(item[0]) for item in group_rows]
+        group_request_ids = [int(item[1]) for item in group_rows]
+        group_token_ids = [int(item[2]) for item in group_rows]
+        group_positions = [int(item[3]) for item in group_rows]
+        effective_mode = requested_mode
+        if requested_mode == "native":
+            try:
+                group_results = session.step_batch_native(
+                    group_token_ids,
+                    positions=group_positions,
+                    slots=group_slots,
+                    sample=True,
+                    device_resident=device_resident,
+                )
+                native_group_calls += 1
+            except NotImplementedError:
+                effective_mode = "serial"
+                group_results = session.step_batch_serial(
+                    group_token_ids,
+                    positions=group_positions,
+                    slots=group_slots,
+                    sample=True,
+                )
+                serial_rows += width
+        else:
+            group_results = session.step_batch_serial(
+                group_token_ids,
+                positions=group_positions,
+                slots=group_slots,
+                sample=True,
+            )
+            serial_rows += width
+        if len(group_results) != len(group_request_ids):
+            raise RuntimeError(
+                f"decode group returned {len(group_results)} results for "
+                f"{len(group_request_ids)} requests"
+            )
+        result_by_request.update(zip(group_request_ids, group_results, strict=True))
+        effective_groups.append((effective_mode, width))
+    if cursor != len(sorted_rows):
+        raise RuntimeError("decode width partition did not consume every live row")
+    results = tuple(result_by_request[request_id] for request_id in request_ids)
     generated: list[GeneratedToken] = []
     for request_id, result in zip(request_ids, results, strict=True):
         if result is None:
@@ -3765,7 +3888,20 @@ def _decode_scheduler_step_native(
             generated_by_request[request_id].append(_result_payload(result))
         generated.append(GeneratedToken(request_id, result.token_id))
     scheduler.record_generated(generated)
-    return len(results), True
+    signature = "+".join(f"{mode}:{width}" for mode, width in effective_groups)
+    metadata = {
+        "execution_mode": execution_mode,
+        "requested_plan": requested_plan,
+        "effective_groups": [
+            {"mode": mode, "width": width}
+            for mode, width in effective_groups
+        ],
+        "signature": signature,
+        "native_group_calls": native_group_calls,
+        "serial_rows": serial_rows,
+    }
+    native_complete = bool(effective_groups) and all(mode == "native" for mode, _width in effective_groups)
+    return len(results), native_complete, metadata
 
 
 def _run_native_bench(
@@ -3779,6 +3915,7 @@ def _run_native_bench(
     require_cached_build: bool,
     kv_policy: ResolvedKVPolicy,
     device_resident: bool = False,
+    decode_execution_mode: str = "direct_native",
 ) -> dict[str, Any]:
     batch_size = len(prompts)
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -3803,6 +3940,12 @@ def _run_native_bench(
         "active_count_after_admit": scheduler.active_count,
         "prefill_slabs": [],
         "decode_native_steps": 0,
+        "decode_execution_mode": decode_execution_mode,
+        "decode_partition_histogram": {},
+        "decode_native_group_calls": 0,
+        "decode_serial_rows": 0,
+        "decode_partitioned_steps": 0,
+        "decode_plans_observed": [],
     }
 
     load_start = time.perf_counter()
@@ -3851,7 +3994,7 @@ def _run_native_bench(
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
             step_start = time.perf_counter()
-            _count, native = _decode_scheduler_step_native(
+            _count, native, step_metadata = _decode_scheduler_step_native(
                 session,
                 scheduler,
                 next_token_by_request,
@@ -3861,15 +4004,24 @@ def _run_native_bench(
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
                 device_resident=device_resident,
+                execution_mode=decode_execution_mode,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
+            signature = step_metadata["signature"]
+            histogram = scheduler_metadata["decode_partition_histogram"]
+            histogram[signature] = int(histogram.get(signature, 0)) + 1
+            scheduler_metadata["decode_native_group_calls"] += int(step_metadata["native_group_calls"])
+            scheduler_metadata["decode_serial_rows"] += int(step_metadata["serial_rows"])
+            scheduler_metadata["decode_partitioned_steps"] += int(len(step_metadata["effective_groups"]) > 1)
+            if step_metadata["requested_plan"] not in scheduler_metadata["decode_plans_observed"]:
+                scheduler_metadata["decode_plans_observed"].append(step_metadata["requested_plan"])
             warmup_step_seconds.append(time.perf_counter() - step_start)
         warmup_seconds = time.perf_counter() - warmup_start
 
         decode_start = time.perf_counter()
         for _ in range(decode_tokens):
             step_start = time.perf_counter()
-            _count, native = _decode_scheduler_step_native(
+            _count, native, step_metadata = _decode_scheduler_step_native(
                 session,
                 scheduler,
                 next_token_by_request,
@@ -3879,8 +4031,17 @@ def _run_native_bench(
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
                 device_resident=device_resident,
+                execution_mode=decode_execution_mode,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
+            signature = step_metadata["signature"]
+            histogram = scheduler_metadata["decode_partition_histogram"]
+            histogram[signature] = int(histogram.get(signature, 0)) + 1
+            scheduler_metadata["decode_native_group_calls"] += int(step_metadata["native_group_calls"])
+            scheduler_metadata["decode_serial_rows"] += int(step_metadata["serial_rows"])
+            scheduler_metadata["decode_partitioned_steps"] += int(len(step_metadata["effective_groups"]) > 1)
+            if step_metadata["requested_plan"] not in scheduler_metadata["decode_plans_observed"]:
+                scheduler_metadata["decode_plans_observed"].append(step_metadata["requested_plan"])
             measured_step_seconds.append(time.perf_counter() - step_start)
         decode_seconds = time.perf_counter() - decode_start
         completed = list(scheduler.completed.values())
@@ -3889,7 +4050,10 @@ def _run_native_bench(
         scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
         batch_execution = session.batch_execution_metadata(
             scheduler_owned=True,
-            native_decode=True,
+            native_decode=(
+                scheduler_metadata["decode_native_steps"]
+                == warmup_decode_tokens + decode_tokens
+            ),
             active_rows=batch_size,
         ).to_json_dict()
 
@@ -3931,38 +4095,28 @@ def _run_c1_reference_tokens(
     kv_policy: ResolvedKVPolicy,
 ) -> list[list[int]]:
     rows: list[list[int]] = []
-    with Qwen35ParoResidentSession(
-        runner,
-        max_sequence_length=max_sequence_length,
-        max_layers=max_layers,
-        max_batch_size=1,
-        compiler_version=compiler_version,
-        require_cached_build=require_cached_build,
-        kv_policy=kv_policy.create_policy(),
-        kv_scale_dtype=kv_policy.scale_dtype,
-        kv_scale_granularity=kv_policy.scale_granularity,
-    ) as session:
+    with (
+        _isolated_c1_route_env(),
+        Qwen35ParoResidentSession(
+            runner,
+            max_sequence_length=max_sequence_length,
+            max_layers=max_layers,
+            max_batch_size=1,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
+        ) as session,
+    ):
         for prompt in prompts:
-            scheduler = ResidentBatchScheduler(capacity=1)
-            request_id = scheduler.submit(prompt, max_new_tokens=total_decode_tokens)
-            admitted = scheduler.admit_pending()
-            if admitted != (request_id,):
-                raise RuntimeError(f"unexpected c=1 admitted request ids {admitted!r}")
-            slabs = scheduler.next_compact_prefill_slabs(chunk_size=len(prompt), block_size=session.block_size)
-            if len(slabs) != 1:
-                raise RuntimeError("c=1 reference expected one compact prefill slab")
-            seed = session.prefill_native_packed(slabs[0], sample=True)[0]
+            seed = session.prefill_native(prompt, sample=True)
             if seed is None:
                 raise RuntimeError("c=1 prefill did not produce a seed token")
             token_ids = [int(seed.token_id)]
             next_token = int(seed.token_id)
             for offset in range(total_decode_tokens):
-                result = session.step_batch_native(
-                    [next_token],
-                    positions=[len(prompt) + offset],
-                    slots=[0],
-                    sample=True,
-                )[0]
+                result = session.step(next_token, position=len(prompt) + offset, sample=True)
                 if result is None:
                     raise RuntimeError("c=1 decode did not produce a token")
                 next_token = int(result.token_id)
@@ -4120,11 +4274,13 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
     if path != "auto":
         return path
-    # The retained-claim gate requires grouped-compact MoE, and the current
-    # correctness frontier is generated-token green for c=2/c=4/c=8 with grouped-
-    # compact. Keep selected-c1 as an explicit speed/diagnostic override rather
-    # than the correctness-first auto default.
-    return "grouped_compact"
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # Local gfx1151/shisa generated-token equality is green for c=2..c=8 when
+    # grouped-compact MoE is replaced by selected-c1 MoE. Odd widths and c6 also
+    # require the retained small-batch shared-expert route in the runtime.
+    return "selected_c1" if 2 <= int(batch_size) <= 8 else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4158,6 +4314,23 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     return 2 if int(batch_size) in {3, 4, 5, 6, 7, 8} else 0
 
 
+def _resolved_batch_decode_linear_row_chunk_size(args: argparse.Namespace) -> int:
+    explicit = int(getattr(args, "batch_decode_linear_row_chunk_size", 0) or 0)
+    if explicit != 0:
+        return explicit
+    if str(getattr(args, "batch_decode_linear_path", "batch_segments")) != "batch_segments":
+        return 0
+    if str(getattr(args, "batch_decode_full_attn_path", "native_batch")) != "auto":
+        return 0
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # c6 native segmented linear attention is generated-token green with
+    # selected-c1 MoE once only the drifting shared-expert path is forced
+    # through the small-batch route, so no linear rowchunk is needed.
+    return 0
+
+
 def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) -> str:
     explicit = str(getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or "").strip()
     if explicit:
@@ -4167,26 +4340,33 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Original c3/c5/c6 evidence shows rowchunking only the first four full-
-    # attention producer layers preserves generated-token equality for those
-    # correctness-first auto row counts while smaller tested subsets remain red.
-    # C4 layer 11 alone is repeat/profile-green on the primary first-four
-    # fixture, but the hard rows4..7 fixture invalidated it as a prompt-stable
-    # default. Current primary and hard rows4..7 probes both pass when only the
-    # final four full-attention producer layers stay native, so c4 uses first-
-    # six. A current c8 first-nine/drop39 profiler recaptured row3/token118 red
-    # in the older all-layer scope, but the newer drop27/drop31 default keeps
-    # three explicit drop39 repeats green; prior broader drop35 evidence is red.
-    # Keep c7 all-layer until its selected-layer path is profiler-stable; use
-    # the c8 drop27/drop31/drop39 rowchunk diagnostic as the current narrowest
-    # repeated-green c8 scope.
-    if int(batch_size) in {3, 5, 6}:
-        return "3,7,11,15"
-    if int(batch_size) == 4:
-        return "3,15"
-    if int(batch_size) == 8:
-        return "3,7,11,15,19,23"
+    # Local gfx1151/shisa c3/c4/c5/c7/c8 require rowchunk2 on every
+    # full-attention layer. Empty deliberately means all layers. c6 has a
+    # narrower equality frontier: rowchunk early layers through 31 and leave
+    # layers 35/39 full-native.
+    if int(batch_size) == 6:
+        return "3,7,11,15,19,23,27,31"
     return ""
+
+
+def _resolved_batch_decode_full_attn_context_row_chunk_size(args: argparse.Namespace) -> int:
+    return int(getattr(args, "batch_decode_full_attn_context_row_chunk_size", 0) or 0)
+
+
+def _resolved_batch_decode_full_attn_context_row_chunk_layers(args: argparse.Namespace) -> str:
+    return str(getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or "").strip()
+
+
+def _resolved_batch_decode_full_attn_suffix_row_chunk_size(args: argparse.Namespace) -> int:
+    return int(getattr(args, "batch_decode_full_attn_suffix_row_chunk_size", 0) or 0)
+
+
+def _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args: argparse.Namespace) -> str:
+    return str(getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or "").strip()
+
+
+def _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False))
 
 
 def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:
@@ -4194,9 +4374,9 @@ def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> st
     if path != "batch":
         return path
     if _resolved_batch_decode_full_attn_row_chunk_layers(args):
-        # Layer-scoped c4 rowchunk leaves later full-attention layers on the
-        # native path, so keep the already accepted row-aware batch-GEMV O
-        # projection for all full-attention layers in that narrowed diagnostic.
+        # Layer-scoped rowchunk leaves later full-attention layers on the native
+        # path, so keep the row-aware batch-GEMV O projection in that narrowed
+        # diagnostic.
         return "batch_gemv"
     return path
 
@@ -4221,8 +4401,55 @@ def _resolved_batch_decode_attn_dense_context_batch_gate_layers(args: argparse.N
     return ""
 
 
+def _is_batch_route_env(name: str) -> bool:
+    exact_keys = {
+        "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
+        "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN",
+        "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR",
+        "HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV",
+    }
+    return (
+        name in exact_keys
+        or name.startswith("HIPENGINE_QWEN35_BATCH_DECODE_")
+        or name.startswith("HIPENGINE_QWEN35_BATCH_SAMPLE_")
+    )
+
+
+def _clear_profile_partitioned_group_env() -> None:
+    for name in tuple(os.environ):
+        if _is_batch_route_env(name):
+            os.environ.pop(name, None)
+
+
+@contextmanager
+def _isolated_c1_route_env():
+    saved = {
+        name: value
+        for name, value in os.environ.items()
+        if _is_batch_route_env(name)
+    }
+    _clear_profile_partitioned_group_env()
+    try:
+        yield
+    finally:
+        for name in tuple(os.environ):
+            if _is_batch_route_env(name):
+                os.environ.pop(name, None)
+        os.environ.update(saved)
+
+
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    if str(getattr(args, "batch_decode_execution", "direct_native")) == "profile_partitioned":
+        _clear_profile_partitioned_group_env()
+        os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
+            "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
+        )
+        projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
+        if projection_dispatch_artifact is not None:
+            os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
+        return
     batch_decode_moe_path = _resolved_batch_decode_moe_path(args)
     force_selected_c1_moe = batch_decode_moe_path == "selected_c1"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = "1" if force_selected_c1_moe else "0"
@@ -4259,10 +4486,13 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_linear_state_path", "batch_segments") == "selected_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] = (
-        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_linear_moe_path", "grouped_compact") == "per_row_c1") else "0"
+        "1" if getattr(args, "batch_decode_linear_moe_path", "grouped_compact") == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         getattr(args, "batch_decode_linear_output_path", "batch_gemv")
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_linear_row_chunk_size(args)
     )
     batch_decode_full_attn_path = _resolved_batch_decode_full_attn_path(args)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = "0" if batch_decode_full_attn_path == "per_row" else "1"
@@ -4270,6 +4500,21 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         _resolved_batch_decode_full_attn_row_chunk_size(args)
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = _resolved_batch_decode_full_attn_row_chunk_layers(args)
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_full_attn_context_row_chunk_size(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = (
+        _resolved_batch_decode_full_attn_context_row_chunk_layers(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE"] = str(
+        _resolved_batch_decode_full_attn_suffix_row_chunk_size(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS"] = (
+        _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args)
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE"] = (
+        "1" if _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args) else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
@@ -4830,6 +5075,8 @@ def _build_payload(
             if latency > 0.0:
                 request_latencies.append(latency)
     latency_summary = _summarize_samples(request_latencies)
+    hardware_context = _hardware_context()
+    software_context = _software_context()
     payload = {
         "schema": 3,
         "mode": _ACCEPTED_MODE,
@@ -4840,8 +5087,15 @@ def _build_payload(
         "run_tag": f"qwen35-paro-c{args.batch_size}-native-retained",
         "summary": _ACCEPTED_SUMMARY,
         "performance_claim": accepted,
-        "hardware": _hardware_context(),
-        "software": _software_context(),
+        "hardware": hardware_context,
+        "software": software_context,
+        "provenance": _artifact_provenance(
+            args,
+            argv,
+            hardware=hardware_context,
+            kv_policy=kv_policy,
+            profiler=profiler,
+        ),
         "workload": {
             "shape": f"c={args.batch_size} prompt={args.prompt_length} decode={args.decode_tokens}",
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
@@ -4862,15 +5116,22 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
+            "batch_decode_execution": str(getattr(args, "batch_decode_execution", "direct_native")),
             "batch_decode_moe_path": _resolved_batch_decode_moe_path(args),
             "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
             "batch_decode_linear_projection_path": _resolved_batch_decode_linear_projection_path(args),
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
+            "batch_decode_linear_row_chunk_size": _resolved_batch_decode_linear_row_chunk_size(args),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
             "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
             "batch_decode_full_attention_row_chunk_layers": _resolved_batch_decode_full_attn_row_chunk_layers(args),
+            "batch_decode_full_attention_context_row_chunk_size": _resolved_batch_decode_full_attn_context_row_chunk_size(args),
+            "batch_decode_full_attention_context_row_chunk_layers": _resolved_batch_decode_full_attn_context_row_chunk_layers(args),
+            "batch_decode_full_attention_suffix_row_chunk_size": _resolved_batch_decode_full_attn_suffix_row_chunk_size(args),
+            "batch_decode_full_attention_suffix_row_chunk_layers": _resolved_batch_decode_full_attn_suffix_row_chunk_layers(args),
+            "batch_decode_full_attention_suffix_row_chunk_include_gate": _resolved_batch_decode_full_attn_suffix_row_chunk_include_gate(args),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -5003,6 +5264,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--batch-decode-execution",
+        choices=("direct_native", "profile_partitioned", "serial"),
+        default="direct_native",
+        help=(
+            "Decode-call policy: one direct native group, the identity-matched "
+            "minimum-cost exact partition, or the all-row serial bridge."
+        ),
+    )
+    parser.add_argument(
         "--batch-prefill-linear-path",
         choices=("packed_segments", "per_segment"),
         default="packed_segments",
@@ -5012,7 +5282,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects grouped_compact for the retained-claim correctness frontier, while selected_c1 remains an explicit speed/diagnostic path.",
+        help="Global MoE path for c>N batch decode; auto selects the local generated-token equality frontier (selected_c1 for c=2..c=8, grouped_compact elsewhere).",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
@@ -5036,13 +5306,19 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-linear-moe-path",
         choices=("grouped_compact", "per_row_c1"),
         default="grouped_compact",
-        help="Diagnostic MoE path for linear-attention c>N batch decode when --batch-decode-moe-path=grouped_compact; per_row_c1 replays true token-1 MoE kernels per row.",
+        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-output-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
         default="batch_gemv",
         help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
+    )
+    parser.add_argument(
+        "--batch-decode-linear-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic native linear-attention row chunk size for c>N batch decode; a positive value below batch size runs native segmented linear attention in row sub-batches and blocks native-caware claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-path",
@@ -5060,6 +5336,33 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-row-chunk-layers",
         default="",
         help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention context-only native row chunk size for c>N batch decode; a positive value below batch size splits only the context kernel rows and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention suffix native row chunk size for c>N batch decode; a positive value below batch size keeps batch QKV/append/context and splits only gate/O/post/MoE suffix work.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the suffix row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-include-gate",
+        action="store_true",
+        help="For suffix row chunks, compute batch context only and include the attention gate in each row chunk instead of using batch context+gate.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -5290,8 +5593,16 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("decode token counts must be positive/non-negative")
     if args.max_layers <= 0:
         raise ValueError("--max-layers must be positive")
+    if _resolved_batch_decode_linear_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-linear-row-chunk-size must be non-negative")
+    if _resolved_batch_decode_full_attn_context_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-full-attn-context-row-chunk-size must be non-negative")
+    if _resolved_batch_decode_full_attn_suffix_row_chunk_size(args) < 0:
+        raise ValueError("--batch-decode-full-attn-suffix-row-chunk-size must be non-negative")
     if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
         raise ValueError("--batch-sample-eq-rows must be positive")
+    if args.device_resident_decode and args.batch_decode_execution != "direct_native":
+        raise ValueError("--device-resident-decode requires --batch-decode-execution=direct_native")
 
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
@@ -5309,6 +5620,7 @@ def main(argv: list[str] | None = None) -> int:
         require_cached_build=args.require_cached_build,
         kv_policy=kv_policy,
         device_resident=bool(getattr(args, "device_resident_decode", False)),
+        decode_execution_mode=str(getattr(args, "batch_decode_execution", "direct_native")),
     )
     if projection_dispatch_candidates is not None:
         bench["projection_dispatch_candidates"] = projection_dispatch_candidates

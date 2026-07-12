@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_early_precision_boundary_probe",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 253,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "layer_type": "linear_attention",
+  "token_id": 271,
+  "token_context": "last token of the captured reasoning-off greeting prompt is token 271",
+  "contract": {
+    "llama_cpp": "token embedding, RMSNorm output, and F32 aux projections stay in F32 GGML graph tensors",
+    "hipengine": "token embedding/RMSNorm residents are BF16 and ssm_alpha/ssm_beta F32 weights are materialized as BF16"
+  },
+  "attn_norm_boundary": {
+    "shape": [
+      2048
+    ],
+    "max_abs_diff": 0.10197830200195312,
+    "rms_abs_diff": 0.002668563276529312,
+    "max_rel_diff": 0.006961951032280922,
+    "mean_abs_reference": 0.2981266975402832,
+    "mean_abs_candidate": 0.2980983853340149,
+    "cosine_similarity": 0.9999981854868896
+  },
+  "projections": {
+    "ssm_alpha": {
+      "shape": [
+        32
+      ],
+      "max_abs_diff": 0.018385887145996094,
+      "rms_abs_diff": 0.005838475655764341,
+      "max_rel_diff": 0.009146777912974358,
+      "mean_abs_reference": 2.107820987701416,
+      "mean_abs_candidate": 2.1068062782287598,
+      "cosine_similarity": 0.9999983593217628,
+      "rows": 32,
+      "cols": 2048,
+      "llama_sample": [
+        -1.0162417888641357,
+        2.3869786262512207,
+        -2.1815805435180664,
+        -1.3571467399597168,
+        -0.8240146636962891,
+        1.1789324283599854,
+        5.062140941619873,
+        4.643385887145996
+      ],
+      "hipengine_sample": [
+        -1.015625,
+        2.390625,
+        -2.171875,
+        -1.359375,
+        -0.82421875,
+        1.1796875,
+        5.0625,
+        4.625
+      ]
+    },
+    "ssm_beta": {
+      "shape": [
+        32
+      ],
+      "max_abs_diff": 0.01250600814819336,
+      "rms_abs_diff": 0.003436697879806161,
+      "max_rel_diff": 0.010302101261913776,
+      "mean_abs_reference": 0.8621202111244202,
+      "mean_abs_candidate": 0.8619232177734375,
+      "cosine_similarity": 0.9999961146810853,
+      "rows": 32,
+      "cols": 2048,
+      "llama_sample": [
+        -1.1554603576660156,
+        -0.6769738793373108,
+        1.0315485000610352,
+        0.31508105993270874,
+        -0.3288944661617279,
+        -0.18664029240608215,
+        0.6801180243492126,
+        2.2986788749694824
+      ],
+      "hipengine_sample": [
+        -1.15625,
+        -0.6796875,
+        1.03125,
+        0.3125,
+        -0.330078125,
+        -0.1884765625,
+        0.6796875,
+        2.296875
+      ]
+    }
+  },
+  "conclusion": "Layer-0 embedding->attn_norm->GDN projection already has measurable F32-vs-BF16 drift on the real greeting boundary: alpha max_abs=0.0183859, beta max_abs=0.012506. This is not a full target-AR oracle, but it pins the earliest numeric boundary to compare before MTP acceptance tuning."
+}

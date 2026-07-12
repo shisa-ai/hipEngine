@@ -1,0 +1,61 @@
+{
+  "schema": "hipengine-bench-ab-v1",
+  "status": "accepted",
+  "timestamp": "2026-06-28",
+  "run_tag": "resident-mtp-draft-device-moe-down-ab",
+  "hardware": "AMD Radeon 8060S (gfx1151, Ryzen AI Max+ 395)",
+  "change": "device-resident selected-MoE down+combine in resident GGUF MTP draft (HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE), replacing host-readback per-expert Python loop",
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "draft_n_max": 3,
+    "cycles": 5,
+    "root_topk_accept": 1,
+    "mtp_draft_vocab_cap": 32768,
+    "resident_mtp_draft_effective": true,
+    "prompts": "one per category from benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+  },
+  "gate": {
+    "acceptance": "identical off->on in all 4 categories (exact-acceptance)",
+    "correctness": "tests/test_mtp_resident_draft_moe_down.py rel_l2<=2e-2 vs bf16-aware cpu_reference"
+  },
+  "results": [
+    {
+      "category": "code",
+      "accepted_per_output_off": 0.5,
+      "accepted_per_output_on": 0.5,
+      "total_accepted_off": 5,
+      "total_accepted_on": 5,
+      "tokens_per_sec_off": 44.35,
+      "tokens_per_sec_on": 44.98
+    },
+    {
+      "category": "general_en",
+      "accepted_per_output_off": 0.5,
+      "accepted_per_output_on": 0.5,
+      "total_accepted_off": 5,
+      "total_accepted_on": 5,
+      "tokens_per_sec_off": 44.51,
+      "tokens_per_sec_on": 44.81
+    },
+    {
+      "category": "general_ja",
+      "accepted_per_output_off": 0.375,
+      "accepted_per_output_on": 0.375,
+      "total_accepted_off": 3,
+      "total_accepted_on": 3,
+      "tokens_per_sec_off": 42.81,
+      "tokens_per_sec_on": 43.11
+    },
+    {
+      "category": "mixed_ja_en",
+      "accepted_per_output_off": 0.5,
+      "accepted_per_output_on": 0.5,
+      "total_accepted_off": 5,
+      "total_accepted_on": 5,
+      "tokens_per_sec_off": 44.22,
+      "tokens_per_sec_on": 44.65
+    }
+  ],
+  "notes": "bf16 device MoE-down matches verifier precision; drafts byte-identical off vs on. tok/s consistently positive across all categories (~+0.7-1.4%). Single-prompt merge-sort B3/c5 smoke: draft 7.3->6.9 ms/cycle, tok/s 48.10->48.82."
+}

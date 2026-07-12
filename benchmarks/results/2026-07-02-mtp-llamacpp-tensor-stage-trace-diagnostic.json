@@ -1,0 +1,499 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "Record llama.cpp MTP tensor-stage instrumentation and the first fine-grained hipEngine-vs-llama.cpp draft-stage comparison after the resident RoPE-dimension fix.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD gfx1151 HIP host",
+  "software": {
+    "hipengine_commit": "476283128419b8162437b2fa6848695fdee753bd",
+    "hipengine_dirty": true,
+    "llama_cpp_tensor_trace_commit": "687c17d26f6773fdf2db6f3de519a016a4d43ff7",
+    "llama_cpp_dirty": false
+  },
+  "source_artifacts": {
+    "hipengine_stage_trace_ropefix_tmp": "/tmp/hipengine-mtp-ropefix/hipengine-stage.json",
+    "llamacpp_tensor_stage_jsonl_tmp": "/tmp/hipengine-mtp-llama-tensor-trace2/llamacpp-stage.jsonl",
+    "llamacpp_tensor_summary_tmp": "/tmp/hipengine-mtp-llama-tensor-trace2/llamacpp.json",
+    "prior_rope_fix_artifact": "benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json"
+  },
+  "commands": {
+    "llamacpp_build": "cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16",
+    "llamacpp_tensor_trace": "LLAMA_MTP_TENSOR_TRACE=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8028 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-llama-tensor-trace2/llamacpp-stage.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-llama-tensor-trace2/llamacpp.json --log-dir /tmp/hipengine-mtp-llama-tensor-trace2/logs",
+    "artifact_validation": "python3 -m json.tool benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json"
+  },
+  "alignment": {
+    "same_prompt": "diag_merge_intervals",
+    "hipengine_cycle": 3,
+    "llamacpp_stage_row": 9,
+    "seq_position": 49,
+    "depth0_input_token": 1103,
+    "hipengine_draft_tokens": [
+      65342,
+      18078
+    ],
+    "llamacpp_draft_tokens": [
+      8,
+      1411
+    ],
+    "target_tokens": [
+      65342,
+      18078,
+      28649
+    ],
+    "proposal_parity": "not_closed"
+  },
+  "depth0_stage_comparison": [
+    {
+      "label": "draft_stage_token_embed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.010809,
+      "llamacpp_rms": 0.010809,
+      "rms_delta": -0.0,
+      "first8_mae": 0.0,
+      "first8_max_abs": 0.0
+    },
+    {
+      "label": "draft_stage_e_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.295241,
+      "llamacpp_rms": 0.295241,
+      "rms_delta": 0.0,
+      "first8_mae": 0.0,
+      "first8_max_abs": 0.0
+    },
+    {
+      "label": "draft_stage_h_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.515393,
+      "llamacpp_rms": 0.516368,
+      "rms_delta": -0.000975,
+      "first8_mae": 0.0133,
+      "first8_max_abs": 0.034593
+    },
+    {
+      "label": "draft_stage_projected",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.234909,
+      "llamacpp_rms": 0.233961,
+      "rms_delta": 0.000948,
+      "first8_mae": 0.006362,
+      "first8_max_abs": 0.016107
+    },
+    {
+      "label": "draft_stage_attn_normed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.986629,
+      "llamacpp_rms": 0.986522,
+      "rms_delta": 0.000107,
+      "first8_mae": 0.019746,
+      "first8_max_abs": 0.052721
+    },
+    {
+      "label": "draft_stage_query_rope",
+      "hipengine_size": 4096,
+      "llamacpp_size": 4096,
+      "llamacpp_shape": [
+        256,
+        16,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.504878,
+      "llamacpp_rms": 1.505277,
+      "rms_delta": -0.000399,
+      "first8_mae": 0.007978,
+      "first8_max_abs": 0.013883
+    },
+    {
+      "label": "draft_stage_key_cur_rope",
+      "hipengine_size": 512,
+      "llamacpp_size": 512,
+      "llamacpp_shape": [
+        256,
+        2,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.880685,
+      "llamacpp_rms": 1.879979,
+      "rms_delta": 0.000706,
+      "first8_mae": 0.013736,
+      "first8_max_abs": 0.029557
+    },
+    {
+      "label": "draft_stage_value_cur",
+      "hipengine_size": 512,
+      "llamacpp_size": 512,
+      "llamacpp_shape": [
+        256,
+        2,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.146771,
+      "llamacpp_rms": 1.144939,
+      "rms_delta": 0.001832,
+      "first8_mae": 0.018544,
+      "first8_max_abs": 0.078098
+    },
+    {
+      "label": "draft_stage_attn_pregate",
+      "hipengine_size": 4096,
+      "llamacpp_size": 4096,
+      "llamacpp_shape": [
+        4096,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.05616,
+      "llamacpp_rms": 1.409786,
+      "rms_delta": -0.353626,
+      "first8_mae": 0.147055,
+      "first8_max_abs": 0.557863
+    },
+    {
+      "label": "draft_stage_attn_out",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.108522,
+      "llamacpp_rms": 0.093688,
+      "rms_delta": 0.014834,
+      "first8_mae": 0.011352,
+      "first8_max_abs": 0.023312
+    },
+    {
+      "label": "draft_stage_attn_residual",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.262644,
+      "llamacpp_rms": 0.245346,
+      "rms_delta": 0.017297,
+      "first8_mae": 0.01341,
+      "first8_max_abs": 0.03204
+    },
+    {
+      "label": "draft_stage_attn_post_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.554944,
+      "llamacpp_rms": 1.618222,
+      "rms_delta": -0.063278,
+      "first8_mae": 0.111419,
+      "first8_max_abs": 0.182368
+    },
+    {
+      "label": "draft_stage_ffn_out",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.249094,
+      "llamacpp_rms": 0.148834,
+      "rms_delta": 0.10026,
+      "first8_mae": 0.19725,
+      "first8_max_abs": 0.369928
+    },
+    {
+      "label": "draft_next_seed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048
+      ],
+      "hipengine_rms": 2.80344,
+      "llamacpp_rms": 2.827997,
+      "rms_delta": -0.024556,
+      "first8_mae": 0.328866,
+      "first8_max_abs": 0.782804
+    }
+  ],
+  "depth1_stage_comparison": [
+    {
+      "label": "draft_stage_token_embed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.012299,
+      "llamacpp_rms": 0.007599,
+      "rms_delta": 0.0047,
+      "first8_mae": 0.008944,
+      "first8_max_abs": 0.014095
+    },
+    {
+      "label": "draft_stage_e_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.282056,
+      "llamacpp_rms": 0.430212,
+      "rms_delta": -0.148156,
+      "first8_mae": 0.213077,
+      "first8_max_abs": 0.336198
+    },
+    {
+      "label": "draft_stage_h_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.50649,
+      "llamacpp_rms": 2.827997,
+      "rms_delta": -2.321507,
+      "first8_mae": 2.317763,
+      "first8_max_abs": 4.326683
+    },
+    {
+      "label": "draft_stage_projected",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.275524,
+      "llamacpp_rms": 0.243566,
+      "rms_delta": 0.031958,
+      "first8_mae": 0.103721,
+      "first8_max_abs": 0.220227
+    },
+    {
+      "label": "draft_stage_attn_normed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.982755,
+      "llamacpp_rms": 0.985074,
+      "rms_delta": -0.002319,
+      "first8_mae": 0.309306,
+      "first8_max_abs": 0.604511
+    },
+    {
+      "label": "draft_stage_query_rope",
+      "hipengine_size": 4096,
+      "llamacpp_size": 4096,
+      "llamacpp_shape": [
+        256,
+        16,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.525561,
+      "llamacpp_rms": 1.56423,
+      "rms_delta": -0.038669,
+      "first8_mae": 0.611233,
+      "first8_max_abs": 1.067834
+    },
+    {
+      "label": "draft_stage_key_cur_rope",
+      "hipengine_size": 512,
+      "llamacpp_size": 512,
+      "llamacpp_shape": [
+        256,
+        2,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.884051,
+      "llamacpp_rms": 1.870298,
+      "rms_delta": 0.013752,
+      "first8_mae": 0.439724,
+      "first8_max_abs": 0.858758
+    },
+    {
+      "label": "draft_stage_value_cur",
+      "hipengine_size": 512,
+      "llamacpp_size": 512,
+      "llamacpp_shape": [
+        256,
+        2,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.179469,
+      "llamacpp_rms": 1.1258,
+      "rms_delta": 0.053669,
+      "first8_mae": 0.642922,
+      "first8_max_abs": 2.537344
+    },
+    {
+      "label": "draft_stage_attn_pregate",
+      "hipengine_size": 4096,
+      "llamacpp_size": 4096,
+      "llamacpp_shape": [
+        4096,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.108362,
+      "llamacpp_rms": 1.740545,
+      "rms_delta": -0.632183,
+      "first8_mae": 0.597013,
+      "first8_max_abs": 2.037445
+    },
+    {
+      "label": "draft_stage_attn_out",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.12791,
+      "llamacpp_rms": 0.140974,
+      "rms_delta": -0.013064,
+      "first8_mae": 0.097575,
+      "first8_max_abs": 0.25808
+    },
+    {
+      "label": "draft_stage_attn_residual",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.242573,
+      "llamacpp_rms": 0.234082,
+      "rms_delta": 0.008491,
+      "first8_mae": 0.08359,
+      "first8_max_abs": 0.183826
+    },
+    {
+      "label": "draft_stage_attn_post_norm",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 1.866463,
+      "llamacpp_rms": 1.797709,
+      "rms_delta": 0.068754,
+      "first8_mae": 0.630215,
+      "first8_max_abs": 1.447233
+    },
+    {
+      "label": "draft_stage_ffn_out",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048,
+        1,
+        1,
+        1
+      ],
+      "hipengine_rms": 0.358901,
+      "llamacpp_rms": 0.214148,
+      "rms_delta": 0.144753,
+      "first8_mae": 0.255922,
+      "first8_max_abs": 0.430981
+    },
+    {
+      "label": "draft_next_seed",
+      "hipengine_size": 2048,
+      "llamacpp_size": 2048,
+      "llamacpp_shape": [
+        2048
+      ],
+      "hipengine_rms": 2.853368,
+      "llamacpp_rms": 2.8586,
+      "rms_delta": -0.005232,
+      "first8_mae": 1.315782,
+      "first8_max_abs": 3.57811
+    }
+  ],
+  "finding": {
+    "first_large_depth0_jump": "draft_stage_attn_pregate",
+    "evidence": "Depth-0 token/e/h norm/projection/Q/K/V are close after the RoPE fix, but attention output before gate diverges: hipEngine rms 1.056160 vs llama.cpp rms 1.409786, first8 MAE 0.147055.",
+    "interpretation": "Remaining proposal drift is likely in draft attention history/KV rows, context length, or attention mask/softmax economy, not current-token Q/K/V projection.",
+    "next_target": "Instrument and compare ctx_dft/dense MTP K/V cache rows and attention mask/history at seq position 49."
+  }
+}

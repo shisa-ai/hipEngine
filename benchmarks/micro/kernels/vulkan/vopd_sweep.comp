@@ -1,0 +1,173 @@
+#version 450
+
+#ifndef HIPENGINE_VOPD_MODE
+#define HIPENGINE_VOPD_MODE 0
+#endif
+
+#ifndef HIPENGINE_VOPD_ACCUMS
+#define HIPENGINE_VOPD_ACCUMS 4
+#endif
+
+#ifndef HIPENGINE_BLOCK_SIZE
+#define HIPENGINE_BLOCK_SIZE 256
+#endif
+
+layout(local_size_x = HIPENGINE_BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint body_iters;
+    uint output_offset;
+} pc;
+
+layout(set = 0, binding = 0) buffer OutputBuffer {
+    float out_values[];
+};
+
+float init_accum(uint idx, uint lane) {
+    uint bits = (idx * 747796405u) ^ (lane * 2891336453u) ^ 0x9e3779b9u;
+    return 0.25 + float(bits & 0xffu) * 0.0009765625;
+}
+
+float lane_bias(uint idx, uint iter, uint lane) {
+    uint bits = idx * 1664525u + iter * 1013904223u + lane * 2246822519u;
+    return float((bits >> 24) & 0x1fu) * 0.000001 + 0.000003;
+}
+
+uint hash_step(uint value, uint iter, uint lane) {
+    value ^= iter * 0x9e3779b9u + lane * 0x85ebca6bu;
+    value = value * 1664525u + 1013904223u;
+    value ^= value >> 16;
+    return value;
+}
+
+float run_value(uint idx, uint body_iters) {
+    float a0 = init_accum(idx, 0u);
+    float a1 = init_accum(idx, 1u);
+    float a2 = init_accum(idx, 2u);
+    float a3 = init_accum(idx, 3u);
+    float a4 = init_accum(idx, 4u);
+    float a5 = init_accum(idx, 5u);
+    float a6 = init_accum(idx, 6u);
+    float a7 = init_accum(idx, 7u);
+    uint u0 = idx * 747796405u + 2891336453u;
+    uint u1 = idx ^ 0xa5a5a5a5u;
+
+    for (uint iter = 0u; iter < body_iters; ++iter) {
+#if HIPENGINE_VOPD_MODE == 0
+        a0 = fma(a0, 1.000001, lane_bias(idx, iter, 0u));
+#if HIPENGINE_VOPD_ACCUMS >= 2
+        a1 = fma(a1, 0.999999, lane_bias(idx, iter, 1u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 3
+        a2 = fma(a2, 1.000002, lane_bias(idx, iter, 2u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 4
+        a3 = fma(a3, 0.999998, lane_bias(idx, iter, 3u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 5
+        a4 = fma(a4, 1.000003, lane_bias(idx, iter, 4u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 6
+        a5 = fma(a5, 0.999997, lane_bias(idx, iter, 5u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 7
+        a6 = fma(a6, 1.000004, lane_bias(idx, iter, 6u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 8
+        a7 = fma(a7, 0.999996, lane_bias(idx, iter, 7u));
+#endif
+#elif HIPENGINE_VOPD_MODE == 1
+        a0 = fma(a0, 1.000001, lane_bias(idx, iter, 0u));
+#if HIPENGINE_VOPD_ACCUMS >= 2
+        a0 = fma(a0, 0.999999, lane_bias(idx, iter, 1u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 3
+        a0 = fma(a0, 1.000002, lane_bias(idx, iter, 2u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 4
+        a0 = fma(a0, 0.999998, lane_bias(idx, iter, 3u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 5
+        a0 = fma(a0, 1.000003, lane_bias(idx, iter, 4u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 6
+        a0 = fma(a0, 0.999997, lane_bias(idx, iter, 5u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 7
+        a0 = fma(a0, 1.000004, lane_bias(idx, iter, 6u));
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 8
+        a0 = fma(a0, 0.999996, lane_bias(idx, iter, 7u));
+#endif
+#elif HIPENGINE_VOPD_MODE == 2
+        u0 = hash_step(u0, iter, 0u);
+        a0 = fma(a0, 1.000001, float(u0 & 0x1fu) * 0.000001);
+#if HIPENGINE_VOPD_ACCUMS >= 2
+        u1 = hash_step(u1, iter, 1u);
+        a1 = fma(a1, 0.999999, float((u1 >> 3) & 0x1fu) * 0.000001);
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 3
+        u0 = hash_step(u0, iter, 2u);
+        a2 = fma(a2, 1.000002, float((u0 >> 7) & 0x1fu) * 0.000001);
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 4
+        u1 = hash_step(u1, iter, 3u);
+        a3 = fma(a3, 0.999998, float((u1 >> 11) & 0x1fu) * 0.000001);
+#endif
+#elif HIPENGINE_VOPD_MODE == 3
+        u0 = hash_step(u0, iter, 0u);
+        int q0 = int((u0 >> ((iter + 0u) & 15u)) & 0xffu) - 128;
+        a0 = fma(float(q0) * 0.0078125, 0.03125, a0);
+#if HIPENGINE_VOPD_ACCUMS >= 2
+        u1 = hash_step(u1, iter, 1u);
+        int q1 = int((u1 >> ((iter + 3u) & 15u)) & 0xffu) - 128;
+        a1 = fma(float(q1) * 0.0078125, 0.03125, a1);
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 3
+        u0 = hash_step(u0, iter, 2u);
+        int q2 = int((u0 >> ((iter + 5u) & 15u)) & 0xffu) - 128;
+        a2 = fma(float(q2) * 0.0078125, 0.03125, a2);
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 4
+        u1 = hash_step(u1, iter, 3u);
+        int q3 = int((u1 >> ((iter + 7u) & 15u)) & 0xffu) - 128;
+        a3 = fma(float(q3) * 0.0078125, 0.03125, a3);
+#endif
+#endif
+    }
+
+    float result = a0;
+#if HIPENGINE_VOPD_ACCUMS >= 2
+    result += a1;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 3
+    result += a2;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 4
+    result += a3;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 5
+    result += a4;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 6
+    result += a5;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 7
+    result += a6;
+#endif
+#if HIPENGINE_VOPD_ACCUMS >= 8
+    result += a7;
+#endif
+    return result;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.n) {
+        return;
+    }
+    uint output_index = pc.output_offset + idx;
+    out_values[output_index] =
+        out_values[output_index] + run_value(idx, pc.body_iters);
+}

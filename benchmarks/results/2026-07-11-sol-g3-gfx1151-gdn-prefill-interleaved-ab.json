@@ -1,0 +1,437 @@
+{
+  "contexts": [
+    {
+      "chain_speedup_vs_fused": 0.9506630935941557,
+      "chain_wall_delta_percent": 5.189736168185216,
+      "chain_wins": false,
+      "context_tokens": 512,
+      "expected_token_id": 9707,
+      "measurements": [
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 1248.420962
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 1188.449666
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "repetition": 0
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 1245.823438
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 1186.017793
+            }
+          },
+          "order": [
+            "chain",
+            "fused"
+          ],
+          "repetition": 1
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 1248.450467
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 1186.299491
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "repetition": 2
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 1249.295081
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 1187.384026
+            }
+          },
+          "order": [
+            "chain",
+            "fused"
+          ],
+          "repetition": 3
+        }
+      ],
+      "paired_chain_minus_fused_median_ms": 60.941175499999986,
+      "paired_chain_minus_fused_ms": [
+        59.97129599999994,
+        59.80564499999991,
+        62.1509759999999,
+        61.91105500000003
+      ],
+      "prompt_sha256_i64": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d",
+      "prompt_token_id": 9707,
+      "statistics": {
+        "chain": {
+          "count": 4,
+          "max_ms": 1249.295081,
+          "mean_ms": 1247.9974869999999,
+          "median_ms": 1248.4357145,
+          "min_ms": 1245.823438,
+          "samples_ms": [
+            1248.420962,
+            1245.823438,
+            1248.450467,
+            1249.295081
+          ],
+          "stdev_ms": 1.5049652486865197
+        },
+        "fused": {
+          "count": 4,
+          "max_ms": 1188.449666,
+          "mean_ms": 1187.037744,
+          "median_ms": 1186.8417585,
+          "min_ms": 1186.017793,
+          "samples_ms": [
+            1188.449666,
+            1186.017793,
+            1186.299491,
+            1187.384026
+          ],
+          "stdev_ms": 1.11036818098292
+        }
+      },
+      "token_ids": {
+        "chain": [
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "fused": [
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "tokens_exact": true,
+      "warmups": [
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 1249.360073
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 1277.502578
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "warmup": 0
+        }
+      ]
+    },
+    {
+      "chain_speedup_vs_fused": 0.937192179940656,
+      "chain_wall_delta_percent": 6.701701252279032,
+      "chain_wins": false,
+      "context_tokens": 4096,
+      "expected_token_id": 9707,
+      "measurements": [
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 10873.163976
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 10177.394528
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "repetition": 0
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 10866.879791
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 10181.244681
+            }
+          },
+          "order": [
+            "chain",
+            "fused"
+          ],
+          "repetition": 1
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 10866.593003
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 10196.517204
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "repetition": 2
+        },
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 10891.443135
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 10193.354329
+            }
+          },
+          "order": [
+            "chain",
+            "fused"
+          ],
+          "repetition": 3
+        }
+      ],
+      "paired_chain_minus_fused_median_ms": 690.7022789999992,
+      "paired_chain_minus_fused_ms": [
+        695.7694479999991,
+        685.6351099999993,
+        670.0757990000002,
+        698.0888059999997
+      ],
+      "prompt_sha256_i64": "181484d2e8533a0f8b1f5c8486f35552ce7a32a9bcda66e5f389f6b4030c5093",
+      "prompt_token_id": 9707,
+      "statistics": {
+        "chain": {
+          "count": 4,
+          "max_ms": 10891.443135,
+          "mean_ms": 10874.51997625,
+          "median_ms": 10870.0218835,
+          "min_ms": 10866.593003,
+          "samples_ms": [
+            10873.163976,
+            10866.879791,
+            10866.593003,
+            10891.443135
+          ],
+          "stdev_ms": 11.682485099729844
+        },
+        "fused": {
+          "count": 4,
+          "max_ms": 10196.517204,
+          "mean_ms": 10187.1276855,
+          "median_ms": 10187.299504999999,
+          "min_ms": 10177.394528,
+          "samples_ms": [
+            10177.394528,
+            10181.244681,
+            10196.517204,
+            10193.354329
+          ],
+          "stdev_ms": 9.242623072929357
+        }
+      },
+      "token_ids": {
+        "chain": [
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "fused": [
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "tokens_exact": true,
+      "warmups": [
+        {
+          "modes": {
+            "chain": {
+              "token_id": 9707,
+              "wall_ms": 10863.897337
+            },
+            "fused": {
+              "token_id": 9707,
+              "wall_ms": 10078.766338
+            }
+          },
+          "order": [
+            "fused",
+            "chain"
+          ],
+          "warmup": 0
+        }
+      ]
+    }
+  ],
+  "correctness_claim": true,
+  "correctness_gate": {
+    "covered_contexts": [
+      17,
+      512,
+      1024,
+      1025,
+      4095,
+      4096
+    ],
+    "kind": "hipengine_gguf_gdn_prefill_exact_matrix",
+    "passed": true,
+    "path": "/tmp/hipengine-sol-g3-ad773eba/benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json",
+    "sha256": "b07a7c73565796030209c1ec70c8a94fd81073b8199b932e8127caf95993b20b",
+    "source_revision": "332f01f8941de47c28d9d2e755666c2644b7c16f",
+    "status": "accepted_exact_matrix"
+  },
+  "created_at": "2026-07-11T00:04:24.624689+00:00",
+  "decision": {
+    "chain_wins_all_contexts": false,
+    "clean_provenance": true,
+    "conclusion": "The exact split chain does not win both primary contexts.",
+    "correctness_gate_passed": true,
+    "measurement_valid": true,
+    "selected_default": "fused",
+    "status": "retain_fused_reject_chain_promotion",
+    "timed_tokens_exact": true
+  },
+  "kind": "hipengine_gguf_gdn_prefill_interleaved_ab",
+  "performance_claim": true,
+  "protocol": {
+    "measured_repetitions_per_mode_context": 4,
+    "ordering": "balanced fused-chain / chain-fused by measured repetition",
+    "session_scope": "one resident model/session shared by both modes and contexts",
+    "state_reset": "production session.prefill reset before every measured prompt",
+    "wall_clock": "time.perf_counter_ns around synchronized session.prefill",
+    "warmups_per_context": 1
+  },
+  "provenance": {
+    "build_profile": "gguf_gdn_prefill_interleaved_ab",
+    "collected_at": "2026-07-11T00:04:24.624378+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python3",
+      "scripts/gguf_gdn_prefill_ab.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--contexts",
+      "512,4096",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--warmups",
+      "1",
+      "--repetitions",
+      "4",
+      "--use-wmma-prefill",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/sol-g3-gfx1151-ad773eba-ab.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "interleaved explicit sweep",
+      "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": null,
+      "HIPENGINE_HIP_ARCH": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "ad773eba45858f8eb34d408f21df307e61534e3c",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "correctness_trace_in": "/tmp/hipengine-sol-g3-ad773eba/benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json",
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 4,
+    "repo_root": "/tmp/hipengine-sol-g3-ad773eba",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_interleaved_host_wall_v1",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 1
+  },
+  "schema_version": 1,
+  "workload": {
+    "bulk_attention_mode": "bulk",
+    "contexts": [
+      512,
+      4096
+    ],
+    "expected_token_id": 9707,
+    "gdn_modes": [
+      "fused",
+      "chain"
+    ],
+    "kv_dtype": "bf16",
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompt_token_id": 9707,
+    "quant": "gguf_q4_k_m",
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true
+  }
+}

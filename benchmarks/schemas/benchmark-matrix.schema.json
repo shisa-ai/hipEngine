@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/benchmark-matrix.schema.json",
+  "title": "hipEngine exact-token benchmark matrix artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schema_version",
+    "name",
+    "created_at",
+    "performance_claim",
+    "requirements",
+    "protocol",
+    "coverage",
+    "rows",
+    "comparisons",
+    "eligibility",
+    "report_provenance"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_benchmark_matrix"},
+    "schema_version": {"const": 1},
+    "name": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1},
+    "performance_claim": {"type": "boolean"},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "performance_claim",
+        "clean_provenance",
+        "scoped_timing",
+        "memory",
+        "profiler",
+        "server_generation_shape"
+      ],
+      "properties": {
+        "performance_claim": {"type": "boolean"},
+        "clean_provenance": {"type": "boolean"},
+        "scoped_timing": {"type": "boolean"},
+        "memory": {"type": "boolean"},
+        "profiler": {"type": "boolean"},
+        "server_generation_shape": {"type": "boolean"}
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "prompt_token_ids_sha256", "sampling"],
+      "properties": {
+        "shape": {"type": "object"},
+        "prompt_token_ids_sha256": {"type": "array", "items": {"type": "string"}},
+        "sampling": {"type": "object"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engines",
+        "surfaces",
+        "path_variants",
+        "required_engines",
+        "required_surfaces",
+        "required_grid_complete"
+      ],
+      "properties": {
+        "engines": {"type": "array", "items": {"enum": ["paro", "gguf"]}},
+        "surfaces": {"type": "array", "items": {"enum": ["direct", "server"]}},
+        "path_variants": {"type": "array", "items": {"type": "string"}},
+        "required_engines": {"type": "array", "items": {"enum": ["paro", "gguf"]}},
+        "required_surfaces": {"type": "array", "items": {"enum": ["direct", "server"]}},
+        "required_grid_complete": {"type": "boolean"}
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "case_id",
+          "engine",
+          "surface",
+          "path_variant",
+          "source",
+          "exact_tokens",
+          "latency",
+          "timing",
+          "path",
+          "memory",
+          "profiler",
+          "eligibility"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "case_id": {"type": "string", "minLength": 1},
+          "engine": {"enum": ["paro", "gguf"]},
+          "surface": {"enum": ["direct", "server"]},
+          "path_variant": {"type": "string", "minLength": 1},
+          "source": {"type": "object"},
+          "exact_tokens": {"type": "object"},
+          "latency": {"type": "object"},
+          "timing": {"type": "object"},
+          "path": {"type": "object"},
+          "memory": {"type": "object"},
+          "profiler": {"type": "object"},
+          "eligibility": {"$ref": "#/$defs/eligibility"}
+        }
+      }
+    },
+    "comparisons": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct_server", "cross_engine"],
+      "properties": {
+        "direct_server": {"type": "array", "items": {"type": "object"}},
+        "cross_engine": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "eligibility": {"$ref": "#/$defs/eligibility"},
+    "report_provenance": {"$ref": "artifact-provenance.schema.json"}
+  },
+  "$defs": {
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "blockers"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "blockers": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

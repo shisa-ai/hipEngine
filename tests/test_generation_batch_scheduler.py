@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
@@ -3741,6 +3742,8 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     def args_for(rows: int) -> SimpleNamespace:
         return SimpleNamespace(
             batch_size=rows,
+            batch_decode_linear_path="batch_segments",
+            batch_decode_linear_row_chunk_size=0,
             batch_decode_full_attn_path="auto",
             batch_decode_full_attn_row_chunk_size=0,
             batch_decode_full_attn_row_chunk_layers="",
@@ -3753,21 +3756,32 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c2) == ""
     assert retained_bench._resolved_batch_decode_full_attn_output_path(c2) == "batch"
 
-    # c=4/c=8 generated-token equality is green only through the <=2-row
-    # full-attention context launch cap. Keep those defaults explicit so future
-    # retained-bench refactors do not silently fall back to rows>=4 context
-    # launches before the rows>=4 kernel semantics are repaired.
+    # c=4/c=8 generated-token equality is green locally only when every
+    # full-attention layer uses <=2-row chunks. c=6 is green with native linear
+    # attention and the selected early full-attention rowchunks below. Keep
+    # those defaults explicit so future retained-bench refactors do not
+    # silently fall back to red selected-layer scopes or rows>=4 context
+    # launches.
     c4 = args_for(4)
     assert retained_bench._resolved_batch_decode_full_attn_path(c4) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c4) == 2
-    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == "3,15"
-    assert retained_bench._resolved_batch_decode_full_attn_output_path(c4) == "batch_gemv"
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c4) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == ""
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c4) == "batch"
+
+    c6 = args_for(6)
+    assert retained_bench._resolved_batch_decode_full_attn_path(c6) == "native_batch"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c6) == 2
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c6) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c6) == "3,7,11,15,19,23,27,31"
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c6) == "batch_gemv"
 
     c8 = args_for(8)
     assert retained_bench._resolved_batch_decode_full_attn_path(c8) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c8) == 2
-    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c8) == "3,7,11,15,19,23"
-    assert retained_bench._resolved_batch_decode_full_attn_output_path(c8) == "batch_gemv"
+    assert retained_bench._resolved_batch_decode_linear_row_chunk_size(c8) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c8) == ""
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c8) == "batch"
 
     c9 = args_for(9)
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c9) == 0
@@ -3811,6 +3825,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] == "batch_gemv"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3836,40 +3851,78 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "0"
 
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            projection_dispatch_artifact=None,
+            batch_decode_moe_path="selected_c1",
+            batch_decode_linear_moe_path="per_row_c1",
+        )
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "1"
+
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=2))
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
+
+    for batch_size in (3, 5, 7):
+        retained_bench._apply_runtime_env_args(
+            SimpleNamespace(
+                projection_dispatch_artifact=None,
+                batch_decode_moe_path="auto",
+                batch_size=batch_size,
+            )
+        )
+        assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+        assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
 
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=4))
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
+
+    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=6))
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
 
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="auto", batch_size=8))
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
 
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=2)
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "0"
-    for batch_size in (3, 5, 6):
+    for batch_size in (3, 5):
         retained_bench._apply_runtime_env_args(
             SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=batch_size)
         )
         assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
-        assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7,11,15"
-        assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
+        assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
+        assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            projection_dispatch_artifact=None,
+            batch_decode_linear_path="batch_segments",
+            batch_decode_full_attn_path="auto",
+            batch_size=6,
+        )
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7,11,15,19,23,27,31"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=4)
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,15"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
     retained_bench._apply_runtime_env_args(
@@ -3886,8 +3939,8 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7,11,15,19,23"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
     retained_bench._apply_runtime_env_args(
@@ -12711,6 +12764,8 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["trace_decode_start"] == 0
     assert payload["workload"]["trace_decode_end"] == 4
     assert payload["workload"]["trace_decode_window"] == [0, 4]
+    assert payload["workload"]["skip_full_context_oracle"] is False
+    assert payload["workload"]["skip_linear_state_summary"] is False
     assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
     assert payload["workload"]["linear_state_atol"] == 1.0e-6
     assert "linear_state_focus_atol" not in payload["workload"]
@@ -12741,6 +12796,32 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert len(payload["commands"]) == 3
     assert all("scripts/qwen35_batch_hidden_bisect.py" in command for command in payload["commands"])
     assert output.exists()
+
+    skip_expensive_summaries = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+            "--skip-full-context-oracle",
+            "--skip-linear-state-summary",
+        ]
+    )
+    skip_payload = run_hidden_bisect(
+        skip_expensive_summaries,
+        ["--dry-run", "--skip-full-context-oracle", "--skip-linear-state-summary"],
+    )
+    assert skip_payload["workload"]["skip_full_context_oracle"] is True
+    assert skip_payload["workload"]["skip_linear_state_summary"] is True
+    assert "--skip-full-context-oracle" in skip_payload["commands"][0]
+    assert "--skip-linear-state-summary" in skip_payload["commands"][0]
 
     c8_auto_projection = build_hidden_bisect_parser().parse_args(
         [
@@ -12784,6 +12865,67 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert c3_rowchunk_payload["workload"]["batch_decode_full_attention_row_chunk_size"] == 2
     assert c3_rowchunk_payload["workload"]["full_attention_decode_path"] == "native_batch_row_chunks"
     assert c3_rowchunk_payload["workload"]["native_caware_decode"] is False
+
+    rowchunk_boundary_compare = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "6",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "12",
+            "--layer-limits",
+            "8,12",
+            "--batch-decode-full-attn-row-chunk-size",
+            "2",
+            "--batch-decode-full-attn-row-chunk-layers",
+            "3,7,11",
+            "--compare-full-attn-rowchunk-boundary",
+        ]
+    )
+    rowchunk_boundary_payload = run_hidden_bisect(
+        rowchunk_boundary_compare,
+        [
+            "--dry-run",
+            "--batch-decode-full-attn-row-chunk-size",
+            "2",
+            "--batch-decode-full-attn-row-chunk-layers",
+            "3,7,11",
+            "--compare-full-attn-rowchunk-boundary",
+        ],
+    )
+    assert rowchunk_boundary_payload["mode"] == "qwen35_paro_native_hidden_bisect_rowchunk_boundary"
+    assert rowchunk_boundary_payload["workload"]["compare_full_attention_rowchunk_boundary"] is True
+    assert rowchunk_boundary_payload["workload"]["comparison_variant_labels"] == {
+        "batch": "native_no_rowchunk",
+        "c1": "native_full_attention_rowchunk_repair",
+    }
+    assert rowchunk_boundary_payload["workload"]["batch_decode_full_attention_row_chunk_size"] == 2
+    assert rowchunk_boundary_payload["workload"]["batch_decode_full_attention_row_chunk_layers"] == "3,7,11"
+    assert rowchunk_boundary_payload["workload"]["full_attention_decode_path"] == "native_batch_vs_row_chunks"
+    assert "native no-rowchunk c>N batch vs rowchunk-repair" in rowchunk_boundary_payload["correctness"]["oracle"]
+
+    invalid_rowchunk_boundary_compare = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "6",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "12",
+            "--layer-limits",
+            "8",
+            "--compare-full-attn-rowchunk-boundary",
+        ]
+    )
+    with pytest.raises(ValueError, match="compare-full-attn-rowchunk-boundary requires native_batch full-attention"):
+        run_hidden_bisect(invalid_rowchunk_boundary_compare, ["--dry-run", "--compare-full-attn-rowchunk-boundary"])
 
     focused_trace = build_hidden_bisect_parser().parse_args(
         [
@@ -18556,6 +18698,13 @@ def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None
     assert float(out[0, 0, 0]) == pytest.approx(3.0)
 
 
+def test_qwen35_batch_correctness_shared_block_table_uses_global_physical_ids() -> None:
+    table = batch_correctness._shared_physical_block_table(3, 2)
+
+    assert table.dtype == np.int32
+    assert table.tolist() == [[0, 1], [2, 3], [4, 5]]
+
+
 def test_qwen35_batch_correctness_fill_context_cache_rows_crosses_page_boundary() -> None:
     key_cache = np.zeros((1, 2, 2, 1, 1), dtype=np.uint16)
     value_cache = np.zeros_like(key_cache)
@@ -18691,10 +18840,14 @@ def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(retained_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(retained_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(retained_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = retained_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
@@ -18739,10 +18892,14 @@ def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(paro_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(paro_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(paro_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = paro_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
@@ -18764,11 +18921,6 @@ def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch
 
 
 def test_qwen35_c1_baseline_software_context_records_git_dirty_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeProc:
-        def __init__(self, returncode: int) -> None:
-            self.returncode = returncode
-            self.stdout = ""
-
     monkeypatch.setattr(
         paro_bench,
         "_run_capture",
@@ -18778,13 +18930,28 @@ def test_qwen35_c1_baseline_software_context_records_git_dirty_state(monkeypatch
             "output": "abc123" if command[:2] == ["git", "rev-parse"] else "hipcc 6.2",
         },
     )
-    monkeypatch.setattr(paro_bench.subprocess, "run", lambda *args, **kwargs: FakeProc(1))
+    monkeypatch.setattr(
+        paro_bench,
+        "collect_repo_state",
+        lambda _root: {
+            "hipengine_commit": "abc123",
+            "dirty": True,
+            "staged_dirty": True,
+            "unstaged_dirty": False,
+            "untracked_dirty": True,
+            "untracked_count": 3,
+        },
+    )
 
     software = paro_bench._software_context()
 
     assert software["hipengine_commit"] == "abc123"
     assert software["hipcc_version"] == "hipcc 6.2"
     assert software["hipengine_dirty"] is True
+    assert software["staged_dirty"] is True
+    assert software["unstaged_dirty"] is False
+    assert software["untracked_dirty"] is True
+    assert software["untracked_count"] == 3
     assert software["python"]
 
 
@@ -18861,13 +19028,62 @@ def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypat
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(serial_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
     monkeypatch.setattr(serial_bench, "_run_capture", fake_run_capture)
+    monkeypatch.setattr(serial_bench, "detect_hip_target_arches", lambda: ("gfx1100",))
 
     hardware = serial_bench._hardware_context()
 
     assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["arch"] == "gfx1100"
+    assert hardware["detected_arches"] == ["gfx1100"]
+    assert hardware["target_arch"] is None
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
+
+
+def test_qwen35_retained_hardware_context_separates_detected_and_target_arch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+    monkeypatch.setattr(retained_bench, "detect_hip_target_arches", lambda: ("gfx1151",))
+    monkeypatch.setattr(
+        retained_bench,
+        "_visible_hip_device_context",
+        lambda: {"env": {}, "device_name": "Radeon 8060S Graphics"},
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_run_capture",
+        lambda argv, *, timeout: {
+            "command": " ".join(str(part) for part in argv),
+            "returncode": 0,
+            "output": "Name: gfx1151",
+        },
+    )
+
+    hardware = retained_bench._hardware_context()
+
+    assert hardware["arch"] == "gfx1151"
+    assert hardware["detected_arches"] == ["gfx1151"]
+    assert hardware["target_arch"] == "gfx1100"
+    assert hardware["default_hardware"] is False
+
+
+def test_qwen35_retained_command_preserves_target_arch_and_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+
+    command = retained_bench._command(["--json", "benchmarks/results/retained.json"])
+
+    assert shlex.split(command)[:5] == [
+        "env",
+        "HIPENGINE_HIP_ARCH=gfx1151",
+        "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1",
+        "python3",
+        "scripts/qwen35_batch_retained_bench.py",
+    ]
 
 
 def test_qwen35_batch_benchmarks_omit_blank_visible_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -19521,6 +19737,10 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
 
     assert payload["status"] == "blocked"
     assert payload["performance_claim"] is False
+    provenance = validate_artifact_provenance(payload["provenance"])
+    assert provenance["model_path"] == str(Path(args.model).resolve())
+    assert provenance["quant"] == "w4_paro"
+    assert provenance["kv_dtype"] == "bf16"
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"

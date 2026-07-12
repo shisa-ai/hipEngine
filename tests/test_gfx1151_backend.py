@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
+import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +11,7 @@ from hipengine.core.build import plan_hip_build
 from hipengine.generation import register_builtin_generators, resolve_text_generator
 from hipengine.kernels.backends import (
     CPU_BACKEND,
+    backend_package_capability,
     hip_target_arch_for_backend,
     resolve_backend,
     select_backend,
@@ -16,7 +20,11 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
     register_qwen35_rmsnorm_kernels,
 )
-from hipengine.kernels.hip_gfx1151 import TARGET_ARCH, register_gfx1151_kernels
+from hipengine.kernels.hip_gfx1151 import (
+    GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    TARGET_ARCH,
+    register_gfx1151_kernels,
+)
 from hipengine.kernels.registry import resolve
 
 
@@ -65,6 +73,11 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_gfx1151_kernels()
 
     assert TARGET_ARCH == "gfx1151"
+    assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    ) == 128
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
         resolve(
@@ -159,3 +172,236 @@ def test_qwen35_paro_gfx1151_generation_factory_sets_backend() -> None:
     generator = factory(model_path="/tmp/fake", weight_index=object(), model_plugin=object())
 
     assert getattr(generator, "backend") == "hip_gfx1151"
+
+
+def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> None:
+    import hipengine.generation.qwen35_gguf as qwen35_gguf
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, weight_index: object()),
+    )
+    register_builtin_generators()
+    factory = resolve_text_generator(
+        model="qwen3_5_moe_gguf",
+        backend="hip_gfx1151",
+        quant="gguf_q4_k_m",
+    )
+
+    generator = factory(
+        model_path="/tmp/fake.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+
+    assert getattr(generator, "backend") == "hip_gfx1151"
+    assert generator.target_arch == "gfx1151"
+
+
+def test_gguf_weight_backend_drives_embedding_and_linear_dispatch() -> None:
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16
+    from hipengine.runtime.gguf_embedding import resolve_gguf_embedding_dispatch
+    from hipengine.runtime.gguf_linear import resolve_gguf_linear_dispatch
+
+    weight = SimpleNamespace(
+        backend="hip_gfx1151",
+        spec=SimpleNamespace(layout=LAYOUT_DENSE_BF16, quant_key="bf16"),
+    )
+
+    assert resolve_gguf_embedding_dispatch(weight).key.backend == "hip_gfx1151"
+    assert resolve_gguf_linear_dispatch(weight).key.backend == "hip_gfx1151"
+
+
+def test_gguf_router_resolve_uses_weight_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as qwen35_gguf_runner
+
+    resolved: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, **kwargs):
+        del layer, quant, variant, kwargs
+        resolved.append(backend)
+        return lambda *args, **launch_kwargs: None
+
+    monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
+    weight = SimpleNamespace(
+        backend="hip_gfx1151",
+        spec=SimpleNamespace(quant_key="f32"),
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=22)),
+    )
+
+    qwen35_gguf_runner._launch_qwen35_router_logits_bf16_hidden(
+        11,
+        weight,
+        33,
+        1,
+        2048,
+        256,
+    )
+
+    assert resolved == ["hip_gfx1151"]
+
+
+def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as qwen35_gguf_runner
+
+    resolved: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, **kwargs):
+        del layer, quant, variant, kwargs
+        resolved.append(backend)
+        return object()
+
+    monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
+    monkeypatch.setattr(
+        qwen35_gguf_runner,
+        "register_qwen35_linear_attn_gdn_kernels",
+        lambda: None,
+    )
+    runner = object.__new__(qwen35_gguf_runner.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1151"
+
+    plan = runner._gdn_prefill_plan()
+
+    assert plan.has_chain
+    assert plan.has_exact_chain
+    assert plan.has_fused
+    assert resolved == ["hip_gfx1151"] * 8
+
+
+def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as qwen35_gguf_runner
+
+    loaded: list[str] = []
+    materialized: list[str] = []
+    fake_weights = object()
+    monkeypatch.setattr(
+        qwen35_gguf_runner,
+        "load_backend_kernel_package",
+        lambda backend: loaded.append(backend),
+    )
+
+    def fake_materialize(model_path, *, runtime, backend):
+        del model_path, runtime
+        materialized.append(backend)
+        return fake_weights
+
+    monkeypatch.setattr(
+        qwen35_gguf_runner,
+        "materialize_qwen35_gguf_weights",
+        fake_materialize,
+    )
+
+    runner = qwen35_gguf_runner.Qwen35GGUFFullStackRunner(
+        "/tmp/fake.gguf",
+        runtime=object(),
+        backend="hip_gfx1151",
+    )
+
+    assert runner.backend == "hip_gfx1151"
+    assert runner.target_arch == "gfx1151"
+    assert runner.weights is fake_weights
+    assert loaded == ["hip_gfx1151"]
+    assert materialized == ["hip_gfx1151"]
+
+
+def test_gguf_fused_linear_matching_uses_resident_backend() -> None:
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+    from hipengine.runtime.gguf_linear import _resolve_gguf_linear_pair_kind
+
+    def weight():
+        return SimpleNamespace(
+            backend="hip_gfx1151",
+            spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0"),
+        )
+
+    assert (
+        _resolve_gguf_linear_pair_kind(
+            weight(),
+            weight(),
+            rows=1,
+            in_features=2048,
+            out_features=4096,
+            out_features_b=4096,
+            backend="hip_gfx1151",
+            use_wmma=False,
+        )
+        == "q8_raw_dual"
+    )
+
+
+def test_gguf_runtime_has_no_literal_gfx1100_resolver_backend() -> None:
+    import hipengine.runtime.gguf_embedding as gguf_embedding
+    import hipengine.runtime.gguf_linear as gguf_linear
+    import hipengine.runtime.qwen35_gguf_runner as qwen35_gguf_runner
+
+    resolver_names = {
+        "resolve",
+        "resolve_gguf_embedding_dispatch",
+        "resolve_gguf_linear_dispatch",
+    }
+    violations: list[str] = []
+    for module in (gguf_embedding, gguf_linear, qwen35_gguf_runner):
+        tree = ast.parse(inspect.getsource(module))
+        for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+            if isinstance(call.func, ast.Name):
+                name = call.func.id
+            elif isinstance(call.func, ast.Attribute):
+                name = call.func.attr
+            else:
+                continue
+            if name not in resolver_names:
+                continue
+            for keyword in call.keywords:
+                if (
+                    keyword.arg == "backend"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value == "hip_gfx1100"
+                ):
+                    violations.append(f"{module.__name__}:{call.lineno}:{name}")
+
+    assert violations == []
+
+
+def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
+    from hipengine.kernels.registry import KernelKey, clear_registry_for_tests, resolve
+    from hipengine.runtime.gguf_embedding import _ensure_embedding_kernel_registered
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    embedding_key = KernelKey(
+        "hip_gfx1151",
+        "embedding",
+        "gguf_q6_k",
+        "lookup_bf16_out",
+    )
+    linear_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q8_0",
+        "gemv_bf16_bf16_out",
+    )
+    clear_registry_for_tests()
+
+    _ensure_embedding_kernel_registered(embedding_key)
+    _ensure_linear_kernel_registered(linear_key)
+
+    assert callable(
+        resolve(
+            backend=embedding_key.backend,
+            layer=embedding_key.layer,
+            quant=embedding_key.quant,
+            variant=embedding_key.variant,
+        )
+    )
+    assert callable(
+        resolve(
+            backend=linear_key.backend,
+            layer=linear_key.layer,
+            quant=linear_key.quant,
+            variant=linear_key.variant,
+        )
+    )

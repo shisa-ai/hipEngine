@@ -1,0 +1,378 @@
+{
+  "results": [
+    {
+      "name": "code_python",
+      "wall_s": 7.003,
+      "predicted_n": 100,
+      "predicted_per_second": 14.28,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 1,
+            "step_index": 128,
+            "prompt_tokens": 28,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "1",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 28,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.28,
+      "backend_prompt_tokens": 28,
+      "accept_rate": null
+    },
+    {
+      "name": "code_cpp",
+      "wall_s": 7.002,
+      "predicted_n": 40,
+      "predicted_per_second": 5.71,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 38,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "0",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 38,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.28,
+      "backend_prompt_tokens": 38,
+      "accept_rate": null
+    },
+    {
+      "name": "explain_concept",
+      "wall_s": 6.779,
+      "predicted_n": 60,
+      "predicted_per_second": 8.85,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 1,
+            "step_index": 128,
+            "prompt_tokens": 25,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "1",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 25,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.88,
+      "backend_prompt_tokens": 25,
+      "accept_rate": null
+    },
+    {
+      "name": "summarize",
+      "wall_s": 6.779,
+      "predicted_n": 105,
+      "predicted_per_second": 15.49,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 60,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "0",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 60,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.88,
+      "backend_prompt_tokens": 60,
+      "accept_rate": null
+    },
+    {
+      "name": "qa_factual",
+      "wall_s": 6.704,
+      "predicted_n": 79,
+      "predicted_per_second": 11.78,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 1,
+            "step_index": 128,
+            "prompt_tokens": 22,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "1",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 22,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 19.09,
+      "backend_prompt_tokens": 22,
+      "accept_rate": null
+    },
+    {
+      "name": "translation",
+      "wall_s": 6.703,
+      "predicted_n": 34,
+      "predicted_per_second": 5.07,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 23,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "0",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 23,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 19.09,
+      "backend_prompt_tokens": 23,
+      "accept_rate": null
+    },
+    {
+      "name": "creative_short",
+      "wall_s": 6.831,
+      "predicted_n": 104,
+      "predicted_per_second": 15.22,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 19,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "0",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 19,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.74,
+      "backend_prompt_tokens": 19,
+      "accept_rate": null
+    },
+    {
+      "name": "stepwise_math",
+      "wall_s": 6.831,
+      "predicted_n": 80,
+      "predicted_per_second": 11.71,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 1,
+            "step_index": 128,
+            "prompt_tokens": 58,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "1",
+            "sampler_mode": "greedy_fast",
+            "execution_path": "scheduler_native_packed_prefill_native_decode",
+            "native_compact_prefill": true,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 128,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          }
+        }
+      ],
+      "backend_decode_state": {
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 128,
+        "prompt_tokens": 58,
+        "sampler_mode": "greedy_fast"
+      },
+      "backend_generated_tokens": 128,
+      "backend_generated_per_second": 18.74,
+      "backend_prompt_tokens": 58,
+      "accept_rate": null
+    }
+  ],
+  "concurrency": 2,
+  "aggregate": {
+    "n_requests": 8,
+    "concurrency": 2,
+    "total_predicted": 602,
+    "total_draft": 0,
+    "total_draft_accepted": 0,
+    "aggregate_accept_rate": null,
+    "wall_s_total": 27.32,
+    "request_wall_s_total": 54.63,
+    "aggregate_predicted_per_second": 22.03,
+    "total_backend_generated": 1024,
+    "aggregate_backend_generated_per_second": 37.48
+  }
+}

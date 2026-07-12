@@ -38,24 +38,24 @@ def _to_bf16(x_f32: np.ndarray) -> np.ndarray:
 
 
 @pytest.fixture(scope="module")
-def _lm_head_lib():
+def _lm_head_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_lm_head(load=True, compiler_version=compiler_version)
 
 
 @pytest.fixture(scope="module")
-def _w8a16_lib():
+def _w8a16_lib(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_w8a16_linear(load=True, compiler_version=compiler_version)
 
 

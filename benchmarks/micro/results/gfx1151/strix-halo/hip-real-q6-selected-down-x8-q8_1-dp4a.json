@@ -1,0 +1,57 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --quant q6 --rows 8 --experts 256 --in-features 512 --out-features 2048 --raw-threads 128 --x8-threads 64 --iters 120 --warmup 30 --json benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json",
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 120,
+  "results": [
+    {
+      "correctness_vs_production_t16_float": {
+        "kl_max": 0.005789996658669243,
+        "kl_mean": 0.00136927413482377,
+        "max_abs": 0.5,
+        "mean_abs": 0.05207815021276474,
+        "top1": 1.0
+      },
+      "correctness_vs_raw_float": {
+        "kl_max": 0.005789996658669243,
+        "kl_mean": 0.00136927413482377,
+        "max_abs": 0.5,
+        "mean_abs": 0.05207815021276474,
+        "top1": 1.0
+      },
+      "quant": "q6",
+      "speedup": {
+        "production_t16_over_x8_dp4a_dot": 1.938130476321508,
+        "production_t16_over_x8_dp4a_quantize_plus_dot": 1.6768630259746715,
+        "raw_float_over_x8_dp4a_quantize_plus_dot": 2.3756721258534275,
+        "x8_dp4a_dot_over_raw_dp4a_dot": 1.4808756219647345,
+        "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.3991233423701024
+      },
+      "timing_ms": {
+        "production_t16_float": 0.03227943282884856,
+        "q8_1_quantize": 0.0027498327350864806,
+        "raw_selected_pack8_dp4a_dot_prequantized": 0.02466388395987451,
+        "raw_selected_pack8_dp4a_quantize_plus_dot": 0.026932973802710574,
+        "raw_selected_pack8_float": 0.04573143281353017,
+        "x8_selected_dp4a_dot_prequantized": 0.0166549327938507,
+        "x8_selected_dp4a_quantize_plus_dot": 0.019249892405544717
+      },
+      "x8_vs_raw_dp4a": {
+        "max_abs": 1.9073486328125e-06,
+        "mean_abs": 1.1641532182693481e-10,
+        "top1": 1.0
+      }
+    }
+  ],
+  "schema": "hipengine.gguf_x8_selected_down_dp4a_microbench.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1,
+    "out_features": 2048,
+    "raw_threads": 128,
+    "rows": 8,
+    "x8_threads": 64
+  },
+  "warmup": 30
+}

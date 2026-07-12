@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from numbers import Integral
 from pathlib import Path
 from typing import Any
+
+AUTO_QUANT = "auto"
 
 
 @dataclass(frozen=True)
@@ -124,18 +127,19 @@ class LLM:
     engine-level backend or quant conditionals.
     """
 
-    def __init__(self, model: str, *, backend: str = "auto", quant: str = "fp16"):
+    def __init__(self, model: str, *, backend: str = "auto", quant: str = AUTO_QUANT):
         self.model = model
         self.backend = backend
         self.quant = quant
         self._resolved_backend: str | None = None
+        self._resolved_quant: str | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
         self._text_generator: Any | None = None
 
     def generate(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ) -> list[str]:
         prompt_tuple = _normalize_prompts(prompts)
@@ -145,7 +149,7 @@ class LLM:
 
     def generate_detailed(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Return generated text plus optional per-token metadata."""
@@ -166,9 +170,46 @@ class LLM:
             raise RuntimeError(f"generator returned {len(outputs)} outputs for {len(prompt_tuple)} prompts")
         return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
 
+    def generate_speculative_mtp_detailed(
+        self,
+        prompts: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Return generated text through a model-owned speculative MTP route."""
+
+        from hipengine.generation import GenerationOutput
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if not prompt_tuple:
+            return []
+        generator = self._get_text_generator()
+        supports = getattr(generator, "supports_speculative_mtp", None)
+        if supports is not None and not bool(supports):
+            raise NotImplementedError("speculative MTP generation is not supported by this generator")
+        detailed = getattr(generator, "generate_speculative_mtp_detailed", None)
+        if not callable(detailed):
+            raise NotImplementedError("speculative MTP generation is not supported by this generator")
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        outputs = list(detailed(request))
+        if len(outputs) != len(prompt_tuple):
+            raise RuntimeError(f"generator returned {len(outputs)} MTP outputs for {len(prompt_tuple)} prompts")
+        return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
+
+    @property
+    def supports_speculative_mtp(self) -> bool:
+        """Whether the resolved generator exposes public speculative MTP generation."""
+
+        generator = self._text_generator
+        if generator is None:
+            return False
+        supports = getattr(generator, "supports_speculative_mtp", None)
+        if supports is not None and not bool(supports):
+            return False
+        return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
+
     def stream(
         self,
-        prompt: str,
+        prompt: Any,
         sampling_params: SamplingParams | None = None,
     ) -> Iterator[str]:
         """Yield generated text chunks for a single prompt when supported."""
@@ -178,13 +219,15 @@ class LLM:
 
     def stream_detailed(
         self,
-        prompt: str,
+        prompt: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Yield generated text chunks plus optional backend telemetry."""
 
         generator = self._get_text_generator()
-        request = _generation_request((str(prompt),), sampling_params or SamplingParams())
+        from hipengine.generation.registry import normalize_prompt_input
+
+        request = _generation_request((normalize_prompt_input(prompt),), sampling_params or SamplingParams())
         from hipengine.generation import GenerationStreamChunk
 
         detailed_streamer = getattr(generator, "stream_detailed", None)
@@ -215,7 +258,7 @@ class LLM:
 
     def stream_many_detailed(
         self,
-        prompts: str | Iterable[str],
+        prompts: Any,
         sampling_params: SamplingParams | None = None,
     ):
         """Yield row-indexed stream chunks for multiple prompts when supported."""
@@ -329,10 +372,11 @@ class LLM:
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
         backend = self._resolve_backend()
+        quant = self._resolve_quant(model_plugin)
         factory = resolve_text_generator(
             model=model_plugin.name,
             backend=backend,
-            quant=self.quant,
+            quant=quant,
         )
         self._text_generator = SubmitPollTextGenerator(
             factory(
@@ -351,6 +395,38 @@ class LLM:
 
         self._resolved_backend = resolve_backend(self.backend)
         return self._resolved_backend
+
+    @property
+    def resolved_backend(self) -> str:
+        """Return the concrete backend key selected for this process."""
+
+        return self._resolve_backend()
+
+    def _resolve_quant(self, model_plugin: Any) -> str:
+        if self._resolved_quant is not None:
+            return self._resolved_quant
+        requested = str(self.quant or AUTO_QUANT).strip() or AUTO_QUANT
+        if requested != AUTO_QUANT:
+            self._resolved_quant = requested
+            return requested
+        default_quant = str(getattr(model_plugin, "default_quant", "") or "").strip()
+        if not default_quant or default_quant == AUTO_QUANT:
+            raise RuntimeError(
+                f"model plugin {getattr(model_plugin, 'name', '<unknown>')!r} does not "
+                "declare a concrete default_quant; pass quant= explicitly"
+            )
+        self._resolved_quant = default_quant
+        return default_quant
+
+    @property
+    def resolved_quant(self) -> str:
+        """Return the concrete quant key selected for this model."""
+
+        if self._resolved_quant is None:
+            _weight_index, model_plugin = self._load_model_metadata()
+            self._resolve_quant(model_plugin)
+        assert self._resolved_quant is not None
+        return self._resolved_quant
 
     def _load_model_metadata(self) -> tuple[Any, Any]:
         if self._weight_index is not None and self._model_plugin is not None:
@@ -375,7 +451,7 @@ class LLM:
         return index, plugin
 
 
-def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
+def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
     from hipengine.generation import GenerationRequest
 
     return GenerationRequest(
@@ -425,10 +501,15 @@ def _looks_like_gguf_path(path: Path) -> bool:
     return path.suffix.lower() == ".gguf"
 
 
-def _normalize_prompts(prompts: str | Iterable[str]) -> tuple[str, ...]:
+def _normalize_prompts(prompts: Any) -> tuple[Any, ...]:
+    from hipengine.generation.registry import normalize_prompt_input
+
     if isinstance(prompts, str):
         return (prompts,)
-    return tuple(str(prompt) for prompt in prompts)
+    values = tuple(prompts)
+    if values and all(isinstance(token, Integral) and not isinstance(token, bool) for token in values):
+        return (normalize_prompt_input(values),)
+    return tuple(normalize_prompt_input(prompt) for prompt in values)
 
 
 def _primary_architecture(config: dict[str, Any]) -> str:

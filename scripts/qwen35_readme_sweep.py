@@ -4,9 +4,11 @@
 This is the llama-bench-style harness for hipEngine hardware comparison rows: a
 single resident session is created for the largest requested workload, then each
 prompt/decode shape is run multiple times with ``session.reset()`` between runs.
-The measured timing window excludes load/build and graph capture; load is still
-reported once so GGUF decode-repack cost remains visible without multiplying it
-by every shape/repetition.
+The measured timing window excludes load/build and PARO graph capture; load is
+still reported once so GGUF decode-repack cost remains visible without
+multiplying it by every shape/repetition. GGUF resident decode is eager by
+default because the retired GGUF decode-graph path corrupted recurrent state on
+relaunch.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -71,7 +74,7 @@ def main() -> int:
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-chunk-autotune", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prefill-chunk-memory-budget-gib", type=float, default=0.0)
-    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument("--force-bulk-prefill", action="store_true", help="GGUF: pass use_bulk=True")
     parser.add_argument("--no-bulk-prefill", action="store_true", help="GGUF: pass use_bulk=False")
@@ -90,6 +93,8 @@ def main() -> int:
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
+    if args.graph_replay_decode is None:
+        args.graph_replay_decode = args.engine == "paro"
 
     workloads = [_parse_workload(item) for item in args.workloads]
     workloads.sort(key=lambda item: (item[0], item[1]))
@@ -192,7 +197,10 @@ def _run_paro_sweep(
                     prompt_tokens=prompt_tokens,
                     decode_tokens=decode_tokens,
                     warmup_decode_tokens=warmup_decode_tokens,
-                    graph_replay_decode=args.graph_replay_decode,
+                    graph_replay_decode=_measured_graph_replay_requested(
+                        requested=args.graph_replay_decode,
+                        measured=measured,
+                    ),
                     graph_steps_per_replay=args.graph_steps_per_replay,
                     measured=measured,
                     run_index=run_index,
@@ -246,6 +254,7 @@ def _run_existing_paro_session_once(
     measured: bool,
     run_index: int,
     load_seconds: float,
+    graph_holder: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     memory_snapshots: dict[str, Any] = {
         "after_load": _paro_memory_snapshot("after_load", session.runtime, session),
@@ -278,14 +287,13 @@ def _run_existing_paro_session_once(
     decode_start_pos = len(prompt_tokens) + warmup_decode_tokens
     decode_graph_reused = False
     if graph_replay_decode and decode_tokens:
-        capture_start = time.perf_counter()
-        graph = session.capture_decode_graph(
+        graph, decode_graph_reused, graph_capture_seconds = _acquire_paro_readme_graph(
+            session=session,
+            graph_holder=graph_holder,
             position=decode_start_pos,
             steps_per_replay=graph_steps_per_replay,
             max_replay_steps=decode_tokens,
-            record_steps=0,
         )
-        graph_capture_seconds = time.perf_counter() - capture_start
         try:
             decode_start = time.perf_counter()
             graph.replay(decode_tokens)
@@ -293,7 +301,8 @@ def _run_existing_paro_session_once(
             final = graph.read_sample()
             generated.append(final.to_json_dict())
         finally:
-            graph.close()
+            if graph_holder is None:
+                graph.close()
     else:
         decode_start = time.perf_counter()
         for offset in range(decode_tokens):
@@ -352,6 +361,38 @@ def _run_existing_paro_session_once(
     }
 
 
+def _acquire_paro_readme_graph(
+    *,
+    session: Qwen35ParoResidentSession,
+    graph_holder: dict[str, Any] | None,
+    position: int,
+    steps_per_replay: int,
+    max_replay_steps: int,
+) -> tuple[Any, bool, float]:
+    """Capture one graph per shape and reuse it across resident repetitions."""
+
+    graph = graph_holder.get("graph") if graph_holder is not None else None
+    if graph is not None:
+        return graph, True, 0.0
+    capture_start = time.perf_counter()
+    graph = session.capture_decode_graph(
+        position=position,
+        steps_per_replay=steps_per_replay,
+        max_replay_steps=max_replay_steps,
+        record_steps=0,
+    )
+    capture_seconds = time.perf_counter() - capture_start
+    if graph_holder is not None:
+        graph_holder["graph"] = graph
+    return graph, False, capture_seconds
+
+
+def _measured_graph_replay_requested(*, requested: bool, measured: bool) -> bool:
+    """Warm kernels eagerly; capture fresh graphs only for measured resets."""
+
+    return bool(requested and measured)
+
+
 def _run_gguf_sweep(
     args: argparse.Namespace,
     model: Path,
@@ -372,6 +413,7 @@ def _run_gguf_sweep(
     session = Qwen35GGUFResidentSession(
         model,
         runtime=runtime,
+        backend=args.backend,
         compiler_version=compiler_version,
         require_cached_build=args.require_cached_build,
         max_sequence_length=max_sequence_length,
@@ -387,6 +429,7 @@ def _run_gguf_sweep(
         kv_scale_dtype=kv_policy.scale_dtype,
         kv_scale_granularity=kv_policy.scale_granularity,
     )
+    resolved_backend, target_arch = _gguf_session_identity(session)
     load_seconds = time.perf_counter() - load_start
     host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
     host_token_embedding_reason = getattr(session, "host_token_embedding_reason", None)
@@ -396,12 +439,16 @@ def _run_gguf_sweep(
         for prompt_length, decode_tokens in workloads:
             label = _format_workload(prompt_length, decode_tokens)
             prompt_tokens = [int(args.token_id)] * int(prompt_length)
-            graph_holder: dict[str, Any] = {}
             runs: list[dict[str, Any]] = []
-            try:
-                for raw_index in range(args.warmup_runs + args.measured_runs):
-                    measured = raw_index >= args.warmup_runs
-                    run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+            for raw_index in range(args.warmup_runs + args.measured_runs):
+                measured = raw_index >= args.warmup_runs
+                run_index = raw_index - args.warmup_runs + 1 if measured else raw_index + 1
+                effective_graph_replay = _measured_graph_replay_requested(
+                    requested=args.graph_replay_decode,
+                    measured=measured,
+                )
+                graph_holder: dict[str, Any] | None = {} if effective_graph_replay else None
+                try:
                     run = _run_existing_gguf_session_once(
                         session=session,
                         runtime=runtime,
@@ -410,7 +457,7 @@ def _run_gguf_sweep(
                         prompt_tokens=prompt_tokens,
                         decode_tokens=decode_tokens,
                         warmup_decode_tokens=warmup_decode_tokens,
-                        graph_replay_decode=args.graph_replay_decode,
+                        graph_replay_decode=effective_graph_replay,
                         graph_steps_per_replay=args.graph_steps_per_replay,
                         use_bulk_prefill=use_bulk_prefill,
                         bulk_attention_mode=args.bulk_prefill_attention_mode,
@@ -425,10 +472,10 @@ def _run_gguf_sweep(
                     )
                     runs.append(run)
                     _print_run(label, run)
-            finally:
-                graph = graph_holder.get("graph")
-                if graph is not None:
-                    graph.close()
+                finally:
+                    graph = None if graph_holder is None else graph_holder.get("graph")
+                    if graph is not None:
+                        graph.close()
             runs_by_workload[label] = runs
     finally:
         persistent_memory["before_close"] = _gguf_memory_snapshot("before_close", runtime, session)
@@ -450,7 +497,9 @@ def _run_gguf_sweep(
         compiler_version_file=args.compiler_version_file,
         compiler_version=compiler_version,
         extra={
-            "backend": "hip_gfx1100",
+            "backend": resolved_backend,
+            "requested_backend": args.backend,
+            "target_arch": target_arch,
             "use_bulk_prefill": use_bulk_prefill,
             "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
             "use_wmma_prefill": args.use_wmma_prefill,
@@ -465,6 +514,19 @@ def _run_gguf_sweep(
             "host_token_embedding_reason": host_token_embedding_reason,
         },
     )
+
+
+def _gguf_session_identity(session: Qwen35GGUFResidentSession) -> tuple[str, str]:
+    """Snapshot resolved identity before ``close()`` clears the owned runner."""
+
+    runner = session.runner
+    if runner is None:
+        raise RuntimeError("GGUF README sweep session has no resolved runner")
+    backend = str(session.backend).strip()
+    target_arch = str(runner.target_arch).strip()
+    if not backend or not target_arch:
+        raise RuntimeError("GGUF README sweep session identity is incomplete")
+    return backend, target_arch
 
 
 def _sweep_output(
@@ -488,8 +550,36 @@ def _sweep_output(
         label: _summarize_runs([run for run in runs if run.get("measured")])
         for label, runs in runs_by_workload.items()
     }
+    resolved_backend = str(extra.get("backend") or "").strip()
+    target_arch = str(extra.get("target_arch") or "").strip()
+    if not resolved_backend or not target_arch:
+        raise RuntimeError(
+            "README sweep must report a concrete resolved backend and target arch"
+        )
+    kv_dtype = str(extra.get("kv_storage_dtype") or "").strip() or None
+    provenance = collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend=str(extra.get("requested_backend") or "auto"),
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        model_path=model,
+        quant=quant,
+        kv_dtype=kv_dtype,
+        command=tuple(sys.argv),
+        build_profile="readme_resident_sweep",
+        timing_protocol=(
+            "single resident max-context session; per-shape reset; separate "
+            "prefill/decode wall; graph capture excluded where enabled"
+        ),
+        warmups=warmup_runs,
+        repetitions=measured_runs,
+        profiler={"enabled": False, "reason": "topline host-wall sweep"},
+        hipcc_version=compiler_version,
+    )
     return {
         "schema": 1,
+        "status": "diagnostic_retained_pending_rollup_gate",
+        "performance_claim": False,
         "mode": "qwen35_readme_persistent_resident_sweep",
         "engine": engine,
         "model": str(model),
@@ -504,13 +594,14 @@ def _sweep_output(
         "persistent_session_memory": persistent_memory,
         "compiler_version_file": None if compiler_version_file is None else str(compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
+        "provenance": provenance,
         "summary_by_workload": summaries,
         "runs_by_workload": runs_by_workload,
         "extra": extra,
         "notes": [
             "The model/session is loaded once for the largest requested shape and reset between repetitions.",
             "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
-            "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape.",
+            "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput.",
         ],
     }
 
@@ -519,11 +610,17 @@ def _summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     prefill = [run["throughput"]["prefill_tok_s"] for run in runs if run.get("throughput", {}).get("prefill_tok_s") is not None]
     decode = [run["throughput"]["decode_tok_s"] for run in runs if run.get("throughput", {}).get("decode_tok_s") is not None]
     peak = [run["memory"].get("tracked_peak_allocated_gib") for run in runs if run.get("memory", {}).get("tracked_peak_allocated_gib") is not None]
+    hip_peak = [
+        run["memory"].get("hip_used_peak_sampled_gib")
+        for run in runs
+        if run.get("memory", {}).get("hip_used_peak_sampled_gib") is not None
+    ]
     final_ids = [run.get("correctness_sanity", {}).get("final_token_id") for run in runs]
     return {
         "prefill_tok_s": _stats(prefill),
         "decode_tok_s": _stats(decode),
         "tracked_peak_allocated_gib": _stats(peak),
+        "hip_used_peak_sampled_gib": _stats(hip_peak),
         "final_token_ids": final_ids,
         "final_token_ids_stable": len(set(final_ids)) <= 1,
     }

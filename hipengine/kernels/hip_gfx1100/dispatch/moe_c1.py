@@ -193,6 +193,7 @@ class MoeC1Args(ctypes.Structure):
         ("shared_prefill_tile_m", ctypes.c_int64),  # linear-attn only
         ("shared_prefill_tile_n", ctypes.c_int64),  # linear-attn only
         ("shared_down_mode", ctypes.c_int64),        # linear-attn: 0=prefill, 1=multi-row decode, 2=output-tiled auto, 3=gemv, 4=multi-row
+        ("force_small_batch_shared_expert", ctypes.c_int64),
         ("combine_threads", ctypes.c_int64),
     ]
 

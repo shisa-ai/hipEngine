@@ -1,0 +1,65 @@
+{
+  "schema": "hipengine.benchmark.summary.v1",
+  "timestamp": "2026-07-09T15:23:00+09:00",
+  "hardware": {
+    "gpu": "gfx1151/Radeon 8060S",
+    "host": "local hipEngine-main worktree"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "quant": "w4_paro",
+    "path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "workload": {
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "batch_size": 6,
+    "decode_tokens": 16,
+    "warmup_decode_tokens": 0,
+    "max_layers": 40,
+    "moe_path": "selected_c1 with forced small-batch shared expert",
+    "correctness_gate": "generated-token equality vs independent c1 resident runs"
+  },
+  "code_change": {
+    "purpose": "Allow staged full-attention diagnostic paths to run under selected-c1 MoE scratch instead of requiring grouped MoE scratch.",
+    "validation": [
+      "python3 -m py_compile hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py",
+      "PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe",
+      "PYTHONPATH=. uv run pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context tests/test_qwen35_decode_state.py::test_qwen35_decode_state_staged_full_attention_supports_selected_c1_moe"
+    ]
+  },
+  "probes": [
+    {
+      "name": "per-row pre-QKV+append, batch context/O/post/selected-c1 MoE",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-staged-preqkv-append-batch-context-o-post-selectedc1-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 9,
+      "decode_tok_s": 108.209,
+      "median_step_ms": 52.714,
+      "conclusion": "Pre-QKV and append per-row do not repair no-rowchunk c6; keeping batch context preserves the original token-9 failure shape."
+    },
+    {
+      "name": "per-row pre-QKV+append+context, batch gate/O/post/selected-c1 MoE",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-staged-preqkv-append-context-batch-gate-o-post-selectedc1-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 2,
+      "decode_tok_s": 100.095,
+      "median_step_ms": 57.137,
+      "conclusion": "Moving context per-row changes the failure earlier and is slower."
+    },
+    {
+      "name": "per-row pre-QKV+append+context+gate, batch O/post/selected-c1 MoE",
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-staged-preqkv-append-context-gate-batch-o-post-selectedc1-local-equality.json",
+      "status": "rejected_correctness",
+      "first_mismatch_token": 2,
+      "decode_tok_s": 100.707,
+      "median_step_ms": 56.905,
+      "conclusion": "Batch gate is not the token-2 shift; per-row context/gate remains worse than batch context."
+    }
+  ],
+  "decision": {
+    "performance_claim": false,
+    "retain_default": "Keep selected full-attention rowchunk2 layers 3,7,11,15,19,23,27,31 for rows=6.",
+    "next_step": "Instrument native batch full-attention context vs rowchunked context on the selected producer layers; the current splits do not isolate a repairable host-side staging issue."
+  }
+}

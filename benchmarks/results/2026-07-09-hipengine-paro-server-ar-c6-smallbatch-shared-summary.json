@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "summary_type": "diagnostic_server_comparison",
+  "status": "blocked",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-packed",
+  "quant": "w4_paro",
+  "workload": "OpenAI completions forced n=6 code_python max_tokens=128 batch_window_ms=200",
+  "server_env": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE": "1",
+    "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP": "1",
+    "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS": "1"
+  },
+  "comparison": [
+    {
+      "name": "selected_rowchunk_repair",
+      "batch_decode_step_ms_avg": 64.101,
+      "backend_generated_tok_s": 8.14,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json"
+    },
+    {
+      "name": "selected_native_linear_smallbatch_shared",
+      "batch_decode_step_ms_avg": 51.053,
+      "backend_generated_tok_s": 9.16,
+      "batch_prefill_ms": 248.528,
+      "batch_decode_ms": 6483.671,
+      "batch_total_ms": 6763.258,
+      "source_artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json",
+      "decode_execution": {
+        "rows": 6,
+        "moe_decode_path": "selected_c1_batch",
+        "moe_c1_shared_expert_decode_path": "small_batch_forced",
+        "linear_attention_decode_path": "native_batch_segments",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "blockers": [
+          "full-attention decode auto-selected native row-chunk diagnostic path"
+        ]
+      }
+    }
+  ],
+  "deltas": {
+    "smallbatch_shared_vs_selected_rowchunk_backend_tok_s_ratio": 1.1253071253071254,
+    "smallbatch_shared_vs_selected_rowchunk_backend_tok_s_percent": 12.530712530712535,
+    "smallbatch_shared_vs_selected_rowchunk_step_ms_delta": -13.048000000000002
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "server-visible c6 default is faster and metadata confirms small-batch shared expert, but full-attention rowchunking remains a diagnostic blocker"
+  }
+}

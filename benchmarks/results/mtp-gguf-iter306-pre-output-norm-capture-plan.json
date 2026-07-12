@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_hipengine_pre_output_norm_capture_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 306,
+  "status": "ready",
+  "qwen35moe_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+  "context_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "compile_artifact_path": "benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json",
+  "shared_audit_path": "benchmarks/results/mtp-gguf-iter305-hidden-seed-shared-path-audit.json",
+  "llamacpp_pre_output_patch": {
+    "ready": true,
+    "anchor_count": 1,
+    "post_norm_h_nextn_currently_present": true,
+    "context_unmasked_get_ith_ready": true,
+    "patch_scope": "temporary copied llama.cpp source tree only",
+    "old_text": "    cur = inpL;\n\n    // post-norm hidden state feeds both the LM head and the MTP seed below\n    cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);",
+    "new_text": "    cur = inpL;\n\n    // PRE-output_norm diagnostic: expose final decoder output through h_nextn.\n    cb(cur, \"h_nextn_pre_output_norm\", -1);\n    res->t_h_nextn = cur;\n\n    // post-norm hidden state feeds both the LM head and the MTP seed below\n    cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);",
+    "anchors": {
+      "cur_inpL_before_output_norm": 228,
+      "output_norm": 231,
+      "post_norm_h_nextn": 233,
+      "context_unmasked_get_ith": 934
+    }
+  },
+  "hipengine_pre_output_capture": {
+    "ready": true,
+    "facts": {
+      "serial_loop_has_src_before_output_norm": true,
+      "output_norm_called_with_src_ptr": true,
+      "bf16_copy_helper_available": true,
+      "output_norm_fp32_seed_uses_same_src_ptr": true,
+      "private_methods_can_replay_serial_path": true
+    },
+    "capture_strategy": "For tokens before the final position, call session.step(..., return_logits=False). For the final token, call the private token setup helpers, replay the same layer loop as _run_current_hidden_to_final_hidden, then copy the final src.ptr with _copy_bf16_ptr_to_host_f32 before _run_output_norm_hidden.",
+    "anchors": {
+      "current_to_final": 3803,
+      "layer_loop": 1167,
+      "output_norm_call": 3828,
+      "output_norm": 3835,
+      "bf16_copy_helper": 6295
+    }
+  },
+  "build_inputs": {
+    "ready": true,
+    "source_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+    "build_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build",
+    "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build/bin",
+    "capture_harness_executable": "/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture",
+    "capture_harness_executable_exists": true
+  },
+  "execution_plan": {
+    "steps": [
+      "copy the llama.cpp source_dir to a new /tmp pre-output_norm source tree",
+      "apply llamacpp_pre_output_patch.old_text -> new_text in src/models/qwen35moe.cpp",
+      "configure/build libllama in a new temporary build directory",
+      "compile the existing hidden-seed capture harness against that patched build",
+      "run the harness with --all-rows for the oracle prompt at position 16",
+      "capture hipEngine serial pre-output_norm row via the private serial replay strategy",
+      "compare pre-output_norm rows, then compare post-output_norm rows from iter303/304"
+    ],
+    "source_dir_to_copy": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+    "temporary_source_hint": "/tmp/hipengine-llamacpp-mtp-iter306-pre-output-norm-src",
+    "temporary_build_hint": "/tmp/hipengine-llamacpp-mtp-iter306-pre-output-norm-build",
+    "artifact_prefix_hint": "/tmp/hipengine-llamacpp-mtp-iter306-pre-output-norm/pos16"
+  },
+  "decision": {
+    "status": "ready",
+    "conclusion": "pre_output_norm_capture_plan_ready",
+    "next_action": "build_patched_llamacpp_pre_output_norm_harness_and_compare_serial_rows"
+  },
+  "conclusion": "pre_output_norm_capture_plan_ready",
+  "external_checkout_modified": false,
+  "next_action": "build_patched_llamacpp_pre_output_norm_harness_and_compare_serial_rows"
+}

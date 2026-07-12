@@ -1,0 +1,746 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_vs_hipengine_hidden_in_earliest_divergence",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 298,
+  "status": "mismatched",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_sweep_path": "benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json",
+  "layers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "position": 16,
+  "token_id": 271,
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "compiler_version": null,
+  "require_cached_build": false,
+  "max_sequence_length": null,
+  "exact_atol": 0.0,
+  "precision_audit": {
+    "available": true,
+    "layers": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "count": 14,
+    "records": [
+      {
+        "slot_path": "layers.0.ffn_gate_inp",
+        "source_name": "blk.0.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.0.ffn_gate_inp_shexp",
+        "source_name": "blk.0.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.0.ssm_alpha",
+        "source_name": "blk.0.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.0.ssm_beta",
+        "source_name": "blk.0.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.1.ffn_gate_inp",
+        "source_name": "blk.1.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.1.ffn_gate_inp_shexp",
+        "source_name": "blk.1.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.1.ssm_alpha",
+        "source_name": "blk.1.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.1.ssm_beta",
+        "source_name": "blk.1.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.2.ffn_gate_inp",
+        "source_name": "blk.2.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.2.ffn_gate_inp_shexp",
+        "source_name": "blk.2.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.2.ssm_alpha",
+        "source_name": "blk.2.ssm_alpha.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.2.ssm_beta",
+        "source_name": "blk.2.ssm_beta.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+      },
+      {
+        "slot_path": "layers.3.ffn_gate_inp",
+        "source_name": "blk.3.ffn_gate_inp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+      },
+      {
+        "slot_path": "layers.3.ffn_gate_inp_shexp",
+        "source_name": "blk.3.ffn_gate_inp_shexp.weight",
+        "source_type": "F32",
+        "resident_layout": "dense_bf16",
+        "resident_quant_key": "bf16",
+        "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+        "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+      }
+    ]
+  },
+  "layer_results": [
+    {
+      "layer": 0,
+      "status": "mismatched",
+      "llamacpp": {
+        "binary_path": "/tmp/hipengine-llamacpp-mtp-iter295-hidden-in-layer-sweep/layer0-pos16.f32",
+        "sha256": "ce69511d7a54dec1a77cb3097923d71999d5f408690e377cec3bb39285dffa46",
+        "count": 2048,
+        "source_status": "mismatched",
+        "source_selected_row": 16
+      },
+      "hipengine": {
+        "count": 2048,
+        "sha256": "5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3",
+        "samples": [
+          -0.00332642,
+          -0.00047493,
+          0.00488281,
+          0.00094986,
+          -0.00011873,
+          -0.00166321,
+          0.00047493,
+          -0.00094986
+        ]
+      },
+      "numeric_delta": {
+        "shape_match": true,
+        "count": 2048,
+        "max_abs_diff": 8.296966552734375e-05,
+        "mean_abs_diff": 2.105720341205597e-06,
+        "rmse": 4.314661795910361e-06,
+        "actual_l2": 0.31637672421603386,
+        "reference_l2": 0.3163397489526557,
+        "diff_samples": [
+          1.91e-06,
+          0.0,
+          -1.478e-05,
+          0.0,
+          0.0,
+          9.5e-07,
+          0.0,
+          0.0
+        ],
+        "top_abs_diff": [
+          {
+            "index": 803,
+            "actual": -0.03597164,
+            "reference": -0.03588867,
+            "diff": -8.297e-05,
+            "abs_diff": 8.297e-05
+          },
+          {
+            "index": 541,
+            "actual": -0.0171361,
+            "reference": -0.01708984,
+            "diff": -4.625e-05,
+            "abs_diff": 4.625e-05
+          },
+          {
+            "index": 1254,
+            "actual": 0.02055073,
+            "reference": 0.02050781,
+            "diff": 4.292e-05,
+            "abs_diff": 4.292e-05
+          },
+          {
+            "index": 1875,
+            "actual": -0.21195412,
+            "reference": -0.21191406,
+            "diff": -4.005e-05,
+            "abs_diff": 4.005e-05
+          },
+          {
+            "index": 860,
+            "actual": 0.01217651,
+            "reference": 0.01220703,
+            "diff": -3.052e-05,
+            "abs_diff": 3.052e-05
+          },
+          {
+            "index": 1922,
+            "actual": 0.00881743,
+            "reference": 0.00878906,
+            "diff": 2.837e-05,
+            "abs_diff": 2.837e-05
+          },
+          {
+            "index": 813,
+            "actual": -0.01199055,
+            "reference": -0.01196289,
+            "diff": -2.766e-05,
+            "abs_diff": 2.766e-05
+          },
+          {
+            "index": 1105,
+            "actual": -0.00796163,
+            "reference": -0.00793457,
+            "diff": -2.706e-05,
+            "abs_diff": 2.706e-05
+          }
+        ],
+        "exact_match": false
+      },
+      "preceding_precision_contractions": {
+        "count": 0,
+        "slot_paths": []
+      },
+      "current_layer_precision_contractions": {
+        "count": 4,
+        "slot_paths": [
+          "layers.0.ffn_gate_inp",
+          "layers.0.ffn_gate_inp_shexp",
+          "layers.0.ssm_alpha",
+          "layers.0.ssm_beta"
+        ]
+      }
+    },
+    {
+      "layer": 1,
+      "status": "mismatched",
+      "llamacpp": {
+        "binary_path": "/tmp/hipengine-llamacpp-mtp-iter295-hidden-in-layer-sweep/layer1-pos16.f32",
+        "sha256": "9321263b6a72127990374a064373d74941ab3a493cde35c286019bf4318b2777",
+        "count": 2048,
+        "source_status": "mismatched",
+        "source_selected_row": 16
+      },
+      "hipengine": {
+        "count": 2048,
+        "sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001",
+        "samples": [
+          0.0006752,
+          -0.01251221,
+          0.03344727,
+          0.00198364,
+          -0.01190186,
+          -0.00543213,
+          -0.01281738,
+          0.01141357
+        ]
+      },
+      "numeric_delta": {
+        "shape_match": true,
+        "count": 2048,
+        "max_abs_diff": 0.045740051893517375,
+        "mean_abs_diff": 0.009691874419019086,
+        "rmse": 0.012114962719327636,
+        "actual_l2": 0.6397860823445306,
+        "reference_l2": 0.8107235872805899,
+        "diff_samples": [
+          -0.0101038,
+          0.01496354,
+          -0.02310622,
+          -0.00465434,
+          0.00443322,
+          0.00454917,
+          0.00418443,
+          -0.00610283
+        ],
+        "top_abs_diff": [
+          {
+            "index": 383,
+            "actual": -0.00203888,
+            "reference": 0.04370117,
+            "diff": -0.04574005,
+            "abs_diff": 0.04574005
+          },
+          {
+            "index": 1155,
+            "actual": 0.01802139,
+            "reference": -0.02526855,
+            "diff": 0.04328994,
+            "abs_diff": 0.04328994
+          },
+          {
+            "index": 602,
+            "actual": 0.06602272,
+            "reference": 0.10693359,
+            "diff": -0.04091087,
+            "abs_diff": 0.04091087
+          },
+          {
+            "index": 1631,
+            "actual": -0.00619705,
+            "reference": 0.03222656,
+            "diff": -0.03842362,
+            "abs_diff": 0.03842362
+          },
+          {
+            "index": 1236,
+            "actual": -0.01940173,
+            "reference": 0.0189209,
+            "diff": -0.03832263,
+            "abs_diff": 0.03832263
+          },
+          {
+            "index": 590,
+            "actual": -0.00322789,
+            "reference": 0.03393555,
+            "diff": -0.03716344,
+            "abs_diff": 0.03716344
+          },
+          {
+            "index": 645,
+            "actual": -0.00769312,
+            "reference": 0.02941895,
+            "diff": -0.03711207,
+            "abs_diff": 0.03711207
+          },
+          {
+            "index": 2005,
+            "actual": -0.00118182,
+            "reference": -0.0378418,
+            "diff": 0.03665998,
+            "abs_diff": 0.03665998
+          }
+        ],
+        "exact_match": false
+      },
+      "preceding_precision_contractions": {
+        "count": 4,
+        "slot_paths": [
+          "layers.0.ffn_gate_inp",
+          "layers.0.ffn_gate_inp_shexp",
+          "layers.0.ssm_alpha",
+          "layers.0.ssm_beta"
+        ]
+      },
+      "current_layer_precision_contractions": {
+        "count": 4,
+        "slot_paths": [
+          "layers.1.ffn_gate_inp",
+          "layers.1.ffn_gate_inp_shexp",
+          "layers.1.ssm_alpha",
+          "layers.1.ssm_beta"
+        ]
+      }
+    },
+    {
+      "layer": 2,
+      "status": "mismatched",
+      "llamacpp": {
+        "binary_path": "/tmp/hipengine-llamacpp-mtp-iter295-hidden-in-layer-sweep/layer2-pos16.f32",
+        "sha256": "55026171312ff0e3a24876321ad55cfec4c3d331741cf3ad3ea7b817e091928f",
+        "count": 2048,
+        "source_status": "mismatched",
+        "source_selected_row": 16
+      },
+      "hipengine": {
+        "count": 2048,
+        "sha256": "0c3d152736b81b515ceeda1875a7a40b8c4d5311df0c893bea5dcc4cd118641e",
+        "samples": [
+          0.0011673,
+          -0.02807617,
+          0.03588867,
+          -0.00817871,
+          -0.02490234,
+          0.01147461,
+          -0.00634766,
+          0.00294495
+        ]
+      },
+      "numeric_delta": {
+        "shape_match": true,
+        "count": 2048,
+        "max_abs_diff": 0.08172629773616791,
+        "mean_abs_diff": 0.01477806005112825,
+        "rmse": 0.018644114668738276,
+        "actual_l2": 0.839002011596189,
+        "reference_l2": 1.120701909876083,
+        "diff_samples": [
+          -0.02817848,
+          0.02046888,
+          -0.02555443,
+          0.00077053,
+          0.01325717,
+          -0.02690842,
+          0.00211509,
+          -0.01083419
+        ],
+        "top_abs_diff": [
+          {
+            "index": 1197,
+            "actual": 0.08721901,
+            "reference": 0.16894531,
+            "diff": -0.0817263,
+            "abs_diff": 0.0817263
+          },
+          {
+            "index": 1658,
+            "actual": 0.0141202,
+            "reference": -0.05371094,
+            "diff": 0.06783114,
+            "abs_diff": 0.06783114
+          },
+          {
+            "index": 1269,
+            "actual": 0.49770409,
+            "reference": 0.5625,
+            "diff": -0.06479591,
+            "abs_diff": 0.06479591
+          },
+          {
+            "index": 1551,
+            "actual": 0.01826968,
+            "reference": -0.04345703,
+            "diff": 0.06172672,
+            "abs_diff": 0.06172672
+          },
+          {
+            "index": 1307,
+            "actual": -0.01548371,
+            "reference": 0.04418945,
+            "diff": -0.05967317,
+            "abs_diff": 0.05967317
+          },
+          {
+            "index": 1725,
+            "actual": -0.02019982,
+            "reference": 0.03930664,
+            "diff": -0.05950646,
+            "abs_diff": 0.05950646
+          },
+          {
+            "index": 53,
+            "actual": -0.00594267,
+            "reference": -0.06542969,
+            "diff": 0.05948702,
+            "abs_diff": 0.05948702
+          },
+          {
+            "index": 1573,
+            "actual": 0.0179327,
+            "reference": -0.03881836,
+            "diff": 0.05675106,
+            "abs_diff": 0.05675106
+          }
+        ],
+        "exact_match": false
+      },
+      "preceding_precision_contractions": {
+        "count": 8,
+        "slot_paths": [
+          "layers.0.ffn_gate_inp",
+          "layers.0.ffn_gate_inp_shexp",
+          "layers.0.ssm_alpha",
+          "layers.0.ssm_beta",
+          "layers.1.ffn_gate_inp",
+          "layers.1.ffn_gate_inp_shexp",
+          "layers.1.ssm_alpha",
+          "layers.1.ssm_beta"
+        ]
+      },
+      "current_layer_precision_contractions": {
+        "count": 4,
+        "slot_paths": [
+          "layers.2.ffn_gate_inp",
+          "layers.2.ffn_gate_inp_shexp",
+          "layers.2.ssm_alpha",
+          "layers.2.ssm_beta"
+        ]
+      }
+    },
+    {
+      "layer": 3,
+      "status": "mismatched",
+      "llamacpp": {
+        "binary_path": "/tmp/hipengine-llamacpp-mtp-iter295-hidden-in-layer-sweep/layer3-pos16.f32",
+        "sha256": "4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444",
+        "count": 2048,
+        "source_status": "mismatched",
+        "source_selected_row": 16
+      },
+      "hipengine": {
+        "count": 2048,
+        "sha256": "46d60fba2f8a3408065f0a5769552e84f23e9289fd5913be1b607811082b0eb5",
+        "samples": [
+          0.0324707,
+          -0.03442383,
+          0.04174805,
+          0.00104523,
+          -0.01647949,
+          0.01708984,
+          0.01049805,
+          0.00202942
+        ]
+      },
+      "numeric_delta": {
+        "shape_match": true,
+        "count": 2048,
+        "max_abs_diff": 0.09140318632125854,
+        "mean_abs_diff": 0.01902030316489345,
+        "rmse": 0.023895301258143264,
+        "actual_l2": 1.0993092872400494,
+        "reference_l2": 1.413309512991529,
+        "diff_samples": [
+          -0.04752075,
+          0.02777616,
+          -0.02074827,
+          -0.01118981,
+          0.01188506,
+          -0.02414902,
+          -0.01525347,
+          -0.00783475
+        ],
+        "top_abs_diff": [
+          {
+            "index": 175,
+            "actual": -0.37070006,
+            "reference": -0.27929688,
+            "diff": -0.09140319,
+            "abs_diff": 0.09140319
+          },
+          {
+            "index": 1571,
+            "actual": -0.01889089,
+            "reference": 0.06591797,
+            "diff": -0.08480886,
+            "abs_diff": 0.08480886
+          },
+          {
+            "index": 193,
+            "actual": 0.01237166,
+            "reference": -0.07177734,
+            "diff": 0.084149,
+            "abs_diff": 0.084149
+          },
+          {
+            "index": 1659,
+            "actual": 0.00827674,
+            "reference": -0.07519531,
+            "diff": 0.08347206,
+            "abs_diff": 0.08347206
+          },
+          {
+            "index": 1894,
+            "actual": 0.0013443,
+            "reference": -0.07714844,
+            "diff": 0.07849274,
+            "abs_diff": 0.07849274
+          },
+          {
+            "index": 1240,
+            "actual": -0.0051176,
+            "reference": -0.07958984,
+            "diff": 0.07447225,
+            "abs_diff": 0.07447225
+          },
+          {
+            "index": 1658,
+            "actual": 0.04820897,
+            "reference": -0.0255127,
+            "diff": 0.07372167,
+            "abs_diff": 0.07372167
+          },
+          {
+            "index": 1197,
+            "actual": 0.14769028,
+            "reference": 0.22070312,
+            "diff": -0.07301284,
+            "abs_diff": 0.07301284
+          }
+        ],
+        "exact_match": false
+      },
+      "preceding_precision_contractions": {
+        "count": 12,
+        "slot_paths": [
+          "layers.0.ffn_gate_inp",
+          "layers.0.ffn_gate_inp_shexp",
+          "layers.0.ssm_alpha",
+          "layers.0.ssm_beta",
+          "layers.1.ffn_gate_inp",
+          "layers.1.ffn_gate_inp_shexp",
+          "layers.1.ssm_alpha",
+          "layers.1.ssm_beta",
+          "layers.2.ffn_gate_inp",
+          "layers.2.ffn_gate_inp_shexp",
+          "layers.2.ssm_alpha",
+          "layers.2.ssm_beta"
+        ]
+      },
+      "current_layer_precision_contractions": {
+        "count": 2,
+        "slot_paths": [
+          "layers.3.ffn_gate_inp",
+          "layers.3.ffn_gate_inp_shexp"
+        ]
+      }
+    }
+  ],
+  "ranking": {
+    "first_mismatch_layer": 0,
+    "last_exact_prefix_layer": null,
+    "exact_prefix_layers": [],
+    "by_rmse": [
+      {
+        "layer": 0,
+        "status": "mismatched",
+        "rmse": 4.314661795910361e-06,
+        "max_abs_diff": 8.296966552734375e-05,
+        "mean_abs_diff": 2.105720341205597e-06,
+        "preceding_precision_contraction_count": 0
+      },
+      {
+        "layer": 1,
+        "status": "mismatched",
+        "rmse": 0.012114962719327636,
+        "max_abs_diff": 0.045740051893517375,
+        "mean_abs_diff": 0.009691874419019086,
+        "preceding_precision_contraction_count": 4
+      },
+      {
+        "layer": 2,
+        "status": "mismatched",
+        "rmse": 0.018644114668738276,
+        "max_abs_diff": 0.08172629773616791,
+        "mean_abs_diff": 0.01477806005112825,
+        "preceding_precision_contraction_count": 8
+      },
+      {
+        "layer": 3,
+        "status": "mismatched",
+        "rmse": 0.023895301258143264,
+        "max_abs_diff": 0.09140318632125854,
+        "mean_abs_diff": 0.01902030316489345,
+        "preceding_precision_contraction_count": 12
+      }
+    ],
+    "mismatched_layers": [
+      {
+        "layer": 0,
+        "status": "mismatched",
+        "rmse": 4.314661795910361e-06,
+        "max_abs_diff": 8.296966552734375e-05,
+        "mean_abs_diff": 2.105720341205597e-06,
+        "preceding_precision_contraction_count": 0
+      },
+      {
+        "layer": 1,
+        "status": "mismatched",
+        "rmse": 0.012114962719327636,
+        "max_abs_diff": 0.045740051893517375,
+        "mean_abs_diff": 0.009691874419019086,
+        "preceding_precision_contraction_count": 4
+      },
+      {
+        "layer": 2,
+        "status": "mismatched",
+        "rmse": 0.018644114668738276,
+        "max_abs_diff": 0.08172629773616791,
+        "mean_abs_diff": 0.01477806005112825,
+        "preceding_precision_contraction_count": 8
+      },
+      {
+        "layer": 3,
+        "status": "mismatched",
+        "rmse": 0.023895301258143264,
+        "max_abs_diff": 0.09140318632125854,
+        "mean_abs_diff": 0.01902030316489345,
+        "preceding_precision_contraction_count": 12
+      }
+    ]
+  },
+  "conclusion": "layer0_hidden_in_mismatch_embedding_or_capture",
+  "external_checkout_modified": false,
+  "next_action": "compare_token_embedding_weight_materialization_and_embedding_kernel"
+}

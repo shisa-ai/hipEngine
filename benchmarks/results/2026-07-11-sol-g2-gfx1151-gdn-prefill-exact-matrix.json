@@ -1,0 +1,693 @@
+{
+  "cases": [
+    {
+      "all_captured_layer_outputs_exact": true,
+      "case_id": "greeting",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        17
+      ],
+      "exact_chain_recurrent_path": "nonsegment",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": true,
+      "layer_bisect_required": true,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          248045,
+          846,
+          198,
+          7734,
+          264,
+          2716,
+          40719,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069
+        ],
+        "kind": "greeting",
+        "last_token_ids": [
+          846,
+          198,
+          7734,
+          264,
+          2716,
+          40719,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          271
+        ],
+        "length": 17,
+        "sha256_i64": "01f2799757d02964394b6a7d6d2842051a57c3ef983b129d25fc2cbd0ed6ad9d",
+        "token_ids": [
+          248045,
+          846,
+          198,
+          7734,
+          264,
+          2716,
+          40719,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          271
+        ]
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9419,
+        "fused": 9419
+      },
+      "wall_ms_diagnostic": {
+        "chain": 125.6625410169363,
+        "fused": 199.90874687209725
+      }
+    },
+    {
+      "all_captured_layer_outputs_exact": true,
+      "case_id": "p512",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        512
+      ],
+      "exact_chain_recurrent_path": "nonsegment",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": true,
+      "layer_bisect_required": true,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "kind": "repeated",
+        "last_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "length": 512,
+        "sha256_i64": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d"
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9707,
+        "fused": 9707
+      },
+      "wall_ms_diagnostic": {
+        "chain": 3144.8854352347553,
+        "fused": 3170.937166083604
+      }
+    },
+    {
+      "all_captured_layer_outputs_exact": null,
+      "case_id": "p1024",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        1024
+      ],
+      "exact_chain_recurrent_path": "nonsegment",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": false,
+      "layer_bisect_required": false,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "kind": "repeated",
+        "last_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "length": 1024,
+        "sha256_i64": "b6c252784df8e5f73bed050467f6dc90f6e2716a5bb1492df30ed0f92a13606e"
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9707,
+        "fused": 9707
+      },
+      "wall_ms_diagnostic": {
+        "chain": 6319.790042005479,
+        "fused": 6228.587544988841
+      }
+    },
+    {
+      "all_captured_layer_outputs_exact": null,
+      "case_id": "p1025",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        1025
+      ],
+      "exact_chain_recurrent_path": "segment",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": false,
+      "layer_bisect_required": false,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "kind": "repeated",
+        "last_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "length": 1025,
+        "sha256_i64": "69243f553f2a7110eb59575abf10690fac71a1d5d0f23d644f7864d7e90e7d4a"
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9707,
+        "fused": 9707
+      },
+      "wall_ms_diagnostic": {
+        "chain": 6333.562473766506,
+        "fused": 6232.560359872878
+      }
+    },
+    {
+      "all_captured_layer_outputs_exact": null,
+      "case_id": "p4095",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        1024,
+        1024,
+        1024,
+        1023
+      ],
+      "exact_chain_recurrent_path": "nonsegment_per_chunk",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": false,
+      "layer_bisect_required": false,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "kind": "repeated",
+        "last_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "length": 4095,
+        "sha256_i64": "1cafab49997ddb29a588b3ab89d3dbbc94f8b0a42963893e391dab20650ba8f9"
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9707,
+        "fused": 9707
+      },
+      "wall_ms_diagnostic": {
+        "chain": 26095.019571948797,
+        "fused": 25358.630858827382
+      }
+    },
+    {
+      "all_captured_layer_outputs_exact": null,
+      "case_id": "p4096",
+      "classification": "fused_chain_exact",
+      "effective_linear_chunk_rows": [
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "exact_chain_recurrent_path": "nonsegment_per_chunk",
+      "hidden_seed_exact": true,
+      "layer_bisect_ran": false,
+      "layer_bisect_required": false,
+      "passed": true,
+      "prompt": {
+        "first_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "kind": "repeated",
+        "last_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "length": 4096,
+        "sha256_i64": "181484d2e8533a0f8b1f5c8486f35552ce7a32a9bcda66e5f389f6b4030c5093"
+      },
+      "resident_conv_gdn_state_exact": true,
+      "tokens": {
+        "chain": 9707,
+        "fused": 9707
+      },
+      "wall_ms_diagnostic": {
+        "chain": 26008.66701779887,
+        "fused": 25339.882478117943
+      }
+    }
+  ],
+  "classification": {
+    "cases_passed": 6,
+    "cases_total": 6,
+    "conclusion": "The exact split chain matches fused tokens, hidden state, and resident Conv/GDN state across short, 512, segment-threshold, 4K, and chunk-boundary cases on gfx1151.",
+    "passed": true,
+    "status": "accepted_exact_matrix"
+  },
+  "correctness_claim": true,
+  "created_at": "2026-07-10T23:49:32.397694+00:00",
+  "kernel_trace": {
+    "cached_build_only": true,
+    "exact_recurrent_us": 1677.015,
+    "exact_recurrent_vgpr": 40,
+    "exact_segment_recurrent_us": 1444.605,
+    "performance_claim": false,
+    "prepare_raw_scales_us": [
+      30.981,
+      28.194
+    ],
+    "retained_raw_trace": false,
+    "rmsnorm_gate_us": [
+      8.898,
+      8.454
+    ],
+    "scratch_size_bytes": 0,
+    "temporary_source": "/tmp/sol-g2-exact-gdn-only-rocprof-20260711/gfx1151/1617600_kernel_trace.csv"
+  },
+  "kind": "hipengine_gguf_gdn_prefill_exact_matrix",
+  "non_acceptance_diagnostics": [
+    {
+      "case_id": "p4097_outer_scratch_capture",
+      "error": "capture_hidden_seed_fp32 is not supported with chunked outer GGUF prefill",
+      "qualification": "Not a GDN mismatch; the accepted 4095/4096 pair covers the retained four-layer-chunk boundary with token/hidden/state comparisons.",
+      "status": "harness_guard_before_mode_execution"
+    }
+  ],
+  "performance_claim": false,
+  "protocol": {
+    "commands": [
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "greeting",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-greeting.json"
+      ],
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "repeated",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "512",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-p512.json"
+      ],
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "repeated",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "1024",
+        "--skip-layer-bisect",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-p1024.json"
+      ],
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "repeated",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "1025",
+        "--skip-layer-bisect",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-p1025.json"
+      ],
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "repeated",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "4095",
+        "--skip-layer-bisect",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-p4095.json"
+      ],
+      [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_gdn_prefill_compare.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-kind",
+        "repeated",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "4096",
+        "--skip-layer-bisect",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/sol-g2-clean-332f01f8-p4096.json"
+      ]
+    ],
+    "comparison": "exact sampled token, FP32 hidden seed, and resident Conv/GDN state; greeting and p512 also compare every captured layer final row",
+    "driver": "scripts/gguf_gdn_prefill_compare.py",
+    "modes": [
+      "fused",
+      "chain"
+    ],
+    "timing": "single-order diagnostic wall only; excluded from performance claims"
+  },
+  "provenance": {
+    "build_profile": "gguf_gdn_prefill_fused_chain_compare",
+    "collected_at": "2026-07-10T23:40:32.920135+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python3",
+      "scripts/gguf_gdn_prefill_compare.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--prompt-kind",
+      "greeting",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/sol-g2-clean-332f01f8-greeting.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "explicit fused/chain sweep",
+      "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": null,
+      "HIPENGINE_HIP_ARCH": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "332f01f8941de47c28d9d2e755666c2644b7c16f",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "correctness_only_single_order_diagnostic_wall",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 0
+  },
+  "schema_version": 1,
+  "source_revision": "332f01f8941de47c28d9d2e755666c2644b7c16f",
+  "temporary_child_artifacts": [
+    {
+      "case_id": "greeting",
+      "sha256": "5bfa8f1ae8076aa332a515d9cc0453389a13f7d6291380763a624424fb89beb7",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-greeting.json"
+    },
+    {
+      "case_id": "p512",
+      "sha256": "93a369f6c1502f55a67cac8feb75bfdbc62bfd358ee77a20289624a743e393e4",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-p512.json"
+    },
+    {
+      "case_id": "p1024",
+      "sha256": "5454393abfdb391a439ebe09a54bdafef42f5c8b50e324750030c299600aede3",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-p1024.json"
+    },
+    {
+      "case_id": "p1025",
+      "sha256": "cef7e408c9c867948fdfa60cdd513b265c93147d1430282fc7c95e41065ca005",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-p1025.json"
+    },
+    {
+      "case_id": "p4095",
+      "sha256": "99e7d33ab8a73df6cfc85337af401557a631832206533bbce3715324c18a12f2",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-p4095.json"
+    },
+    {
+      "case_id": "p4096",
+      "sha256": "648e385bbe398e98d7136cefc3e94962af615f39993391e058ed26bba9b11d8a",
+      "temporary_source": "/tmp/sol-g2-clean-332f01f8-p4096.json"
+    }
+  ],
+  "workload": {
+    "auto_linear_chunk_rows_above_1k": 1024,
+    "configured_backend": "hip_gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "kv_dtype": "bf16",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "quant": "gguf_q4_k_m",
+    "resolved_backend": "hip_gfx1151",
+    "segment_threshold": 1025,
+    "target_arch": "gfx1151"
+  }
+}

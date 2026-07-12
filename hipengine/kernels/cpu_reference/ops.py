@@ -43,6 +43,285 @@ def qkv_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> 
     return linear(x, weight, bias)
 
 
+def qwen35_gguf_mtp_eh_proj(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for Qwen35 GGUF NextN h/e normalization + projection.
+
+    llama.cpp normalizes the target hidden row with ``nextn.hnorm``, normalizes
+    the token embedding with ``nextn.enorm``, concatenates ``[e_norm, h_norm]``,
+    then applies ``nextn.eh_proj``.  This helper pins that order before the full
+    draft-only NextN attention/MoE oracle lands.
+    """
+
+    hidden = np.asarray(hidden_seed, dtype=np.float32)
+    embedding = np.asarray(token_embedding, dtype=np.float32)
+    weight = np.asarray(eh_proj_weight, dtype=np.float32)
+    hnorm = np.asarray(hnorm_weight, dtype=np.float32)
+    enorm = np.asarray(enorm_weight, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("hidden_seed must have shape [rows, hidden]")
+    if embedding.shape != hidden.shape:
+        raise ValueError("token_embedding must match hidden_seed shape")
+    if weight.ndim != 2:
+        raise ValueError("eh_proj_weight must have shape [hidden, 2 * hidden]")
+    rows, hidden_size = hidden.shape
+    if weight.shape != (hidden_size, hidden_size * 2):
+        raise ValueError(
+            "eh_proj_weight must have shape [hidden, 2 * hidden] "
+            f"for hidden={hidden_size}; got {weight.shape}"
+        )
+    if hnorm.shape != (hidden_size,):
+        raise ValueError("hnorm_weight must have shape [hidden]")
+    if enorm.shape != (hidden_size,):
+        raise ValueError("enorm_weight must have shape [hidden]")
+    del rows
+    h_norm = rmsnorm(hidden, hnorm, eps=eps)
+    e_norm = rmsnorm(embedding, enorm, eps=eps)
+    fused = np.concatenate([e_norm, h_norm], axis=-1)
+    return np.matmul(fused, weight.T).astype(np.float32)
+
+
+def qwen35_gguf_mtp_draft_topk_full_vocab_d2h(
+    logits: ArrayLike,
+    *,
+    k: int = 1,
+    vocab_limit: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU oracle for the unfused GGUF MTP draft top-k fallback.
+
+    The future backend ``topk_device`` variant should avoid copying the full
+    vocab logits to the host. This reference deliberately models the unfused
+    fallback/oracle: logits are already materialized on the host, then stable
+    descending top-k is selected with lower token ids winning ties.
+    """
+
+    logits_arr = np.asarray(logits, dtype=np.float32)
+    if logits_arr.ndim != 2:
+        raise ValueError("logits must have shape [rows, vocab]")
+    _, vocab = logits_arr.shape
+    limit = vocab if vocab_limit is None else int(vocab_limit)
+    if limit <= 0 or limit > vocab:
+        raise ValueError("vocab_limit must be in 1..vocab")
+    top_k = int(k)
+    if top_k <= 0 or top_k > limit:
+        raise ValueError("k must be in 1..vocab_limit")
+    limited = logits_arr[:, :limit]
+    token_ids = np.argsort(-limited, axis=-1, kind="stable")[:, :top_k].astype(np.int32)
+    values = np.take_along_axis(limited, token_ids, axis=-1).astype(np.float32)
+    return token_ids, values
+
+
+def qwen35_gguf_mtp_shared_head_logits(
+    nextn_hidden: ArrayLike,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for Qwen35 GGUF NextN shared-head logits.
+
+    llama.cpp applies ``nextn.shared_head_norm`` when present, otherwise the
+    target ``output_norm``, exposes that row as ``h_nextn``, then applies
+    ``nextn.shared_head_head`` when present, otherwise the target LM head.
+    """
+
+    hidden = np.asarray(nextn_hidden, dtype=np.float32)
+    norm_weight = np.asarray(shared_head_norm_weight, dtype=np.float32)
+    head_weight = np.asarray(shared_head_weight, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("nextn_hidden must have shape [rows, hidden]")
+    rows, hidden_size = hidden.shape
+    if norm_weight.shape != (hidden_size,):
+        raise ValueError("shared_head_norm_weight must have shape [hidden]")
+    if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
+        raise ValueError("shared_head_weight must have shape [vocab, hidden]")
+    del rows
+    normed = rmsnorm(hidden, norm_weight, eps=eps)
+    return np.matmul(normed, head_weight.T).astype(np.float32)
+
+
+def qwen35_gguf_mtp_boundary_logits(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference scaffold for known Qwen35 GGUF MTP boundary stages.
+
+    This helper intentionally composes only the two llama.cpp-pinned boundary
+    stages available before the full M3 oracle lands:
+    ``hnorm/enorm + [e_norm, h_norm] + eh_proj`` followed by
+    ``shared_head_norm + LM head``.  It does **not** implement the required
+    NextN dense attention or MoE sublayers and must not be used as a parity
+    oracle for final draft logits.
+    """
+
+    projected = qwen35_gguf_mtp_eh_proj(
+        hidden_seed,
+        token_embedding,
+        eh_proj_weight,
+        hnorm_weight,
+        enorm_weight,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits(
+        projected,
+        shared_head_norm_weight,
+        shared_head_weight,
+        eps=eps,
+    )
+
+
+def qwen35_gguf_mtp_attention_sublayer(
+    hidden: ArrayLike,
+    attn_norm_weight: ArrayLike,
+    wq_weight: ArrayLike,
+    wk_weight: ArrayLike,
+    wv_weight: ArrayLike,
+    wo_weight: ArrayLike,
+    q_norm_weight: ArrayLike,
+    k_norm_weight: ArrayLike,
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    positions: ArrayLike | None = None,
+    context_counts: ArrayLike | None = None,
+    key_cache: ArrayLike | None = None,
+    value_cache: ArrayLike | None = None,
+    kv_base_offsets: ArrayLike | None = None,
+    kv_live_counts: ArrayLike | None = None,
+    kv_token_positions: ArrayLike | None = None,
+    kv_evict_mask: ArrayLike | None = None,
+    block_size: int | None = None,
+    rope_cos: ArrayLike | None = None,
+    rope_sin: ArrayLike | None = None,
+    rotary_dim: int | None = None,
+    scale: float | None = None,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for the dense Qwen35 GGUF MTP attention sublayer.
+
+    llama.cpp projects ``wq`` to an interleaved ``[Q_head, gate_head]`` layout
+    per head, RMS-normalizes Q/K, applies RoPE, runs dense GQA attention over the
+    MTP context's own K/V cache, multiplies the attention result by
+    ``sigmoid(gate)``, applies ``wo``, then adds the pre-attention residual.
+    Qwen35 GGUF attention width is not necessarily ``hidden / num_heads``; infer
+    Q/K and V head widths from the GGUF norm/projection tensor shapes.
+
+    This helper is a CPU oracle for that sublayer only.  Runtime MTP attention
+    still must use the KVLiveSpans paged-KV ABI. Dense ``key_cache``/
+    ``value_cache`` arguments model an already-materialized CPU cache, while the
+    ``kv_base_offsets``/``kv_live_counts``/``kv_token_positions``/
+    ``kv_evict_mask`` arguments provide a NumPy-only KVLiveSpans-shaped paged
+    cache oracle for draft-runtime bring-up.
+    """
+
+    x = np.asarray(hidden, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    tokens, hidden_size = x.shape
+    heads = int(num_heads)
+    kv_heads = int(num_kv_heads)
+    if heads <= 0 or kv_heads <= 0:
+        raise ValueError("num_heads and num_kv_heads must be positive")
+    if heads % kv_heads != 0:
+        raise ValueError("num_heads must be divisible by num_kv_heads")
+
+    attn_norm = np.asarray(attn_norm_weight, dtype=np.float32)
+    q_norm = np.asarray(q_norm_weight, dtype=np.float32)
+    k_norm = np.asarray(k_norm_weight, dtype=np.float32)
+    if attn_norm.shape != (hidden_size,):
+        raise ValueError("attn_norm_weight must have shape [hidden]")
+    if q_norm.ndim != 1:
+        raise ValueError("q_norm_weight must have shape [qk_head_dim]")
+    qk_head_dim = q_norm.shape[0]
+    if qk_head_dim <= 0:
+        raise ValueError("qk_head_dim must be positive")
+    if k_norm.shape != (qk_head_dim,):
+        raise ValueError("k_norm_weight must have shape [qk_head_dim]")
+
+    wq = np.asarray(wq_weight, dtype=np.float32)
+    wk = np.asarray(wk_weight, dtype=np.float32)
+    wv = np.asarray(wv_weight, dtype=np.float32)
+    wo = np.asarray(wo_weight, dtype=np.float32)
+    if wq.shape != (heads * 2 * qk_head_dim, hidden_size):
+        raise ValueError("wq_weight must have shape [num_heads * 2 * qk_head_dim, hidden]")
+    if wk.shape != (kv_heads * qk_head_dim, hidden_size):
+        raise ValueError("wk_weight must have shape [num_kv_heads * qk_head_dim, hidden]")
+    if wv.ndim != 2 or wv.shape[1] != hidden_size or wv.shape[0] % kv_heads != 0:
+        raise ValueError("wv_weight must have shape [num_kv_heads * value_head_dim, hidden]")
+    value_head_dim = wv.shape[0] // kv_heads
+    if value_head_dim <= 0:
+        raise ValueError("value_head_dim must be positive")
+    if value_head_dim != qk_head_dim:
+        raise ValueError("value_head_dim must match qk_head_dim for gated Qwen35 attention")
+    if wo.shape != (hidden_size, heads * value_head_dim):
+        raise ValueError("wo_weight must have shape [hidden, num_heads * value_head_dim]")
+
+    normed = rmsnorm(x, attn_norm, eps=eps)
+    q_full = linear(normed, wq)
+    q_gate = q_full.reshape(tokens, heads, 2, qk_head_dim)
+    query = rmsnorm(q_gate[:, :, 0, :], q_norm, eps=eps)
+    gate = q_gate[:, :, 1, :]
+    key_cur = rmsnorm(linear(normed, wk).reshape(tokens, kv_heads, qk_head_dim), k_norm, eps=eps)
+    value_cur = linear(normed, wv).reshape(tokens, kv_heads, value_head_dim)
+
+    if (rope_cos is None) != (rope_sin is None):
+        raise ValueError("rope_cos and rope_sin must be provided together")
+    if rope_cos is not None and rope_sin is not None:
+        query = rotate(query, rope_cos, rope_sin, rotary_dim=rotary_dim)
+        key_cur = rotate(key_cur, rope_cos, rope_sin, rotary_dim=rotary_dim)
+
+    pos = np.arange(tokens, dtype=np.int64) if positions is None else np.asarray(positions, dtype=np.int64)
+    if pos.shape != (tokens,):
+        raise ValueError("positions must have shape [tokens]")
+    ctx = pos + 1 if context_counts is None else np.asarray(context_counts, dtype=np.int64)
+    if ctx.shape != (tokens,):
+        raise ValueError("context_counts must have shape [tokens]")
+
+    if kv_base_offsets is None:
+        if any(item is not None for item in (kv_live_counts, kv_token_positions, kv_evict_mask)):
+            raise ValueError("kv_base_offsets is required when passing KVLiveSpans fields")
+        key_dense = key_cur if key_cache is None else np.asarray(key_cache, dtype=np.float32)
+        value_dense = value_cur if value_cache is None else np.asarray(value_cache, dtype=np.float32)
+        if key_dense.ndim != 3 or value_dense.ndim != 3:
+            raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
+        if key_dense.shape[:2] != value_dense.shape[:2]:
+            raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
+        if key_dense.shape[1:] != (kv_heads, qk_head_dim):
+            raise ValueError("key_cache shape must match num_kv_heads and qk_head_dim")
+        if value_dense.shape[1:] != (kv_heads, value_head_dim):
+            raise ValueError("value_cache shape must match num_kv_heads and value_head_dim")
+        attn = _dense_causal_gqa_attention(query, key_dense, value_dense, pos, ctx, scale=scale)
+    else:
+        if key_cache is None or value_cache is None:
+            raise ValueError("paged KVLiveSpans attention requires key_cache and value_cache")
+        if kv_live_counts is None:
+            raise ValueError("kv_live_counts is required with kv_base_offsets")
+        attn = _kv_live_spans_gqa_attention(
+            query,
+            np.asarray(key_cache, dtype=np.float32),
+            np.asarray(value_cache, dtype=np.float32),
+            base_offsets=kv_base_offsets,
+            live_counts=kv_live_counts,
+            token_positions=pos if kv_token_positions is None else kv_token_positions,
+            evict_mask=kv_evict_mask,
+            block_size=block_size,
+            scale=scale,
+        )
+    gated = (attn * _sigmoid(gate)).reshape(tokens, heads * value_head_dim)
+    return (x + linear(gated, wo)).astype(np.float32)
+
+
 def gguf_quant_gemv(
     x: ArrayLike,
     qweight: ArrayLike,
@@ -136,6 +415,55 @@ def gguf_q4_k_pack8_gemv(
     group_for_k = np.arange(in_features, dtype=np.int64) // 32
     weight = q_values * scales_arr[group_for_k].T - mins_arr[group_for_k].T
     return np.matmul(x_arr, weight.T).astype(np.float32)
+
+
+def qwen35_gguf_mtp_moe_routing(
+    hidden: ArrayLike,
+    router_weight: ArrayLike,
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU reference for Qwen35 GGUF MTP MoE router selection.
+
+    llama.cpp's MTP FFN calls ``build_moe_ffn`` with ``ffn_gate_inp``,
+    ``LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX``, ``norm_w=true``, and
+    ``hparams.expert_weights_scale``.  This helper models the routing part only:
+    dense router logits, softmax over all experts, top-k expert IDs, selected
+    weight renormalization, and optional scaling.  The returned arrays feed the
+    existing selected-expert FFN oracle.
+    """
+
+    x = np.asarray(hidden, dtype=np.float32)
+    router = np.ascontiguousarray(router_weight)
+    if router.dtype != np.float32:
+        if router.dtype == np.uint16 or router.dtype == np.int16:
+            router_f32 = np.zeros(router.shape, dtype=np.float32)
+            router_f32.view(np.uint32)[:] = router.astype(np.uint32) << 16
+            router = router_f32
+        else:
+            router = router.astype(np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    if router.ndim != 2 or router.shape[1] != x.shape[1]:
+        raise ValueError("router_weight must have shape [experts, hidden]")
+    top_k = int(experts_used)
+    if top_k <= 0:
+        raise ValueError("experts_used must be positive")
+    experts = router.shape[0]
+    if top_k > experts:
+        raise ValueError("experts_used must be <= number of experts")
+
+    logits = np.matmul(x, router.T).astype(np.float32)
+    probs = _softmax(logits, axis=-1).astype(np.float32)
+    selected = np.argsort(-probs, axis=-1, kind="stable")[:, :top_k].astype(np.int64)
+    selected_weights = np.take_along_axis(probs, selected, axis=-1).astype(np.float32)
+    weight_sum = np.maximum(np.sum(selected_weights, axis=-1, keepdims=True), np.float32(6.103515625e-5))
+    selected_weights = (selected_weights / weight_sum).astype(np.float32)
+    scale_value = float(expert_weights_scale)
+    if scale_value != 0.0 and scale_value != 1.0:
+        selected_weights = (selected_weights * np.float32(scale_value)).astype(np.float32)
+    return selected, selected_weights
 
 
 def gguf_moe_selected_ffn(
@@ -241,12 +569,199 @@ def gguf_moe_ffn_block(
     shared_up = gguf_quant_gemv(x_arr, np.asarray(shared_up_qweight), shared_qtype)
     shared_inter = (_silu(shared_gate) * shared_up).astype(np.float32)
     shared_out = gguf_quant_gemv(shared_inter, np.asarray(shared_down_qweight), shared_qtype)
-    gate_vec = np.asarray(shared_gate_logit_weight, dtype=np.float32)
+    gate_vec = np.ascontiguousarray(shared_gate_logit_weight)
+    if gate_vec.dtype != np.float32:
+        if gate_vec.dtype == np.uint16 or gate_vec.dtype == np.int16:
+            gv_f32 = np.zeros(gate_vec.shape, dtype=np.float32)
+            gv_f32.view(np.uint32)[:] = gate_vec.astype(np.uint32) << 16
+            gate_vec = gv_f32
+        else:
+            gate_vec = gate_vec.astype(np.float32)
     if gate_vec.ndim != 1 or gate_vec.shape[0] != x_arr.shape[1]:
         raise ValueError("shared_gate_logit_weight must have shape [hidden]")
     shared_gate_logit = x_arr @ gate_vec
     gate = _sigmoid(shared_gate_logit)[:, None]
     return (res + selected_out + gate * shared_out).astype(np.float32)
+
+
+def qwen35_gguf_mtp_ffn_sublayer(
+    hidden: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    router_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_gate_logit_weight: ArrayLike,
+    shared_gate_qweight: ArrayLike,
+    shared_up_qweight: ArrayLike,
+    shared_down_qweight: ArrayLike,
+    shared_qtype: GGMLQuantizationType,
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for the Qwen35 GGUF MTP post-attention FFN sublayer.
+
+    llama.cpp saves the post-attention residual, applies ``attn_post_norm``,
+    routes with ``ffn_gate_inp`` using softmax top-k, runs the selected MoE FFN,
+    adds the gated shared expert when present, and finally adds the saved
+    residual.  This helper covers the common shared-expert Qwen35 path by
+    composing :func:`qwen35_gguf_mtp_moe_routing` with
+    :func:`gguf_moe_ffn_block`.
+    """
+
+    x = np.asarray(hidden, dtype=np.float32)
+    norm_weight = np.asarray(attn_post_norm_weight, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    if norm_weight.shape != (x.shape[1],):
+        raise ValueError("attn_post_norm_weight must have shape [hidden]")
+    normed = rmsnorm(x, norm_weight, eps=eps)
+    selected_experts, routing_weights = qwen35_gguf_mtp_moe_routing(
+        normed,
+        router_weight,
+        experts_used=experts_used,
+        expert_weights_scale=expert_weights_scale,
+    )
+    return gguf_moe_ffn_block(
+        normed,
+        x,
+        selected_experts,
+        routing_weights,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
+        shared_gate_logit_weight,
+        shared_gate_qweight,
+        shared_up_qweight,
+        shared_down_qweight,
+        shared_qtype,
+    )
+
+
+def qwen35_gguf_mtp_nextn_layer_logits(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    attn_norm_weight: ArrayLike,
+    wq_weight: ArrayLike,
+    wk_weight: ArrayLike,
+    wv_weight: ArrayLike,
+    wo_weight: ArrayLike,
+    q_norm_weight: ArrayLike,
+    k_norm_weight: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    router_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_gate_logit_weight: ArrayLike,
+    shared_gate_qweight: ArrayLike,
+    shared_up_qweight: ArrayLike,
+    shared_down_qweight: ArrayLike,
+    shared_qtype: GGMLQuantizationType,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    experts_used: int,
+    positions: ArrayLike | None = None,
+    context_counts: ArrayLike | None = None,
+    key_cache: ArrayLike | None = None,
+    value_cache: ArrayLike | None = None,
+    kv_base_offsets: ArrayLike | None = None,
+    kv_live_counts: ArrayLike | None = None,
+    kv_token_positions: ArrayLike | None = None,
+    kv_evict_mask: ArrayLike | None = None,
+    block_size: int | None = None,
+    rope_cos: ArrayLike | None = None,
+    rope_sin: ArrayLike | None = None,
+    rotary_dim: int | None = None,
+    scale: float | None = None,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for one dense Qwen35 GGUF MTP NextN draft layer.
+
+    The composition follows the llama.cpp draft-only layer order: ``hnorm`` and
+    ``enorm`` into ``eh_proj``, MTP self-attention with either a dense CPU cache
+    or KVLiveSpans-shaped paged CPU cache, post-attention MoE/shared-expert FFN,
+    then shared-head norm plus LM head logits.  This is still a CPU oracle;
+    runtime attention/KV writes must use the KVLiveSpans paged-KV ABI.
+    """
+
+    projected = qwen35_gguf_mtp_eh_proj(
+        hidden_seed,
+        token_embedding,
+        eh_proj_weight,
+        hnorm_weight,
+        enorm_weight,
+        eps=eps,
+    )
+    attended = qwen35_gguf_mtp_attention_sublayer(
+        projected,
+        attn_norm_weight,
+        wq_weight,
+        wk_weight,
+        wv_weight,
+        wo_weight,
+        q_norm_weight,
+        k_norm_weight,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        positions=positions,
+        context_counts=context_counts,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        kv_base_offsets=kv_base_offsets,
+        kv_live_counts=kv_live_counts,
+        kv_token_positions=kv_token_positions,
+        kv_evict_mask=kv_evict_mask,
+        block_size=block_size,
+        rope_cos=rope_cos,
+        rope_sin=rope_sin,
+        rotary_dim=rotary_dim,
+        scale=scale,
+        eps=eps,
+    )
+    ffn_out = qwen35_gguf_mtp_ffn_sublayer(
+        attended,
+        attn_post_norm_weight,
+        router_weight,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
+        shared_gate_logit_weight,
+        shared_gate_qweight,
+        shared_up_qweight,
+        shared_down_qweight,
+        shared_qtype,
+        experts_used=experts_used,
+        expert_weights_scale=expert_weights_scale,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits(
+        ffn_out,
+        shared_head_norm_weight,
+        shared_head_weight,
+        eps=eps,
+    )
 
 
 def gguf_q4_k_moe_selected_ffn(
@@ -1304,6 +1819,13 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rmsnorm": rmsnorm,
         "linear": linear,
         "qkv_proj": qkv_proj,
+        "qwen35_gguf_mtp_eh_proj": qwen35_gguf_mtp_eh_proj,
+        "qwen35_gguf_mtp_shared_head_logits": qwen35_gguf_mtp_shared_head_logits,
+        "qwen35_gguf_mtp_boundary_logits": qwen35_gguf_mtp_boundary_logits,
+        "qwen35_gguf_mtp_attention_sublayer": qwen35_gguf_mtp_attention_sublayer,
+        "qwen35_gguf_mtp_moe_routing": qwen35_gguf_mtp_moe_routing,
+        "qwen35_gguf_mtp_ffn_sublayer": qwen35_gguf_mtp_ffn_sublayer,
+        "qwen35_gguf_mtp_nextn_layer_logits": qwen35_gguf_mtp_nextn_layer_logits,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1348,6 +1870,47 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         full_attn_prefill,
         replace=replace,
     )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_eh_proj", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_eh_proj,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_shared_head", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_shared_head_logits,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_boundary_logits", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_boundary_logits,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"),
+        qwen35_gguf_mtp_draft_topk_full_vocab_d2h,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_attention", "gguf_f32", "qwen35_dense"),
+        qwen35_gguf_mtp_attention_sublayer,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_moe_routing", "gguf_f32", "qwen35_softmax_topk"),
+        qwen35_gguf_mtp_moe_routing,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_ffn", "gguf_moe", "qwen35_shared"),
+        qwen35_gguf_mtp_ffn_sublayer,
+        replace=replace,
+    )
+    for quant in ("w4_gguf", "gguf_moe"):
+        register(
+            KernelKey("cpu_reference", "mtp_nextn_layer", quant, "qwen35_dense_logits"),
+            qwen35_gguf_mtp_nextn_layer_logits,
+            replace=replace,
+        )
     register(
         KernelKey("cpu_reference", "linear", "gguf_q8_0", "gemv_f32_f32_out"),
         gguf_q8_0_gemv,
@@ -1665,6 +2228,157 @@ def _silu(x: np.ndarray | np.float32 | float) -> np.ndarray | np.float32:
 def _sigmoid(x: np.ndarray) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     return 1.0 / (1.0 + np.exp(-x_arr))
+
+
+def _dense_causal_gqa_attention(
+    query: np.ndarray,
+    key_cache: np.ndarray,
+    value_cache: np.ndarray,
+    positions: np.ndarray,
+    context_counts: np.ndarray,
+    *,
+    scale: float | None,
+) -> np.ndarray:
+    if query.ndim != 3:
+        raise ValueError("query must have shape [tokens, num_heads, qk_head_dim]")
+    tokens, heads, qk_head_dim = query.shape
+    if key_cache.ndim != 3 or value_cache.ndim != 3:
+        raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
+    cache_tokens, kv_heads, key_dim = key_cache.shape
+    value_tokens, value_heads, value_head_dim = value_cache.shape
+    if (value_tokens, value_heads) != (cache_tokens, kv_heads):
+        raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
+    if key_dim != qk_head_dim:
+        raise ValueError("query qk_head_dim must match key_cache head_dim")
+    if heads % kv_heads != 0:
+        raise ValueError("num_heads must be divisible by num_kv_heads")
+    if positions.shape != (tokens,) or context_counts.shape != (tokens,):
+        raise ValueError("positions and context_counts must have shape [tokens]")
+    scale_value = (qk_head_dim ** -0.5) if scale is None else float(scale)
+    kv_group = heads // kv_heads
+    out = np.empty((tokens, heads, value_head_dim), dtype=np.float32)
+    for row in range(tokens):
+        position = int(positions[row])
+        context = int(context_counts[row])
+        if position < 0:
+            raise ValueError("positions must be non-negative")
+        if context <= 0:
+            raise ValueError("context_counts must be positive")
+        if position >= cache_tokens or context > cache_tokens:
+            raise ValueError("positions/context_counts exceed cache length")
+        visible_positions = [cache_pos for cache_pos in range(context) if cache_pos <= position]
+        if not visible_positions:
+            raise ValueError("causal mask left no visible cache positions")
+        for q_head in range(heads):
+            kv_head = q_head // kv_group
+            keys = key_cache[visible_positions, kv_head, :]
+            values = value_cache[visible_positions, kv_head, :]
+            weights = _softmax(np.matmul(keys, query[row, q_head]) * scale_value, axis=0)
+            out[row, q_head] = np.matmul(weights, values)
+    return out
+
+
+def _kv_live_spans_gqa_attention(
+    query: np.ndarray,
+    key_cache: np.ndarray,
+    value_cache: np.ndarray,
+    *,
+    base_offsets: ArrayLike,
+    live_counts: ArrayLike,
+    token_positions: ArrayLike,
+    evict_mask: ArrayLike | None,
+    block_size: int | None,
+    scale: float | None,
+) -> np.ndarray:
+    if query.ndim != 3:
+        raise ValueError("query must have shape [tokens, num_heads, qk_head_dim]")
+    tokens, heads, qk_head_dim = query.shape
+    if key_cache.ndim != 4 or value_cache.ndim != 4:
+        raise ValueError("paged key_cache and value_cache must have shape [blocks, block, num_kv_heads, head_dim]")
+    if key_cache.shape[:3] != value_cache.shape[:3]:
+        raise ValueError("paged key_cache and value_cache must match through num_kv_heads")
+    block = key_cache.shape[1] if block_size is None else int(block_size)
+    if block <= 0:
+        raise ValueError("block_size must be positive")
+    if key_cache.shape[1] != block or value_cache.shape[1] != block:
+        raise ValueError("block_size must match paged key/value cache shape")
+    kv_heads = key_cache.shape[2]
+    key_dim = key_cache.shape[3]
+    value_head_dim = value_cache.shape[3]
+    if key_dim != qk_head_dim:
+        raise ValueError("query qk_head_dim must match key_cache head_dim")
+    if heads % kv_heads != 0:
+        raise ValueError("num_heads must be divisible by num_kv_heads")
+
+    counts = np.asarray(live_counts, dtype=np.int64).reshape(-1)
+    positions = np.asarray(token_positions, dtype=np.int64).reshape(-1)
+    if counts.shape != (tokens,):
+        raise ValueError("kv_live_counts must have shape [tokens]")
+    if positions.shape != (tokens,):
+        raise ValueError("kv_token_positions must have shape [tokens]")
+    tables = _normalize_block_tables(base_offsets, rows=tokens)
+    assert tables is not None
+    mask = None
+    if evict_mask is not None:
+        mask = np.asarray(evict_mask, dtype=np.bool_)
+        if mask.ndim == 1:
+            if tokens != 1:
+                raise ValueError("1D kv_evict_mask is only valid for one query row")
+            mask = mask[None, :]
+        if mask.ndim != 2 or mask.shape[0] != tokens:
+            raise ValueError("kv_evict_mask must have shape [tokens, max_live_count]")
+
+    scale_value = (qk_head_dim ** -0.5) if scale is None else float(scale)
+    kv_group = heads // kv_heads
+    out = np.empty((tokens, heads, value_head_dim), dtype=np.float32)
+    for row in range(tokens):
+        live_count = int(counts[row])
+        position = int(positions[row])
+        if live_count <= 0:
+            raise ValueError("kv_live_counts must be positive")
+        if position < 0:
+            raise ValueError("kv_token_positions must be non-negative")
+        row_mask = None if mask is None else mask[row]
+        visible_slots = [
+            slot
+            for slot in range(live_count)
+            if slot <= position and not (row_mask is not None and slot < row_mask.shape[0] and bool(row_mask[slot]))
+        ]
+        if not visible_slots:
+            raise ValueError("KVLiveSpans mask left no visible cache positions")
+        for q_head in range(heads):
+            kv_head = q_head // kv_group
+            keys = np.stack(
+                [
+                    _cache_row(
+                        key_cache,
+                        slot,
+                        kv_head,
+                        dense_cache=False,
+                        block_size=block,
+                        block_table=tables[row],
+                    )
+                    for slot in visible_slots
+                ],
+                axis=0,
+            )
+            values = np.stack(
+                [
+                    _cache_row(
+                        value_cache,
+                        slot,
+                        kv_head,
+                        dense_cache=False,
+                        block_size=block,
+                        block_table=tables[row],
+                    )
+                    for slot in visible_slots
+                ],
+                axis=0,
+            )
+            weights = _softmax(np.matmul(keys, query[row, q_head]) * scale_value, axis=0)
+            out[row, q_head] = np.matmul(weights, values)
+    return out
 
 
 def _softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:

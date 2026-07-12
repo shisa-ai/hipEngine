@@ -1,0 +1,106 @@
+{
+  "backend": "hip_gfx1100",
+  "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-readme-check-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-current-512x0.json",
+  "conclusion": "The README GGUF Q4_K_M numbers are reproducible for the current correctness-first eager resident path. The earlier ~2.1k prefill rows used the split GDN prefill chain before it was bypassed for target/serial parity; the earlier ~106 tok/s decode rows were graph-derived and are superseded after graph retirement.",
+  "env_notes": [
+    "HIP_VISIBLE_DEVICES=0",
+    "HIPENGINE_GGUF_DECODE_REPACK=1",
+    "HIPENGINE_HIP_ARCH=gfx1100",
+    "TheRock ROCm 7.13 wrapper",
+    "--use-wmma-prefill --use-gemv-decode --no-graph-replay-decode"
+  ],
+  "generated_at": "2026-07-07T20:41:52.423043+00:00",
+  "gguf_tensor_inventory_hash": "bd93ba3d97e753cf2992c93c01677f1254d7ef330ffe8329017e9bf92912d64e",
+  "git_commit": "b891aa04",
+  "measurement": {
+    "effective_graph_replay_decode": false,
+    "effective_use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "final_token_id": null,
+    "prefill_chunk_tuning": {
+      "applied": false,
+      "enabled": true,
+      "max_sequence_length": 768,
+      "memory_budget_gib": 0.0,
+      "reason": "below_min_tokens",
+      "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv"
+    },
+    "prefill_seconds": 0.8214500420144759,
+    "prefill_tok_s": 623.2880562576894,
+    "requested_graph_replay_decode": false,
+    "tracked_peak_allocated_gib": 21.477593190968037,
+    "workload": "512/0"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "purpose": "Explain why the 2026-07-07 W7900 GGUF Q4_K_M README rows are ~650 tok/s prefill after earlier fast-path work.",
+  "quant": "gguf_q4_k_m",
+  "related_code": {
+    "gdn_fallback_commit": "937c13d1 fix: align GGUF target math contracts",
+    "graph_retirement_commit": "3b0f6067 refactor: remove GGUF decode-graph machinery",
+    "readme_refresh_commit": "b891aa04 docs: refresh W7900 README benchmarks"
+  },
+  "rocprof_prefill": {
+    "top_bucket_interpretation": "Current correctness-first GGUF bulk prefill routes GDN through the fused decode-order kernel; 30 GDN prefill launches dominate 512-token prefill (~592 ms of ~745 ms profiled kernel time).",
+    "top_buckets": [
+      {
+        "avg_dispatch_ms": 19.7445346,
+        "bucket": "gdn_prefill_recurrent",
+        "dispatches": 30,
+        "share_of_phase": 0.7951298151601167,
+        "total_ms": 592.336038
+      },
+      {
+        "avg_dispatch_ms": 0.21354684,
+        "bucket": "dense_q8_0_wmma_prefill",
+        "dispatches": 250,
+        "share_of_phase": 0.0716643292507331,
+        "total_ms": 53.38671
+      },
+      {
+        "avg_dispatch_ms": 0.9847626500000001,
+        "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+        "dispatches": 40,
+        "share_of_phase": 0.05287634677875782,
+        "total_ms": 39.390506
+      },
+      {
+        "avg_dispatch_ms": 0.6402854054054055,
+        "bucket": "moe_q5_k_selected_wmma_prefill",
+        "dispatches": 37,
+        "share_of_phase": 0.03180132456137956,
+        "total_ms": 23.69056
+      },
+      {
+        "avg_dispatch_ms": 0.10522530833333334,
+        "bucket": "router",
+        "dispatches": 120,
+        "share_of_phase": 0.01695006373363688,
+        "total_ms": 12.627037
+      },
+      {
+        "avg_dispatch_ms": 0.03301530656934307,
+        "bucket": "other",
+        "dispatches": 137,
+        "share_of_phase": 0.006071636792021893,
+        "total_ms": 4.523097
+      },
+      {
+        "avg_dispatch_ms": 0.4026248,
+        "bucket": "full_attention_prefill",
+        "dispatches": 10,
+        "share_of_phase": 0.005404685216922071,
+        "total_ms": 4.026248
+      },
+      {
+        "avg_dispatch_ms": 0.0044034025000000004,
+        "bucket": "copy",
+        "dispatches": 800,
+        "share_of_phase": 0.004728770685940397,
+        "total_ms": 3.522722
+      }
+    ],
+    "total_dispatches": 1949,
+    "total_kernel_ms": 744.955134
+  },
+  "schema": "hipengine_gguf_q4km_current_gdn_audit_v1"
+}

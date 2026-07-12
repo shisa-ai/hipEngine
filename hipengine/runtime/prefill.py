@@ -18,6 +18,12 @@ _LOW_MEMORY_MID_CONTEXT_MIN_TOKENS = 52 * 1024
 _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS = 131_072
 _LOW_MEMORY_TOTAL_BYTES = 26 * _GIB
 _DEFAULT_BUDGET_FRACTION = 0.55
+_ARCH_CHUNK_PROFILES: dict[str, dict[str, int]] = {
+    "gfx1151": {
+        "linear_chunk_size": 256,
+        "moe_chunk_size": 256,
+    },
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,16 +98,21 @@ def resolve_prefill_config_for_sequence(
     *,
     max_sequence_length: int,
     total_memory_bytes: int = 0,
+    target_arch: str | None = None,
 ) -> tuple[PrefillConfig, dict[str, object]]:
     """Resolve profile-derived chunk sizes for single-request prefill.
 
     Explicit non-zero chunk sizes are treated as manual overrides.  With the
     default auto policy, prompts up to 1K stay unchunked while prompts above 1K
     use the retained 1024/4096 policy across linear attention, MoE, full-attn
-    query, post, and RoPE stages.  On 24GB-class cards, 52K-class prompts drop
-    the full-attn query chunk to 1024 rows to avoid the 4096-row bulk-scratch
-    cliff; 128K-class and longer prompts use 768-token chunks to keep the
-    AOTriton path active and transient prefill scratch under the device limit.
+    query, post, and RoPE stages.  Architecture profiles then override only
+    fields with an exact, same-device A/B; the gfx1151 recovery profile changes
+    linear attention and MoE to 256 rows while preserving the shape/memory-
+    selected full-attention policy.  On 24GB-class cards, 52K-class prompts
+    drop the full-attn query chunk to 1024 rows to avoid the 4096-row bulk-
+    scratch cliff; 128K-class and longer prompts use 768-token chunks to keep
+    the AOTriton path active and transient prefill scratch under the device
+    limit.
     """
 
     max_sequence = int(max_sequence_length)
@@ -114,15 +125,18 @@ def resolve_prefill_config_for_sequence(
         "max_sequence_length": max_sequence,
         "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
         "memory_budget_gib": 0.0,
+        "target_arch": None if target_arch is None else str(target_arch),
     }
     if not config.auto_tune_chunk_sizes:
         return config, tuning
     if _has_manual_chunk_sizes(config):
         tuning["reason"] = "manual_chunk_sizes"
         return config, tuning
+    arch_key = str(target_arch or "").strip().lower()
+    arch_profile = _ARCH_CHUNK_PROFILES.get(arch_key)
     if max_sequence < int(config.chunk_tune_min_tokens):
         tuning["reason"] = "below_min_tokens"
-        return config, tuning
+        return _apply_arch_chunk_profile(config, tuning, arch_key=arch_key, profile=arch_profile)
 
     budget_gib = _chunk_memory_budget_gib(config, total_memory_bytes=total_memory_bytes)
     low_memory_card = 0 < int(total_memory_bytes) <= _LOW_MEMORY_TOTAL_BYTES
@@ -170,7 +184,7 @@ def resolve_prefill_config_for_sequence(
             "chunk_sizes": _chunk_sizes_dict(tuned),
         }
     )
-    return tuned, tuning
+    return _apply_arch_chunk_profile(tuned, tuning, arch_key=arch_key, profile=arch_profile)
 
 
 def _has_manual_chunk_sizes(config: PrefillConfig) -> bool:
@@ -184,6 +198,33 @@ def _has_manual_chunk_sizes(config: PrefillConfig) -> bool:
             "full_attn_rope_chunk_size",
         )
     )
+
+
+def _apply_arch_chunk_profile(
+    config: PrefillConfig,
+    tuning: dict[str, object],
+    *,
+    arch_key: str,
+    profile: dict[str, int] | None,
+) -> tuple[PrefillConfig, dict[str, object]]:
+    if profile is None:
+        return config, tuning
+    base_reason = str(tuning["reason"])
+    base_source = str(tuning["source"])
+    base_chunk_sizes = _chunk_sizes_dict(config)
+    tuned = replace(config, **profile)
+    tuning.update(
+        {
+            "applied": True,
+            "reason": f"{arch_key}_paro_prefill_recovery",
+            "source": f"sol_r1_{arch_key}_prefill_recovery_2026_07",
+            "base_reason": base_reason,
+            "base_source": base_source,
+            "base_chunk_sizes": base_chunk_sizes,
+            "chunk_sizes": _chunk_sizes_dict(tuned),
+        }
+    )
+    return tuned, tuning
 
 
 def _chunk_memory_budget_gib(config: PrefillConfig, *, total_memory_bytes: int) -> float:

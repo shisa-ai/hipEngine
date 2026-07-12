@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_patched_source_manifest",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 285,
+  "status": "prepared",
+  "llamacpp_root": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "output_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+  "target_relative_path": "src/models/qwen35moe.cpp",
+  "reference_basis": {
+    "expected_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "observed_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "commit_matches_expected": true,
+    "source_is_read_only_reference": true,
+    "external_checkout_modified": false,
+    "target_status_before": "",
+    "target_status_after": ""
+  },
+  "patch": {
+    "path": "/home/lhl/hipEngine/benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch",
+    "sha256": "00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08",
+    "bytes": 531,
+    "apply_stdout_tail": "patching file src/models/qwen35moe.cpp\n",
+    "apply_stderr_tail": ""
+  },
+  "target_validation": {
+    "target_exists": true,
+    "assignment_count": 1,
+    "assignment_line": 182,
+    "patch_applied": true,
+    "anchor_after_assignment_present": true
+  },
+  "output_tree": {
+    "sentinel": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/.hipengine_llamacpp_mtp_temp_source",
+    "sentinel_exists": true,
+    "file_count": 2969,
+    "dir_count": 347
+  },
+  "next_action": "build_temp_llamacpp_and_capture_hidden_in_with_layer_input_api"
+}

@@ -1,0 +1,132 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-06-29T15:56:33",
+  "scope": "full",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "f0de95be8df2f658fbb30f314181f1ed042d8071",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 10,
+    "budgets": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "prompt_limit": null,
+    "ar_decode_tokens": 60,
+    "mtp_route": "resident-cap32k-recover",
+    "mtp_route_extra_args": [
+      "--resident-mtp-draft",
+      "--adaptive-ar-fallback",
+      "--no-target-block-verify",
+      "--mtp-draft-vocab-cap",
+      "32768",
+      "--adaptive-full-vocab-after-cap-miss"
+    ]
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.55443950315489,
+    "total_output_tokens": 600,
+    "decode_ms": 10998.188331956044,
+    "prompts": 10,
+    "per_category": {
+      "code": 54.552021666435834,
+      "general_en": 54.667940507122765,
+      "general_ja": 54.64215662766504,
+      "mixed_ja_en": 54.35913542221435
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 55.066249648101916,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 178,
+      "vs_ar_ratio": 1.0094
+    },
+    "b1": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 51.70765999599121,
+      "accepted_per_output": 0.43820224719101125,
+      "draft_acceptance": 0.01989795918367347,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 78,
+      "total_output_tokens": 178,
+      "vs_ar_ratio": 0.9478
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 49.454772274139835,
+      "accepted_per_output": 0.5495495495495496,
+      "draft_acceptance": 0.030676389238119186,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 122,
+      "total_output_tokens": 222,
+      "vs_ar_ratio": 0.9065
+    },
+    "b3": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 47.726615859687556,
+      "accepted_per_output": 0.601593625498008,
+      "draft_acceptance": 0.03706431026018655,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 151,
+      "total_output_tokens": 251,
+      "vs_ar_ratio": 0.8748
+    },
+    "b4": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 44.784124895633894,
+      "accepted_per_output": 0.6124031007751938,
+      "draft_acceptance": 0.037880604171661475,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 158,
+      "total_output_tokens": 258,
+      "vs_ar_ratio": 0.8209
+    },
+    "b5": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 43.23202628507199,
+      "accepted_per_output": 0.6428571428571429,
+      "draft_acceptance": 0.04217432052483599,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 180,
+      "total_output_tokens": 280,
+      "vs_ar_ratio": 0.7925
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.55443950315489,
+    "best_mtp_budget": "b1",
+    "best_mtp_vs_ar_ratio": 0.9478,
+    "mtp_beats_ar": false
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-full-1782716193/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-full-1782716193/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-cap32k-recover --output benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-recover.json"
+}
