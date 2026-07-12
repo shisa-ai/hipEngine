@@ -16,23 +16,27 @@ should be removed or collapsed.
 
 ## Priority Cleanup (do first)
 
-**Stabilize the admitted gfx1151 GGUF graph and retire unrelated legacy graph
-blocks.** SOL-G5 reintroduced a state-bound runtime graph with a complete
-transition key after current HIP passed 128/128 hidden/GDN/KV/token checkpoints.
-Only the gfx1151 backend package advertises the measured 128-step break-even;
-non-streaming c1 greedy generation uses it by default at that horizon, with
-`HIPENGINE_GGUF_DECODE_GRAPH=0` retained temporarily for rollback. The explicit
-`qwen35_gguf_bench.py --graph-replay-decode` surface is useful for this closure,
-but `scripts/gguf_mtp_bench.py --target-graph-verify` /
+**Revalidate the gfx1151 GGUF graph default on the current stack and retire
+unrelated legacy graph blocks.** SOL-G5 reintroduced a state-bound runtime graph
+with a complete transition key after HIP passed 128/128 hidden/GDN/KV/token
+checkpoints. Only gfx1151 advertises the measured 128-step admission;
+non-streaming c1 greedy generation currently uses it by default at that horizon,
+with `HIPENGINE_GGUF_DECODE_GRAPH=0` retained for rollback. The explicit
+`qwen35_gguf_bench.py --graph-replay-decode` surface is required for the current
+default decision, while `scripts/gguf_mtp_bench.py --target-graph-verify` /
 `--target-graph-batched-verify` remains separate stale diagnostic plumbing.
 
 SOL-G4 provides the correct comparison floor: clean p512/d128 eager is
 `20.290 ms/token`, while a 24-step marker profile contains `18.402 ms/token` of
 GPU kernels (`88.62%` of profiled host wall). SOL-G5's clean production route
 at `7f611fe3` passed 128 launches and measured a capture-inclusive
-`20.334 -> 20.311 ms/token` (+0.112% throughput) edge. Keep the rollback flag
-through one release window; do not broaden this narrow graph admission to
-gfx1100, streaming, sampling, c>N, or shorter horizons without local evidence.
+`20.334 -> 20.311 ms/token` (+0.112% throughput) edge. The 2026-07-12 TheRock
+HIP 7.15 refresh is still 128/128 exact but rejects the graph wall on both the
+scalar parent (`20.5230 -> 20.5736 ms/token`) and wave/block candidate
+(`20.4723 -> 20.5324`). Do not remove the rollback flag or broaden graph
+admission. A separate scoped decision must either reproduce a current graph win
+or restore eager as the production selector; the wave/block kernel itself helps
+both routes and is not the cause of this graph-policy result.
 
 ## Cleanup Ledger
 
@@ -72,7 +76,7 @@ gfx1100, streaming, sampling, c>N, or shorter horizons without local evidence.
 | GGUF selected-down X8 repack | `HIPENGINE_GGUF_SELECTED_X8_REPACK` materialization gate plus bench flag `--selected-down-x8-repack {off,q5,q6,both}` for Q5_K/Q6_K selected-down X8 q8_1/dp4a replacement layouts. | Default-off globally. Retained only for the accuracy-traded llama-compat B2 lane with `q6`; first-class suite route is `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`. Full suite **59.63 -> 60.36 tok/s**, `cycle_wall_ms_per_output` **16.793 -> 16.587**, and `target_block_verify_total` **13.178 -> 13.023 ms/output**. q5/both remains rejected for that route (`64.81 tok/s` smoke vs q6-only `69.03 tok/s`), so Q5_K selected-down stays on T16. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json`, `...x8q6-allsync-smoke.json`, route smoke `...x8q6-route-smoke.json`, and `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`. | Remove/demote q5/both materialization from performance paths unless a future full-suite route beats q6-only with unchanged acceptance. Do not promote to exact default without exactness/full-suite correctness evidence. Once the compat lane is final, consider collapsing the env gate behind the named route and leaving raw env use to tests/microbenches. |
 | GGUF selected gate/up X8 repack | `HIPENGINE_GGUF_SELECTED_GATE_UP_X8` materialization gate plus bench flag `--selected-gate-up-x8` and suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup{,-allsync}` for Q4_K selected gate/up X8 q8_1/dp4a replacement layouts. | Default-off and rejected on the current retained llama-compat B2 lane. Same-session smoke regressed **67.62 -> 59.08 tok/s**, cycle **14.810 -> 16.948 ms/output**, and target verifier drain **12.005 -> 14.117 ms/output** with identical smoke acceptance (`acc/output=0.667`, draft acceptance `1.000`). All-sync attribution shows the loss is the selected gate/up GEMV body: linear-attn gate/up GEMV **1.408 -> 3.050 ms/output** and full-attn gate/up GEMV **0.462 -> 1.015 ms/output**, while q8_1 quantize is unchanged/slightly lower. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup{,-control}-smoke.json` and `...x8gateup{,-control}-allsync-smoke.json`, WORKLOG 2026-07-01. | Remove the bench/suite route during the post-compat flag cleanup unless a different Q4 X8 scheduler/body beats retained T16 dp4a on the same async/full-suite route with unchanged acceptance. Future selected-MoE work should compare against llama.cpp `mul_mat_vec_q_moe` rather than broadening this X8 gate/up path. |
 | GGUF selected gate/up raw materialization | `HIPENGINE_GGUF_SELECTED_GATE_UP_RAW` materialization gate plus bench flag `--selected-gate-up-raw` and suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup{,-allsync}` for keeping Q4_K selected gate/up experts in raw GGUF layout under decode-repack. With `--verify-dp4a`, the runtime uses the raw selected-dual q8_1/dp4a body instead of the retained T16 replacement-layout body. | Default-off and rejected on the current retained llama-compat B2 lane. Same-session smoke regressed **68.55 -> 62.04 tok/s**, cycle **14.612 -> 16.142 ms/output**, and target verifier drain **11.792 -> 13.328 ms/output** with identical smoke acceptance (`acc/output=0.667`, draft acceptance `1.000`). All-sync attribution shows the loss is the selected gate/up GEMV body: linear-attn gate/up GEMV **1.422 -> 2.153 ms/output** and full-attn gate/up GEMV **0.461 -> 0.729 ms/output**, while q8_1 quantize changes by only ~0.01 ms/output. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup{,-control}-smoke.json` and `...rawgateup{,-control}-allsync-smoke.json`, WORKLOG 2026-07-01. | Remove the bench/suite route during the post-compat flag cleanup unless a new raw-GGUF scheduler/body beats retained T16 dp4a on the same async/full-suite route with unchanged acceptance. Do not retry a mechanical raw `mul_mat_vec_q_moe` body copy for selected gate/up; the measured path is slower than retained T16. |
-| GGUF decode-graph rollback and benches | `HIPENGINE_GGUF_DECODE_GRAPH=0` keeps eager as a production rollback; `scripts/qwen35_gguf_bench.py --graph-replay-decode` remains an explicit measurement surface; `scripts/gguf_mtp_bench.py` still has separate `--target-graph-verify` / `--target-graph-batched-verify` modes. | gfx1151 defaults to the state-bound graph only for non-streaming c1 greedy windows with at least 128 remaining transitions. The backend capability is absent on gfx1100; sampled/streaming/c>N/short/INT8-KV/host-embedding/per-layer-MoE-graph routes remain eager. The production p512/d128 rerun is clean and exact at `7f611fe3`; MTP graph modes are not part of SOL-G5 and remain cleanup debt. | Remove the production opt-out after one release window with the API tests retained. Keep the explicit qwen bench selector as long as eager/graph bisection is useful. Remove or isolate the stale MTP graph modes when that workstream is coordinated. |
+| GGUF decode-graph rollback and benches | `HIPENGINE_GGUF_DECODE_GRAPH=0` keeps eager as a production rollback; `scripts/qwen35_gguf_bench.py --graph-replay-decode` remains an explicit measurement surface; `scripts/gguf_mtp_bench.py` still has separate `--target-graph-verify` / `--target-graph-batched-verify` modes. | gfx1151 currently defaults to the state-bound graph only for non-streaming c1 greedy windows with at least 128 remaining transitions. The backend capability is absent on gfx1100; sampled/streaming/c>N/short/INT8-KV/host-embedding/per-layer-MoE-graph routes remain eager. The old clean `7f611fe3` row was +0.112%; current HIP 7.15 clean control/candidate G5 reruns remain 128/128 exact but are **+0.246%/+0.293% slower** than same-run eager. MTP graph modes are not part of this result. | Do not remove the opt-out. Run a scoped current-stack graph-policy A/B; if another balanced run does not reproduce a graph win, restore eager as the production selector and keep graph explicit-only. Remove or isolate stale MTP graph modes separately. |
 | GGUF AR-baseline timing contract | `gguf_mtp_category_bench.py` `TRUE_AR_PRODUCTION_TIMING_REQUIRED` (line ~60), the parallel speed-claim contract, and `tests/test_gguf_mtp_category_bench.py` (`TEST_TRUE_AR_TIMING_PROTOCOL`, `test_speed_claim_contract_rejects_eager_or_raw_true_ar_timing_protocol`) still require `decode_path='graph_replay'` / `graph_replay_decode=True` / `effective_*` keys. | STALE since #8 retired the HIP decode graph: the production AR baseline (`gguf_true_ar_category_bench.py`) now emits `decode_path='eager_step'`, so `--true-ar-baseline-json` rejects every current AR baseline (`requires timing_protocol.decode_path='graph_replay'; got 'eager_step'`). The apple-to-apple attach has been unusable since #8. Worked around by `scripts/gguf_ar_mtp_suite.py`, which runs both benches under one enforced config and computes the MTP/AR ratio itself instead of using the attach. | Update both contracts to the eager production path (`decode_path='eager_step'`, `graph_replay_decode=False`, `graph_steps_per_replay=0`, drop the `effective_*` keys the AR bench never emits) and fix the test fixtures + the rejection test (it should now reject `graph_replay`, not `eager_step`). Then `gguf_ar_mtp_suite.py` can optionally re-enable the bench's own ratio/splits via the attach. Anti-gaming intent (reject raw/non-production timing) must be preserved. |
 | MTP P1 verifier | `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` opt-out around the promoted split-output dual W4 shared-gate/up route. | Default-on after 2026-06-11 D32 9-prompt exact A/B: same acceptance, verify `22.98 -> 22.37 ms/cycle`. | After the next retained MTP gate with defaults-on passes at the target sprint shape, remove the opt-out or demote it to a test-only override. |
 | MTP P1 verifier | `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` opt-out around promoted `f32_to_fp16 + paro_rotate1` fusion. | Default-on after raw-bit RED test and 2026-06-11 D32 9-prompt exact A/B; removes 30 launches/pass and contributes to the stacked `-0.60 ms/cycle` suite delta. | After the next retained MTP gate with defaults-on passes, collapse the old runtime dispatch branch if no other path still needs it. |
@@ -840,15 +844,3 @@ should be boring.
 - Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
   avoids live c6 groups in retained/default operation. Do not use this
   comparison mode for throughput claims.
-
-## Q8T16 dual-split wave/block A/B wrapper
-
-- Added 2026-07-12 as a compile-time BF16 diagnostic alongside the production
-  scalar-K-indexed dual-split kernel. It exists only to make the exact
-  production-shaped microbenchmark and profiler comparison reproducible.
-- Result: gfx1151 rows=1 `2048x(8192+4096)` improves
-  **136.415 -> 132.175 us** median (**-3.108%**) with bit-identical outputs,
-  unchanged 16-wave occupancy, and no spills.
-- Remove when: the wave/block body passes the clean production p512/d128 gate
-  and replaces the scalar-K body, or immediately if that gate finds a concrete
-  regression. Do not expose the diagnostic wrapper through runtime dispatch.

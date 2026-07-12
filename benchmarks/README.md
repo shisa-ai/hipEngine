@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`50bea8f330fe93420422a904927ea24d374edbc1`
+`e20cdc1340c107b949aa6d50bfb6dc2a0208bd64`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -124,7 +124,18 @@ HIP-library memoization. Current p8 remains **55.208 tok/s** (+0.45%). A
 **20.766 ms profiled host wall/token** (88.62%); raw trace CSVs remain under
 `/tmp`, while their hashes and the full family Amdahl table are retained.
 
-SOL-G5 is accepted on gfx1151 in
+The current TheRock HIP 7.15 / TuneD refresh promotes explicit wave/block
+indexing for the BF16 Q8T16 dual-split leaf at clean detached `e20cdc13`.
+Against clean scalar parent `8184355c`, a control/candidate/control p512/d128
+eager A/B moves **20.5342 -> 20.4709 ms/token** (**-0.308%**, **48.699 ->
+48.850 tok/s**) with non-overlapping ranges and every token exact. Matching
+24-step profiles move the named leaf **4245.4 -> 4188.2 us/token** (**-1.349%**)
+and total marked GPU time **19256.1 -> 19199.2 us/token** (**-0.296%**). The
+state-bound graph path also improves **20.5736 -> 20.5324 ms/token** across
+commits, but current G5 runs on both commits find graph slightly slower than
+same-run eager; this refresh makes no new graph-over-eager speed claim.
+
+The historical HIP 7.13 SOL-G5 result is accepted on gfx1151 in
 [`2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 At clean detached `7f611fe3`, the production state-bound graph matches eager
 byte-for-byte for all 128 launches across generated tokens, the FP32 hidden
@@ -133,9 +144,12 @@ rotating same-session repetitions measure capture-inclusive graph wall at
 **20.311 ms/token** (**49.233 tok/s**) versus same-run eager at
 **20.334 ms/token** (**49.178 tok/s**), a **+0.112%** throughput improvement.
 The one capture/instantiate and final destroy are charged to every 128-token
-window. Per-token recapture is rejected at **35.429 ms/token**. Production
-therefore defaults to this graph only for non-streaming c1 greedy gfx1151
-windows with at least 128 remaining transitions; all other routes remain eager.
+window. Per-token recapture is rejected at **35.429 ms/token**. That result
+introduced the graph default only for non-streaming c1 greedy gfx1151 windows
+with at least 128 remaining transitions. The current HIP 7.15 refresh above
+supersedes its speed-policy conclusion: graph replay remains exact but is
+slightly slower than same-run eager on both clean commits. The rollback remains
+available and a scoped default-policy follow-up is required.
 
 SOL-G6 is accepted on gfx1151 in
 [`2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json`](results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json).
@@ -172,7 +186,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-11 | hipEngine `c941c158`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: external and production tokens match; four hidden/layer/Conv/GDN/KV checkpoints are finite and byte-exact. `performance_claim=false`; unrelated untracked files are disclosed. | Diagnostic link only | Rerun after eager math/state/KV changes; run separately on W7900 before using it to refresh gfx1100 performance. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 | clean detached hipEngine `7f611fe3`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: all 128 graph launches are byte-exact; capture-inclusive p512/d128 wall is 20.334 -> 20.311 ms/token (+0.112% throughput) against same-run eager. | Yes, named repeated-token protocol | Rerun after graph key/capture, decode math, state/KV layout, admission threshold, or HIP runtime changes; run separately on W7900 before enabling it there. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q8T16 dual-split wave/block indexing | 2026-07-12 | clean scalar `8184355c` and promoted `e20cdc13`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained**: clean p512/d128 eager **20.5342 -> 20.4709 ms/token** (-0.308%); marked dual-split leaf **4245.4 -> 4188.2 us/token** (-1.349%); graph route **20.5736 -> 20.5324 ms/token** (-0.200%); every token/state gate exact. | Yes, named repeated-token protocol | Rerun after Q8T16 indexing/layout, compiler, graph policy, or gfx1151 launch geometry changes; validate separately on gfx1100 before transfer. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 historical; 2026-07-12 refresh | clean detached hipEngine `7f611fe3` on HIP 7.13; clean `8184355c`/`e20cdc13` on HIP 7.15; exact Q4_K_M fingerprint retained | **Historical retained / current speed-policy stale**: all 128 graph launches remain byte-exact. HIP 7.13 measured +0.112% over eager; both current HIP 7.15 reruns reject at -0.246%/-0.293%. | Current table reports exact diagnostic wall, not a graph-over-eager win | Run a scoped balanced current-stack A/B; restore eager default if graph does not reproduce a win. Validate separately on gfx1100 before any admission. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF replacement-layout residency and 24 GiB-class gate | 2026-07-11 | clean detached hipEngine `d70c9464`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained memory/correctness gate**: 733 unique sources, no raw+replacement duplicates or optional sidecars, 21.478 GiB owned/tracked p512/d128 graph session, 2.522 GiB budget margin. `performance_claim=false`; G5 supplies linked speed non-regression. | Diagnostic link only | Rerun after weight materialization/layout, KV/state, prefill scratch, graph allocation, or max-sequence policy changes; context-specific capacity remains separate. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1-c8 shape/routing catalog | 2026-07-11 | clean detached hipEngine `a18ff7bc`; TheRock HIP `7.13.60980-c76140fa27`; exact model and prompt fingerprints retained | **Retained c1 performance and routing correctness**: exact-fixture c1 graph is 66.910 tok/s median; clean c2-c8 native rows all fail independent-c1 equality at index 2 and are explicitly serial. Native rates are diagnostic only. | Yes for c1 exact-fixture graph only | Rerun after c1 graph/prefill changes or any general native c>N algorithm change. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO ragged c8-to-c1 lifecycle correctness | 2026-07-11 | clean detached hipEngine `6f1910c9`; TheRock HIP `7.13.60980-c76140fa27`; same exact model/fixture fingerprints as P1 | **Accepted correctness-only gate**: eight token sequences, 30 linear-state families, and 10 full-KV families match c1 through EOS and front/middle/tail sparse cancellation. `performance_claim=false`; ragged prefill uses an exact per-segment fallback. | Diagnostic link only | Rerun after ragged prefill, scheduler retirement, slot/state/KV addressing, or true-c1 decode changes; run independently on W7900. |
@@ -299,16 +314,18 @@ artifact is [SOL-S4](results/2026-07-11-sol-s4-gfx1151-paro-dflash-profile.json)
 
 These are exact repeated-token SOL-G4/G5 rows, not natural-prompt quality or
 speculative-economics results. The graph delta uses its same-run eager control;
-the older SOL-G4 row remains the canonical eager/Amdahl baseline.
+the Q8T16 row is the current eager timing while SOL-G4 remains the historical
+revision-bisect/Amdahl baseline.
 
 <!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
 | Path | Platform and protocol | Result | Evidence status |
 | --- | --- | ---: | --- |
-| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; 1 discarded + 4 measured runs; 128 eager steps; graph off | **49.285 tok/s** (`20.290 ms/token`) | Retained for this exact repeated-token protocol; every output ID is 9707 and the G1 hidden/state/KV oracle is linked |
-| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same model/KV/prompt; 1 warmup + 4 measured rotating same-session runs; 128 steps; one capture and destroy charged per run | **49.233 tok/s** (`20.311 ms/token`), **+0.112%** vs same-run eager | Retained for this exact long-greedy protocol; 128/128 hidden/state/KV/token checkpoints are byte-exact |
+| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; TheRock HIP 7.15; TuneD accelerator-performance; clean scalar/candidate/scalar, 1 discarded + 4 measured runs per leg; 128 eager steps; graph off | **48.850 tok/s** (`20.471 ms/token`), **+0.309%** vs clean scalar control | Retained for this exact repeated-token protocol; control/candidate ranges do not overlap, every output ID is 9707, and the G1 hidden/state/KV oracle is linked |
+| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same current model/KV/prompt/stack; 1 warmup + 4 measured rotating same-session runs; 128 steps; capture and destroy charged | **48.704 tok/s** (`20.532 ms/token`), **-0.293%** vs same-run eager; **+0.201%** vs scalar graph | Exact 128/128 state/KV/token replay, but current G5 rejects a graph-over-eager speed claim; graph default policy is tracked separately |
 <!-- END TOPLINE:GFX1151_GGUF_EAGER -->
 
-Artifacts: [`SOL-G4 eager audit`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json)
+Artifacts: [`Q8T16 wave/block production A/B`](results/2026-07-12-gfx1151-q8-t16-waveblock-production.json),
+[`SOL-G4 eager audit`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json),
 and [`SOL-G5 production graph audit`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
 ### PARO concurrency and production routing
@@ -837,10 +854,6 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
-- **gfx1151 Q8T16 wave/block indexing:** the [2026-07-12 paired-order microbenchmark](results/2026-07-12-gfx1151-q8-t16-waveblock-micro.json)
-  measures the production-shaped dual-split leaf at **136.415 -> 132.175 us**
-  median (**-3.108%**) with bit-identical outputs and unchanged occupancy. It
-  remains diagnostic only until the production p512/d128 model gate passes.
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900

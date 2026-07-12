@@ -213,8 +213,8 @@ capture/instantiate and destroy to each 128-token window.
 <!-- BEGIN TOPLINE:GFX1151_GGUF_EAGER -->
 | Path | Platform and protocol | Result | Evidence status |
 | --- | --- | ---: | --- |
-| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; 1 discarded + 4 measured runs; 128 eager steps; graph off | **49.285 tok/s** (`20.290 ms/token`) | Retained for this exact repeated-token protocol; every output ID is 9707 and the G1 hidden/state/KV oracle is linked |
-| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same model/KV/prompt; 1 warmup + 4 measured rotating same-session runs; 128 steps; one capture and destroy charged per run | **49.233 tok/s** (`20.311 ms/token`), **+0.112%** vs same-run eager | Retained for this exact long-greedy protocol; 128/128 hidden/state/KV/token checkpoints are byte-exact |
+| GGUF eager c1 | Radeon 8060S/gfx1151; Qwen3.6-35B-A3B UD-Q4_K_M; BF16 KV; `[9707] * 512`; TheRock HIP 7.15; TuneD accelerator-performance; clean scalar/candidate/scalar, 1 discarded + 4 measured runs per leg; 128 eager steps; graph off | **48.850 tok/s** (`20.471 ms/token`), **+0.309%** vs clean scalar control | Retained for this exact repeated-token protocol; control/candidate ranges do not overlap, every output ID is 9707, and the G1 hidden/state/KV oracle is linked |
+| GGUF state-bound graph c1 | Radeon 8060S/gfx1151; same current model/KV/prompt/stack; 1 warmup + 4 measured rotating same-session runs; 128 steps; capture and destroy charged | **48.704 tok/s** (`20.532 ms/token`), **-0.293%** vs same-run eager; **+0.201%** vs scalar graph | Exact 128/128 state/KV/token replay, but current G5 rejects a graph-over-eager speed claim; graph default policy is tracked separately |
 <!-- END TOPLINE:GFX1151_GGUF_EAGER -->
 
 Artifacts: [`SOL-G4 eager audit`](benchmarks/results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json)

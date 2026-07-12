@@ -212,6 +212,7 @@ may still present a different measured bottleneck.
 | Native target and optimization level | Already satisfied | Retained HIP micros compile explicitly for `gfx1100` or `gfx1151` at `-O3`; the ISA tools already generate saved intermediates and final code objects during their runs. | Keep these fixed in every A/B. They are prerequisites, not new optimizations. |
 | `__launch_bounds__` / fixed workgroup | Already tested; not a general cause | Relevant dot, memory, sampler, geometry, and two-stage runners already have fixed-shape launch-bound controls. Fixed-block/workgroup experiments did not broadly close the gaps. | Retest the second occupancy hint only for a profiled kernel whose resource report predicts a useful occupancy boundary. Never assume it is automatically high impact. |
 | Register pressure, missing `__restrict__`, or compiler spills | Ruled out as the broad explanation | Relevant retained HIP micros already use restricted pointers. Retained ISA rows report no HIP scratch or spills as the general explanation. | Shorten live ranges or tune unrolling only against measured VGPR/occupancy evidence. Do not manually spill to LDS without a demonstrated register bottleneck. |
+| Explicit wave/block address indexing | Tested and retained on one production leaf | The dominant BF16 Q8T16 dual-split GEMV was already spill-free/full-occupancy, but expressing K traversal as `(wave, block_idx, lane)` reduced the production-shaped micro **3.108%**, the marked model leaf **1.349%**, and clean p512/d128 eager wall **0.308%**, all bit-exact. | Keep the production BF16 change. Apply the same rewrite to another Q8T16 body only after its own paired micro and model-family profile; do not infer that every vector-derived address loop will improve. |
 | Missing packed-dot lowering | Ruled out | HIP already uses `__builtin_amdgcn_sudot4`, and retained Q4/Q6 ISA joins show dot4 instructions on both backends. | Investigate surrounding loads, address arithmetic, reductions, waits, and scheduling; do not repeat basic dot-lowering probes. |
 | Wave64 | Ruled out as a recovery | Wave64 did not close the packed-dot or memory gaps; fixed-wave64 geometry regressed. | Keep wave32 for these paths unless a different production kernel supplies contrary evidence. |
 | Generic reduction, accumulator, two-stage, or VOPD variants | Already tested; no broad recovery | Generic LDS/subgroup/accumulator/two-stage and VOPD controls are retained. HIP, not RADV, emits VOPD in the relevant retained gfx1151 ISA rows. | Do not repeat broad sweeps. Add a variant only when a production profile identifies a different hot shape or dependency contract. |
@@ -221,7 +222,16 @@ may still present a different measured bottleneck.
 | Undocumented `-mllvm` if-conversion or scheduler switches | Unproven and unstable | No retained result establishes that these switches help, and backend option names/semantics can change between LLVM builds. | Disposable diagnosis only: first confirm the exact compiler accepts the option, record it in the artifact, and never make it a product default without a same-suite win. |
 | “gfx1151 LLVM regression” | Not established | Cross-architecture ratios differ, but gfx1100 and gfx1151 are different devices. The matched ROCm 7.13-to-7.15 gfx1151 snapshots show no uniform performance change. | Do not call this a compiler regression without a same-device compiler-version A/B or a minimized target-specific ISA/codegen defect. |
 
-The most promising existing compiler diagnostic remains packed dot on gfx1151,
+The first production-backed source result is now the Q8T16 dual-split
+wave/block rewrite. It is deliberately modest but real: clean `8184355c ->
+e20cdc13` p512/d128 eager moves **20.5342 -> 20.4709 ms/token**, while marked
+dual-split GPU time moves **4245.4 -> 4188.2 us/token**. Static occupancy and
+spill state are unchanged, so this is evidence that making wave-uniform address
+structure explicit can help current LLVM scheduling/address generation even
+when the usual register-pressure diagnosis is negative. The compact evidence is
+[`2026-07-12-gfx1151-q8-t16-waveblock-production.json`](../benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-production.json).
+
+The most promising remaining compiler diagnostic remains packed dot on gfx1151,
 because its Vulkan lead is stable and much larger than on gfx1100. It is not
 yet a production optimization target: current combined Q4, Q6, and dense-Q8
 operations mostly favor HIP or sit near parity. Extend its retained ISA work
@@ -297,8 +307,8 @@ to that component rather than folded into the compiler claim.
 | Priority | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
 | 0 | Fix-clock W7900 dispatch/stream attribution | Open | Interleaved one/four-stream and graph controls plus queue/AQL traces separate runtime submission from clock residency. |
-| 1 | Profile current PARO and GGUF server paths | Open | A shipped hot slice is identified by layer family and submission behavior before another Vulkan experiment is added. |
-| 1 | Select one production-backed HIP optimization target | Waiting on production profile | A retained hot bucket maps to an existing cross-backend diagnostic; static ISA and filtered dynamic counters identify a concrete source, layout, scheduling, or submission lever. |
+| 1 | Profile current PARO and GGUF server paths | GGUF eager slice complete; server/PARO remain open | SOL-G4 and the Q8T16 follow-up identify dense Q8_0 as 44% of marked GPU time and retain one exact source-level win. Repeat the same evidence chain before selecting a different shipped bucket. |
+| 1 | Select one production-backed HIP optimization target | Q8T16 dual-split complete | Wave/block K indexing is retained at **-1.349% leaf GPU time** and **-0.308% p512/d128 eager wall**. The next target must come from a fresh profile; do not keep tuning this leaf without a new bottleneck. |
 | 1 | Build an issue-quality compiler/runtime packet | Decision-gated | A minimal matched reproducer satisfies the component-specific evidence gate above; broad ratio tables alone do not open an upstream bug. |
 | 1 | Validate portable Vulkan q8_1 rounding on gfx1100 | gfx1151 complete; W7900 access pending | The retained shader receives the same strict Q4/Q6 and full paired runtime validation on gfx1100; no result is inferred while the W7900 host is unavailable. |
 | 1 | Match Q6 lm-head math/layout | Blocked on comparable implementation | HIP and Vulkan use identical quantization, activation layout, output coverage, and rowtile algorithm before any ratio is reported. |

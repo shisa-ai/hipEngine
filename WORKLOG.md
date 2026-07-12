@@ -151832,3 +151832,51 @@ graphless decode launch-collapse path without regressing target/serial parity.
   ROCm 7.13 baseline as its control. Clean detached worktrees at the scalar
   parent and promoted commit are the remaining canonical-provenance evidence
   step before the benchmark rollup is marked retained.
+
+## 2026-07-12 - Retain clean Q8T16 production and graph-path win
+
+- Created clean detached worktrees for scalar control `8184355c` and promoted
+  candidate `e20cdc13`; both report empty porcelain status. Each worktree was
+  warm-built outside measured/profiled processes with the pinned TheRock HIP
+  7.15 compiler-version file, then every measured process used
+  `--require-cached`.
+- Clean eager p512/d128 control/candidate/control, one discarded plus four
+  measured runs per leg: first control median `20.589560 ms/token`, candidate
+  `20.470906`, second control `20.514772`. Combined control is
+  **20.534201 -> 20.470906 ms/token** (**-0.3082%**), or
+  **48.6992 -> 48.8498 tok/s** (**+0.3092%**). Candidate range
+  `20.453942-20.502082` is wholly below combined-control range
+  `20.511949-20.599091`; all 1,536 measured tokens are `9707`.
+- Matching clean rocprofv3 kernel+marker traces isolate 24 exact decode steps.
+  The production trace proves scalar `<unsigned short,unsigned short,false>`
+  became wave/block `<...,true>`. Dual-split leaf time is
+  **4245.423 -> 4188.172 us/token** (**-1.3485%**, 57.251 us saved/token),
+  dense-Q8 bucket `8540.765 -> 8476.436` (**-0.7532%**), total GPU window
+  `19256.082 -> 19199.161` (**-0.2956%**), and profiled host wall
+  `20.950519 -> 20.872782 ms/token` (**-0.3710%**).
+- Ran the full clean SOL-G5 graph protocol on both commits. All 128 stable
+  relaunch checkpoints remain hidden/Conv/GDN/KV/token exact. Across commits,
+  eager improves **20.523033 -> 20.472340 ms/token** (**-0.2470%**) and the
+  state-bound graph improves **20.573611 -> 20.532402** (**-0.2003%**), so the
+  production graph path also benefits from the kernel.
+- Separately, both current HIP 7.15 G5 artifacts reject a *graph-over-eager*
+  speed claim: state-bound replay is `+0.246%` slower than eager on the scalar
+  parent and `+0.293%` on the promoted candidate. The earlier HIP 7.13 G5 row
+  was `+0.112%` faster. This is a graph-policy follow-up, not a blocker or
+  regression caused by wave/block indexing; `docs/REFACTOR.md` now keeps the
+  eager rollback and requires a scoped current-stack default decision.
+- Removed the temporary callable BF16 A/B wrapper, microbench mode, and
+  duplicate parity fixture after promotion. The diagnostic remains exactly
+  reproducible at `8184355c`; the production CPU-oracle and Qwen attention-pair
+  bit-stability fixtures remain on the default wrapper.
+- Retained compact artifact:
+  `benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-production.json`.
+- Final cleanup validation passed all `180` adjacent GGUF T16/repack/dispatch/
+  compact-MoE tests. A final cached rocprof fixture launched production
+  `q8_0_t16_dual_split_gemv_kernel<unsigned short,unsigned short,true>` at
+  workgroup 128 / grid 98,304 with `DurationNs=138180`; trace SHA-256 is
+  `27cc5502784f24a79b2e93d2539486f2ebacaeeeb7ff52d2fe419cc2e311200b`.
+- The final source with the redundant A/B export removed measures
+  **132.22 us** in the same rows=1, threads=128, `2048x(8192+4096)`, 80-warmup
+  + 400-iteration, 80.2 MB cycling-pool micro protocol, matching the retained
+  candidate median `132.175 us`.
