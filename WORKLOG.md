@@ -151809,3 +151809,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   clean production p512/d128 gate.
 - Compact artifact:
   `benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-micro.json`.
+
+## 2026-07-12 - Promote Q8T16 dual-split wave/block indexing
+
+- Switched only the production BF16 split-output launcher
+  `hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out` to the validated
+  compile-time wave/block instantiation. FP16 and the other Q8T16
+  single/dual/triple bodies are unchanged.
+- Full targeted GPU gate after the switch:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .../therock/bin/python3 -m pytest -q
+  tests/test_gguf_q8_0_t16_gemv_decode.py` -> `38 passed`.
+- Same-tree/same-stack p512/d128 eager screening used Qwen3.6-35B-A3B
+  UD-Q4_K_M, BF16 KV, repeated token `9707`, one discarded run plus four
+  measured 128-token repetitions per leg, TheRock HIP 7.15, and TuneD
+  accelerator-performance. Candidate/control/candidate medians were:
+  **20.483835 / 20.516618 / 20.474556 ms/token**, all exact. Combining the
+  eight candidate samples gives **20.516618 -> 20.481938 ms/token**
+  (`-0.1690%`, throughput `48.7410 -> 48.8235 tok/s`, `+0.1693%`). Candidate
+  range `20.468374-20.505258` is wholly below the control range
+  `20.511152-20.548061`.
+- This screening comparison intentionally does not use the accepted July 11
+  ROCm 7.13 baseline as its control. Clean detached worktrees at the scalar
+  parent and promoted commit are the remaining canonical-provenance evidence
+  step before the benchmark rollup is marked retained.
