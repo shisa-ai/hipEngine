@@ -2914,9 +2914,14 @@ def test_qwen35_paro_generator_handles_zero_tokens_without_loading(monkeypatch) 
     assert generator.generate(_request(prompts=("a", "b"), max_tokens=0)) == ["", ""]
 
 
-def test_qwen35_paro_generator_stops_on_eos(monkeypatch) -> None:
+def test_qwen35_paro_generator_stops_on_im_end_and_reports_eos(monkeypatch) -> None:
     class FakeSession:
-        tokenizer = SimpleNamespace(token_to_id=lambda token: 100 if token == "<|endoftext|>" else None)
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: {
+                "<|endoftext|>": 248044,
+                "<|im_end|>": 248046,
+            }.get(token)
+        )
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
@@ -2928,10 +2933,10 @@ def test_qwen35_paro_generator_stops_on_eos(monkeypatch) -> None:
             pass
 
         def prefill_native(self, token_ids, *, sample: bool = True):
-            return _result(100, "<eos>") if sample else None
+            return _result(248046, "<|im_end|>") if sample else None
 
         def step(self, token_id: int, *, position: int, sample: bool = True):
-            return _result(100, "<eos>") if sample else None
+            raise AssertionError("generation must stop before decoding past <|im_end|>")
 
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (1, [1]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
@@ -2942,4 +2947,13 @@ def test_qwen35_paro_generator_stops_on_eos(monkeypatch) -> None:
     )
     generator._runner = object()
 
-    assert generator.generate(_request(max_tokens=4, ignore_eos=False)) == ["<eos>"]
+    outputs = generator.generate_detailed(_request(max_tokens=4, ignore_eos=False))
+
+    assert [output.text for output in outputs] == ["<|im_end|>"]
+    assert outputs[0].generated_token_ids == (248046,)
+    assert outputs[0].finish_details is not None
+    assert outputs[0].finish_details.to_json_dict() == {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "greedy_fast",
+    }
