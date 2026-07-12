@@ -151715,3 +151715,16 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the 7.13-to-7.15 interpretation. Per the requested scope, these remain local
   clock-policy diagnostics and do not supersede the retained repo artifact or
   ROCm reports.
+
+## 2026-07-12 - Make gfx1151 run-to-run deltas visible at a glance
+
+- Re-read `~/gfx1151-scratch.md` as a comparison artifact. The version ranges
+  and TuneD deltas were present, but the reader had to compare wide tables and
+  reach the later A/B section to find the main conclusion.
+- Added a top-level comparison table covering ROCm 7.13 -> 7.15, the portable
+  q8_1 correctness fix, automatic -> TuneD under both matched and strict
+  sampling, and the matched/strict repeatability signal. It distinguishes
+  controlled time deltas from qualitative range comparisons and makes the
+  measured lack of a broad performance change explicit.
+- Re-read the complete scratch document after the edit. No benchmark result,
+  retained artifact, or ROCm report changed.
