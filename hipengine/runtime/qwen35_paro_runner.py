@@ -683,7 +683,10 @@ def _qwen35_paro_context_overhead_bytes(
     blocks = (max(tokens, decode_context_capacity) + int(block_size) - 1) // int(block_size)
     prefill_rows = tokens * max_batch
     block_table_bytes = blocks * np.dtype(np.int32).itemsize
-    prefill_block_table_bytes = prefill_rows * blocks * np.dtype(np.int32).itemsize
+    # The resident prefill table starts as one reusable dense row and grows only
+    # to the largest active full-attention chunk/packed slab. It is not a
+    # context_tokens-by-blocks allocation.
+    prefill_block_table_bytes = blocks * np.dtype(np.int32).itemsize
     prefill_token_bytes = prefill_rows * np.dtype(np.int64).itemsize
     prefill_position_bytes = prefill_rows * np.dtype(np.int64).itemsize
     prefill_context_count_bytes = prefill_rows * np.dtype(np.int64).itemsize
@@ -2936,9 +2939,67 @@ class Qwen35ParoResidentSession:
             tensor.device,
         )
 
-    def _prefill_block_table_rows(self, rows: int, *, start: int = 0) -> Tensor:
+    def _ensure_prefill_block_table_capacity(self, rows: int, *, uniform: bool) -> None:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("prefill block-table rows must be positive")
+        # A few narrow unit fakes predate managed table-capacity metadata and
+        # supply a fixed legacy buffer. Keep those structural tests on the
+        # legacy view while every real session initializes the managed fields.
+        if not hasattr(self, "prefill_block_table_capacity_rows"):
+            return
+        if rows > self.prefill_capacity_rows:
+            raise ValueError(
+                f"prefill block-table rows {rows} exceed session capacity {self.prefill_capacity_rows}"
+            )
+        capacity = int(getattr(self, "prefill_block_table_capacity_rows", 0) or 0)
+        current = self.prefill_block_table_buf
+        if capacity < rows:
+            dense_row = np.arange(self.blocks, dtype=np.int32)
+            table = np.tile(dense_row, (rows, 1))
+            replacement = self._dev(table)
+            # Prompt-length changes synchronize in reset(), and growth normally
+            # happens before the first full-attention chunk. Keep replacement
+            # safe for direct diagnostic callers too.
+            self.runtime.device_synchronize()
+            self.buffers = [buffer for buffer in self.buffers if buffer is not current]
+            free(current, runtime=self.runtime)
+            self.prefill_block_table_buf = replacement
+            self.prefill_block_table_capacity_rows = rows
+            self._prefill_block_table_is_uniform = True
+            self._prefill_block_table_owner = "uniform"
+            capacity = rows
+        if uniform and not bool(getattr(self, "_prefill_block_table_is_uniform", False)):
+            dense_row = np.arange(self.blocks, dtype=np.int32)
+            table = np.tile(dense_row, (capacity, 1))
+            copy_host_to_device(
+                self.prefill_block_table_buf,
+                host_array_ptr(table),
+                table.nbytes,
+                runtime=self.runtime,
+            )
+            self._prefill_block_table_is_uniform = True
+            self._prefill_block_table_owner = "uniform"
+
+    def _prefill_block_table_rows(
+        self,
+        rows: int,
+        *,
+        start: int = 0,
+        ensure_uniform: bool = True,
+    ) -> Tensor:
+        # ``start`` indexes token-position/context metadata, not the dense page
+        # table. Every single-request chunk reuses rows [0:rows] of this compact
+        # allocation because each table row is identical.
+        managed = hasattr(self, "prefill_block_table_capacity_rows")
+        self._ensure_prefill_block_table_capacity(rows, uniform=ensure_uniform)
+        table_ptr = (
+            self.prefill_block_table_buf.ptr
+            if managed
+            else self.prefill_block_table_buf.ptr + int(start) * self.blocks * DType.INT32.itemsize
+        )
         return Tensor.from_handle(
-            self.prefill_block_table_buf.ptr + int(start) * self.blocks * DType.INT32.itemsize,
+            table_ptr,
             (rows, self.blocks),
             DType.INT32,
             self.device,
@@ -3084,6 +3145,7 @@ class Qwen35ParoResidentSession:
             full_layers.append(entry)
         buffer_bytes = sum(int(buffer.nbytes) for buffer in getattr(self, "buffers", ()))
         allocation_bytes = sum(int(allocation.buffer.nbytes) for allocation in getattr(self, "allocations", ()))
+        prefill_block_table = getattr(self, "prefill_block_table_buf", None)
         return {
             "kv_storage_dtype": self.kv_storage_dtype.value,
             "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
@@ -3099,6 +3161,10 @@ class Qwen35ParoResidentSession:
             "buffer_bytes": buffer_bytes,
             "allocation_bytes": allocation_bytes,
             "owned_direct_bytes": buffer_bytes + allocation_bytes,
+            "prefill_block_table_bytes": int(getattr(prefill_block_table, "nbytes", 0)),
+            "prefill_block_table_capacity_rows": int(
+                getattr(self, "prefill_block_table_capacity_rows", 0) or 0
+            ),
         }
 
     def kv_memory_audit(self) -> dict[str, Any]:
@@ -3406,10 +3472,13 @@ class Qwen35ParoResidentSession:
         position_arr = np.asarray(slab.positions, dtype=np.int64)
         context_arr = np.asarray(slab.context_counts, dtype=np.int64)
         block_table_arr = np.asarray(physical_tables, dtype=np.int32)
+        self._ensure_prefill_block_table_capacity(slab.rows, uniform=False)
         copy_host_to_device(self.prefill_token_id_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_position_buf, host_array_ptr(position_arr), position_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_context_count_buf, host_array_ptr(context_arr), context_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_block_table_buf, host_array_ptr(block_table_arr), block_table_arr.nbytes, runtime=self.runtime)
+        self._prefill_block_table_is_uniform = False
+        self._prefill_block_table_owner = "packed"
         # Prefill overwrote the shared block-table buffer; force the decode
         # block-table cache to rebuild on the next _batch_full_spans call.
         self._decode_full_block_table_key = None
@@ -4731,17 +4800,19 @@ class Qwen35ParoResidentSession:
                         slot = int(slab.physical_slot_ids[segment_index])
                         local_block_table = np.asarray(slab.block_tables[start:end], dtype=np.int32)
                         local_block_table = np.ascontiguousarray(local_block_table)
-                        block_table_offset = int(start) * block_count * DType.INT32.itemsize
+                        self._ensure_prefill_block_table_capacity(segment_rows, uniform=False)
                         copy_host_to_device(
-                            DeviceBuffer(self.prefill_block_table_buf.ptr + block_table_offset, local_block_table.nbytes),
+                            DeviceBuffer(self.prefill_block_table_buf.ptr, local_block_table.nbytes),
                             host_array_ptr(local_block_table),
                             local_block_table.nbytes,
                             runtime=self.runtime,
                         )
                         self._decode_full_block_table_key = None
                         hidden_chunk = self._prefill_row_matrix_view(hidden, start, segment_rows)
+                        self._prefill_block_table_is_uniform = False
+                        self._prefill_block_table_owner = "packed_segment"
                         block_table = Tensor.from_handle(
-                            self.prefill_block_table_buf.ptr + block_table_offset,
+                            self.prefill_block_table_buf.ptr,
                             (segment_rows, block_count),
                             DType.INT32,
                             self.device,
@@ -7414,7 +7485,10 @@ class Qwen35ParoResidentSession:
         self._allocate_verify_trunk_buffers()
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
-        prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))
+        # Keep one dense page-table row resident. Prompt prefill grows this
+        # buffer lazily only to the largest active chunk (or packed slab), then
+        # reuses rows [0:chunk_rows] for every subsequent layer/chunk.
+        prefill_block_table_arr = block_table_arr.reshape(1, self.blocks)
         prefill_context_count_arr = np.zeros((self.prefill_capacity_rows,), dtype=np.int64)
         self.position_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.context_arr = np.ones(self.batch_layout.slot_scalar_shape, dtype=np.int64)
@@ -7423,6 +7497,9 @@ class Qwen35ParoResidentSession:
         self.active_mask_arr[0] = 1
         self.block_table_buf = self._dev(block_table_arr)
         self.prefill_block_table_buf = self._dev(prefill_block_table_arr)
+        self.prefill_block_table_capacity_rows = 1
+        self._prefill_block_table_is_uniform = True
+        self._prefill_block_table_owner = "uniform"
         self.prefill_context_count_buf = self._dev(prefill_context_count_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
@@ -11545,7 +11622,7 @@ class Qwen35ParoResidentSession:
         limit per row.
         """
 
-        block_table = self._prefill_block_table_rows(rows, start=0)
+        block_table = self._prefill_block_table_rows(rows, start=0, ensure_uniform=False)
         positions = Tensor.from_handle(
             self.prefill_position_buf.ptr,
             (rows,),
@@ -11775,7 +11852,7 @@ class Qwen35ParoResidentSession:
 
         if cache_slots.dtype is not DType.INT64 or cache_slots.shape != (rows,):
             raise ValueError("cache_slots must be INT64 with shape (rows,)")
-        block_table = self._prefill_block_table_rows(rows, start=0)
+        block_table = self._prefill_block_table_rows(rows, start=0, ensure_uniform=False)
         tree_committed = int(self.verify_tree_committed_count)
         total_len = tree_committed + rows
         # Uniform live_counts/row_positions for the prefill spans: total
@@ -11934,6 +12011,7 @@ class Qwen35ParoResidentSession:
         active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
         physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
         block_table = np.tile(physical_blocks, (rows, 1))
+        self._ensure_prefill_block_table_capacity(rows, uniform=False)
         # M12.5: cycle-to-cycle invariants (parent_rows, draft_depths,
         # row_to_request, active_mask, block_table) only change when the
         # (rows, base_slot, mode) bucket changes.  Cache by bucket signature
@@ -11969,7 +12047,12 @@ class Qwen35ParoResidentSession:
                 (self.verify_positions_i32, position_i32),
                 (self.prefill_context_count_buf, context_i64),
             ]
-        if self._verify_metadata_bucket_cache == bucket_signature:
+        table_owner = getattr(self, "_prefill_block_table_owner", None)
+        table_cache_hit = (
+            self._verify_metadata_bucket_cache == bucket_signature
+            and table_owner == ("verify", bucket_signature)
+        )
+        if table_cache_hit:
             copies: list[tuple[Any, Any]] = dynamic_copies
         else:
             copies = dynamic_copies + [
@@ -11981,6 +12064,8 @@ class Qwen35ParoResidentSession:
                 (self.prefill_block_table_buf, block_table),
             ]
             self._verify_metadata_bucket_cache = bucket_signature
+            self._prefill_block_table_is_uniform = False
+            self._prefill_block_table_owner = ("verify", bucket_signature)
         # Tree topology: build the dense ``[rows, rows]`` ancestor mask, the
         # global ``tree_committed_count``, and the per-row unique cache-slot
         # vector so the tree-aware K/V append + GQA gate kernels can filter

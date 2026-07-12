@@ -57,6 +57,19 @@ def test_free_running_diagnostics_separates_rollout_cascade() -> None:
     assert diagnostic["full_rollout_logit_gate"]["top1_agreement"] == 0.75
 
 
+def test_compact_owned_summary_preserves_prefill_block_table_accounting() -> None:
+    summary = sweep._compact_owned_summary(
+        {
+            "buffer_bytes": 123,
+            "prefill_block_table_bytes": 4096,
+            "prefill_block_table_capacity_rows": 4,
+        }
+    )
+
+    assert summary["prefill_block_table_bytes"] == 4096
+    assert summary["prefill_block_table_capacity_rows"] == 4
+
+
 def test_run_case_uses_reference_teacher_forced_inputs(monkeypatch) -> None:
     class FakeResult:
         def __init__(self, token_id: int) -> None:

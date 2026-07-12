@@ -152958,3 +152958,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   long-document, or code. Status is therefore `reference_unscorable`, not an
   INT8 pass or measured task regression. The task harness remains useful once
   the BF16 PARO semantic baseline is independently validated.
+
+## 2026-07-13 — Compact PARO persistent prefill block-table metadata
+
+- RED tests showed the 256K context-overhead estimator charging
+  `1,080,037,376` bytes because the runtime persistently tiled the dense page
+  table across every prompt row; the compact target was `6,299,648` bytes of
+  resident context metadata. A second RED test showed `_prefill_block_table_rows`
+  returning an unchecked pointer into the full table rather than growing and
+  reusing chunk-local rows.
+- Replaced the `context_rows x blocks` resident allocation with one initial
+  dense table row. It grows lazily to the largest active full-attention chunk or
+  packed slab, then reuses offset zero for each sequential chunk. Packed and
+  verifier routes keep their row-specific tables and ownership tags so cached
+  verifier metadata cannot be mistaken for uniform prompt metadata. The
+  `KVLiveSpans` ABI and all existing kernel signatures remain unchanged.
+- Focused runtime/layout, capacity-estimator, memory-audit, E2E fixture, and
+  matched-quality tests pass. W7900 `512/4` matched-context smoke preserved the
+  baseline result (`mean KL 0.544593`, top-1 `60%`) and exact BF16/INT8 output
+  IDs `[198,4795,13,508]` / `[198,43150,13,13]`.
+- Scoped dirty-tree 256K/128 validation used the exact prior capacity command
+  with model revision `437eba06`, FP16-scale per-token/head INT8 KV, and cached
+  gfx1100 builds. It completed with unchanged generated preview
+  `58054,292`, no-shadow audit pass, `635.318` prefill tok/s, and `40.070`
+  decode tok/s. The table retained only `4,096 x 1,025` entries
+  (`16,793,600` bytes). Tracked peak fell from the published
+  `25,723,838,504` to `24,665,296,404` bytes (`23.9572 -> 22.9713 GiB`,
+  `-0.9858 GiB`), increasing the 24 GiB margin from `0.0428` to `1.0287 GiB`.
+  Raw diagnostic: `/tmp/hipengine-compact-prefill-table-256k-int8.json`.
+  A clean-source confirmation is required before publishing the retained row.
