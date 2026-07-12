@@ -152,54 +152,57 @@ W7900 row sources: [`summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-r
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
-**Status: retained.** The Strix Halo rows were measured on 2026-07-11 from a
-clean detached worktree at `d1231ee0` with TheRock HIP
-`7.13.60980-c76140fa27`. hipEngine uses two discarded warmups plus five
-measured repetitions per right-sized resident shape; llama.cpp uses one
-internal warmup plus five samples per split phase. The top-level artifact
-passes clean provenance, stable finite-output, variance, model/build/device,
-and memory-scope gates.
+**Status: retained.** GGUF and llama.cpp are the clean 2026-07-11 matched
+refresh; PARO is the clean 2026-07-12 exact recovery at `9944e481` with
+TheRock HIP 7.15 and TuneD `accelerator-performance`. hipEngine uses two
+discarded warmups plus five measured repetitions per right-sized resident
+shape; llama.cpp uses one internal warmup plus five samples per split phase.
+The linked artifacts pass their clean provenance, output/state, variance,
+model/build/device, and memory-scope gates. Bold marks the best raw value per
+row, but PARO is W4 PARO rather than Q4_K_M and memory scopes differ, so the
+emphasis is descriptive rather than a controlled same-quant/backend win.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 1140.101 | 430.767 | 1061.260 | 1067.770 |
-| 1K/128 | 1208.343 | 437.467 | 1043.230 | 1069.870 |
-| 4K/128 | 854.346 | 403.946 | 1009.240 | 1016.580 |
-| 32K/128 | 761.011 | 369.942 | 743.547 | 814.923 |
-| 64K/128 | 619.374 | 334.395 | 573.611 | 660.974 |
-| 128K/128 | 436.582 | 270.601 | 390.441 | 476.788 |
+| 512/128 | **1140.101** | 430.767 | 1061.260 | 1067.770 |
+| 1K/128 | **1208.343** | 437.467 | 1043.230 | 1069.870 |
+| 4K/128 | 854.346 | 403.946 | 1009.240 | **1016.580** |
+| 32K/128 | 761.011 | 369.942 | 743.547 | **814.923** |
+| 64K/128 | 619.374 | 334.395 | 573.611 | **660.974** |
+| 128K/128 | 436.582 | 270.601 | 390.441 | **476.788** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 66.767 | 49.536 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 52.192 | 50.818 | 62.136 |
-| 4K/128 | 62.765 | 52.999 | 50.126 | 60.097 |
-| 32K/128 | 50.351 | 43.947 | 44.240 | 51.319 |
-| 64K/128 | 42.149 | 37.477 | 39.326 | 44.422 |
-| 128K/128 | 30.371 | 27.862 | 32.114 | 34.948 |
+| 512/128 | **66.767** | 49.536 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 52.192 | 50.818 | **62.136** |
+| 4K/128 | **62.765** | 52.999 | 50.126 | 60.097 |
+| 32K/128 | 50.351 | 43.947 | 44.240 | **51.319** |
+| 64K/128 | 42.149 | 37.477 | 39.326 | **44.422** |
+| 128K/128 | 30.371 | 27.862 | 32.114 | **34.948** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 18.039 | 21.478 | 21.375 | 21.551 |
-| 1K/128 | 18.051 | 21.710 | 21.387 | 21.501 |
-| 4K/128 | 19.026 | 22.995 | 21.444 | 21.507 |
-| 32K/128 | 19.729 | 23.559 | 21.987 | 22.191 |
-| 64K/128 | 20.403 | 24.203 | 22.666 | 22.627 |
-| 128K/128 | 22.124 | 25.493 | 23.862 | 24.254 |
+| 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
+| 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
+| 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
+| 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
+| 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
+| 128K/128 | **22.124** | 25.493 | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 The memory columns have different scopes: hipEngine reports tracked allocator
 high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
 sampled every 10 ms. Use them for within-column context growth, not small
-cross-column allocator comparisons. Row sources: [`accepted summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
-[`hipEngine PARO`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
+cross-column allocator comparisons. Row sources: [`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
+[`accepted July 11 matched summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
+[`July 11 PARO reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
 [`hipEngine GGUF`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
 [`llama.cpp HIP`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json), and
 [`llama.cpp Vulkan`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json). Exact settings and gates are in the canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-throughput).
