@@ -151880,3 +151880,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **132.22 us** in the same rows=1, threads=128, `2048x(8192+4096)`, 80-warmup
   + 400-iteration, 80.2 MB cycling-pool micro protocol, matching the retained
   candidate median `132.175 us`.
+
+## 2026-07-12 - Reorder SOL recovery around the PARO release blocker
+
+- Updated `docs/SOL-OPTIMIZATION.md` to add `SOL-R0`: reproduce, bisect, and
+  recover the reported 30%+ PARO decode loss from the recent
+  correctness/verification hardening while preserving exact hidden, Conv/GDN,
+  KV, token/order, lifecycle, and sampler behavior. The 30%+ magnitude is
+  explicitly a working release report until a clean matched good/current A/B
+  makes it an eligible performance claim.
+- Made R0 followed by the R9 validation/publication handoff the next-point-
+  release critical path. R1-R8 and the deferred compiler/kernel queue do not
+  block that release unless the release owner changes scope.
+- Preserved the next gfx1151 optimization candidates in a table at the literal
+  end of the SOL ledger: current-stack graph policy, sibling Q8T16 wave/block
+  indexing, selected-MoE exact GEMV lifetime/instruction work, GQA-aware paged
+  attention, surgical fusion/dispatch cleanup, and evidence-gated Q6 lm-head
+  layout work. All projected ranges are labeled Amdahl steering estimates, not
+  retention thresholds.
+- The user then explicitly unblocked `SOL-R1` PARO prefill recovery as the next
+  active work item after this documentation unit.
