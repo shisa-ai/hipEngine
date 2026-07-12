@@ -906,6 +906,89 @@ def test_prefill_config_autotunes_gt1k_chunks_from_budget() -> None:
     assert manual_tuning["reason"] == "manual_chunk_sizes"
 
 
+@pytest.mark.parametrize(
+    ("sequence_length", "expected"),
+    [
+        (512, (256, 256, 0, 0, 0)),
+        (1024, (256, 256, 0, 0, 0)),
+        (4096, (256, 256, 4096, 1024, 1024)),
+        (131072, (256, 256, 4096, 1024, 1024)),
+    ],
+)
+def test_prefill_config_autotunes_gfx1151_paro_recovery_chunks(
+    sequence_length: int,
+    expected: tuple[int, int, int, int, int],
+) -> None:
+    tuned, tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=sequence_length,
+        total_memory_bytes=128 * 1024**3,
+        target_arch="gfx1151",
+    )
+
+    assert (
+        tuned.linear_chunk_size,
+        tuned.moe_chunk_size,
+        tuned.full_attn_query_chunk_size,
+        tuned.full_attn_post_chunk_size,
+        tuned.full_attn_rope_chunk_size,
+    ) == expected
+    assert tuning["applied"] is True
+    assert tuning["reason"] == "gfx1151_paro_prefill_recovery"
+    assert tuning["target_arch"] == "gfx1151"
+
+
+def test_prefill_config_gfx1151_profile_preserves_low_memory_attention_policy() -> None:
+    tuned, tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=131072 + 129,
+        total_memory_bytes=24 * 1024**3,
+        target_arch="gfx1151",
+    )
+
+    assert (
+        tuned.linear_chunk_size,
+        tuned.moe_chunk_size,
+        tuned.full_attn_query_chunk_size,
+        tuned.full_attn_post_chunk_size,
+        tuned.full_attn_rope_chunk_size,
+    ) == (256, 256, 768, 768, 768)
+    assert tuning["reason"] == "gfx1151_paro_prefill_recovery"
+    assert tuning["base_reason"] == "low_memory_full_context_24gb"
+
+
+def test_prefill_config_gfx1151_profile_does_not_override_manual_chunks() -> None:
+    manual = PrefillConfig(linear_chunk_size=2048)
+
+    tuned, tuning = resolve_prefill_config_for_sequence(
+        manual,
+        max_sequence_length=4096,
+        total_memory_bytes=128 * 1024**3,
+        target_arch="gfx1151",
+    )
+
+    assert tuned is manual
+    assert tuning["reason"] == "manual_chunk_sizes"
+
+
+def test_resident_prefill_resolution_uses_target_arch_profile() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.target_arch = "gfx1151"
+    session.max_sequence_length = 512
+    session.requested_prefill_config = PrefillConfig()
+
+    session._resolve_prefill_config_for_length(512)
+
+    assert (
+        session.prefill_config.linear_chunk_size,
+        session.prefill_config.moe_chunk_size,
+        session.prefill_config.full_attn_query_chunk_size,
+        session.prefill_config.full_attn_post_chunk_size,
+        session.prefill_config.full_attn_rope_chunk_size,
+    ) == (256, 256, 0, 0, 0)
+    assert session.prefill_chunk_tuning["reason"] == "gfx1151_paro_prefill_recovery"
+
+
 def test_qwen35_resident_decode_split_config_caps_128k_context(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_PAGED_ATTN_MAX_SPLITS", raising=False)
     monkeypatch.delenv("NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS", raising=False)

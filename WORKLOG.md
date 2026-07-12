@@ -151900,3 +151900,159 @@ graphless decode launch-collapse path without regressing target/serial parity.
   retention thresholds.
 - The user then explicitly unblocked `SOL-R1` PARO prefill recovery as the next
   active work item after this documentation unit.
+
+## 2026-07-12 - Recover exact gfx1151 PARO prefill
+
+- Reproduced the current PARO prefill regression on Radeon 8060S/gfx1151 with
+  Qwen3.6-35B-A3B PARO snapshot
+  `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO/BF16 KV, repeated token
+  `9707`, TheRock HIP 7.15 / clang `aa451e1f`, kernel `7.1.3-2-cachyos`, and
+  TuneD `accelerator-performance`. Clean detached control `240c5daf` and
+  candidate `9944e481` used right-sized sessions, two discarded plus five
+  measured runs, four warmup decode tokens, graph replay, the pinned compiler
+  version file `/tmp/hipengine-sol-r1-20260712/hipcc-version.txt`, and
+  `--require-cached-build`.
+- The canonical per-shape command was
+  `PYTHONPATH=<clean-worktree> HIPENGINE_HIP_ARCH=gfx1151 python3
+  scripts/qwen35_readme_sweep.py --engine paro --model <snapshot> --backend
+  hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707
+  --workloads <shape>/128 --warmup-runs 2 --measured-runs 5
+  --warmup-decode-tokens 4 --compiler-version-file
+  /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build
+  --attn-aotriton-min-tokens 512 --graph-replay-decode --json <component>`.
+  The exact argv/environment/provenance blocks remain in the component JSONs
+  under `/tmp/hipengine-sol-r1-20260712/retained-{short,long,exact,128k}/` and
+  their hashes are carried by the compact rollup below.
+- A broad gfx1151 `256/256/256/1024/1024` profile screened at +77.12% at
+  4K/128 (`669.658 -> 1186.096 tok/s`) but was rejected. Pairwise state hashes
+  showed 512 was exact, while 4K changed final hidden and 72 persistent state
+  components. Surface isolation proved linear-only 256, MoE-only 256, and
+  combined linear+MoE 256 exact; only the 256 full-attention query/outer-layer
+  chunk caused the divergence. The rejected path also changed 4K/32K/64K
+  generated previews.
+- Narrowed the architecture overlay to exact linear/MoE chunks only. Short
+  prompts resolve `256/256/0/0/0`; ordinary >1K prompts resolve
+  `256/256/4096/1024/1024`; current attention and low-memory policies remain
+  intact. Manual chunk flags and auto-tuning opt-out retain precedence. New
+  policy tests were RED first (`6 failed`, old broad profile) and GREEN after
+  implementation (`8 passed`). The resident PARO session now passes detected
+  `target_arch` to the resolver; GGUF behavior is unchanged.
+- Pairwise state gates at 512, 4K, and 128K match seed token, final hidden, all
+  30 Conv/GDN state families, and all 10 K/V families. The 128K exact control
+  and candidate share aggregate state SHA-256
+  `886a68bc2294a370e71d2ad6b43fa7dd34abdbd5d0232b3693b31ad253e63365`.
+  The old serial/native fixture is independently stale/red for this snapshot:
+  control and candidate fail identically at max KL `7.1119`, top-1 `0%`, with
+  identical native logits/tokens; it does not describe a candidate delta.
+- Clean matched five-run prefill medians through 64K are:
+  `512 997.025 -> 1140.101 (+14.35%)`,
+  `1K 799.651 -> 1208.343 (+51.11%)`,
+  `4K 669.658 -> 854.346 (+27.58%)`,
+  `32K 607.134 -> 761.011 (+25.34%)`, and
+  `64K 513.689 -> 619.374 (+20.57%)`. Corresponding decode deltas are
+  `-0.25%/+0.14%/+0.13%/+0.09%/+0.26%`; all completed candidate previews
+  match control and measured IDs are stable.
+- Relative to the June 15 old diagnostic, recovered prefill is
+  `+19.17%/+13.23%/-19.57%/-7.45%/-0.54%` at 512/1K/4K/32K/64K. Relative to
+  the July llama.cpp HIP row it is `+7.43%/+15.83%/-15.35%/+2.35%/+7.98%`.
+  The remaining clear opportunity is therefore 4K, not every 4K+ shape. The
+  old artifact ended every shape at token `9707`, unlike the current exact
+  continuation, and llama.cpp uses Q4_K_M rather than PARO W4; both are target
+  envelopes rather than matched semantic controls.
+- The full 128K 2+5 timing sweep completed cleanly. Control is
+  `379.873 prefill / 30.320 decode tok/s` (prefill range `377.047-380.610`);
+  exact candidate is `436.582 / 30.371` (range `432.428-439.158`), for
+  `+14.93%` prefill and `+0.17%` decode. Both peak at `22.124 GiB`, have stable
+  IDs, and share the same 16-token preview. Candidate is `+2.55%` versus the
+  old diagnostic and `+11.82%` versus published llama.cpp HIP prefill.
+  `docs/SOL-OPTIMIZATION.md` carries separate old diagnostic, published
+  pre-recovery, matched control, and recovered-current prefill/decode tables.
+- Review found `full_attn_query_chunk_size` currently selects the outer chunk
+  for the entire full-attention layer, coupling QKV/rotation/KV append,
+  AOTriton query/reduction, output/post stages, and MoE. The next bounded step
+  is a clean selected-region 4K control/candidate rocprof comparison. The 72
+  full-query mismatches localize after the first full-attention layer's K/V
+  append: 27 downstream linear layers x Conv/GDN plus nine later full layers x
+  K/V. Add a layer-3 RED stage oracle over prepared Q/K/V/gate, AOTriton, O,
+  post-norm, and MoE. Only if the profile locates the residual in full-attention
+  pre/post/MoE staging should an implementation decouple exact full-size
+  AOTriton reduction from 256-row staging; it must pass the stage and full-state
+  gates before timing.
+- Helper semantics explain the context dependence: linear layers use the
+  minimum positive linear/MoE chunk, while full-attention layers use query
+  exclusively when it is nonzero and consult post/RoPE/MoE only when query is
+  zero. Thus `moe=256` chunks full-attention outer layers at 512/1K (base query
+  zero), but the retained 4096 query keeps all ten full layers at 4096 rows for
+  4K+. The residual 4K gap is therefore behind full-layer/query coupling, not
+  another global linear/MoE threshold.
+
+## 2026-07-12 - Profile the residual exact PARO 4K prefill gap
+
+- Ran clean selected-region 4K kernel traces for control `240c5daf`, exact
+  candidate `9944e481`, and the correctness-rejected full-query-256 route.
+  Each used the pinned TheRock HIP 7.15 cache and an SDK ROCTX override at
+  `/tmp/hipengine-roctx-sdk-override`; trace components are under
+  `/tmp/hipengine-sol-r1-20260712/profile-4k-sdk/`.
+- The profiled control/exact/rejected rows were respectively
+  `5900.851/4831.139/3763.046 ms` host prefill and
+  `5785.735/4666.760/3619.753 ms` traced GPU time. Calls were
+  `4,710/17,670/23,370`. These single profiled rows are attribution evidence,
+  not replacements for the retained five-run medians.
+- Exact versus control saves `1118.975 ms` of GPU time. The family totals
+  control -> exact were GDN `1430.379 -> 1061.292 ms`, rotation
+  `1078.755 -> 571.212`, memset `358.332 -> 85.449`, conv
+  `965.975 -> 913.881`, W4 prefill `738.769 -> 771.465`, routed MoE
+  `715.952 -> 794.968`, and AOTriton `150.710 -> 150.656`.
+- The invalid full-query-256 route saves another `1047.007 ms` versus exact,
+  but AOTriton gets slower (`150.656 -> 213.623 ms`). Convolution accounts for
+  `825.731 ms`/78.9% of that gap (`913.881 -> 88.150 ms`), with rotation
+  another `245.074 ms`; the evidence does not name the attention core.
+- Both exact and rejected legs launch 480 identical main FP16-input conv
+  kernels at workgroup 256, grid 2,097,152, VGPR 32, scratch 20. Exact layers
+  0-2 are about `150 us/chunk`, then every linear layer immediately after the
+  first full-attention layer is about `2.15-2.23 ms/chunk`. The rejected leg is
+  about `170-186 us/chunk` at every layer. The performance cliff and the 72-
+  component correctness split share the same first full-layer boundary even
+  though the conv dispatch shape does not change.
+- Code review names precise conv SiLU
+  `value / (1 + expf(-value))` as the leading input-domain slow-path
+  hypothesis. This is not yet proven; capture an accumulator histogram/tap at
+  exact layers 2 and 4 and replay before changing math. A saturation-domain
+  shortcut must be bit-exact to become the strict default; `__expf`/fast-math
+  remains relaxed-only.
+- A no-source-change monkeypatch forced the existing release-between-layer-
+  types policy at 4K. It preserved the generated preview but measured
+  `805.201 tok/s` versus retained exact `854.346` (-5.75%). Timed repeated
+  free/allocation is rejected as the simple fix; if the input-domain test is
+  negative, test preallocated/separate scratch rather than more allocator
+  churn. Full-size AOTriton plus 256-row pre/post/MoE staging remains second-
+  line and still requires the layer-3 stage oracle.
+- The candidate 128K sweep itself completed in `35m49s` after the roughly
+  42-minute control, validating the earlier ~40-minute wait estimate.
+
+## 2026-07-12 - Retain and publish SOL-R1 PARO prefill recovery
+
+- Added compact retained artifact
+  `benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json` with the
+  clean candidate provenance/model fingerprint, six control/candidate medians
+  and ranges, chunk policy, 512/4K/128K state hashes, rejected full-query and
+  workspace-release rows, selected-region profile summary, and SHA-256 links
+  to every raw `/tmp` component.
+- Updated the benchmark platform index, current PARO prefill/decode/memory
+  column, changelog, and synchronized root README export. The table explicitly
+  keeps the July 11 matched GGUF/llama columns separate from the newer clean
+  HIP 7.15 PARO column; PARO W4 versus Q4_K_M remains a throughput target, not
+  a same-math A/B.
+- Full adjacent policy/layout validation initially found four RED constructor-
+  bypass fixtures because their `__new__` sessions omit `target_arch`. Changed
+  only the resolver call to `getattr(self, "target_arch", None)`; real
+  initialized gfx1151 sessions retain the measured path. GREEN:
+  `tests/test_qwen35_resident_batch_layout.py` plus
+  `tests/test_qwen35_prefill_workspace_policy.py` passed all `149` tests.
+  The adjacent generation/native-boundary/stage-probe/batch-profile bundle
+  passed all `65` tests.
+- Artifact JSON parses, its model-bearing provenance validates, benchmark
+  README export blocks are synchronized, and `git diff --check` passes.
+  `SOL-R1` is accepted for the exact six-shape recovery; the accumulator-domain
+  diagnostic remains the next bounded 4K optimization investigation, not part
+  of this retained implementation.

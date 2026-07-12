@@ -90,7 +90,7 @@ The table names the source revision for each result.
 | MTP server routing | The corrected clean-tracked `d2b1e742` natural24 matrix shows the current `llama-compat` hook is faster at c1/c2 but changes exact AR IDs on heldout `general_ja_explain` even at c1; wider groups add more mismatches. | Compatibility MTP cannot select `auto`. Automatic requests must remain on exact/default AR until an exact MTP hook exists; explicit opt-in keeps the documented compatibility contract. Actual groups, not client c, remain the routing key. |
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
-| gfx1151 c1 model toplines | The clean `d1231ee0` six-shape refresh passes stable finite-output, five-sample variance, matched Q4_K_M identity, and GTT-memory gates for hipEngine PARO/GGUF plus llama.cpp HIP/Vulkan. At 512/128, PARO/GGUF decode is `66.753/49.536 tok/s`; at 128K/128 it is `30.316/27.862 tok/s`. | The repository and benchmark README tables are current for this exact c1 repeated-token/split-phase protocol. Matched Q6, native c>N, and speculative research remain separately parked; they are not prerequisites for this refresh. |
+| gfx1151 c1 model toplines | The clean `d1231ee0` six-shape refresh passes stable finite-output, five-sample variance, matched Q4_K_M identity, and GTT-memory gates for hipEngine GGUF plus llama.cpp HIP/Vulkan. Clean `9944e481` separately refreshes exact PARO on HIP 7.15: 512/128 is `1140.101 prefill / 66.767 decode tok/s`; 128K/128 is `436.582 / 30.371`. | The repository and benchmark README tables use the newer retained PARO column and preserve the July 11 matched GGUF/llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. |
 | PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. `SOL-P2` closes ragged c8-to-c1 lifecycle safety at clean `6f1910c9`: all generated IDs, 30 linear-state families, and 10 full-KV families match independent c1 through EOS plus front/middle/tail sparse cancellation. | Production greedy and sampled batches use exact width-1 sessions; ragged packed prefill uses the explicit `per_segment_ragged_exact` fallback. gfx1100 is stale/non-selecting pending W7900 hardware. P3/P4/P7-P9 are parked behind a general exact native c>N algorithm; P6's invalid splitter is removed. |
 | PARO DFlash | Clean `8eb27215` S4 runs the curated 35B pair with same-session AR, exact output, coarse/fine phase buckets, and verifier graph shapes. Exact replay is `9.676` versus `65.266 tok/s` AR (`0.14825x`). | S5 branch-copy is correctness-red, S6 has no wider-group premise at 1/114 accepted proposals, and S7 fused LM-head is 5.16% slower. DFlash stays default-off. |
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
@@ -210,7 +210,7 @@ correctness contracts.
 | Priority | ID | Work package | Current state | Exit / handoff gate |
 | ---: | --- | --- | --- | --- |
 | 0 | `SOL-R0` | Reproduce, bisect, and recover the recent PARO decode regression across the point-release matrix while preserving the correctness/verification fixes. | `open`; **next-point-release blocker** | A clean matched known-good/current A/B names the first performance-changing revision or policy; every affected default route recovers its exact non-regressive wins, and the release matrix passes hidden/state/KV/token plus wall-time gates. |
-| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `open` | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
+| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery retained at all six shapes; 4K selected-region profile names the next diagnostic | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
 | 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `open after R3`; RED fixture work may start earlier | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or G8. |
@@ -258,6 +258,160 @@ families, and all 10 live K/V families to match. Select chunks independently by
 shape/family rather than restoring one global policy. If a bucket wins, route it
 through the architecture profile/registry and rerun the affected six-shape PARO
 component before the final four-engine publication.
+
+##### R1 Retained Exact Recovery, 2026-07-12
+
+The current matched selection run uses Radeon 8060S/gfx1151, Qwen3.6-35B-A3B
+PARO snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV,
+repeated token `9707`, right-sized sessions, graph-replay decode, two discarded
+plus five measured repetitions, TheRock HIP 7.15 / clang `aa451e1f`, and TuneD
+`accelerator-performance`. The clean control is detached `240c5daf`; the clean
+exact candidate is detached `9944e481`. The 128K five-run control/candidate
+sweep is complete.
+
+Keep four checkpoints distinct. The June 15 old diagnostic used one measured
+run and the former all-256 route; it is history, not a promotion control. The
+July 11 published pre-recovery row is clean and five-run but used HIP 7.13. The
+ROCm 7.15 matched control/candidate pair is the only selection A/B below.
+The old artifact also reports final token `9707` at every shape, unlike the
+control-identical nontrivial continuation from the correctness-hardened route,
+so its speed is an opportunity ceiling rather than proof that every delta is
+recoverable with current semantics. llama.cpp HIP uses Q4_K_M rather than PARO
+W4; it is an external throughput target, not a same-math control.
+
+###### Prefill tok/s
+
+| Workload | Old diagnostic | Published pre-recovery | Matched control | Recovered exact | Matched delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `956.666` | `994.866` | `997.025` | **`1140.101`** | **+14.35%** |
+| 1K/128 | `1067.175` | `810.029` | `799.651` | **`1208.343`** | **+51.11%** |
+| 4K/128 | `1062.248` | `671.985` | `669.658` | **`854.346`** | **+27.58%** |
+| 32K/128 | `822.255` | `599.063` | `607.134` | **`761.011`** | **+25.34%** |
+| 64K/128 | `622.752` | `511.248` | `513.689` | **`619.374`** | **+20.57%** |
+| 128K/128 | `425.727` | `375.635` | `379.873` | **`436.582`** | **+14.93%** |
+
+###### Decode tok/s
+
+| Workload | Old diagnostic | Published pre-recovery | Matched control | Recovered exact | Matched delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `66.967` | `66.753` | `66.933` | `66.767` | -0.25% |
+| 1K/128 | `61.768` | `61.628` | `61.657` | `61.746` | +0.14% |
+| 4K/128 | `62.910` | `62.715` | `62.685` | `62.765` | +0.13% |
+| 32K/128 | `50.368` | `50.362` | `50.307` | `50.351` | +0.09% |
+| 64K/128 | `41.966` | `42.032` | `42.038` | `42.149` | +0.26% |
+| 128K/128 | `30.286` | `30.316` | `30.320` | `30.371` | +0.17% |
+
+The retained candidate is intentionally narrower than the old all-256 route.
+The gfx1151 architecture overlay changes only linear-attention and MoE layer
+chunks from the current `1024`/unchunked policy to `256`; it leaves the existing
+full-attention query/post/RoPE and low-memory policies intact. Explicit manual
+chunks and `--no-prefill-chunk-autotune` still take precedence. Short prompts
+therefore resolve to `256/256/0/0/0`; ordinary prompts above 1K resolve to
+`256/256/4096/1024/1024`.
+
+Correctness selected that narrower policy:
+
+- Pairwise 512, 4K, and 128K gates match the control seed, final-hidden
+  SHA-256, all 30 Conv/GDN state families, and all 10 live K/V families. The
+  128K control/candidate aggregate state SHA-256 is identically
+  `886a68bc2294a370e71d2ad6b43fa7dd34abdbd5d0232b3693b31ad253e63365`.
+  All six five-run shapes also have a control-identical generated preview and
+  stable measured IDs.
+- At 4K, linear-only 256, MoE-only 256, and combined linear+MoE 256 are
+  byte-exact. Setting only the full-attention query/outer-layer chunk to 256
+  changes final hidden plus 72 persistent state components. The combined
+  all-256 candidate likewise diverges. Its tempting `1186.096 tok/s` five-run
+  4K result is therefore rejected, not a retained recovery number.
+- The mismatch topology localizes the first change to the first full-attention
+  layer after its K/V append: layers 0-2 and layer-3 K/V still match. The 72
+  changed persistent components are exactly 27 downstream linear layers times
+  Conv+GDN (`54`) plus nine later full-attention layers times K+V (`18`). A
+  layer-3 RED stage oracle should therefore compare prepared Q/K/V/gate,
+  AOTriton output, O projection, post-attention normalization, and MoE output
+  in order instead of treating all 40 layers as one opaque failure.
+- The older serial/native fixture is not a useful selector for this model
+  snapshot: unchanged control and candidate fail it identically (`max KL
+  7.1119`, top-1 `0%`, identical native tokens/logits). The pairwise current-
+  policy oracle above proves the candidate delta while that pre-existing
+  fixture/snapshot mismatch remains separate work.
+
+The recovery is not uniformly incomplete. Relative to the old diagnostic, the
+new exact path is **+19.17% at 512**, **+13.23% at 1K**, **-19.57% at 4K**,
+**-7.45% at 32K**, **-0.54% at 64K**, and **+2.55% at 128K**. Relative to the
+published llama.cpp HIP prefill row, it is **+7.43%**, **+15.83%**, **-15.35%**,
+**+2.35%**, **+7.98%**, and **+11.82%**, respectively. Thus 4K is the clear
+residual regression; 32K is a smaller historical gap but already beats
+llama.cpp HIP, while 64K/128K are recovered. Decode is unchanged within
+`-0.25%..+0.26%`; this is a prefill-only change.
+
+The current implementation couples `full_attn_query_chunk_size` to the outer
+chunk for the entire full-attention layer. Reducing it to 256 therefore chunks
+QKV/rotation/KV append, AOTriton attention, output projection, post-attention,
+and MoE together. The speed result proves that row shape has enough headroom to
+close the 4K gap, but changing AOTriton's query/reduction shape breaks the
+byte-state contract. Do not simply promote that knob.
+
+The helper semantics explain the context pattern. A linear layer takes the
+minimum positive linear/MoE chunk, so either 256 setting chunks the entire
+linear-attention+MoE layer. A full-attention layer uses the query chunk
+exclusively when it is nonzero; only when query is zero does it take the
+minimum of post/RoPE/MoE. Consequently, at 512/1K the base query is zero and
+`moe=256` also puts the ten full-attention layers on the exact 256-row outer
+shape. At 4K+ the base query is 4096, so the exact profile chunks only the 30
+linear layers while all ten full-attention layers remain 4096-row. This is why
+the short rows fully recover and why the remaining 4K opportunity is
+concentrated behind the query/outer-layer coupling rather than another global
+linear/MoE threshold.
+
+The clean selected-region 4K rocprof comparison is now complete. These are
+single profiled rows used for attribution, not replacements for the retained
+five-run throughput medians above:
+
+| Profile leg | Host prefill | Traced GPU | Calls | GDN | Conv | Rotation | W4 prefill | Routed MoE | AOTriton |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Matched control | `5900.851 ms` (`694.137 tok/s`) | `5785.735 ms` | `4,710` | `1430.379 ms` | `965.975 ms` | `1078.755 ms` | `738.769 ms` | `715.952 ms` | `150.710 ms` |
+| Recovered exact | `4831.139 ms` (`847.833 tok/s`) | `4666.760 ms` | `17,670` | `1061.292 ms` | `913.881 ms` | `571.212 ms` | `771.465 ms` | `794.968 ms` | `150.656 ms` |
+| Rejected full-query 256 | `3763.046 ms` (`1088.480 tok/s`) | `3619.753 ms` | `23,370` | `1021.179 ms` | `88.150 ms` | `326.138 ms` | `803.722 ms` | `789.408 ms` | `213.623 ms` |
+
+The exact profile saves `1118.975 ms` of traced GPU time versus control. The
+remaining invalid full-query shape saves another `1047.007 ms`, but AOTriton
+itself gets `62.967 ms` *slower*. The largest delta is convolution:
+`913.881 -> 88.150 ms`, or `825.731 ms`/78.9% of the total GPU-time gap. The
+exact and rejected legs both launch 480 copies of the same main convolution
+kernel with identical 256-row shape and metadata (workgroup `256`, grid
+`2,097,152`, VGPR `32`, scratch `20`). In the exact leg, layers 0-2 run at
+about `150 us/chunk`; immediately after the first full-attention layer, every
+later linear layer runs at about `2.15-2.23 ms/chunk`. The rejected leg stays
+at about `170-186 us/chunk` for every linear layer. This is a downstream
+execution cliff triggered at the same layer boundary as the correctness split,
+not evidence that the attention core is the remaining hot family.
+
+The conv body performs four FP32 products followed by precise
+`value / (1 + expf(-value))`. A valid post-full-attention activation domain
+driving the precise `expf` slow path is therefore the leading *hypothesis*,
+not yet a finding; scratch placement or another state carried across the full
+layer remains possible. A no-source-change diagnostic that forced the existing
+workspace release policy at every layer-type transition was exact at the
+generated-preview boundary but slowed the 4K screen from `854.346` to
+`805.201 tok/s` (-5.75%). Repeated free/allocation is not a usable fix, though
+that wall result alone does not isolate allocator cost from convolution time.
+
+The next bounded work is diagnostic, before a stage-split implementation:
+
+1. Capture a small histogram/tap of the convolution accumulator immediately
+   before SiLU for an exact layer-2 and layer-4 chunk, then replay the same
+   kernel/input to confirm whether runtime follows the value distribution.
+2. If the precise-`expf` domain explains the cliff, test only saturation-domain
+   exact shortcuts first and require bit-exact conv output plus final hidden,
+   Conv/GDN, K/V, and token hashes. `__expf`/fast-math is a relaxed numerical
+   candidate, not an exact default.
+3. If it does not, profile a preallocated/separate scratch owner across the
+   first full-to-linear transition. Do not retry timed `hipFree`/`hipMalloc`
+   churn.
+4. Keep decoupled full-size AOTriton reduction plus 256-row pre/post/MoE
+   staging behind the layer-3 prepared-Q/K/V/gate through MoE stage oracle;
+   it is now second-line because the profile did not name AOTriton as the
+   residual bottleneck.
 
 #### R2: Exact GGUF MTP
 
