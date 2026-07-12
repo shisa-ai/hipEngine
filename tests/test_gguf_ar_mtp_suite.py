@@ -7,6 +7,13 @@ import pytest
 from scripts import gguf_ar_mtp_suite as suite
 
 
+def test_suite_hardware_label_follows_explicit_gfx1100_arch(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_HW_LABEL", raising=False)
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+
+    assert suite._hardware() == "AMD Radeon Pro W7900 (gfx1100)"
+
+
 def test_suite_accepts_backend_admitted_graph_ar_protocol() -> None:
     ar = {
         "timing_protocol": {

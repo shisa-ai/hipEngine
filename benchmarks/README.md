@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`3ce60e5608ba62fa971af0b039b2483b723761d7`
+`202bd2f0a5972c6c7dfce7d029ae1a1aa4ed2f24`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -181,7 +181,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Diagnostic link only | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`. The repeated `9707` stream is externally validated on the exact model at gfx1151, but this old gfx1100 run predates the four-step state/KV oracle and current provenance contract. | Diagnostic link only | Run the G1 oracle and repeated performance protocol on W7900 at one clean revision; do not transfer the gfx1151 state result as hardware evidence. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
-| Radeon Pro W7900, gfx1100 | GGUF MTP exact/default and `llama-compat` transfer | 2026-07-12 | clean hipEngine oracle/compat `b81102b4`, clean exact `d50aa4d1`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M and prompt-suite fingerprints retained; llama.cpp HIP binary `263cc04a5` build 9600 | **Retained for the named hipEngine contracts**: exact B3 is **45.96 vs 34.49 AR tok/s (1.3328x)**; explicit accuracy-traded `llama-compat` B2 is **52.58 vs 34.28 AR tok/s (1.5337x)** with **88.12% train / 76.00% heldout** draft acceptance. The W7900 hidden/Conv/GDN/KV oracle passes. llama.cpp HIP is a separate `performance_claim=false` native-report diagnostic at **119.05 vs 81.47 tok/s**; it predates transition normalization and must not be ranked cross-engine. | Yes, qualified | Rerun after GGUF/MTP route or verifier math, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
+| Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained reference**: all six shapes pass clean provenance, finite/stable-ID correctness, five-sample variance, matched Q4_K_M identity, and the four-column promotion gate. The current table replaces only its PARO column with the separately retained recovery below. | Yes | Rerun GGUF/llama columns after a measured path/build/stack change; rerun all four together when a fully matched refresh is required. |
@@ -318,46 +318,55 @@ under [`benchmarks/llama.cpp/`](llama.cpp/).
 <!-- BEGIN TOPLINE:SPECULATIVE -->
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
 | --- | ---: | ---: | ---: | ---: |
-| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
-| Decode | 34.49 tok/s fixed / 34.28 tok/s natural24 | **45.96 tok/s** | **52.58 tok/s** | 119.05 tok/s |
-| Own true AR | same route | 34.49 tok/s | 34.28 tok/s | 81.47 tok/s |
-| MTP / own AR | 1.0000x | **1.3328x** | **1.5337x** | 1.4612x |
-| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
-| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
-| MTP cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
+| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
+| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route |
+| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a |
+| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
+| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
+| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive |
 
-Exact/default and `llama-compat` both pass the complete ten-prompt gfx1100
-transfer gate against their own true no-MTP controls. Exact is the semantic
-control. `llama-compat` is explicit-only because direct partial commit is not
-serial-prefix-equivalent. The exact row uses a fixed ten-cycle horizon; the AR,
-`llama-compat`, and llama.cpp natural24 rows use a 24-token output cap. Do not
-rank fixed-cycle exact directly against natural24 as one protocol. The
-llama.cpp column uses server-reported decode timing from prebuilt HIP binary
-`263cc04a5`/build 9600 and remains an external diagnostic with
-`performance_claim=false`. This W7900 row predates the transition-normalized
-contract and must not be ranked directly against hipEngine until it is rerun
-with `N+1` requested outputs for `N` timed decode transitions.
+The old `34.28-34.49 tok/s` true-AR denominator was an eager-only benchmark
+path, not the fastest production no-MTP route. gfx1100 had no backend graph
+capability even though the state-bound implementation was already shared with
+gfx1151. A clean W7900 p512/d24 gate now passes all 24 hidden/GDN/KV/token
+transitions and moves capture-inclusive wall from **30.536 to 12.514 ms/token
+(2.4402x)**. The full natural24 suite matches every prior eager generated-token
+preview/tail and moves **34.28 -> 93.30 tok/s** in the same MTP wrapper.
 
-##### W7900 `llama-compat` full-suite transfer gate
+At the matched cross-engine boundary, hipEngine counts 240 complete post-prefill
+transitions including graph capture/instantiate/close; llama.cpp build 9648
+requests 25 outputs and counts the 240 timed transitions inside `predicted_ms`.
+hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**. BF16 versus F16 KV remains
+disclosed. llama.cpp stays an external diagnostic with
+`performance_claim=false` because its local instrumentation patchset is dirty
+but preserved.
+
+Neither MTP route beats the corrected production AR control. Exact/default
+remains the semantic control; `llama-compat` remains explicit-only because
+direct partial commit is not serial-prefix-equivalent. The fixed-cycle exact
+and natural24 compatibility rows are different protocols and are not ranked
+against each other.
+
+##### W7900 `llama-compat` full-suite gate against graph AR
 
 | Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | 34.28 | **52.58** | **1.5337x** | 82.95% | 60.83% | 19.045 ms |
-| Train | 6 | 34.30 | **54.06** | **1.5761x** | **88.12%** | 61.81% | 18.522 ms |
-| Heldout | 4 | 34.25 | **50.49** | **1.4744x** | **76.00%** | 59.38% | 19.830 ms |
-| `code` | 4 | 34.12 | **58.01** | **1.7001x** | 95.38% | 64.58% | 17.263 ms |
-| `general_en` | 2 | 34.29 | **49.74** | **1.4505x** | 75.68% | 58.33% | 20.131 ms |
-| `general_ja` | 2 | 34.43 | **47.05** | **1.3665x** | 69.23% | 56.25% | 21.283 ms |
-| `mixed_ja_en` | 2 | 34.45 | **51.93** | **1.5073x** | 82.86% | 60.42% | 19.286 ms |
+| Full | 10 | **93.30** | 79.70 | **0.8542x** | 82.95% | 60.83% | 12.578 ms |
+| Train | 6 | **93.73** | 82.01 | **0.8749x** | **88.12%** | 61.81% | 12.224 ms |
+| Heldout | 4 | **92.67** | 76.47 | **0.8252x** | **76.00%** | 59.38% | 13.110 ms |
+| `code` | 4 | **93.63** | 86.99 | **0.9291x** | 95.38% | 64.58% | 11.523 ms |
+| `general_en` | 2 | **90.99** | 75.87 | **0.8338x** | 75.68% | 58.33% | 13.212 ms |
+| `general_ja` | 2 | **94.38** | 72.17 | **0.7647x** | 69.23% | 56.25% | 13.889 ms |
+| `mixed_ja_en` | 2 | **93.98** | 78.71 | **0.8375x** | 82.86% | 60.42% | 12.744 ms |
 
-All four categories and the heldout split beat true AR. Train/heldout draft
-acceptance is **88.12% / 76.00%**; the gap is disclosed rather than averaged
-away. This is a speed transfer result for the explicit accuracy-traded
-compatibility contract, not evidence that `llama-compat` should become the
-automatic/default route.
+All four categories and heldout lose to graph AR despite unchanged strong draft
+acceptance. This corrects the earlier false MTP-win conclusion without changing
+the compatibility semantics. Artifact:
+[`2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json`](results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
 
 #### GGUF MTP comparison, Radeon 8060S/gfx1151
 

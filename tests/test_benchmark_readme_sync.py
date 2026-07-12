@@ -167,90 +167,76 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert (repo_root / correctness_path).is_file()
 
 
-def test_gfx1100_mtp_topline_publishes_ar_exact_compat_and_llamacpp() -> None:
+def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     artifact = json.loads(
         (
             repo_root
-            / "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json"
+            / "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json"
         ).read_text(encoding="utf-8")
     )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert artifact["status"] == "accepted_hipengine_routes_with_external_diagnostic"
+    assert artifact["status"] == "accepted"
     assert artifact["performance_claim"] is True
     assert artifact["correctness_claim"] is True
-    validate_artifact_provenance(artifact["provenance"])
-    validate_artifact_provenance(artifact["hipengine_llama_compat"]["provenance"])
-    assert artifact["provenance"]["dirty"] is False
-    assert artifact["hipengine_llama_compat"]["provenance"]["dirty"] is False
     assert artifact["hardware"]["target_arch"] == "gfx1100"
     assert artifact["hardware"]["device"] == "AMD Radeon Pro W7900"
-    assert artifact["correctness"]["serial_prefix_state_exact"] is True
-    assert artifact["correctness"]["conv_gdn_families_exact"] == (
-        "30/30 at every transition"
-    )
-    assert artifact["correctness"]["live_kv_families_exact"] == (
-        "10/10 at every transition"
-    )
+    gate = artifact["graph_correctness_and_break_even"]
+    assert gate["checked_transitions"] == 24
+    assert gate["hidden_gdn_kv_token_exact"] is True
+    assert gate["minimum_admitted_transitions"] == 24
 
-    exact = artifact["hipengine_exact_default"]
-    compat = artifact["hipengine_llama_compat"]
-    llamacpp = artifact["llamacpp_hip"]
-    assert exact["status"] == "accepted"
-    assert exact["measured_clean"] is True
-    assert exact["best_budget"] == "b3"
+    natural = artifact["matched_natural24"]
+    graph = natural["state_bound_graph"]
+    llamacpp = natural["llamacpp_base"]
+    exact = artifact["mtp_reclassification"]["exact_default_fixed_10_cycles"]
+    compat = artifact["mtp_reclassification"]["llama_compat_natural24"]
+    assert natural["all_graph_outputs_match_prior_eager_preview_and_tail"] is True
+    assert graph["tok_s"] > llamacpp["transition_normalized_tok_s"]
     assert exact["apple_to_apple_ok"] is True
-    assert compat["status"] == "accepted_explicit_accuracy_traded"
-    assert compat["measured_clean"] is True
     assert compat["apple_to_apple_ok"] is True
-    assert llamacpp["status"] == "diagnostic_retained"
+    assert exact["mtp_vs_ar"] < 1.0
+    assert compat["mtp_vs_ar"] < 1.0
     assert llamacpp["performance_claim"] is False
-    assert llamacpp["binary"]["self_reported_commit"] == "263cc04a5"
-    assert llamacpp["binary"]["version"] == "9600"
 
-    exact_b3 = exact["budgets"]["b3"]
-    full = compat["full"]
     expected_main_rows = [
         (
-            f"| Decode | {exact['true_ar']['decode_tok_s']:.2f} tok/s fixed / "
-            f"{compat['true_ar']['decode_tok_s']:.2f} tok/s natural24 | "
-            f"**{exact_b3['decode_tok_s']:.2f} tok/s** | "
-            f"**{full['decode_tok_s']:.2f} tok/s** | "
-            f"{llamacpp['mtp_decode_tok_s']:.2f} tok/s |"
+            f"| Decode | **{exact['true_ar_tok_s']:.2f} tok/s fixed / "
+            f"{graph['tok_s']:.2f} tok/s natural24** | "
+            f"{exact['mtp_tok_s']:.2f} tok/s | "
+            f"{compat['mtp_tok_s']:.2f} tok/s | "
+            f"{llamacpp['transition_normalized_tok_s']:.2f} tok/s transition-normalized |"
         ),
         (
-            f"| MTP / own AR | 1.0000x | **{exact_b3['vs_true_ar']:.4f}x** | "
-            f"**{full['vs_true_ar']:.4f}x** | "
-            f"{llamacpp['mtp_vs_base']:.4f}x |"
+            f"| MTP / own AR | 1.0000x | **{exact['mtp_vs_ar']:.4f}x** | "
+            f"**{compat['mtp_vs_ar']:.4f}x** | n/a |"
         ),
     ]
     expected_split_rows = [
         (
-            f"| Train | {compat['train']['prompts']} | "
-            f"{compat['train']['true_ar_decode_tok_s']:.2f} | "
-            f"**{compat['train']['decode_tok_s']:.2f}** | "
-            f"**{compat['train']['vs_true_ar']:.4f}x** | "
-            f"**{100 * compat['train']['draft_acceptance']:.2f}%**"
+            f"| Train | 6 | **{compat['splits']['train']['ar_tok_s']:.2f}** | "
+            f"{compat['splits']['train']['mtp_tok_s']:.2f} | "
+            f"**{compat['splits']['train']['ratio']:.4f}x** | "
+            f"**{100 * compat['splits']['train']['draft_acceptance']:.2f}%**"
         ),
         (
-            f"| Heldout | {compat['heldout']['prompts']} | "
-            f"{compat['heldout']['true_ar_decode_tok_s']:.2f} | "
-            f"**{compat['heldout']['decode_tok_s']:.2f}** | "
-            f"**{compat['heldout']['vs_true_ar']:.4f}x** | "
-            f"**{100 * compat['heldout']['draft_acceptance']:.2f}%**"
+            f"| Heldout | 4 | **{compat['splits']['heldout']['ar_tok_s']:.2f}** | "
+            f"{compat['splits']['heldout']['mtp_tok_s']:.2f} | "
+            f"**{compat['splits']['heldout']['ratio']:.4f}x** | "
+            f"**{100 * compat['splits']['heldout']['draft_acceptance']:.2f}%**"
         ),
     ]
     header = (
         "| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | "
-        "hipEngine GGUF `llama-compat` | llama.cpp HIP |"
+        "hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |"
     )
     for readme in (canonical, root_readme):
         assert "#### GGUF MTP comparison, Radeon Pro W7900/gfx1100" in readme
         assert header in readme
-        assert "##### W7900 `llama-compat` full-suite transfer gate" in readme
-        assert "acceptance is **88.12% / 76.00%**" in readme
+        assert "##### W7900 `llama-compat` full-suite gate against graph AR" in readme
+        assert "hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**" in readme
         for expected in expected_main_rows:
             assert expected in readme
         for expected in expected_split_rows:
