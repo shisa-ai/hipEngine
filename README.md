@@ -37,7 +37,7 @@ supported GPUs and models.
 
 ## Status
 
-**v0.2.2 alpha.** The runtime hot path is torch-free by construction, and the
+**v0.3.0 alpha.** The runtime hot path is torch-free by construction, and the
 first two 35B-class model-loading surfaces are available on gfx1100 and gfx1151:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 (19.07 GiB, 4.68 bpw) in packed
@@ -48,20 +48,35 @@ artifacts may still show the historical
 those rows use the same packed PARO architecture and remain the evidence for the
 numbers below.
 
-- INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
-- The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
-- Non-streaming completion/chat responses carry exact generated token IDs and all-choice counts under `hipengine.token_accounting`; `usage.completion_tokens` uses those IDs instead of re-tokenizing decoded text whenever the generator provides them.
-- Direct generation and non-streaming `/v1/completions` accept the same exact token-ID rows for PARO and GGUF. The server returns input hashes/counts under `hipengine.prompt_token_accounting`, and `scripts/exact_token_generation.py` gates HTTP output against a direct 512/128 generated-ID oracle.
-- Choice telemetry declares timing scope, covered rows, and ownership; packed PARO/GGUF timing shares a stable batch ID so benchmark consumers count copied group walls once.
-- Non-streaming server responses expose request-scoped route caps, queue request/prompt groups, actual backend call widths, and speculative verifier rows independently; the benchmark harness deduplicates the shape by queue-group ID, so client c8 cannot be mislabeled as a width-8 verifier run.
-- New server, retained PARO, GGUF, and HIP/Vulkan micro artifacts share one torch-free provenance contract with a concrete resolved backend/arch/device, content-derived model fingerprint, exact command/toolchain, and separate staged, unstaged, and untracked source state.
-- The gfx1151 GGUF eager gate proves that `[9707] * 512` legitimately continues with token `9707` in both llama.cpp and hipEngine; four teacher-forced transitions match fresh serial-prefix hidden, Conv/GDN, and live KV state byte-for-byte. This is a [correctness artifact](benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json), not a throughput claim.
-- The gfx1151 GDN prefill [exact matrix](benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json) passes 6/6 short, 512, segment-threshold, 4K, and chunk-boundary cases. The clean [interleaved A/B](benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json) then rejects split-chain promotion: it is 5.19% slower at 512 and 6.70% slower at 4K across four balanced repetitions, with exact timed tokens. Fused remains the default; the exact split stays available as the unfused diagnostic fallback.
-- The gfx1151 GGUF production graph [audit](benchmarks/results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json) passes 128/128 byte-exact hidden, recurrent-state, KV, and token checkpoints. For a 128-token long-greedy window, capture-inclusive throughput improves same-run eager 49.178 -> 49.233 tok/s (+0.112%); shorter, sampled, streaming, c>N, INT8-KV, and gfx1100 routes remain eager.
-- The clean gfx1151 GGUF [residency census](benchmarks/results/2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json) finds 733 unique source tensors and no default raw+replacement duplicates or optional sidecars. A Q4_K_M p512/d128 BF16-KV graph session owns 21.478 GiB, leaving 2.522 GiB to the 24 GiB gate; the graph adds no tracked buffer and about 308 KiB of sampled HIP graph/exec residency.
-- `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
-- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M/Q4_K_S sweeps are in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). The Q4_K_M link points at Unsloth's MTP-bearing GGUF repo so the same filename also works for llama.cpp draft-MTP comparisons. GGUF uses a substantial GGUF-specific runtime path with bulk prefill, eager resident decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is the lower-memory secondary file; Q4_K_M is the active 1:1 llama.cpp comparison target and current 24 GiB BF16-KV support is mid-context unless a lower-memory KV/weight policy is enabled. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
-- Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
+- Model-aware `backend="auto"` / `quant="auto"` defaults select the registered
+  PARO or GGUF route without environment-variable setup. Direct generation now
+  supports exact token-id prompts, detailed outputs, logprobs, structured finish
+  details, and backend execution telemetry.
+- PARO and GGUF support ordinary sampling controls including top-k/min-p,
+  penalties, logit bias, suppression, deterministic seeds, EOS/min-token policy,
+  token stops, and multi-token stops. Covered PARO shapes use a native GPU
+  sampler; unsupported shapes use an explicit host fallback.
+- The OpenAI-compatible server includes capability/readiness discovery, token
+  and context diagnostics, exact usage accounting, request batching, deadlines,
+  cancellation, opt-in Prometheus metrics, and detailed streaming metadata.
+- Local-agent support includes OpenAI-style tools, Qwen thinking controls,
+  structured-output result validation, deterministic continuation handles, and
+  app-local transcript sessions with fork, rollback, snapshot, and overflow
+  policies.
+- Qwen3.6 GGUF models with NextN tensors expose detailed MTP generation and a
+  guarded explicit non-streaming server route. Dense PARO DFlash and the shared
+  speculative proposal/verify/commit infrastructure are available as retained
+  runtime and benchmark paths.
+- INT8 KV cache remains available for PARO. Current capacity, throughput,
+  speculative-decode, and concurrency evidence is reported below with separate
+  gfx1100/gfx1151 provenance and correctness gates.
+
+This remains an alpha, single-GPU release. Production PARO native `c>1` decode
+is disabled pending independent-c1 correctness, app-local sessions do not reuse
+resident KV, structured outputs are not grammar-constrained decoding, and the
+server MTP route is explicit-only. See [the API limitations](docs/API.md#current-limitations)
+and [concurrency status](docs/CONCURRENCY.md#current-answer) for the exact
+boundaries.
 
 
 ## Hardware targets
@@ -563,7 +578,7 @@ Current caveats:
 │  hipengine.Tensor / device / memory / stream / graph / blas     │
 │  build (hipcc subprocess + ctypes.CDLL + .so cache)             │
 ├─────────────────────────────────────────────────────────────────┤
-│  KERNELS (backend-keyed, 120 __global__ in the Qwen/PARO port)  │
+│  KERNELS (backend-keyed custom HIP implementations)             │
 │  kernels/hip_gfx1100/  attention / linear_attn / moe / quant    │
 │                        wmma / norm / rotary / fused             │
 │  kernels/hip_gfx1151/  native target-arch peer backend          │
@@ -587,13 +602,13 @@ git lfs pull
 pip install -e .
 
 # with the optional dlpack torch bridge for user-boundary interop
-pip install -e ".[torch]"
+pip install "hipengine[torch]"
 
 # dev / test
 pip install -e ".[dev]"
 ```
 
-Python 3.11+. A working ROCm install with `libamdhip64.so` on the loader path
+Python 3.10+. A working ROCm install with `libamdhip64.so` on the loader path
 is required for any GPU run; CPU-reference correctness tests run without a GPU.
 
 ### ROCm / TheRock setup for retained benchmark rows
@@ -665,15 +680,17 @@ hipengine serve \
 already present in the local HF cache; hipEngine resolves IDs locally and does
 not download weights during startup.
 
-Supported endpoints: `GET /v1/models`, `POST /v1/completions`, and
-`POST /v1/chat/completions` with token-level SSE streaming, OpenAI-style tool
-calling, and Qwen no-think controls. Chat responses separate `<think>` reasoning
-into `reasoning_content` (matching the OpenAI reasoning-content convention). The
-server eagerly warms the model on startup by default, logs startup load/warmup
-timing, caps omitted chat `max_tokens` with `--chat-default-max-tokens` (default
-4096), and has an explicit `--debug` mode for full request/response payload
-logging. See [`docs/API.md`](docs/API.md) for request examples, bearer-token
-auth, diagnostics, and current limitations.
+Core endpoints are `GET /v1/models`, `POST /v1/completions`, and
+`POST /v1/chat/completions`, with token-level SSE streaming, logprobs,
+OpenAI-style tools, structured-output validation, and Qwen thinking controls.
+hipEngine extensions provide readiness/capability discovery, token and context
+diagnostics, and app-local session management. Chat responses separate
+`<think>` reasoning into `reasoning_content`. The server eagerly warms the model
+on startup, caps omitted chat `max_tokens` with
+`--chat-default-max-tokens` (default 4096), and has an explicit `--debug` mode
+for full request/response payload logging. See the complete
+[`docs/API.md` endpoint table](docs/API.md#endpoints) for bearer-token auth,
+request examples, feature contracts, diagnostics, and current limitations.
 
 ## Documentation
 
@@ -723,7 +740,7 @@ code and kernels. Of course it builds on the work of many others:
 - [Nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm) - most of the original
   kernel tuning iteration loops used this as a host-layer. Some of the performance 
   limitations of the architecture motivated the hipEngine rewrite, but we remain
-  greatful and deeply appreciative of nano-vllm as a great research platform.
+  grateful and deeply appreciative of nano-vllm as a great research platform.
 - [ParoQuant](https://github.com/z-lab/paroquant) - after reviewing the current SOTA on model
   quantization, we chose ParoQuant as the first target due to both its excellent accuracy
   *and* its efficiency (QTIP/[YAQA](https://github.com/Cornell-RelaxML/yaqa-quantization) is 

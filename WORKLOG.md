@@ -152865,3 +152865,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   identical. Added this measured-to-rebased equivalence explicitly to the
   topline, capacity, and G1 artifacts plus the README/changelog, so provenance
   remains truthful while the release has a reachable reproduction revision.
+## 2026-07-13 - Prepare v0.3.0 release
+
+- Selected v0.3.0 under `docs/PUBLISH.md`: the post-v0.2.2 range adds public
+  Python/server APIs, normal sampling, local-agent features, exact token
+  accounting, guarded MTP serving, and meaningful runtime behavior rather than
+  a patch-only fix set.
+- Audited `CHANGELOG.md`, `README.md`, `docs/API.md`, package metadata, the
+  publish workflow, the v0.2.2 tag range, and current production limitations.
+  Expanded the release notes, refreshed the README status and API summary,
+  corrected the documented Python floor and bounded chat-token default, and
+  added the implemented session snapshot and opt-in metrics endpoints to the
+  API table.
+- Bumped package metadata to 0.3.0. Release validation, clean-worktree artifact
+  construction, tag publication, trusted PyPI publishing, and GitHub release
+  verification follow in this release unit.
+- Publication paused before any commit/tag/upload at the user's request because
+  the root README still has a stale/non-claiming gfx1100 model sweep. The local
+  host exposes only Radeon 8060S/gfx1151. The documented W7900 host `epyc` is
+  online through Tailscale but rejects this host's ED25519 key, so no gfx1100
+  result is inferred or transferred from gfx1151.
+- Pre-pause local validation passed: ROCm loaded on gfx1151, registry and CPU
+  fixture smokes passed, `compileall` passed, CLI/README-sync tests passed, and
+  the complete Python 3.12 `uv run --extra dev python -m pytest -q` suite
+  reached 100% with exit 0 and only the existing Starlette deprecation and NumPy
+  overflow warnings. Final Python 3.10, artifact, and publish gates remain
+  pending until the W7900 refresh is complete.

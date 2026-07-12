@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-10
+Last updated: 2026-07-13
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -115,6 +115,9 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
 | `POST /v1/hipengine/sessions/{session_id}/rollback` | Built in | Authenticated app-local transcript rollback to a requested `message_count`. Trims visible transcript messages only; no resident KV state is reused. |
+| `GET /v1/hipengine/sessions/{session_id}/snapshot` | Built in | Authenticated export of a versioned app-local transcript snapshot, including visible messages and compatibility metadata but no resident KV state. |
+| `POST /v1/hipengine/sessions/{session_id}/snapshot` | Built in | Authenticated restore of a compatible transcript snapshot into the path session id after model, tokenizer, role, content, and tool-transcript validation. |
+| `GET /metrics` | Opt in | Unauthenticated Prometheus metrics when the server starts with `--metrics prometheus` or `HIPENGINE_METRICS=prometheus`. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
@@ -1256,9 +1259,10 @@ in local, non-sensitive debugging sessions.
   stops lower to suffix-matched `stop_token_sequences` for early runtime
   termination. PARO c=1 and serial per-slot c>N native sampling check the same
   metadata after token selection; GGUF GPU sampling still needs parity.
-- Tool calling uses Qwen-style prompt markup and output parsing; malformed
-  `<tool_call>` JSON is treated as ordinary assistant text except for the common
-  duplicated-start wrapper around otherwise valid inner tool JSON.
+- Tool calling uses Qwen-style prompt markup and output parsing rather than a
+  constrained decoder. With tools enabled, malformed `<tool_call>` JSON fails
+  closed as an invalid tool call; the common duplicated-start wrapper is
+  repaired only when its inner tool JSON is otherwise valid.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Completion `usage` is exact when every `GenerationOutput` exposes generated
   token IDs. Prompt usage and legacy completion fallback counting require the

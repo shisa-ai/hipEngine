@@ -8,23 +8,108 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+## v0.3.0 - 2026-07-13
+
+Minor release expanding hipEngine from the initial resident PARO/GGUF runtime
+into a substantially broader Python and OpenAI-compatible serving surface, with
+normal sampling, local-agent features, exact token accounting, and guarded
+speculative decoding.
+
 ### Added
 
+- Expanded the public Python API with `LLM.generate_detailed()`,
+  `stream_detailed()`, `stream_many_detailed()`, tokenizer helpers, resolved
+  backend/quant inspection, and a model-owned detailed MTP route. Detailed
+  outputs can carry exact generated token ids, per-token logprobs, structured
+  finish details, and backend execution telemetry.
+- Added normal sampling for the PARO and GGUF generators: `top_k`, `min_p`,
+  repetition/presence/frequency penalties, logit bias, token suppression,
+  deterministic seeds, minimum-token/EOS policy, token and multi-token stops,
+  logprobs/top-logprobs, and `n>1` choice lowering. Supported PARO request
+  shapes use the native GPU sampler by default; other shapes fail over to the
+  host sampler with explicit fallback metadata.
+- Added exact token-id prompts to direct generation and non-streaming text
+  completions. Responses expose exact prompt hashes/counts and generated-token
+  accounting so usage and benchmark tooling do not need to re-tokenize decoded
+  text.
+- Added OpenAI-compatible tool calling, including `tools`, `tool_choice`,
+  parallel-call policy, streaming argument fragments, tool transcript
+  validation, strict JSON Schema result validation, and stable invalid-tool
+  diagnostics.
+- Added structured-output result validation for JSON object/schema, guided
+  JSON, choice, regex, and unified-diff requests. Object-root JSON can use
+  tokenizer-lowered close-suffix forcing when safe; this is not full
+  grammar-constrained decoding.
+- Added Qwen thinking/no-thinking controls, reasoning-effort and token-budget
+  aliases, host-sampler soft/hard thinking closure, EOS suppression while
+  reasoning, and separate reasoning-content/token telemetry.
+- Added request deadlines, cooperative cancellation, deterministic buffered
+  continuation handles, app-local transcript sessions, session
+  fork/rollback/snapshot operations, and `new_session` /
+  `truncate_oldest_visible` context-overflow policies.
+- Added `/ready`, `/v1/hipengine/capabilities`, session-management, tokenizer,
+  token-counting, and context-fit endpoints. Optional Prometheus output exposes
+  generation queue, request, scheduler, and KV-pool counters.
+- Added compatible-request coalescing, prompt-list batching, per-row request
+  ids/seeds, queue and active-request admission caps, `n>1` lowering, detailed
+  choice timing ownership, and generation-shape metadata.
+- Added native Qwen3.6 GGUF NextN/MTP loading, proposal, verification,
+  acceptance, commit, and public detailed-generation support. The server has a
+  guarded, explicit, non-streaming greedy `llama-compat` MTP route for GGUF
+  models with NextN tensors. Native DFlash loading, drafting, verification, and
+  benchmark/runtime building blocks are also available in-tree.
 - Added a top-level `hipengine` console command. `hipengine serve` launches the
-  OpenAI-compatible server and `hipengine bench` lists/launches packaged
-  benchmark helpers.
+  OpenAI-compatible server, `hipengine bench` lists or launches packaged
+  benchmark helpers, and `hipengine version` reports package metadata.
 
 ### Changed
 
 - FastAPI/Uvicorn server dependencies now install by default because most users
   want the OpenAI-compatible API. The old `hipengine-server` console script has
   been replaced by `hipengine serve`.
+- `LLM(..., quant=)` and the server now default to `quant="auto"`, allowing the
+  selected model plugin to choose its registered PARO or GGUF quant route.
+- Chat requests that omit `max_tokens` now use a bounded, configurable 4096
+  token default, clamped to remaining admitted context. Set
+  `--chat-default-max-tokens auto` to retain the v0.2.2 full-remaining-context
+  behavior.
+- Unknown top-level generation parameters are rejected instead of being
+  silently ignored. Optional feature failures use a stable OpenAI-compatible
+  error taxonomy and capability manifest.
+- Server and benchmark output now distinguish queue width, backend call width,
+  verifier rows, timing ownership, sampler execution, and exact token counts.
+  Production PARO batch routing fails closed to exact width-1 sessions when a
+  native width does not pass the independent single-request oracle.
 
 ### Fixed
 
 - Missing Hugging Face repo IDs now report that the full model ID is absent from
   the local cache instead of falling through to a misleading partial-path
   `config.json` error.
+- Qwen PARO generation now recognizes the tokenizer/model EOS set, including
+  `<|im_end|>` as well as `<|endoftext|>`, instead of continuing chat output to
+  the length limit.
+- Fixed GGUF decode-graph replay and speculative block-commit lifecycle bugs,
+  including stale graph reuse after resident-state mutation.
+- Hardened PARO/GGUF sampling, stop handling, exact usage accounting, tool-call
+  parsing, session transcript validation, context admission, and startup scratch
+  probes across eager, streaming, sampled, and speculative paths.
+
+### Known limitations
+
+- Production PARO native `c>1` decode remains disabled because current native
+  candidates do not pass the independent `c=1` token/state/KV oracle. The HTTP
+  batcher can coalesce requests, but this release does not claim true continuous
+  decode or native multi-request throughput.
+- GGUF MTP serving is explicit, non-streaming, greedy-fast, and uses the
+  accuracy-traded `llama-compat` contract. Exact/default MTP serving and
+  streaming MTP remain future work; automatic requests use exact AR fallback.
+- Tool calling and structured outputs are prompt-and-parse/result-validation
+  features, with limited safe token forcing. Full grammar-constrained decoding
+  is not implemented.
+- App-local sessions and continuation handles re-render/re-prefill transcript
+  text; they do not save or reuse resident KV state.
+- Tensor parallelism and other multi-GPU execution remain unimplemented.
 
 ## v0.2.2 - 2026-05-26
 
