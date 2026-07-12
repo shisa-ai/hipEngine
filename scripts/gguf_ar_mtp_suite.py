@@ -64,7 +64,7 @@ CANONICAL_DECODE = {
     "decode_repack": True,
     "use_gemv_decode": True,
     "use_wmma_prefill": True,
-    "eager_decode": True,
+    "state_bound_graph_admission": True,
     "greedy": True,
     "prompt_reasoning": "off",
     "warmup_decode_tokens": 1,
@@ -1258,6 +1258,7 @@ def main() -> int:
         "--decode-tokens", str(ar_decode_tokens),
         "--warmup-decode-tokens", str(CANONICAL_DECODE["warmup_decode_tokens"]),
         "--decode-repack", "--use-gemv-decode", "--use-wmma-prefill",
+        "--graph-replay-decode", "--graph-steps-per-replay", "1",
         "--output", str(ar_json),
         "--raw-root", str(raw_root / "true-ar"),
     ]

@@ -152644,3 +152644,49 @@ graphless decode launch-collapse path without regressing target/serial parity.
   before implementation; `python3 -m pytest tests/test_llamacpp_mtp_rocprof.py
   -q` now passes all 7 tests, and `python3 -m py_compile
   scripts/llamacpp_mtp_rocprof.py` succeeds. No performance claim yet.
+
+## 2026-07-12 - Admit state-bound GGUF AR graphs on W7900
+
+- Root cause of the apparent `34.49` versus llama.cpp `78.12` transition-rate
+  gap is now measured, not inferred. The gfx1100 and gfx1151 GGUF kernel bodies
+  are mirrored, but the W7900 category baseline forced 708 eager launches per
+  token while only gfx1151 advertised state-bound graph admission. A prior
+  8-step W7900 ROCTX slice measured `9.564 ms/token` of GPU kernels inside
+  `35.409 ms/token` profiled wall; the missing wall was HIP submission.
+- Rebuilt the copied instrumented llama.cpp tree at `1ebf790cd` / build 9648
+  with HIP 7.15 Release gfx1100 code objects. One natural prompt with F16 KV,
+  flash attention, greedy/reasoning-off, and 25 requested outputs measured 24
+  timed transitions in `307.204 ms`: **78.124 tok/s** transition-normalized
+  (`81.379 tok/s` native). This confirms the corrected timer boundary and the
+  copied binary architecture.
+- Clean W7900 SOL-G5 command at hipEngine `833921ce`:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3
+  scripts/gguf_decode_graph_g5.py --backend hip_gfx1100 --prompt-length 512
+  --correctness-steps 24 --timing-steps 24 --warmups 1 --repetitions 5
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached
+  --out /tmp/w7900-gguf-decode-graph-g5-clean-p512-d24.json`.
+  The state-bound graph passed all 24 byte-exact hidden/GDN/KV/token
+  transitions (22 third-and-later launches checked). Capture-inclusive median
+  wall moved **30.5364 -> 12.5139 ms/token**, **32.748 -> 79.911 tok/s**, or
+  **2.4402x**. Five graph samples were `80.096/80.093/79.842/79.911/79.600
+  tok/s`; per-token state-keyed recapture was correctly rejected at
+  `22.220 tok/s`.
+- Added gfx1100 backend capability `GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS=24`.
+  Public non-streaming greedy generation therefore uses the already-state-bound
+  graph for measured windows of at least 24 transitions, while shorter,
+  sampled, streaming, unsupported-KV, and explicit rollback routes remain
+  eager. The lower threshold is not inferred beyond evidence: 24 is the only
+  newly admitted W7900 horizon.
+- Repaired `gguf_true_ar_category_bench.py`: its graph flags were described as
+  production timing but ignored since the June graph retirement. It now
+  requests backend-qualified graph admission, records the effective route,
+  and includes capture/instantiate/close in `decode_ms`, matching the complete
+  post-first-output timer boundary. `gguf_ar_mtp_suite.py` explicitly requests
+  this route so MTP economics use the fastest same-protocol no-MTP control.
+- RED/GREEN: new tests first failed on the absent gfx1100 capability. The
+  focused graph/category/suite/backend bundle now passes, including 24-step
+  graph use and 23-step eager fallback. A current one-prompt natural24 smoke
+  then matched the prior eager generated preview and tail exactly and moved
+  **34.161 -> 93.114 tok/s** with capture included (`23.937 ms` capture,
+  `257.750 ms` complete decode). Full natural-prompt economics and benchmark
+  rollup remain the next clean-commit validation step.
