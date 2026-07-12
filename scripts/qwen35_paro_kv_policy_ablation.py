@@ -427,11 +427,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         large_window=args.large_window,
     )
     if args.policies == "custom":
-        custom_format = (
-            baseline_format
-            if args.custom_format == "baseline_max"
-            else FormatSpec("group64", k_group_size=64, v_group_size=64)
-        )
+        if args.custom_format == "baseline_max":
+            custom_format = baseline_format
+        else:
+            group_size = int(args.custom_format.removeprefix("group"))
+            custom_format = FormatSpec(
+                args.custom_format,
+                k_group_size=group_size,
+                v_group_size=group_size,
+            )
         policies = [
             PolicySpec(
                 "custom",
@@ -539,7 +543,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--policies", default="default", help="default, custom, or comma-separated built-in names")
-    parser.add_argument("--custom-format", choices=("baseline_max", "group64"), default="baseline_max")
+    parser.add_argument(
+        "--custom-format",
+        choices=("baseline_max", "group32", "group64"),
+        default="baseline_max",
+    )
     parser.add_argument("--custom-bf16-layers", default="none", help="Full-attention layer ordinals for --policies custom")
     parser.add_argument("--custom-bf16-heads", default="none", help="KV head indices for --policies custom")
     parser.add_argument("--custom-sink-tokens", type=int, default=0)
