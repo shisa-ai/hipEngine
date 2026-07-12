@@ -152,6 +152,8 @@ W7900 row sources: [`summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-r
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
+> Thanks to Framework for sending a dedicated Framework Desktop Strix Halo motherboard for this profiling and tuning work.
+
 **Status: retained.** GGUF and llama.cpp are the clean 2026-07-11 matched
 refresh; PARO is the clean 2026-07-12 exact recovery at `9944e481` with
 TheRock HIP 7.15 and TuneD `accelerator-performance`. hipEngine uses two
