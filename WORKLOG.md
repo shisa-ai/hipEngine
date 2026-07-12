@@ -153011,3 +153011,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `ruff check` passes after cleanup; focused script/quality tests
   report `14 passed`; live smoke artifact is
   `/tmp/hipengine-kv-format-ablation-smoke.json`.
+
+## 2026-07-13 — Screen full-model PARO KV quantization formats
+
+- Clean source commit `4efc6df9`, Qwen3.6 PARO revision `437eba06`, W7900
+  `gfx1100`, repeated-token `512/8`, all 40 layers, FP16 scales. Captured
+  `2,621,440` real K elements and the same number of V elements across ten
+  full-attention layers. Per-head sample NRMSE was `0.00899` K / `0.01088` V;
+  calibrated clipping selected `0.999` for both, a negligible reconstruction
+  change. More aggressive clipping regressed both reconstruction and logits.
+- The native all-layer per-token/head runtime baseline rejected at matched
+  mean KL `0.65550`, top-1 `55.56%`. The corresponding BF16-cache emulation
+  rejected at KL `0.34450`, top-1 `66.67%`, confirming direction but also that
+  emulation is only a ranking screen.
+- No all-layer candidate passed `KL <= 0.05` and top-1 `>= 90%`. Within the
+  reclaimed 1 GiB budget, group32 minimized KL (`0.14177`, top-1 `77.78%`,
+  `+146,800,640` bytes projected at 256K); group64 preserved top-1 at all nine
+  positions but still had KL `0.16157` (`+62,914,560` bytes). Group16 had the
+  best reconstruction NRMSE but regressed model KL to `0.89119`, showing that
+  reconstruction error alone is not a safe selector. K-BF16/V-INT8 was the
+  best top-1-clean mixed component (`KL 0.14873`) but needs `+1,331,691,520`
+  bytes and exceeds the compact-table budget.
+- Conclusion: format changes alone do not admit all-layer INT8. Carry group32
+  and group64 into the mixed-layer/residual policy sweep; do not promote a
+  format yet. Compact diagnostic:
+  `benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json`.
