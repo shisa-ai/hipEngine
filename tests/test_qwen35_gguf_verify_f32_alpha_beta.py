@@ -21,6 +21,7 @@ def _runner() -> qgr.Qwen35GGUFFullStackRunner:
             ssm_time_step_rank=4,
         )
     )
+    runner._cast_library_handle = object()
     return runner
 
 
