@@ -152630,3 +152630,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `docs/PROCESS-IMPROVEMENT.md`; `git diff --check` passed; the new file exists
   and is readable; and the draft plus live `WORKLOG.md` contain no conflict
   markers. No GPU or code test was required.
+## 2026-07-12 - Add base-mode llama.cpp decode profiling
+
+- Extended `scripts/llamacpp_mtp_rocprof.py` with explicit `--mode base|mtp`.
+  Base mode omits all speculative server flags and MTP stage timing overhead,
+  but retains the local `target_block_forward` ROCTX marker used by the copied
+  instrumented llama.cpp tree. The profiler environment now clears inherited
+  `LLAMA_MTP_*` controls before enabling only the requested instrumentation.
+- This closes the tooling gap for a timer- and range-matched W7900 c1 trace:
+  the same wrapper can now slice llama.cpp base target forwards rather than
+  comparing hipEngine decode-only ranges against a whole-process or MTP trace.
+- RED/GREEN validation: the two new command/environment contract tests failed
+  before implementation; `python3 -m pytest tests/test_llamacpp_mtp_rocprof.py
+  -q` now passes all 7 tests, and `python3 -m py_compile
+  scripts/llamacpp_mtp_rocprof.py` succeeds. No performance claim yet.

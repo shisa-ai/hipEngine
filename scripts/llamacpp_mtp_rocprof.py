@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Profile a bounded llama.cpp HIP MTP server request with rocprofv3.
+"""Profile a bounded llama.cpp HIP base or MTP request with rocprofv3.
 
-This is a diagnostic bridge for the GGUF MTP parity work.  llama.cpp's MTP
-stage JSONL shows draft/verify wall buckets, but not kernel families.  This
-wrapper starts ``llama-server`` under ``rocprofv3 --kernel-trace``, sends a
-small deterministic ``/completion`` request, then summarizes any kernel CSV
-that survives profiler finalization with ``scripts/llamacpp_kernel_trace_summary``.
-With ``--roctx-ranges`` it also enables llama.cpp's local ``LLAMA_MTP_ROCTX``
-diagnostic ranges and asks rocprofv3 for marker traces, allowing kernels to be
-sliced by the same stage windows.
+This is a diagnostic bridge for the GGUF parity work.  llama.cpp's local
+instrumentation exposes the target-forward ROCTX range for both base and MTP,
+while MTP additionally emits draft/verify stage JSONL.  This wrapper starts
+``llama-server`` under ``rocprofv3 --kernel-trace``, sends a small deterministic
+``/completion`` request, then summarizes any kernel CSV that survives profiler
+finalization with ``scripts/llamacpp_kernel_trace_summary``.  With
+``--roctx-ranges`` it also enables the local ``LLAMA_MTP_ROCTX`` diagnostic
+ranges and asks rocprofv3 for marker traces.
 
 The trace is intentionally whole-process, not a draft-window-only marker trace.
 Use it as a kernel-family proxy alongside ``LLAMA_MTP_STAGE_TIMINGS`` rather
@@ -66,11 +66,16 @@ def build_server_command(args: argparse.Namespace) -> list[str]:
         "--no-cache-prompt",
         "--reasoning",
         str(args.reasoning),
-        "--spec-type",
-        "draft-mtp",
-        "--spec-draft-n-max",
-        str(args.draft_max),
     ]
+    if args.mode == "mtp":
+        cmd.extend(
+            [
+                "--spec-type",
+                "draft-mtp",
+                "--spec-draft-n-max",
+                str(args.draft_max),
+            ]
+        )
     cmd.extend(str(item) for item in args.server_extra_arg)
     return cmd
 
@@ -113,11 +118,14 @@ def build_rocprof_command(args: argparse.Namespace, *, trace_dir: Path, server_c
 
 def build_profile_env(args: argparse.Namespace, *, stage_path: Path) -> dict[str, str]:
     env = os.environ.copy()
-    env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_path)
+    for name in ("LLAMA_MTP_STAGE_TIMINGS", "LLAMA_MTP_ROCTX", "LLAMA_MTP_TOKEN_TRACE"):
+        env.pop(name, None)
+    if args.mode == "mtp":
+        env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_path)
+        if args.token_trace:
+            env["LLAMA_MTP_TOKEN_TRACE"] = "1"
     if args.roctx_ranges:
         env["LLAMA_MTP_ROCTX"] = "1"
-    if args.token_trace:
-        env["LLAMA_MTP_TOKEN_TRACE"] = "1"
     return env
 
 
@@ -308,8 +316,9 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
         "date": date.today().isoformat(),
         "status": "diagnostic_retained" if kernel_summary is not None and request_error is None else "diagnostic_incomplete",
         "performance_claim": False,
-        "purpose": "Whole-process llama.cpp HIP MTP kernel-family proxy under rocprofv3.",
+        "purpose": f"Whole-process llama.cpp HIP {args.mode} kernel-family proxy under rocprofv3.",
         "label": str(args.label),
+        "mode": str(args.mode),
         "model": str(args.model),
         "hardware": str(args.hardware),
         "software": {
@@ -320,7 +329,8 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
             "llama_cpp_dirty": _git_dirty(llama_repo) if llama_repo is not None else None,
         },
         "config": {
-            "draft_max": int(args.draft_max),
+            "mode": str(args.mode),
+            "draft_max": int(args.draft_max) if args.mode == "mtp" else None,
             "max_tokens": int(args.max_tokens),
             "prompt": str(args.prompt),
             "token_repeat": bool(args.token_repeat),
@@ -342,15 +352,15 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
         "raw_root": str(raw_root),
         "server_log": str(log_path),
         "response_json": str(response_path) if response is not None else None,
-        "stage_timings_jsonl": str(stage_path),
-        "stage_timing_summary": _summarize_stage_timings(stage_path),
+        "stage_timings_jsonl": str(stage_path) if args.mode == "mtp" else None,
+        "stage_timing_summary": _summarize_stage_timings(stage_path) if args.mode == "mtp" else None,
         "kernel_trace_csv": str(kernel_csv) if kernel_csv is not None else None,
         "marker_trace_csv": str(marker_csv) if marker_csv is not None else None,
         "kernel_summary": kernel_summary,
         "request_summary": request_summary,
         "notes": [
-            "Whole-process trace: includes model load, prompt prefill, target verify, draft, sampling, and shutdown kernels.",
-            "Use stage_timing_summary for llama.cpp MTP stage windows; use kernel_summary range_summaries only when --roctx-ranges produced marker_trace_csv.",
+            "Whole-process trace: includes model load, prompt prefill, target forward, sampling, and shutdown kernels; MTP mode also includes draft work.",
+            "Use kernel_summary range_summaries only when --roctx-ranges produced marker_trace_csv; stage_timing_summary is MTP-only.",
         ],
     }
 
@@ -403,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache-type-k", default="f16")
     parser.add_argument("--cache-type-v", default="f16")
     parser.add_argument("--reasoning", default="off")
+    parser.add_argument("--mode", choices=("base", "mtp"), default="mtp")
     parser.add_argument("--draft-max", type=int, default=2)
     parser.add_argument("--max-tokens", type=int, default=16)
     parser.add_argument("--prompt", default="Write a Python function add(a, b).")
