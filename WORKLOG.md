@@ -152075,3 +152075,44 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Added the requested one-line root README callout thanking Framework for
   sending a dedicated Framework Desktop Strix Halo motherboard for this
   profiling and tuning work. Benchmark claims and metrics are unchanged.
+
+## 2026-07-12 - Isolate the post-AOTriton PARO convolution cliff
+
+- Added diagnostic-only `scripts/paro_prefill_conv_domain.py` plus pure helper
+  tests. It captures the exact first 256-row PARO convolution chunk around the
+  first full-attention layer, reconstructs the ordered FP32 four-tap
+  accumulator, cross-replays captured inputs/weights through the unchanged
+  production kernel, and supports stage, queue, workspace, and idle-delay
+  controls. It does not change production dispatch or model math.
+- Exact layer-2/layer-4 accumulators covered `-13.584869..4.723076` and
+  `-7.517517..4.157738`; all `2,097,152` values per slice were finite and none
+  exceeded `+/-16`. The proposed precise-`expf` overflow/subnormal-domain
+  explanation is rejected. The 2x2 activation/weight cross also remained slow
+  after the boundary, excluding layer-specific data and weights.
+- Temporal controls locate the transition inside AOTriton itself. Identical L2
+  replay was `120.936 us` before layer 2, `118.018 us` after layer-3 KV append,
+  `1834.637 us` immediately after layer-3 AOTriton, and `2090.140 us` before
+  layer 4. Releasing the whole prefill workspace did not recover it.
+- Same-process paired replay proves queue locality: fresh->default measured
+  `118.385 -> 1652.716 us`; default->fresh measured
+  `1905.648 -> 159.539 us`. Running the AOTriton boundary on a dedicated
+  nonblocking stream restored the unchanged default-stream replay to
+  `119.093 us` (from `1834.637 us`, 15.40x). These are isolated HIP-event
+  diagnostics, not full-model performance claims.
+- Representative exact command (substitute `--aotriton-stream default` for
+  the control):
+  `python3 scripts/paro_prefill_conv_domain.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length 4096 --before-layer 2 --after-layer 4 --stop-after-full-stage aotriton --aotriton-stream isolated --replay-stream default --warmups 2 --repetitions 3 --burst-repeats 64 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --quiet --json /tmp/hipengine-c1-next-20260712/conv-domain-aotriton-isolated-default-dirty.json`.
+- The AOTriton on/off full-path diagnostic remains decisive: three-run 4K/1
+  medians were `849.557 tok/s` on versus `270.656 tok/s` off with the same
+  final token, so AOTriton stays. Isolation, not replacement, is the candidate.
+- An exploratory runtime trace was not retained because profiler propagation
+  caused child JIT compilation despite the parent cached-only request. It did
+  show AOTriton `attn_fwd` and the later convolution on the same HSA queue, but
+  must be repeated from a fully prebuilt clean checkout before formal use.
+  Local ROCr headers document permanent per-queue below-threshold scratch
+  assignment, making AOTriton's large queue scratch a mechanism to test rather
+  than a concluded root cause.
+- GREEN: `python3 -m py_compile scripts/paro_prefill_conv_domain.py` and
+  `PYTHONPATH=. pytest -q tests/test_paro_prefill_conv_domain.py` (`4 passed`).
+  Next: retain clean diagnostics, then implement one event-linked dedicated
+  AOTriton stream and measure the exact 4K c=1 production path.
