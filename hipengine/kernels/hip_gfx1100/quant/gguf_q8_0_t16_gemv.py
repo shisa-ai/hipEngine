@@ -25,7 +25,6 @@ _Q8_0_SINGLE_F32_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_FP16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out"
-_Q8_0_DUAL_SPLIT_WAVEBLOCK_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out"
 _Q8_0_DUAL_SPLIT_FP16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_SPLIT_ROWTILE2_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out"
 _Q8_0_DUAL_SPLIT_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out"
@@ -287,42 +286,6 @@ def gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
 
     _launch_dual_split(
         _Q8_0_DUAL_SPLIT_BF16,
-        x_ptr,
-        tiles_a_ptr,
-        tiles_b_ptr,
-        out_a_ptr,
-        out_b_ptr,
-        rows,
-        in_features,
-        out_features_a,
-        out_features_b,
-        threads,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
-
-
-def gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out(
-    x_ptr: int,
-    tiles_a_ptr: int,
-    tiles_b_ptr: int,
-    out_a_ptr: int,
-    out_b_ptr: int,
-    rows: int,
-    in_features: int,
-    out_features_a: int,
-    out_features_b: int,
-    *,
-    threads: int = 0,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Launch the BF16 dual-split wave/block-indexing diagnostic."""
-
-    _launch_dual_split(
-        _Q8_0_DUAL_SPLIT_WAVEBLOCK_BF16,
         x_ptr,
         tiles_a_ptr,
         tiles_b_ptr,
@@ -889,7 +852,6 @@ __all__ = [
     "gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out",
     "gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out",
     "gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
-    "gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_f32_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
