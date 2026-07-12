@@ -155,12 +155,11 @@ W7900 row sources: [`summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-r
 > Thanks to Framework for sending a dedicated Framework Desktop Strix Halo motherboard for this profiling and tuning work.
 
 **Status: retained.** GGUF and llama.cpp are the clean 2026-07-11 matched
-refresh. PARO 512/1K and 32K-128K are the clean 2026-07-12 exact recovery at
-`9944e481`; 4K is the clean scoped AOTriton queue-isolation refresh at
+refresh. PARO 512/1K are the clean 2026-07-12 exact recovery at `9944e481`;
+4K and 32K-128K are the clean scoped AOTriton queue-isolation refresh at
 `01e2cec5`, all with TheRock HIP 7.15 and TuneD `accelerator-performance`.
-The 32K-128K values are the last retained pre-isolation snapshots pending a
-refresh. hipEngine uses two discarded warmups plus five measured repetitions
-per right-sized resident shape; llama.cpp uses one internal warmup plus five
+hipEngine uses two discarded warmups plus five measured repetitions per
+right-sized resident shape; llama.cpp uses one internal warmup plus five
 samples per split phase. The linked artifacts pass their clean provenance,
 output/state, variance, model/build/device, and memory-scope gates. Bold marks
 the best raw value per row, but PARO is W4 PARO rather than Q4_K_M and memory
@@ -175,9 +174,9 @@ same-quant/backend win.
 | 512/128 | **1140.101** | 430.767 | 1061.260 | 1067.770 |
 | 1K/128 | **1208.343** | 437.467 | 1043.230 | 1069.870 |
 | 4K/128 | **1089.031** | 403.946 | 1009.240 | 1016.580 |
-| 32K/128 | 761.011 | 369.942 | 743.547 | **814.923** |
-| 64K/128 | 619.374 | 334.395 | 573.611 | **660.974** |
-| 128K/128 | 436.582 | 270.601 | 390.441 | **476.788** |
+| 32K/128 | **906.145** | 369.942 | 743.547 | 814.923 |
+| 64K/128 | **716.775** | 334.395 | 573.611 | 660.974 |
+| 128K/128 | 474.641 | 270.601 | 390.441 | **476.788** |
 
 #### Decode tok/s
 
@@ -186,9 +185,9 @@ same-quant/backend win.
 | 512/128 | **66.767** | 49.536 | 50.939 | 62.396 |
 | 1K/128 | 61.746 | 52.192 | 50.818 | **62.136** |
 | 4K/128 | **62.715** | 52.999 | 50.126 | 60.097 |
-| 32K/128 | 50.351 | 43.947 | 44.240 | **51.319** |
-| 64K/128 | 42.149 | 37.477 | 39.326 | **44.422** |
-| 128K/128 | 30.371 | 27.862 | 32.114 | **34.948** |
+| 32K/128 | 50.342 | 43.947 | 44.240 | **51.319** |
+| 64K/128 | 42.094 | 37.477 | 39.326 | **44.422** |
+| 128K/128 | 30.386 | 27.862 | 32.114 | **34.948** |
 
 #### Peak memory GiB
 
@@ -206,7 +205,7 @@ The memory columns have different scopes: hipEngine reports tracked allocator
 high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
 sampled every 10 ms. Use them for within-column context growth, not small
 cross-column allocator comparisons. Row sources: [`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
-[`PARO 4K AOTriton queue isolation`](benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
+[`PARO 4K-128K AOTriton queue isolation`](benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
 [`accepted July 11 matched summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
 [`July 11 PARO reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
 [`hipEngine GGUF`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
