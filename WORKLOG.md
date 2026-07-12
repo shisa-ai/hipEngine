@@ -152278,3 +152278,60 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`;
   4K/32K/64K/128K are retained, 512/1K are unchanged, and no gfx1151 shape
   refresh remains pending. gfx1100 validation remains separate.
+## 2026-07-12 - Current gfx1100 PARO 512/1K/4K diagnostic
+
+- Ran a clean-current basic PARO sweep at `240c5daff7c0` on GPU0, Radeon Pro
+  W7900/gfx1100, with Qwen3.6-35B-A3B snapshot `437eba06df05...`, model
+  fingerprint `995a8c67847c...d917`, packed W4 PARO, BF16 KV, repeated token
+  `9707`, graph replay decode, four eager warmup decode tokens, two discarded
+  runs, and five measured runs per shape. The hermetic build was TheRock HIP
+  `7.15.0-0000000`, clang `f58b06dce1f9...`, with cached JIT required for the
+  measured process. GPU performance level remained `auto`; no other KFD process
+  was present at launch.
+- After a separate `512/1` cache warm-build, the measured invocation was:
+
+  ```bash
+  env -i HOME="$HOME" USER="$USER" LOGNAME="$USER" SHELL=/bin/bash TERM=xterm \
+    PATH="$THEROCK_ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$THEROCK_ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+    HIP_PATH="$THEROCK_ROOT" ROCM_PATH="$THEROCK_ROOT" \
+    HIP_LIB_PATH="$THEROCK_ROOT/lib" HIP_INCLUDE_PATH="$THEROCK_ROOT/include" \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 \
+    HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-paro-w7900-current-20260712-080357/hipcc-version.txt \
+    PYTHONPATH=/home/lhl/hipEngine-main \
+    /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+    scripts/qwen35_readme_sweep.py --engine paro \
+    --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+    --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
+    --token-id 9707 --workloads 512/128 1K/128 4K/128 \
+    --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
+    --compiler-version-file /tmp/hipengine-paro-w7900-current-20260712-080357/hipcc-version.txt \
+    --require-cached-build --attn-aotriton-min-tokens 512 \
+    --graph-replay-decode \
+    --json benchmarks/results/2026-07-12-w7900-gpu0-paro-current-512-4k-20260712-080357-diagnostic.json
+  ```
+
+- Median results were: `512/128` **2878.779 prefill / 113.305 decode tok/s**,
+  `1K/128` **2976.639 / 103.464 tok/s**, and `4K/128`
+  **2933.007 / 104.147 tok/s**. Prefill sample CVs were `0.749% / 0.497% /
+  0.237%`; decode CVs were `0.908% / 0.943% / 1.011%`. Tracked peaks were
+  `18.217 / 18.429 / 19.161 GiB`. All measured final logits were finite and
+  final IDs were stable per shape (`220 / 220 / 17`).
+- The resolved policy was unchunked at 512 and 1K, then
+  `1024/1024/4096/1024/1024` for linear/MoE/full-attention-query/post/RoPE at
+  4K. Against the July 7 same-host five-run diagnostic, prefill is
+  **+2.929% / +2.041% / +0.967%** and decode is
+  **+0.978% / +0.982% / +1.194%**. Against the June 14 five-run diagnostic,
+  prefill is **+5.461% / +2.397% / +1.855%** while decode is within
+  `-1.668% / +0.522% / -1.051%`.
+- Conclusion: this spot sweep shows **no gfx1100 short/mid-context PARO prefill
+  recovery gap** analogous to the open gfx1151 R1 signal. Do not broaden R1 to
+  gfx1100 from current evidence; keep these rows as the architecture
+  non-regression guard if gfx1151 selects new chunk buckets. This is diagnostic,
+  not a retained performance claim: the current run used a right-sized 4K-max
+  session and HIP 7.15 versus the older 128K-max/HIP 7.13 records, and it ran
+  only finite/stable-token sanity rather than the full hidden/30-state/10-KV
+  correctness gate.
+- Compact artifact:
+  `benchmarks/results/2026-07-12-w7900-gpu0-paro-current-512-4k-20260712-080357-diagnostic.json`.
