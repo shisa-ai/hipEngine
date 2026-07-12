@@ -142,6 +142,7 @@ _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT = 26.0
 _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB"
 _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT = 1024
 _AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
+_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS = 512
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
@@ -184,6 +185,13 @@ def _retained_batch_defaults_enabled() -> bool:
 
 def _aotriton_isolated_prefill_stream_enabled() -> bool:
     return _env_flag(_AOTRITON_ISOLATED_PREFILL_STREAM_ENV, default=True)
+
+
+def _aotriton_isolated_prefill_stream_applies(query_rows: int) -> bool:
+    return (
+        int(query_rows) >= _AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS
+        and _aotriton_isolated_prefill_stream_enabled()
+    )
 
 
 def _env_float(name: str, default: float) -> float:
@@ -2482,7 +2490,9 @@ class Qwen35ParoResidentSession:
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
                 "aotriton_isolated_prefill_stream": (
                     self._prefill_use_aotriton_attention_resolved(len(tokens))
-                    and _aotriton_isolated_prefill_stream_enabled()
+                    and _aotriton_isolated_prefill_stream_applies(
+                        self._full_attention_prefill_layer_chunk_size(len(tokens))
+                    )
                 ),
                 "kv_storage_dtype": self.kv_storage_dtype.value,
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
@@ -3369,6 +3379,11 @@ class Qwen35ParoResidentSession:
         self._prefill_aotriton_output_ready_event = 0
         self._prefill_aotriton_input_ready_event = 0
         self._prefill_aotriton_stream = 0
+
+    def _prefill_aotriton_bridge_for_rows(self, query_rows: int) -> AotritonPrefillStreamBridge | None:
+        if not _aotriton_isolated_prefill_stream_applies(query_rows):
+            return None
+        return self._ensure_prefill_aotriton_bridge()
 
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
@@ -4478,11 +4493,6 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
-        aotriton_bridge = (
-            self._ensure_prefill_aotriton_bridge()
-            if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
-            else None
-        )
         release_workspace_between_layer_types = self._should_minimize_prefill_workspace_overlap(tokens)
         previous_layer_type: str | None = None
         for layer_id, state in enumerate(self.states):
@@ -4581,7 +4591,11 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_q=cu_seqlens_q,
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
-                        aotriton_bridge=aotriton_bridge,
+                        aotriton_bridge=(
+                            self._prefill_aotriton_bridge_for_rows(rows)
+                            if use_aotriton_attention
+                            else None
+                        ),
                         aotriton_kv_rows=end,
                         retained_key_cache=retained_key_cache if retained_append_spans is not None else None,
                         retained_value_cache=retained_value_cache if retained_append_spans is not None else None,
@@ -4801,8 +4815,8 @@ class Qwen35ParoResidentSession:
                                 cu_seqlens_k=cu_seqlens_k,
                                 aotriton_attention=use_aotriton_attention,
                                 aotriton_bridge=(
-                                    self._ensure_prefill_aotriton_bridge()
-                                    if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
+                                    self._prefill_aotriton_bridge_for_rows(segment_rows)
+                                    if use_aotriton_attention
                                     else None
                                 ),
                                 aotriton_kv_rows=segment_rows,
@@ -4848,8 +4862,8 @@ class Qwen35ParoResidentSession:
                         block_size=self.block_size,
                         aotriton_attention=use_aotriton_attention,
                         aotriton_bridge=(
-                            self._ensure_prefill_aotriton_bridge()
-                            if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
+                            self._prefill_aotriton_bridge_for_rows(rows)
+                            if use_aotriton_attention
                             else None
                         ),
                         aotriton_max_seqlen_q=max_segment_rows,

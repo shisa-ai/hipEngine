@@ -152150,3 +152150,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   These dirty runs validate the candidate but are not the retained claim; next
   commit the implementation, then run a clean five-repetition 4K A/B and clean
   exactness artifact before rollup.
+
+## 2026-07-12 - Scope AOTriton isolation above the safe 256-row bucket
+
+- Clean detached `c3a03ed1` 4K/128 A/B (two warmups, five measured) confirms
+  same-stream `883.600 tok/s` (`869.195..891.925`) versus isolated
+  `1114.634` (`1009.293..1122.336`), **+26.15%**. Decode is
+  `62.702 -> 62.797 tok/s` (+0.15%) and tracked peak is identical
+  `19.026067 GiB`. Every five-run preview/final ID matches. Raw SHA-256:
+  control `ca4d14bb...df93`, candidate `bff7511c...2e31`.
+- The clean `c3a03ed1` differential state gate again passes with seed `13743`,
+  final hidden `f2fd15ee...d2678`, aggregate state
+  `c2328617...d2c5f`, and zero mismatches across 30 Conv/GDN plus 10 K/V
+  families. Raw SHA-256 `7bfa5afd...d565`; provenance is fully clean.
+- Short matched screens were positive but noisy. In one shared max-1K session,
+  512 moved `1158.599 -> 1167.537` (+0.77%) and 1K moved
+  `1187.949 -> 1202.814` (+1.25%); right-sized 512 sessions measured
+  `1086.502 -> 1172.749` but both legs had broad ranges. These are not used to
+  invent a selection threshold or replace the established short rows.
+- The existing clean kernel traces provide a stronger route boundary: the
+  exact 4096-query AOTriton kernels use `2560` bytes scratch and trigger the
+  post-AOT convolution cliff, while the rejected full-query-256 diagnostic
+  uses `992/1008` bytes scratch and keeps every later convolution fast. The
+  latter is numerically rejected as a full-layer policy but is valid execution
+  evidence that 256-row AOTriton does not need queue isolation.
+- Narrowed the default bridge to query rows `>=512`, the first bucket above the
+  proven-safe 256-row route. Current 512/1K architecture profiles dispatch
+  256-row full-attention chunks and therefore retain their established path;
+  4K and current long-context profiles dispatch 4096-row chunks and isolate.
+  This is dispatch-shape/scratch based, not prompt- or token-conditioned.
+- GREEN: the new threshold/env test plus all `232` adjacent
+  decode-state/resident-layout/prefill-policy/diagnostic tests pass. The 4K
+  clean A/B must be repeated at the scoped commit before final retention; long
+  32K-128K throughput refresh remains explicit follow-up.
