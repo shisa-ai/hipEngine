@@ -18,9 +18,12 @@ MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
-def test_q6_k_t16_rowtile_matches_per_row_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_q6_k_t16_rowtile_matches_per_row_decode(
+    monkeypatch: pytest.MonkeyPatch,
+    hip_test_target_arch: str,
+) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", hip_test_target_arch)
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError:

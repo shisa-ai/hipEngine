@@ -19,9 +19,10 @@ SEED = [1, 2, 13, 14, 198, 264, 374, 11, 323, 279, 304, 369, 429, 1, 13, 198]
 
 def test_block_verify_matches_serial_exact_below_conv_kernel(
     monkeypatch: pytest.MonkeyPatch,
+    hip_test_target_arch: str,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", hip_test_target_arch)
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError:

@@ -52,9 +52,10 @@ def _cpu_ref(query, key, value, positions, context_counts, heads, kv_heads, scal
 @pytest.mark.skipif(not _hip(), reason="HIP runtime is not available")
 def test_mtp_dense_attn_f32_multiposition_matches_cpu_reference(
     monkeypatch: pytest.MonkeyPatch,
+    hip_test_target_arch: str,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", hip_test_target_arch)
     from hipengine.core.hip import get_hip_runtime, HipMemcpyKind
     from hipengine.core.memory import malloc, free, host_array_ptr
     from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
