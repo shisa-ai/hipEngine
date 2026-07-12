@@ -152891,3 +152891,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
   reached 100% with exit 0 and only the existing Starlette deprecation and NumPy
   overflow warnings. Final Python 3.10, artifact, and publish gates remain
   pending until the W7900 refresh is complete.
+- Fetched the user-published W7900 refresh through authenticated HTTPS and
+  rebased the validated release-prep commit onto `origin/main` at `56e07f32`
+  without conflicts. The eight incoming commits add a retained six-shape
+  W7900 PARO/GGUF/llama.cpp topline, W7900-local state oracle, current capacity
+  and long-rollout quality artifacts, corrected gfx1100 graph-AR economics, and
+  their focused regression gates.
+- Updated the package release notes and status summary for the new evidence:
+  gfx1100 state-bound graph AR is the production same-protocol baseline, so
+  neither current W7900 MTP route is a speedup; 256K INT8 KV is physical
+  allocation capacity only because the Qwen3.6 128K/128 quality gate rejects
+  both FP16- and FP32-scale variants. Release validation is restarted from the
+  integrated code revision before any push/tag/upload.

@@ -58,6 +58,9 @@ speculative decoding.
   guarded, explicit, non-streaming greedy `llama-compat` MTP route for GGUF
   models with NextN tensors. Native DFlash loading, drafting, verification, and
   benchmark/runtime building blocks are also available in-tree.
+- Added state-bound GGUF decode-graph admission on gfx1100 for supported greedy
+  windows of at least 24 transitions. Shorter, sampled, streaming,
+  unsupported-KV, and rollback-sensitive routes remain eager.
 - Added a top-level `hipengine` console command. `hipengine serve` launches the
   OpenAI-compatible server, `hipengine bench` lists or launches packaged
   benchmark helpers, and `hipengine version` reports package metadata.
@@ -80,6 +83,15 @@ speculative decoding.
   verifier rows, timing ownership, sampler execution, and exact token counts.
   Production PARO batch routing fails closed to exact width-1 sessions when a
   native width does not pass the independent single-request oracle.
+- Refreshed the retained W7900/gfx1100 README toplines with a clean six-shape
+  PARO/GGUF/llama.cpp matrix, a W7900-local GGUF state oracle, corrected
+  whole-device VRAM scope, and current PARO context-capacity evidence. The
+  accepted rollup and exact commands are preserved in
+  `benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json`.
+- Corrected gfx1100 speculative-decode economics against production graph AR.
+  Exact/default and explicit `llama-compat` MTP remain functional but no longer
+  beat the fastest same-protocol autoregressive route on W7900; older
+  eager-denominator speedup rows are historical only.
 
 ### Fixed
 
@@ -109,6 +121,9 @@ speculative decoding.
   is not implemented.
 - App-local sessions and continuation handles re-render/re-prefill transcript
   text; they do not save or reuse resident KV state.
+- PARO 256K INT8 KV physically allocates below the 24 GiB portability gate, but
+  fails the required Qwen3.6 128K/128 rollout quality gate. It is an allocation
+  capacity result, not a supported or usable inference route.
 - Tensor parallelism and other multi-GPU execution remain unimplemented.
 
 ## v0.2.2 - 2026-05-26

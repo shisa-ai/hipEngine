@@ -67,9 +67,11 @@ numbers below.
   guarded explicit non-streaming server route. Dense PARO DFlash and the shared
   speculative proposal/verify/commit infrastructure are available as retained
   runtime and benchmark paths.
-- INT8 KV cache remains available for PARO. Current capacity, throughput,
-  speculative-decode, and concurrency evidence is reported below with separate
-  gfx1100/gfx1151 provenance and correctness gates.
+- PARO BF16 KV has retained W7900 evidence through 128K under the 24 GiB gate.
+  The 256K INT8 layout also fits physically, but fails the required Qwen3.6
+  long-rollout quality gate and is not a supported or usable route. Current
+  capacity, throughput, speculative-decode, and concurrency evidence is reported
+  below with separate gfx1100/gfx1151 provenance and correctness gates.
 
 This remains an alpha, single-GPU release. Production PARO native `c>1` decode
 is disabled pending independent-c1 correctness, app-local sessions do not reuse
