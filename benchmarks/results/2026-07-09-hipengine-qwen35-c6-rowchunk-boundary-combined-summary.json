@@ -1,0 +1,193 @@
+{
+  "boundary_compare_findings": {
+    "first_full_attention_over_tolerance": {
+      "decode_step": 7,
+      "elements_over_atol": 121,
+      "generated_index": 8,
+      "layer_index": 7,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "first_full_kv_source_failure": {
+      "bit_mismatch": 121,
+      "check": "batch_source_vs_c1_source",
+      "decode_step": 7,
+      "elements_over_atol": 121,
+      "generated_index": 8,
+      "kind": "key",
+      "layer_index": 7,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 128,
+      "max_abs_index": [
+        128
+      ],
+      "row": 0,
+      "sample_index": 4,
+      "sample_label": "current",
+      "sample_position": 519,
+      "source_stage": "key_after_prepare"
+    },
+    "first_linear_over_tolerance": {
+      "bit_mismatch": 315,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 7,
+      "elements_over_atol": 2,
+      "generated_index": 8,
+      "layer_index": 4,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 143,
+      "max_abs_index": [
+        0,
+        143
+      ],
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "interpretation": "The no-rowchunk vs full-layer-rowchunk split starts as sub-tolerance drift at layer 3 after rowchunked full attention, then layer 4 linear attention amplifies it over tolerance; the layer 7 QKV/KV mismatch is downstream, not an isolated KV append/page-placement bug.",
+    "layer3_selected_rowchunk_attn_context": {
+      "elements_over_atol": 0,
+      "max_abs": 9.5367431640625e-07,
+      "passed": true
+    },
+    "layer3_selected_rowchunk_output": {
+      "elements_over_atol": 0,
+      "max_abs": 0.0001220703125,
+      "passed": true
+    },
+    "oracle": "hidden tensors and generated-token IDs for native no-rowchunk c>N batch vs rowchunk-repair c>N batch",
+    "status": "mismatch_found"
+  },
+  "combined_context_suffix_probe": {
+    "blockers": [
+      "full-attention context forced to native row-chunk diagnostic path on selected layers",
+      "full-attention suffix forced to native row-chunk diagnostic path on selected layers"
+    ],
+    "context_decode_path": "native_context_row_chunks",
+    "context_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31
+    ],
+    "decode_tok_s_aggregate": 103.99787516033453,
+    "first_mismatch_batch_token": 220,
+    "first_mismatch_c1_token": 17,
+    "first_mismatch_indices": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "interpretation": "Splitting context first and then gate/O/post/MoE suffix on the same selected layers is correctly wired, but it is still generated-token-red at index 2 and slower than the selected full-layer rowchunk bridge.",
+    "median_decode_step_seconds": 0.05486534861847758,
+    "status": "rejected_correctness",
+    "suffix_decode_path": "native_suffix_row_chunks_include_gate",
+    "suffix_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31
+    ]
+  },
+  "commands": {
+    "boundary_compare": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 8 --warmup-decode-tokens 0 --max-layers 8 --layer-limits 8 --trace-decode-start 7 --trace-decode-end 8 --skip-full-context-oracle --skip-linear-state-summary --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7 --batch-decode-full-attn-output-path batch_gemv --compare-full-attn-rowchunk-boundary --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-rowchunk-boundary-compare-L8-d8-trace7.json",
+    "combined_context_suffix_probe": "python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-context-row-chunk-size 2 --batch-decode-full-attn-context-row-chunk-layers 3,7,11,15,19,23,27,31 --batch-decode-full-attn-suffix-row-chunk-size 2 --batch-decode-full-attn-suffix-row-chunk-layers 3,7,11,15,19,23,27,31 --batch-decode-full-attn-suffix-row-chunk-include-gate --batch-decode-full-attn-output-path batch_gemv --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-context-suffix-rowchunk2-3-31-smallbatch-shared-local-equality-rerun.json"
+  },
+  "decision": {
+    "accepted": false,
+    "current_green_bridge": {
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json",
+      "decode_tok_s_aggregate": 108.929,
+      "description": "selected full-attention rowchunk2 layers 3,7,11,15,19,23,27,31 + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert",
+      "median_step_ms": 54.716
+    },
+    "reason": "diagnostic only; generated-token equality fails and throughput is below the current selected full-layer rowchunk c6 bridge"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "default_hardware": false,
+    "gpu": "Radeon 8060S Graphics",
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "output": "============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 48.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 69\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 155754496\n==========================================================================================\n================================== End of ROCm SMI Log ===================================",
+      "returncode": 0
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+      "output": "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151",
+      "returncode": 0
+    },
+    "visible_device": {
+      "current_device": 0,
+      "device_name": "Radeon 8060S Graphics",
+      "env": {},
+      "hipDeviceGetName_error": 0,
+      "hipGetDeviceCount_error": 0,
+      "hipGetDevice_error": 0,
+      "visible_device_count": 1
+    }
+  },
+  "mode": "qwen35_paro_c6_full_attention_rowchunk_boundary_summary",
+  "performance_claim": false,
+  "schema": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "62703e1bb306e30b1f4c7d0e6e9b887de2f4de18",
+    "hipengine_dirty": true,
+    "python": "3.12.13"
+  },
+  "source_artifacts": {
+    "boundary_compare_raw_local": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-rowchunk-boundary-compare-L8-d8-trace7.json",
+    "combined_context_suffix_probe": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-context-suffix-rowchunk2-3-31-smallbatch-shared-local-equality-rerun.json"
+  },
+  "status": "diagnostic_rejected_correctness",
+  "timestamp": "2026-07-09T07:18:43.946599+00:00",
+  "workload": {
+    "boundary_compare": {
+      "comparison": {
+        "batch": "native_no_rowchunk",
+        "c1": "native_full_attention_rowchunk_repair"
+      },
+      "full_attention_row_chunk_layers": "3,7",
+      "full_attention_row_chunk_size": 2,
+      "layer_limits": [
+        8
+      ],
+      "trace_decode_window": [
+        7,
+        8
+      ]
+    },
+    "combined_context_suffix_probe": {
+      "concurrency": 6,
+      "context_row_chunk_layers": "3,7,11,15,19,23,27,31",
+      "context_row_chunk_size": 2,
+      "gen_tokens_per_request": 16,
+      "prompt_tokens_per_request": 512,
+      "suffix_row_chunk_include_gate": true,
+      "suffix_row_chunk_layers": "3,7,11,15,19,23,27,31",
+      "suffix_row_chunk_size": 2
+    },
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "model": "Qwen3.5/3.6-35B-A3B-PARO",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "shape": "c=6 prompt=512 decode=8/16 diagnostics"
+  }
+}

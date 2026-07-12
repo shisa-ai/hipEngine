@@ -1,0 +1,70 @@
+{
+  "best_vulkan": {
+    "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json",
+    "correctness_pass": true,
+    "hip_over_vulkan_dot": 0.5414810499775199,
+    "hip_over_vulkan_quantize_plus_dot": 0.5984219418731476,
+    "local_size": 64,
+    "vulkan_over_hip_dot": 1.84678669741354,
+    "vulkan_over_hip_quantize_plus_dot": 1.6710617208818495,
+    "vulkan_q8_1_quantize_ms": 0.0003566666667,
+    "vulkan_x8_dot_prequantized_ms": 0.03075810833,
+    "vulkan_x8_quantize_plus_dot_ms": 0.03216775833
+  },
+  "classification": "real_slice_probe",
+  "conclusion": "Best retained Vulkan real-slice probe is local_size=64 and is slower than retained HIP: 1.85x on prequantized dot and 1.67x on quantize+dot. This does not support porting this Q6_K selected-down X8 slice to Vulkan for speed as implemented.",
+  "hip_artifact": "benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json",
+  "hip_timing_ms": {
+    "production_t16_float": 0.03227943282884856,
+    "q8_1_quantize": 0.0027498327350864806,
+    "x8_selected_dp4a_dot_prequantized": 0.0166549327938507,
+    "x8_selected_dp4a_quantize_plus_dot": 0.019249892405544717
+  },
+  "notes": "HIP and Vulkan use different deterministic synthetic activation values, but the same production shape, GGUF Q6_K X8 byte layout, q8_1 activation format, selected-row pattern, and bf16 output correctness gate. Timings exclude pipeline/build and host-device transfers.",
+  "schema": "hipengine.micro.q6_x8_real_slice_hip_vulkan_comparison.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "out_features": 2048,
+    "quant": "q6",
+    "rows": 8
+  },
+  "vulkan_rows": [
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json",
+      "correctness_pass": true,
+      "hip_over_vulkan_dot": 0.5414810499775199,
+      "hip_over_vulkan_quantize_plus_dot": 0.5984219418731476,
+      "local_size": 64,
+      "vulkan_over_hip_dot": 1.84678669741354,
+      "vulkan_over_hip_quantize_plus_dot": 1.6710617208818495,
+      "vulkan_q8_1_quantize_ms": 0.0003566666667,
+      "vulkan_x8_dot_prequantized_ms": 0.03075810833,
+      "vulkan_x8_quantize_plus_dot_ms": 0.03216775833
+    },
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json",
+      "correctness_pass": true,
+      "hip_over_vulkan_dot": 0.5111455643014113,
+      "hip_over_vulkan_quantize_plus_dot": 0.578750200354885,
+      "local_size": 128,
+      "vulkan_over_hip_dot": 1.9563898619891416,
+      "vulkan_over_hip_quantize_plus_dot": 1.7278611728977509,
+      "vulkan_q8_1_quantize_ms": 0.0003555,
+      "vulkan_x8_dot_prequantized_ms": 0.03258354167,
+      "vulkan_x8_quantize_plus_dot_ms": 0.03326114167
+    },
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json",
+      "correctness_pass": true,
+      "hip_over_vulkan_dot": 0.47581557133852126,
+      "hip_over_vulkan_quantize_plus_dot": 0.5193392189106554,
+      "local_size": 256,
+      "vulkan_over_hip_dot": 2.101654633090066,
+      "vulkan_over_hip_quantize_plus_dot": 1.9255237493859194,
+      "vulkan_q8_1_quantize_ms": 0.0003563416667,
+      "vulkan_x8_dot_prequantized_ms": 0.03500291667,
+      "vulkan_x8_quantize_plus_dot_ms": 0.037066125
+    }
+  ]
+}

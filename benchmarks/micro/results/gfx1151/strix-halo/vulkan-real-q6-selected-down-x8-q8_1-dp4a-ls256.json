@@ -1,0 +1,205 @@
+{
+  "backend": "vulkan",
+  "classification": "real_slice_probe",
+  "command": "/tmp/hipengine-micro-q6-x8-real-slice-ls256/vulkan_q6_x8_selected_down --quantize-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls256/q8_1_quantize.spv --dot-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls256/q6_x8_selected_down.spv --json /tmp/hipengine-micro-q6-x8-real-slice-ls256/vulkan-q6-x8-selected-down-raw.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 256 --reps 120 --warmup 30 --samples 9 --device-index 0",
+  "correctness_vs_cpu": {
+    "exact_bf16_mismatches": 2383,
+    "max_abs": 0.25,
+    "mean_abs": 0.003079672926,
+    "oracle": "full CPU reference for q8_1 quantize plus Q6_K X8 selected-down dp4a, bf16 output bits compared after shader run",
+    "pass": true,
+    "top1": 1
+  },
+  "hardware": {
+    "api_version": "1.4.348",
+    "device_id": 5510,
+    "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+    "device_type": 1,
+    "driver_version_raw": 109056002,
+    "queue_family": 0,
+    "shader_integer_dot_product": true,
+    "vendor_id": 4098
+  },
+  "notes": "Matched production-shaped Vulkan probe for the retained HIP Q6_K selected-down X8 q8_1+dp4a slice; synthetic deterministic data, same GGUF Q6_K byte layout and X8 tile mapping.",
+  "schema": "hipengine.micro.vulkan_q6_x8_selected_down.v1",
+  "shape": {
+    "blocks_per_row": 2,
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1000000015,
+    "local_size": 256,
+    "out_features": 2048,
+    "out_packed": 256,
+    "q8_blocks_per_row": 16,
+    "quant": "q6",
+    "rows": 8
+  },
+  "timing": {
+    "q8_1_quantize": {
+      "max_us": 0.4345666667,
+      "median_ms": 0.0003563416667,
+      "median_us": 0.3563416667,
+      "min_us": 0.3531583333,
+      "p05_us": 0.353295,
+      "p95_us": 0.4048133333,
+      "samples_us": [
+        0.3535,
+        0.3541666667,
+        0.3536666667,
+        0.3531583333,
+        0.359425,
+        0.3563416667,
+        0.3601833333,
+        0.3564166667,
+        0.4345666667
+      ]
+    },
+    "x8_selected_dp4a_dot_prequantized": {
+      "max_us": 35.42379167,
+      "median_ms": 0.03500291667,
+      "median_us": 35.00291667,
+      "min_us": 34.87993333,
+      "p05_us": 34.89292333,
+      "p95_us": 35.33599167,
+      "samples_us": [
+        35.00015833,
+        34.87993333,
+        35.42379167,
+        35.199625,
+        35.00291667,
+        34.91240833,
+        34.98429167,
+        35.16646667,
+        35.20429167
+      ]
+    },
+    "x8_selected_dp4a_quantize_plus_dot": {
+      "max_us": 37.39449167,
+      "median_ms": 0.037066125,
+      "median_us": 37.066125,
+      "min_us": 36.7588,
+      "p05_us": 36.77686333,
+      "p95_us": 37.384505,
+      "samples_us": [
+        36.80395833,
+        36.7588,
+        36.96326667,
+        37.08841667,
+        37.369525,
+        37.39449167,
+        36.905575,
+        37.2407,
+        37.066125
+      ]
+    }
+  },
+  "timing_config": {
+    "method": "pre-recorded Vulkan command buffer, host wall divided by reps; transfer and pipeline creation excluded",
+    "reps": 120,
+    "samples": 9,
+    "warmup": 30
+  },
+  "wrapper": {
+    "build_dir": "/tmp/hipengine-micro-q6-x8-real-slice-ls256",
+    "command": [
+      "python3",
+      "benchmarks/micro/runners/q6_x8_real_slice.py",
+      "--build-dir",
+      "/tmp/hipengine-micro-q6-x8-real-slice-ls256",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json",
+      "--rows",
+      "8",
+      "--experts",
+      "256",
+      "--in-features",
+      "512",
+      "--out-features",
+      "2048",
+      "--input-scale",
+      "0.1",
+      "--local-size",
+      "256",
+      "--reps",
+      "120",
+      "--warmup",
+      "30",
+      "--samples",
+      "9",
+      "--device-index",
+      "0"
+    ],
+    "commands": [
+      {
+        "command": [
+          "/usr/bin/glslc",
+          "--target-env=vulkan1.1",
+          "-O",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/kernels/vulkan/q8_1_quantize.comp",
+          "-o",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/q8_1_quantize.spv"
+        ],
+        "kind": "compile_shader"
+      },
+      {
+        "command": [
+          "/usr/bin/glslc",
+          "--target-env=vulkan1.1",
+          "-O",
+          "-DHIPENGINE_LOCAL_SIZE_X=256",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/kernels/vulkan/q6_x8_selected_down.comp",
+          "-o",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/q6_x8_selected_down.spv"
+        ],
+        "kind": "compile_shader"
+      },
+      {
+        "command": [
+          "/usr/bin/c++",
+          "-O2",
+          "-std=c++17",
+          "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/vulkan_q6_x8_selected_down.cpp",
+          "-o",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/vulkan_q6_x8_selected_down",
+          "-lvulkan"
+        ],
+        "kind": "compile_harness"
+      },
+      {
+        "command": [
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/vulkan_q6_x8_selected_down",
+          "--quantize-spirv",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/q8_1_quantize.spv",
+          "--dot-spirv",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/q6_x8_selected_down.spv",
+          "--json",
+          "/tmp/hipengine-micro-q6-x8-real-slice-ls256/vulkan-q6-x8-selected-down-raw.json",
+          "--rows",
+          "8",
+          "--experts",
+          "256",
+          "--in-features",
+          "512",
+          "--out-features",
+          "2048",
+          "--input-scale",
+          "0.1",
+          "--local-size",
+          "256",
+          "--reps",
+          "120",
+          "--warmup",
+          "30",
+          "--samples",
+          "9",
+          "--device-index",
+          "0"
+        ],
+        "kind": "run_harness",
+        "returncode": 0
+      }
+    ],
+    "cwd": "/home/lhl/hipEngine-benchmarks-micro",
+    "schema": "hipengine.micro.q6_x8_real_slice_runner.v1"
+  }
+}

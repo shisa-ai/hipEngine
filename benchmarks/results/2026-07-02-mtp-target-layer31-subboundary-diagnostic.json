@@ -1,0 +1,870 @@
+{
+  "schema": 2,
+  "kind": "mtp_target_layer31_subboundary_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T03:40:09.618936+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "ea97c28fe9eaec79f4d93abd7345e1f2882bd2dc",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151 host setting",
+  "source_raw_files": {
+    "hipengine": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw-v2.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.jsonl",
+    "llamacpp_summary": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.json"
+  },
+  "commands": {
+    "hipengine": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-layer-boundary-row 31:1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw-v2.json",
+    "llamacpp": "LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=attn_norm_31,attn_residual_31,attn_post_norm_31,ffn_out_31,post_moe_31,l_out_31 LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw-logs --server-start-timeout 180 --request-timeout 240"
+  },
+  "case": {
+    "hipengine_cycle": 12,
+    "llamacpp_cycle": 18,
+    "row": 1,
+    "layer": 31,
+    "position": 73,
+    "input_token": 15495,
+    "draft_tokens": [
+      15495,
+      539
+    ],
+    "hipengine_sampled_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "hipengine_accepted_draft_tokens": 2,
+    "llamacpp_sampled_token_ids": [
+      15495,
+      26126
+    ],
+    "llamacpp_accepted_draft_tokens": 1,
+    "llamacpp_output_token_ids": [
+      15495,
+      26126
+    ]
+  },
+  "hipengine_boundary": {
+    "capture": {
+      "layer_id": 31,
+      "layer_type": "full_attention",
+      "token_id": 15495,
+      "position": 73,
+      "hidden_size": 2048,
+      "is_moe": true,
+      "top_k": 8,
+      "preceding_layer_count": 31,
+      "hidden_in_shape": [
+        2048
+      ],
+      "attn_norm_shape": [
+        2048
+      ],
+      "attn_out_shape": [
+        2048
+      ],
+      "post_norm_shape": [
+        2048
+      ],
+      "residual_shape": [
+        2048
+      ],
+      "ffn_or_moe_down_shape": [
+        16384
+      ],
+      "moe_shared_out_shape": [
+        2048
+      ],
+      "moe_routing_weights_shape": [
+        8
+      ],
+      "moe_shared_gate_shape": [
+        1
+      ],
+      "moe_selected_experts_shape": [
+        8
+      ],
+      "layer_out_shape": [
+        2048
+      ],
+      "finite": true
+    },
+    "moe_selected_experts": [
+      221,
+      95,
+      240,
+      60,
+      88,
+      19,
+      212,
+      59
+    ],
+    "moe_routing_weights": [
+      0.43682175874710083,
+      0.1536487489938736,
+      0.10603801161050797,
+      0.06447426974773407,
+      0.06388985365629196,
+      0.06262537091970444,
+      0.05919037014245987,
+      0.053311530500650406
+    ],
+    "moe_shared_gate": [
+      -2.042252779006958
+    ],
+    "summaries": {
+      "hidden_in": {
+        "label": "target_verify_layer_31_hidden_in",
+        "size": 2048,
+        "sha256_16": "7915901e60bade3c",
+        "mean": -0.00113753,
+        "rms": 0.13821748,
+        "min": -0.9296875,
+        "max": 3.140625,
+        "first8": [
+          0.08544922,
+          0.07861328,
+          -0.11132812,
+          -0.11474609,
+          -0.04589844,
+          0.15527344,
+          -0.01086426,
+          0.0002203
+        ],
+        "last8": [
+          0.00753784,
+          -0.02575684,
+          0.12109375,
+          0.1328125,
+          -0.06591797,
+          -0.00171661,
+          0.19433594,
+          0.0703125
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "attn_norm": {
+        "label": "target_verify_layer_31_attn_norm",
+        "size": 2048,
+        "sha256_16": "7ccdb5d212235aa2",
+        "mean": -0.01228266,
+        "rms": 0.8398036,
+        "min": -11.4375,
+        "max": 16.75,
+        "first8": [
+          0.59375,
+          0.38476562,
+          -0.65625,
+          -0.5546875,
+          -0.23144531,
+          0.7265625,
+          -0.07275391,
+          0.00109863
+        ],
+        "last8": [
+          0.04321289,
+          -0.11865234,
+          0.67578125,
+          0.59375,
+          -0.48242188,
+          -0.01361084,
+          1.34375,
+          0.31835938
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "attn_out": {
+        "label": "target_verify_layer_31_attn_out",
+        "size": 2048,
+        "sha256_16": "6a04193fa7750070",
+        "mean": -0.00068306,
+        "rms": 0.05543946,
+        "min": -2.1875,
+        "max": 0.2734375,
+        "first8": [
+          -0.01055908,
+          -0.00087738,
+          0.01818848,
+          0.02685547,
+          -0.01409912,
+          0.0168457,
+          0.01599121,
+          -0.00239563
+        ],
+        "last8": [
+          -0.00479126,
+          -0.02856445,
+          0.0201416,
+          -0.01153564,
+          -0.00427246,
+          -0.01470947,
+          -0.0050354,
+          -0.01586914
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "attn_residual": {
+        "label": "target_verify_layer_31_attn_residual",
+        "size": 2048,
+        "sha256_16": "42e39de69a34fff3",
+        "mean": -0.00182267,
+        "rms": 0.1193061,
+        "min": -0.87109375,
+        "max": 0.953125,
+        "first8": [
+          0.07470703,
+          0.07763672,
+          -0.09326172,
+          -0.08789062,
+          -0.06005859,
+          0.171875,
+          0.00512695,
+          -0.00218201
+        ],
+        "last8": [
+          0.00274658,
+          -0.05419922,
+          0.14160156,
+          0.12109375,
+          -0.0703125,
+          -0.01647949,
+          0.18945312,
+          0.05444336
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "attn_post_norm": {
+        "label": "target_verify_layer_31_attn_post_norm",
+        "size": 2048,
+        "sha256_16": "a060b14539c86b13",
+        "mean": -0.01576039,
+        "rms": 1.30017985,
+        "min": -9.8125,
+        "max": 4.9375,
+        "first8": [
+          1.0703125,
+          1.015625,
+          -1.234375,
+          -1.0625,
+          -0.63671875,
+          1.90625,
+          0.07080078,
+          -0.02502441
+        ],
+        "last8": [
+          0.03540039,
+          -0.70703125,
+          1.921875,
+          1.390625,
+          -1.0390625,
+          -0.20605469,
+          1.5,
+          0.68359375
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "ffn_or_moe_down": {
+        "label": "target_verify_layer_31_ffn_or_moe_down",
+        "size": 16384,
+        "sha256_16": "0deadc27b7cb014d",
+        "mean": -0.00053542,
+        "rms": 0.0820161,
+        "min": -0.51953125,
+        "max": 0.609375,
+        "first8": [
+          -0.02624512,
+          -0.03955078,
+          -0.02844238,
+          0.04882812,
+          -0.00427246,
+          0.05493164,
+          -0.01080322,
+          0.140625
+        ],
+        "last8": [
+          -0.03320312,
+          -0.20019531,
+          0.07324219,
+          0.11230469,
+          0.00866699,
+          0.10253906,
+          -0.05419922,
+          0.01513672
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "moe_shared_out": {
+        "label": "target_verify_layer_31_moe_shared_out",
+        "size": 2048,
+        "sha256_16": "9588b389f114ef22",
+        "mean": 0.00317001,
+        "rms": 0.1338591,
+        "min": -0.53125,
+        "max": 3.703125,
+        "first8": [
+          0.30078125,
+          0.00032616,
+          -0.18847656,
+          -0.07470703,
+          -0.00473022,
+          0.04223633,
+          -0.11376953,
+          0.00018978
+        ],
+        "last8": [
+          -0.1796875,
+          0.03515625,
+          0.08056641,
+          -0.04077148,
+          0.26757812,
+          0.07275391,
+          -0.06591797,
+          -0.04321289
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "post_moe_delta_from_residual": {
+        "label": "target_verify_layer_31_post_moe_delta_from_residual",
+        "size": 2048,
+        "sha256_16": "53cfea13021afe5f",
+        "mean": -0.00053745,
+        "rms": 0.04260944,
+        "min": -0.15814209,
+        "max": 0.46875,
+        "first8": [
+          -0.02954102,
+          -0.01513672,
+          -0.03955078,
+          0.00439453,
+          -0.01855469,
+          0.09960938,
+          -0.04052734,
+          0.04637146
+        ],
+        "last8": [
+          -0.04718018,
+          -0.04199219,
+          0.02929688,
+          0.046875,
+          -0.01855469,
+          0.0189209,
+          0.02832031,
+          -0.01367188
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "layer_out": {
+        "label": "target_verify_layer_31_layer_out",
+        "size": 2048,
+        "sha256_16": "73c355f4e86f4bf8",
+        "mean": -0.00236012,
+        "rms": 0.13221113,
+        "min": -0.90625,
+        "max": 1.421875,
+        "first8": [
+          0.04516602,
+          0.0625,
+          -0.1328125,
+          -0.08349609,
+          -0.07861328,
+          0.27148438,
+          -0.03540039,
+          0.04418945
+        ],
+        "last8": [
+          -0.04443359,
+          -0.09619141,
+          0.17089844,
+          0.16796875,
+          -0.08886719,
+          0.00244141,
+          0.21777344,
+          0.04077148
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "moe_selected_weighted_bf16": {
+        "label": "target_verify_layer_31_moe_selected_weighted_bf16",
+        "size": 2048,
+        "sha256_16": "a0f56df2895dac8b",
+        "mean": -0.00090369,
+        "rms": 0.03968653,
+        "min": -0.15429688,
+        "max": 0.13085938,
+        "first8": [
+          -0.06396484,
+          -0.01513672,
+          -0.01745605,
+          0.01293945,
+          -0.01806641,
+          0.09423828,
+          -0.02746582,
+          0.04638672
+        ],
+        "last8": [
+          -0.02648926,
+          -0.04589844,
+          0.02050781,
+          0.05126953,
+          -0.04907227,
+          0.01055908,
+          0.03564453,
+          -0.00872803
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "ffn_out_combined_from_components": {
+        "label": "target_verify_layer_31_ffn_out_combined_from_components",
+        "size": 2048,
+        "sha256_16": "e605b71c6079c712",
+        "mean": -0.00053965,
+        "rms": 0.04258644,
+        "min": -0.15816592,
+        "max": 0.46578509,
+        "first8": [
+          -0.02942387,
+          -0.01509926,
+          -0.03910024,
+          0.00436028,
+          -0.01860961,
+          0.09908859,
+          -0.04053083,
+          0.04640851
+        ],
+        "last8": [
+          -0.04712413,
+          -0.04186118,
+          0.02975986,
+          0.04658743,
+          -0.01834425,
+          0.01891396,
+          0.02807467,
+          -0.01369049
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "post_moe_rounded_from_components": {
+        "label": "target_verify_layer_31_post_moe_rounded_from_components",
+        "size": 2048,
+        "sha256_16": "73c355f4e86f4bf8",
+        "mean": -0.00236012,
+        "rms": 0.13221113,
+        "min": -0.90625,
+        "max": 1.421875,
+        "first8": [
+          0.04516602,
+          0.0625,
+          -0.1328125,
+          -0.08349609,
+          -0.07861328,
+          0.27148438,
+          -0.03540039,
+          0.04418945
+        ],
+        "last8": [
+          -0.04443359,
+          -0.09619141,
+          0.17089844,
+          0.16796875,
+          -0.08886719,
+          0.00244141,
+          0.21777344,
+          0.04077148
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      }
+    }
+  },
+  "llamacpp_boundary_summaries": {
+    "attn_norm_31": {
+      "label": "attn_norm_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.011728985271645342,
+      "rms": 0.8393448119879123,
+      "first8": [
+        0.5588096976280212,
+        0.3605082333087921,
+        -0.6631937623023987,
+        -0.5194215178489685,
+        -0.26975610852241516,
+        0.7446970343589783,
+        -0.09695493429899216,
+        0.005524051375687122
+      ]
+    },
+    "attn_residual_31": {
+      "label": "attn_residual_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.0017410849897032676,
+      "rms": 0.11889114883149765,
+      "first8": [
+        0.06914474070072174,
+        0.0722939521074295,
+        -0.09158120304346085,
+        -0.07967182993888855,
+        -0.067813441157341,
+        0.17511388659477234,
+        0.00017600785940885544,
+        0.0009042117744684219
+      ]
+    },
+    "attn_post_norm_31": {
+      "label": "attn_post_norm_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.01471206034402428,
+      "rms": 1.3037155204475186,
+      "first8": [
+        0.9904686808586121,
+        0.9476980566978455,
+        -1.2215957641601562,
+        -0.9698132872581482,
+        -0.7240929007530212,
+        1.947486162185669,
+        0.002434497233480215,
+        0.010427312925457954
+      ]
+    },
+    "ffn_out_31": {
+      "label": "ffn_out_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.0006676733513018007,
+      "rms": 0.04334284335991668,
+      "first8": [
+        -0.028600018471479416,
+        -0.013012262061238289,
+        -0.036017850041389465,
+        0.0111815445125103,
+        -0.025015028193593025,
+        0.09241006523370743,
+        -0.033499009907245636,
+        0.050370488315820694
+      ]
+    },
+    "post_moe_31": {
+      "label": "post_moe_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.002408758254773602,
+      "rms": 0.13189824190970095,
+      "first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
+      ]
+    },
+    "verify_layer_output_31": {
+      "label": "verify_layer_output_31",
+      "row_index": 1,
+      "token_id": 15495,
+      "position": 73,
+      "size": 2048,
+      "mean": -0.002408758254773602,
+      "rms": 0.13189824190970095,
+      "first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
+      ]
+    }
+  },
+  "comparisons": [
+    {
+      "name": "hip attn_norm vs llama.cpp attn_norm_31",
+      "hip_label": "attn_norm",
+      "llamacpp_label": "attn_norm_31",
+      "size": 2048,
+      "mae": 0.01622598245739937,
+      "rmse": 0.020816850116227564,
+      "max_abs": 0.10760641098022461,
+      "cosine": 0.9996927648564606,
+      "hip_first8": [
+        0.59375,
+        0.384765625,
+        -0.65625,
+        -0.5546875,
+        -0.2314453125,
+        0.7265625,
+        -0.07275390625,
+        0.0010986328125
+      ],
+      "llamacpp_first8": [
+        0.5588096976280212,
+        0.3605082333087921,
+        -0.6631937623023987,
+        -0.5194215178489685,
+        -0.26975610852241516,
+        0.7446970343589783,
+        -0.09695493429899216,
+        0.005524051375687122
+      ]
+    },
+    {
+      "name": "hip residual vs llama.cpp attn_residual_31",
+      "hip_label": "attn_residual",
+      "llamacpp_label": "attn_residual_31",
+      "size": 2048,
+      "mae": 0.0030308221466839314,
+      "rmse": 0.004047196744450166,
+      "max_abs": 0.06598687171936035,
+      "cosine": 0.9994286831977457,
+      "hip_first8": [
+        0.07470703125,
+        0.07763671875,
+        -0.09326171875,
+        -0.087890625,
+        -0.06005859375,
+        0.171875,
+        0.005126953125,
+        -0.0021820068359375
+      ],
+      "llamacpp_first8": [
+        0.06914474070072174,
+        0.0722939521074295,
+        -0.09158120304346085,
+        -0.07967182993888855,
+        -0.067813441157341,
+        0.17511388659477234,
+        0.00017600785940885544,
+        0.0009042117744684219
+      ]
+    },
+    {
+      "name": "hip post_norm vs llama.cpp attn_post_norm_31",
+      "hip_label": "attn_post_norm",
+      "llamacpp_label": "attn_post_norm_31",
+      "size": 2048,
+      "mae": 0.0361601896584034,
+      "rmse": 0.04541410616160782,
+      "max_abs": 0.19141864776611328,
+      "cosine": 0.999395320971525,
+      "hip_first8": [
+        1.0703125,
+        1.015625,
+        -1.234375,
+        -1.0625,
+        -0.63671875,
+        1.90625,
+        0.07080078125,
+        -0.0250244140625
+      ],
+      "llamacpp_first8": [
+        0.9904686808586121,
+        0.9476980566978455,
+        -1.2215957641601562,
+        -0.9698132872581482,
+        -0.7240929007530212,
+        1.947486162185669,
+        0.002434497233480215,
+        0.010427312925457954
+      ]
+    },
+    {
+      "name": "hip reconstructed ffn_out vs llama.cpp ffn_out_31",
+      "hip_label": "ffn_out_combined_from_components",
+      "llamacpp_label": "ffn_out_31",
+      "size": 2048,
+      "mae": 0.004460176452994347,
+      "rmse": 0.0056163277302862915,
+      "max_abs": 0.024095624685287476,
+      "cosine": 0.9916104934558833,
+      "hip_first8": [
+        -0.029423866420984268,
+        -0.01509926375001669,
+        -0.03910023719072342,
+        0.004360281862318516,
+        -0.018609613180160522,
+        0.09908859431743622,
+        -0.04053083062171936,
+        0.046408511698246
+      ],
+      "llamacpp_first8": [
+        -0.028600018471479416,
+        -0.013012262061238289,
+        -0.036017850041389465,
+        0.0111815445125103,
+        -0.025015028193593025,
+        0.09241006523370743,
+        -0.033499009907245636,
+        0.050370488315820694
+      ]
+    },
+    {
+      "name": "hip reconstructed rounded post_moe vs llama.cpp post_moe_31",
+      "hip_label": "post_moe_rounded_from_components",
+      "llamacpp_label": "post_moe_31",
+      "size": 2048,
+      "mae": 0.005275707691907883,
+      "rmse": 0.006707611573164632,
+      "max_abs": 0.04485619068145752,
+      "cosine": 0.9987127799063799,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
+      ]
+    },
+    {
+      "name": "hip layer_out vs llama.cpp post_moe_31",
+      "hip_label": "layer_out",
+      "llamacpp_label": "post_moe_31",
+      "size": 2048,
+      "mae": 0.005275707691907883,
+      "rmse": 0.006707611573164632,
+      "max_abs": 0.04485619068145752,
+      "cosine": 0.9987127799063799,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
+      ]
+    },
+    {
+      "name": "hip layer_out vs llama.cpp l_out_31",
+      "hip_label": "layer_out",
+      "llamacpp_label": "verify_layer_output_31",
+      "size": 2048,
+      "mae": 0.005275707691907883,
+      "rmse": 0.006707611573164632,
+      "max_abs": 0.04485619068145752,
+      "cosine": 0.9987127799063799,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
+      ]
+    },
+    {
+      "name": "hip reconstructed rounded post_moe vs hip layer_out",
+      "hip_label": "post_moe_rounded_from_components",
+      "llamacpp_label": "layer_out",
+      "size": 2048,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs": 0.0,
+      "cosine": 1.0,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ]
+    }
+  ],
+  "reading": [
+    "Layer 31 still does not contain a new large residual cliff after adding direct attn_norm and reconstructed ffn_out comparisons.",
+    "The direct attn_norm comparison is MAE 0.01623 / RMSE 0.02082 / cosine 0.99969; normalized-space post-attn norm remains the largest layer-31 sub-boundary delta at MAE 0.03616.",
+    "The reconstructed hip ffn_out from selected/shared MoE components compares to llama.cpp ffn_out_31 at MAE 0.00446 / RMSE 0.00562 / cosine 0.99161, and reconstructed rounded post_moe exactly equals hip layer_out.",
+    "The next implementation target remains the residual-stream BF16 contraction across target layers rather than layer-31 attention, MoE combine, final output_norm, or lm-head ordering."
+  ]
+}

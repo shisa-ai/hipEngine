@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-06-15
+Last updated: 2026-07-10
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -17,9 +17,9 @@ pip install hipengine
 ## Run
 
 ```bash
+hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
 hipengine serve \
-  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
-  --quant w4_paro \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
   --served-model-name qwen-paro \
   --host 127.0.0.1 \
   --port 8000
@@ -40,6 +40,16 @@ ROCm detections to `hip_gfx1100`/`hip_gfx1151`. Unknown HIP targets warn and
 select `cpu_reference` where a CPU implementation exists; nearby targets such as
 `gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
 `HIPENGINE_BACKEND=hip_gfx1100` after local validation.
+
+The server also defaults to `--quant auto`. PARO model plugins select `w4_paro`;
+Qwen3.5/Qwen3.6 GGUF plugins select the registered GGUF route. Supported
+gfx1100/gfx1151 PARO and GGUF models need only `--model`. Backend and quant flags
+remain explicit overrides.
+
+Before a lazy model load, metadata may report the requested selectors as `auto`.
+After load, model, readiness, capability, and replay payloads report the resolved
+backend and quant. Auto-selected GGUF models retain the four-request AR and MTP
+group caps used by the explicit `gguf_*` routes.
 
 By default the server eagerly loads the model, loads resident weights, estimates
 remaining HIP memory for KV cache plus persistent context metadata, then
@@ -68,6 +78,23 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
+GGUF MTP serving is guarded and default-off. Start with
+`--speculative-mtp-serving opt_in` or
+`HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
+`"speculative_mtp": true` on a non-streaming greedy request. That explicitly
+selects the documented `llama-compat` contract. The corrected category gate
+shows this compatibility route is not exact against true AR, so the `auto`
+policy carries compatible requests to the realized batch group but selects
+exact/default AR with a recorded reason, group width, and output horizon. The
+capabilities manifest reports
+`sampling.speculative_mtp.serving_route=true` only when this policy is enabled
+and the loaded engine exposes a real MTP hook. With a positive
+`--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
+non-streaming MTP requests can coalesce into one backend MTP call. The GGUF hook
+uses one shared target-weight runner plus per-request resident target/MTP slot
+state; c=2 is the implementation target and c=4/c=8 have functional smoke
+coverage.
+
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
 
@@ -92,7 +119,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
-| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
+| `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts are non-streaming and do not support `echo`, continuations, or sessions. For a single text prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
@@ -109,6 +136,44 @@ curl http://127.0.0.1:8000/v1/completions \
     "temperature": 0.0
   }'
 ```
+
+### Exact-token completion
+
+`LLM.generate_detailed()` accepts either text prompts or exact token-ID rows.
+The completion endpoint mirrors the OpenAI token-array forms: `prompt: [1, 2]`
+is one row and `prompt: [[1, 2], [3, 4]]` is a prompt batch. Token rows are
+validated as non-empty, non-negative integer sequences and bypass both PARO and
+GGUF tokenizers.
+
+```bash
+curl http://127.0.0.1:8000/v1/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "qwen-paro",
+    "prompt": [133935, 158931, 13606],
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "ignore_eos": true
+  }'
+```
+
+Exact-token requests are intentionally non-streaming and reject `stream`,
+`echo`, `continuation_id`, and `session`. Non-streaming responses bind the
+accepted input without echoing its contents:
+
+```json
+{
+  "schema_version": 1,
+  "input_type": "token_ids",
+  "prompt_token_ids_sha256": ["<sha256>"],
+  "prompt_tokens": [512],
+  "total_prompt_tokens": 512
+}
+```
+
+This object is at `hipengine.prompt_token_accounting`; exact outputs remain at
+`hipengine.token_accounting.choice_generated_token_ids`. Capabilities advertise
+the contract under `features.exact_token_prompts`.
 
 ### Chat completion
 
@@ -330,17 +395,119 @@ Cache hit/miss, budget pressure, per-request KV-byte deltas, and
 backend-authored per-phase token metadata are omitted until the runtime exposes
 those signals.
 
+### Exact generated-token accounting
+
+`GenerationOutput.generated_token_ids` is the authoritative completion-token
+sequence for non-streaming generation. Qwen3.5/Qwen3.6 PARO and GGUF generators
+populate it for greedy, sampled, packed, serial-fallback, and speculative MTP
+results, including a known-empty tuple when `max_tokens=0`.
+
+When every choice carries exact IDs, non-streaming completion and chat responses
+include `choices[].hipengine.generated_token_ids` and `generated_tokens`, plus a
+top-level `hipengine.token_accounting` object:
+
+```json
+{
+  "choice_generated_token_ids": [[101, 102], [201]],
+  "choice_generated_tokens": [2, 1],
+  "total_generated_tokens": 3,
+  "retokenized_visible_tokens": 2
+}
+```
+
+In that case OpenAI-compatible `usage.completion_tokens` is the sum of the
+exact ID lengths across every choice, including `n>1`. Prompt usage continues
+to use the model tokenizer/counting hook for text input; exact-token input uses
+the supplied row lengths and emits `hipengine.prompt_token_accounting` hashes
+and counts. `retokenized_visible_tokens` is an
+optional decoded-text diagnostic and is never an authoritative throughput
+denominator; decoded text can merge or split tokens when encoded again.
+Backend generated IDs/counts describe work produced in the current request,
+including tokens later hidden by a server-side stop-string or structured-output
+validation. A legacy generator that does not provide exact IDs retains the old
+retokenized usage fallback and omits `hipengine.token_accounting`, so benchmark
+harnesses can fail closed instead of treating that fallback as exact evidence.
+
 ### Choice telemetry
 
 Non-streaming completion and chat choices include `choices[].hipengine` when the
-backend returns `GenerationTelemetry`. This extension currently mirrors the
-backend-authored `decode_state` snapshot, optional backend-authored `timing` and
-`usage` payloads, and the final `finish_details`, giving agent harnesses access
-to row index, prompt/generated token counts, sampler mode, active processors,
-fast-path blockers, scheduler execution path, native/serial fallback state, stop
-suffix state, forced-token queue state, and budget
-pressure when those fields were authored by the generation loop. The field is
-omitted when the backend or fake engine does not provide telemetry.
+backend returns `GenerationTelemetry` or exact generated token IDs. This
+extension mirrors the backend-authored `decode_state` snapshot, optional
+backend-authored `timing` and `usage` payloads, and the final `finish_details`,
+giving agent harnesses access to row index, prompt/generated token counts,
+sampler mode, active processors, fast-path blockers, scheduler execution path,
+native/serial fallback state, stop suffix state, forced-token queue state, and
+budget pressure when those fields were authored by the generation loop.
+Exact-ID-only choices contain `generated_token_ids` and `generated_tokens`; the
+field is omitted when the backend or fake engine provides neither telemetry nor
+IDs.
+
+Every emitted `timing` map also declares `timing_scope`, `group_rows`, and
+`timing_owner`. Unscoped backend timing is normalized to a one-row `choice`
+payload owned by that choice. A copied packed/group wall uses
+`timing_scope="batch"`, a stable `batch_id` shared by every participating
+choice, the number of rows covered by that wall, and exactly one
+`timing_owner: true`; consumers must deduplicate batch timing by `batch_id` and
+ignore non-owner copies. These
+fields describe timing ownership, not HTTP concurrency or speculative verifier
+width; those shapes are reported separately when available.
+
+### Generation shape telemetry
+
+Successful non-streaming completion and chat responses include
+`hipengine.generation_shape` schema v1. It keeps queue admission and model work
+as separate dimensions:
+
+```json
+{
+  "schema_version": 1,
+  "route": "speculative_mtp",
+  "route_cap": {"scope": "queue_requests", "value": 4, "applied": true},
+  "queue_group": {
+    "id": "queue-...",
+    "request_count": 4,
+    "prompt_rows": 4,
+    "item_index": 0,
+    "item_prompt_offset": 0,
+    "item_prompt_rows": 1
+  },
+  "backend_groups": [
+    {
+      "id": "backend-...",
+      "call_index": 0,
+      "prompt_offset": 0,
+      "input_rows": 4,
+      "actual_group_rows": [4],
+      "max_actual_group_rows": 4,
+      "verifier_rows": 12
+    }
+  ],
+  "verifier_rows": 12
+}
+```
+
+`route_cap.value` limits compatible queued HTTP requests, not choices, prompt
+rows, backend width, or verifier rows. `queue_group` identifies the coalesced
+request group and this response's prompt slice. `backend_groups` records every
+actual generator call, including any future scheduler partitioning.
+`verifier_rows` counts target-model verification rows and is zero for
+non-speculative work. A c8 client benchmark under a four-request route cap
+therefore reports two queue groups with backend widths `[4, 4]`, not a width-8
+verifier.
+
+The object is repeated on every response participating in one queue group so a
+client harness can validate complete item indices/slices and deduplicate by
+`queue_group.id`. Direct logprob requests bypass queue coalescing and report
+`route_cap.applied=false`. Streaming does not yet emit this group-level object;
+the capabilities manifest reports that limitation explicitly.
+
+Automatic decisions add `route_decision` to the same object. It records
+`requested_route`, `selected_route`, a stable `reason`,
+`realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
+and the evidence artifact. The current reason is
+`compatibility_mtp_not_exact`, with selected route `default`; explicit MTP
+requests retain route `speculative_mtp` and do not carry this automatic
+fallback record.
 
 ### Finish details
 
@@ -1061,13 +1228,21 @@ in local, non-sensitive debugging sessions.
   `post_selection_controls` such as stop token ids and stop token sequences,
   which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
-  `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
-  serving compatibility is greedy-fast only; `logit_bias`, penalties, token
-  suppressions, min-token/EOS policy, explicit EOS finish policy, token stops,
-  `ignore_eos=true`, pending forced-token queues, post-thinking forced-token queues,
-  token-sequence completion repair, JSON object close forcing, temperature
-  sampling, and requested logprobs require autoregressive fallback. The
-  manifest also includes
+  `compatibility_guard: "supports_speculative_mtp_sampling"`. When
+  `--speculative-mtp-serving opt_in` or `auto` is set and the loaded GGUF engine
+  has NextN tensors, explicit non-streaming greedy-fast requests can use the
+  llama-compat MTP server hook. `auto` advertises `default_enabled=false` and an
+  `auto_route` exact-AR fallback because the compatibility hook is not
+  serial-prefix-equivalent. Resident-slot c=N explicit serving is supported
+  through the generation batcher when the batch window and active-request cap
+  allow it; c=2 is the target path and c=4/c=8 have functional smoke coverage.
+  Streaming MTP and the exact/default MTP server route are not implemented yet.
+  Current MTP serving compatibility is greedy-fast only; `logit_bias`,
+  penalties, token suppressions, min-token/EOS policy, explicit EOS finish
+  policy, token stops, `ignore_eos=true`, pending forced-token queues,
+  post-thinking forced-token queues, token-sequence completion repair, JSON
+  object close forcing, temperature sampling, and requested logprobs require
+  autoregressive fallback. The manifest also includes
   `incompatible_conditions`, for example `temperature > 0` and
   `eos_token_id set` and `ignore_eos=true`, so inert greedy `top_p` / `top_k` /
   `min_p` settings are not mistaken for MTP blockers.
@@ -1085,9 +1260,10 @@ in local, non-sensitive debugging sessions.
   `<tool_call>` JSON is treated as ordinary assistant text except for the common
   duplicated-start wrapper around otherwise valid inner tool JSON.
 - Unknown top-level request parameters are rejected instead of silently ignored.
-- Token `usage` and diagnostics are exact only when the served engine exposes
-  tokenizer/counting hooks; unsupported models return explicit diagnostics
-  errors or zero-count usage placeholders.
+- Completion `usage` is exact when every `GenerationOutput` exposes generated
+  token IDs. Prompt usage and legacy completion fallback counting require the
+  served engine's tokenizer/counting hooks; unsupported models return explicit
+  diagnostics errors or zero-count usage placeholders.
 - Model-specific tokenizer chat templates are not public yet. Chat messages are
   rendered with a Qwen-style `<|im_start|>...<|im_end|>` text template.
 

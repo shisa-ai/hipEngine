@@ -1,0 +1,601 @@
+# PARO Follow-Ups from GGUF/MTP Work
+
+Last updated: 2026-07-10.
+
+This is the active TODO list for applying recent GGUF/MTP server and verifier
+lessons to PARO. The key split is:
+
+- GGUF quant kernels mostly do not port directly to PARO (`Q*_K`, Q8/dp4a,
+  Q6_K rowtile LM-head, GGUF T16 layouts).
+- Server shape handling, startup warmup, timing attribution, route caps,
+  scheduler telemetry, and verifier lifecycle ideas do apply and need PARO
+  evidence before promotion.
+
+## Active Optimization Queue
+
+Current order, based on `docs/HIP-vs-VULKAN.md` plus the PARO c6 evidence
+below:
+
+| Order | Item | Status | Gate |
+| ---: | --- | --- | --- |
+| 1 | PARO exact width fallback | Production-safe at width 1: the schema-1 gfx1151 c2-c8 profile is rejected because it used a batch-shaped width-1 oracle and has `performance_claim=false`. At `0c184517` with `hipengine_dirty=false`, serial c8-to-c1 passes 8/8 rows against independent c1; native c8 fails 0/8 at generated token index 2. Greedy and sampled batches use width-1 sessions. | Localize the native c8 divergence, then rerun direct c1-c8, sparse, ragged, shrinking, and server accounting gates before native promotion. |
+| 2 | PARO MTP/DFlash bucket instrumentation | Implemented: native verifier results now carry `target_verify_bucket_seconds`; DFlash artifacts preserve aggregate and per-cycle trace buckets. | Pycompile + speculative schema tests passed; run a real DFlash profile row before using buckets for perf decisions. |
+| 3 | LM-head + top1/top-k fusion | Evidence-gated: existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` fused body is already documented as exact but slower, so it stays rejected/default-off. Added opt-in synchronized verifier phase buckets to decide whether a new LM-head/top1 schedule is worth writing. | Run with `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`; only continue if `lm_head_top1` is still material in current PARO DFlash profiles. |
+| 4 | Q4_K selected-dual HIP recovery | Parked for GGUF, not PARO: PARO uses `w4_paro` AWQ/WMMA selected-dual paths, so Q4_K selected-dual recovery cannot move PARO server or DFlash throughput. | Keep tracked from `docs/HIP-vs-VULKAN.md` for the GGUF queue; do not spend PARO recovery time here. |
+| 5 | Shape-keyed HIP graph/fusion buckets | Implemented for PARO DFlash verifier artifacts: runtime graph events now report the full verifier cache key, and `verifier_graph.shape_stats` aggregates status/timing by that shape. Drafter graph status and QKV fusion counts were already present. | Run with `--verifier-graph auto` or `validate`; only change graph replay/fusion semantics after shape stats show cache hits, misses, fallbacks, and `graph_replay`/`target_verify_forward` wall by shape. |
+| 6 | q8_1/dp4a activation reuse audit | Audited, no PARO transfer: PARO server/DFlash hot paths have no q8_1/dp4a staging and use `w4_paro` AWQ pack8/WMMA FP16/BF16 activation kernels. GGUF MTP q8_1 helpers already quantize once per single/dual/triple dense consumer group and once for Q6 top-1. | Keep as a GGUF profiling watch item only; add code only if a real profile shows duplicated q8_1 staging or a new PARO sidecar path adopts q8_1 activations. |
+
+The verifier bucket contract is intentionally coarse first-pass instrumentation:
+`metadata_upload`, `target_verify_forward` or `graph_replay`,
+`accept_summary`, `capture_prefix_copy`, `commit_scatter`,
+`canonicalize_scratch`, `host_sync_after_commit`, plus script-side
+`state_copy_pre_verify`, `state_copy_commit`, `canonical_commit_replay`,
+`target_verify_ar_step`, `target_verify_serial_step`, and
+`host_orchestration_unbucketed`. These are host-side wall buckets around the
+existing resident verifier lifecycle, not per-kernel layer-family timings.
+Fine-grained attention/MoE/LM-head splitting still requires profiler-backed
+instrumentation after this artifact plumbing is validated.
+
+## gfx1151 True-C1 Oracle Correction
+
+The July 9 and early July 10 local c>N harness called its reference
+"independent c1," but it executed `prefill_native_packed()` plus
+`step_batch_native(rows=1)`. Every gfx1151 c2-c8 pass from that harness is a
+legacy batch-shaped-oracle result. Those rows remain useful for path timing and
+internal bisection; they do not certify output against single-request
+`prefill_native()+step()` and cannot select production routing.
+
+Commit `0c1845170955` adds the true-c1 oracle and a holey c8-to-c1 gate. Its
+artifact records `hipengine_dirty=false`. The serial c1 decode bridge passes
+every row. Native decode diverges on every row at c8 generated token index 2
+(`17` versus c1 token `220`), before any width transition. Artifact:
+`benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json`.
+
+For detailed verifier phase attribution, set
+`HIPENGINE_DFLASH_VERIFY_SYNC_PHASES=1`. That profiling-only mode adds stream
+synchronizations and reports `target_verify_embedding`,
+`target_verify_linear_layers`, `target_verify_full_attention_layers`,
+`lm_head_top1`, `accept_summary_enqueue`, and `accept_readback`. Do not use
+sync-phase rows as production throughput claims; use them to decide where the
+next kernel work should land.
+
+The Q4_K selected-dual HIP recovery item remains valid for GGUF because the
+retained HIP/Vulkan microbench matrix showed a Q4_K-specific Vulkan lead. It is
+not a PARO transfer item: no `Q*_K` block layout is present in the PARO
+`w4_paro` runtime path, and copying that work into PARO would be a category
+error unless a PARO AWQ selected-dual slice shows the same bottleneck.
+
+PARO DFlash verifier graph artifacts now expose shape-keyed graph/fusion
+attribution. Each native verifier graph event reports a `bucket_key` containing
+`rows`, `capture_width`, `base_slot`, `chain_attn_mode`, `linear_attn_mode`,
+and `batch_mode`; the DFlash harness aggregates those events under
+`verifier_graph.shape_stats`. Each shape entry records status counts, replayed
+cycles, validation state, fallback reasons, context-token min/max/sample,
+active-budget counts, replay-count max, and summed target verify buckets. This
+is intentionally observability first: it tells us whether a graph bucket is
+amortizing and where launch wall remains before changing graph replay semantics.
+
+The q8_1/dp4a reuse item also stays outside PARO for now. A focused search over
+the PARO runner, server/generation path, DFlash harness, and PARO AWQ/WMMA
+kernels found no q8_1/dp4a activation staging; those paths use `w4_paro`
+pack8/WMMA kernels with FP16/BF16 activation inputs. In the GGUF MTP draft path,
+`_try_dense_q8_dp4a_f32`, `_try_dense_q8_dp4a_dual_f32`, and
+`_try_dense_q8_dp4a_triple_f32` quantize one activation buffer and reuse it for
+the associated single/dual/triple Q8_0 dp4a dot, while the Q6 top-1 path
+quantizes `head_normed_bf16` once before stage1/gather. There is no current
+PARO code change to retain unless future profiling identifies duplicated q8_1
+staging or a PARO sidecar path starts using q8_1 activations.
+
+## Current Evidence Split
+
+| Scope | Current status | Evidence |
+| --- | --- | --- |
+| PARO direct retained c>N harness | Accepted on gfx1100/RX 7900 XTX for c=4 and c=8 512/128. This proves the native compact PARO runtime can scale outside the server. | `benchmarks/README.md` retained rows: c=4 `155.987 tok/s`, c=8 `212.093 tok/s`; artifacts `benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json` and `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json`. |
+| PARO OpenAI server c>N | Not yet measured with the same retained direct protocol. Do not infer server throughput from the direct harness. | Server path must prove whether it reaches native packed prefill and native c-aware decode, or falls back through the serial slot bridge. |
+| PARO on gfx1151/Radeon 8060S | Native batching is correctness-red against the true c1 contract. Production uses width-1 sessions. The old c1-c8 timing matrix is a legacy batch-shaped-oracle diagnostic. | Bisect the first native hidden/state divergence at c8 token index 2 before server or width-specific performance work. |
+
+## Missed Opportunities From The GGUF Audit
+
+| Priority | Opportunity | Why it matters | First evidence to collect |
+| --- | --- | --- | --- |
+| P0 | Measure PARO OpenAI server c=1/2/4/8 vs the direct retained c>N harness. | The direct harness is fast, but support is advertised through the server. A server gap would hide the direct path's gains from users. | Run 512/128 exact-token OpenAI completions through `hipengine.server`; capture wall/e2e throughput, `scheduler_token_chunks`, `/ready`, and `/v1/hipengine/capabilities`. |
+| P0 | Prove native server route selection. | `hipengine/generation/qwen35_paro.py` attempts `step_batch_native`, but `hipengine/runtime/qwen35_paro_runner.py` gates it behind `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` and can fall back to serial decode. | Compare default, native-decode, and native-decode-plus-startup-warmup runs. Retain `execution_path`, `native_compact_prefill`, `native_caware_decode`, and `serial_decode_fallback` telemetry. |
+| P0 | Separate prefill-inclusive server throughput from decode-only direct throughput. | Recent GGUF server work showed full-request throughput can hide decode wins behind per-request prefill and scheduling costs. | Record both full-request client aggregate and per-choice/server decode telemetry where available. Mark rows diagnostic unless the correctness and telemetry gates are complete. |
+| P1 | Sweep route/group caps on gfx1151. | GGUF server work found that a smaller backend group can beat unconstrained c=8 on Strix Halo. PARO currently uses global `--max-active-requests`; it may need separate caps. | Sweep `--max-active-requests` 2/4/8 after the baseline path is stable; start with 8, then cap to 4/2 if queue or native-route telemetry degrades. |
+| P1 | Add PARO server stage buckets. | GGUF only became actionable after per-stage buckets exposed where AR/MTP wall time moved. PARO server currently lacks equivalent timing attribution. | Minimum AR buckets: prompt prefill, decode layer wall, projection dispatch, MoE, attention, sampler/LM-head, graph replay, host readback, scheduler/queue wall. |
+| P1 | Carry GGUF startup warmup discipline into PARO. | Startup scratch and graph-cache misses can make the first server requests unrepresentative and can select weaker shapes. | Test `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1` with native decode enabled, and record `/ready` startup diagnostics. |
+| P1 | Reconcile PARO concurrency docs after server evidence. | `benchmarks/README.md` has accepted direct retained c4/c8 rows, while `docs/CONCURRENCY.md` still has older cautionary wording. The right wording depends on server results. | After the server sweep, update `docs/CONCURRENCY.md` to distinguish direct retained c>N from server c>N. |
+| P2 | Audit PARO MTP/DFlash commit/scatter against GGUF deferred verifier scatter. | GGUF verifier wins came from avoiding rejected-tail state work and only committing accepted rows. PARO target verify APIs are still metadata-heavy, and commit can execute copies. | Add verifier buckets before changing code: accepted-row scatter/copy, rejected-tail discard, hidden/KV/state copies, host sync/readback. |
+| P2 | Compare PARO MTP/DFlash small-B verifier shapes against GGUF exact and llama-compat. | GGUF exact and llama-compat became faster than the older PARO speculative path partly by avoiding bad small-B shapes and tightening LM-head/sample. | Bucketed PARO speculative profile over draft/propose, target verify by layer family, LM-head/top1, accept summary, commit/scatter, graph replay, and scheduler wall. |
+| P3 | Review GGUF llama-compat verifier against PARO MTP/DFlash only after AR server is understood. | The verifier review is useful, but AR server routing and shape selection are lower-level prerequisites. | One-to-one map: draft, target verify, LM-head/sample, state capture, commit/rollback, rejection-tail handling. |
+
+## First Server Sweep
+
+Hardware and model for the local first pass:
+
+- Hardware: gfx1151 / Radeon 8060S.
+- Model: `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`.
+- Quant: `w4_paro`.
+- Target workload: exact token-id prompts, prompt length 512, decode 128,
+  concurrency c=1/2/4/8, greedy completions. If the server route rejects
+  token-id prompts, run a natural-prompt diagnostic first and keep it separate
+  from retained direct-harness comparisons.
+- Fixture: recreate `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`
+  from repo prompt fixtures if the retained benchmark fixture is absent.
+
+Run three server configurations before any code changes:
+
+| Config | Env | Purpose |
+| --- | --- | --- |
+| A: default server | No PARO native batch env flags. | Establish the actual advertised server path. |
+| B: native decode | `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. | Test whether server throughput closes toward the direct retained harness when native c-aware decode is allowed. |
+| C: native decode + startup warmup | `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1`. | Test whether startup c>N shape warmup changes first-request and steady server throughput. |
+
+Capture for every row:
+
+- Exact server command, client command, git commit, dirty status, HIP arch,
+  ROCm/HIP version, GPU name, model path, quant, prompt/decode/concurrency.
+- `/ready` startup diagnostics and `/v1/hipengine/capabilities`.
+- Client JSON from `scripts/vllm_openai_concurrency_sweep.py` for exact-token
+  completions, or `scripts/mtp-bench.py` server mode for natural-prompt
+  diagnostics.
+- Per-choice hipEngine telemetry if present, especially `scheduler_token_chunks`,
+  `execution_path`, `native_compact_prefill`, `native_caware_decode`,
+  `serial_decode_fallback`, and native sampler metadata.
+- Mark rows diagnostic until correctness, telemetry, and artifact gates match
+  `docs/BENCHMARK.md`.
+
+After A/B/C, sweep route caps:
+
+| Sweep | Values | Gate |
+| --- | --- | --- |
+| `--max-active-requests` | 2, 4, 8 | Only compare rows with the same env config, same prompt fixture, same decode length, and matching native-route telemetry. |
+| `--generation-batch-window-ms` | start at 5, then 1/10 if the baseline is unstable | Report full-request throughput separately from decode-only telemetry. |
+
+## First Server Sweep Results
+
+Measured 2026-07-09 on gfx1151 / Radeon 8060S, shisa
+`Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, `scripts/mtp-bench.py` server mode,
+8 natural chat prompts from `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`,
+`max_tokens=128`, greedy, `ignore_eos=true`, batch window 5 ms. These rows are
+diagnostic and **not** the direct retained 512-token exact-token protocol:
+at the time `/v1/completions` rejected token-id prompt arrays. `SOL-E5` later
+added the exact route; these natural-prompt rows remain historical diagnostics
+and were not retroactively upgraded.
+
+Artifact summary:
+`benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-summary.json`.
+
+| Server config | c=1 | c=2 | c=4 | c=8 | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| A: default server | 35.50 | 35.39 | 35.50 | 35.61 | Flat; default server serializes backend decode for this workload. |
+| B: native decode env | 35.50 | 37.48 | 40.33 | 42.36 | Modest c>N lift only. |
+| C: native decode + startup warmup | 35.66 | 37.55 | 40.56 | 41.51 | Startup c>N warmup ran, but steady throughput is unchanged vs B. |
+
+Route-cap sweep under config C, c=8:
+
+| `--max-active-requests` | Backend generated tok/s | Result |
+| ---: | ---: | --- |
+| 8 | 41.51 | Best of the cap sweep. |
+| 4 | 39.59 | Worse than cap 8. |
+| 2 | 37.47 | Worse than cap 8. |
+
+Telemetry notes:
+
+- Default c=8 reports `execution_path=scheduler_native_packed_prefill_serial_decode`
+  and `serial_decode_fallback=true`.
+- Native-decode c=8 reports
+  `execution_path=scheduler_native_packed_prefill_native_decode`, but
+  `native_caware_decode=false` in the emitted decode state. That explains why the
+  env flag does not approach the direct retained c>N harness.
+- The direct retained c=8 harness on gfx1100 is `212.093 tok/s`; this gfx1151
+  server diagnostic reaches only `42.36 tok/s`. Hardware and workload differ, so
+  do not treat the ratio as a direct regression claim, but it proves the server
+  route is still the first blocker before PARO speculative/MTP work.
+
+Immediate next targets from this sweep:
+
+1. Inspect why `scheduler_native_packed_prefill_native_decode` still emits
+   `native_caware_decode=false` and scales weakly.
+2. Add server AR buckets for prefill, decode layer wall, projection, attention,
+   MoE, sampler/LM-head, host sync/readback, and scheduler wall.
+3. Only after the AR server path scales should PARO MTP/DFlash verifier
+   lifecycle optimizations be ported from GGUF.
+
+### Exact-token route closure (2026-07-11)
+
+`SOL-E5` made raw token rows a shared `GenerationRequest` input for PARO and
+GGUF, exposed the OpenAI `prompt: int[] | int[][]` forms, and added
+`scripts/exact_token_generation.py`. On Radeon 8060S/gfx1151 with shisa
+Qwen3.6-35B-A3B PARO `437eba06...`, direct and HTTP runs used the committed
+512-ID parent fixture and matched all 128 generated IDs (prompt hash
+`b162b2d0...`, generated hash `42796d4b...`). This is an identity/correctness
+gate, not a performance result; the July 9 natural-prompt rates remain
+diagnostic and the first performance follow-up is an exact-token c1-c8 sweep.
+
+## Retained Defaults Bridge and Current Bottleneck
+
+After the first sweep, the server path gained two pieces of observability and
+an opt-in retained-evidence bridge from the direct retained harness:
+
+- `GenerationTelemetry` now accepts a `diagnostics` payload, and the OpenAI
+  response capability metadata advertises `choice_telemetry.diagnostics`.
+- PARO batch generation now emits backend timing buckets:
+  `batch_total_ms`, `batch_prefill_ms`, `batch_decode_ms`,
+  `batch_decode_step_ms_avg`, `batch_decode_steps`, and
+  `batch_native_decode_steps`.
+- When `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` is explicitly set and no
+  explicit projection/sampler override is set, the runner can load retained
+  direct-harness defaults where repo evidence exists:
+  `benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json`
+  for c2/c4/c6/c8 projection dispatch, and
+  `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`
+  for row-aware batched LM-head sampling.
+
+Important status: this bridge is **not** auto-enabled by
+`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. A local gfx1151/shisa
+recheck rejected the old retained defaults on generated-token equality, so they
+remain diagnostic/opt-in until fresh local c>N equality evidence is green.
+
+Measured 2026-07-09 on the same gfx1151/Radeon 8060S server setup, c=8,
+batch window 20 ms, native decode plus startup warmup plus retained defaults:
+
+Artifact:
+`benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw20-native-decode-warmup-retained-defaults-timing.json`.
+
+| Metric | Value |
+| --- | ---: |
+| Aggregate backend generated throughput | `42.02 tok/s` |
+| Aggregate wall | `24.37 s` |
+| Total backend generated tokens | `1024` |
+| Backend prefill timing total | `2358.156 ms` |
+| Backend decode timing total | `51821.026 ms` |
+| Mean per-choice prefill timing | `294.769 ms` |
+| Mean per-choice decode timing | `6477.628 ms` |
+| Mean per-choice decode step timing | `51.005 ms` |
+
+The run is decode-bound, not prefill-bound. Its detailed diagnostics split the
+8 requests into one faster c2 group and one slow c6 group:
+
+| Active rows | Requests | Decode step timing | Projection | Sampler | Current blocker |
+| ---: | ---: | ---: | --- | --- | --- |
+| 2 | 2 | `27.36 ms` | `gemv_awq_selected_dual_pack8_strided_c2` | evidenced batched LM-head | Fast in this timing run, but later local equality recheck rejected the retained bridge. |
+| 6 | 6 | `58.89 ms` | row-GEMV fallback | serial LM-head | No c6 projection dispatch candidate and no c6 sampler equality artifact. |
+
+That server timing row predates the local c6 projection work below. Its
+generated-token probes used the legacy batch-shaped oracle. The c6 numbers are
+path diagnostics only; they do not certify independent-c1 output.
+
+Follow-up local generated-token checks changed the immediate diagnosis:
+
+| Probe | Rows | Result | First mismatch | Artifact |
+| --- | --- | --- | --- | --- |
+| Old retained c2/c4/c8 bridge on local gfx1151 shisa | c2, c4, c8 | Rejected correctness | token 2 for every row | `benchmarks/results/2026-07-09-hipengine-qwen35-c248-local-retained-defaults-check/summary.json` |
+| Intermediate-row sampler seed matrix | c3, c5, c6, c7 | Rejected correctness | token 4 for c3/c5/c6; c7 mostly token 4 with one row at token 2 | `benchmarks/results/2026-07-09-hipengine-qwen35-c3567-serial-sampler-equality-seed/summary.json` |
+| c6 all-full-attention rowchunk probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-all-probe.json` |
+| c6 per-row full-attention probe | c6 | Rejected correctness | generated-token equality failed | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-fullattn-perrow-probe.json` |
+
+These batch-shaped-oracle probes motivated the path bisections below. The
+true-c1 gate at `0c184517` with `hipengine_dirty=false` supersedes their routing
+conclusion: native c8 is already red before shrinking, so the common native path
+is the first blocker. No PARO server c>N path is eligible for default promotion.
+
+## c2 Generated-Token Bisection
+
+**Oracle scope:** every green/red label in this section uses the legacy
+batch-shaped width-1 reference. Preserve the bisection as internal path
+evidence; do not cite a green row as true-c1 correctness.
+
+Measured 2026-07-09 on the same gfx1151/Radeon 8060S local shisa setup with a
+short c2 diagnostic (`prompt=512`, `decode=8`, `warmup=0`) and final sampler
+audit enabled. The sampler audit reruns serial per-row final RMSNorm/cast/LM-head
+and argmax from the same hidden rows.
+
+| Diagnostic path | Generated-token result | First mismatch | Sampler suffix audit | Artifact |
+| --- | --- | --- | --- | --- |
+| Native c2 retained bridge | Red | token 2: batch `220`, c1 `17` | Clean: 0 mismatches over 16 checked rows | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-finalnorm-audit.json` |
+| Native c2 + selected-c1 linear projection | Red | token 2: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-selected-c1-proj-finalnorm-audit.json` |
+| Linear per-row fallback + native full-attention | Red | token 2: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-perrow-finalnorm-audit.json` |
+| Full-attention per-row fallback | Red, but later | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-finalnorm-audit.json` |
+| Full-attention per-row + selected-c1 linear state | Red | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearstate-c1-finalnorm-audit.json` |
+| Full-attention per-row + selected-c1 linear output | Red | token 6: batch `220`, c1 `17` | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-linearout-c1-finalnorm-audit.json` |
+| Full-attention per-row + global selected-c1 MoE | Green for this short diagnostic | none | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-fullattn-perrow-moe-selected-c1-finalnorm-audit.json` |
+| Full-attention per-row + all linear per-row | Green for this short diagnostic | none | Clean | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-short-linear-full-perrow-finalnorm-audit.json` |
+
+Interpretation:
+
+- The sampler suffix is not the c2 blocker; final norm/cast/LM-head/argmax
+  matched serial per-row for the same hidden rows.
+- Native full-attention is the first local c2 divergence. Forcing
+  full-attention per-row moves the failure from token 2 to token 6.
+- After full-attention is per-row, grouped compact MoE is the next visible
+  divergence. Global selected-c1 MoE clears the short c2 diagnostic; selected-c1
+  linear state and output do not.
+- The narrow `--batch-decode-linear-moe-path per_row_c1` diagnostic currently
+  crashes with `HIP error 1: invalid argument`, so use the broader
+  `--batch-decode-moe-path selected_c1` fallback as the working MoE
+  discriminator until that diagnostic branch is fixed.
+
+Follow-up full 512/128 probes refined this repair order: c2 no longer needs a
+per-row full-attention fallback when the global selected-c1 MoE discriminator is
+enabled, c4/c8 need all full-attention producer layers split into rowchunk2
+groups, and c6 needs selected early full-attention producer layers split into
+rowchunk2 groups. c6 rowchunk3 is hidden-red, so the current safe c6 row group
+cap is two rows.
+
+## Local c>N Recovery Frontier
+
+Measured 2026-07-09 on gfx1151 / Radeon 8060S with local shisa
+`Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, fixture
+`/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`,
+prompt 512, decode 128, greedy. These probes compare against the legacy
+batch-shaped width-1 route. The former "independent c1" label was incorrect.
+They are path-timing/bisection diagnostics and are not retained throughput or
+true-c1 correctness claims.
+
+| Rows | Diagnostic shape | Legacy batch-shaped equality | Decode aggregate | Artifact |
+| ---: | --- | --- | ---: | --- |
+| 2 | native full-attention, selected-c1 MoE, batched LM-head | Legacy pass | `78.021 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c2-p512-d128-selected-c1-moe-local-equality.json` |
+| 4 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Legacy pass | `99.046 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c4-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 8 | rowchunk2 on every full-attention layer, selected-c1 MoE, batched LM-head | Legacy pass; true-c1 red at token index 2 | `115.066 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c8-p512-d128-rowchunk2-all-moe-selected-c1-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, selected-c1 MoE, serial LM-head | Red at token 2 | invalid `106.869 tok/s` diagnostic | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-all-moe-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on full-attention layers `3,7,11,15,19,23,27,31`, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `108.929 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, native linear attention, selected-c1 MoE with forced small-batch shared expert, serial LM-head, native/batch projection | Pass | `107.891 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, native linear attention, per-row c1 MoE on linear layers, serial LM-head, native/batch projection | Pass | `92.800 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-native-linear-linearmoe-perrow-full-rowchunk2-selected-c1-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, native/batch projection | Pass | `87.612 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, serial LM-head, selected-c1 projection fallback | Pass | `84.709 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-selectedproj-serial-sampler-local-equality.json` |
+| 6 | rowchunk2 on every full-attention layer, linear-attention rowchunk2, selected-c1 MoE, batched LM-head | Pass | `87.519 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-batched-lmhead-local-equality.json` |
+| 6 | per-row full-attention, per-row linear, selected-c1 MoE, serial LM-head | Pass | `69.802 tok/s` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-linear-full-perrow-moe-selected-c1-serial-sampler-local-equality.json` |
+
+Focused c6 hidden-bisect controls:
+
+| Probe | Result | Artifact |
+| --- | --- | --- |
+| full-attention per-row, native linear batch segments, selected-c1 MoE | Hidden red at layer 2 / generated index 4 | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, native linear batch segments, selected-c1 MoE, forced small-batch shared expert | Pass, no linear-stage drift | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-selectedc1-smallbatch-shared.json` |
+| full-attention per-row, native linear batch segments, per-row c1 MoE on linear layers | Pass, no linear stage drift | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-L1-L4-d4-fullattn-perrow-linear-native-linearmoe-perrow-after-prefixfix.json` |
+| full-attention per-row, linear rowchunk2, selected-c1 MoE | Pass | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, linear rowchunk3, selected-c1 MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+| full-attention per-row, linear rowchunk2, grouped-compact MoE | Hidden red | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json` |
+
+Focused c6 projection control:
+
+| Projection path | Generated-token equality | Decode aggregate | Median step | Artifact |
+| --- | --- | ---: | ---: | --- |
+| native/batch projection candidate | Pass, prefix `[129,129,129,129,129,129]` | `87.612 tok/s` | `68.282 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json` |
+| selected-c1 row-GEMV fallback | Pass, prefix `[129,129,129,129,129,129]` | `84.709 tok/s` | `70.580 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json` |
+
+This adds `gemv_awq_selected_dual_pack8_strided_c6` to the default projection
+dispatch catalog with a `1.0343x` aggregate decode gain over the row-GEMV
+fallback. It is projection evidence only, not a retained/default throughput
+claim for the whole c6 path.
+
+Focused c6 native-linear and shared-expert repair:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-smallbatch-shared-repair-summary.json`.
+
+| Shape | Generated-token equality | Decode aggregate | Median step | Status |
+| --- | --- | ---: | ---: | --- |
+| old c6 bridge: full rowchunk2 + linear rowchunk2 + selected-c1 MoE | Pass | `87.612 tok/s` | `68.282 ms` | diagnostic correctness bridge |
+| new c6 repair: full rowchunk2 + native rows=6 linear + per-row c1 MoE on linear layers | Pass | `92.800 tok/s` | `64.335 ms` | diagnostic correctness bridge |
+| current c6 repair: selected full rowchunk2 layers `3,7,11,15,19,23,27,31` + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert | Pass | `108.929 tok/s` | `54.716 ms` | diagnostic correctness bridge |
+| previous c6 repair: full rowchunk2 on every full-attention layer + native rows=6 linear + selected-c1 MoE with forced small-batch shared expert | Pass | `107.891 tok/s` | `55.293 ms` | diagnostic correctness bridge |
+
+Delta: the current selected-full-rowchunk repair is `+24.33%` aggregate
+decode and `-13.566 ms` median decode step versus the linear-rowchunk bridge,
+and `+17.38%` / `-9.619 ms` versus the per-row-linear-MoE repair. It also
+beats the previous all-full-layer rowchunk repair by `+0.96%` and
+`-0.577 ms/step`. The
+hidden-bisect says the native rows=6 linear layer is bit-clean through
+`mlp_input`; the first drift in the old native-linear probe was the batched
+selected-c1 MoE output, specifically the multi-row packed shared-expert path.
+Forcing only the shared expert back to the small-batch/GEMV path repairs that
+drift without replaying every linear-layer MoE row. Fixing
+`reserve_moe_c1_scratch(prefix=...)` to prefix `shared_out`, `moe_out`, and the
+shared-rotate barrier remains useful for the older row-local replay diagnostic.
+
+The July 9 retained-bench diagnostic selected this legacy-oracle frontier. Keep
+it only for bisection; it cannot populate a schema-2 profile:
+
+- c2/c4/c6/c8: auto-select selected-c1 MoE.
+- c2/c4/c6/c8: load the c-aware projection dispatch catalog; c6 now has a
+  legacy-oracle-green projection candidate.
+- c4/c8: auto-select full-attention rowchunk2 with an empty layer list, meaning
+  every full-attention layer is rowchunked.
+- c6: auto-select full-attention rowchunk2 only on layers
+  `3,7,11,15,19,23,27,31`; no-rowchunk is faster but rejected at token 7, while
+  all-layer rowchunk is green but slower.
+- c6: auto-select native rows=6 linear-attention segments, selected-c1 batch
+  MoE, and forced small-batch shared expert. Explicit
+  `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE=1` keeps the older
+  per-row-linear-MoE bridge available for bisection, and explicit linear-rowchunk
+  env overrides keep the older rowchunk2 bridge available.
+- c3/c5: keep the older selected-layer rowchunk diagnostic scope until
+  local full 512/128 equality evidence replaces it.
+
+Server relevance: the natural c=8 server diagnostic previously split into a
+fast c2 group and a slow c6 group. Recovering c2/c4/c8 direct diagnostics helps,
+and the c6 direct diagnostic now has a correct fallback shape. It is still a
+diagnostic fallback, not a retained/default throughput claim, because it relies
+on selected-c1 MoE and rowchunked full attention and is missing the
+primitive/profiler/baseline retained gates.
+
+Runtime retained-default recheck:
+
+| Probe | Result |
+| --- | --- |
+| Forced OpenAI `n=6` server request, code_python, max_tokens=128, batch window 200 ms, native decode + startup warmup + retained defaults, before the per-row-linear-MoE repair | rows=6 used `moe_decode_path=selected_c1_batch`, `linear_attention_decode_path=native_batch_row_chunks`, `linear_attention_row_chunk_size=2`, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `linear_attention_projection_path=native_batch`; artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json`. |
+| Timing vs prior unrepaired c6 server probe | Decode step changed `56.873 ms -> 64.101 ms`; aggregate backend generated throughput changed `8.67 -> 8.14 tok/s`. This confirms the server-visible correctness shape, but not a speed win. |
+| Runtime default after the small-batch shared-expert repair | `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1` now selects selected-c1 batch MoE plus `moe_c1_shared_expert_decode_path=small_batch_forced` for rows=6 when selected-c1 MoE is active and the shared-expert env override is blank. The first direct retained-bench generated-token equality bridge passed at `107.891 tok/s`, median `55.293 ms`; artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-smallbatch-shared-local-equality.json`. |
+| Forced OpenAI `n=6` server request after the small-batch shared-expert repair | rows=6 used `moe_decode_path=selected_c1_batch`, `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk, `full_attention_decode_path=native_batch_row_chunks`, and `full_attention_row_chunk_size=2`; backend generated throughput `9.16 tok/s`, decode step `51.053 ms`. Compact summary `benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-smallbatch-shared-summary.json`; raw artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-smallbatch-shared.json`. |
+| Runtime default after the selected-full-rowchunk repair | rows=6 now uses full-attention rowchunk2 only on `3,7,11,15,19,23,27,31`, native rows=6 linear attention, selected-c1 batch MoE, and forced small-batch shared expert. Direct generated-token equality passed at `108.929 tok/s`, median `54.716 ms`; no-rowchunk is faster (`114.329 tok/s`, median `52.140 ms`) but rejected at token 7. Summary `benchmarks/results/2026-07-09-hipengine-qwen35-c6-selected-full-rowchunks-summary.json`; direct artifact `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json`. |
+| Forced OpenAI `n=6` server request after the selected-full-rowchunk repair | rows=6 used `moe_decode_path=selected_c1_batch`, `moe_c1_shared_expert_decode_path=small_batch_forced`, no linear rowchunk, `full_attention_decode_path=native_batch_row_chunks`, `full_attention_row_chunk_size=2`, and `full_attention_row_chunk_layers=[3,7,11,15,19,23,27,31]`; backend generated throughput `9.26 tok/s`, decode step `50.434 ms`. Raw artifact `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-selected-full-rowchunks.json`. |
+
+c6 server splitter:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-paro-server-ar-c6-linear-moe-split-summary.json`.
+
+| c6 server shape | MoE | Linear attention | Decode step | Backend generated | Status |
+| --- | --- | --- | ---: | ---: | --- |
+| grouped native-linear | grouped-compact | native segments | `56.873 ms` | `8.67 tok/s` | hidden-red timing diagnostic |
+| selected rowchunk repair | selected-c1 | rowchunk2 | `64.101 ms` | `8.14 tok/s` | current server-visible correctness bridge |
+| selected native-linear | selected-c1 batch | native segments | `51.619 ms` | `9.01 tok/s` | fastest prior timing, but hidden-red because rows=6 selected-c1 batch MoE drifts |
+| selected native-linear + per-row linear MoE | per-row c1 on linear layers | native segments | pending server rerun | pending | direct retained-bench generated-token green at `92.800 tok/s` |
+| selected native-linear + small-batch shared expert + selected full rowchunks | selected-c1 batch with small-batch shared expert | native segments | `50.434 ms` | `9.26 tok/s` | server-visible; full-attention rowchunk diagnostic remains |
+| selected native-linear + small-batch shared expert + all full rowchunks | selected-c1 batch with small-batch shared expert | native segments | `51.053 ms` | `9.16 tok/s` | prior server-visible bridge |
+| grouped rowchunk | grouped-compact | rowchunk2 | `71.877 ms` | `7.59 tok/s` | hidden-red and slower |
+
+This split says the biggest c6 tax was linear rowchunk2, not projection. The
+direct repair shows native rows=6 linear-attention segments are correctness-clean
+when the selected-c1 shared expert uses the small-batch path. The remaining
+server rerun confirms the selected-rowchunk default is visible and recovers the
+c6 server timing to `50.434 ms/step`; the remaining work is to decide whether to
+keep the shared-expert small-batch bypass, fold it into the bundled C dispatcher,
+remove the remaining full-attention rowchunk blocker, or avoid live c6 groups in
+scheduling.
+
+Follow-up c6 C-dispatch folding result:
+
+| Shape | Generated-token equality | Decode aggregate | Median step | Artifact |
+| --- | --- | ---: | ---: | --- |
+| Prior runtime bypass for forced small-batch shared expert | Pass | `108.929 tok/s` | `54.716 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json` |
+| C dispatcher handles forced small-batch shared expert | Pass | `109.205 tok/s` | `54.610 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-smallbatch-shared-selected-full-rowchunks-local-equality.json` |
+| Same-session C dispatcher disabled | Pass | `109.123 tok/s` | `54.672 ms` | `benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-off-smallbatch-shared-selected-full-rowchunks-local-equality.json` |
+
+This folds the small-batch shared-expert correctness route into the bundled
+MoE C dispatcher, but the measured delta is noise-level (`+0.075%` vs the
+same-session C-dispatch-off fallback). Treat it as structural cleanup, not a
+c6 speed win. The active c6 performance blocker remains full-attention
+rowchunking on selected layers or, alternatively, scheduling that avoids c6
+live-row groups.
+
+Follow-up c6 no-rowchunk full-attention rejects:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-full-attn-no-rowchunk-substage-rejects-summary.json`.
+
+| Probe | Generated-token equality | First mismatch | Decode aggregate | Median step | Conclusion |
+| --- | --- | ---: | ---: | ---: | --- |
+| Native rows=6 full attention, no rowchunk, forced full-attention O projection batch GEMV | Red | token 9 | `108.525 tok/s` | `52.264 ms` | O projection alone is not the native c6 divergence. |
+| Same plus dense-context batch-gate override on `3,7,11,15,19,23,27,31` | Red | token 2 | `102.893 tok/s` | `55.530 ms` | Dense-context batch-gate override is slower and correctness-worse. |
+
+These rejects keep the selected full-attention rowchunk2 bridge as the only
+legacy-oracle-green c6 shape in that bisection. The next useful isolation step is a
+full-attention substage hidden-bisect around the selected producer layers,
+especially row interaction or scratch/state aliasing in native rows=6 context
+construction, rather than more O-projection-only probes.
+
+Follow-up c6 hidden-bisect no-rowchunk diagnostics:
+
+Compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-hidden-bisect-no-rowchunk-summary.json`.
+
+The raw hidden traces were `8.3M` to `37M`, so they are kept locally and the
+compact summary records only the diagnosis. The diagnostic script now has
+`--skip-full-context-oracle` and `--skip-linear-state-summary` to avoid the
+expensive NumPy full-context oracle and linear-state summaries when the active
+question is hidden/token/KV source equality.
+
+| Probe | Equality result | Key signal | Conclusion |
+| --- | --- | --- | --- |
+| Full-native no-rowchunk hidden-bisect, L8-L12, trace generated index 9 | hidden red, token green | first full KV sample mismatch at layer 7 key, row 0, sample positions `[0,255,256,519,520]`; positions match; current `batch_source_vs_c1_source` fails at `key_after_prepare` while cache-vs-source is clean | Cache placement/page boundaries are not the lead; layer-7 K/V source production differs before append. |
+| Rowchunk layer 7 only hidden-bisect | hidden red, token green | same layer-7 class of mismatch remains in the shallow trace | Rowchunking layer 7 alone is not enough under the legacy oracle; that bridge still needs selected rowchunks `3,7,11,15,19,23,27,31`. |
+| No-rowchunk generated-token probe with full-attention QKV forced per-row | generated-token red at token 9 | `107.578 tok/s`, median `53.022 ms`; batch token `12` vs c1 token `27` on all rows | Per-row QKV scratch alone is not the repair. |
+| No-rowchunk generated-token probe with full-attention input forced per-row | generated-token red at token 9 | `108.465 tok/s`, median `52.851 ms`; batch token `12` vs c1 token `27` | Per-row input/RMSNorm does not repair the native c6 divergence. |
+| No-rowchunk generated-token probe with full-attention scratch forced per-row | generated-token red at token 2 | `93.031 tok/s`, median `61.943 ms` | Whole-layer c1-like scratch fallback is correctness-worse and too slow. |
+| No-rowchunk generated-token probe with context forced per-row only | generated-token red at token 2 | `100.940 tok/s`, median `56.668 ms` | Per-row context replay does not repair the native c6 divergence. |
+| No-rowchunk generated-token probe with KV append forced per-row | generated-token red at token 9 | `107.954 tok/s`, median `52.424 ms`; same failure shape as baseline | Append mechanics alone are not the repair. |
+| Full-attention rowchunk only on layer 7 | generated-token red at token 7 | `108.616 tok/s`, median `52.486 ms` | Layer 7 rowchunking alone is insufficient. |
+| Full-attention rowchunk on layers `3,7,11,15`, short 16-token full model | generated-token green, diagnostic blocked by missing primitive/profiler gates | `107.413 tok/s`, median `53.301 ms` | Early rowchunks are enough for the short probe, but the 128-token retained gate still requires the eight-layer set `3,7,11,15,19,23,27,31`. |
+| Selected-c1 staged diagnostic: per-row pre-QKV+append, batch context/O/post/MoE | generated-token red at token 9 | `108.209 tok/s`, median `52.714 ms` | Pre-QKV and append are not sufficient; keeping batch context preserves the original failure shape. |
+| Selected-c1 staged diagnostic: per-row pre-QKV+append+context, batch gate/O/post/MoE | generated-token red at token 2 | `100.095 tok/s`, median `57.137 ms` | Moving context per-row changes the failure earlier and is slower. |
+| Selected-c1 staged diagnostic: per-row pre-QKV+append+context+gate, batch O/post/MoE | generated-token red at token 2 | `100.707 tok/s`, median `56.905 ms` | Batch gate is not the token-2 shift; per-row context/gate remains worse than batch context. |
+| Context-only native rowchunk2 on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 2 | `106.596 tok/s`, median `53.834 ms`; batch token `220` vs c1 token `17` | Splitting only the native context kernel is not a substitute for the green full-layer rowchunk bridge. |
+| Context-only native rowchunk2 on all full-attention layers | generated-token red at token 2 | `106.543 tok/s`, median `53.757 ms`; same token `220` vs `17` failure | The context-only split is not just missing a selected layer; the branch is correctness-red in the same way when applied everywhere. |
+| Suffix native rowchunk2 after batch context+gate on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 9 | `106.864 tok/s`, median `53.609 ms`; batch token `12` vs c1 token `27` | Chunking only O/post/MoE after batch context+gate preserves the no-rowchunk failure shape. |
+| Suffix native rowchunk2 including gate on selected full-attention layers `3,7,11,15,19,23,27,31` | generated-token red at token 9 | `107.508 tok/s`, median `53.189 ms`; batch token `12` vs c1 token `27` | Chunking gate/O/post/MoE after batch context also does not repair c6. |
+| Native no-rowchunk vs selected full-layer rowchunk boundary compare, L8 trace generated index 8 | hidden red | layer 3 output drift is sub-tolerance (`0.000122 max_abs`), layer 4 `attn_input` first exceeds tolerance (`0.001953`), layer 7 `attn_input_pre_qkv` reaches `0.0078125` | The layer-7 QKV/KV source mismatch is downstream of rowchunk/no-rowchunk numerical drift that begins at the selected layer-3 full-attention boundary and is amplified by layer 4. |
+| Combined context rowchunk2 plus suffix rowchunk2 including gate on selected layers `3,7,11,15,19,23,27,31` | generated-token red at token 2 | `103.998 tok/s`, median `54.865 ms`; metadata now shows both `native_context_row_chunks` and `native_suffix_row_chunks_include_gate`; batch token `220` vs c1 token `17` | Combining the context and suffix splits is correctly wired, but it is neither a repair nor faster than the current green selected full-layer rowchunk bridge. |
+| Selected full-layer rowchunk4 on layers `3,7,11,15,19,23,27,31` | generated-token red at token 2 | `103.422 tok/s`, median `55.431 ms`; batch token `220` vs c1 token `17` | Larger `4+2` row groups are not a launch-count shortcut; they are correctness-red and slower than the green rowchunk2 bridge. |
+| Selected full-layer rowchunk2 on layers `3,7,11,15,19,23,27,31` with grouped-compact MoE forced | generated-token red at token 4 | `95.345 tok/s`, median `60.251 ms`; batch token `17` vs c1 token `95744` | Grouped-compact MoE remains a correctness and speed regression for the c6 bridge; selected-c1 MoE is still required. |
+
+The staged full-attention substage diagnostics now work with the selected-c1 MoE
+bridge used by the server-visible c6 path. They did not repair no-rowchunk c6:
+pre-QKV+append per-row preserves the token-9 failure, while per-row context
+moves the failure to token 2. The context-only native rowchunk diagnostic also
+rejects at token 2 for both selected-layer and all-layer scopes; compact summary
+artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-context-rowchunk-rejects-summary.json`.
+The suffix rowchunk diagnostic rejects at token 9 whether the gate stays batched
+or is included in each chunk; compact summary artifact:
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.
+The full-layer rowchunk boundary compare and corrected combined context+suffix
+probe are summarized in
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`.
+The direct rowchunk4 shortcut probe is
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-rowchunk4-selected-full-smallbatch-shared-local-equality.json`.
+The grouped-compact MoE shortcut probe is
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-selected-full-rowchunk-grouped-moe-local-equality.json`.
+The remaining full-attention rowchunk tax is not explained by O projection,
+input/RMSNorm, QKV scratch, KV append, batch gate, context-kernel row chunking,
+post-context suffix chunking in isolation, or context+suffix chunking together.
+The legacy-oracle boundary compare points at a numerical boundary rather than a page/KV
+placement bug: layer 3 full-layer rowchunking introduces sub-tolerance output
+drift, layer 4 amplifies it past tolerance, and layer 7 observes downstream QKV
+and KV-source differences. Larger `4+2` row chunks also reject, and grouped
+MoE is both red and slower, so rowchunk2 plus selected-c1 MoE remains the only
+known legacy-oracle-green c6 grouping. This does not establish true-c1
+correctness. The common native c8 divergence takes priority over reducing the
+c6 rowchunk tax.
+
+Next repair order:
+
+1. Reproduce c8 token-index-2 divergence with teacher-forced hidden,
+   linear-state, KV, and token comparisons against single-request c1.
+2. Repair the first common divergence and rerun true-c1 c2-c8 direct gates.
+3. Rerun sparse, ragged, and c8-to-c1 shrinking gates.
+4. Profile only true-c1-green native widths; revisit c6 rowchunk and splitter
+   policies after that profile exists.
+5. Run exact all-choice server accounting before promoting a native route.
+
+Scheduler policy: the schema-1 native profile is rejected because
+`performance_claim=false`, its rows are not `accepted_exact`, and its oracle is
+batch-shaped. Production greedy and sampled batches use exact width-1 sessions.
+A schema-2 profile must match backend, target arch, model snapshot, quant, KV
+dtype, decode-position range, and independent-c1 packed-prefill/sparse/shrinking
+gates. The c6-to-c4+c2 server policy remains default-off behind
+`HIPENGINE_QWEN35_AVOID_C6_GROUPS=1`.
+
+2026-07-11 closure: SOL-P1 rejected direct c6 and both c4/c2 native
+components against independent c1, so SOL-P6 removed this flag and split path.
+The preceding statement is retained only as historical context.
+
+## PARO MTP/DFlash Buckets To Add Next
+
+Add these buckets before porting GGUF verifier mechanisms:
+
+| Bucket | What it should include |
+| --- | --- |
+| `draft_propose` | MTP/DFlash draft layer wall, selected experts, draft token generation, draft KV writes. |
+| `metadata_upload` | Candidate token upload, position metadata, row maps, accepted-prefix metadata. |
+| `target_verify_attention` | Target verifier attention layers, KV append/read, attention output copy. |
+| `target_verify_moe_projection` | Target verifier dense projections, MoE gate/up/down, selected/shared experts. |
+| `lm_head_top1` | LM-head, top-1/top-k sampler, logits readback if any. |
+| `accept_summary` | Accepted-prefix scan, per-row accept counts, reject location, fallback decisions. |
+| `commit_scatter` | Accepted-row hidden/KV/state commit, rejected-tail discard, draft/target state updates. |
+| `graph_replay` | Replay launch wall and replay cache hit/miss per shape. |
+| `host_sync_readback` | Explicit host synchronizations, D2H reads, Python/ctypes boundary waits. |
+| `scheduler_wall` | Queue wait, batching window, slot admission/reclaim, streaming response assembly. |
+
+## Non-Portable GGUF Wins
+
+These should stay as reference evidence, not direct PARO tasks:
+
+- GGUF `Q*_K`/Q8/dp4a/T16 rowtile kernel bodies.
+- GGUF Q6_K rowtile verifier LM-head.
+- llama.cpp compatibility precision trades.
+- GGUF-specific no-copy GDN verifier capture state layout.
+- GGUF MTP direct partial commit semantics, except as a speculative lifecycle
+  pattern to compare against PARO verifier commit/rollback.

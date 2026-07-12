@@ -1,11 +1,13 @@
-"""Poll amdgpu VRAM usage from sysfs.
+"""Poll amdgpu VRAM or GTT usage from sysfs.
 
 The amdgpu kernel driver exposes byte-accurate VRAM accounting under
-``/sys/class/drm/card*/device/mem_info_vram_*``. Every userspace backend that
-allocates VRAM through the kernel driver (HIP, Vulkan, OpenCL) shows up here
+``/sys/class/drm/card*/device/mem_info_{vram,gtt}_*``. Every userspace backend
+that allocates through the kernel driver (HIP, Vulkan, OpenCL) shows up here
 identically, so this single source of truth lets us compare hipEngine,
 llama.cpp HIP, llama.cpp Vulkan, etc. on the same scale without needing a HIP
-context or a per-backend hook.
+context or a per-backend hook. Discrete GPUs normally use ``vram``; UMA APUs
+such as gfx1151 use ``gtt`` because their VRAM sysfs node is only the small
+visible aperture while model allocations live in system-backed GTT.
 
 The reads are microsecond-cheap (no syscall fanout, just one short file
 read), so :class:`VramSampler` can poll down to ~1 ms intervals without
@@ -59,6 +61,26 @@ class AmdgpuCard:
     @property
     def vram_total_gib(self) -> float:
         return self.vram_total_bytes / _GIB
+
+    def memory_used_path(self, domain: str = "vram") -> Path:
+        normalized = _normalize_memory_domain(domain)
+        return self.sysfs_path / f"mem_info_{normalized}_used"
+
+    def memory_total_path(self, domain: str = "vram") -> Path:
+        normalized = _normalize_memory_domain(domain)
+        return self.sysfs_path / f"mem_info_{normalized}_total"
+
+    def memory_total_bytes(self, domain: str = "vram") -> int:
+        normalized = _normalize_memory_domain(domain)
+        if normalized == "vram":
+            return int(self.vram_total_bytes)
+        path = self.memory_total_path(normalized)
+        try:
+            return int(path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError) as error:
+            raise RuntimeError(
+                f"amdgpu {normalized} total is unavailable at {path}"
+            ) from error
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -154,11 +176,26 @@ def read_vram_used(card: AmdgpuCard) -> int:
     return int(card.vram_used_path.read_text().strip())
 
 
+def _normalize_memory_domain(domain: str) -> str:
+    normalized = str(domain).strip().lower()
+    if normalized not in {"vram", "gtt"}:
+        raise ValueError(f"memory domain must be 'vram' or 'gtt', got {domain!r}")
+    return normalized
+
+
+def read_memory_used(card: AmdgpuCard, *, domain: str = "vram") -> int:
+    """Read current bytes in the requested amdgpu memory domain."""
+
+    return int(card.memory_used_path(domain).read_text(encoding="utf-8").strip())
+
+
 @dataclass
 class VramSamples:
     """Result snapshot from a :class:`VramSampler` run."""
 
     card: AmdgpuCard
+    memory_domain: str
+    memory_total_bytes: int
     baseline_bytes: int
     peak_bytes: int
     final_bytes: int
@@ -190,6 +227,9 @@ class VramSamples:
     def to_dict(self, *, include_samples: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "card": self.card.to_dict(),
+            "memory_domain": self.memory_domain,
+            "memory_total_bytes": self.memory_total_bytes,
+            "memory_total_gib": self.memory_total_bytes / _GIB,
             "baseline_bytes": self.baseline_bytes,
             "baseline_gib": self.baseline_gib,
             "peak_bytes": self.peak_bytes,
@@ -240,6 +280,7 @@ class VramSampler:
         interval_ms: float = 50.0,
         *,
         keep_samples: bool = False,
+        memory_domain: str = "vram",
     ) -> None:
         if card is None:
             card = select_card()
@@ -249,7 +290,14 @@ class VramSampler:
         self.interval_ms = float(interval_ms)
         self.interval_seconds = self.interval_ms / 1000.0
         self.keep_samples = bool(keep_samples)
-        self._vram_used_path = str(card.vram_used_path)
+        self.memory_domain = _normalize_memory_domain(memory_domain)
+        self.memory_total_bytes = card.memory_total_bytes(self.memory_domain)
+        self._memory_used_path = str(card.memory_used_path(self.memory_domain))
+        if not Path(self._memory_used_path).exists():
+            raise RuntimeError(
+                f"amdgpu {self.memory_domain} usage is unavailable at "
+                f"{self._memory_used_path}"
+            )
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._baseline: int = 0
@@ -270,7 +318,7 @@ class VramSampler:
     def _read(self) -> int:
         # open/read/close on every call is fine: sysfs files are pseudofiles
         # and mmap/lseek caching does not give us the latest value.
-        with open(self._vram_used_path, "rb") as fp:
+        with open(self._memory_used_path, "rb") as fp:
             return int(fp.read().strip())
 
     def start(self) -> None:
@@ -286,7 +334,9 @@ class VramSampler:
         if self.keep_samples:
             self._samples.append((0.0, self._baseline))
         self._thread = threading.Thread(
-            target=self._run, name="amdgpu-vram-sampler", daemon=True
+            target=self._run,
+            name=f"amdgpu-{self.memory_domain}-sampler",
+            daemon=True,
         )
         self._thread.start()
 
@@ -300,7 +350,7 @@ class VramSampler:
         # poll thread was mid-sleep when the work finished.
         try:
             final = self._read()
-        except OSError:
+        except (OSError, ValueError):
             pass
         else:
             self._final = final
@@ -319,7 +369,7 @@ class VramSampler:
         while not self._stop.is_set():
             try:
                 val = self._read()
-            except OSError:
+            except (OSError, ValueError):
                 val = None
             if val is not None:
                 if val > self._peak:
@@ -347,6 +397,8 @@ class VramSampler:
     def result(self) -> VramSamples:
         return VramSamples(
             card=self.card,
+            memory_domain=self.memory_domain,
+            memory_total_bytes=self.memory_total_bytes,
             baseline_bytes=self._baseline,
             peak_bytes=self._peak,
             final_bytes=self._final,
@@ -386,6 +438,12 @@ def main() -> None:
         action="store_true",
         help="Retain the full sample trace in the JSON output",
     )
+    parser.add_argument(
+        "--memory-domain",
+        choices=("vram", "gtt"),
+        default="vram",
+        help="amdgpu memory domain to sample (default: vram; use gtt on UMA APUs)",
+    )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     args = parser.parse_args()
 
@@ -403,7 +461,10 @@ def main() -> None:
 
     card = select_card(card_name=args.card_name, pci_id=args.pci_id, index=args.index)
     sampler = VramSampler(
-        card=card, interval_ms=args.poll, keep_samples=args.keep_samples
+        card=card,
+        interval_ms=args.poll,
+        keep_samples=args.keep_samples,
+        memory_domain=args.memory_domain,
     )
     sampler.start()
     try:
@@ -417,6 +478,7 @@ def main() -> None:
     else:
         print(
             f"card={card.card_name} pci={card.pci_id} "
+            f"domain={result.memory_domain} "
             f"baseline={result.baseline_gib:.3f} GiB "
             f"peak={result.peak_gib:.3f} GiB "
             f"delta={result.peak_delta_gib:.3f} GiB "

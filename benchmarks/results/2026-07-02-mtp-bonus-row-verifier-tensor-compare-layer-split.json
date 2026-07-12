@@ -1,0 +1,356 @@
+{
+  "available_llamacpp_value_labels": [
+    "llama_stage_h_nextn_1",
+    "llama_stage_h_nextn_2",
+    "process_h_input",
+    "verify_h",
+    "verify_layer_output_0",
+    "verify_layer_output_1",
+    "verify_layer_output_10",
+    "verify_layer_output_20",
+    "verify_layer_output_30",
+    "verify_layer_output_39",
+    "verify_layer_output_5",
+    "verify_pre_output_norm"
+  ],
+  "comparisons": [
+    {
+      "delta": {
+        "cosine": 0.9999901551261454,
+        "first8_diff": [
+          6.848899647593498e-05,
+          -1.3138516806066036e-05,
+          -4.263315349817276e-05,
+          -6.659049540758133e-05,
+          -8.093472570180893e-05,
+          -5.935505032539368e-05,
+          -0.00012280698865652084,
+          -9.661726653575897e-05
+        ],
+        "hipengine_sha256_16": "06ae008f204950c1",
+        "llamacpp_sha256_16": "f7ab638bd298c713",
+        "max_abs_diff": 0.0018870830535888672,
+        "mean_abs_diff": 5.4714690207902095e-05,
+        "rmse": 8.127313884012636e-05,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_0",
+      "llamacpp_label": "verify_layer_output_0",
+      "name": "verify_layer_output_0",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9999803654394052,
+        "first8_diff": [
+          2.436107024550438e-05,
+          -0.00017021875828504562,
+          -7.19856470823288e-05,
+          -0.00026049790903925896,
+          -0.00013015279546380043,
+          7.593538612127304e-06,
+          3.833393566310406e-05,
+          1.1889263987541199e-05
+        ],
+        "hipengine_sha256_16": "ab238876b2888754",
+        "llamacpp_sha256_16": "20e72b413a37fb80",
+        "max_abs_diff": 0.003100872039794922,
+        "mean_abs_diff": 9.797382946885591e-05,
+        "rmse": 0.00014345722555458853,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_1",
+      "llamacpp_label": "verify_layer_output_1",
+      "name": "verify_layer_output_1",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9999431757520942,
+        "first8_diff": [
+          -0.00013929232954978943,
+          3.8117170333862305e-05,
+          0.00022084452211856842,
+          6.539933383464813e-05,
+          -0.0003446768969297409,
+          0.00029674870893359184,
+          0.00045709777623414993,
+          3.289710730314255e-05
+        ],
+        "hipengine_sha256_16": "a5ab914b8a9d0994",
+        "llamacpp_sha256_16": "c04832a468ea65da",
+        "max_abs_diff": 0.004971623420715332,
+        "mean_abs_diff": 0.00029430417149001187,
+        "rmse": 0.00039410746643415127,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_5",
+      "llamacpp_label": "verify_layer_output_5",
+      "name": "verify_layer_output_5",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9998435372671819,
+        "first8_diff": [
+          0.0007504317909479141,
+          0.00014472752809524536,
+          0.0001820940524339676,
+          0.0001378823071718216,
+          0.0002719331532716751,
+          0.0006622083019465208,
+          -0.0006038201972842216,
+          0.0011278213933110237
+        ],
+        "hipengine_sha256_16": "4a08baed44219827",
+        "llamacpp_sha256_16": "f1d81c387e84ee54",
+        "max_abs_diff": 0.0059407055377960205,
+        "mean_abs_diff": 0.0006931281170636794,
+        "rmse": 0.0008984607669288021,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_10",
+      "llamacpp_label": "verify_layer_output_10",
+      "name": "verify_layer_output_10",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9978726578632786,
+        "first8_diff": [
+          -0.003450639545917511,
+          0.009557187557220459,
+          -0.0010958239436149597,
+          -0.013185765594244003,
+          0.004331309348344803,
+          -0.0029035434126853943,
+          0.0027216672897338867,
+          0.0035470277070999146
+        ],
+        "hipengine_sha256_16": "0c1443afde3a28cb",
+        "llamacpp_sha256_16": "ad7192da31bf51da",
+        "max_abs_diff": 0.019402556121349335,
+        "mean_abs_diff": 0.003752681128275981,
+        "rmse": 0.004737358464980491,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_20",
+      "llamacpp_label": "verify_layer_output_20",
+      "name": "verify_layer_output_20",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9985223539991582,
+        "first8_diff": [
+          -0.00025556981563568115,
+          0.0057185739278793335,
+          0.0016201511025428772,
+          -0.001385680865496397,
+          -0.004243761301040649,
+          0.010818883776664734,
+          -0.010394349694252014,
+          0.002853982150554657
+        ],
+        "hipengine_sha256_16": "84ea96c5ad417840",
+        "llamacpp_sha256_16": "f3e8d293eabbea58",
+        "max_abs_diff": 0.025547340512275696,
+        "mean_abs_diff": 0.005980462451589119,
+        "rmse": 0.007509109620356202,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_30",
+      "llamacpp_label": "verify_layer_output_30",
+      "name": "verify_layer_output_30",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9986006020555486,
+        "first8_diff": [
+          -0.0011984482407569885,
+          0.00039190053939819336,
+          0.017946310341358185,
+          0.010717816650867462,
+          0.017936766147613525,
+          0.009766817092895508,
+          0.02063620835542679,
+          -0.014448702335357666
+        ],
+        "hipengine_sha256_16": "98df57ad7527ce90",
+        "llamacpp_sha256_16": "63d79d63d43e9dc3",
+        "max_abs_diff": 0.07921743392944336,
+        "mean_abs_diff": 0.012266000497220375,
+        "rmse": 0.015606416840618451,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_layer_output_39",
+      "llamacpp_label": "verify_layer_output_39",
+      "name": "verify_layer_output_39",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.9986006020555486,
+        "first8_diff": [
+          -0.0011984482407569885,
+          0.00039190053939819336,
+          0.017946310341358185,
+          0.010717816650867462,
+          0.017936766147613525,
+          0.009766817092895508,
+          0.02063620835542679,
+          -0.014448702335357666
+        ],
+        "hipengine_sha256_16": "98df57ad7527ce90",
+        "llamacpp_sha256_16": "63d79d63d43e9dc3",
+        "max_abs_diff": 0.07921743392944336,
+        "mean_abs_diff": 0.012266000497220375,
+        "rmse": 0.015606416840618451,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_pre_output_norm_hidden",
+      "llamacpp_label": "verify_pre_output_norm",
+      "name": "verify_pre_output_norm",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    },
+    {
+      "delta": {
+        "cosine": 0.998551216008161,
+        "first8_diff": [
+          -0.014679253101348877,
+          -0.017314910888671875,
+          0.17428544722497463,
+          0.09800413250923157,
+          0.12375545501708984,
+          0.1142125129699707,
+          0.18189015984535217,
+          -0.1635446548461914
+        ],
+        "hipengine_sha256_16": "b5ad63cdd8c205e6",
+        "llamacpp_sha256_16": "0904fea2920d128e",
+        "max_abs_diff": 0.5343542098999023,
+        "mean_abs_diff": 0.109305900137457,
+        "rmse": 0.13914895001507596,
+        "size": 2048
+      },
+      "hipengine_label": "target_verify_hidden_seed",
+      "llamacpp_label": "verify_h",
+      "name": "verify_h_vs_target_verify_hidden_seed",
+      "position": 75,
+      "row": 2,
+      "token_id": 567
+    }
+  ],
+  "hipengine_cycle": {
+    "accepted_draft_tokens": 2,
+    "cycle": 3,
+    "sampled_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "trace_draft_tokens": [
+      11,
+      567
+    ]
+  },
+  "inputs": {
+    "cycle": 3,
+    "draft_tokens": [
+      11,
+      567
+    ],
+    "hipengine_json": "benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer-split-cycle3.json",
+    "layers": [
+      0,
+      1,
+      5,
+      10,
+      20,
+      30,
+      39
+    ],
+    "llamacpp_jsonl": "benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-split.jsonl",
+    "position": 75,
+    "row": 2,
+    "task_id": 9,
+    "token_id": 567
+  },
+  "kind": "diagnostic",
+  "llamacpp_cycle": {
+    "accepted_draft_tokens": 2,
+    "bonus_token_id": 668,
+    "cycle": 3,
+    "draft_token_ids": [
+      11,
+      567
+    ],
+    "output_token_ids": [
+      11,
+      567,
+      668
+    ],
+    "task_id": 9
+  },
+  "performance_claim": false,
+  "schema": "llamacpp_mtp_verifier_tensor_compare.v1",
+  "status": "completed",
+  "summary": {
+    "first_layer_mean_abs_diff_ge_1e-3": {
+      "mean_abs_diff": 0.003752681128275981,
+      "name": "verify_layer_output_20"
+    },
+    "largest_layer_mean_abs_diff": {
+      "mean_abs_diff": 0.012266000497220375,
+      "name": "verify_layer_output_39"
+    },
+    "pre_output_norm_mean_abs_diff": 0.012266000497220375,
+    "verify_h_mean_abs_diff": 0.109305900137457
+  },
+  "timestamp": "2026-07-02T15:12:28.651794+00:00",
+  "token_margin": {
+    "hipengine": {
+      "8940_minus_668": 0.5193405151367188,
+      "logits": {
+        "668": 25.321857452392578,
+        "8940": 25.841197967529297
+      },
+      "ranks": {
+        "668": 4,
+        "8940": 1
+      },
+      "sampled_token": 8940
+    },
+    "llamacpp": {
+      "8940_minus_668": -0.009613037109375,
+      "logits": {
+        "668": 25.545841217041016,
+        "8940": 25.53622817993164
+      },
+      "ranks": {
+        "668": 1,
+        "8940": 2
+      },
+      "sampled_token": 668
+    },
+    "token_a": 8940,
+    "token_b": 668
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "description": "M2.5 GGUF post-output_norm fp32 hidden-seed tap fixture. Source hidden values are BF16-exact; expected_hidden_seed_fp32 is the CPU-reference RMSNorm output consumed by NextN.",
+  "dtype": "FP32",
+  "eps": 9.999999974752427e-07,
+  "expected_hidden_seed_fp32": [
+    [
+      0.5132001638412476,
+      0.5132001638412476,
+      0.5132001638412476,
+      -0.5132001638412476,
+      -0.19245006144046783,
+      -0.28867509961128235,
+      1.6037505865097046,
+      1.5396004915237427
+    ]
+  ],
+  "finite": true,
+  "hidden_size": 8,
+  "output_norm_weight": [
+    1.0,
+    -0.5,
+    2.0,
+    0.25,
+    -1.5,
+    0.75,
+    1.25,
+    -2.0
+  ],
+  "provenance": "post_output_norm",
+  "rows": 1,
+  "schema": 1,
+  "source": "synthetic_hidden_row_bf16_exact",
+  "source_hidden": [
+    [
+      1.0,
+      -2.0,
+      0.5,
+      -4.0,
+      0.25,
+      -0.75,
+      2.5,
+      -1.5
+    ]
+  ]
+}

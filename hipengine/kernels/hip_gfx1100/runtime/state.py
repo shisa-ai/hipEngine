@@ -24,6 +24,7 @@ _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
+_SYMBOL_RECORD_F32_ROW_INDEXED = "hipengine_record_f32_row_indexed"
 _SYMBOL_UNPACK_VERIFY_CHAIN_DYNAMIC_METADATA = "hipengine_unpack_verify_chain_dynamic_metadata_i64"
 
 
@@ -468,6 +469,51 @@ def record_i64_scalar_indexed(
     _check_launch(runtime, err)
 
 
+def record_f32_row_indexed(
+    value_f32_ptr: int,
+    out_f32_ptr: int,
+    index_i64_ptr: int,
+    cols: int,
+    capacity: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Copy one FP32 row to ``out[index[0], :]`` without advancing ``index``.
+
+    This is paired with :func:`record_i64_scalar_indexed` inside decode graphs:
+    the hidden-seed row is recorded at the current generated-token index, then
+    the token recorder appends the token and advances that shared index.
+    """
+
+    if cols <= 0:
+        raise ValueError("cols must be positive")
+    if capacity <= 0:
+        raise ValueError("capacity must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_RECORD_F32_ROW_INDEXED)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(value_f32_ptr),
+        ctypes.c_void_p(out_f32_ptr),
+        ctypes.c_void_p(index_i64_ptr),
+        ctypes.c_int64(cols),
+        ctypes.c_int64(capacity),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def unpack_verify_chain_dynamic_metadata_i64(
     packed_i64_ptr: int,
     token_ids_i64_ptr: int,
@@ -581,6 +627,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "record_i64_indexed"),
         record_i64_scalar_indexed,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "record_f32_row_indexed"),
+        record_f32_row_indexed,
         replace=replace,
     )
     register(

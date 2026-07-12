@@ -1,0 +1,235 @@
+{
+  "collected_at_unix": 1783456705.0051568,
+  "collector": {
+    "argv": [
+      "benchmarks/micro/collect_env.py",
+      "--pretty",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json"
+    ],
+    "include_device_probes": true,
+    "max_output_chars": 20000,
+    "path": "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/collect_env.py",
+    "timeout_s": 8.0
+  },
+  "commands": {
+    "amdclang_version": {
+      "args": [
+        "amdclang++",
+        "--version"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "git_version": {
+      "args": [
+        "git",
+        "--version"
+      ],
+      "available": true,
+      "path": "/usr/bin/git",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "git version 2.54.0\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "hipcc_version": {
+      "args": [
+        "hipcc",
+        "--version"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/hipcc",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "lspci": {
+      "args": [
+        "lspci",
+        "-nn"
+      ],
+      "available": true,
+      "path": "/usr/bin/lspci",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Root Complex [1022:1507] (rev 02)\n00:00.2 IOMMU [0806]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo IOMMU [1022:1508] (rev 02)\n00:01.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:01.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)\n00:01.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)\n00:02.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:02.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)\n00:02.5 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)\n00:03.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:08.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]\n00:08.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:08.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:08.3 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]\n00:14.0 SMBus [0c05]: Advanced Micro Devices, Inc. [AMD] FCH SMBus Controller [1022:790b] (rev 71)\n00:14.3 ISA bridge [0601]: Advanced Micro Devices, Inc. [AMD] FCH LPC Bridge [1022:790e] (rev 51)\n00:18.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 0 [1022:12b8]\n00:18.1 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 1 [1022:12b9]\n00:18.2 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 2 [1022:12ba]\n00:18.3 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 3 [1022:12bb]\n00:18.4 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 4 [1022:12bc]\n00:18.5 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 5 [1022:12bd]\n00:18.6 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 6 [1022:12be]\n00:18.7 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 7 [1022:12bf]\nbf:00.0 Ethernet controller [0200]: Realtek Semiconductor Co., Ltd. RTL8126 5GbE Controller [10ec:8126] (rev 01)\nc0:00.0 Non-Volatile memory controller [0108]: MAXIO Technology (Hangzhou) Ltd. NVMe SSD Controller MAP1202 (DRAM-less) [1e4b:1202] (rev 01)\nc1:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics] [1002:1586] (rev c1)\nc1:00.1 Audio device [0403]: Advanced Micro Devices, Inc. [AMD/ATI] Radeon High Definition Audio Controller [1002:1640]\nc1:00.2 Encryption controller [1080]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo CCP/ASP [1022:17e0]\nc1:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1587]\nc1:00.6 Audio device [0403]: Advanced Micro Devices, Inc. [AMD] Ryzen HD Audio Controller [1022:15e3]\nc2:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe Dummy Function [1022:150d]\nc2:00.1 Signal processing controller [1180]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo Neural Processing Unit [1022:17f0] (rev 11)\nc3:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1588]\nc3:00.3 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1589]\nc3:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:158b]\nc3:00.5 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158d]\nc3:00.6 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158e]\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "rocm_smi": {
+      "args": [
+        "rocm-smi",
+        "--showproductname",
+        "--showdriverversion"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/rocm-smi",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n============================== Version of System Component ===============================\nDriver version: 7.0.12-1-cachyos\n==========================================================================================\n====================================== Product Info ======================================\nGPU[0]\t\t: Card Series: \t\tRadeon 8060S Graphics\nGPU[0]\t\t: Card Model: \t\t0x1586\nGPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]\nGPU[0]\t\t: Card SKU: \t\tSTRXLGEN\nGPU[0]\t\t: Subsystem ID: \t0x000a\nGPU[0]\t\t: Device Rev: \t\t0xc1\nGPU[0]\t\t: Node ID: \t\t1\nGPU[0]\t\t: GUID: \t\t54630\nGPU[0]\t\t: GFX Version: \t\tgfx1151\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "rocminfo": {
+      "args": [
+        "rocminfo"
+      ],
+      "available": true,
+      "path": "/home/lhl/miniforge3/envs/therock/bin/rocminfo",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "\u001b[37mROCk module is loaded\u001b[0m\n=====================    \nHSA System Attributes    \n=====================    \nRuntime Version:         1.21\nRuntime Ext Version:     1.19\nSystem Timestamp Freq.:  1000.000000MHz\nSig. Max Wait Duration:  18446744073709551615 (0xFFFFFFFFFFFFFFFF) (timestamp count)\nMachine Model:           LARGE                              \nSystem Endianness:       LITTLE                             \nMwaitx:                  DISABLED\nXNACK enabled:           NO\nDMAbuf Support:          YES\nVMM Support:             YES\n\n==========               \nHSA Agents               \n==========               \n*******                  \nAgent 1                  \n*******                  \n  Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Uuid:                    CPU-XX                             \n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Feature:                 None specified                     \n  Profile:                 FULL_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        0(0x0)                             \n  Queue Min Size:          0(0x0)                             \n  Queue Max Size:          0(0x0)                             \n  Queue Type:              MULTI                              \n  Node:                    0                                  \n  Device Type:             CPU                                \n  Cache Info:              \n    L1:                      49152(0xc000) KB                   \n  Chip ID:                 0(0x0)                             \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          64(0x40)                           \n  Max Clock Freq. (MHz):   5187                               \n  BDFID:                   0                                  \n  Internal Node ID:        0                                  \n  Compute Unit:            32                                 \n  SIMDs per CU:            0                                  \n  Shader Engines:          0                                  \n  Shader Arrs. per Eng.:   0                                  \n  WatchPts on Addr. Ranges:1                                  \n  Memory Properties:       \n  Features:                None\n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: FINE GRAINED        \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: EXTENDED FINE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 3                   \n      Segment:                 GLOBAL; FLAGS: KERNARG, FINE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 4                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n  ISA Info:                \n*******                  \nAgent 2                  \n*******                  \n  Name:                    gfx1151                            \n  Uuid:                    GPU-XX                             \n  Marketing Name:          Radeon 8060S Graphics              \n  Vendor Name:             AMD                                \n  Feature:                 KERNEL_DISPATCH                    \n  Profile:                 BASE_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        128(0x80)                          \n  Queue Min Size:          64(0x40)                           \n  Queue Max Size:          131072(0x20000)                    \n  Queue Type:              MULTI                              \n  Node:                    1                                  \n  Device Type:             GPU                                \n  Cache Info:              \n    L1:                      32(0x20) KB                        \n    L2:                      2048(0x800) KB                     \n    L3:                      32768(0x8000) KB                   \n  Chip ID:                 5510(0x1586)                       \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          128(0x80)                          \n  Max Clock Freq. (MHz):   2900                               \n  BDFID:                   49408                              \n  Internal Node ID:        1                                  \n  Compute Unit:            40                                 \n  SIMDs per CU:            2                                  \n  Shader Engines:          2                                  \n  Shader Arrs. per Eng.:   2                                  \n  WatchPts on Addr. Ranges:4                                  \n  Coherent Host Access:    FALSE                              \n  Memory Properties:       APU\n  Features:                KERNEL_DISPATCH \n  Fast F16 Operation:      TRUE                               \n  Wavefront Size:          32(0x20)                           \n  Workgroup Max Size:      1024(0x400)                        \n  Workgroup Max Size per Dimension:\n    x                        1024(0x400)                        \n    y                        1024(0x400)                        \n    z                        1024(0x400)                        \n  Max Waves Per CU:        32(0x20)                           \n  Max Work-item Per CU:    1024(0x400)                        \n  Grid Max Size:           4294967295(0xffffffff)             \n  Grid Max Size per Dimension:\n    x                        2147483647(0x7fffffff)             \n    y                        65535(0xffff)                      \n    z                        65535(0xffff)                      \n  Max fbarriers/Workgrp:   32                                 \n  Packet Processor uCode:: 35                                 \n  SDMA engine uCode::      18                                 \n  IOMMU Support::          None                               \n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    125829120(0x7800000) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:2048KB                             \n      Alloc Alignment:         4KB                                \n      Accessible by all:       FALSE                              \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: EXTENDED FINE GRAINED\n      Size:                    125829120(0x7800000) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:2048KB                             \n      Alloc Alignment:         4KB                                \n      Accessible by all:       FALSE                              \n    Pool 3                   \n      Segment:                 GROUP                              \n      Size:                    64(0x40) KB                        \n      Allocatable:             FALSE                              \n      Alloc Granule:           0KB                                \n      Alloc Recommended Granule:0KB                                \n      Alloc Alignment:         0KB                                \n      Accessible by all:       FALSE                              \n  ISA Info:                \n    ISA 1                    \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Machine Models:          HSA_MACHINE_MODEL_LARGE            \n      Profiles:                HSA_PROFILE_BASE                   \n      Default Rounding Mode:   NEAR                               \n      Default Rounding Mode:   NEAR                               \n      Fast f16:                TRUE                               \n      Workgroup Max Size:      1024(0x400)                        \n      Workgroup Max Size per Dimension:\n        x                        1024(0x400)                        \n        y                        1024(0x400)                        \n        z                        1024(0x400)                        \n      Grid Max Size:           4294967295(0xffffffff)             \n      Grid Max Size per Dimension:\n        x                        2147483647(0x7fffffff)             \n        y                        65535(0xffff)                      \n        z                        65535(0xffff)                      \n      FBarrier Max Size:       32                                 \n    ISA 2                    \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic   \n      Machine Models:          HSA_MACHINE_MODEL_LARGE            \n      Profiles:                HSA_PROFILE_BASE                   \n      Default Rounding Mode:   NEAR                               \n      Default Rounding Mode:   NEAR                               \n      Fast f16:                TRUE                               \n      Workgroup Max Size:      1024(0x400)                        \n      Workgroup Max Size per Dimension:\n        x                        1024(0x400)                        \n        y                        1024(0x400)                        \n        z                        1024(0x400)                        \n      Grid Max Size:           4294967295(0xffffffff)             \n      Grid Max Size per Dimension:\n        x                        2147483647(0x7fffffff)             \n        y                        65535(0xffff)                      \n        z                        65535(0xffff)                      \n      FBarrier Max Size:       32                                 \n*******                  \nAgent 3                  \n*******                  \n  Name:                    aie2p                              \n  Uuid:                    AIE-XX                             \n  Marketing Name:          RyzenAI-npu5                       \n  Vendor Name:             AMD                                \n  Feature:                 AGENT_DISPATCH                     \n  Profile:                 BASE_PROFILE                       \n  Float Round Mode:        NEAR                               \n  Max Queue Number:        1(0x1)                             \n  Queue Min Size:          64(0x40)                           \n  Queue Max Size:          64(0x40)                           \n  Queue Type:              SINGLE                             \n  Node:                    0                                  \n  Device Type:             DSP                                \n  Cache Info:              \n    L2:                      2048(0x800) KB                     \n    L3:                      32768(0x8000) KB                   \n  Chip ID:                 0(0x0)                             \n  ASIC Revision:           0(0x0)                             \n  Cacheline Size:          0(0x0)                             \n  Max Clock Freq. (MHz):   0                                  \n  BDFID:                   0                                  \n  Internal Node ID:        0                                  \n  Compute Unit:            0                                  \n  SIMDs per CU:            0                                  \n  Shader Engines:          0                                  \n  Shader Arrs. per Eng.:   0                                  \n  WatchPts on Addr. Ranges:0                                  \n  Memory Properties:       \n  Features:                AGENT_DISPATCH\n  Pool Info:               \n    Pool 1                   \n      Segment:                 GLOBAL; FLAGS: KERNARG, COARSE GRAINED\n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 2                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    65536(0x10000) KB                  \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:0KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n    Pool 3                   \n      Segment:                 GLOBAL; FLAGS: COARSE GRAINED      \n      Size:                    131157324(0x7d14d4c) KB            \n      Allocatable:             TRUE                               \n      Alloc Granule:           4KB                                \n      Alloc Recommended Granule:4KB                                \n      Alloc Alignment:         4KB                                \n      Accessible by all:       TRUE                               \n  ISA Info:                \n*** Done ***             \n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "uname": {
+      "args": [
+        "uname",
+        "-a"
+      ],
+      "available": true,
+      "path": "/usr/bin/uname",
+      "returncode": 0,
+      "stderr": "",
+      "stderr_truncated": false,
+      "stdout": "Linux gfx1151 7.0.12-1-cachyos #1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000 x86_64 GNU/Linux\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    },
+    "vulkaninfo_summary": {
+      "args": [
+        "vulkaninfo",
+        "--summary"
+      ],
+      "available": true,
+      "path": "/usr/bin/vulkaninfo",
+      "returncode": 0,
+      "stderr": "'DISPLAY' environment variable not set... skipping surface info\n",
+      "stderr_truncated": false,
+      "stdout": "==========\nVULKANINFO\n==========\n\nVulkan Instance Version: 1.4.350\n\n\nInstance Extensions: count = 26\n-------------------------------\nVK_EXT_acquire_drm_display             : extension revision 1\nVK_EXT_acquire_xlib_display            : extension revision 1\nVK_EXT_debug_report                    : extension revision 10\nVK_EXT_debug_utils                     : extension revision 2\nVK_EXT_direct_mode_display             : extension revision 1\nVK_EXT_display_surface_counter         : extension revision 1\nVK_EXT_headless_surface                : extension revision 1\nVK_EXT_layer_settings                  : extension revision 2\nVK_EXT_surface_maintenance1            : extension revision 1\nVK_EXT_swapchain_colorspace            : extension revision 5\nVK_KHR_device_group_creation           : extension revision 1\nVK_KHR_display                         : extension revision 23\nVK_KHR_external_fence_capabilities     : extension revision 1\nVK_KHR_external_memory_capabilities    : extension revision 1\nVK_KHR_external_semaphore_capabilities : extension revision 1\nVK_KHR_get_display_properties2         : extension revision 1\nVK_KHR_get_physical_device_properties2 : extension revision 2\nVK_KHR_get_surface_capabilities2       : extension revision 1\nVK_KHR_portability_enumeration         : extension revision 1\nVK_KHR_surface                         : extension revision 25\nVK_KHR_surface_maintenance1            : extension revision 1\nVK_KHR_surface_protected_capabilities  : extension revision 1\nVK_KHR_wayland_surface                 : extension revision 6\nVK_KHR_xcb_surface                     : extension revision 6\nVK_KHR_xlib_surface                    : extension revision 6\nVK_LUNARG_direct_driver_loading        : extension revision 1\n\nInstance Layers: count = 2\n--------------------------\nVK_LAYER_MESA_anti_lag      Open-source implementation of the VK_AMD_anti_lag extension. 1.4.303  version 1\nVK_LAYER_MESA_device_select Linux device selection layer                                 1.4.303  version 1\n\nDevices:\n========\nGPU0:\n\tapiVersion         = 1.4.348\n\tdriverVersion      = 26.1.2\n\tvendorID           = 0x1002\n\tdeviceID           = 0x1586\n\tdeviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU\n\tdeviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)\n\tdriverID           = DRIVER_ID_MESA_RADV\n\tdriverName         = radv\n\tdriverInfo         = Mesa 26.1.2-arch2.1\n\tconformanceVersion = 1.4.0.0\n\tdeviceUUID         = 00000000-c100-0000-0000-000000000000\n\tdriverUUID         = 414d442d-4d45-5341-2d44-525600000000\n",
+      "stdout_truncated": false,
+      "timed_out": false
+    }
+  },
+  "devices": {
+    "lspci_display_lines": [
+      "00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Root Complex [1022:1507] (rev 02)",
+      "00:00.2 IOMMU [0806]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo IOMMU [1022:1508] (rev 02)",
+      "00:01.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:01.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)",
+      "00:01.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe USB4 Bridge [1022:150a] (rev 02)",
+      "00:02.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:02.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)",
+      "00:02.5 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo GPP Bridge [1022:150b] (rev 02)",
+      "00:03.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:08.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Dummy Host Bridge [1022:1509]",
+      "00:08.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:08.2 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:08.3 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo Internal GPP Bridge to Bus [C:A] [1022:150c]",
+      "00:14.0 SMBus [0c05]: Advanced Micro Devices, Inc. [AMD] FCH SMBus Controller [1022:790b] (rev 71)",
+      "00:14.3 ISA bridge [0601]: Advanced Micro Devices, Inc. [AMD] FCH LPC Bridge [1022:790e] (rev 51)",
+      "00:18.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 0 [1022:12b8]",
+      "00:18.1 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 1 [1022:12b9]",
+      "00:18.2 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 2 [1022:12ba]",
+      "00:18.3 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 3 [1022:12bb]",
+      "00:18.4 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 4 [1022:12bc]",
+      "00:18.5 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 5 [1022:12bd]",
+      "00:18.6 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 6 [1022:12be]",
+      "00:18.7 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Strix Halo Data Fabric; Function 7 [1022:12bf]",
+      "c1:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics] [1002:1586] (rev c1)",
+      "c1:00.1 Audio device [0403]: Advanced Micro Devices, Inc. [AMD/ATI] Radeon High Definition Audio Controller [1002:1640]",
+      "c1:00.2 Encryption controller [1080]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo CCP/ASP [1022:17e0]",
+      "c1:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1587]",
+      "c1:00.6 Audio device [0403]: Advanced Micro Devices, Inc. [AMD] Ryzen HD Audio Controller [1022:15e3]",
+      "c2:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Strix/Strix Halo PCIe Dummy Function [1022:150d]",
+      "c2:00.1 Signal processing controller [1180]: Advanced Micro Devices, Inc. [AMD] Strix/Krackan/Strix Halo Neural Processing Unit [1022:17f0] (rev 11)",
+      "c3:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1588]",
+      "c3:00.3 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:1589]",
+      "c3:00.4 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB 3.1 xHCI [1022:158b]",
+      "c3:00.5 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158d]",
+      "c3:00.6 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] Strix Halo USB4 Host Router [1022:158e]"
+    ],
+    "rocm_smi_lines": [
+      "Driver version: 7.0.12-1-cachyos",
+      "GPU[0]\t\t: Card Series: \t\tRadeon 8060S Graphics",
+      "GPU[0]\t\t: Card Model: \t\t0x1586",
+      "GPU[0]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]",
+      "GPU[0]\t\t: Card SKU: \t\tSTRXLGEN",
+      "GPU[0]\t\t: Subsystem ID: \t0x000a",
+      "GPU[0]\t\t: Device Rev: \t\t0xc1",
+      "GPU[0]\t\t: Node ID: \t\t1",
+      "GPU[0]\t\t: GUID: \t\t54630",
+      "GPU[0]\t\t: GFX Version: \t\tgfx1151"
+    ],
+    "rocminfo_name_gfx_lines": [
+      "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "Vendor Name:             CPU",
+      "Name:                    gfx1151",
+      "Marketing Name:          Radeon 8060S Graphics",
+      "Vendor Name:             AMD",
+      "Name:                    amdgcn-amd-amdhsa--gfx1151",
+      "Name:                    amdgcn-amd-amdhsa--gfx11-generic",
+      "Name:                    aie2p",
+      "Marketing Name:          RyzenAI-npu5",
+      "Vendor Name:             AMD"
+    ],
+    "vulkan_summary_lines": [
+      "VK_LUNARG_direct_driver_loading        : extension revision 1",
+      "GPU0:",
+      "apiVersion         = 1.4.348",
+      "driverVersion      = 26.1.2",
+      "deviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+      "deviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "driverID           = DRIVER_ID_MESA_RADV",
+      "driverName         = radv",
+      "driverInfo         = Mesa 26.1.2-arch2.1",
+      "driverUUID         = 414d442d-4d45-5341-2d44-525600000000"
+    ]
+  },
+  "host": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": null,
+      "PATH": "/home/lhl/.codex/packages/standalone/releases/0.142.5-x86_64-unknown-linux-musl/codex-path:/home/lhl/.codex/tmp/arg0/codex-arg09Lc1C0:/home/lhl/miniforge3/envs/therock/bin:/run/user/1000/fnm_multishells/760215_1783398566796/bin:/home/lhl/miniforge3/condabin:/home/lhl/.local/bin:/home/lhl/.mimocode/bin:/home/lhl/.opencode/bin:/run/user/1000/fnm_multishells/760201_1783398566326/bin:/run/user/1000/fnm_multishells/1735423_1781623428314/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+      "RADV_PERFTEST": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "VK_ICD_FILENAMES": null
+    },
+    "executable": "/home/lhl/miniforge3/envs/therock/bin/python3",
+    "platform": "Linux-7.0.12-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "uname": {
+      "machine": "x86_64",
+      "node": "gfx1151",
+      "processor": "",
+      "release": "7.0.12-1-cachyos",
+      "system": "Linux",
+      "version": "#1 SMP PREEMPT_DYNAMIC Sat, 13 Jun 2026 07:50:52 +0000"
+    }
+  },
+  "kind": "hipengine_micro_environment",
+  "repo": {
+    "branch": "benchmarks-micro",
+    "commit": "38dd67e18b787ba93b7ff2ad2f17572e77401f16",
+    "commit_short": "38dd67e1",
+    "dirty": false,
+    "root": "/home/lhl/hipEngine-benchmarks-micro",
+    "status_short": []
+  },
+  "schema_version": 1
+}

@@ -295,6 +295,210 @@ Older CLI/model-card equivalent:
 Always keep a no-MTP baseline because MTP can lose on small batches or hit loader
 layout issues.
 
+## FP8 on gfx1151 (Strix Halo / Radeon 8060S), 2026-06-17 — LOADS, THEN HANGS
+
+`Qwen/Qwen3.6-35B-A3B-FP8` was tested on the gfx1151 host as a candidate FP8
+route past the W4A16 MoE deadlock blocking GPTQ/AWQ on RDNA 3.5 (see
+`docs/handoff-vllm-gfx1151.md` Task B). **Result: FP8 does NOT run on gfx1151
+either.** The model loads and JIT-compiles, but the dummy `profile_run` hangs
+the same way W4A16 does — a Triton fused-MoE kernel pins the GPU at 100% and
+never returns. The earlier hypothesis that "FP8 has no K-dim unpacking so it
+skips the L1 vector-cache hazard" was correct about that *one* W4A16-specific
+bug but wrong as a general claim: the FP8 block-scaled fused-MoE path hits its
+own non-terminating kernel on gfx1151. The whole Triton fused-MoE family
+appears to hang on gfx1151 regardless of weight dtype (W4A16, W8A8 block-scaled).
+See the "Profile-run hang" section below for the py-spy evidence.
+
+### Required patch: `RocmPlatform.supports_fp8()` excludes gfx1151
+
+Out of the box vLLM HEAD (`470229c37` in the `vllm` conda env) raises
+`NotImplementedError: No FP8 MoE backend supports the deployment configuration.`
+for any FP8 MoE model on gfx1151. The cause is a one-line platform gate, not a
+kernel issue: `vllm/platforms/rocm.py` `RocmPlatform.supports_fp8()` returns
+`on_gfx9() or on_gfx12x()`, omitting gfx11 entirely. **That gate is
+architecturally correct for *native* FP8** (see the ISA section below): native
+FP8 matrix/compute is CDNA3 (`gfx9`, MI300) and RDNA4 (`gfx12xx`) only. Neither
+RDNA3 (`gfx1100`) nor RDNA3.5 (`gfx1151`) has native FP8. The patch below does
+**not** enable native FP8 — it lets Triton fall back to its *emulated* FP8 path
+(fp8 -> fp16 upcast + native `v_wmma_f32_16x16x16_f16`). Patch:
+
+```python
+# vllm/platforms/rocm.py, RocmPlatform.supports_fp8 (was line 843)
+@classmethod
+def supports_fp8(cls) -> bool:
+    # NOTE: gfx11 (RDNA3/3.5) has NO native FP8. This enables Triton's EMULATED
+    # fp8 path (upcast to fp16 + native fp16 WMMA), not a native fp8 datapath.
+    # Correct but no FP8 compute throughput; only saves weight memory/bandwidth.
+    return on_gfx9() or on_gfx12x() or on_gfx1151()
+```
+
+After the patch vLLM selects the **Triton Fp8 MoE backend** (`TritonExperts`;
+AITER is unavailable — see ISA section). The model loads cleanly: 42 safetensors
+shards, **33.58 GiB in ~60 s**, then enters the dummy `profile_run` — where it
+hangs (see below).
+
+### ISA reality: gfx1100 vs gfx1151 FP8, and what AITER targets
+
+Verified directly against the TheRock LLVM assembler (`llvm-mc -mcpu=...`):
+
+| instruction | gfx1100 (RDNA3) | gfx1151 (RDNA3.5) | meaning |
+|---|---|---|---|
+| `v_wmma_f32_16x16x16_f16` | OK | OK | native FP16/BF16 WMMA on both |
+| `v_wmma_f32_16x16x16_fp8` | invalid instr | invalid instr | no FP8 WMMA on either |
+| `v_wmma_f32_16x16x16_f8f6f4` | invalid instr | invalid instr | that mnemonic is CDNA3 (MI300) |
+| `v_cvt_f32_fp8` | not supported on GPU | not supported on GPU | CDNA3/RDNA4 only |
+| `v_cvt_pk_bf8_f32` / `v_cvt_f32_bf8` | not supported on GPU | not supported on GPU | CDNA3/RDNA4 only |
+
+("invalid instruction" = mnemonic absent for that arch; "not supported on this
+GPU" = mnemonic exists but gated to a different arch.) Conclusions:
+
+- **FP8 is emulated, not native, on both RDNA3 and RDNA3.5.** The FP8/RDNA3.5
+  divide does not exist; the real architectural divide for native FP8 is
+  **CDNA3 (`gfx942`/`gfx950`, MI300) + RDNA4 (`gfx12xx`, RX 9000) vs
+everything below**. RDNA3 and RDNA3.5 are in the same (no-native-FP8) bucket.
+- Confirmed by inspecting the Triton-compiled FP8 kernel
+  `_w8a8_triton_block_scaled_mm.amdgcn` for gfx1151: it contains **128 uses of
+  `v_wmma_f32_16x16x16_f16`** and **zero** FP8-specific instructions. Triton
+  upcasts fp8 weights/activations to fp16 in software (8481 fp8-related bit-op
+  mentions = the software cvt), then runs the native fp16 WMMA. So the FP8 model
+  runs correctly but gets **no FP8 compute speedup** — actual math is fp16, plus
+  conversion overhead. The only benefit is weight memory/bandwidth (35B-A3B fits
+  in ~35 GiB vs ~70 GiB for fp16), which is exactly why this path is still
+  useful on a 48 GiB W7900 or 120 GiB Strix Halo.
+- **gfx1100 would behave identically.** It has the same `v_wmma_f32_16x16x16_f16`
+  and the same lack of native fp8. Applying the same `supports_fp8` patch on the
+  gfx1100 host would run the Qwen FP8 checkpoint via the same emulated path.
+- **AITER is not a misnomer and does NOT support RDNA3/3.5.** AITER = *AI Tensor
+  Engine for ROCm* (ROCm/aiter on GitHub), AMD's production operator library
+  (Triton + Composable Kernel + hand-tuned ASM). In vLLM it is hard-gated to
+  `on_mi3xx()` (`vllm/_aiter_ops.py:91` `is_aiter_found_and_supported()` returns
+  `current_platform.is_rocm() and IS_AITER_FOUND and on_mi3xx()`). Its tuned
+  configs target MI300X/MI355X/DeepSeek/Kimi — all CDNA Instinct. It is not
+  built for, and will not load on, gfx1100 or gfx1151 regardless of the
+  `supports_fp8` patch. So on RDNA3/3.5 the only FP8 MoE backend is Triton
+  (emulated); the fast CK/ASM AITER path is structurally unavailable.
+
+### Launch command (gfx1151)
+
+```bash
+source /home/lhl/miniforge3/etc/profile.d/conda.sh; conda activate vllm
+export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
+export VLLM_TARGET_DEVICE=rocm
+export TORCHINDUCTOR_AUTOGRAD_CACHE=0 HSA_NO_SCRATCH_RECLAIM=1
+export PYTHONPATH=/home/lhl/vllm/vllm-main
+
+python3 -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.6-35B-A3B-FP8 \
+  --served-model-name qwen36-fp8 \
+  --language-model-only \
+  --dtype auto \
+  --max-model-len 8192 --max-num-seqs 8 --max-num-batched-tokens 8192 \
+  --gpu-memory-utilization 0.85 \
+  --enforce-eager \
+  --host 127.0.0.1 --port 8008
+```
+
+`--language-model-only` skips the ViT/multimodal stack (avoids the separate
+gfx1151 ViT-SDPA OOM, `docs/handoff-vllm-gfx1151.md` Task A). `--enforce-eager`
+avoids the torch.compile/Inductor graph-capture path on RDNA 3.5.
+
+### First cold compile is slow but not deadlocked
+
+The `profile_run` triggers first-time Triton JIT of the FP8 block-scaled MoE
+GEMMs (`w8a8_triton_block_scaled_mm`) plus the Q8-activation `fused_moe_kernel`.
+py-spy confirms EngineCore is inside the Triton AMD backend `make_amdgcn` ->
+LLVM `translate_to_mir` / `dump_sched_dag` / `translate_to_asm`. Each distinct
+FP8 kernel shape takes **~8 min** to codegen on first run. GPU sits at 0% during
+compile (CPU-bound LLVM); this is expected, not a hang. Progress is visible in
+the log as successive `Using default W8A8 Block FP8 kernel config` / `Using
+default MoE config` warnings, one per new shape.
+
+Results persist to `~/.triton/cache`; subsequent runs of the same model/arch are
+instant. After a full compile the cache holds 326 each of `.ttir/.ttgir/.llir/
+.amdgcn/.hsaco` per kernel.
+
+### `dump_sched_dag` is always-on dead debug overhead
+
+The Triton AMD backend (`triton/backends/amd/compiler.py` v3.7.0) runs **three**
+full LLVM AMDGPU passes per kernel in the default config, when only one is
+needed:
+
+- `compiler.py:472` `llvm.translate_to_mir(...)` -> result assigned to `_` and
+  discarded; only read back if `knobs.amd.swap_mir` is set (it is `None`).
+- `compiler.py:474` `llvm.dump_sched_dag(...)` -> returns `None`, output never
+  read, no `.dot`/`.mir`/`.dag` persisted (checked cache, `/tmp`, cwd).
+- `compiler.py:483` `llvm.translate_to_asm(...)` -> the only real output (the
+  `.hsaco`).
+
+Measured on `_w8a8_triton_block_scaled_mm` (the FP8 MoE GEMM): the `src` IR fed
+to `dump_sched_dag` is **2,507,750 B (2.4 MB)** of post-O3 LLVM IR; the resulting
+AMDGCN is 58,205 lines of asm, so the sched DAG is built over tens of thousands
+of machine instructions. `dump_sched_dag` is a scheduling-heuristic tuning aid
+for compiler engineers; for inference it is pure overhead. There is **no knob**
+to disable it (`knobs.amd` exposes `dump_amdgcn`/`dump_mir`/`swap_mir` but no
+`dump_sched_dag` toggle). Gating lines 472+474 behind `knobs.amd.dump_mir` would
+remove ~1/3 of per-kernel cold-compile time. This only helps the *next* cold
+compile or any new kernel shape; a warmed cache is unaffected.
+
+### Cold compile is single-threaded by nature
+
+During compile EngineCore uses ~1 core (main thread 99% in `R`, one extra
+`python3` thread ~13% is the async engine loop, not the compiler). This is
+fundamental, not a misconfiguration:
+
+- The Triton AMD LLVM codegen is one synchronous call into `libtriton` on the
+  calling thread. `libtriton.so` links `libpthread` but **not** OpenMP
+  (`libgomp`/`libomp` absent). LLVM's `llvm::parallel` framework is linked
+  (`_ZTHN4llvm8parallel11threadIndexE` symbol present) but a single Triton
+  kernel compiles to a single-function module, so there is nothing to
+  parallelize across.
+- No `TRITON_*` env knob or `knobs.amd` field enables parallel codegen.
+- vLLM's `compilation_config` parallel-compile / `compile_threads` machinery
+  applies only to the `torch.compile` / Inductor graph-capture path
+  (`CompilationMode.VLLM_COMPILE`), **not** to the Triton MoE JIT used under
+  `--enforce-eager` + FP8.
+
+So the only real levers for cold-compile cost are: (1) remove the two discarded
+LLVM passes above, (2) keep `~/.triton/cache` warm. There is no way to throw
+more cores at a single kernel's codegen in this stack.
+
+### Profile-run hang (the actual blocker)
+
+Compilation completes and artifacts cache to `~/.triton/cache`, but the dummy
+`profile_run` (run by `determine_available_memory` to size the KV cache) launches
+the emulated FP8 fused-MoE kernels and never returns. Symptoms on the Strix
+Halo host:
+
+- GPU pinned at 100% use for 28+ min with **zero** log progress and only ~67 W
+  package power (low for real dense compute — consistent with a spinning /
+  non-terminating kernel rather than productive work).
+- py-spy on EngineCore shows the main thread blocked in
+  `torch.accelerator.synchronize` <- `_sync_device`
+  <- `profile_run` (`gpu_model_runner.py:6247`) <- `determine_available_memory`.
+  I.e. the forward launched its kernels and is waiting on a GPU sync that never
+  completes.
+- No new `~/.triton/cache` writes during the hang -> compilation is already
+  done; the hang is in kernel execution (the forward), not in JIT.
+
+This is the **same failure class as the W4A16 deadlock**
+(`docs/handoff-vllm-gfx1151.md` Task B), not the W4A16-specific K-dim-unpack bug.
+The whole Triton fused-MoE family (`moe_q_gemm_rdna3.cu`, `fused_moe_kernel`,
+`w8a8_triton_block_scaled_mm`) does not terminate on gfx1151. FP8 is not a
+workaround. Recovery required `pkill -9` of EngineCore + `rocm-smi --gpureset`.
+
+### Bottom line for gfx1151
+
+- FP8 is emulated (fp16 upcast + native fp16 WMMA) on RDNA3/3.5, giving no FP8
+  compute throughput anyway (see ISA section).
+- Even the emulated path does not run: the FP8 fused-MoE kernel hangs the
+  profile_run, same as W4A16. So neither W4A16 nor FP8 Qwen3.6-35B-A3B serves on
+  gfx1151 under vLLM/Triton as of `470229c37`.
+- AITER (the fast CK/ASM path that *might* have working MoE kernels) is
+  `on_mi3xx()`-gated and unavailable on gfx1151 regardless.
+- The remaining live route is **gfx1100 (W7900)** with a *non-Triton* MoE kernel
+  (the upstream `moe_q_gemm_rdna3.cu` path before the Triton rewrite, or a
+  hipEngine-native kernel), not any quant variant on gfx1151.
+
 ## Qwen3.6-35B-A3B model candidates and sizes
 
 Sizes below are approximate GiB of model tensor files (`.safetensors`/`.bin`) as
@@ -477,3 +681,29 @@ Older/stale local and container attempts hit these issues:
   `TORCHINDUCTOR_AUTOGRAD_CACHE=0` or use `--enforce-eager`.
 - If pip wants to replace `torch`/`triton`, stop; use the constraints file from
   the recipe and install the final vLLM wheel with `--no-deps`.
+
+## gfx1151 (Strix Halo) MoE W4A16 Compatibility
+
+Running 35B Mixture-of-Experts (MoE) W4A16 checkpoints (like `Qwen3.6-35B-A3B-GPTQ-Int4` or `Qwen3.6-35B-A3B-AWQ-4bit`) on vLLM natively natively targeting the `gfx1151` Strix Halo APU currently encounters fundamental hardware-level lockups.
+
+### 1. The ViT SDPA OOM
+Qwen 3.5/3.6 architectures default to inheriting from the Vision-Language Model classes in vLLM. Booting the server blindly tries to instantiate a large Vision Transformer (ViT) and allocate KV space for images, instantly causing a 256 GiB VRAM Out-Of-Memory error.
+**Remedy:** Pass the `--language-model-only` flag to the API server to suppress multimodal instantiation.
+
+### 2. The AutoGPTQ Triton Deadlock
+When loading a GPTQ/AWQ MoE model, vLLM's `AutoGPTQ` loader attempts to route to the fast `gptq_marlin_repack` kernel. Because vLLM explicitly rejects ROCm for `MarlinExperts` in `marlin_utils.py`, it falls back to `MoeWNA16Method`, which launches a generic Triton kernel (`invoke_fused_moe_wna16_triton_kernel`).
+**The Issue:** Inside this Triton kernel, the weight tensor pointer is strided using `offs_k[:, None] // 2` to unpack two 4-bit elements per byte. This exact mathematical pattern causes multiple lanes in a warp to emit `tl.load` instructions against the exact same memory address simultaneously. While discrete RDNA3 GPUs (`gfx1100`) handle this gracefully, the L1 vector cache topology on Strix Halo (`gfx1151`) deadlocks. The GPU permanently hangs at 100% utilization during the memory profiling dummy forward pass with no crash log.
+
+### 3. The C++ Native Kernel Bypass
+vLLM possesses a highly-optimized native RDNA3 C++ kernel for MoE W4A16 (`moe_q_gemm_rdna3.cu`). 
+We attempted to bypass the deadlocking Triton compiler entirely by doing the following:
+1. **CMake:** Patched `CMakeLists.txt` to compile `moe_q_gemm_rdna3.cu` for `gfx1151` (it was previously hardcoded exclusively to `gfx1100`).
+2. **AutoGPTQ:** Patched `vllm/model_executor/layers/quantization/auto_gptq.py` to intercept the weights, shuffle them into the expected layout via `ops.gptq_shuffle(..., 4)`, and route the forward pass natively to the C++ kernel.
+3. **Marlin utils:** Overrode `check_moe_marlin_supports_layer` to return `True` for `gfx1151` to prevent AutoGPTQ from aggressively falling back.
+
+**The Final Result:** While the compilation succeeded and the Python bindings correctly routed to the C++ kernel, the exact same GPU deadlock occurred during the dummy forward pass. The C++ kernel uses the identical strided memory access pattern.
+
+### Conclusion
+vLLM is fundamentally blocked at the kernel level for W4A16 MoE operations on `gfx1151` until the AMD/vLLM upstream refactors the specific pointer/memory allocation patterns in `csrc/rocm/moe_q_gemm_rdna3.cu` to accommodate the Strix Halo L1 vector cache topology. 
+
+*(Note: Standard dense models using `TritonW4A16LinearKernel`, such as `Qwen1.5-0.5B-Chat-AWQ`, do not trigger this deadlock and run flawlessly via ROCm passthrough in the `kyuz0` Strix Halo container).*

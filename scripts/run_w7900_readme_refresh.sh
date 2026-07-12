@@ -233,7 +233,8 @@ run_prebuild_hipengine() {
     --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
     --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 \
     --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-    --use-wmma-prefill --use-gemv-decode --compiler-version-file "$HIPCC_VERSION_FILE" \
+    --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
+    --compiler-version-file "$HIPCC_VERSION_FILE" \
     --json "$LOGDIR/prebuild-gguf.json" > "$LOGDIR/prebuild-gguf.log" 2>&1
 }
 
@@ -258,7 +259,7 @@ run_hipengine() {
     --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
     --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
     --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-    --use-wmma-prefill --use-gemv-decode \
+    --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
     --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
     --json "$gguf_json" > "$LOGDIR/hipengine-gguf.log" 2>&1
   compact_readme_sweep_json "$gguf_json"

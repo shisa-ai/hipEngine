@@ -1,0 +1,777 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_forced_target_probe",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T08:07:56.173821+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "6918e1cceff455ba62f24eaa59cd3b3e5b546a1a",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+  "command": {
+    "argv": [
+      "scripts/gguf_mtp_forced_target_probe.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--trace",
+      "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+      "--cycle",
+      "12",
+      "--replay-target-block-verify-mode",
+      "bulk",
+      "--target-block-verify-mode",
+      "bulk",
+      "--top-k",
+      "5",
+      "--candidate-token",
+      "26126",
+      "--output",
+      "benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json"
+    ],
+    "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json"
+  },
+  "route_env": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A": "0",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED": "0",
+    "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR": "0",
+    "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR": "1",
+    "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW": "0",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_X8": "0",
+    "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+    "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+    "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": "0"
+  },
+  "probe": {
+    "cycle": 12,
+    "cycle_index": 12,
+    "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+    "prompt_reasoning": "off",
+    "prompt_tokens": 40,
+    "initial_prev_token": 71093,
+    "initial_prev_position": 40,
+    "prefix_visible_output_tokens": [
+      12305,
+      198,
+      727,
+      10562,
+      87682,
+      1494,
+      40798,
+      25,
+      1103,
+      65342,
+      18078,
+      28649,
+      1411,
+      1103,
+      65342,
+      18078,
+      4891,
+      25,
+      198,
+      262,
+      413,
+      524,
+      26126,
+      25,
+      198,
+      285,
+      460,
+      2958,
+      198,
+      1031,
+      262,
+      653
+    ],
+    "consumed_prefix_tokens": [
+      71093,
+      12305,
+      198,
+      727,
+      10562,
+      87682,
+      1494,
+      40798,
+      25,
+      1103,
+      65342,
+      18078,
+      28649,
+      1411,
+      1103,
+      65342,
+      18078,
+      4891,
+      25,
+      198,
+      262,
+      413,
+      524,
+      26126,
+      25,
+      198,
+      285,
+      460,
+      2958,
+      198,
+      1031,
+      262
+    ],
+    "cycle_prev_token": 653,
+    "cycle_start_seq_position": 72,
+    "verifier_input_tokens": [
+      653,
+      15495,
+      539
+    ],
+    "trace_draft_tokens": [
+      15495,
+      539
+    ],
+    "trace_target_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "trace_output_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "candidate_tokens": [
+      15495,
+      539,
+      1151,
+      26126
+    ]
+  },
+  "result": {
+    "target_block_verify_mode": "bulk",
+    "replay_target_block_verify_mode": "bulk",
+    "target_block_wmma_prefill": false,
+    "prior_cycle_replay": [
+      {
+        "cycle": 0,
+        "start_position": 40,
+        "verifier_input_tokens": [
+          71093,
+          12305,
+          198
+        ],
+        "sampled_tokens": [
+          12305,
+          198,
+          727
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 43,
+        "next_prev_token": 727
+      },
+      {
+        "cycle": 1,
+        "start_position": 43,
+        "verifier_input_tokens": [
+          727,
+          10562,
+          87682
+        ],
+        "sampled_tokens": [
+          10562,
+          87682,
+          1494
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 46,
+        "next_prev_token": 1494
+      },
+      {
+        "cycle": 2,
+        "start_position": 46,
+        "verifier_input_tokens": [
+          1494,
+          40798,
+          25
+        ],
+        "sampled_tokens": [
+          40798,
+          25,
+          1103
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 49,
+        "next_prev_token": 1103
+      },
+      {
+        "cycle": 3,
+        "start_position": 49,
+        "verifier_input_tokens": [
+          1103,
+          8,
+          1411
+        ],
+        "sampled_tokens": [
+          65342,
+          1411,
+          1103
+        ],
+        "accepted_draft_tokens": 0,
+        "consumed_rows": 1,
+        "committed_position": 50,
+        "next_prev_token": 65342
+      },
+      {
+        "cycle": 4,
+        "start_position": 50,
+        "verifier_input_tokens": [
+          65342,
+          18078,
+          28649
+        ],
+        "sampled_tokens": [
+          18078,
+          28649,
+          1411
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 53,
+        "next_prev_token": 1411
+      },
+      {
+        "cycle": 5,
+        "start_position": 53,
+        "verifier_input_tokens": [
+          1411,
+          1103,
+          65342
+        ],
+        "sampled_tokens": [
+          1103,
+          65342,
+          18078
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 56,
+        "next_prev_token": 18078
+      },
+      {
+        "cycle": 6,
+        "start_position": 56,
+        "verifier_input_tokens": [
+          18078,
+          4891,
+          25
+        ],
+        "sampled_tokens": [
+          4891,
+          25,
+          198
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 59,
+        "next_prev_token": 198
+      },
+      {
+        "cycle": 7,
+        "start_position": 59,
+        "verifier_input_tokens": [
+          198,
+          262,
+          4071
+        ],
+        "sampled_tokens": [
+          262,
+          413,
+          198
+        ],
+        "accepted_draft_tokens": 1,
+        "consumed_rows": 2,
+        "committed_position": 61,
+        "next_prev_token": 413
+      },
+      {
+        "cycle": 8,
+        "start_position": 61,
+        "verifier_input_tokens": [
+          413,
+          524,
+          26126
+        ],
+        "sampled_tokens": [
+          524,
+          26126,
+          25
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 64,
+        "next_prev_token": 25
+      },
+      {
+        "cycle": 9,
+        "start_position": 64,
+        "verifier_input_tokens": [
+          25,
+          198,
+          285
+        ],
+        "sampled_tokens": [
+          198,
+          285,
+          460
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 67,
+        "next_prev_token": 460
+      },
+      {
+        "cycle": 10,
+        "start_position": 67,
+        "verifier_input_tokens": [
+          460,
+          2958,
+          198
+        ],
+        "sampled_tokens": [
+          2958,
+          198,
+          1031
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 70,
+        "next_prev_token": 1031
+      },
+      {
+        "cycle": 11,
+        "start_position": 70,
+        "verifier_input_tokens": [
+          1031,
+          262,
+          10300
+        ],
+        "sampled_tokens": [
+          262,
+          653,
+          87682
+        ],
+        "accepted_draft_tokens": 1,
+        "consumed_rows": 2,
+        "committed_position": 72,
+        "next_prev_token": 653
+      }
+    ],
+    "cycle_pending_hidden_seed_summary": {
+      "label": "cycle_pending_hidden_seed",
+      "size": 2048,
+      "sha256_16": "9d8fbd23b1e4142c",
+      "mean": 0.06880278,
+      "rms": 2.45221038,
+      "min": -25.71791458,
+      "max": 30.2832737,
+      "first8": [
+        1.24798143,
+        -0.65332139,
+        -2.51896119,
+        -2.15600419,
+        -2.40259147,
+        1.18129921,
+        -1.67447329,
+        -2.99281764
+      ],
+      "last8": [
+        0.05548009,
+        -0.24125725,
+        -1.28072095,
+        1.16058517,
+        2.54297733,
+        -0.76461589,
+        2.97440767,
+        0.99461085
+      ],
+      "depth": -1,
+      "token_id": 653,
+      "position": 72
+    },
+    "sampled_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "accepted_draft_tokens": 2,
+    "rows": [
+      {
+        "row": 0,
+        "position": 72,
+        "input_token": 653,
+        "sampled_token": 15495,
+        "trace_target_token": 15495,
+        "trace_output_token": 15495,
+        "draft_token_at_depth": 15495,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "060c0d03fc4ea95a",
+          "mean": 0.06754987,
+          "rms": 2.42305314,
+          "min": -15.39306259,
+          "max": 24.63971519,
+          "first8": [
+            0.27304083,
+            3.3795917,
+            2.27445221,
+            -2.87849879,
+            -2.71046805,
+            3.89134336,
+            -1.53926337,
+            0.69007999
+          ],
+          "last8": [
+            1.98329425,
+            0.05159518,
+            -5.78851604,
+            2.56427121,
+            -6.10860062,
+            -0.72305489,
+            2.01349807,
+            -0.21163855
+          ],
+          "depth": 0,
+          "token_id": 653,
+          "position": 72
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 15495,
+            "logit": 26.389497756958008,
+            "margin_from_top": 0.0,
+            "prob": 0.9989399743299704
+          },
+          {
+            "rank": 2,
+            "token_id": 6943,
+            "logit": 18.364227294921875,
+            "margin_from_top": 8.025270462036133,
+            "prob": 0.0003267448228601872
+          },
+          {
+            "rank": 3,
+            "token_id": 13365,
+            "logit": 17.21356964111328,
+            "margin_from_top": 9.175928115844727,
+            "prob": 0.00010339140700545259
+          },
+          {
+            "rank": 4,
+            "token_id": 4980,
+            "logit": 16.738265991210938,
+            "margin_from_top": 9.65123176574707,
+            "prob": 6.427804999635657e-05
+          },
+          {
+            "rank": 5,
+            "token_id": 4091,
+            "logit": 16.713842391967773,
+            "margin_from_top": 9.675655364990234,
+            "prob": 6.272716485442869e-05
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 15495,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 26.389497756958008,
+            "margin_from_top": 0.0,
+            "prob": 0.9989399743299704
+          },
+          {
+            "token_id": 539,
+            "in_vocab": true,
+            "rank": 640,
+            "logit": 8.193113327026367,
+            "margin_from_top": 18.19638442993164,
+            "prob": 1.2501152238251916e-08
+          },
+          {
+            "token_id": 1151,
+            "in_vocab": true,
+            "rank": 1243,
+            "logit": 6.70606803894043,
+            "margin_from_top": 19.683429718017578,
+            "prob": 2.8257548460115133e-09
+          },
+          {
+            "token_id": 26126,
+            "in_vocab": true,
+            "rank": 99,
+            "logit": 11.78724479675293,
+            "margin_from_top": 14.602252960205078,
+            "prob": 4.5484299289808274e-07
+          }
+        ]
+      },
+      {
+        "row": 1,
+        "position": 73,
+        "input_token": 15495,
+        "sampled_token": 539,
+        "trace_target_token": 539,
+        "trace_output_token": 539,
+        "draft_token_at_depth": 539,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "f2f14343bdd99564",
+          "mean": 0.01422229,
+          "rms": 2.28359109,
+          "min": -22.54890251,
+          "max": 20.03075409,
+          "first8": [
+            -3.26150298,
+            0.62168998,
+            -1.53758109,
+            -0.67677909,
+            -1.63694036,
+            4.23833179,
+            0.32117555,
+            0.85317743
+          ],
+          "last8": [
+            0.03277804,
+            -1.41975629,
+            1.11870801,
+            2.18684125,
+            -1.10200465,
+            0.86557597,
+            0.41096571,
+            0.24182622
+          ],
+          "depth": 1,
+          "token_id": 15495,
+          "position": 73
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 539,
+            "logit": 26.196577072143555,
+            "margin_from_top": 0.0,
+            "prob": 0.5450362904272942
+          },
+          {
+            "rank": 2,
+            "token_id": 26126,
+            "logit": 26.01459503173828,
+            "margin_from_top": 0.18198204040527344,
+            "prob": 0.45435114216451494
+          },
+          {
+            "rank": 3,
+            "token_id": 3018,
+            "logit": 18.710384368896484,
+            "margin_from_top": 7.48619270324707,
+            "prob": 0.0003056421447879513
+          },
+          {
+            "rank": 4,
+            "token_id": 279,
+            "logit": 18.24944305419922,
+            "margin_from_top": 7.947134017944336,
+            "prob": 0.00019276534909714162
+          },
+          {
+            "rank": 5,
+            "token_id": 9581,
+            "logit": 16.853759765625,
+            "margin_from_top": 9.342817306518555,
+            "prob": 4.7740989753039665e-05
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 15495,
+            "in_vocab": true,
+            "rank": 9785,
+            "logit": 2.6562561988830566,
+            "margin_from_top": 23.540320873260498,
+            "prob": 3.2583217137297766e-11
+          },
+          {
+            "token_id": 539,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 26.196577072143555,
+            "margin_from_top": 0.0,
+            "prob": 0.5450362904272942
+          },
+          {
+            "token_id": 1151,
+            "in_vocab": true,
+            "rank": 18,
+            "logit": 12.852243423461914,
+            "margin_from_top": 13.34433364868164,
+            "prob": 8.730818334682765e-07
+          },
+          {
+            "token_id": 26126,
+            "in_vocab": true,
+            "rank": 2,
+            "logit": 26.01459503173828,
+            "margin_from_top": 0.18198204040527344,
+            "prob": 0.45435114216451494
+          }
+        ]
+      },
+      {
+        "row": 2,
+        "position": 74,
+        "input_token": 539,
+        "sampled_token": 1151,
+        "trace_target_token": 1151,
+        "trace_output_token": 1151,
+        "draft_token_at_depth": null,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "f81351d7295e766f",
+          "mean": 0.0681235,
+          "rms": 2.47202181,
+          "min": -18.55782127,
+          "max": 15.10564232,
+          "first8": [
+            -3.11001754,
+            -0.76748639,
+            -3.25662374,
+            -0.53197068,
+            -4.70623302,
+            4.60693026,
+            0.48595506,
+            -1.42182481
+          ],
+          "last8": [
+            3.21718788,
+            -0.23694885,
+            -3.33794904,
+            4.946805,
+            1.61400461,
+            1.57898402,
+            -0.59445703,
+            1.17553711
+          ],
+          "depth": 2,
+          "token_id": 539,
+          "position": 74
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 1151,
+            "logit": 30.430957794189453,
+            "margin_from_top": 0.0,
+            "prob": 0.987560608306405
+          },
+          {
+            "rank": 2,
+            "token_id": 279,
+            "logit": 26.032367706298828,
+            "margin_from_top": 4.398590087890625,
+            "prob": 0.012141723964398379
+          },
+          {
+            "rank": 3,
+            "token_id": 5732,
+            "logit": 22.077625274658203,
+            "margin_from_top": 8.35333251953125,
+            "prob": 0.00023267918813444442
+          },
+          {
+            "rank": 4,
+            "token_id": 9581,
+            "logit": 20.107555389404297,
+            "margin_from_top": 10.323402404785156,
+            "prob": 3.2446440476933696e-05
+          },
+          {
+            "rank": 5,
+            "token_id": 1118,
+            "logit": 19.073144912719727,
+            "margin_from_top": 11.357812881469727,
+            "prob": 1.1532628374214748e-05
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 15495,
+            "in_vocab": true,
+            "rank": 6581,
+            "logit": 3.5533125400543213,
+            "margin_from_top": 26.877645254135132,
+            "prob": 2.0977355495631143e-12
+          },
+          {
+            "token_id": 539,
+            "in_vocab": true,
+            "rank": 130,
+            "logit": 11.219820976257324,
+            "margin_from_top": 19.21113681793213,
+            "prob": 4.479948767000793e-09
+          },
+          {
+            "token_id": 1151,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 30.430957794189453,
+            "margin_from_top": 0.0,
+            "prob": 0.987560608306405
+          },
+          {
+            "token_id": 26126,
+            "in_vocab": true,
+            "rank": 26,
+            "logit": 14.727987289428711,
+            "margin_from_top": 15.702970504760742,
+            "prob": 1.4957200618454667e-07
+          }
+        ]
+      }
+    ],
+    "layer_boundary_captures": [],
+    "router_trace_captures": []
+  },
+  "notes": [
+    "Diagnostic only: forced-prefix target verifier score capture, not a performance run.",
+    "Prefix replay consumes initial_prev_token plus prior visible outputs except the final cycle_prev_token, matching scripts/gguf_mtp_bench.py block verifier state.",
+    "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
+    "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
+    "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
+    "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
+    "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
+    "pre_output_norm_hidden_values is emitted only for --raw-pre-output-norm-row diagnostics.",
+    "layer_output_hidden_summaries is emitted only for requested --layer-output-row or --raw-layer-output-row LAYER:ROW diagnostics.",
+    "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
+    "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
+    "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
+    "Layer boundary captures include attn_norm and, for MoE layers, router logits, selected SwigLU/down/weighted sums, shared intermediate/out/gated contribution, host-reconstructed ffn_out_combined_from_components, and post_moe_rounded_from_components.",
+    "router_trace_captures is emitted only for requested --router-trace-row ROW diagnostics and runs one isolated row replay through all layers, capturing per-layer router logits/top-k without perturbing the scored verifier probe.",
+    "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding."
+  ]
+}

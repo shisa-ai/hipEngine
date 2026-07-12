@@ -123,10 +123,10 @@ def test_qwen35_linear_attn_conv_wrappers_validate_before_gpu_load() -> None:
         qwen35_linear_attn_conv_decode_bf16(0, 0, 0, 0, 4, 0)
     with pytest.raises(ValueError, match="channels must be positive"):
         qwen35_linear_attn_conv_decode_fp16(0, 0, 0, 0, 0, 4)
-    with pytest.raises(ValueError, match="tokens >= kernel_size"):
-        qwen35_linear_attn_conv_prefill_f32(0, 0, 0, 0, 2, 4, 4)
-    with pytest.raises(ValueError, match="tokens >= kernel_size"):
-        qwen35_linear_attn_conv_prefill_fp16(0, 0, 0, 0, 2, 4, 4)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_linear_attn_conv_prefill_f32(0, 0, 0, 0, 0, 4, 4)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_linear_attn_conv_prefill_fp16(0, 0, 0, 0, 0, 4, 4)
     with pytest.raises(ValueError, match="segments must be positive"):
         qwen35_linear_attn_conv_prefill_segments_f32(0, 0, 0, 0, 0, 0, 4, 0, 4, 4)
     with pytest.raises(ValueError, match="max_nodes must be positive"):

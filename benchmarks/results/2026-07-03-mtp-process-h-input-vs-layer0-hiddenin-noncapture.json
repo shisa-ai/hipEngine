@@ -1,0 +1,135 @@
+{
+  "available_llamacpp_value_labels": [
+    "draft_next_seed",
+    "process_h_input",
+    "verify_h"
+  ],
+  "boundary_comparisons": [
+    {
+      "delta": {
+        "cosine": 0.05929143312065278,
+        "first8_diff": [
+          0.13607347011566162,
+          3.2047572135925293,
+          2.286111354827881,
+          -3.106952667236328,
+          -2.893862009048462,
+          3.8873589038848877,
+          -1.5834224224090576,
+          0.7953441143035889
+        ],
+        "hipengine_sha256_16": "dd93122db49a87a2",
+        "llamacpp_sha256_16": "6f5e597fe6547adc",
+        "max_abs_diff": 24.546770095825195,
+        "mean_abs_diff": 1.8006330493821228,
+        "rmse": 2.42801720669397,
+        "size": 2048
+      },
+      "hipengine_label": "hidden_in",
+      "hipengine_source": "scored_layer_boundary_captures",
+      "layer": 0,
+      "llamacpp_label": "process_h_input",
+      "name": "hidden_in",
+      "position": 73,
+      "row": 1,
+      "token_id": 15495
+    }
+  ],
+  "comparisons": [],
+  "hipengine_cycle": {
+    "accepted_draft_tokens": 1,
+    "cycle": 12,
+    "sampled_tokens": [
+      15495,
+      26126,
+      1151
+    ],
+    "trace_draft_tokens": [
+      15495,
+      539
+    ]
+  },
+  "inputs": {
+    "boundary_layers": [
+      0
+    ],
+    "boundary_pairs": [
+      {
+        "hipengine": "hidden_in",
+        "llamacpp": "process_h_input",
+        "name": "hidden_in"
+      }
+    ],
+    "boundary_source": "scored",
+    "cycle": 18,
+    "draft_tokens": [
+      15495,
+      539
+    ],
+    "hipengine_json": "benchmarks/results/2026-07-03-mtp-f32selectedintermediate-scored-boundary-l0-l1-noncapture-cycle12.json",
+    "layers": [],
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-hidden-lifecycle-raw.jsonl",
+    "position": 73,
+    "row": 1,
+    "task_id": 9,
+    "token_id": 15495
+  },
+  "kind": "diagnostic",
+  "llamacpp_cycle": {
+    "accepted_draft_tokens": 1,
+    "bonus_token_id": 26126,
+    "cycle": 18,
+    "draft_token_ids": [
+      15495,
+      539
+    ],
+    "output_token_ids": [
+      15495,
+      26126
+    ],
+    "task_id": 9
+  },
+  "performance_claim": false,
+  "schema": "llamacpp_mtp_verifier_tensor_compare.v1",
+  "status": "completed",
+  "summary": {
+    "first_layer_mean_abs_diff_ge_1e-3": null,
+    "largest_boundary_mean_abs_diff": {
+      "layer": 0,
+      "mean_abs_diff": 1.8006330493821228,
+      "name": "hidden_in"
+    },
+    "largest_layer_mean_abs_diff": null,
+    "pre_output_norm_mean_abs_diff": null,
+    "verify_h_mean_abs_diff": null
+  },
+  "timestamp": "2026-07-02T21:24:05.492453+00:00",
+  "token_margin": {
+    "hipengine": {
+      "539_minus_26126": -0.0030269622802734375,
+      "logits": {
+        "26126": 26.05097770690918,
+        "539": 26.047950744628906
+      },
+      "ranks": {
+        "26126": 1,
+        "539": 2
+      },
+      "sampled_token": 26126
+    },
+    "llamacpp": {
+      "539_minus_26126": -0.008962631225585938,
+      "logits": {
+        "26126": 26.10468292236328,
+        "539": 26.095720291137695
+      },
+      "ranks": {
+        "26126": 1,
+        "539": 2
+      },
+      "sampled_token": 26126
+    },
+    "token_a": 539,
+    "token_b": 26126
+  }
+}

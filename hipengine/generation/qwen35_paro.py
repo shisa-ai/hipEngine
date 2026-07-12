@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
+import copy
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
+import time
 from typing import Any, ClassVar
+import uuid
 
+from hipengine.dispatch import NativeBatchWidthProfile, plan_batch_width_partition
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -18,6 +23,7 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PromptInput,
     TokenLogprob,
     register_text_generator,
 )
@@ -38,6 +44,22 @@ from hipengine.runtime.qwen35_paro_runner import (
     _decode_token_cached,
     _select_token,
 )
+from hipengine.runtime.qwen35_paro_batch_width import (
+    DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
+    QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV,
+    load_qwen35_paro_native_batch_width_profile,
+)
+
+
+def _new_timing_batch_id(kind: str) -> str:
+    return f"paro-{str(kind)}-{uuid.uuid4().hex}"
+
+
+def _prompt_ids(model_path: Path, prompt: PromptInput) -> tuple[int, ...]:
+    if not isinstance(prompt, str):
+        return tuple(int(token) for token in prompt)
+    _last_token_id, prompt_ids = _select_token(model_path, prompt, None)
+    return tuple(int(token) for token in prompt_ids)
 
 
 @dataclass
@@ -82,6 +104,7 @@ class Qwen35ParoOneTokenGenerator:
             self.last_generation_outputs = tuple(
                 GenerationOutput(
                     text="",
+                    generated_token_ids=(),
                     finish_details=_finish_details_for_tokens(
                         None,
                         (),
@@ -129,16 +152,75 @@ class Qwen35ParoOneTokenGenerator:
             self.last_generation_outputs = (output,)
             return [output]
         if plan.mode is not SamplingMode.GREEDY_FAST:
+            c1_plan = plan_sampler(
+                request,
+                native_gpu_available=_native_gpu_sampler_route_available(prompt_count=1),
+                native_gpu_requested=_native_gpu_sampler_requested(),
+            )
             self.last_generation_outputs = tuple(
-                self._generate_batch_sampled(
+                self._generate_batch_sampled_true_c1_fallback(
                     runner,
                     request.prompts,
                     request.max_tokens,
                     request=request,
                     ignore_eos=request.ignore_eos,
                     kv_policy=kv_policy,
+                    plan=c1_plan,
                 )
             )
+            return list(self.last_generation_outputs)
+        width_profile = _native_batch_width_profile_for_runner(runner, kv_policy)
+        profile_position_blockers = (
+            ()
+            if width_profile is None or width_profile.blockers
+            else _native_profile_prompt_position_blockers(
+                width_profile,
+                model_path=Path(self.model_path),
+                prompts=request.prompts,
+                max_tokens=request.max_tokens,
+            )
+        )
+        if width_profile is None or width_profile.blockers or profile_position_blockers:
+            outputs = self._generate_batch_true_c1_fallback(
+                runner,
+                request.prompts,
+                request.max_tokens,
+                ignore_eos=request.ignore_eos,
+                kv_policy=kv_policy,
+                sampler_mode=plan.mode.value,
+                deadline_at=request.deadline_at,
+                cancellation_token=request.cancellation_token,
+                profile=width_profile,
+                route_blockers=(
+                    ("no accepted native batch width profile",)
+                    if width_profile is None
+                    else (*width_profile.blockers, *profile_position_blockers)
+                ),
+            )
+            self.last_generation_outputs = tuple(outputs)
+            return list(self.last_generation_outputs)
+        width_plan = plan_batch_width_partition(
+            len(request.prompts),
+            profile=width_profile,
+        )
+        direct_native = (
+            len(width_plan.groups) == 1
+            and width_plan.groups[0].mode == "native"
+            and width_plan.groups[0].width == len(request.prompts)
+        )
+        if not direct_native:
+            outputs = self._generate_batch_isolated_width_groups(
+                runner,
+                request.prompts,
+                request.max_tokens,
+                ignore_eos=request.ignore_eos,
+                kv_policy=kv_policy,
+                sampler_mode=plan.mode.value,
+                deadline_at=request.deadline_at,
+                cancellation_token=request.cancellation_token,
+                profile=width_profile,
+            )
+            self.last_generation_outputs = tuple(outputs)
             return list(self.last_generation_outputs)
         outputs = self._generate_batch(
             runner,
@@ -152,6 +234,461 @@ class Qwen35ParoOneTokenGenerator:
         )
         self.last_generation_outputs = tuple(outputs)
         return list(self.last_generation_outputs)
+
+    def _generate_batch_true_c1_fallback(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompts: tuple[PromptInput, ...],
+        max_tokens: int,
+        *,
+        ignore_eos: bool,
+        kv_policy,
+        sampler_mode: str,
+        deadline_at: float | None,
+        cancellation_token: Any | None,
+        profile: NativeBatchWidthProfile | None,
+        route_blockers: tuple[str, ...],
+    ) -> list[GenerationOutput]:
+        """Run each request through the current single-request graph contract."""
+
+        parent_path = "scheduler_true_c1_fallback"
+        prompt_rows: list[list[int]] = []
+        outputs: list[GenerationOutput] = []
+        generated_ids: dict[int, list[int]] = {}
+        output_parts: dict[int, list[str]] = {}
+        groups: list[dict[str, Any]] = []
+        started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("true-c1")
+        for row_index, prompt in enumerate(prompts):
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
+            prompt_row = [int(token) for token in prompt_ids]
+            if not prompt_row:
+                raise ValueError("prompt produced no tokens")
+            prompt_rows.append(prompt_row)
+            group_started_at = time.perf_counter()
+            output = self._generate_one(
+                runner,
+                prompt,
+                max_tokens,
+                ignore_eos=ignore_eos,
+                kv_policy=kv_policy,
+                sampler_mode=sampler_mode,
+                deadline_at=deadline_at,
+                cancellation_token=cancellation_token,
+            )
+            group_wall_s = time.perf_counter() - group_started_at
+            if output.generated_token_ids is None:
+                raise RuntimeError("true c1 fallback did not expose generated token ids")
+            token_ids = list(output.generated_token_ids)
+            generated_ids[row_index] = token_ids
+            tokenizer = self._session.tokenizer if self._session is not None else None
+            output_parts[row_index] = [
+                _decode_token_cached(tokenizer, token_id)
+                for token_id in token_ids
+            ]
+            relabeled = _relabel_isolated_group_output(
+                output,
+                row_index=row_index,
+                group_index=row_index,
+                group_width=1,
+                parent_path=parent_path,
+                native_compact_prefill=False,
+                native_caware_decode=False,
+                serial_decode_fallback=True,
+            )
+            outputs.append(relabeled)
+            groups.append(
+                {
+                    "group_index": row_index,
+                    "request_offset": row_index,
+                    "planned_mode": "true_c1_graph",
+                    "width": 1,
+                    "wall_ms": group_wall_s * 1000.0,
+                }
+            )
+
+        total_wall_s = time.perf_counter() - started_at
+        request_ids = tuple(range(len(prompts)))
+        prompt_rows_by_request = dict(zip(request_ids, prompt_rows, strict=True))
+        self.last_batch_generation = {
+            "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
+            "batch_size": len(prompts),
+            "request_ids": list(request_ids),
+            "prompt_lengths": [len(row) for row in prompt_rows],
+            "group_widths": [1] * len(prompts),
+            "group_modes": ["true_c1_graph"] * len(prompts),
+            "max_session_width": 1,
+            "groups": groups,
+            "group_count": len(groups),
+            "total_wall_ms": total_wall_s * 1000.0,
+            "timing_scope": "batch",
+            "batch_timing": {"batch_total_ms": total_wall_s * 1000.0},
+            "native_width_profile": None if profile is None else profile.to_json_dict(),
+            "route_blockers": list(dict.fromkeys(route_blockers)),
+            "serial_decode_fallback": True,
+            "native_compact_prefill": False,
+            "native_caware_decode": False,
+            "throughput_claim_eligible": False,
+            "scheduler_token_chunks": _batch_scheduler_token_chunks(
+                request_ids,
+                prompt_rows_by_request,
+                generated_ids,
+                output_parts,
+                tokenizer=self._session.tokenizer if self._session is not None else None,
+                ignore_eos=ignore_eos,
+                stop_token_ids=(),
+                stop_token_sequences=(),
+                max_tokens=max_tokens,
+                sampler_mode=sampler_mode,
+                execution_path=parent_path,
+                native_compact_prefill=False,
+                native_caware_decode=False,
+                serial_decode_fallback=True,
+            ),
+        }
+        return outputs
+
+    def _generate_batch_sampled_true_c1_fallback(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompts: tuple[PromptInput, ...],
+        max_tokens: int,
+        *,
+        request: GenerationRequest,
+        ignore_eos: bool,
+        kv_policy,
+        plan,
+    ) -> list[GenerationOutput]:
+        """Run sampled rows independently until packed prefill is c1-certified."""
+
+        parent_path = "scheduler_sampled_true_c1_fallback"
+        prompt_rows: list[list[int]] = []
+        outputs: list[GenerationOutput] = []
+        groups: list[dict[str, Any]] = []
+        scheduler_chunks: list[dict[str, Any]] = []
+        native_sampler_rows = plan.mode is SamplingMode.GPU_SAMPLE
+        started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("sampled-true-c1")
+        for row_index, prompt in enumerate(prompts):
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
+            prompt_row = [int(token) for token in prompt_ids]
+            if not prompt_row:
+                raise ValueError("prompt produced no tokens")
+            prompt_rows.append(prompt_row)
+            group_started_at = time.perf_counter()
+            chunks = list(
+                self._stream_one_sampled(
+                    runner,
+                    prompt,
+                    max_tokens,
+                    request=request,
+                    row_index=row_index,
+                    ignore_eos=ignore_eos,
+                    kv_policy=kv_policy,
+                    plan=plan,
+                    include_internal_token_logprobs=True,
+                )
+            )
+            group_wall_s = time.perf_counter() - group_started_at
+            if not chunks:
+                raise RuntimeError("sampled true c1 fallback produced no token chunks")
+
+            output_tokens: list[TokenLogprob] = []
+            relabeled_chunks: list[GenerationStreamChunk] = []
+            for token_index, chunk in enumerate(chunks):
+                if len(chunk.token_logprobs) != 1:
+                    raise RuntimeError("sampled true c1 fallback did not retain its token metadata")
+                token = chunk.token_logprobs[0]
+                output_tokens.append(token)
+                telemetry = _relabel_isolated_group_telemetry(
+                    chunk.telemetry,
+                    row_index=row_index,
+                    group_index=row_index,
+                    group_width=1,
+                    parent_path=parent_path,
+                    native_compact_prefill=False,
+                    native_caware_decode=False,
+                    serial_decode_fallback=True,
+                    native_sampler_rows=native_sampler_rows,
+                )
+                public_token_logprobs = (
+                    chunk.token_logprobs
+                    if request.logprobs or int(request.top_logprobs) > 0
+                    else ()
+                )
+                relabeled_chunk = replace(
+                    chunk,
+                    token_logprobs=public_token_logprobs,
+                    telemetry=telemetry,
+                )
+                relabeled_chunks.append(relabeled_chunk)
+                scheduler_chunks.append(
+                    _scheduler_token_chunk_payload(
+                        row_index,
+                        token_index,
+                        token.token_id,
+                        relabeled_chunk,
+                    )
+                )
+            final_chunk = relabeled_chunks[-1]
+            if final_chunk.finish_details is None:
+                raise RuntimeError("sampled true c1 fallback ended without finish details")
+            outputs.append(
+                GenerationOutput(
+                    text="".join(chunk.text for chunk in relabeled_chunks),
+                    token_logprobs=tuple(output_tokens),
+                    generated_token_ids=tuple(token.token_id for token in output_tokens),
+                    finish_details=final_chunk.finish_details,
+                    telemetry=final_chunk.telemetry,
+                )
+            )
+            groups.append(
+                {
+                    "group_index": row_index,
+                    "request_offset": row_index,
+                    "planned_mode": "sampled_true_c1",
+                    "width": 1,
+                    "wall_ms": group_wall_s * 1000.0,
+                }
+            )
+
+        total_wall_s = time.perf_counter() - started_at
+        sampler_plan_metadata = [
+            {
+                "request_id": row_index,
+                "mode": plan.mode.value,
+                "active_processors": list(plan.active_processors),
+                "sampler_fast_path_blockers": list(plan.fast_path_blockers),
+                "native_gpu_available": bool(plan.native_gpu_available),
+                "uses_host_logits": bool(plan.uses_host_logits),
+                **(
+                    {"sampler_fallback_reason": plan.fallback_reason}
+                    if plan.fallback_reason is not None
+                    else {}
+                ),
+            }
+            for row_index in range(len(prompts))
+        ]
+        self.last_batch_generation = {
+            "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
+            "batch_size": len(prompts),
+            "request_ids": list(range(len(prompts))),
+            "prompt_lengths": [len(row) for row in prompt_rows],
+            "group_widths": [1] * len(prompts),
+            "group_modes": ["sampled_true_c1"] * len(prompts),
+            "max_session_width": 1,
+            "groups": groups,
+            "group_count": len(groups),
+            "total_wall_ms": total_wall_s * 1000.0,
+            "timing_scope": "batch",
+            "batch_timing": {"batch_total_ms": total_wall_s * 1000.0},
+            "route_blockers": [
+                "sampled packed prefill and c>N decode are not certified against true c1"
+            ],
+            "sampler_plan_metadata": sampler_plan_metadata,
+            "serial_decode_fallback": True,
+            "native_compact_prefill": False,
+            "native_caware_decode": False,
+            "native_sampler_rows": native_sampler_rows,
+            "throughput_claim_eligible": False,
+            "scheduler_token_chunks": scheduler_chunks,
+        }
+        return outputs
+
+    def _generate_batch_isolated_width_groups(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompts: tuple[PromptInput, ...],
+        max_tokens: int,
+        *,
+        ignore_eos: bool,
+        kv_policy,
+        sampler_mode: str,
+        deadline_at: float | None,
+        cancellation_token: Any | None,
+        profile: NativeBatchWidthProfile,
+    ) -> list[GenerationOutput]:
+        """Complete c>N request groups without creating an over-width session."""
+
+        prompt_rows: list[list[int]] = []
+        for prompt in prompts:
+            raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
+            if not prompt_ids:
+                raise ValueError("prompt produced no tokens")
+            prompt_rows.append([int(token) for token in prompt_ids])
+
+        start_positions = tuple(len(row) for row in prompt_rows)
+        end_positions = tuple(
+            len(row) + max(0, int(max_tokens) - 2)
+            for row in prompt_rows
+        )
+        position_blockers = tuple(
+            dict.fromkeys(
+                (*profile.position_blockers(start_positions), *profile.position_blockers(end_positions))
+            )
+        )
+        if profile.blockers or position_blockers:
+            raise RuntimeError("isolated native width execution requires an accepted in-range profile")
+        requested_plan = plan_batch_width_partition(
+            len(prompts),
+            profile=profile,
+        )
+
+        execution_groups: list[tuple[str, int]] = []
+        for group in requested_plan.groups:
+            if group.mode == "native":
+                execution_groups.append(("native", int(group.width)))
+            else:
+                execution_groups.extend(("serial", 1) for _ in range(int(group.width)))
+        if sum(width for _mode, width in execution_groups) != len(prompts):
+            raise RuntimeError("isolated width plan did not cover every prompt")
+
+        parent_path = "scheduler_isolated_width_groups"
+        outputs: list[GenerationOutput] = []
+        group_metadata: list[dict[str, Any]] = []
+        scheduler_chunks: list[dict[str, Any]] = []
+        cursor = 0
+        started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("isolated-width-groups")
+        for group_index, (planned_mode, width) in enumerate(execution_groups):
+            group_prompts = prompts[cursor : cursor + width]
+            group_offset = cursor
+            cursor += width
+            group_started_at = time.perf_counter()
+            if planned_mode == "native":
+                group_outputs = self._generate_batch(
+                    runner,
+                    group_prompts,
+                    max_tokens,
+                    ignore_eos=ignore_eos,
+                    kv_policy=kv_policy,
+                    sampler_mode=sampler_mode,
+                    deadline_at=deadline_at,
+                    cancellation_token=cancellation_token,
+                )
+            else:
+                group_outputs = self._generate_batch_true_c1_fallback(
+                    runner,
+                    group_prompts,
+                    max_tokens,
+                    ignore_eos=ignore_eos,
+                    kv_policy=kv_policy,
+                    sampler_mode=sampler_mode,
+                    deadline_at=deadline_at,
+                    cancellation_token=cancellation_token,
+                    profile=profile,
+                    route_blockers=("width partition selected a true-c1 serial remainder",),
+                )
+            group_wall_s = time.perf_counter() - group_started_at
+            subgroup = dict(self.last_batch_generation or {})
+            group_timing = (
+                dict(group_outputs[0].telemetry.timing or {})
+                if group_outputs and group_outputs[0].telemetry is not None
+                else {}
+            )
+            group_metadata.append(
+                {
+                    "group_index": group_index,
+                    "request_offset": group_offset,
+                    "planned_mode": planned_mode,
+                    "width": width,
+                    "wall_ms": group_wall_s * 1000.0,
+                    "timing": group_timing,
+                    "execution_path": subgroup.get("path"),
+                    "decode_partition_histogram": subgroup.get("decode_partition_histogram", {}),
+                    "native_caware_decode": bool(subgroup.get("native_caware_decode", False)),
+                    "serial_decode_fallback": bool(subgroup.get("serial_decode_fallback", False)),
+                }
+            )
+            for local_index, output in enumerate(group_outputs):
+                global_index = group_offset + local_index
+                outputs.append(
+                    _relabel_isolated_group_output(
+                        output,
+                        row_index=global_index,
+                        group_index=group_index,
+                        group_width=width,
+                        parent_path=parent_path,
+                    )
+                )
+            scheduler_chunks.extend(
+                _relabel_isolated_scheduler_chunks(
+                    subgroup.get("scheduler_token_chunks", ()),
+                    request_offset=group_offset,
+                    parent_path=parent_path,
+                )
+            )
+        if cursor != len(prompts):
+            raise RuntimeError("isolated width execution did not consume every prompt")
+
+        total_wall_s = time.perf_counter() - started_at
+        total_prefill_ms = sum(
+            float(group["timing"].get("batch_prefill_ms", 0.0))
+            for group in group_metadata
+        )
+        total_decode_ms = sum(
+            float(group["timing"].get("batch_decode_ms", 0.0))
+            for group in group_metadata
+        )
+        serial_fallback = any(
+            group["planned_mode"] == "serial" or group["serial_decode_fallback"]
+            for group in group_metadata
+        )
+        native_complete = bool(group_metadata) and all(
+            group["planned_mode"] == "native" and group["native_caware_decode"]
+            for group in group_metadata
+        )
+        self.last_batch_generation = {
+            "path": parent_path,
+            "batch_id": batch_id,
+            "group_rows": len(prompts),
+            "timing_owner": True,
+            "batch_size": len(prompts),
+            "request_ids": list(range(len(prompts))),
+            "prompt_lengths": [len(row) for row in prompt_rows],
+            "group_widths": [width for _mode, width in execution_groups],
+            "group_modes": [mode for mode, _width in execution_groups],
+            "max_session_width": max(width for _mode, width in execution_groups),
+            "requested_width_plan": requested_plan.to_json_dict(),
+            "position_blockers": list(position_blockers),
+            "groups": group_metadata,
+            "group_count": len(group_metadata),
+            "total_wall_ms": total_wall_s * 1000.0,
+            "timing_scope": "batch",
+            "batch_timing": {
+                "batch_total_ms": total_wall_s * 1000.0,
+                "batch_prefill_ms": total_prefill_ms,
+                "batch_decode_ms": total_decode_ms,
+                "batch_decode_steps": float(max(
+                    (
+                        int(group["timing"].get("batch_decode_steps", 0.0))
+                        for group in group_metadata
+                    ),
+                    default=0,
+                )),
+                "batch_group_decode_steps": float(sum(
+                    int(group["timing"].get("batch_decode_steps", 0.0))
+                    for group in group_metadata
+                )),
+            },
+            "native_width_profile": profile.to_json_dict(),
+            "serial_decode_fallback": serial_fallback,
+            "native_compact_prefill": all(
+                bool(group.get("execution_path", "").startswith("scheduler_native_packed_prefill"))
+                for group in group_metadata
+            ),
+            "native_caware_decode": native_complete,
+            "throughput_claim_eligible": False,
+            "scheduler_token_chunks": scheduler_chunks,
+        }
+        return outputs
 
     def prepare(
         self,
@@ -271,7 +808,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -281,7 +818,7 @@ class Qwen35ParoOneTokenGenerator:
         cancellation_token: Any | None,
     ) -> GenerationOutput:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -295,7 +832,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        next_result = session.prefill_native(prompt_ids, sample=True)
+        next_result = _prefill_prompt(session, prompt_ids, sample=True)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
@@ -304,6 +841,7 @@ class Qwen35ParoOneTokenGenerator:
         if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
             return GenerationOutput(
                 text="".join(generated_text),
+                generated_token_ids=generated_token_ids,
                 finish_details=_finish_details_for_tokens(
                     session.tokenizer,
                     generated_token_ids,
@@ -319,6 +857,7 @@ class Qwen35ParoOneTokenGenerator:
                     row_index=0,
                     sampler_mode=sampler_mode,
                     stop_token_sequences=(),
+                    diagnostics={"generated_token_ids": list(generated_token_ids)},
                 ),
             )
 
@@ -343,6 +882,7 @@ class Qwen35ParoOneTokenGenerator:
                     break
         return GenerationOutput(
             text="".join(generated_text),
+            generated_token_ids=generated_token_ids,
             finish_details=_finish_details_for_tokens(
                 session.tokenizer,
                 generated_token_ids,
@@ -358,13 +898,14 @@ class Qwen35ParoOneTokenGenerator:
                 row_index=0,
                 sampler_mode=sampler_mode,
                 stop_token_sequences=(),
+                diagnostics={"generated_token_ids": list(generated_token_ids)},
             ),
         )
 
     def _generate_one_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -374,7 +915,7 @@ class Qwen35ParoOneTokenGenerator:
         plan,
     ) -> GenerationOutput:
         raise_if_generation_deadline_expired(request)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -397,7 +938,7 @@ class Qwen35ParoOneTokenGenerator:
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
         try:
             raise_if_generation_deadline_expired(request)
-            next_result = session.prefill_native(prompt_ids, sample=True)
+            next_result = _prefill_prompt(session, prompt_ids, sample=True)
             raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
@@ -505,7 +1046,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -517,16 +1058,15 @@ class Qwen35ParoOneTokenGenerator:
         """Generate a prompt list through the scheduler-owned c>N path.
 
         Native compact prefill runs all admitted rows together when their block
-        table shapes permit it. Decode remains the explicit serial slot bridge
-        until native c-aware replay lands; keep ``last_batch_generation`` clear
-        about that so prompt-list batching is not mistaken for a retained c>N
-        throughput path.
+        table shapes permit it. Decode uses only identity-matched native widths;
+        unsupported live widths are covered by native subgroups plus an exact
+        serial remainder. ``last_batch_generation`` records the effective route.
         """
 
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
@@ -553,6 +1093,10 @@ class Qwen35ParoOneTokenGenerator:
         output_parts: dict[int, list[str]] = {request_id: [] for request_id in request_ids}
         generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
         next_token_by_request: dict[int, int] = {}
+        batch_started_at = time.perf_counter()
+        batch_id = _new_timing_batch_id("decode")
+        prefill_wall_s = 0.0
+        decode_wall_s = 0.0
         packed_slabs = scheduler.next_compact_prefill_slabs(
             chunk_size=max(len(row) for row in prompt_rows),
             block_size=getattr(session, "block_size", 256),
@@ -569,7 +1113,9 @@ class Qwen35ParoOneTokenGenerator:
                 }
             )
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+            prefill_started_at = time.perf_counter()
             results = session.prefill_native_packed(slab, sample=True)
+            prefill_wall_s += time.perf_counter() - prefill_started_at
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
             if len(results) != slab.request_count:
                 raise RuntimeError(
@@ -593,6 +1139,11 @@ class Qwen35ParoOneTokenGenerator:
 
         decode_steps = 0
         native_decode_steps = 0
+        native_decode_group_calls = 0
+        serial_decode_row_calls = 0
+        partitioned_decode_steps = 0
+        decode_partition_histogram: Counter[str] = Counter()
+        native_width_profile_payload: dict[str, Any] | None = None
         serial_decode_fallback = False
         while next_token_by_request:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
@@ -613,39 +1164,95 @@ class Qwen35ParoOneTokenGenerator:
                 scheduler.active_batch.slot_for(request_id)
                 for request_id in request_ids_for_step
             ]
-            compact_slots = tuple(slots_for_step) == tuple(range(len(slots_for_step)))
-            use_native_decode = compact_slots and len(slots_for_step) > 1 and hasattr(session, "step_batch_native")
-            if use_native_decode:
-                try:
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    results = session.step_batch_native(
-                        token_ids_for_step,
-                        positions=positions_for_step,
-                        slots=slots_for_step,
-                        sample=True,
-                    )
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    native_decode_steps += 1
-                except NotImplementedError:
+            sorted_step_rows = sorted(
+                zip(
+                    slots_for_step,
+                    request_ids_for_step,
+                    token_ids_for_step,
+                    positions_for_step,
+                    strict=True,
+                ),
+                key=lambda item: item[0],
+            )
+            profile_provider = getattr(session, "native_batch_width_profile", None)
+            profile = profile_provider() if callable(profile_provider) else None
+            if profile is not None and not isinstance(profile, NativeBatchWidthProfile):
+                raise TypeError("native_batch_width_profile() must return NativeBatchWidthProfile or None")
+            if profile is not None:
+                native_width_profile_payload = profile.to_json_dict()
+            plan = plan_batch_width_partition(
+                len(sorted_step_rows),
+                profile=profile if hasattr(session, "step_batch_native") else None,
+                positions=tuple(int(item[3]) for item in sorted_step_rows),
+            )
+            decode_started_at = time.perf_counter()
+            result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult | None] = {}
+            effective_groups: list[tuple[str, int]] = []
+            cursor = 0
+            step_native_rows = 0
+            step_serial_rows = 0
+            for group in plan.groups:
+                group_rows = sorted_step_rows[cursor : cursor + group.width]
+                cursor += group.width
+                group_slots = [int(item[0]) for item in group_rows]
+                group_request_ids = [int(item[1]) for item in group_rows]
+                group_token_ids = [int(item[2]) for item in group_rows]
+                group_positions = [int(item[3]) for item in group_rows]
+                results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
+                if group.mode == "native":
+                    try:
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        results = session.step_batch_native(
+                            group_token_ids,
+                            positions=group_positions,
+                            slots=group_slots,
+                            sample=True,
+                        )
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        native_decode_group_calls += 1
+                        step_native_rows += group.width
+                        effective_groups.append(("native", group.width))
+                    except NotImplementedError:
+                        serial_decode_fallback = True
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        results = session.step_batch_serial(
+                            group_token_ids,
+                            positions=group_positions,
+                            slots=group_slots,
+                            sample=True,
+                        )
+                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                        serial_decode_row_calls += group.width
+                        step_serial_rows += group.width
+                        effective_groups.append(("serial", group.width))
+                else:
                     serial_decode_fallback = True
                     raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
                     results = session.step_batch_serial(
-                        token_ids_for_step,
-                        positions=positions_for_step,
-                        slots=slots_for_step,
+                        group_token_ids,
+                        positions=group_positions,
+                        slots=group_slots,
                         sample=True,
                     )
                     raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            else:
-                serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                results = session.step_batch_serial(
-                    token_ids_for_step,
-                    positions=positions_for_step,
-                    slots=slots_for_step,
-                    sample=True,
-                )
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    serial_decode_row_calls += group.width
+                    step_serial_rows += group.width
+                    effective_groups.append(("serial", group.width))
+                if len(results) != len(group_request_ids):
+                    raise RuntimeError(
+                        f"decode group returned {len(results)} results for {len(group_request_ids)} requests"
+                    )
+                result_by_request.update(zip(group_request_ids, results, strict=True))
+            if cursor != len(sorted_step_rows):
+                raise RuntimeError("decode width partition did not consume every live row")
+            results = tuple(result_by_request[request_id] for request_id in request_ids_for_step)
+            if step_native_rows and step_serial_rows == 0:
+                native_decode_steps += 1
+            if len(effective_groups) > 1:
+                partitioned_decode_steps += 1
+            signature = "+".join(f"{mode}:{width}" for mode, width in effective_groups)
+            decode_partition_histogram[signature] += 1
+            decode_wall_s += time.perf_counter() - decode_started_at
             generated: list[GeneratedToken] = []
             for request_id, result in zip(request_ids_for_step, results, strict=True):
                 if result is None:
@@ -665,16 +1272,45 @@ class Qwen35ParoOneTokenGenerator:
             scheduler_owned=True,
             native_decode=native_decode_complete,
         )
+        batch_execution_payload = (
+            batch_execution.to_json_dict()
+            if callable(getattr(batch_execution, "to_json_dict", None))
+            else None
+        )
+        total_wall_s = time.perf_counter() - batch_started_at
+        batch_timing = {
+            "batch_total_ms": total_wall_s * 1000.0,
+            "batch_prefill_ms": prefill_wall_s * 1000.0,
+            "batch_decode_ms": decode_wall_s * 1000.0,
+            "batch_decode_step_ms_avg": (decode_wall_s * 1000.0 / decode_steps) if decode_steps else 0.0,
+            "batch_decode_steps": float(decode_steps),
+            "batch_native_decode_steps": float(native_decode_steps),
+            "batch_native_decode_group_calls": float(native_decode_group_calls),
+            "batch_serial_decode_rows": float(serial_decode_row_calls),
+        }
+        if partitioned_decode_steps:
+            execution_path = "scheduler_native_packed_prefill_partitioned_decode"
+        elif native_decode_complete:
+            execution_path = "scheduler_native_packed_prefill_native_decode"
+        else:
+            execution_path = "scheduler_native_packed_prefill_serial_decode"
         self.last_batch_generation = {
-            "path": "scheduler_native_packed_prefill_native_decode"
-            if native_decode_complete
-            else "scheduler_native_packed_prefill_serial_decode",
+            "path": execution_path,
+            "batch_id": batch_id,
+            "group_rows": batch_size,
+            "timing_scope": "batch",
+            "timing_owner": True,
             "batch_size": batch_size,
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
             "packed_prefill_slabs": prefill_slab_shapes,
             "decode_steps": decode_steps,
             "native_decode_steps": native_decode_steps,
+            "native_decode_group_calls": native_decode_group_calls,
+            "serial_decode_row_calls": serial_decode_row_calls,
+            "partitioned_decode_steps": partitioned_decode_steps,
+            "decode_partition_histogram": dict(sorted(decode_partition_histogram.items())),
+            "native_width_profile": native_width_profile_payload,
             "serial_decode_fallback": serial_decode_fallback,
             "native_compact_prefill": bool(
                 getattr(batch_execution, "native_compact_prefill", False)
@@ -683,6 +1319,7 @@ class Qwen35ParoOneTokenGenerator:
             "throughput_claim_eligible": bool(
                 getattr(batch_execution, "throughput_claim_eligible", False)
             ),
+            "batch_execution": batch_execution_payload,
         }
         self.last_batch_generation["scheduler_token_chunks"] = _batch_scheduler_token_chunks(
             request_ids,
@@ -703,6 +1340,7 @@ class Qwen35ParoOneTokenGenerator:
         return [
             GenerationOutput(
                 text="".join(output_parts[request_id]),
+                generated_token_ids=generated_ids[request_id],
                 finish_details=_finish_details_for_tokens(
                     session.tokenizer,
                     generated_ids[request_id],
@@ -723,6 +1361,14 @@ class Qwen35ParoOneTokenGenerator:
                     native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
                     native_caware_decode=self.last_batch_generation["native_caware_decode"],
                     serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+                    timing=batch_timing,
+                    timing_scope="batch",
+                    batch_id=batch_id,
+                    group_rows=batch_size,
+                    timing_owner=request_id == request_ids[0],
+                    diagnostics={"batch_execution": batch_execution_payload}
+                    if batch_execution_payload is not None
+                    else None,
                 ),
             )
             for request_id in request_ids
@@ -731,7 +1377,7 @@ class Qwen35ParoOneTokenGenerator:
     def _generate_batch_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompts: tuple[str, ...],
+        prompts: tuple[PromptInput, ...],
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -748,7 +1394,7 @@ class Qwen35ParoOneTokenGenerator:
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
             raise_if_generation_deadline_expired(request)
-            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            prompt_ids = _prompt_ids(Path(self.model_path), prompt)
             raise_if_generation_deadline_expired(request)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
@@ -952,6 +1598,11 @@ class Qwen35ParoOneTokenGenerator:
             configure_rows(None, None)
 
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=False)
+        batch_execution_payload = (
+            batch_execution.to_json_dict()
+            if callable(getattr(batch_execution, "to_json_dict", None))
+            else None
+        )
         self.last_batch_generation = {
             "path": sampled_path,
             "batch_size": batch_size,
@@ -965,6 +1616,7 @@ class Qwen35ParoOneTokenGenerator:
             "native_caware_decode": False,
             "native_sampler_rows": use_native_sampler_rows,
             "throughput_claim_eligible": False,
+            "batch_execution": batch_execution_payload,
             "sampler_plan_metadata": [dict(row) for row in sampler_plan_metadata],
         }
         self.last_batch_generation["scheduler_token_chunks"] = _sampled_batch_scheduler_token_chunks(
@@ -1023,6 +1675,9 @@ class Qwen35ParoOneTokenGenerator:
                         native_caware_decode=self.last_batch_generation["native_caware_decode"],
                         serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
                         native_sampler_rows=self.last_batch_generation["native_sampler_rows"],
+                        diagnostics={"batch_execution": batch_execution_payload}
+                        if batch_execution_payload is not None
+                        else None,
                     ),
                 )
             )
@@ -1031,7 +1686,7 @@ class Qwen35ParoOneTokenGenerator:
     def _stream_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         ignore_eos: bool,
@@ -1040,7 +1695,7 @@ class Qwen35ParoOneTokenGenerator:
         cancellation_token: Any | None,
     ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -1052,7 +1707,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-        next_result = session.prefill_native(prompt_ids, sample=True)
+        next_result = _prefill_prompt(session, prompt_ids, sample=True)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
@@ -1125,7 +1780,7 @@ class Qwen35ParoOneTokenGenerator:
     def _stream_one_sampled(
         self,
         runner: Qwen35ParoNextTokenRunner,
-        prompt: str,
+        prompt: PromptInput,
         max_tokens: int,
         *,
         request: GenerationRequest,
@@ -1133,9 +1788,10 @@ class Qwen35ParoOneTokenGenerator:
         ignore_eos: bool,
         kv_policy,
         plan,
+        include_internal_token_logprobs: bool = False,
     ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(request)
-        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        prompt_ids = _prompt_ids(Path(self.model_path), prompt)
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
@@ -1157,7 +1813,7 @@ class Qwen35ParoOneTokenGenerator:
         live_phase = None if state.thinking_budget is not None else "answer"
         try:
             raise_if_generation_deadline_expired(request)
-            next_result = session.prefill_native(prompt_ids, sample=True)
+            next_result = _prefill_prompt(session, prompt_ids, sample=True)
             raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
@@ -1177,7 +1833,11 @@ class Qwen35ParoOneTokenGenerator:
             )
             yield GenerationStreamChunk(
                 next_result.token_text,
-                token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, next_result, sampling_request),
+                token_logprobs=(
+                    (_token_logprob_from_step(session.tokenizer, next_result),)
+                    if include_internal_token_logprobs
+                    else _stream_token_logprobs_from_step(session.tokenizer, next_result, sampling_request)
+                ),
                 finish_details=(
                     _finish_details_for_tokens(
                         session.tokenizer,
@@ -1234,7 +1894,11 @@ class Qwen35ParoOneTokenGenerator:
                 )
                 yield GenerationStreamChunk(
                     result.token_text,
-                    token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, result, sampling_request),
+                    token_logprobs=(
+                        (_token_logprob_from_step(session.tokenizer, result),)
+                        if include_internal_token_logprobs
+                        else _stream_token_logprobs_from_step(session.tokenizer, result, sampling_request)
+                    ),
                     finish_details=(
                         _finish_details_for_tokens(
                             session.tokenizer,
@@ -1297,7 +1961,7 @@ class Qwen35ParoOneTokenGenerator:
         )
         batch_size = max(1, int(max_batch_size))
         capacity_ok = self._session_capacity >= max_sequence_length or bool(auto_context_length)
-        batch_ok = self._session_batch_size >= batch_size
+        batch_ok = self._session_batch_size == batch_size
         if (
             self._session is None
             or not capacity_ok
@@ -1424,6 +2088,7 @@ def _generation_output_from_steps(
     return GenerationOutput(
         text="".join(step.token_text for step in steps),
         token_logprobs=tokens,
+        generated_token_ids=tuple(token.token_id for token in tokens),
         finish_details=finish_details,
         telemetry=telemetry,
     )
@@ -1640,9 +2305,19 @@ def _telemetry_for_tokens(
     native_caware_decode: bool | None = None,
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool | None = None,
+    timing: dict[str, float] | None = None,
+    timing_scope: str | None = None,
+    batch_id: str | None = None,
+    group_rows: int | None = None,
+    timing_owner: bool | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
+    if timing is not None and timing_scope is None:
+        timing_scope = "choice"
+        group_rows = 1 if group_rows is None else int(group_rows)
+        timing_owner = True if timing_owner is None else bool(timing_owner)
     return GenerationTelemetry.from_decode_counts(
         request_id=request_id,
         row_index=row_index,
@@ -1674,6 +2349,12 @@ def _telemetry_for_tokens(
         native_caware_decode=native_caware_decode,
         serial_decode_fallback=serial_decode_fallback,
         native_sampler_rows=native_sampler_rows,
+        timing=timing,
+        timing_scope=timing_scope,
+        batch_id=batch_id,
+        group_rows=group_rows,
+        timing_owner=timing_owner,
+        diagnostics=diagnostics,
     )
 
 
@@ -1815,6 +2496,37 @@ def _native_gpu_sampler_requested() -> bool:
     return _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER", default=True)
 
 
+def _prefill_prompt(session: Any, token_ids: tuple[int, ...] | list[int], *, sample: bool) -> Any:
+    """Prefill a prompt, using exact c1 steps below the native conv width."""
+
+    tokens = tuple(int(token_id) for token_id in token_ids)
+    if not tokens:
+        raise ValueError("prompt produced no tokens")
+    min_native_tokens = max(
+        1,
+        int(getattr(getattr(session, "config", None), "linear_conv_kernel_dim", 1) or 1),
+    )
+    if len(tokens) >= min_native_tokens:
+        return session.prefill_native(tokens, sample=sample)
+
+    result = None
+    final_position = len(tokens) - 1
+    for position, token_id in enumerate(tokens):
+        result = session.step(
+            token_id,
+            position=position,
+            sample=bool(sample and position == final_position),
+        )
+    if hasattr(session, "last_prefill_execution"):
+        session.last_prefill_execution = {
+            "path": "short_prompt_serial_c1",
+            "tokens": len(tokens),
+            "full_native": False,
+            "native_min_tokens": min_native_tokens,
+        }
+    return result
+
+
 def _session_capacity_for(required_sequence_length: int) -> int:
     """Return a reusable session capacity for a request.
 
@@ -1849,6 +2561,143 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _native_batch_width_profile_for_runner(
+    runner: Qwen35ParoNextTokenRunner,
+    kv_policy: Any,
+) -> NativeBatchWidthProfile | None:
+    if not _env_flag("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS") or not _env_flag(
+        "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+    ):
+        return None
+    artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
+    if artifact is None or not artifact.strip():
+        artifact = DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+    return load_qwen35_paro_native_batch_width_profile(
+        artifact.strip(),
+        backend=runner.backend,
+        target_arch=runner.target_arch,
+        model_path=runner.model,
+        kv_dtype=kv_policy.storage_dtype.value,
+    )
+
+
+def _native_profile_prompt_position_blockers(
+    profile: NativeBatchWidthProfile,
+    *,
+    model_path: Path,
+    prompts: tuple[PromptInput, ...],
+    max_tokens: int,
+) -> tuple[str, ...]:
+    starts: list[int] = []
+    ends: list[int] = []
+    for prompt in prompts:
+        prompt_ids = _prompt_ids(model_path, prompt)
+        starts.append(len(prompt_ids))
+        ends.append(len(prompt_ids) + max(0, int(max_tokens) - 2))
+    return tuple(
+        dict.fromkeys(
+            (
+                *profile.position_blockers(tuple(starts)),
+                *profile.position_blockers(tuple(ends)),
+            )
+        )
+    )
+
+
+def _relabel_isolated_group_output(
+    output: GenerationOutput,
+    *,
+    row_index: int,
+    group_index: int,
+    group_width: int,
+    parent_path: str,
+    native_compact_prefill: bool | None = None,
+    native_caware_decode: bool | None = None,
+    serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool | None = None,
+) -> GenerationOutput:
+    telemetry = _relabel_isolated_group_telemetry(
+        output.telemetry,
+        row_index=row_index,
+        group_index=group_index,
+        group_width=group_width,
+        parent_path=parent_path,
+        native_compact_prefill=native_compact_prefill,
+        native_caware_decode=native_caware_decode,
+        serial_decode_fallback=serial_decode_fallback,
+        native_sampler_rows=native_sampler_rows,
+    )
+    if telemetry is None:
+        return output
+    return replace(output, telemetry=telemetry)
+
+
+def _relabel_isolated_group_telemetry(
+    telemetry: GenerationTelemetry | None,
+    *,
+    row_index: int,
+    group_index: int,
+    group_width: int,
+    parent_path: str,
+    native_compact_prefill: bool | None = None,
+    native_caware_decode: bool | None = None,
+    serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool | None = None,
+) -> GenerationTelemetry | None:
+    if telemetry is None:
+        return None
+    decode_updates: dict[str, Any] = {
+        "request_id": str(row_index),
+        "row_index": row_index,
+        "execution_path": parent_path,
+    }
+    for name, value in (
+        ("native_compact_prefill", native_compact_prefill),
+        ("native_caware_decode", native_caware_decode),
+        ("serial_decode_fallback", serial_decode_fallback),
+        ("native_sampler_rows", native_sampler_rows),
+    ):
+        if value is not None:
+            decode_updates[name] = value
+    decode_state = replace(telemetry.decode_state, **decode_updates)
+    diagnostics = dict(telemetry.diagnostics or {})
+    diagnostics["isolated_width_group"] = {
+        "group_index": int(group_index),
+        "group_width": int(group_width),
+        "timing_scope": "group",
+    }
+    return replace(
+        telemetry,
+        decode_state=decode_state,
+        diagnostics=diagnostics,
+    )
+
+
+def _relabel_isolated_scheduler_chunks(
+    chunks: Any,
+    *,
+    request_offset: int,
+    parent_path: str,
+) -> list[dict[str, Any]]:
+    relabeled: list[dict[str, Any]] = []
+    for source in chunks:
+        chunk = copy.deepcopy(source)
+        local_request_id = int(chunk["request_id"])
+        request_id = int(request_offset) + local_request_id
+        chunk["request_id"] = request_id
+        chunk_payload = chunk.get("chunk")
+        if isinstance(chunk_payload, dict):
+            telemetry = chunk_payload.get("telemetry")
+            if isinstance(telemetry, dict):
+                decode_state = telemetry.get("decode_state")
+                if isinstance(decode_state, dict):
+                    decode_state["request_id"] = str(request_id)
+                    decode_state["row_index"] = request_id
+                    decode_state["execution_path"] = parent_path
+        relabeled.append(chunk)
+    return relabeled
 
 
 def _is_eos(tokenizer: Any | None, token_id: int) -> bool:

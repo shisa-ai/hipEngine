@@ -19,16 +19,23 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q8_0_t16_gemv.hip")
 _OUTPUT_NAME = "gguf_q8_0_t16_gemv.so"
 _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out"
+_Q8_0_SINGLE_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out"
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out"
 _Q8_0_SINGLE_F32_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_FP16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_SPLIT_FP16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out"
+_Q8_0_DUAL_SPLIT_ROWTILE2_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out"
+_Q8_0_DUAL_SPLIT_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out"
+_Q8_0_DUAL_SPLIT_Q8_1_DP4A_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out"
 _Q8_0_TRIPLE_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out"
+_Q8_0_TRIPLE_SPLIT_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out"
 _Q8_0_TRIPLE_SPLIT_FP16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out"
 _Q8_0_BLOCK = 32
 _T16_COLS = 16
+_DEFAULT_THREADS = 128
+_ALLOWED_THREADS = frozenset({64, 128})
 
 
 def plan_gguf_q8_0_t16_gemv_build(
@@ -86,8 +93,6 @@ def gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch BF16 dense single-output Q8T16 GEMV decode."""
 
-    del threads
-
     _launch_single(
         _Q8_0_SINGLE_BF16,
         x_ptr,
@@ -96,6 +101,37 @@ def gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
         rows,
         in_features,
         out_features,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dense Q8T16 GEMV with four verifier rows per block."""
+
+    _launch_single(
+        _Q8_0_SINGLE_ROWTILE4_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -117,8 +153,6 @@ def gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
 ) -> None:
     """Launch FP16 dense single-output Q8T16 GEMV decode."""
 
-    del threads
-
     _launch_single(
         _Q8_0_SINGLE_FP16,
         x_ptr,
@@ -127,6 +161,7 @@ def gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
         rows,
         in_features,
         out_features,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -148,8 +183,6 @@ def gguf_q8_0_t16_gemv_decode_f32_bf16_out(
 ) -> None:
     """Launch F32-input, BF16-output dense single Q8T16 GEMV decode."""
 
-    del threads
-
     _launch_single(
         _Q8_0_SINGLE_F32_BF16,
         x_ptr,
@@ -158,6 +191,7 @@ def gguf_q8_0_t16_gemv_decode_f32_bf16_out(
         rows,
         in_features,
         out_features,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -181,8 +215,6 @@ def gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch BF16 dense fused gate+up Q8T16 GEMV decode."""
 
-    del threads
-
     _launch_dual(
         _Q8_0_DUAL_BF16,
         x_ptr,
@@ -193,6 +225,7 @@ def gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
         in_features,
         out_features_a,
         out_features_b,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -216,8 +249,6 @@ def gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out(
 ) -> None:
     """Launch FP16 dense fused gate+up Q8T16 GEMV decode."""
 
-    del threads
-
     _launch_dual(
         _Q8_0_DUAL_FP16,
         x_ptr,
@@ -228,6 +259,7 @@ def gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out(
         in_features,
         out_features_a,
         out_features_b,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -252,8 +284,6 @@ def gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch BF16 dense dual Q8T16 GEMV decode into separate outputs."""
 
-    del threads
-
     _launch_dual_split(
         _Q8_0_DUAL_SPLIT_BF16,
         x_ptr,
@@ -265,6 +295,7 @@ def gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
         in_features,
         out_features_a,
         out_features_b,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -289,8 +320,6 @@ def gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out(
 ) -> None:
     """Launch FP16 dense dual Q8T16 GEMV decode into separate outputs."""
 
-    del threads
-
     _launch_dual_split(
         _Q8_0_DUAL_SPLIT_FP16,
         x_ptr,
@@ -302,6 +331,115 @@ def gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out(
         in_features,
         out_features_a,
         out_features_b,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 exact dual Q8T16 GEMV with two verifier rows per block."""
+
+    _launch_dual_split(
+        _Q8_0_DUAL_SPLIT_ROWTILE2_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 exact dual Q8T16 GEMV with four verifier rows per block."""
+
+    _launch_dual_split(
+        _Q8_0_DUAL_SPLIT_ROWTILE4_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out(
+    xq_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dual Q8T16 GEMV from GGML q8_1 activations via dp4a."""
+
+    _launch_dual_split(
+        _Q8_0_DUAL_SPLIT_Q8_1_DP4A_BF16,
+        xq_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -329,8 +467,6 @@ def gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch BF16 dense triple Q8T16 GEMV decode into separate outputs."""
 
-    del threads
-
     _launch_triple_split(
         _Q8_0_TRIPLE_SPLIT_BF16,
         x_ptr,
@@ -345,6 +481,49 @@ def gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
         out_features_a,
         out_features_b,
         out_features_c,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    tiles_c_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    out_features_c: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dense triple Q8T16 GEMV with four verifier rows per block."""
+
+    _launch_triple_split(
+        _Q8_0_TRIPLE_SPLIT_ROWTILE4_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        tiles_c_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -372,8 +551,6 @@ def gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out(
 ) -> None:
     """Launch FP16 dense triple Q8T16 GEMV decode into separate outputs."""
 
-    del threads
-
     _launch_triple_split(
         _Q8_0_TRIPLE_SPLIT_FP16,
         x_ptr,
@@ -388,6 +565,7 @@ def gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out(
         out_features_a,
         out_features_b,
         out_features_c,
+        threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -402,6 +580,7 @@ def _launch_single(
     rows: int,
     in_features: int,
     out_features: int,
+    threads: int,
     *,
     stream: int,
     library: ctypes.CDLL | None,
@@ -412,6 +591,7 @@ def _launch_single(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
+    threads = _resolve_threads(threads)
     library = library or build_gguf_q8_0_t16_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -419,6 +599,7 @@ def _launch_single(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -432,6 +613,7 @@ def _launch_single(
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -448,6 +630,7 @@ def _launch_dual(
     in_features: int,
     out_features_a: int,
     out_features_b: int,
+    threads: int,
     *,
     stream: int,
     library: ctypes.CDLL | None,
@@ -458,6 +641,7 @@ def _launch_dual(
         raise ValueError("out_features_a/out_features_b must be positive")
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
+    threads = _resolve_threads(threads)
     library = library or build_gguf_q8_0_t16_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -466,6 +650,7 @@ def _launch_dual(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -482,6 +667,7 @@ def _launch_dual(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -499,6 +685,7 @@ def _launch_dual_split(
     in_features: int,
     out_features_a: int,
     out_features_b: int,
+    threads: int,
     *,
     stream: int,
     library: ctypes.CDLL | None,
@@ -509,6 +696,7 @@ def _launch_dual_split(
         raise ValueError("out_features_a/out_features_b must be positive")
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
+    threads = _resolve_threads(threads)
     library = library or build_gguf_q8_0_t16_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -518,6 +706,7 @@ def _launch_dual_split(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -535,6 +724,7 @@ def _launch_dual_split(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -555,6 +745,7 @@ def _launch_triple_split(
     out_features_a: int,
     out_features_b: int,
     out_features_c: int,
+    threads: int,
     *,
     stream: int,
     library: ctypes.CDLL | None,
@@ -565,6 +756,7 @@ def _launch_triple_split(
         raise ValueError("out_features_a/out_features_b/out_features_c must be positive")
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0 or out_features_c % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b/out_features_c must be multiples of 16 (T16 tile)")
+    threads = _resolve_threads(threads)
     library = library or build_gguf_q8_0_t16_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -576,6 +768,7 @@ def _launch_triple_split(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -597,6 +790,7 @@ def _launch_triple_split(
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
         ctypes.c_int64(out_features_c),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -612,18 +806,31 @@ def _check_common(rows: int, in_features: int) -> None:
         raise ValueError("in_features must be divisible by GGUF Q8_0 block size 32")
 
 
+def _resolve_threads(threads: int) -> int:
+    threads = _DEFAULT_THREADS if int(threads) == 0 else int(threads)
+    if threads not in _ALLOWED_THREADS:
+        allowed = ", ".join(str(value) for value in sorted(_ALLOWED_THREADS))
+        raise ValueError(f"threads must be one of {allowed} or 0 for default")
+    return threads
+
+
 def register_gguf_q8_0_t16_gemv_kernels(*, replace: bool = True) -> None:
     """Register P9.H3 Q8T16 GEMV decode kernels."""
 
     for variant, fn in (
         ("t16_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_gemv_decode_bf16_bf16_out),
+        ("t16_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out),
         ("t16_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_gemv_decode_fp16_fp16_out),
         ("t16_gemv_decode_f32_bf16_out", gguf_q8_0_t16_gemv_decode_f32_bf16_out),
         ("t16_dual_gate_up_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out),
         ("t16_dual_gate_up_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out),
         ("t16_dual_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out),
         ("t16_dual_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out),
+        ("t16_dual_gemv_decode_rowtile2_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out),
+        ("t16_dual_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out),
+        ("t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out),
         ("t16_triple_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out),
+        ("t16_triple_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out),
         ("t16_triple_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out),
     ):
         register(
@@ -642,11 +849,16 @@ __all__ = [
     "gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out",
+    "gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out",
+    "gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_f32_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
     "plan_gguf_q8_0_t16_gemv_build",
     "register_gguf_q8_0_t16_gemv_kernels",
 ]

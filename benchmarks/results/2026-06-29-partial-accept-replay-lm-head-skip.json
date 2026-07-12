@@ -1,0 +1,40 @@
+{
+  "date": "2026-06-29",
+  "scope": "Partial-accept rollback: skip LM-head on the accepted-prefix replay (task #4)",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151, Strix Halo APU, ~256 GB/s LPDDR5X)",
+  "change": "verify_target_block(advance_state_only=True) skips the per-row LM-head vocab GEMV + greedy sampling on the accepted-prefix REPLAY (the replay only advances GDN linear + KV state; its tokens are already known from the first full-block pass and discarded). The bench reuses block_target_tokens[:consumed_rows]. Default behavior (no flag) for the replay path.",
+  "cost_breakdown_b5": {
+    "command": "instrumented scratchpad/rollback_cost.py, B5 24 cycles, 21 partial accepts",
+    "state_snapshot_bytes_all_60_buffers_MB": 66.85,
+    "snapshot_d2d_ms_per_call": 1.178,
+    "restore_d2d_ms_per_call": 0.708,
+    "d2d_total_ms_per_cycle": "~1.8 (small)",
+    "verify_forward_ms_per_row": 12.09,
+    "lm_head_sample_ms_per_row": 1.903,
+    "lm_head_frac_of_verify": "15.9%",
+    "layer_stack_frac_of_verify": "84.1% (GPU/bandwidth-bound, #10 territory)"
+  },
+  "correctness": {
+    "gate": "BIT-EXACT vs full replay",
+    "unit_test": "tests/test_qwen35_gguf_verify_advance_state_only.py: committed linear state + FP32 hidden rows bit-identical to advance_state_only=False; reused first-pass tokens exact",
+    "e2e_token_stream": "byte-identical across 20 B5 cycles (17 partial-accept) vs committed baseline",
+    "e2e_total_accepted": "43/880 (baseline) == 43/880 (new)",
+    "e2e_accept_per_draft": "0.049 == 0.049",
+    "e2e_accepted_per_output": "0.683 == 0.683"
+  },
+  "perf_e2e_b5": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 python scripts/gguf_mtp_bench.py --draft-n-max 5 --cycles 20 --resident-mtp-draft --target-block-verify",
+    "avg_cycle_ms_baseline": 126.68,
+    "avg_cycle_ms_new": 122.35,
+    "delta_pct": -3.4,
+    "tokens_per_sec_baseline": 24.87,
+    "tokens_per_sec_new": 25.75,
+    "tokens_per_sec_delta_pct": 3.5
+  },
+  "conclusion": "The partial-accept rollback's reducible non-#10 overhead is the replay's discardable LM-head sampling (~16% of the replay forward); skipping it is exact and gives ~3.4% B5 cycle-time. The dominant rollback cost is the replay's layer-stack forward (~84%) which is the same GPU/bandwidth wall as #10 (confirms the task's original 'blocked by #10' framing for the bulk of the cost). The D2D state snapshot/restore is only ~1.8ms/cycle, not worth chasing. Eliminating the replay forward entirely would require per-row linear-state checkpointing inside the bulk GDN prefill (kernel surgery, O(rows) extra state memory) — deferred.",
+  "next_levers": [
+    "#10 raise verifier layer-stack (MoE selected-expert GEMV) achieved bandwidth toward peak — the dominant rollback + verify cost",
+    "(deferred) per-row GDN linear-state checkpoint in the bulk prefill to remove the replay forward; net win only once the forward itself is cheaper"
+  ]
+}

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -46,6 +47,9 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _QueuedBatchResult,
+    _SPECULATIVE_MTP_AUTO_ROUTE,
+    _SPECULATIVE_MTP_BATCH_ROUTE,
+    _SPECULATIVE_MTP_DEFAULT_ROUTE,
     _request_control,
     _startup_memory_summary,
 )
@@ -159,6 +163,61 @@ class FakeLLM:
 
     def detokenize(self, token_ids, *, skip_special: bool = False) -> str:
         return " ".join(f"T{int(token)}" for token in token_ids)
+
+
+class SpeculativeMTPFakeLLM(FakeLLM):
+    supports_speculative_mtp = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mtp_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+    def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        self.last_batch_generation = {
+            "path": "speculative_mtp_server",
+            "batch_size": len(prompt_tuple),
+            "group_widths": [len(prompt_tuple)],
+            "speculative_mtp": {
+                "target_verify_rows": len(prompt_tuple) * 3,
+            },
+            "scheduler_token_chunks": [
+                {
+                    "request_id": request_id,
+                    "token_index": 0,
+                    "token_id": 900 + request_id,
+                    "finished": True,
+                    "chunk": {
+                        "text": f"mtp:{prompt}",
+                        "telemetry": GenerationTelemetry.from_decode_counts(
+                            prompt_tokens=1,
+                            generated_tokens=1,
+                            row_index=request_id,
+                            request_id=str(request_id),
+                            phase="answer",
+                            sampler_mode="greedy_fast",
+                            execution_path="speculative_mtp_server",
+                        ).to_json_dict(),
+                    },
+                }
+                for request_id, prompt in enumerate(prompt_tuple)
+            ],
+        }
+        return [
+            GenerationOutput(
+                text=f"mtp:{prompt}",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    row_index=index,
+                    phase="done",
+                    sampler_mode="greedy_fast",
+                    execution_path="speculative_mtp_server",
+                ),
+            )
+            for index, prompt in enumerate(prompt_tuple)
+        ]
 
 
 class SchedulerChunkRowsFakeLLM(FakeLLM):
@@ -697,7 +756,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     assert model["hipengine"] == {
         "path": "/models/fake",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
         "loaded": True,
         "resident_context": True,
         "context": {
@@ -750,6 +809,22 @@ def test_models_endpoint_reports_lazy_model_not_loaded() -> None:
     assert model["hipengine"]["kv_capacity"]["estimate"] is None
 
 
+def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
+    fake = FakeLLM()
+    fake._resolved_backend = "hip_gfx1151"
+    fake._resolved_quant = "gguf_q4_k_m"
+    app = create_app(
+        ServerConfig(model="/models/fake.gguf", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    model = client.get("/v1/models").json()["data"][0]["hipengine"]
+
+    assert model["backend"] == "hip_gfx1151"
+    assert model["quant"] == "gguf_q4_k_m"
+
+
 def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
     advertised = frozenset(
         (
@@ -791,7 +866,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "id": "fake-model",
         "path": "/models/fake",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
     }
     assert body["context"] == {
         "configured_max_context_tokens": 2048,
@@ -917,6 +992,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
+        "diagnostics": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
     assert body["features"]["structured_outputs"] == {
@@ -1358,6 +1434,64 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "guided_json" in body["features"]["grammars"]["result_validation_only"]
     assert "guided_patch" not in body["unsupported_fields"]
     assert "guided_diff" not in body["unsupported_fields"]
+
+
+def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    body = client.get("/v1/hipengine/capabilities").json()
+
+    assert body["sampling"]["speculative_mtp"] == {
+        "serving_route": True,
+        "sampling_compatible": True,
+        "compatibility_guard": "supports_speculative_mtp_sampling",
+        "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
+        "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "processed_target_verification": False,
+        "policy": "opt_in",
+        "request_field": "speculative_mtp",
+        "default_enabled": False,
+        "streaming_compatible": False,
+        "batch_route": "speculative_mtp",
+    }
+    assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
+
+
+def test_capabilities_endpoint_reports_auto_exact_fallback() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="auto",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+
+    assert payload["policy"] == "auto"
+    assert payload["default_enabled"] is False
+    assert payload["auto_route"] == {
+        "selected_route": "default",
+        "reason": "compatibility_mtp_not_exact",
+        "exact_default_required": True,
+        "compatibility_mtp_explicit_only": True,
+        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+    }
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -2344,6 +2478,95 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     ]
 
 
+def test_startup_scratch_probe_uses_max_active_request_width() -> None:
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_runs_batch_width_when_context_unknown() -> None:
+    class UnknownContextFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length: int | None = None, sampling_params: SamplingParams) -> None:
+            self.prepares.append((None if max_sequence_length is None else int(max_sequence_length), sampling_params))
+            self.max_sequence_length = None
+            return None
+
+    fake = UnknownContextFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_prompt_tokens"] == 64
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    scratch_probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert scratch_probe["status"] == "passed"
+    assert scratch_probe["max_prompt_tokens"] is None
+    assert scratch_probe["probe_prompt_tokens"] == 64
+    assert scratch_probe["context_unknown"] is True
+
+
+def test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled(monkeypatch) -> None:
+    class EnvCaptureFakeLLM(FakeLLM):
+        def prepare_request_scratch(self, **kwargs) -> dict[str, Any]:
+            payload = super().prepare_request_scratch(**kwargs)
+            payload["mtp_startup_warmup"] = os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP")
+            return payload
+
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", raising=False)
+    fake = EnvCaptureFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+        speculative_mtp_serving="opt_in",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    scratch_result = response.json()["startup"]["checks"]["scratch_probe"]["result"]
+    assert scratch_result["mtp_startup_warmup"] == "1"
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
+
+    fake_off = EnvCaptureFakeLLM(outputs=["warm"])
+    config_off = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+        speculative_mtp_serving="off",
+    )
+    app_off = create_app(config_off, llm=fake_off)
+
+    with TestClient(app_off) as client:
+        response_off = client.get("/ready")
+
+    assert response_off.status_code == 200
+    scratch_result_off = response_off.json()["startup"]["checks"]["scratch_probe"]["result"]
+    assert scratch_result_off["mtp_startup_warmup"] == "0"
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
+
+
 def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
     summary = _startup_memory_summary(
         {
@@ -2407,7 +2630,7 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["model"] == {
         "id": "fake-model",
         "backend": "auto",
-        "quant": "w4_paro",
+        "quant": "auto",
         "loaded": True,
         "loaded_model_count": 1,
     }
@@ -2508,6 +2731,8 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         "enabled": True,
         "status": "failed",
         "max_prompt_tokens": 131071,
+        "probe_prompt_tokens": 131071,
+        "context_unknown": False,
         "exception_type": "RuntimeError",
     }
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
@@ -3722,6 +3947,63 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_keeps_speculative_mtp_and_default_routes_separate() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        default_result, mtp_result = await asyncio.gather(
+            batcher.submit(("one",), sampling),
+            batcher.submit(("two", "three"), sampling, route="speculative_mtp"),
+        )
+
+        assert default_result == ["generated:one"]
+        assert mtp_result == ["mtp:two", "mtp:three"]
+        assert fake.calls == [(("one",), sampling)]
+        assert fake.mtp_calls == [(("two", "three"), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_coalesces_speculative_mtp_with_request_tokens() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        first_token = GenerationCancellationToken()
+        second_token = GenerationCancellationToken()
+        first_sampling = SamplingParams(max_tokens=2, cancellation_token=first_token)
+        second_sampling = SamplingParams(max_tokens=2, cancellation_token=second_token)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), first_sampling, route="speculative_mtp"),
+            batcher.submit(("two",), second_sampling, route="speculative_mtp"),
+        )
+
+        assert first == ["mtp:one"]
+        assert second == ["mtp:two"]
+        assert fake.calls == []
+        assert len(fake.mtp_calls) == 1
+        prompts, grouped_sampling = fake.mtp_calls[0]
+        assert prompts == ("one", "two")
+        assert grouped_sampling.cancellation_token is not first_token
+        assert grouped_sampling.cancellation_token is not second_token
+        assert grouped_sampling.cancellation_token is not None
+        assert grouped_sampling.cancellation_token.cancelled is False
+        second_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is True
+        with pytest.raises(GenerationCancelled):
+            grouped_sampling.cancellation_token.raise_if_cancelled()
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_returns_scheduler_chunks_for_single_metadata_submission() -> None:
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
@@ -3991,6 +4273,165 @@ def test_generation_batcher_limits_active_request_group_size() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_applies_route_specific_group_limit() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={_SPECULATIVE_MTP_DEFAULT_ROUTE: 4},
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(8))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert fake.calls == [
+            ((("prompt-0", "prompt-1", "prompt-2", "prompt-3")), sampling),
+            ((("prompt-4", "prompt-5", "prompt-6", "prompt-7")), sampling),
+        ]
+
+    asyncio.run(run())
+
+
+def test_server_auto_quant_keeps_gguf_route_group_limits() -> None:
+    app = create_app(
+        ServerConfig(
+            model="/models/Qwen3.6-35B-A3B-Q4_K_M.gguf",
+            eager_load=False,
+            max_active_requests=8,
+        ),
+        llm=FakeLLM(),
+    )
+
+    batcher = app.state.hipengine_generation_batcher
+
+    assert batcher._route_max_active_requests == {
+        _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+        _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+        _SPECULATIVE_MTP_AUTO_ROUTE: 4,
+    }
+
+
+def test_generation_batcher_applies_mtp_route_group_limit() -> None:
+    async def run() -> None:
+        class FakeMTPLLM(FakeLLM):
+            supports_speculative_mtp = True
+
+            def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams):
+                return self.generate_detailed(prompts, sampling_params)
+
+        fake = FakeMTPLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={
+                _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+                _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+            },
+        )
+
+        results = await asyncio.gather(
+            *(
+                batcher.submit((f"prompt-{index}",), sampling, route=_SPECULATIVE_MTP_BATCH_ROUTE)
+                for index in range(8)
+            )
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert fake.calls == [
+            (
+                ("prompt-0", "prompt-1", "prompt-2", "prompt-3"),
+                sampling,
+            ),
+            (
+                ("prompt-4", "prompt-5", "prompt-6", "prompt-7"),
+                sampling,
+            )
+        ]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_shape_separates_c8_queue_from_c4_verifier_groups() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={_SPECULATIVE_MTP_BATCH_ROUTE: 4},
+        )
+
+        results = await asyncio.gather(
+            *(
+                batcher.submit(
+                    (f"prompt-{index}",),
+                    sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=_SPECULATIVE_MTP_BATCH_ROUTE,
+                )
+                for index in range(8)
+            )
+        )
+
+        assert all(isinstance(result, _QueuedBatchResult) for result in results)
+        shapes = [result.generation_shape for result in results]
+        assert all(shape is not None for shape in shapes)
+        queue_group_ids = [shape["queue_group"]["id"] for shape in shapes]
+        assert len(set(queue_group_ids)) == 2
+        assert sorted(queue_group_ids.count(group_id) for group_id in set(queue_group_ids)) == [4, 4]
+        for shape in shapes:
+            assert shape["route"] == _SPECULATIVE_MTP_BATCH_ROUTE
+            assert shape["route_cap"] == {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": True,
+            }
+            assert shape["queue_group"]["request_count"] == 4
+            assert shape["queue_group"]["prompt_rows"] == 4
+            assert shape["queue_group"]["item_prompt_rows"] == 1
+            assert shape["backend_groups"][0]["input_rows"] == 4
+            assert shape["backend_groups"][0]["actual_group_rows"] == [4]
+            assert shape["backend_groups"][0]["max_actual_group_rows"] == 4
+            assert shape["backend_groups"][0]["verifier_rows"] == 12
+            assert shape["verifier_rows"] == 12
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_keeps_c6_direct_when_removed_split_env_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_AVOID_C6_GROUPS", "1")
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(6))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(6)]
+        assert fake.calls == [(tuple(f"prompt-{index}" for index in range(6)), sampling)]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
     async def run() -> None:
         fake = FakeLLM()
@@ -4035,11 +4476,13 @@ def test_generation_batcher_keeps_different_deadlines_separate() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_keeps_different_cancellation_tokens_separate() -> None:
+def test_generation_batcher_coalesces_default_route_with_request_tokens() -> None:
     async def run() -> None:
         fake = FakeLLM()
-        first_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
-        second_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
+        first_token = GenerationCancellationToken()
+        second_token = GenerationCancellationToken()
+        first_sampling = SamplingParams(max_tokens=2, cancellation_token=first_token)
+        second_sampling = SamplingParams(max_tokens=2, cancellation_token=second_token)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
             batch_window_seconds=0.001,
@@ -4052,7 +4495,17 @@ def test_generation_batcher_keeps_different_cancellation_tokens_separate() -> No
 
         assert first == ["generated:one"]
         assert second == ["generated:two"]
-        assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+        assert len(fake.calls) == 1
+        prompts, grouped_sampling = fake.calls[0]
+        assert prompts == ("one", "two")
+        assert grouped_sampling.cancellation_token is not first_token
+        assert grouped_sampling.cancellation_token is not second_token
+        assert grouped_sampling.cancellation_token is not None
+        assert grouped_sampling.cancellation_token.cancelled is False
+        first_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is True
+        with pytest.raises(GenerationCancelled):
+            grouped_sampling.cancellation_token.raise_if_cancelled()
 
     asyncio.run(run())
 
@@ -4154,6 +4607,341 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     ]
 
 
+def test_completions_exact_token_prompt_preserves_ids_and_identity() -> None:
+    class ExactTokenFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams):
+            prompt_rows = tuple(tuple(int(token) for token in row) for row in prompts)
+            self.calls.append((prompt_rows, sampling_params))
+            return [
+                GenerationOutput(text="answer", generated_token_ids=(701, 702))
+                for _row in prompt_rows
+            ]
+
+    fake = ExactTokenFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": [10, 11, 12, 13],
+            "max_tokens": 2,
+            "ignore_eos": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.calls[0][0] == ((10, 11, 12, 13),)
+    assert body["usage"] == {
+        "prompt_tokens": 4,
+        "completion_tokens": 2,
+        "total_tokens": 6,
+    }
+    assert body["hipengine"]["prompt_token_accounting"] == {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [
+            "fe52e32025ab5b0c96a9dff2cf661e34f4ce86fe760a6399212957aee39c6bde"
+        ],
+        "prompt_tokens": [4],
+        "total_prompt_tokens": 4,
+    }
+    assert body["hipengine"]["token_accounting"]["choice_generated_token_ids"] == [[701, 702]]
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    exact = capabilities["features"]["exact_token_prompts"]
+    assert exact["completions"] is True
+    assert exact["streaming"] is False
+    assert exact["response_identity"] == "hipengine.prompt_token_accounting"
+
+
+def test_completions_exact_token_prompt_rejects_stream_and_mixed_rows() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    streamed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": [10, 11], "stream": True},
+    )
+    mixed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": [[10, 11], "text"]},
+    )
+
+    assert streamed.status_code == 400
+    assert streamed.json()["error"]["param"] == "stream"
+    assert mixed.status_code in {400, 422}
+
+
+def test_completions_exact_token_rows_expand_n_without_id_loss() -> None:
+    class ExactRowsFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams):
+            rows = tuple(tuple(int(token) for token in row) for row in prompts)
+            self.calls.append((rows, sampling_params))
+            return [
+                GenerationOutput(text=f"row-{index}", generated_token_ids=(800 + index,))
+                for index, _row in enumerate(rows)
+            ]
+
+    fake = ExactRowsFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": [[10, 11, 12], [20, 21, 22]],
+            "max_tokens": 1,
+            "ignore_eos": True,
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    expected_rows = ((10, 11, 12), (10, 11, 12), (20, 21, 22), (20, 21, 22))
+    assert fake.calls[0][0] == expected_rows
+    body = response.json()
+    assert body["usage"] == {
+        "prompt_tokens": 12,
+        "completion_tokens": 4,
+        "total_tokens": 16,
+    }
+    assert body["hipengine"]["prompt_token_accounting"]["prompt_tokens"] == [3, 3, 3, 3]
+    assert body["hipengine"]["token_accounting"]["choice_generated_token_ids"] == [
+        [800],
+        [801],
+        [802],
+        [803],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "request_payload"),
+    [
+        ("/v1/completions", {"prompt": "one", "n": 6}),
+        (
+            "/v1/chat/completions",
+            {"messages": [{"role": "user", "content": "one"}], "n": 6},
+        ),
+    ],
+)
+def test_openai_n6_uses_exact_all_choice_generated_token_accounting(
+    endpoint: str,
+    request_payload: dict[str, Any],
+) -> None:
+    token_rows = (
+        (101, 102),
+        (201,),
+        (301, 302, 303),
+        (),
+        (501, 502),
+        (601,),
+    )
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text=f"singleword{index}",
+                generated_token_ids=token_ids,
+            )
+            for index, token_ids in enumerate(token_rows)
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        endpoint,
+        json={"model": "fake-model", "max_tokens": 3, **request_payload},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["choices"]) == 6
+    assert body["usage"]["completion_tokens"] == 9
+    accounting = body["hipengine"]["token_accounting"]
+    assert accounting == {
+        "choice_generated_token_ids": [list(row) for row in token_rows],
+        "choice_generated_tokens": [2, 1, 3, 0, 2, 1],
+        "total_generated_tokens": 9,
+        "retokenized_visible_tokens": 6,
+    }
+    assert [choice["hipengine"]["generated_token_ids"] for choice in body["choices"]] == [
+        list(row) for row in token_rows
+    ]
+    assert [choice["hipengine"]["generated_tokens"] for choice in body["choices"]] == [
+        2,
+        1,
+        3,
+        0,
+        2,
+        1,
+    ]
+
+
+def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == ["mtp:one", "mtp:two"]
+    assert fake.calls == []
+    assert len(fake.mtp_calls) == 1
+    prompts, sampling = fake.mtp_calls[0]
+    assert prompts == ("one", "two")
+    assert sampling.max_tokens == 3
+    assert sampling.temperature == 0.0
+    assert sampling.top_p == 1.0
+    assert body["hipengine"]["generation_shape"] == {
+        "schema_version": 1,
+        "route": "speculative_mtp",
+        "route_cap": {
+            "scope": "queue_requests",
+            "value": 4,
+            "applied": True,
+        },
+        "queue_group": {
+            "id": body["hipengine"]["generation_shape"]["queue_group"]["id"],
+            "request_count": 1,
+            "prompt_rows": 2,
+            "item_index": 0,
+            "item_prompt_offset": 0,
+            "item_prompt_rows": 2,
+        },
+        "backend_groups": [
+            {
+                "id": body["hipengine"]["generation_shape"]["backend_groups"][0]["id"],
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 2,
+                "actual_group_rows": [2],
+                "max_actual_group_rows": 2,
+                "verifier_rows": 6,
+            }
+        ],
+        "verifier_rows": 6,
+    }
+
+
+def test_completions_auto_keeps_compatibility_mtp_explicit_only() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="auto",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 24,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == [
+        "generated:one",
+        "generated:two",
+    ]
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
+    assert fake.calls[0][0] == ("one", "two")
+    shape = body["hipengine"]["generation_shape"]
+    assert shape["route"] == "default"
+    assert shape["route_decision"] == {
+        "requested_route": "speculative_mtp_auto",
+        "selected_route": "default",
+        "reason": "compatibility_mtp_not_exact",
+        "realized_group_rows": 2,
+        "output_horizon_tokens": 24,
+        "exact_default_required": True,
+        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+    }
+    explicit_response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "three",
+            "max_tokens": 24,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+    assert explicit_response.status_code == 200
+    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
+    assert len(fake.mtp_calls) == 1
+    assert fake.mtp_calls[0][0] == ("three",)
+
+
+def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one",
+            "max_tokens": 3,
+            "temperature": 0.4,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["temperature"]
+    assert fake.calls == []
+    assert fake.mtp_calls == []
+
+
 def test_completions_preserve_structured_finish_details() -> None:
     fake = DetailedGenerateFakeLLM(
         detailed_outputs=[
@@ -4210,6 +4998,7 @@ def test_completions_expose_backend_generation_telemetry() -> None:
                     sampler_fast_path_blockers=("logit_bias",),
                     timing={"prefill_ms": 2.5, "decode_ms": 1.25},
                     usage={"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+                    diagnostics={"batch_execution": {"path": "scheduler_native_compact_batch"}},
                 ),
             )
         ]
@@ -4241,7 +5030,11 @@ def test_completions_expose_backend_generation_telemetry() -> None:
             "sampler_mode": "greedy_fast",
         },
         "timing": {"prefill_ms": 2.5, "decode_ms": 1.25},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+        "diagnostics": {"batch_execution": {"path": "scheduler_native_compact_batch"}},
         "finish_details": _stateless_finish_details(
             "eos",
             eos_token_id=151645,
@@ -8463,6 +9256,9 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
             "native_sampler_rows": True,
         },
         "timing": {"prefill_ms": 3.5, "decode_ms": 1.25},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
     }
     assert done["hipengine"]["timing"]["backend_prefill_ms"] == 3.5
@@ -9732,6 +10528,9 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "processed_argmax",
         },
         "timing": {"prefill_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
@@ -9752,6 +10551,9 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "host_logits_sample",
         },
         "timing": {"prefill_ms": 2.5},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
@@ -15106,6 +15908,9 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_mode": "processed_argmax",
         },
         "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "tokens": {
             "streamed_tokens": 2,
             "delta_tokens": 2,
@@ -15357,6 +16162,9 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_mode": "host_logits_sample",
         },
         "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": True,
         "usage": {"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
         "tokens": {
             "streamed_tokens": 1,
@@ -15443,6 +16251,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
+    assert default_args.backend == "auto"
+    assert default_args.quant == "auto"
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
     assert default_args.chat_default_max_tokens == 4096

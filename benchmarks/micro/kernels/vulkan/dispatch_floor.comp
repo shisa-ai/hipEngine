@@ -1,0 +1,22 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint output_base;
+} pc;
+
+layout(set = 0, binding = 0) buffer OutputBuffer {
+    float out_values[];
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.n) {
+        return;
+    }
+
+    uint output_index = pc.output_base + idx;
+    out_values[output_index] = out_values[output_index] + 1.0;
+}

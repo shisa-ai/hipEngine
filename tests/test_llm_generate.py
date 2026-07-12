@@ -61,6 +61,72 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     )
 
 
+def test_llm_generate_detailed_preserves_exact_token_prompt_rows(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls = {}
+
+    class FakeGenerator:
+        def generate_detailed(self, request: GenerationRequest):
+            calls["request"] = request
+            return [
+                generation.GenerationOutput(
+                    text=f"row-{index}",
+                    generated_token_ids=(900 + index,),
+                )
+                for index, _prompt in enumerate(request.prompts)
+            ]
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeExactTokensForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_exact_tokens")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_exact_tokens",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    outputs = llm.generate_detailed(
+        [[10, 11, 12], [20, 21]],
+        SamplingParams(max_tokens=1, ignore_eos=True),
+    )
+
+    assert [output.generated_token_ids for output in outputs] == [(900,), (901,)]
+    assert calls["request"].prompts == ((10, 11, 12), (20, 21))
+    assert calls["request"].prompt_input_kind == "token_ids"
+
+
+def test_generation_request_rejects_invalid_token_prompt_rows() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        GenerationRequest(
+            prompts=((),),
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+        )
+    with pytest.raises(ValueError, match="non-negative"):
+        GenerationRequest(
+            prompts=((1, -2),),
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+        )
+
+
 def test_llm_tokenize_delegates_to_generator(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading
@@ -381,6 +447,88 @@ def test_llm_default_backend_auto_resolves_env_override(monkeypatch) -> None:
     assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
     assert llm.backend == "auto"
     assert llm._resolved_backend == "fake_auto_backend"
+    assert llm.resolved_backend == "fake_auto_backend"
+
+
+def test_llm_default_quant_resolves_model_plugin_default(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["ok"]
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(
+        loading,
+        "load_weight_index",
+        lambda model: SimpleNamespace(
+            config={"architectures": ["FakeAutoQuant"]},
+            model_path="/tmp/fake-model",
+        ),
+    )
+    monkeypatch.setattr(
+        models,
+        "resolve_model",
+        lambda architecture: SimpleNamespace(
+            name="fake_auto_quant",
+            default_quant="fake_default_quant",
+        ),
+    )
+    register_text_generator(
+        model="fake_auto_quant",
+        backend="fake_backend",
+        quant="fake_default_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
+    assert llm.quant == "auto"
+    assert llm.resolved_quant == "fake_default_quant"
+
+
+def test_llm_explicit_quant_overrides_model_plugin_default(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["explicit"]
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(
+        loading,
+        "load_weight_index",
+        lambda model: SimpleNamespace(
+            config={"architectures": ["FakeExplicitQuant"]},
+            model_path="/tmp/fake-model",
+        ),
+    )
+    monkeypatch.setattr(
+        models,
+        "resolve_model",
+        lambda architecture: SimpleNamespace(
+            name="fake_explicit_quant",
+            default_quant="wrong_default",
+        ),
+    )
+    register_text_generator(
+        model="fake_explicit_quant",
+        backend="fake_backend",
+        quant="chosen_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="chosen_quant")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["explicit"]
+    assert llm.resolved_quant == "chosen_quant"
 
 
 def test_llm_generate_normalizes_single_prompt(monkeypatch) -> None:

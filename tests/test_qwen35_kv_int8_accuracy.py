@@ -16,7 +16,7 @@ def _args(**overrides):
         block_size=4,
         num_q_heads=4,
         num_kv_heads=2,
-        head_dim=8,
+        head_dim=16,
         scale_dtype="fp16",
         pseudo_vocab_size=16,
         seed=1234,
@@ -43,11 +43,15 @@ def test_qwen35_kv_int8_accuracy_cpu_runs_short_and_page_boundary_cases() -> Non
     assert payload["cases"][0]["crosses_page_boundary"] is False
     assert payload["cases"][1]["crosses_page_boundary"] is True
     for case in payload["cases"]:
-        assert set(case["paths"]) == {"bf16", "int8_per_token_head"}
-        assert case["paths"]["bf16"]["passed"] is True
-        assert case["paths"]["int8_per_token_head"]["passed"] is True
-        assert case["paths"]["bf16"]["pseudo_logit_gate"]["top1_agreement"] == 1.0
-        assert case["paths"]["int8_per_token_head"]["pseudo_logit_gate"]["top1_agreement"] == 1.0
+        assert set(case["paths"]) == {
+            "bf16",
+            "int8_per_token_head",
+            "int8_key_bf16_value",
+            "int8_block16",
+        }
+        for path in case["paths"].values():
+            assert path["passed"] is True
+            assert path["pseudo_logit_gate"]["top1_agreement"] == 1.0
         assert "bf16_vs_int8_quantization" in case
 
 
@@ -67,7 +71,7 @@ def test_qwen35_kv_int8_accuracy_json_self_describes_artifact_path(tmp_path: Pat
             "--num-kv-heads",
             "2",
             "--head-dim",
-            "8",
+            "16",
             "--json",
             str(artifact_path),
         ]

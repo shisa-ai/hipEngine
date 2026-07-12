@@ -1,0 +1,37 @@
+{
+  "schema": "hipengine-bench-ab-v1",
+  "status": "accepted-exact-nonregressive",
+  "timestamp": "2026-06-28",
+  "run_tag": "gguf-linear-dispatch-resolve-cache",
+  "hardware": "AMD Radeon 8060S (gfx1151, Ryzen AI Max+ 395)",
+  "change": "Memoize launch_gguf_linear dispatch-resolve (registry-generation-keyed) so repeated dense-projection launches skip the env reads + 5-stage dispatch-transform chain + registry resolve.",
+  "microbench": {
+    "source": "scripts/gguf_launch_overhead_bench.py rows=4 best-of-2000",
+    "full_launch_gguf_linear_us": {
+      "before": 25.71,
+      "after": 8.95,
+      "delta_pct": -65.2
+    },
+    "note": "cached path now near the precomputed registry-fn floor (~7.98us)"
+  },
+  "fullbench_ab": {
+    "workload": "Qwen3.6-35B-A3B UD-Q4_K_M, resident-draft B3, cycles=12, root_topk_accept=1, 3 runs each, warm_excluding_cycle0",
+    "cache_off_tok_s": [
+      48.57,
+      48.61,
+      48.63
+    ],
+    "cache_off_mean": 48.6,
+    "cache_on_tok_s": [
+      48.68,
+      48.69,
+      48.64
+    ],
+    "cache_on_mean": 48.67,
+    "delta_tok_s": 0.07,
+    "delta_pct": 0.1,
+    "acceptance": "identical (0.6944)"
+  },
+  "interpretation": "Exact (same kernels/outputs, acceptance identical) and non-regressive; a real -65% per-launch host reduction for dense projections, kept per the perf policy. The full-bench wall is FLAT (+0.1%) -- like the dp4a GPU-MoE cut. Two component wins (GPU MoE -35%, dense host -65%) both micro-proven yet both flat at the wall => the full B3 verify bottleneck is NOT dense-projection host dispatch nor MoE GPU time. NEXT: a real rocprof/host-split profile of the WARM full B3 verify cycle to locate the actual critical path (MoE-selected host dispatch via direct wrappers, GDN/attention GPU, or sync stalls) before further component work or fusion.",
+  "validation": "RED-first tests/test_gguf_linear_dispatch_cache.py (memoize + generation invalidation); 282 dispatch/wmma/rowtile/gemv-decode tests green (registry-swap idiom preserved via generation counter)."
+}

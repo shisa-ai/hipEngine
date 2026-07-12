@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.local/schemas/micro/result.schema.json",
+  "title": "hipEngine microbenchmark result or comparison",
+  "$defs": {
+    "hardware": {
+      "type": "object",
+      "required": ["gpu_name", "gfx_arch"],
+      "properties": {
+        "gpu_name": {"type": "string"},
+        "gfx_arch": {"type": "string"},
+        "device_id": {"type": "string"},
+        "vram_bytes": {"type": "integer"}
+      },
+      "additionalProperties": true
+    },
+    "source": {
+      "type": "object",
+      "required": ["repo", "commit", "dirty"],
+      "properties": {
+        "repo": {"type": "string"},
+        "branch": {"type": "string"},
+        "commit": {"type": "string"},
+        "dirty": {"type": "boolean"},
+        "source_hash": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "classification": {
+      "enum": [
+        "compiler_aco",
+        "geometry",
+        "wave_mode",
+        "runtime_dispatch",
+        "layout_quant",
+        "fusion_topology",
+        "real_slice_probe",
+        "not_reproducible",
+        "diagnostic_unclassified"
+      ]
+    },
+    "statistics": {
+      "type": "object",
+      "required": ["samples", "n", "median", "p95", "min", "max", "stdev"],
+      "properties": {
+        "samples": {"type": "integer", "minimum": 1},
+        "n": {"type": "integer", "minimum": 1},
+        "median": {"type": "number", "minimum": 0},
+        "p05": {"type": "number", "minimum": 0},
+        "p95": {"type": "number", "minimum": 0},
+        "min": {"type": "number", "minimum": 0},
+        "max": {"type": "number", "minimum": 0},
+        "stdev": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "metric": {
+      "type": "object",
+      "required": ["status", "clock"],
+      "properties": {
+        "status": {"enum": ["ok", "unsupported", "below_resolution", "not_run"]},
+        "clock": {"type": "string", "minLength": 1},
+        "sequence_us": {"$ref": "#/$defs/statistics"},
+        "per_iteration_us": {"$ref": "#/$defs/statistics"}
+      },
+      "if": {"properties": {"status": {"const": "ok"}}},
+      "then": {"required": ["sequence_us", "per_iteration_us"]},
+      "additionalProperties": false
+    },
+    "timingControl": {
+      "type": "object",
+      "required": [
+        "logical_iterations",
+        "dispatches_per_iteration",
+        "gpu_elapsed",
+        "host_wall"
+      ],
+      "properties": {
+        "logical_iterations": {"type": "integer", "minimum": 1},
+        "dispatches_per_iteration": {"type": "integer", "minimum": 1},
+        "gpu_elapsed": {"$ref": "#/$defs/metric"},
+        "host_wall": {"$ref": "#/$defs/metric"}
+      },
+      "additionalProperties": false
+    },
+    "dependencyContract": {
+      "type": "object",
+      "required": [
+        "work_dependency",
+        "inter_dispatch_ordering",
+        "output_partitioning",
+        "validation_status"
+      ],
+      "properties": {
+        "work_dependency": {"enum": ["chained", "independent"]},
+        "inter_dispatch_ordering": {
+          "enum": ["hip_stream_order", "vulkan_compute_barrier", "none"]
+        },
+        "output_partitioning": {"enum": ["chained_shared", "disjoint"]},
+        "validation_status": {"enum": ["pass", "fail", "not_run"]}
+      },
+      "additionalProperties": false
+    },
+    "submission": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "recording_in_timed_region",
+        "submit_in_host_wall",
+        "completion_in_host_wall",
+        "queue_or_stream_count"
+      ],
+      "properties": {
+        "strategy": {"type": "string", "minLength": 1},
+        "recording_in_timed_region": {"type": "boolean"},
+        "submit_in_host_wall": {"type": "boolean"},
+        "completion_in_host_wall": {"type": "boolean"},
+        "queue_or_stream_count": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "timedCorrectness": {
+      "type": "object",
+      "required": ["single_dispatch", "timed_sequence", "synchronization"],
+      "properties": {
+        "single_dispatch": {
+          "type": "object",
+          "required": ["status", "oracle"],
+          "properties": {
+            "status": {"enum": ["pass", "fail", "not_run"]},
+            "oracle": {"type": "string"}
+          },
+          "additionalProperties": true
+        },
+        "timed_sequence": {
+          "type": "object",
+          "required": ["status", "oracle", "logical_iterations", "coverage"],
+          "properties": {
+            "status": {"enum": ["pass", "fail", "not_run"]},
+            "oracle": {"type": "string"},
+            "logical_iterations": {"type": "integer", "minimum": 1},
+            "coverage": {"enum": ["all_dispatches", "chained_final_state"]}
+          },
+          "additionalProperties": true
+        },
+        "synchronization": {
+          "type": "object",
+          "required": ["status", "method", "barrier_count"],
+          "properties": {
+            "status": {"enum": ["pass", "fail", "not_run"]},
+            "method": {"type": "string"},
+            "barrier_count": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "timedRow": {
+      "type": "object",
+      "required": [
+        "timing_mode",
+        "dependency_contract",
+        "submission",
+        "timing",
+        "correctness"
+      ],
+      "properties": {
+        "timing_mode": {"enum": ["serial_latency", "independent_throughput"]},
+        "dependency_contract": {"$ref": "#/$defs/dependencyContract"},
+        "submission": {"$ref": "#/$defs/submission"},
+        "timing": {
+          "type": "object",
+          "required": ["single", "burst"],
+          "properties": {
+            "single": {"$ref": "#/$defs/timingControl"},
+            "burst": {"$ref": "#/$defs/timingControl"}
+          },
+          "additionalProperties": false
+        },
+        "correctness": {"$ref": "#/$defs/timedCorrectness"}
+      },
+      "additionalProperties": true
+    },
+    "legacyV1Result": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "bench",
+        "backend",
+        "hardware",
+        "source",
+        "command",
+        "parameters",
+        "correctness",
+        "timing",
+        "classification"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "kind": {"const": "hipengine_micro_result"},
+        "bench": {"type": "string"},
+        "backend": {"enum": ["hip", "vulkan", "cpu", "comparison"]},
+        "hardware": {"$ref": "#/$defs/hardware"},
+        "source": {"$ref": "#/$defs/source"},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "parameters": {"type": "object"},
+        "correctness": {"type": "object", "required": ["status"]},
+        "timing": {"type": "object", "required": ["unit"]},
+        "classification": {"$ref": "#/$defs/classification"}
+      },
+      "additionalProperties": true
+    },
+    "v2Result": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "bench",
+        "backend",
+        "hardware",
+        "source",
+        "command",
+        "parameters",
+        "correctness",
+        "measurements",
+        "classification"
+      ],
+      "properties": {
+        "schema_version": {"const": 2},
+        "kind": {"const": "hipengine_micro_result"},
+        "bench": {"type": "string"},
+        "backend": {"enum": ["hip", "vulkan"]},
+        "hardware": {"$ref": "#/$defs/hardware"},
+        "source": {"$ref": "#/$defs/source"},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "parameters": {"type": "object"},
+        "correctness": {"type": "object"},
+        "measurements": {
+          "type": "object",
+          "required": ["rows"],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"$ref": "#/$defs/timedRow"}
+            }
+          },
+          "additionalProperties": true
+        },
+        "classification": {"$ref": "#/$defs/classification"}
+      },
+      "oneOf": [
+        {"required": ["environment"]},
+        {"required": ["environment_ref"]}
+      ],
+      "additionalProperties": true
+    },
+    "v2Comparison": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "bench",
+        "hardware",
+        "source",
+        "command",
+        "inputs",
+        "correctness",
+        "comparisons",
+        "classification"
+      ],
+      "properties": {
+        "schema_version": {"const": 2},
+        "kind": {"const": "hipengine_micro_comparison"},
+        "bench": {"type": "string"},
+        "hardware": {
+          "type": "object",
+          "required": ["hip", "vulkan"],
+          "properties": {
+            "hip": {"$ref": "#/$defs/hardware"},
+            "vulkan": {"$ref": "#/$defs/hardware"}
+          },
+          "additionalProperties": true
+        },
+        "source": {"$ref": "#/$defs/source"},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "inputs": {"type": "object"},
+        "correctness": {"type": "object"},
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["timing_mode", "control", "gpu_elapsed", "host_wall"],
+            "properties": {
+              "timing_mode": {"enum": ["serial_latency", "independent_throughput"]},
+              "control": {"enum": ["single", "burst"]},
+              "gpu_elapsed": {"type": "object"},
+              "host_wall": {"type": "object"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "classification": {"$ref": "#/$defs/classification"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/legacyV1Result"},
+    {"$ref": "#/$defs/v2Result"},
+    {"$ref": "#/$defs/v2Comparison"}
+  ]
+}

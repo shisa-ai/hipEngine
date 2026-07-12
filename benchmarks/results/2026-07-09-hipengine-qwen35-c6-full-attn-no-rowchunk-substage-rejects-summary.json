@@ -1,0 +1,57 @@
+{
+  "schema": "hipengine.benchmark.summary.v1",
+  "timestamp": "2026-07-09T00:00:00+09:00",
+  "status": "diagnostic_rejected_correctness",
+  "performance_claim": false,
+  "model": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+  "quant": "w4_paro",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "default_hardware": false
+  },
+  "software": {
+    "hipengine_commit": "700f5a196b64b9ef97783e674d3bcc58688371ed",
+    "python": "3.12.13",
+    "rocm": "7.13.60980"
+  },
+  "workload": {
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "batch_size": 6,
+    "decode_tokens": 16,
+    "warmup_decode_tokens": 0,
+    "max_layers": 40,
+    "correctness_reference": "generated-token equality vs independent c=1 resident runs"
+  },
+  "environment": {
+    "PYTHONPATH": ".",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS": "1"
+  },
+  "probes": [
+    {
+      "name": "native_full_no_rowchunk_output_gemv",
+      "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch_gemv --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-output-gemv-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "generated_token_equality": false,
+      "first_mismatch_index": 9,
+      "equal_prefix_tokens": 9,
+      "decode_tok_s_aggregate": 108.52533744648757,
+      "median_decode_step_ms": 52.264463622123,
+      "conclusion": "Forcing the full-attention O projection to batch GEMV does not repair native rows=6 no-rowchunk full attention."
+    },
+    {
+      "name": "native_full_no_rowchunk_output_gemv_dense_context_batch_gate_selected_layers",
+      "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 16 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-moe-path auto --batch-decode-linear-path batch_segments --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-dense-context-batch-gate-layers 3,7,11,15,19,23,27,31 --batch-sample-mode serial_lm_head --json benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d16-native-full-no-rowchunk-output-gemv-densectx-batchgate-3-31-smallbatch-shared-local-equality.json",
+      "status": "rejected_correctness",
+      "generated_token_equality": false,
+      "first_mismatch_index": 2,
+      "equal_prefix_tokens": 2,
+      "decode_tok_s_aggregate": 102.89262948108322,
+      "median_decode_step_ms": 55.530341574922204,
+      "conclusion": "Dense-context batch-gate override on the selected rowchunk frontier layers is both slower and correctness-worse."
+    }
+  ],
+  "retained_conclusion": "The remaining c6 native full-attention blocker is not isolated to the O projection or fixed by the dense-context batch-gate selected-layer override. Continue with deeper full-attention substage hidden-bisect or keep the selected rowchunk2 bridge."
+}

@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_linear_attention_attn_out_cpu_reference_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 262,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "layer_type": "linear_attention",
+  "runtime_path": "hipengine/runtime/qwen35_gguf_runner.py::_run_linear_attention_attn_only",
+  "kernel_path": "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip::qwen35_gdn_recurrent_rmsnorm_gate_decode_order_kernel / recurrent_rmsnorm_gate_lowp kernel family",
+  "dimensions": {
+    "hidden_size": 2048,
+    "ssm_group_count_num_k_heads": 16,
+    "ssm_time_step_rank_num_v_heads": 32,
+    "ssm_state_size_head_k_dim": 128,
+    "ssm_value_dim_head_v_dim": 128,
+    "ssm_inner_size": 4096,
+    "linear_qkv_width": 8192,
+    "ssm_conv_kernel": 4,
+    "rms_norm_eps": 9.999999974752427e-07,
+    "is_moe": true
+  },
+  "decode_order": [
+    "RMSNorm hidden -> scratch.norm (BF16)",
+    "attn_qkv and attn_gate projections from scratch.norm -> scratch.linear_qkv / scratch.linear_z",
+    "ssm_alpha/ssm_beta projections from scratch.norm -> BF16 alpha/beta buffers",
+    "conv decode over linear_qkv + conv_state + ssm_conv1d -> conv_out F32",
+    "GDN recurrence: q/k normalization, beta=sigmoid(beta), decay=exp(-exp(a_log)*softplus(alpha+dt_bias)), recurrent_state update, value output accumulation",
+    "per-head RMSNorm + ssm_norm + silu(attn_gate) -> recurrent_bf16",
+    "ssm_out GGUF linear recurrent_bf16 -> attn_out BF16"
+  ],
+  "needed_cpu_reference_inputs": [
+    "runtime scratch.norm (matched CPU probe input)",
+    "attn_qkv projection output before convolution: scratch.linear_qkv",
+    "attn_gate projection output: scratch.linear_z",
+    "ssm_conv1d weights and resident conv_state before selected token",
+    "ssm_alpha/ssm_beta BF16 side outputs (already matched for token 271)",
+    "ssm_dt_bias F32",
+    "ssm_a/log-decay F32 after materialization conversion",
+    "ssm_norm F32",
+    "recurrent_state before selected token",
+    "ssm_out weight and post-GDN recurrent_bf16"
+  ],
+  "already_matched": {
+    "artifact": "benchmarks/results/mtp-gguf-iter260-boundary-capture-vs-cpu-probe.json",
+    "ssm_alpha_sample_max_abs": 0.0,
+    "ssm_beta_sample_max_abs": 0.0
+  },
+  "next_recommended_capture": [
+    "scratch.linear_qkv",
+    "scratch.linear_z",
+    "scratch.conv_out",
+    "scratch.recurrent_out before f32_to_bf16",
+    "scratch.recurrent_bf16 after f32_to_bf16",
+    "conv_state/recurrent_state before the selected token if full CPU replay is desired"
+  ],
+  "conclusion": "A CPU attn_out oracle cannot be built from the current iter259 artifact alone: it needs at least linear_qkv, linear_z, conv_out and recurrent state/bf16 recurrent buffers in addition to the already matched alpha/beta. The next code step should extend the diagnostic tap to capture these intermediate buffers rather than changing precision yet."
+}

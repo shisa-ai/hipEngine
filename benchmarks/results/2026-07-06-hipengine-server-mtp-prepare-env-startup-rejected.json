@@ -1,0 +1,114 @@
+{
+  "artifact_type": "rejected_probe_startup",
+  "memory": {
+    "after_chat_smoke": {
+      "free_bytes": 63824216064,
+      "free_gib": 59.440933,
+      "total_bytes": 128849018880,
+      "used_bytes": 65024802816,
+      "used_gib": 60.559067
+    },
+    "after_raw_warmup": {
+      "free_bytes": 103838912512,
+      "free_gib": 96.707523,
+      "total_bytes": 128849018880,
+      "used_bytes": 25010106368,
+      "used_gib": 23.292477
+    },
+    "after_resident_prepare": {
+      "free_bytes": 104029114368,
+      "free_gib": 96.884663,
+      "total_bytes": 128849018880,
+      "used_bytes": 24819904512,
+      "used_gib": 23.115337
+    },
+    "after_scratch_probe": {
+      "free_bytes": 63824216064,
+      "free_gib": 59.440933,
+      "total_bytes": 128849018880,
+      "used_bytes": 65024802816,
+      "used_gib": 60.559067
+    },
+    "guard": {
+      "free_bytes": 63824216064,
+      "free_gib": 59.440933,
+      "total_bytes": 128849018880,
+      "used_bytes": 65024802816,
+      "used_gib": 60.559067
+    },
+    "startup_begin": {
+      "free_bytes": 128844787712,
+      "free_gib": 119.996059,
+      "total_bytes": 128849018880,
+      "used_bytes": 4231168,
+      "used_gib": 0.003941
+    }
+  },
+  "model": {
+    "backend": "hip_gfx1100",
+    "id": "llama",
+    "loaded": true,
+    "loaded_model_count": 1,
+    "quant": "gguf_q4_k_m"
+  },
+  "reason": "server prepare under full llama-compat MTP materialization env ballooned resident prepare time",
+  "startup_checks": {
+    "chat_smoke": {
+      "enabled": true,
+      "max_tokens": 1,
+      "prompt_tokens": 24,
+      "status": "passed"
+    },
+    "raw_warmup": {
+      "max_tokens": 1,
+      "status": "passed"
+    },
+    "scratch_probe": {
+      "context_unknown": true,
+      "enabled": true,
+      "max_prompt_tokens": null,
+      "probe_prompt_tokens": 64,
+      "result": {
+        "max_batch_size": 8,
+        "max_prompt_tokens": 64,
+        "packed_ar_prefill_prompt_lengths": [
+          40,
+          64
+        ],
+        "packed_ar_prefill_skipped": false,
+        "packed_ar_prefill_widths": [
+          2,
+          4
+        ],
+        "packed_mtp_prefill_prompt_lengths": [
+          40,
+          64
+        ],
+        "packed_mtp_prefill_skipped": false,
+        "packed_mtp_prefill_widths": [
+          2,
+          4
+        ],
+        "packed_mtp_verify_prompt_lengths": [
+          40,
+          64
+        ],
+        "packed_mtp_verify_skipped": false,
+        "packed_mtp_verify_widths": [
+          2,
+          4
+        ],
+        "release_after_probe": true
+      },
+      "status": "passed"
+    }
+  },
+  "startup_last_timings_s": {
+    "chat_smoke_s": 0.132492,
+    "engine_create_s": 1.5e-05,
+    "resident_prepare_s": 46.236874,
+    "scratch_probe_s": 6.950871,
+    "startup_total_s": 53.676055,
+    "warmup_s": 0.189177
+  }
+}

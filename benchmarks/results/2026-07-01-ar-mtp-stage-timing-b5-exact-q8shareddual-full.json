@@ -1,0 +1,335 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-07-01T20:49:48",
+  "scope": "full",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "f7ade27be99fc4cc6777780b32d6c08838c14f47",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 10,
+    "budgets": [
+      5
+    ],
+    "prompt_limit": null,
+    "ar_decode_tokens": 60,
+    "mtp_route": "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+    "mtp_route_extra_args": [
+      "--resident-mtp-draft",
+      "--root-topk-accept",
+      "1",
+      "--sibling-topk-accept",
+      "1",
+      "--target-block-verify",
+      "--target-block-direct-state-commit",
+      "--target-block-min-rows",
+      "2",
+      "--adaptive-block-after-full-accept",
+      "--adaptive-probe-draft-n-max",
+      "1",
+      "--draft-p-min",
+      "0.5",
+      "--mtp-draft-vocab-cap",
+      "32768"
+    ],
+    "mtp_route_env": {},
+    "mtp_route_default_budgets": null,
+    "record_cycle_stage_timings": true
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.553336339176745,
+    "total_output_tokens": 600,
+    "decode_ms": 10998.41073458083,
+    "prompts": 10,
+    "per_category": {
+      "code": 54.56617686405959,
+      "general_en": 54.684153343291236,
+      "general_ja": 54.62870237363838,
+      "mixed_ja_en": 54.322872948670444
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 68.73423508387175,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 215,
+      "target_verify_layer_passes": 122,
+      "target_verify_rows_evaluated": 250,
+      "target_verify_serial_rows": 78,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 44,
+      "target_verify_block_rows": 172,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 44,
+      "target_verify_discarded_rows": 35,
+      "target_verify_layer_passes_per_output": 0.5674418604651162,
+      "target_verify_rows_per_output": 1.1627906976744187,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": null,
+      "cycle_wall_ms_per_output": null,
+      "cycle_wall_over_legacy_ms_total": null,
+      "cycle_wall_over_legacy_ms_per_output": null,
+      "stage_timing_totals_ms": null,
+      "stage_timing_per_output_ms": null,
+      "stage_timing_per_cycle_ms": null,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "1": 39,
+          "2": 10,
+          "4": 8,
+          "0": 25,
+          "3": 11,
+          "5": 7
+        },
+        "accepted_draft_tokens": {
+          "1": 36,
+          "2": 7,
+          "4": 5,
+          "0": 41,
+          "5": 6,
+          "3": 5
+        },
+        "visible_output_tokens": {
+          "2": 36,
+          "3": 7,
+          "5": 5,
+          "1": 41,
+          "6": 6,
+          "4": 5
+        },
+        "target_verify_layer_passes": {
+          "2": 22,
+          "1": 78
+        },
+        "target_verify_rows_evaluated": {
+          "2": 30,
+          "3": 10,
+          "5": 8,
+          "1": 34,
+          "4": 11,
+          "6": 7
+        },
+        "target_verify_block_rows": {
+          "0": 56,
+          "3": 10,
+          "5": 8,
+          "4": 11,
+          "6": 7,
+          "2": 8
+        },
+        "target_verify_replay_rows": {
+          "0": 100
+        },
+        "target_verify_direct_commit_rows": {
+          "0": 56,
+          "1": 44
+        },
+        "target_verify_discarded_rows": {
+          "0": 83,
+          "1": 5,
+          "2": 7,
+          "3": 4,
+          "4": 1
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 83,
+          "1": 5,
+          "2": 7,
+          "3": 4,
+          "4": 1
+        }
+      },
+      "vs_ar_ratio": 1.2599
+    },
+    "b5": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 60.71971216032263,
+      "accepted_per_output": 0.5348837209302325,
+      "draft_acceptance": 0.7232704402515723,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 115,
+      "total_output_tokens": 215,
+      "target_verify_layer_passes": 122,
+      "target_verify_rows_evaluated": 250,
+      "target_verify_serial_rows": 78,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 44,
+      "target_verify_block_rows": 172,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 44,
+      "target_verify_discarded_rows": 35,
+      "target_verify_layer_passes_per_output": 0.5674418604651162,
+      "target_verify_rows_per_output": 1.1627906976744187,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": 3546.72,
+      "cycle_wall_ms_per_output": 16.496372093023254,
+      "cycle_wall_over_legacy_ms_total": 5.859999999999673,
+      "cycle_wall_over_legacy_ms_per_output": 0.02725581395348685,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.4916000000000001,
+        "draft_diagnostic_topk": 0.021099999999999997,
+        "draft_initial": 412.92060000000004,
+        "draft_mtp_layer_forward": 28.0394,
+        "draft_prepare_inputs": 19.0615,
+        "draft_seed_upload": 21.546799999999998,
+        "draft_topk_readback": 247.53209999999996,
+        "target_block_acceptance_accounting": 0.2431,
+        "target_block_cursor_update": 0.2542,
+        "target_block_embedding": 2.7368999999999994,
+        "target_block_forward": 1688.7373,
+        "target_block_full_attn_layers": 391.33329999999995,
+        "target_block_hidden_readback": 1.0073,
+        "target_block_layer_total": 1482.3122,
+        "target_block_linear_attn_layers": 1090.9787999999999,
+        "target_block_lm_head_sample": 123.68360000000001,
+        "target_block_output_norm_hidden": 25.9007,
+        "target_block_replay_or_commit": 5.5966000000000005,
+        "target_block_setup": 50.467099999999995,
+        "target_block_verify_total": 1694.8952,
+        "target_serial_verify_step": 1433.0426
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.002286511627906977,
+        "draft_diagnostic_topk": 9.813953488372092e-05,
+        "draft_initial": 1.9205609302325584,
+        "draft_mtp_layer_forward": 0.13041581395348836,
+        "draft_prepare_inputs": 0.08865813953488372,
+        "draft_seed_upload": 0.10021767441860464,
+        "draft_topk_readback": 1.1513120930232557,
+        "target_block_acceptance_accounting": 0.0011306976744186047,
+        "target_block_cursor_update": 0.0011823255813953487,
+        "target_block_embedding": 0.012729767441860463,
+        "target_block_forward": 7.854592093023256,
+        "target_block_full_attn_layers": 1.82015488372093,
+        "target_block_hidden_readback": 0.004685116279069768,
+        "target_block_layer_total": 6.89447534883721,
+        "target_block_linear_attn_layers": 5.074319999999999,
+        "target_block_lm_head_sample": 0.5752725581395349,
+        "target_block_output_norm_hidden": 0.12046837209302326,
+        "target_block_replay_or_commit": 0.026030697674418606,
+        "target_block_setup": 0.2347306976744186,
+        "target_block_verify_total": 7.883233488372093,
+        "target_serial_verify_step": 6.665314418604651
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.004916000000000001,
+        "draft_diagnostic_topk": 0.00021099999999999998,
+        "draft_initial": 4.129206,
+        "draft_mtp_layer_forward": 0.28039400000000003,
+        "draft_prepare_inputs": 0.19061499999999998,
+        "draft_seed_upload": 0.21546799999999997,
+        "draft_topk_readback": 2.4753209999999997,
+        "target_block_acceptance_accounting": 0.002431,
+        "target_block_cursor_update": 0.002542,
+        "target_block_embedding": 0.027368999999999994,
+        "target_block_forward": 16.887373,
+        "target_block_full_attn_layers": 3.9133329999999997,
+        "target_block_hidden_readback": 0.010073,
+        "target_block_layer_total": 14.823122000000001,
+        "target_block_linear_attn_layers": 10.909787999999999,
+        "target_block_lm_head_sample": 1.236836,
+        "target_block_output_norm_hidden": 0.259007,
+        "target_block_replay_or_commit": 0.055966,
+        "target_block_setup": 0.504671,
+        "target_block_verify_total": 16.948952,
+        "target_serial_verify_step": 14.330426
+      },
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "1": 39,
+          "2": 10,
+          "4": 8,
+          "0": 25,
+          "3": 11,
+          "5": 7
+        },
+        "accepted_draft_tokens": {
+          "1": 36,
+          "2": 7,
+          "4": 5,
+          "0": 41,
+          "5": 6,
+          "3": 5
+        },
+        "visible_output_tokens": {
+          "2": 36,
+          "3": 7,
+          "5": 5,
+          "1": 41,
+          "6": 6,
+          "4": 5
+        },
+        "target_verify_layer_passes": {
+          "2": 22,
+          "1": 78
+        },
+        "target_verify_rows_evaluated": {
+          "2": 30,
+          "3": 10,
+          "5": 8,
+          "1": 34,
+          "4": 11,
+          "6": 7
+        },
+        "target_verify_block_rows": {
+          "0": 56,
+          "3": 10,
+          "5": 8,
+          "4": 11,
+          "6": 7,
+          "2": 8
+        },
+        "target_verify_replay_rows": {
+          "0": 100
+        },
+        "target_verify_direct_commit_rows": {
+          "0": 56,
+          "1": 44
+        },
+        "target_verify_discarded_rows": {
+          "0": 83,
+          "1": 5,
+          "2": 7,
+          "3": 4,
+          "4": 1
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 83,
+          "1": 5,
+          "2": 7,
+          "3": 4,
+          "4": 1
+        }
+      },
+      "vs_ar_ratio": 1.113
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.553336339176745,
+    "best_mtp_budget": "b5",
+    "best_mtp_vs_ar_ratio": 1.113,
+    "mtp_beats_ar": true
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-full-1782906588/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-full-1782906588/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope full --budgets 5 --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json"
+}

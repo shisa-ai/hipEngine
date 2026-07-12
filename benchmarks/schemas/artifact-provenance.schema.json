@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.local/schemas/artifact-provenance.schema.json",
+  "title": "hipEngine canonical artifact provenance",
+  "type": "object",
+  "required": [
+    "kind",
+    "schema_version",
+    "collected_at",
+    "repo_root",
+    "hipengine_commit",
+    "git_branch",
+    "staged_dirty",
+    "unstaged_dirty",
+    "untracked_dirty",
+    "untracked_count",
+    "dirty",
+    "configured_backend",
+    "resolved_backend",
+    "target_arch",
+    "device_name",
+    "model_path",
+    "model_revision",
+    "model_fingerprint",
+    "quant",
+    "kv_dtype",
+    "command",
+    "environment",
+    "rocm_version",
+    "hipcc_version",
+    "build_profile",
+    "timing_protocol",
+    "warmups",
+    "repetitions",
+    "profiler"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_artifact_provenance"},
+    "schema_version": {"const": 1},
+    "collected_at": {"type": "string"},
+    "repo_root": {"type": "string", "minLength": 1},
+    "hipengine_commit": {"type": "string", "minLength": 1},
+    "git_branch": {"type": ["string", "null"]},
+    "staged_dirty": {"type": "boolean"},
+    "unstaged_dirty": {"type": "boolean"},
+    "untracked_dirty": {"type": "boolean"},
+    "untracked_count": {"type": "integer", "minimum": 0},
+    "dirty": {"type": "boolean"},
+    "configured_backend": {"type": "string", "minLength": 1},
+    "resolved_backend": {"type": "string", "minLength": 1, "not": {"const": "auto"}},
+    "target_arch": {"type": ["string", "null"]},
+    "device_name": {"type": ["string", "null"]},
+    "model_path": {"type": ["string", "null"]},
+    "model_revision": {"type": ["string", "null"]},
+    "model_fingerprint": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["algorithm", "value", "size_bytes", "sampled_bytes", "exists", "path_type"],
+          "properties": {
+            "algorithm": {"type": "string", "minLength": 1},
+            "value": {"type": "string", "minLength": 1},
+            "size_bytes": {"type": "integer", "minimum": 0},
+            "sampled_bytes": {"type": "integer", "minimum": 0},
+            "exists": {"type": "boolean"},
+            "path_type": {"enum": ["file", "directory", "missing"]},
+            "file_count": {"type": "integer", "minimum": 0},
+            "sample_offsets": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0}
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "quant": {"type": ["string", "null"]},
+    "kv_dtype": {"type": ["string", "null"]},
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string"}
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "null"]}
+    },
+    "rocm_version": {"type": ["string", "null"]},
+    "hipcc_version": {"type": ["string", "null"]},
+    "build_profile": {"type": ["string", "null"]},
+    "timing_protocol": {"type": ["string", "null"]},
+    "warmups": {"type": ["integer", "null"], "minimum": 0},
+    "repetitions": {"type": ["integer", "null"], "minimum": 0},
+    "profiler": {"type": ["object", "null"]}
+  },
+  "additionalProperties": false
+}

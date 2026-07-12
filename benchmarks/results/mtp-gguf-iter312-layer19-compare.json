@@ -1,0 +1,400 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_vs_hipengine_layer_boundary_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 312,
+  "status": "mismatched",
+  "layer_id": 19,
+  "compile_artifact_path": "benchmarks/results/mtp-gguf-iter312-layer19-harness-compile.json",
+  "prior_pre_output_path": "benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json",
+  "executable": "/tmp/hipengine-llamacpp-mtp-iter312-layer19-harness/llamacpp_hidden_seed_capture",
+  "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter312-layer19-build/bin",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "position": 16,
+  "token_id": 271,
+  "all_rows_requested": true,
+  "max_sequence_length": null,
+  "exact_atol": 0.0,
+  "llamacpp_run": {
+    "command": [
+      "/tmp/hipengine-llamacpp-mtp-iter312-layer19-harness/llamacpp_hidden_seed_capture",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--prompt-tokens",
+      "248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271",
+      "--position",
+      "16",
+      "--output-prefix",
+      "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16",
+      "--n-gpu-layers",
+      "999",
+      "--threads",
+      "8",
+      "--all-rows"
+    ],
+    "command_shell": "/tmp/hipengine-llamacpp-mtp-iter312-layer19-harness/llamacpp_hidden_seed_capture --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 --position 16 --output-prefix /tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16 --n-gpu-layers 999 --threads 8 --all-rows",
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 2.727,
+    "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.stdout.log",
+    "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.stderr.log",
+    "stdout_tail": "{\"captured_hidden_seed\":true,\"position\":16,\"n_embd\":2048,\"binary\":\"/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.f32\"}\n",
+    "stderr_tail": "e: layer  37: filtered\nllama_kv_cache: layer  38: filtered\nllama_kv_cache: layer  39: dev = ROCm0\nllama_kv_cache: layer  40: filtered\nllama_kv_cache:      ROCm0 KV buffer size =     5.00 MiB\nllama_kv_cache: size =    5.00 MiB (   256 cells,  10 layers,  1/1 seqs), K (f16):    2.50 MiB, V (f16):    2.50 MiB\nllama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256\nllama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256\nllama_memory_recurrent, layer   0: dev = ROCm0\nllama_memory_recurrent, layer   1: dev = ROCm0\nllama_memory_recurrent, layer   2: dev = ROCm0\nllama_memory_recurrent: layer   3: skipped\nllama_memory_recurrent, layer   4: dev = ROCm0\nllama_memory_recurrent, layer   5: dev = ROCm0\nllama_memory_recurrent, layer   6: dev = ROCm0\nllama_memory_recurrent: layer   7: skipped\nllama_memory_recurrent, layer   8: dev = ROCm0\nllama_memory_recurrent, layer   9: dev = ROCm0\nllama_memory_recurrent, layer  10: dev = ROCm0\nllama_memory_recurrent: layer  11: skipped\nllama_memory_recurrent, layer  12: dev = ROCm0\nllama_memory_recurrent, layer  13: dev = ROCm0\nllama_memory_recurrent, layer  14: dev = ROCm0\nllama_memory_recurrent: layer  15: skipped\nllama_memory_recurrent, layer  16: dev = ROCm0\nllama_memory_recurrent, layer  17: dev = ROCm0\nllama_memory_recurrent, layer  18: dev = ROCm0\nllama_memory_recurrent: layer  19: skipped\nllama_memory_recurrent, layer  20: dev = ROCm0\nllama_memory_recurrent, layer  21: dev = ROCm0\nllama_memory_recurrent, layer  22: dev = ROCm0\nllama_memory_recurrent: layer  23: skipped\nllama_memory_recurrent, layer  24: dev = ROCm0\nllama_memory_recurrent, layer  25: dev = ROCm0\nllama_memory_recurrent, layer  26: dev = ROCm0\nllama_memory_recurrent: layer  27: skipped\nllama_memory_recurrent, layer  28: dev = ROCm0\nllama_memory_recurrent, layer  29: dev = ROCm0\nllama_memory_recurrent, layer  30: dev = ROCm0\nllama_memory_recurrent: layer  31: skipped\nllama_memory_recurrent, layer  32: dev = ROCm0\nllama_memory_recurrent, layer  33: dev = ROCm0\nllama_memory_recurrent, layer  34: dev = ROCm0\nllama_memory_recurrent: layer  35: skipped\nllama_memory_recurrent, layer  36: dev = ROCm0\nllama_memory_recurrent, layer  37: dev = ROCm0\nllama_memory_recurrent, layer  38: dev = ROCm0\nllama_memory_recurrent: layer  39: skipped\nllama_memory_recurrent:      ROCm0 RS buffer size =    62.81 MiB\nllama_memory_recurrent: size =   62.81 MiB (     1 cells,  40 layers,  1 seqs  0 rs_seq), R (f32):    2.81 MiB, S (f32):   60.00 MiB\nllama_context: enumerating backends\nllama_context: backend_ptrs.size() = 2\nsched_reserve: reserving ...\nsched_reserve: max_nodes = 24096\nsched_reserve: reserving full memory module\nsched_reserve: worst-case: n_tokens = 17, n_seqs = 1, n_outputs = 1\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve: resolving fused Gated Delta Net support:\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\nsched_reserve: fused Gated Delta Net (autoregressive) enabled\ngraph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16\nsched_reserve: fused Gated Delta Net (chunked) enabled\ngraph_reserve: reserving a graph for ubatch with n_tokens =   17, n_seqs =  1, n_outputs =   17\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\ngraph_reserve: reserving a graph for ubatch with n_tokens =   17, n_seqs =  1, n_outputs =   17\nsched_reserve:      ROCm0 compute buffer size =    16.51 MiB\nsched_reserve:  ROCm_Host compute buffer size =     0.27 MiB\nsched_reserve: graph nodes  = 3727\nsched_reserve: graph splits = 2\nsched_reserve: reserve took 10.17 ms, sched copies = 1\nset_embeddings_nextn: value = 1, masked = 0\n~llama_context:      ROCm0 compute buffer size is  16.5114 MiB, matches expectation of  16.5114 MiB\n~llama_context:  ROCm_Host compute buffer size is   0.2747 MiB, matches expectation of   0.2747 MiB\n"
+  },
+  "llamacpp_capture": {
+    "binary_path": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.f32",
+    "binary_exists": true,
+    "metadata_path": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.json",
+    "metadata_exists": true,
+    "metadata": {
+      "kind": "llamacpp_hidden_seed_capture",
+      "tap": "h_nextn_post_output_norm",
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "prompt_token_source": "token_ids",
+      "prompt_token_count": 17,
+      "position": 16,
+      "n_embd": 2048,
+      "dtype": "float32",
+      "binary": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.f32",
+      "row_index_semantics": "raw_prompt_position",
+      "all_rows": true,
+      "all_rows_binary": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.all.f32"
+    },
+    "all_rows": {
+      "binary_path": "/tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16.all.f32",
+      "bytes": 139264,
+      "float_count": 34816,
+      "sha256": "b4044c3acb06d6dab3ba3df3c977595cb486b8fab16d441d83ce03da244ea816"
+    },
+    "bytes": 8192,
+    "float_count": 2048,
+    "sha256": "ccc36226af0b5b4968e2db46ee73ba61f021e865578bb12ea44db3aa2e46eab5",
+    "stats": {
+      "count": 2048,
+      "finite_count": 2048,
+      "min": -0.6416355967521667,
+      "max": 1.5379990339279175,
+      "mean": 0.001815129031797369,
+      "l2": 3.4068793306164618
+    },
+    "samples": [
+      -0.00155076,
+      -0.00430661,
+      0.00888621,
+      -0.00140304,
+      -0.01509206,
+      -0.00144828,
+      0.01359898,
+      0.01899478
+    ],
+    "top_abs": [
+      {
+        "index": 1269,
+        "value": 1.53799903,
+        "abs": 1.53799903
+      },
+      {
+        "index": 175,
+        "value": -0.6416356,
+        "abs": 0.6416356
+      },
+      {
+        "index": 1759,
+        "value": 0.54703736,
+        "abs": 0.54703736
+      },
+      {
+        "index": 1924,
+        "value": 0.44724005,
+        "abs": 0.44724005
+      },
+      {
+        "index": 1197,
+        "value": 0.44276389,
+        "abs": 0.44276389
+      },
+      {
+        "index": 1224,
+        "value": -0.43360722,
+        "abs": 0.43360722
+      },
+      {
+        "index": 1945,
+        "value": 0.39336556,
+        "abs": 0.39336556
+      },
+      {
+        "index": 254,
+        "value": 0.3045395,
+        "abs": 0.3045395
+      }
+    ],
+    "effective_tap": "h_nextn_layer_out",
+    "effective_layer_id": 19,
+    "metadata_tap_note": "generic hidden-seed harness writes its original tap label; the patched llama.cpp graph keeps res->t_h_nextn from the selected layer output"
+  },
+  "hipengine_capture": {
+    "status": "captured",
+    "mode": "capture_attention_layer_layer_out",
+    "position": 16,
+    "token_id": 271,
+    "layer_id": 19,
+    "preceding_layer_count": 19,
+    "dtype": "BF16_to_F32",
+    "provenance": "capture_attention_layer.layer_out_f32",
+    "capture_summary": {
+      "layer_id": 19,
+      "layer_type": "full_attention",
+      "token_id": 271,
+      "position": 16,
+      "hidden_size": 2048,
+      "is_moe": true,
+      "top_k": 8,
+      "preceding_layer_count": 19,
+      "hidden_in_shape": [
+        2048
+      ],
+      "attn_out_shape": [
+        2048
+      ],
+      "post_norm_shape": [
+        2048
+      ],
+      "residual_shape": [
+        2048
+      ],
+      "ffn_or_moe_down_shape": [
+        16384
+      ],
+      "moe_shared_out_shape": [
+        2048
+      ],
+      "moe_routing_weights_shape": [
+        8
+      ],
+      "moe_shared_gate_shape": [
+        1
+      ],
+      "moe_selected_experts_shape": [
+        8
+      ],
+      "layer_out_shape": [
+        2048
+      ],
+      "finite": true
+    },
+    "summary": {
+      "count": 2048,
+      "sha256": "c68b553071b322e9bb3d787356477847c7a9c1c4525913ac21b556bbf5e19dee",
+      "stats": {
+        "count": 2048,
+        "finite_count": 2048,
+        "min": -0.267578125,
+        "max": 0.625,
+        "mean": -0.0007921220967546105,
+        "l2": 3.1009621899585915
+      },
+      "samples": [
+        0.01745605,
+        0.09863281,
+        -0.07470703,
+        -0.01928711,
+        -0.04492188,
+        -0.03735352,
+        0.08398438,
+        -0.01879883
+      ]
+    }
+  },
+  "numeric_delta": {
+    "available": true,
+    "shape_match": true,
+    "count": 2048,
+    "llamacpp_sha256": "ccc36226af0b5b4968e2db46ee73ba61f021e865578bb12ea44db3aa2e46eab5",
+    "hipengine_sha256": "c68b553071b322e9bb3d787356477847c7a9c1c4525913ac21b556bbf5e19dee",
+    "max_abs_diff": 0.9129990339279175,
+    "mean_abs_diff": 0.06992152715929478,
+    "rmse": 0.09116468083353843,
+    "llamacpp_l2": 3.4068793306164618,
+    "hipengine_l2": 3.1009621899585915,
+    "diff_samples": [
+      -0.01900681,
+      -0.10293943,
+      0.08359324,
+      0.01788407,
+      0.02982982,
+      0.03590523,
+      -0.0703854,
+      0.03779361
+    ],
+    "top_abs_diff": [
+      {
+        "index": 1269,
+        "actual": 1.53799903,
+        "reference": 0.625,
+        "diff": 0.91299903,
+        "abs_diff": 0.91299903
+      },
+      {
+        "index": 1224,
+        "actual": -0.43360722,
+        "reference": -0.00153351,
+        "diff": -0.43207371,
+        "abs_diff": 0.43207371
+      },
+      {
+        "index": 175,
+        "actual": -0.6416356,
+        "reference": -0.2578125,
+        "diff": -0.3838231,
+        "abs_diff": 0.3838231
+      },
+      {
+        "index": 776,
+        "actual": 0.16148728,
+        "reference": -0.18261719,
+        "diff": 0.34410447,
+        "abs_diff": 0.34410447
+      },
+      {
+        "index": 1759,
+        "actual": 0.54703736,
+        "reference": 0.20605469,
+        "diff": 0.34098268,
+        "abs_diff": 0.34098268
+      },
+      {
+        "index": 1945,
+        "actual": 0.39336556,
+        "reference": 0.05541992,
+        "diff": 0.33794564,
+        "abs_diff": 0.33794564
+      },
+      {
+        "index": 1761,
+        "actual": -0.24434063,
+        "reference": 0.06835938,
+        "diff": -0.3127,
+        "abs_diff": 0.3127
+      },
+      {
+        "index": 126,
+        "actual": 0.24470058,
+        "reference": -0.06640625,
+        "diff": 0.31110683,
+        "abs_diff": 0.31110683
+      }
+    ],
+    "exact_match": false,
+    "all_rows_scan": {
+      "available": true,
+      "rows": 17,
+      "row_width": 2048,
+      "best_by_rmse": {
+        "row": 13,
+        "sha256": "1e0ec23301b15a89d20be34421f569643f98c8d9ac6a2fa6b123e2a8875415b8",
+        "max_abs_diff": 0.30769509077072144,
+        "mean_abs_diff": 0.059363434840065565,
+        "rmse": 0.07481647252067326
+      },
+      "matches": [],
+      "rows_by_rmse": [
+        {
+          "row": 13,
+          "sha256": "1e0ec23301b15a89d20be34421f569643f98c8d9ac6a2fa6b123e2a8875415b8",
+          "max_abs_diff": 0.30769509077072144,
+          "mean_abs_diff": 0.059363434840065565,
+          "rmse": 0.07481647252067326
+        },
+        {
+          "row": 15,
+          "sha256": "7410c72d773e20922d4e805a7686e2c9515eafd97ebdf0d2c2f5c98b80535399",
+          "max_abs_diff": 0.41791486740112305,
+          "mean_abs_diff": 0.06081461678655842,
+          "rmse": 0.07777186343028845
+        },
+        {
+          "row": 14,
+          "sha256": "d97761d9bfddd5409751e830931aeee81fd708294172d9272d7e407fb0be6c1a",
+          "max_abs_diff": 0.37129098176956177,
+          "mean_abs_diff": 0.06324849151405942,
+          "rmse": 0.08086721794955086
+        },
+        {
+          "row": 11,
+          "sha256": "e9587b97f34b6b8eacb7e0f300ad8577a409b19da07c06544c2a9a8b48254b30",
+          "max_abs_diff": 0.7707251310348511,
+          "mean_abs_diff": 0.06464549855738255,
+          "rmse": 0.08351287465027672
+        },
+        {
+          "row": 4,
+          "sha256": "b340617f90a844135bd86f4d95bd4faf93459522199354004d7c8ec183565d0a",
+          "max_abs_diff": 1.1803555488586426,
+          "mean_abs_diff": 0.06352014786710924,
+          "rmse": 0.08594302625532119
+        },
+        {
+          "row": 12,
+          "sha256": "d4561a82e677d38d1b9dafcc85eac4f74e8b743fd6fa93ee712cd6d483488ac9",
+          "max_abs_diff": 1.470470666885376,
+          "mean_abs_diff": 0.06325861746552164,
+          "rmse": 0.0863410809683016
+        },
+        {
+          "row": 10,
+          "sha256": "eeeb75b27825281b34e057e268a3528e38f08bd137b7c7e592d75272bf8162b3",
+          "max_abs_diff": 1.2457773685455322,
+          "mean_abs_diff": 0.06529312180694546,
+          "rmse": 0.08676383775066238
+        },
+        {
+          "row": 8,
+          "sha256": "aee79b3e6ef0528fcbe49efa6ac2ecbecae89030db4df33b70e392198a059253",
+          "max_abs_diff": 0.789844274520874,
+          "mean_abs_diff": 0.06659421958985945,
+          "rmse": 0.0880685810735992
+        }
+      ]
+    }
+  },
+  "prior_pre_output_reference": {
+    "status": "mismatched",
+    "classification": "pre_output_mismatch_already_present",
+    "rmse": 0.45158678625003046,
+    "max_abs_diff": 6.707832336425781,
+    "mean_abs_diff": 0.3372998724516947,
+    "llamacpp_sha256": "1cab12b424a96e11d72e5b2157392dab90ff637613986e6972f233723c445468",
+    "hipengine_sha256": "5063f20d812adb727746d96ba03ffecdaf19237a10ddd64ba92fd05ebb5ccb27"
+  },
+  "prior_alignment": {
+    "llamacpp_matches_prior_pre_output": false,
+    "hipengine_matches_prior_pre_output": false,
+    "both_match_prior_pre_output": false,
+    "rmse_matches_prior_pre_output": false,
+    "max_abs_matches_prior_pre_output": false
+  },
+  "classification": "layer_boundary_mismatch",
+  "external_checkout_modified": false,
+  "next_action": "continue_bisect_with_layer_9"
+}

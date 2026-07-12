@@ -1,0 +1,520 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "hipengine_native_gguf_mtp_fixed_prompt_b1_b2_smoke",
+  "timestamp": "2026-06-21T07:37:38.921852+00:00",
+  "summary": {
+    "scope": "hipEngine-native GGUF MTP fixed-prompt smoke, not scripts/mtp-bench.py prompt suite",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompt": "What is the capital of France?",
+    "cycles": 10,
+    "supported_budgets_in_current_native_script": [
+      1,
+      2
+    ],
+    "unsupported_budgets": {
+      "B3": "scripts/gguf_mtp_bench.py validate_draft_n_max rejects B3/B4",
+      "B4": "scripts/gguf_mtp_bench.py validate_draft_n_max rejects B3/B4"
+    },
+    "best_supported_budget_by_warm_tok_s": "B1",
+    "best_supported_budget_by_including_cold_tok_s": "B2",
+    "note": "B1 has a large first-cycle draft/JIT/cold cost in this smoke; warm excluding cycle0 is the more useful steady-state diagnostic, but this is still below/near the script AR baseline and far below the llama.cpp server prompt-suite reference."
+  },
+  "hardware": {
+    "target_gpu": "AMD Radeon Pro W7900 (ROCR_VISIBLE_DEVICES=0, HIP_VISIBLE_DEVICES=0 for the smoke commands)",
+    "rocminfo_head": "Name:                    AMD Ryzen 9 5950X 16-Core Processor\n  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor\n  Vendor Name:             CPU                                \n  Name:                    gfx1100                            \n  Marketing Name:          AMD Radeon Pro W7900               \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1100         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic   \n  Name:                    gfx1100                            \n  Marketing Name:          AMD Radeon RX 7900 XTX             \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1100"
+  },
+  "software": {
+    "hipengine_commit": "8776e38030c1d85a52248cdda44e3026e373f42c",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "python": "Python 3.12.9"
+  },
+  "commands": {
+    "B1": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --draft-n-max 1 --cycles 10 --output /tmp/gguf-mtp-b1-smoke-w7900.json",
+    "B2": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10 --output /tmp/gguf-mtp-b2-smoke-w7900.json"
+  },
+  "results": {
+    "B1": {
+      "status": "ok",
+      "workload": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "prompt": "What is the capital of France?",
+        "prompt_tokens": 19,
+        "cycles": 10,
+        "draft_n_max": 1,
+        "engine": "hipEngine GGUF MTP",
+        "target_prefill_mode": "resident_default",
+        "mtp_context_mode": "single_seed_row"
+      },
+      "metrics": {
+        "accept_per_draft": 0.2,
+        "accepted_per_output": 0.1667,
+        "visible_tokens_per_cycle": 1.2,
+        "avg_cycle_ms": 437.05,
+        "avg_decode_ms": 437.05,
+        "avg_ar_decode_ms": 128.9,
+        "avg_mtp_draft_ms": 308.15,
+        "avg_ms_per_visible_token": 364.21,
+        "tokens_per_sec": 2.75,
+        "ar_baseline_tokens_per_sec": 9.31,
+        "speedup_vs_ar_visible": 0.2949,
+        "total_accepted": 2,
+        "total_drafts": 10,
+        "total_output_tokens": 12,
+        "verify_cycle_count": 10,
+        "denominators": {
+          "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+          "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+          "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+          "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+        },
+        "warm_excluding_cycle0": {
+          "accept_per_draft": 0.2222,
+          "accepted_per_output": 0.1818,
+          "visible_tokens_per_cycle": 1.2222,
+          "avg_cycle_ms": 139.68,
+          "avg_ar_decode_ms": 131.08,
+          "avg_mtp_draft_ms": 8.59,
+          "avg_ms_per_visible_token": 114.28,
+          "tokens_per_sec": 8.75,
+          "speedup_vs_ar_visible": 0.9385,
+          "total_accepted": 2,
+          "total_drafts": 9,
+          "total_output_tokens": 11,
+          "verify_cycle_count": 9
+        }
+      },
+      "compact_cycles": [
+        {
+          "cycle": 0,
+          "target_tokens": [
+            248046
+          ],
+          "draft_tokens": [
+            760
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 109.28,
+          "mtp_draft_ms": 3004.17,
+          "target_rank_in_draft_top10": [
+            9
+          ]
+        },
+        {
+          "cycle": 1,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            198
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 105.07,
+          "mtp_draft_ms": 8.94,
+          "target_rank_in_draft_top10": [
+            142
+          ]
+        },
+        {
+          "cycle": 2,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            24
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 105.86,
+          "mtp_draft_ms": 8.66,
+          "target_rank_in_draft_top10": [
+            4
+          ]
+        },
+        {
+          "cycle": 3,
+          "target_tokens": [
+            15,
+            15
+          ],
+          "draft_tokens": [
+            15
+          ],
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "ar_decode_ms": 212.71,
+          "mtp_draft_ms": 8.44,
+          "target_rank_in_draft_top10": [
+            1
+          ]
+        },
+        {
+          "cycle": 4,
+          "target_tokens": [
+            15,
+            148368
+          ],
+          "draft_tokens": [
+            15
+          ],
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 2,
+          "ar_decode_ms": 220.21,
+          "mtp_draft_ms": 9.04,
+          "target_rank_in_draft_top10": [
+            1
+          ]
+        },
+        {
+          "cycle": 5,
+          "target_tokens": [
+            570
+          ],
+          "draft_tokens": [
+            12
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 103.5,
+          "mtp_draft_ms": 8.9,
+          "target_rank_in_draft_top10": [
+            null
+          ]
+        },
+        {
+          "cycle": 6,
+          "target_tokens": [
+            148368
+          ],
+          "draft_tokens": [
+            12
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 108.38,
+          "mtp_draft_ms": 8.44,
+          "target_rank_in_draft_top10": [
+            2389
+          ]
+        },
+        {
+          "cycle": 7,
+          "target_tokens": [
+            16
+          ],
+          "draft_tokens": [
+            12
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 107.71,
+          "mtp_draft_ms": 8.24,
+          "target_rank_in_draft_top10": [
+            135
+          ]
+        },
+        {
+          "cycle": 8,
+          "target_tokens": [
+            16
+          ],
+          "draft_tokens": [
+            17
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 113.6,
+          "mtp_draft_ms": 8.47,
+          "target_rank_in_draft_top10": [
+            4
+          ]
+        },
+        {
+          "cycle": 9,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            17
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 1,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 102.7,
+          "mtp_draft_ms": 8.22,
+          "target_rank_in_draft_top10": [
+            2
+          ]
+        }
+      ],
+      "raw_tmp_json": "/tmp/gguf-mtp-b1-smoke-w7900.json"
+    },
+    "B2": {
+      "status": "ok",
+      "workload": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "prompt": "What is the capital of France?",
+        "prompt_tokens": 19,
+        "cycles": 10,
+        "draft_n_max": 2,
+        "engine": "hipEngine GGUF MTP",
+        "target_prefill_mode": "resident_default",
+        "mtp_context_mode": "single_seed_row"
+      },
+      "metrics": {
+        "accept_per_draft": 0.1,
+        "accepted_per_output": 0.1667,
+        "visible_tokens_per_cycle": 1.2,
+        "avg_cycle_ms": 160.73,
+        "avg_decode_ms": 160.73,
+        "avg_ar_decode_ms": 126.72,
+        "avg_mtp_draft_ms": 34.01,
+        "avg_ms_per_visible_token": 133.94,
+        "tokens_per_sec": 7.47,
+        "ar_baseline_tokens_per_sec": 9.47,
+        "speedup_vs_ar_visible": 0.7884,
+        "total_accepted": 2,
+        "total_drafts": 20,
+        "total_output_tokens": 12,
+        "verify_cycle_count": 10,
+        "denominators": {
+          "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+          "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+          "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+          "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+        },
+        "warm_excluding_cycle0": {
+          "accept_per_draft": 0.1111,
+          "accepted_per_output": 0.1818,
+          "visible_tokens_per_cycle": 1.2222,
+          "avg_cycle_ms": 145.1,
+          "avg_ar_decode_ms": 128.63,
+          "avg_mtp_draft_ms": 16.48,
+          "avg_ms_per_visible_token": 118.72,
+          "tokens_per_sec": 8.42,
+          "speedup_vs_ar_visible": 0.8864,
+          "total_accepted": 2,
+          "total_drafts": 18,
+          "total_output_tokens": 11,
+          "verify_cycle_count": 9
+        }
+      },
+      "compact_cycles": [
+        {
+          "cycle": 0,
+          "target_tokens": [
+            248046
+          ],
+          "draft_tokens": [
+            760,
+            84
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 109.58,
+          "mtp_draft_ms": 191.78,
+          "target_rank_in_draft_top10": [
+            9
+          ]
+        },
+        {
+          "cycle": 1,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            198,
+            248044
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 101.17,
+          "mtp_draft_ms": 16.79,
+          "target_rank_in_draft_top10": [
+            142
+          ]
+        },
+        {
+          "cycle": 2,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            24,
+            13
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 101.25,
+          "mtp_draft_ms": 15.85,
+          "target_rank_in_draft_top10": [
+            4
+          ]
+        },
+        {
+          "cycle": 3,
+          "target_tokens": [
+            15,
+            15,
+            15
+          ],
+          "draft_tokens": [
+            15,
+            15
+          ],
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 3,
+          "ar_decode_ms": 321.74,
+          "mtp_draft_ms": 16.29,
+          "target_rank_in_draft_top10": [
+            1,
+            1
+          ]
+        },
+        {
+          "cycle": 4,
+          "target_tokens": [
+            148368
+          ],
+          "draft_tokens": [
+            15,
+            15
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 106.83,
+          "mtp_draft_ms": 16.28,
+          "target_rank_in_draft_top10": [
+            null
+          ]
+        },
+        {
+          "cycle": 5,
+          "target_tokens": [
+            570
+          ],
+          "draft_tokens": [
+            12,
+            1710
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 104.74,
+          "mtp_draft_ms": 17.56,
+          "target_rank_in_draft_top10": [
+            null
+          ]
+        },
+        {
+          "cycle": 6,
+          "target_tokens": [
+            148368
+          ],
+          "draft_tokens": [
+            12,
+            17
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 103.58,
+          "mtp_draft_ms": 17.03,
+          "target_rank_in_draft_top10": [
+            2389
+          ]
+        },
+        {
+          "cycle": 7,
+          "target_tokens": [
+            16
+          ],
+          "draft_tokens": [
+            12,
+            1710
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 105.92,
+          "mtp_draft_ms": 15.87,
+          "target_rank_in_draft_top10": [
+            135
+          ]
+        },
+        {
+          "cycle": 8,
+          "target_tokens": [
+            16
+          ],
+          "draft_tokens": [
+            17,
+            18
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 107.15,
+          "mtp_draft_ms": 16.56,
+          "target_rank_in_draft_top10": [
+            4
+          ]
+        },
+        {
+          "cycle": 9,
+          "target_tokens": [
+            15
+          ],
+          "draft_tokens": [
+            17,
+            18
+          ],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2,
+          "visible_output_tokens": 1,
+          "ar_decode_ms": 105.25,
+          "mtp_draft_ms": 16.07,
+          "target_rank_in_draft_top10": [
+            2
+          ]
+        }
+      ],
+      "raw_tmp_json": "/tmp/gguf-mtp-b2-smoke-w7900.json"
+    }
+  },
+  "llama_cpp_prompt_suite_reference_from_same_session": {
+    "artifact": "benchmarks/results/2026-06-21-gguf-mtp-mtp-bench-w7900-b1-b4-diagnostic.json",
+    "llama_cpp_ar_decode_tok_s": 80.58,
+    "llama_cpp_best_mtp": "B4",
+    "llama_cpp_best_mtp_decode_tok_s": 153.65,
+    "llama_cpp_best_mtp_accepted_per_output": 0.7431,
+    "comparability": "reference only; different runner/protocol from this fixed-prompt native smoke"
+  },
+  "notes": [
+    "Native GGUF MTP prompt-suite runner is not implemented; scripts/gguf_mtp_b1_prompt_suite.py is currently a preflight/blocked artifact path.",
+    "The native fixed-prompt smoke uses target AR steps inside verification and reports ar_baseline_tokens_per_sec from those verification timings, not a full prompt-suite AR server baseline.",
+    "Raw /tmp JSONs contain large draft_top10 arrays and are not committed; compact_cycles retain acceptance/timing essentials."
+  ]
+}

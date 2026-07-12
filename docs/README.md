@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-06-15
+Last updated: 2026-07-10
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -14,6 +14,7 @@ working on.
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
+| [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Active cross-path gfx1151/gfx1100 PARO, GGUF, concurrency, MTP/DFlash, and HIP/Vulkan optimization ledger. |
 | [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
 | [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
@@ -25,7 +26,8 @@ working on.
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
 | [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
-| [`../benchmarks/README.md`](../benchmarks/README.md) | Current benchmark rollup, source-lineage targets, external baselines, and diagnostic rows. |
+| [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
+| [`../benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) | Archived experiment rollup, source-lineage targets, external baselines, and superseded diagnostics. |
 | [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md) | Reverse-chronological summary of benchmark rollup updates. |
 
 ## Kernels and performance model

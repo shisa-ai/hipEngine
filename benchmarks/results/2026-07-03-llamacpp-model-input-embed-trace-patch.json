@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_linear_attn_trace_allowlist_patch",
+  "date": "2026-07-02",
+  "iteration": 2,
+  "status": "patch_ready",
+  "reason": null,
+  "llamacpp_root": "/tmp/hipengine-llamacpp-linear-attn-trace.ixHJSR/llama.cpp-hip",
+  "source_exists": {
+    "src/llama-graph.cpp": true,
+    "src/llama-context.cpp": true
+  },
+  "reference_basis": {
+    "observed_llamacpp_commit": null,
+    "source_is_read_only_reference": true,
+    "external_checkout_modified": false
+  },
+  "targets": [
+    "src/llama-graph.cpp",
+    "src/llama-context.cpp"
+  ],
+  "patch_output": "/tmp/hipengine-llamacpp-model-input-embed-trace.patch",
+  "patch_sha256": "bb0d8adfb65b92c1dcae0aeb6e55b6a46c6092d86e126dafbe44bc7af616b61b",
+  "patch_bytes": 462,
+  "validation": {
+    "changed": true,
+    "diff_has_graph_target": true,
+    "diff_has_context_target": false,
+    "graph_allows_model_input_embed": true,
+    "graph_allows_projection_input": true,
+    "graph_allows_conv_output": true,
+    "graph_renames_qkv": true,
+    "graph_renames_conv_views": true,
+    "context_beta_uses_token_dim_2": true,
+    "context_qkv_views_use_token_dim_2": true,
+    "external_checkout_modified": false
+  },
+  "trace_labels_enabled": {
+    "projection_inputs": [
+      "linear_attn_qkv_mixed_0",
+      "z_0",
+      "alpha_0",
+      "beta_0"
+    ],
+    "conv_gdn_inputs_outputs": [
+      "conv_output_raw_0",
+      "conv_output_silu_0",
+      "q_conv_0",
+      "k_conv_0",
+      "v_conv_0",
+      "q_conv_predelta_0",
+      "k_conv_predelta_0",
+      "v_conv_predelta_0"
+    ]
+  },
+  "next_action": "apply_patch_to_temporary_llamacpp_trace_tree_and_capture_layer0_pre_ssm_labels"
+}

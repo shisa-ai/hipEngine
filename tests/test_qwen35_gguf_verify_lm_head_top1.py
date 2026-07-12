@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+import hipengine.runtime.qwen35_gguf_runner as runner_mod
+
+
+def test_small_b_rowtile_chunks_avoid_single_row_tail() -> None:
+    assert runner_mod._small_b_rowtile_chunks(6) == (6,)
+    assert runner_mod._small_b_rowtile_chunks(7) == (5, 2)
+    assert runner_mod._small_b_rowtile_chunks(8) == (6, 2)
+    assert runner_mod._small_b_rowtile_chunks(12) == (6, 6)
+    assert runner_mod._small_b_rowtile_chunks(13) == (6, 5, 2)
+
+
+def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+    runtime = SimpleNamespace()
+    calls: list[tuple[int, int, int, int, object]] = []
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        calls.append((int(hidden_ptr), int(out_ptr), int(rows), int(stream), runtime))
+        return True
+
+    monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+
+    handled = session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12, stream=3, runtime=runtime)
+
+    assert handled is True
+    hidden_stride = 64 * runner_mod.DType.BF16.itemsize
+    logits_stride = 128 * runner_mod.DType.FP32.itemsize
+    assert calls == [
+        (0x100000, 0x200000, 6, 3, runtime),
+        (0x100000 + 6 * hidden_stride, 0x200000 + 6 * logits_stride, 6, 3, runtime),
+    ]
+
+
+def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        return False
+
+    monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12) is False
+
+
+def _session_with_lm_head_x8() -> SimpleNamespace:
+    weight = SimpleNamespace(
+        allocation=lambda name="raw": SimpleNamespace(tensor=SimpleNamespace(ptr=0x2200))
+        if name == "x8"
+        else (_ for _ in ()).throw(KeyError(name))
+    )
+    return SimpleNamespace(
+        runner=SimpleNamespace(
+            hidden_size=64,
+            vocab_size=128,
+            weights=SimpleNamespace(root=lambda slot: weight),
+        ),
+        runtime=SimpleNamespace(),
+        compiler_version=None,
+        require_cached_build=False,
+        _verify_lm_q8_1=SimpleNamespace(ptr=0x1000),
+        _verify_lm_block_values=SimpleNamespace(ptr=0x1100),
+        _verify_lm_block_indices_i32=SimpleNamespace(ptr=0x1200),
+        _verify_lm_out_indices_i32=SimpleNamespace(ptr=0x1300),
+        _verify_lm_out_values=SimpleNamespace(ptr=0x1400),
+        _q6_pack8_library=SimpleNamespace(name="q6lib"),
+    )
+
+
+def test_verify_lm_head_q6_top1_dp4a_launches_x8_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session_with_lm_head_x8()
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    monkeypatch.setattr(runner_mod, "_gguf_verify_lm_head_q6_top1_dp4a_enabled", lambda: True)
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: calls.append(("quant", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32",
+        lambda *args, **kwargs: calls.append(("top1", args, kwargs)),
+    )
+
+    launched = runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
+        session,
+        0x9000,
+        3,
+        stream=7,
+        runtime=session.runtime,
+    )
+
+    assert launched is True
+    assert calls[0] == ("quant", (0x9000, 0x1000, 3, 64), {"stream": 7, "runtime": session.runtime})
+    assert calls[1][0] == "top1"
+    assert calls[1][1][:11] == (
+        0x1000,
+        0x2200,
+        0x1100,
+        0x1200,
+        0x1300,
+        0x1400,
+        None,
+        None,
+        3,
+        64,
+        128,
+    )
+    assert calls[1][1][11] == 0
+    assert calls[1][2] == {"stream": 7, "library": session._q6_pack8_library, "runtime": session.runtime}
+
+
+def test_verify_lm_head_q6_top1_dp4a_quantizes_f32_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session_with_lm_head_x8()
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    monkeypatch.setattr(runner_mod, "_gguf_verify_lm_head_q6_top1_dp4a_enabled", lambda: True)
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: pytest.fail("BF16 quantizer should not be used for FP32 hidden rows"),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_q4_k_quantize_f32_q8_1",
+        lambda *args, **kwargs: calls.append(("quant_f32", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32",
+        lambda *args, **kwargs: calls.append(("top1", args, kwargs)),
+    )
+
+    launched = runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
+        session,
+        0x9800,
+        2,
+        activation_dtype=runner_mod.GGUF_ACTIVATION_F32,
+        stream=5,
+        runtime=session.runtime,
+    )
+
+    assert launched is True
+    assert calls[0] == ("quant_f32", (0x9800, 0x1000, 2, 64), {"stream": 5, "runtime": session.runtime})
+    assert calls[1][0] == "top1"
+
+
+def test_verify_lm_head_q6_top1_dp4a_requires_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session_with_lm_head_x8()
+    session.runner.weights.root = lambda slot: SimpleNamespace(allocation=lambda name="raw": (_ for _ in ()).throw(KeyError(name)))
+
+    monkeypatch.setattr(runner_mod, "_gguf_verify_lm_head_q6_top1_dp4a_enabled", lambda: True)
+
+    with pytest.raises(RuntimeError, match="LM_HEAD_Q6_X8_SIDECAR"):
+        runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
+            session,
+            0x9000,
+            3,
+            stream=7,
+            runtime=session.runtime,
+        )

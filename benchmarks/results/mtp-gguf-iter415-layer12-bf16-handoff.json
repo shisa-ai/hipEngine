@@ -1,0 +1,503 @@
+{
+  "schema": 1,
+  "kind": "layer12_bf16_handoff_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 415,
+  "status": "ready",
+  "classification": "layer12_hidden_in_matches_layer11_layer_out_exactly",
+  "layer11_experts_path": "benchmarks/results/mtp-gguf-iter414-layer11-moe-expert-outputs-oracle.json",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_layer": 11,
+  "target_layer": 12,
+  "position": 16,
+  "token_id": 271,
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "oracle_contract": {
+    "source": "layer11 layer_out_f32 under resident-BF16 contract",
+    "target": "layer12 hidden_in_f32 captured after run_preceding_layers=True",
+    "expectation": "exact BF16 handoff before auditing layer12 sub-boundaries",
+    "layer11_experts_classification": "layer11_moe_expert_outputs_match_oracle_exactly"
+  },
+  "source_reference": {
+    "field": "layer_out_f32",
+    "reference_source": "layer11_moe_expert_outputs_oracle",
+    "reference_classification": "layer11_moe_expert_outputs_match_oracle_exactly",
+    "expected_sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+    "actual_sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+    "exact_hash_match": true,
+    "classification": "layer12_handoff_source_matches_layer11_artifact"
+  },
+  "source_capture": {
+    "status": "captured",
+    "summary": {
+      "layer_id": 11,
+      "layer_type": "full_attention",
+      "token_id": 271,
+      "position": 16,
+      "hidden_size": 2048,
+      "is_moe": true,
+      "top_k": 8,
+      "preceding_layer_count": 11,
+      "hidden_in_shape": [
+        2048
+      ],
+      "attn_out_shape": [
+        2048
+      ],
+      "post_norm_shape": [
+        2048
+      ],
+      "residual_shape": [
+        2048
+      ],
+      "ffn_or_moe_down_shape": [
+        16384
+      ],
+      "moe_shared_out_shape": [
+        2048
+      ],
+      "moe_routing_weights_shape": [
+        8
+      ],
+      "moe_shared_gate_shape": [
+        1
+      ],
+      "moe_selected_experts_shape": [
+        8
+      ],
+      "layer_out_shape": [
+        2048
+      ],
+      "finite": true
+    },
+    "fields": {
+      "hidden_in_f32": {
+        "summary": {
+          "shape": [
+            2048
+          ],
+          "count": 2048,
+          "sha256": "fb4312ddff9090664c051a426bed0934a309630953bde4fb06631df8ef7a5e44",
+          "stats": {
+            "count": 2048,
+            "finite_count": 2048,
+            "min": -0.314453125,
+            "max": 0.8828125,
+            "mean": -0.001524035818874836,
+            "l2": 2.161151785165693
+          },
+          "samples": [
+            0.06884766,
+            0.0145874,
+            -0.01190186,
+            -0.0090332,
+            -0.03295898,
+            -0.0559082,
+            -0.00037384,
+            -0.01916504
+          ],
+          "top_abs": [
+            {
+              "index": 1269,
+              "value": 0.8828125,
+              "abs": 0.8828125
+            },
+            {
+              "index": 175,
+              "value": -0.31445312,
+              "abs": 0.31445312
+            },
+            {
+              "index": 1197,
+              "value": 0.23535156,
+              "abs": 0.23535156
+            },
+            {
+              "index": 1714,
+              "value": -0.20605469,
+              "abs": 0.20605469
+            },
+            {
+              "index": 1759,
+              "value": 0.18945312,
+              "abs": 0.18945312
+            },
+            {
+              "index": 1924,
+              "value": 0.1875,
+              "abs": 0.1875
+            },
+            {
+              "index": 863,
+              "value": 0.16992188,
+              "abs": 0.16992188
+            },
+            {
+              "index": 895,
+              "value": -0.16015625,
+              "abs": 0.16015625
+            }
+          ]
+        },
+        "sha256": "fb4312ddff9090664c051a426bed0934a309630953bde4fb06631df8ef7a5e44"
+      },
+      "layer_out_f32": {
+        "summary": {
+          "shape": [
+            2048
+          ],
+          "count": 2048,
+          "sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+          "stats": {
+            "count": 2048,
+            "finite_count": 2048,
+            "min": -0.1923828125,
+            "max": 0.859375,
+            "mean": -0.0006407814216800034,
+            "l2": 2.2058022006641433
+          },
+          "samples": [
+            0.04907227,
+            0.05224609,
+            0.03588867,
+            -0.00084305,
+            -0.06103516,
+            -0.01550293,
+            -0.01080322,
+            -0.01904297
+          ],
+          "top_abs": [
+            {
+              "index": 1269,
+              "value": 0.859375,
+              "abs": 0.859375
+            },
+            {
+              "index": 1759,
+              "value": 0.21875,
+              "abs": 0.21875
+            },
+            {
+              "index": 1924,
+              "value": 0.21582031,
+              "abs": 0.21582031
+            },
+            {
+              "index": 863,
+              "value": 0.20507812,
+              "abs": 0.20507812
+            },
+            {
+              "index": 1197,
+              "value": 0.19726562,
+              "abs": 0.19726562
+            },
+            {
+              "index": 175,
+              "value": -0.19238281,
+              "abs": 0.19238281
+            },
+            {
+              "index": 895,
+              "value": -0.17675781,
+              "abs": 0.17675781
+            },
+            {
+              "index": 1904,
+              "value": -0.16992188,
+              "abs": 0.16992188
+            }
+          ]
+        },
+        "sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb"
+      }
+    }
+  },
+  "target_capture": {
+    "status": "captured",
+    "summary": {
+      "layer_id": 12,
+      "layer_type": "linear_attention",
+      "token_id": 271,
+      "position": 16,
+      "hidden_size": 2048,
+      "is_moe": true,
+      "top_k": 8,
+      "preceding_layer_count": 12,
+      "hidden_in_shape": [
+        2048
+      ],
+      "attn_out_shape": [
+        2048
+      ],
+      "post_norm_shape": [
+        2048
+      ],
+      "residual_shape": [
+        2048
+      ],
+      "ffn_or_moe_down_shape": [
+        16384
+      ],
+      "moe_shared_out_shape": [
+        2048
+      ],
+      "moe_routing_weights_shape": [
+        8
+      ],
+      "moe_shared_gate_shape": [
+        1
+      ],
+      "moe_selected_experts_shape": [
+        8
+      ],
+      "layer_out_shape": [
+        2048
+      ],
+      "finite": true
+    },
+    "fields": {
+      "hidden_in_f32": {
+        "summary": {
+          "shape": [
+            2048
+          ],
+          "count": 2048,
+          "sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+          "stats": {
+            "count": 2048,
+            "finite_count": 2048,
+            "min": -0.1923828125,
+            "max": 0.859375,
+            "mean": -0.0006407814216800034,
+            "l2": 2.2058022006641433
+          },
+          "samples": [
+            0.04907227,
+            0.05224609,
+            0.03588867,
+            -0.00084305,
+            -0.06103516,
+            -0.01550293,
+            -0.01080322,
+            -0.01904297
+          ],
+          "top_abs": [
+            {
+              "index": 1269,
+              "value": 0.859375,
+              "abs": 0.859375
+            },
+            {
+              "index": 1759,
+              "value": 0.21875,
+              "abs": 0.21875
+            },
+            {
+              "index": 1924,
+              "value": 0.21582031,
+              "abs": 0.21582031
+            },
+            {
+              "index": 863,
+              "value": 0.20507812,
+              "abs": 0.20507812
+            },
+            {
+              "index": 1197,
+              "value": 0.19726562,
+              "abs": 0.19726562
+            },
+            {
+              "index": 175,
+              "value": -0.19238281,
+              "abs": 0.19238281
+            },
+            {
+              "index": 895,
+              "value": -0.17675781,
+              "abs": 0.17675781
+            },
+            {
+              "index": 1904,
+              "value": -0.16992188,
+              "abs": 0.16992188
+            }
+          ]
+        },
+        "sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb"
+      },
+      "layer_out_f32": {
+        "summary": {
+          "shape": [
+            2048
+          ],
+          "count": 2048,
+          "sha256": "a01568e28aa4066ad99d3453b951ee78ce70428dd2037799b17838252f8bd79f",
+          "stats": {
+            "count": 2048,
+            "finite_count": 2048,
+            "min": -0.220703125,
+            "max": 0.67578125,
+            "mean": -0.0007808638038113713,
+            "l2": 2.516941289494975
+          },
+          "samples": [
+            0.05004883,
+            0.09472656,
+            0.01531982,
+            0.01599121,
+            -0.05151367,
+            -0.05004883,
+            -0.01623535,
+            -0.03588867
+          ],
+          "top_abs": [
+            {
+              "index": 1269,
+              "value": 0.67578125,
+              "abs": 0.67578125
+            },
+            {
+              "index": 895,
+              "value": -0.22070312,
+              "abs": 0.22070312
+            },
+            {
+              "index": 1197,
+              "value": 0.21386719,
+              "abs": 0.21386719
+            },
+            {
+              "index": 1726,
+              "value": 0.21289062,
+              "abs": 0.21289062
+            },
+            {
+              "index": 175,
+              "value": -0.2109375,
+              "abs": 0.2109375
+            },
+            {
+              "index": 1307,
+              "value": -0.20800781,
+              "abs": 0.20800781
+            },
+            {
+              "index": 1759,
+              "value": 0.20214844,
+              "abs": 0.20214844
+            },
+            {
+              "index": 1789,
+              "value": -0.19921875,
+              "abs": 0.19921875
+            }
+          ]
+        },
+        "sha256": "a01568e28aa4066ad99d3453b951ee78ce70428dd2037799b17838252f8bd79f"
+      }
+    }
+  },
+  "handoff_delta": {
+    "available": true,
+    "shape_match": true,
+    "count": 2048,
+    "actual_sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+    "reference_sha256": "ddecccaa02e737b4ad05ef8fd62f9f55b30b61dc693612cd99dd6a37c58b61eb",
+    "max_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "rmse": 0.0,
+    "diff_samples": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "top_abs_diff": [
+      {
+        "index": 0,
+        "actual": 0.04907227,
+        "reference": 0.04907227,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 1,
+        "actual": 0.05224609,
+        "reference": 0.05224609,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 2,
+        "actual": 0.03588867,
+        "reference": 0.03588867,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 3,
+        "actual": -0.00084305,
+        "reference": -0.00084305,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 4,
+        "actual": -0.06103516,
+        "reference": -0.06103516,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 5,
+        "actual": -0.01550293,
+        "reference": -0.01550293,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 6,
+        "actual": -0.01080322,
+        "reference": -0.01080322,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      },
+      {
+        "index": 7,
+        "actual": -0.01904297,
+        "reference": -0.01904297,
+        "diff": 0.0,
+        "abs_diff": 0.0
+      }
+    ],
+    "exact_match": true
+  },
+  "handoff_atol": 0.0,
+  "external_checkout_modified": false,
+  "next_action": "audit_layer12_attn_norm_under_bf16_contract_or_mtp_boundary"
+}

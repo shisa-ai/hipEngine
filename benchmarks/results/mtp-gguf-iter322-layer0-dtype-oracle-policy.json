@@ -1,0 +1,210 @@
+{
+  "schema": 1,
+  "kind": "layer0_dtype_oracle_policy",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 322,
+  "status": "ready",
+  "audit_path": "benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json",
+  "attn_compare_path": "benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-compare.json",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "position": 16,
+  "token_id": 271,
+  "readiness": {
+    "ready": true,
+    "facts": {
+      "status_ready": true,
+      "bf16_contraction_conclusion": true,
+      "llama_f32_candidate_exact": true,
+      "llama_bf16_candidate_exact": true,
+      "hip_bf16_candidate_exact": true,
+      "weight_direct_f32": true,
+      "weight_quant_key_f32": true,
+      "model_eps_present": true
+    },
+    "evidence": {
+      "llamacpp_input_sha256": "ce69511d7a54dec1a77cb3097923d71999d5f408690e377cec3bb39285dffa46",
+      "llamacpp_input_bf16_sha256": "5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3",
+      "llamacpp_attn_norm_sha256": "a96ec9c0d42f024a5918cfce7d35cd2f0574952a6c9a0c6fef0794285e8b6461",
+      "hipengine_attn_norm_sha256": "6643bb9063224b0cb61fee4d81f589ae8cfce977a0e98bee3a0170eb984f1808",
+      "model_eps": 9.999999974752427e-07
+    }
+  },
+  "decision": {
+    "selected_policy": "bf16_contracted_llamacpp_or_cpu_oracle",
+    "scope": "layer0_ar_boundary_bisection_only",
+    "reason": "Iteration 321 proved hipEngine exactly matches a BF16(input) + F32-weight + model-eps + BF16-output RMSNorm candidate, while llama.cpp exactly matches the F32-input candidate. Continue bisection under hipEngine's resident BF16 activation contract instead of adding a temporary F32 runtime branch.",
+    "direct_llamacpp_f32_comparison_status": "mismatched",
+    "direct_llamacpp_f32_classification": "layer0_attn_norm_mismatch_after_bf16_roundtrip",
+    "not_selected": [
+      {
+        "policy": "temporary_hipengine_f32_activation_rmsnorm_path",
+        "reason": "Not needed for the next diagnostic because the existing BF16 resident path is exactly explained; adding a runtime F32 branch would increase cleanup/refactor burden before a deeper unexplained mismatch is found."
+      },
+      {
+        "policy": "raw_direct_llamacpp_f32_deeper_boundary_compare",
+        "reason": "Direct deeper comparisons would inherit the known attn_norm dtype split and are not semantic parity checks unless the oracle is contracted to hipEngine's BF16 activation path."
+      }
+    ],
+    "long_term_note": "This diagnostic policy does not replace the MTP seed contract: docs/MTP-gguf.md still requires a post-output_norm fp32 hidden seed."
+  },
+  "boundary_capture_fields": {
+    "ready": true,
+    "capture_method": "Qwen35GGUFResidentSession.capture_linear_attention_boundary",
+    "fields": [
+      {
+        "field": "attn_norm_f32",
+        "declared": true,
+        "shape": [
+          2048
+        ],
+        "source_buffer": "scratch.norm.ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "RMSNorm(hidden, attn_norm.weight)"
+      },
+      {
+        "field": "linear_qkv_f32",
+        "declared": true,
+        "shape": [
+          8192
+        ],
+        "source_buffer": "scratch.linear_qkv.ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "attn_qkv projection output"
+      },
+      {
+        "field": "linear_z_f32",
+        "declared": true,
+        "shape": [
+          4096
+        ],
+        "source_buffer": "scratch.linear_z.ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "attn_gate projection output"
+      },
+      {
+        "field": "ssm_alpha_f32",
+        "declared": true,
+        "shape": [
+          32
+        ],
+        "source_buffer": "scratch.linear_alpha[_beta].ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "SSM alpha projection output"
+      },
+      {
+        "field": "ssm_beta_f32",
+        "declared": true,
+        "shape": [
+          32
+        ],
+        "source_buffer": "scratch.linear_beta or alpha_beta offset",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "SSM beta projection output"
+      },
+      {
+        "field": "conv_out_f32",
+        "declared": true,
+        "shape": [
+          8192
+        ],
+        "source_buffer": "scratch.conv_out.ptr",
+        "host_copy": "F32",
+        "semantic_stage": "linear-attention convolution output"
+      },
+      {
+        "field": "recurrent_out_f32",
+        "declared": true,
+        "shape": [
+          4096
+        ],
+        "source_buffer": "scratch.recurrent_out.ptr",
+        "host_copy": "F32",
+        "semantic_stage": "GDN recurrent output before BF16 cast"
+      },
+      {
+        "field": "recurrent_bf16_f32",
+        "declared": true,
+        "shape": [
+          4096
+        ],
+        "source_buffer": "scratch.recurrent_bf16.ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "GDN recurrent output after BF16 cast"
+      },
+      {
+        "field": "attn_out_f32",
+        "declared": true,
+        "shape": [
+          2048
+        ],
+        "source_buffer": "scratch.attn_out.ptr",
+        "host_copy": "BF16_to_F32",
+        "semantic_stage": "ssm_out projection output"
+      }
+    ],
+    "source_order": [
+      "attn_norm_f32",
+      "linear_qkv_f32",
+      "linear_z_f32",
+      "ssm_alpha_f32",
+      "ssm_beta_f32",
+      "conv_out_f32",
+      "recurrent_out_f32",
+      "recurrent_bf16_f32",
+      "attn_out_f32"
+    ],
+    "finite": true,
+    "shape_context": {
+      "hidden_size": 2048,
+      "linear_qkv_width": 8192,
+      "ssm_inner_size": 4096,
+      "ssm_time_step_rank": 32
+    }
+  },
+  "next_probe_plan": {
+    "ordered_probes": [
+      {
+        "field": "linear_qkv_f32",
+        "oracle_input": "attn_norm_bf16_contracted_exact",
+        "expected_dtype": "BF16_to_F32",
+        "reason": "This is an immediate consumer of the contracted attn_norm buffer before convolution/recurrent state effects."
+      },
+      {
+        "field": "linear_z_f32",
+        "oracle_input": "attn_norm_bf16_contracted_exact",
+        "expected_dtype": "BF16_to_F32",
+        "reason": "This is an immediate consumer of the contracted attn_norm buffer before convolution/recurrent state effects."
+      },
+      {
+        "field": "ssm_alpha_f32",
+        "oracle_input": "attn_norm_bf16_contracted_exact",
+        "expected_dtype": "BF16_to_F32",
+        "reason": "This is an immediate consumer of the contracted attn_norm buffer before convolution/recurrent state effects."
+      },
+      {
+        "field": "ssm_beta_f32",
+        "oracle_input": "attn_norm_bf16_contracted_exact",
+        "expected_dtype": "BF16_to_F32",
+        "reason": "This is an immediate consumer of the contracted attn_norm buffer before convolution/recurrent state effects."
+      }
+    ],
+    "first_probe_goal": "separate projection/quantization mismatch from later GDN state effects",
+    "oracle_requirement": "Generate or compute the oracle from BF16(input_embed_f32) through the exact GGUF weights using model epsilon and the same BF16 output points as hipEngine; do not compare raw llama.cpp F32 activations past attn_norm without contraction.",
+    "blocked_until": []
+  },
+  "constraints": {
+    "must_not_change_hot_path": true,
+    "no_torch_hot_path": true,
+    "no_backend_or_quant_dispatch_branch": true,
+    "no_performance_claim": true,
+    "oracle_exactness_before_deeper_bisection": true,
+    "diagnostic_seed_contract": "BF16 resident activation after token embedding",
+    "mtp_seed_contract_unchanged": "post_output_norm fp32 hidden seed",
+    "model_eps": 9.999999974752427e-07
+  },
+  "external_checkout_modified": false,
+  "next_action": "build_layer0_bf16_contracted_projection_oracle"
+}

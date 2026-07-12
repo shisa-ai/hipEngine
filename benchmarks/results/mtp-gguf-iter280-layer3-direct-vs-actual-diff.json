@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_layer_capture_array_diff",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 280,
+  "status": "compared",
+  "reference": {
+    "path": "benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json",
+    "iteration": 278,
+    "status": "captured",
+    "layer_id": 3,
+    "layer_type": "full_attention",
+    "position": 16,
+    "token_id": 271,
+    "run_preceding_layers": null,
+    "preceding_layer_count": null
+  },
+  "candidate": {
+    "path": "benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json",
+    "iteration": 280,
+    "status": "captured",
+    "layer_id": 3,
+    "layer_type": "full_attention",
+    "position": 16,
+    "token_id": 271,
+    "run_preceding_layers": true,
+    "preceding_layer_count": 3
+  },
+  "comparisons": {
+    "hidden_in_f32": {
+      "count": 2048,
+      "max_abs_diff": 0.55712890625,
+      "mean_abs_diff": 0.020601756870746613,
+      "rms_abs_diff": 0.02973337471485138,
+      "reference_rms": 0.006990187335759401,
+      "candidate_rms": 0.031230023130774498,
+      "reference_sample": [
+        -0.003326416015625,
+        -0.0004749298095703125,
+        0.0048828125,
+        0.000949859619140625,
+        -0.00011873245239257812,
+        -0.0016632080078125,
+        0.0004749298095703125,
+        -0.000949859619140625
+      ],
+      "candidate_sample": [
+        0.032470703125,
+        -0.034423828125,
+        0.041748046875,
+        0.00104522705078125,
+        -0.0164794921875,
+        0.01708984375,
+        0.010498046875,
+        0.0020294189453125
+      ],
+      "diff_sample": [
+        0.035797119140625,
+        -0.03394889831542969,
+        0.036865234375,
+        9.5367431640625e-05,
+        -0.016360759735107422,
+        0.0187530517578125,
+        0.010023117065429688,
+        0.002979278564453125
+      ]
+    },
+    "attn_out_f32": {
+      "count": 2048,
+      "max_abs_diff": 3.0224609375,
+      "mean_abs_diff": 0.13620471954345703,
+      "rms_abs_diff": 0.18587587773799896,
+      "reference_rms": 0.18965016305446625,
+      "candidate_rms": 0.020391244441270828,
+      "reference_sample": [
+        -0.076171875,
+        0.16015625,
+        -0.3828125,
+        0.000274658203125,
+        0.0042724609375,
+        0.01904296875,
+        0.1318359375,
+        0.23828125
+      ],
+      "candidate_sample": [
+        -0.0302734375,
+        -0.005889892578125,
+        -0.00897216796875,
+        -0.0026092529296875,
+        0.001617431640625,
+        0.021728515625,
+        0.02294921875,
+        0.025146484375
+      ],
+      "diff_sample": [
+        0.0458984375,
+        -0.166046142578125,
+        0.37384033203125,
+        -0.0028839111328125,
+        -0.002655029296875,
+        0.002685546875,
+        -0.10888671875,
+        -0.213134765625
+      ]
+    },
+    "layer_out_f32": {
+      "count": 2048,
+      "max_abs_diff": 2.59375,
+      "mean_abs_diff": 0.13054460287094116,
+      "rms_abs_diff": 0.17358192801475525,
+      "reference_rms": 0.18273913860321045,
+      "candidate_rms": 0.035927463322877884,
+      "reference_sample": [
+        0.03369140625,
+        -0.1279296875,
+        -0.390625,
+        0.05810546875,
+        -0.043701171875,
+        -0.03515625,
+        0.2099609375,
+        0.14453125
+      ],
+      "candidate_sample": [
+        -0.0032958984375,
+        -0.03857421875,
+        0.01055908203125,
+        -0.01470947265625,
+        -0.0380859375,
+        0.0240478515625,
+        0.036376953125,
+        0.0257568359375
+      ],
+      "diff_sample": [
+        -0.0369873046875,
+        0.08935546875,
+        0.40118408203125,
+        -0.07281494140625,
+        0.005615234375,
+        0.0592041015625,
+        -0.173583984375,
+        -0.1187744140625
+      ]
+    }
+  },
+  "conclusion": "Actual in-stack capture differs from direct-layer capture because the selected token is first propagated through preceding layers. hidden_in max_abs=0.557129; attn_out max_abs=3.02246."
+}

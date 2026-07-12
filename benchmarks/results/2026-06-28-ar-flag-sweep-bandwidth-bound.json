@@ -1,0 +1,32 @@
+{
+  "date": "2026-06-28",
+  "scope": "AR (rows==1) decode flag sweep — all gated kernel paths",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151, Strix Halo APU, ~256 GB/s LPDDR5X)",
+  "workload": "resident serial decode (step), prompt-12 + 3 warm + 28 timed steps, one model load",
+  "command": "HIPENGINE_GGUF_DECODE_REPACK=1 python scratchpad/ar_flag_sweep.py",
+  "baseline_tok_s": 55.15,
+  "results": [
+    {"config": "baseline", "tok_s": 55.15, "delta_pct": 0.0, "tok_div_vs_base": 0},
+    {"config": "RAW_SELECTED_DP4A", "tok_s": 55.10, "delta_pct": -0.1, "tok_div_vs_base": 0},
+    {"config": "Q4K_SELECTED_DUAL_DP4A", "tok_s": 55.12, "delta_pct": -0.1, "tok_div_vs_base": 0},
+    {"config": "T16_SELECTED_DP4A", "tok_s": 54.99, "delta_pct": -0.3, "tok_div_vs_base": 0},
+    {"config": "FUSED_MOE_FFN", "tok_s": 55.14, "delta_pct": 0.0, "tok_div_vs_base": 0},
+    {"config": "COMPACT_MOE_C1", "tok_s": 55.17, "delta_pct": 0.0, "tok_div_vs_base": 0},
+    {"config": "MOE_GRAPH", "tok_s": 54.64, "delta_pct": -0.9, "tok_div_vs_base": 0},
+    {"config": "RAW+Q4K+T16_dp4a", "tok_s": 54.87, "delta_pct": -0.5, "tok_div_vs_base": 0}
+  ],
+  "bandwidth_analysis": {
+    "decode_ms_per_token": 18.13,
+    "active_weight_bytes_per_token_est_GB": "~1.6-1.7 (A3B ~3B active @ Q4_K ~0.55 B/param)",
+    "achieved_bw_GB_s_est": "~90-95",
+    "peak_bw_GB_s": 256,
+    "achieved_pct_of_peak": "~35%",
+    "llamacpp_implied_bw_at_1.9x": "~174 GB/s (~68% of peak)"
+  },
+  "conclusion": "Every kernel-level lever (dp4a compute, fusion launches, compact, graph launches) is flat-to-negative on AR decode with bit-identical tokens. The decode wall is weight-bandwidth bound at only ~35% of peak HBM bandwidth; llama.cpp's 1.9x is ~68% of peak. The gap is BANDWIDTH EFFICIENCY, not compute or launch count. Kernel-compute/launch micro-optimization is exhausted as a lever.",
+  "next_levers": [
+    "#10 raise selected-expert GEMV achieved bandwidth toward peak (coalesced Q4_K block loads / occupancy / llama.cpp mul_mat_vec layout) — targets the actual 1.9x gap",
+    "#3/#4 speculative amortization: accept more tokens per weight-read pass + cut partial-accept rollback (303ms) — fewer weight-read passes per output token"
+  ]
+}

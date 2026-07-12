@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_prompt_early_precision_boundary_probe",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 254,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "prompt": "Write a short greeting.",
+  "prompt_contract": "captured llama.cpp-compatible reasoning-off 17-token chat prompt",
+  "token_ids": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "per_token": [
+    {
+      "position": 0,
+      "token_id": 248045,
+      "attn_norm_max_abs": 0.014086246490478516,
+      "attn_norm_rms_abs": 0.002312970347702503,
+      "ssm_alpha_max_abs": 0.013578414916992188,
+      "ssm_alpha_rms_abs": 0.0052586267702281475,
+      "ssm_beta_max_abs": 0.004407048225402832,
+      "ssm_beta_rms_abs": 0.0017309051472693682
+    },
+    {
+      "position": 1,
+      "token_id": 846,
+      "attn_norm_max_abs": 0.0173947811126709,
+      "attn_norm_rms_abs": 0.002278656233102083,
+      "ssm_alpha_max_abs": 0.015627384185791016,
+      "ssm_alpha_rms_abs": 0.006438746117055416,
+      "ssm_beta_max_abs": 0.011912345886230469,
+      "ssm_beta_rms_abs": 0.00392865389585495
+    },
+    {
+      "position": 2,
+      "token_id": 198,
+      "attn_norm_max_abs": 0.05259895324707031,
+      "attn_norm_rms_abs": 0.0018663054797798395,
+      "ssm_alpha_max_abs": 0.012893438339233398,
+      "ssm_alpha_rms_abs": 0.003522508544847369,
+      "ssm_beta_max_abs": 0.01471853256225586,
+      "ssm_beta_rms_abs": 0.0036053862422704697
+    },
+    {
+      "position": 3,
+      "token_id": 7734,
+      "attn_norm_max_abs": 0.011914730072021484,
+      "attn_norm_rms_abs": 0.00230768951587379,
+      "ssm_alpha_max_abs": 0.013165473937988281,
+      "ssm_alpha_rms_abs": 0.0046803150326013565,
+      "ssm_beta_max_abs": 0.00881195068359375,
+      "ssm_beta_rms_abs": 0.0030728562269359827
+    },
+    {
+      "position": 4,
+      "token_id": 264,
+      "attn_norm_max_abs": 0.03586578369140625,
+      "attn_norm_rms_abs": 0.0014757657190784812,
+      "ssm_alpha_max_abs": 0.011794090270996094,
+      "ssm_alpha_rms_abs": 0.00533044571056962,
+      "ssm_beta_max_abs": 0.008639335632324219,
+      "ssm_beta_rms_abs": 0.0027864091098308563
+    },
+    {
+      "position": 5,
+      "token_id": 2716,
+      "attn_norm_max_abs": 0.01447296142578125,
+      "attn_norm_rms_abs": 0.0024303062818944454,
+      "ssm_alpha_max_abs": 0.011570930480957031,
+      "ssm_alpha_rms_abs": 0.003767897142097354,
+      "ssm_beta_max_abs": 0.017852306365966797,
+      "ssm_beta_rms_abs": 0.004695781506597996
+    },
+    {
+      "position": 6,
+      "token_id": 40719,
+      "attn_norm_max_abs": 0.011118650436401367,
+      "attn_norm_rms_abs": 0.0022748522460460663,
+      "ssm_alpha_max_abs": 0.008458733558654785,
+      "ssm_alpha_rms_abs": 0.003531236667186022,
+      "ssm_beta_max_abs": 0.008901119232177734,
+      "ssm_beta_rms_abs": 0.002742974553257227
+    },
+    {
+      "position": 7,
+      "token_id": 13,
+      "attn_norm_max_abs": 0.12712860107421875,
+      "attn_norm_rms_abs": 0.0031408879440277815,
+      "ssm_alpha_max_abs": 0.021413803100585938,
+      "ssm_alpha_rms_abs": 0.006563371513038874,
+      "ssm_beta_max_abs": 0.012025833129882812,
+      "ssm_beta_rms_abs": 0.003095834981650114
+    },
+    {
+      "position": 8,
+      "token_id": 248046,
+      "attn_norm_max_abs": 0.015341520309448242,
+      "attn_norm_rms_abs": 0.002267706673592329,
+      "ssm_alpha_max_abs": 0.033110618591308594,
+      "ssm_alpha_rms_abs": 0.011825799010694027,
+      "ssm_beta_max_abs": 0.013567924499511719,
+      "ssm_beta_rms_abs": 0.004142797086387873
+    },
+    {
+      "position": 9,
+      "token_id": 198,
+      "attn_norm_max_abs": 0.05259895324707031,
+      "attn_norm_rms_abs": 0.0018663054797798395,
+      "ssm_alpha_max_abs": 0.012893438339233398,
+      "ssm_alpha_rms_abs": 0.003522508544847369,
+      "ssm_beta_max_abs": 0.01471853256225586,
+      "ssm_beta_rms_abs": 0.0036053862422704697
+    },
+    {
+      "position": 10,
+      "token_id": 248045,
+      "attn_norm_max_abs": 0.014086246490478516,
+      "attn_norm_rms_abs": 0.002312970347702503,
+      "ssm_alpha_max_abs": 0.013578414916992188,
+      "ssm_alpha_rms_abs": 0.0052586267702281475,
+      "ssm_beta_max_abs": 0.004407048225402832,
+      "ssm_beta_rms_abs": 0.0017309051472693682
+    },
+    {
+      "position": 11,
+      "token_id": 74455,
+      "attn_norm_max_abs": 0.012592792510986328,
+      "attn_norm_rms_abs": 0.002325973706319928,
+      "ssm_alpha_max_abs": 0.01747751235961914,
+      "ssm_alpha_rms_abs": 0.005471174139529467,
+      "ssm_beta_max_abs": 0.010079622268676758,
+      "ssm_beta_rms_abs": 0.0028344581369310617
+    },
+    {
+      "position": 12,
+      "token_id": 198,
+      "attn_norm_max_abs": 0.05259895324707031,
+      "attn_norm_rms_abs": 0.0018663054797798395,
+      "ssm_alpha_max_abs": 0.012893438339233398,
+      "ssm_alpha_rms_abs": 0.003522508544847369,
+      "ssm_beta_max_abs": 0.01471853256225586,
+      "ssm_beta_rms_abs": 0.0036053862422704697
+    },
+    {
+      "position": 13,
+      "token_id": 248068,
+      "attn_norm_max_abs": 0.01097559928894043,
+      "attn_norm_rms_abs": 0.002343582920730114,
+      "ssm_alpha_max_abs": 0.03081035614013672,
+      "ssm_alpha_rms_abs": 0.009362385608255863,
+      "ssm_beta_max_abs": 0.006957530975341797,
+      "ssm_beta_rms_abs": 0.002557512605562806
+    },
+    {
+      "position": 14,
+      "token_id": 271,
+      "attn_norm_max_abs": 0.10197830200195312,
+      "attn_norm_rms_abs": 0.002668563276529312,
+      "ssm_alpha_max_abs": 0.018385887145996094,
+      "ssm_alpha_rms_abs": 0.005838475655764341,
+      "ssm_beta_max_abs": 0.01250600814819336,
+      "ssm_beta_rms_abs": 0.003436697879806161
+    },
+    {
+      "position": 15,
+      "token_id": 248069,
+      "attn_norm_max_abs": 0.012757539749145508,
+      "attn_norm_rms_abs": 0.0023071463219821453,
+      "ssm_alpha_max_abs": 0.029105186462402344,
+      "ssm_alpha_rms_abs": 0.011011597700417042,
+      "ssm_beta_max_abs": 0.011347293853759766,
+      "ssm_beta_rms_abs": 0.0030095838010311127
+    },
+    {
+      "position": 16,
+      "token_id": 271,
+      "attn_norm_max_abs": 0.10197830200195312,
+      "attn_norm_rms_abs": 0.002668563276529312,
+      "ssm_alpha_max_abs": 0.018385887145996094,
+      "ssm_alpha_rms_abs": 0.005838475655764341,
+      "ssm_beta_max_abs": 0.01250600814819336,
+      "ssm_beta_rms_abs": 0.003436697879806161
+    }
+  ],
+  "maxima": {
+    "attn_norm_max_abs": {
+      "position": 7,
+      "token_id": 13,
+      "attn_norm_max_abs": 0.12712860107421875,
+      "attn_norm_rms_abs": 0.0031408879440277815,
+      "ssm_alpha_max_abs": 0.021413803100585938,
+      "ssm_alpha_rms_abs": 0.006563371513038874,
+      "ssm_beta_max_abs": 0.012025833129882812,
+      "ssm_beta_rms_abs": 0.003095834981650114
+    },
+    "ssm_alpha_max_abs": {
+      "position": 8,
+      "token_id": 248046,
+      "attn_norm_max_abs": 0.015341520309448242,
+      "attn_norm_rms_abs": 0.002267706673592329,
+      "ssm_alpha_max_abs": 0.033110618591308594,
+      "ssm_alpha_rms_abs": 0.011825799010694027,
+      "ssm_beta_max_abs": 0.013567924499511719,
+      "ssm_beta_rms_abs": 0.004142797086387873
+    },
+    "ssm_beta_max_abs": {
+      "position": 5,
+      "token_id": 2716,
+      "attn_norm_max_abs": 0.01447296142578125,
+      "attn_norm_rms_abs": 0.0024303062818944454,
+      "ssm_alpha_max_abs": 0.011570930480957031,
+      "ssm_alpha_rms_abs": 0.003767897142097354,
+      "ssm_beta_max_abs": 0.017852306365966797,
+      "ssm_beta_rms_abs": 0.004695781506597996
+    }
+  },
+  "final_token_repeat": {
+    "positions": [
+      14,
+      16
+    ],
+    "records": [
+      {
+        "position": 14,
+        "token_id": 271,
+        "attn_norm_max_abs": 0.10197830200195312,
+        "attn_norm_rms_abs": 0.002668563276529312,
+        "ssm_alpha_max_abs": 0.018385887145996094,
+        "ssm_alpha_rms_abs": 0.005838475655764341,
+        "ssm_beta_max_abs": 0.01250600814819336,
+        "ssm_beta_rms_abs": 0.003436697879806161
+      },
+      {
+        "position": 16,
+        "token_id": 271,
+        "attn_norm_max_abs": 0.10197830200195312,
+        "attn_norm_rms_abs": 0.002668563276529312,
+        "ssm_alpha_max_abs": 0.018385887145996094,
+        "ssm_alpha_rms_abs": 0.005838475655764341,
+        "ssm_beta_max_abs": 0.01250600814819336,
+        "ssm_beta_rms_abs": 0.003436697879806161
+      }
+    ]
+  },
+  "conclusion": "The layer-0 F32-vs-BF16 boundary drift is prompt-wide, not isolated to the final token. Across the captured 17-token greeting prompt, attn_norm max_abs peaks at 0.127129, ssm_alpha at 0.0331106, and ssm_beta at 0.0178523."
+}

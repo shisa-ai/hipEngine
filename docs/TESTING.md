@@ -61,6 +61,8 @@ Do not use a new HIP kernel as its own oracle. CPU-reference exists so correctne
 | KV policy / attention span logic | Deterministic span fixtures for dense and variable-live-span cases; mask/position edge cases; no shortcut around `KVLiveSpans`. |
 | Runtime / memory / build | Import-time no-side-effect tests, fake-runtime tests, dry-run build planning tests, and real HIP smoke only after GPU clearance. |
 | Public API / server behavior | Unit/integration tests for success and failure paths; include user-visible output assertions once `LLM.generate()` exists. |
+| Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; exact-ID mismatch, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |
+| Profiler window/report contract | Synthetic marker/kernel CSVs proving exact window containment, family bucketing, per-token accounting, Amdahl arithmetic, and exact-token failure behavior. |
 | Perf claim | Exact benchmark command from `docs/BENCHMARK.md`, correctness gate, hardware/software context, and compact JSON artifact. |
 
 ## Numerical fixture policy
@@ -105,7 +107,66 @@ Examples:
 python3 -m pytest tests/test_cpu_reference.py -q
 python3 -m pytest tests/test_kernel_registry.py tests/test_fusion_spike.py -q
 python3 -m pytest tests/test_build.py tests/test_smoke_add_plan.py -q
+python3 -m pytest tests/test_benchmark_matrix.py tests/test_exact_token_benchmark.py -q
 ```
+
+For matrix changes, also build and validate the committed diagnostic manifest.
+The direct/server rows use different wall scopes, so the expected report has a
+null rate ratio with an explicit scope-mismatch reason:
+
+```bash
+uv run python scripts/benchmark_matrix.py build \
+  --manifest benchmarks/manifests/sol-m1-paro-e5-diagnostic.json \
+  --json /tmp/sol-m1-paro-e5-diagnostic.json
+uv run python scripts/benchmark_matrix.py validate \
+  --json /tmp/sol-m1-paro-e5-diagnostic.json
+```
+
+For `SOL-G1` and any eager GGUF state/lifecycle change, run the four-step
+teacher-forced oracle. It first proves the exact repeated-token prompt and
+greedy trajectory with llama.cpp, then compares every eager checkpoint against
+a fresh token-serial prefix recomputation. Hidden rows, all Conv/GDN state, and
+the live full-attention K/V prefixes must be byte exact; any failure reports the
+first layer/component:
+
+```bash
+uv run python scripts/gguf_eager_teacher_forced_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 \
+  --decode-steps 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/sol-g1-gfx1151-p512-d4.json
+```
+
+For `SOL-G2` and any GGUF GDN prefill math/routing change, compare explicit
+`fused` and `chain` production bulk prefill on the exact 17-token greeting.
+The exact split chain keeps raw Q/K and their normalization scales separate so
+the recurrence can preserve the fused decode-order arithmetic. The all-layer
+diagnostic lane identifies the first hidden-output and resident Conv/GDN
+divergence. A mismatch exits nonzero unless `--allow-mismatch` is used to
+retain a pre-fix diagnostic artifact; such an artifact is not an acceptance:
+
+```bash
+uv run python scripts/gguf_gdn_prefill_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --prompt-kind greeting \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/sol-g2-gfx1151-greeting.json
+```
+
+Acceptance also runs repeated token `9707` at 512, 1024, 1025, 4095, and 4096
+rows. The 1024/1025 pair crosses the exact recurrent-segment threshold; the
+4095/4096 pair exercises the retained 1024-row layer-chunk tail/exact boundary.
+Greeting and 512 retain the all-layer bisect; longer cases may use
+`--skip-layer-bisect` because production hidden seed and all resident Conv/GDN
+states are still compared exactly. Single-order wall fields from this driver
+are correctness diagnostics only and cannot select the G3 default.
+
+Default selection uses `scripts/gguf_gdn_prefill_ab.py`, not comparator wall
+fields. Its contract gate requires unique positive contexts, a passing G2
+artifact that covers each context, balanced even repetitions, exact timed
+tokens, clean provenance, and a win at both 512 and 4096 before returning a
+chain-promotion decision.
 
 ### 2. CPU deterministic bundle
 

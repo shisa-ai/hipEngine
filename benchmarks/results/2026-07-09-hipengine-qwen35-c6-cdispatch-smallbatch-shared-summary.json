@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "summary_type": "qwen35_c6_cdispatch_smallbatch_shared",
+  "date": "2026-07-09",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-packed",
+  "quant": "w4_paro",
+  "workload": {
+    "concurrency": 6,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens_per_request": 128,
+    "decode_shape": "selected-c1 MoE, forced small-batch shared expert, native rows=6 linear attention, full-attention rowchunk2 on layers 3,7,11,15,19,23,27,31, serial LM-head"
+  },
+  "status": "diagnostic",
+  "performance_claim": false,
+  "reason": "Generated-token equality passes, but the path remains a diagnostic correctness bridge because selected-c1 MoE/full-attention rowchunk and retained primitive/profiler/scaling gates remain.",
+  "results": {
+    "prior_runtime_bypass": {
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-selected-full-rowchunks-local-equality.json",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 108.92944158617416,
+      "median_step_ms": 54.71568997018039
+    },
+    "c_dispatch_on": {
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-smallbatch-shared-selected-full-rowchunks-local-equality.json",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 109.20549369923896,
+      "median_step_ms": 54.610020597465336
+    },
+    "c_dispatch_off_same_session": {
+      "artifact": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-retained-default-cdispatch-off-smallbatch-shared-selected-full-rowchunks-local-equality.json",
+      "generated_token_equality": true,
+      "decode_tok_s_aggregate": 109.12330107285126,
+      "median_step_ms": 54.6722614672035
+    }
+  },
+  "deltas": {
+    "c_dispatch_on_vs_off_tok_s_percent": 0.07532087609118943,
+    "c_dispatch_on_vs_off_median_step_ms": -0.062240869738161564,
+    "c_dispatch_on_vs_prior_tok_s_percent": 0.2534228662564253,
+    "c_dispatch_on_vs_prior_median_step_ms": -0.10566937271505594
+  },
+  "conclusion": "Folding the forced small-batch shared expert into the MoE C dispatcher preserves c6 generated-token equality but is throughput-neutral in the current full c6 bridge. The next meaningful c6 targets are removing the selected full-attention rowchunk blocker or avoiding c6 live-row groups in scheduling."
+}

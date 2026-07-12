@@ -18,12 +18,15 @@ rows.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import shlex
 import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -31,8 +34,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
@@ -97,8 +102,12 @@ def main() -> int:
     parser.add_argument(
         "--graph-replay-decode",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use one-step HIP graph replay for measured decode (default).",
+        default=False,
+        help=(
+            "Explicitly benchmark the production state-bound GGUF decode graph. "
+            "If the session cannot capture it, record the disabled reason and "
+            "fall back to eager decode."
+        ),
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument(
@@ -178,6 +187,9 @@ def main() -> int:
         raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
+    argv_payload = _exact_command_payload(sys.argv)
+    gguf_info = scan_gguf(args.model)
+    gguf_inventory = _gguf_tensor_inventory_summary(gguf_info)
     if args.force_bulk_prefill:
         use_bulk_prefill = True
     elif args.no_bulk_prefill:
@@ -269,11 +281,51 @@ def main() -> int:
         )
 
     measured_runs = [run for run in runs if run["measured"]]
+    resolved_backends = {str(run["resolved_backend"]) for run in runs}
+    target_arches = {str(run["target_arch"]) for run in runs}
+    if len(resolved_backends) != 1 or len(target_arches) != 1:
+        raise RuntimeError(
+            "GGUF benchmark runs changed backend identity: "
+            f"backends={sorted(resolved_backends)}, arches={sorted(target_arches)}"
+        )
+    resolved_backend = next(iter(resolved_backends))
+    target_arch = next(iter(target_arches))
+    provenance = collect_artifact_provenance(
+        repo_root=REPO_ROOT,
+        configured_backend="auto",
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        model_path=args.model,
+        quant=str(args.quant),
+        kv_dtype=kv_policy.storage_dtype.value,
+        command=argv_payload["argv"],
+        environment={
+            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
+            "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+            "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
+            "HIPENGINE_GGUF_MOE_GRAPH": os.environ.get("HIPENGINE_GGUF_MOE_GRAPH"),
+        },
+        build_profile="qwen35_gguf_resident_bench",
+        timing_protocol=(
+            "resident GGUF session; prefill and decode timed separately; "
+            "graph capture excluded from decode throughput and reported separately"
+        ),
+        warmups=int(args.warmup_runs),
+        repetitions=int(args.measured_runs),
+        profiler={"enabled": False, "reason": "host wall and residency benchmark"},
+    )
     output = {
         "schema": 1,
         "model": str(args.model),
         "quant": args.quant,
-        "backend": "hip_gfx1100",
+        "backend": resolved_backend,
+        "resolved_backend": resolved_backend,
+        "target_arch": target_arch,
+        "provenance": provenance,
+        "argv": argv_payload["argv"],
+        "command": argv_payload["command"],
+        "gguf": gguf_inventory,
+        "gguf_tensor_inventory_hash": gguf_inventory["tensor_inventory_hash"],
         "mode": _mode_name(
             graph_replay_decode=args.graph_replay_decode,
             use_bulk_prefill=use_bulk_prefill,
@@ -343,6 +395,68 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
     return 0
+
+
+def _exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
+    argv_strings = [str(item) for item in argv]
+    return {"argv": argv_strings, "command": shlex.join(argv_strings)}
+
+
+def _gguf_tensor_inventory_summary(info: GGUFModelInfo) -> dict[str, Any]:
+    return {
+        "path": str(info.path),
+        "version": int(info.version),
+        "alignment": int(info.alignment),
+        "architecture": info.architecture,
+        "file_type": info.file_type,
+        "file_type_name": info.file_type_name,
+        "tensor_count": int(info.tensor_count),
+        "total_tensor_nbytes": int(info.total_tensor_nbytes),
+        "tensor_data_offset": int(info.tensor_data_offset),
+        "tensor_inventory_hash_algorithm": "sha256",
+        "tensor_inventory_hash": _gguf_tensor_inventory_hash(info),
+    }
+
+
+def _gguf_tensor_inventory_hash(info: GGUFModelInfo) -> str:
+    digest = hashlib.sha256()
+    _hash_fields(
+        digest,
+        (
+            "hipengine.gguf_tensor_inventory.v1",
+            str(int(info.version)),
+            str(int(info.alignment)),
+            str(int(info.tensor_data_offset)),
+            str(int(info.tensor_count)),
+            str(int(info.total_tensor_nbytes)),
+        ),
+    )
+    for tensor in info.tensors:
+        _hash_fields(
+            digest,
+            (
+                tensor.name,
+                ",".join(str(int(dim)) for dim in tensor.shape),
+                ",".join(str(int(dim)) for dim in tensor.ggml_shape),
+                str(int(tensor.ggml_type)),
+                tensor.ggml_type_name,
+                str(int(tensor.n_elements)),
+                str(int(tensor.nbytes)),
+                str(int(tensor.offset)),
+                str(int(tensor.data_offset)),
+                ",".join(str(int(dim)) for dim in tensor.byte_shape),
+            ),
+        )
+    return digest.hexdigest()
+
+
+def _hash_fields(digest: Any, fields: Sequence[str]) -> None:
+    for field in fields:
+        encoded = field.encode("utf-8")
+        digest.update(str(len(encoded)).encode("ascii"))
+        digest.update(b":")
+        digest.update(encoded)
+    digest.update(b";")
 
 
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
@@ -504,10 +618,8 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
-    host_token_embedding_graph_disabled = bool(
-        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
-    )
-    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -594,6 +706,8 @@ def _run_existing_session_once(
         "run_index": int(run_index),
         "measured": bool(measured),
         "persistent_session": bool(persistent_session),
+        "resolved_backend": str(session.backend),
+        "target_arch": str(session.runner.target_arch),
         "model": str(model),
         "quant": quant,
         "prompt_length": len(prompt_tokens),
@@ -611,13 +725,13 @@ def _run_existing_session_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "requested_graph_replay_decode": bool(graph_replay_decode),
+        "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
-        "decode_graph_disabled_reason": (
-            "host_token_embedding" if host_token_embedding_graph_disabled else None
-        ),
+        "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
             "load_seconds_is_shared_session": bool(persistent_session),
@@ -695,15 +809,15 @@ def _run_once(
     )
     load_seconds = time.perf_counter() - load_start
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
+    resolved_backend = str(session.backend)
+    target_arch = str(session.runner.target_arch)
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
 
     generated_token_ids: list[int] = []
     final = None
     graph_capture_seconds = 0.0
-    host_token_embedding_graph_disabled = bool(
-        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
-    )
-    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -761,6 +875,8 @@ def _run_once(
     return {
         "run_index": int(run_index),
         "measured": bool(measured),
+        "resolved_backend": resolved_backend,
+        "target_arch": target_arch,
         "model": str(model),
         "quant": quant,
         "prompt_length": len(prompt_tokens),
@@ -778,11 +894,11 @@ def _run_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "requested_graph_replay_decode": bool(graph_replay_decode),
+        "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
-        "decode_graph_disabled_reason": (
-            "host_token_embedding" if host_token_embedding_graph_disabled else None
-        ),
+        "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,
@@ -807,6 +923,16 @@ def _run_once(
         "memory": _memory_summary(memory_snapshots),
         "memory_snapshots": memory_snapshots,
     }
+
+
+def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
+    if not requested:
+        return None
+    if not callable(getattr(session, "capture_decode_graph", None)):
+        return "capture_decode_graph_unavailable"
+    if getattr(session, "host_token_embedding_enabled", False):
+        return "host_token_embedding"
+    return None
 
 
 def _summary(runs: list[dict[str, Any]]) -> dict[str, Any]:

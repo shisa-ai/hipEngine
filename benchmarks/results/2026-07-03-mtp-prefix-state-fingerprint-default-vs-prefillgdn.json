@@ -1,0 +1,94 @@
+{
+  "schema": "hipengine.mtp.prefix_state_fingerprint_compare.v1",
+  "timestamp": "2026-07-03T00:00:00+09:00",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "gfx1151",
+  "repo_head": "4bb28d4b",
+  "probe": "scripts/gguf_mtp_forced_target_probe.py --prefix-state-fingerprint",
+  "raw_sources": {
+    "cycle1_default": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle1-f32selectedintermediate-prefix-default.json",
+    "cycle1_prefill_gdn": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle1-f32selectedintermediate-prefix-prefillgdn.json",
+    "cycle12_default": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-prefix-default.json",
+    "cycle12_prefill_gdn": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-prefix-prefillgdn.json"
+  },
+  "diagnostic_env": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A": "0",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED": "0",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR": "1",
+    "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+    "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE": "1",
+    "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": "0"
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "position": 43,
+      "current_prev": 727,
+      "default_sampled_tokens": [10562, 87682, 1494],
+      "prefill_gdn_sampled_tokens": [10562, 87682, 1494],
+      "default_prefix_hidden_hash": "a012c5f6147e4c1ff9ae15cda7cafccb",
+      "prefill_gdn_prefix_hidden_hash": "db70b6c1507f47776114a0594dff5b85",
+      "hidden_seed_matches": false,
+      "linear_layers_total": 30,
+      "linear_state_mismatch_layers": [
+        1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21,
+        22, 24, 25, 26, 28, 29, 30, 32, 33, 34, 36, 37, 38
+      ],
+      "full_attention_layers_total": 10,
+      "full_attention_kv_mismatch_layers": [
+        3, 7, 11, 15, 19, 23, 27, 31, 35, 39
+      ]
+    },
+    {
+      "cycle": 12,
+      "position": 72,
+      "current_prev": 653,
+      "default": {
+        "sampled_tokens": [15495, 26126, 1151],
+        "row1_sampled_token": 26126,
+        "row1_logit_539": 26.047950744628906,
+        "row1_logit_26126": 26.05097770690918,
+        "row1_margin_539_minus_26126": -0.0030269622802734375,
+        "prefix_hidden_hash": "0c31da6a556e81ff1b93e855df7e7049"
+      },
+      "prefill_gdn": {
+        "sampled_tokens": [15495, 539, 1151],
+        "row1_sampled_token": 539,
+        "row1_logit_539": 26.263731002807617,
+        "row1_logit_26126": 25.968475341796875,
+        "row1_margin_539_minus_26126": 0.2952556610107422,
+        "prefix_hidden_hash": "47f3a377a5c77b2a53b7ccec9d0794fe"
+      },
+      "hidden_seed_matches": false,
+      "linear_layers_total": 30,
+      "linear_state_mismatch_layers": [
+        1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21,
+        22, 24, 25, 26, 28, 29, 30, 32, 33, 34, 36, 37, 38
+      ],
+      "full_attention_layers_total": 10,
+      "full_attention_kv_mismatch_layers": [
+        3, 7, 11, 15, 19, 23, 27, 31, 35, 39
+      ]
+    }
+  ],
+  "conclusion": [
+    "The active prefill-GDN captured-row lifecycle changes the committed prefix state immediately after the first full-accept cycle.",
+    "By cycle 12, the default prefix rejects draft token 539 in favor of 26126 by 0.003027, while the prefill-GDN prefix accepts 539 by 0.295256.",
+    "All full-attention KV layers differ and 29 of 30 linear-state layers differ; layer-35 is an amplification point, not the root cause.",
+    "Next parity step is to compare llama.cpp verify_h/pending_h values against hipEngine default and prefill-GDN prefix hidden rows."
+  ]
+}

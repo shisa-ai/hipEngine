@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_layer0_final_output_reprojection",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T06:46:36.210541+00:00",
+  "command": "scripts/llamacpp_mtp_validate_final_output_projection.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl --llamacpp-cycle 18 --row 1 --layer 0 --output benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json",
+  "inputs": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "hipengine_raw": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl",
+    "llamacpp_cycle": 18,
+    "row": 1,
+    "layer": 0
+  },
+  "hipengine": {
+    "cycle": 12,
+    "sampled_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "accepted_draft_tokens": 2,
+    "layer": 0,
+    "row": 1,
+    "position": 73,
+    "input_token": 15495,
+    "trace_target_token": 539
+  },
+  "llamacpp": {
+    "cycle": 18,
+    "accepted_draft_tokens": 1,
+    "accepted_token_ids": [
+      15495
+    ],
+    "bonus_token_id": 26126
+  },
+  "reprojection_deltas": {
+    "hip_capture_attn_out_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015951463137753308,
+      "rmse": 0.00020998052787035704,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999518990516663,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133886143565178
+    },
+    "hip_recurrent_reproject_vs_hip_capture_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.0,
+      "rmse": 0.0,
+      "max_abs_diff": 0.0,
+      "cosine": 1.0,
+      "reference_rms": 0.02133886143565178,
+      "candidate_rms": 0.02133886143565178
+    },
+    "hip_recurrent_reproject_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015951463137753308,
+      "rmse": 0.00020998052787035704,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999518990516663,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133886143565178
+    },
+    "llama_final_reproject_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.2976910471916199,
+      "rmse": 0.37724369764328003,
+      "max_abs_diff": 1.897571086883545,
+      "cosine": -0.030151497572660446,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.37599828839302063
+    },
+    "llama_final_reproject_vs_hip_capture_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.29769167304039,
+      "rmse": 0.37723931670188904,
+      "max_abs_diff": 1.8984375,
+      "cosine": -0.029878372326493263,
+      "reference_rms": 0.02133886143565178,
+      "candidate_rms": 0.37599828839302063
+    }
+  },
+  "samples": {
+    "hip_reprojected": [
+      0.0125732421875,
+      0.00653076171875,
+      0.0034332275390625,
+      0.00982666015625,
+      -0.007354736328125,
+      -0.000942230224609375,
+      0.00701904296875,
+      0.00927734375
+    ],
+    "llama_final_reprojected": [
+      -0.439453125,
+      0.4609375,
+      0.255859375,
+      0.09326171875,
+      0.427734375,
+      -0.494140625,
+      0.44140625,
+      0.388671875
+    ],
+    "hip_capture_attn_out": [
+      0.0125732421875,
+      0.00653076171875,
+      0.0034332275390625,
+      0.00982666015625,
+      -0.007354736328125,
+      -0.000942230224609375,
+      0.00701904296875,
+      0.00927734375
+    ],
+    "llama_linear_attn_out": [
+      0.012660594657063484,
+      0.006745148915797472,
+      0.003536426229402423,
+      0.009888115338981152,
+      -0.007449441589415073,
+      -0.0009172039572149515,
+      0.006990125402808189,
+      0.009475532919168472
+    ]
+  },
+  "assessment": {
+    "status": "final_output_trace_not_projectable",
+    "reason": "hipEngine recurrent_out exactly reconstructs hipEngine attn_out through ssm_out, but llama.cpp final_output does not reconstruct llama.cpp linear_attn_out through the same weight",
+    "hip_reproject_mae": 0.0,
+    "llama_final_reproject_mae": 0.2976910471916199
+  },
+  "conclusion": "final_output_trace_not_projectable: hip recurrent_out -> ssm_out MAE 0; llama final_output -> ssm_out MAE 0.297691."
+}

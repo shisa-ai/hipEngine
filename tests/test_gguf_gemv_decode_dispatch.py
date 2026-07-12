@@ -28,6 +28,7 @@ from hipengine.runtime.gguf_linear import (
     gguf_gemv_decode_enabled,
     launch_gguf_linear,
     launch_gguf_linear_pair_concat,
+    q4k_rowtile_session,
     set_gemv_decode_enabled,
 )
 
@@ -284,10 +285,15 @@ def test_gguf_gemv_decode_enabled_resolver_precedence(monkeypatch) -> None:
 
 
 def test_gemv_decode_prefill_path_unaffected_by_opt_in() -> None:
-    """rows>1 never gets the GEMV-decode rewrite, regardless of opt-in state."""
+    """rows>1 never gets the GEMV-decode rewrite, regardless of opt-in state.
+
+    The raw Q4_K/Q8_0 row-tile rewrite is a separate (default-on) small-B axis;
+    disable it here so this test isolates the GEMV-decode opt-in behaviour.
+    """
 
     set_gemv_decode_enabled(True)
-    key, _, _ = _capture_launch(rows=4)
+    with q4k_rowtile_session(False):
+        key, _, _ = _capture_launch(rows=4)
     assert key == _Q8_PREFILL
 
 

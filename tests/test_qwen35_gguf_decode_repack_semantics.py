@@ -6,19 +6,21 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 
 
 def test_p10_x1_decode_repack_does_not_change_linear_attention_math() -> None:
-    """T16 materialization must not silently switch non-linear-attention math.
+    """T16 materialization must not conditionally switch linear-attention math.
 
     P10.X1 found that guarding the linear-attention ``ssm_out`` path on
     ``gguf_decode_repack_enabled()`` changed the activation contract from
     BF16-input Q8_0 GEMV to F32-input Q8T16 GEMV.  That was faster-looking but
-    not equivalent enough for MoE routing.  Decode repack should select weight
-    layout / kernel implementation, not change the surrounding math graph.
+    not equivalent enough for MoE routing.  The later unconditional F32-input
+    route removed a redundant cast and is independent of decode-repack.  Decode
+    repack selects weight layout / kernel implementation, not the math graph.
     """
 
     source = inspect.getsource(Qwen35GGUFFullStackRunner._run_linear_attention_attn_only)
 
     assert "gguf_decode_repack_enabled" not in source
-    assert "activation_dtype=GGUF_ACTIVATION_F32" not in source
+    assert "scratch.recurrent_out.ptr" in source
+    assert "activation_dtype=GGUF_ACTIVATION_F32" in source
 
 
 def test_p10_x1_decode_repack_does_not_switch_full_attention_math() -> None:

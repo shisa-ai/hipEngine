@@ -51,14 +51,19 @@ from hipengine.generation import (
     GenerationStreamChunk,
     GenerationTelemetry,
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
+    PromptInput,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     ThinkingBudgetState,
     TokenLogprob,
     derive_row_seed,
+    speculative_mtp_sampling_blockers,
+    supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState
+from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.tokenization.identity import token_ids_sha256
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
@@ -226,6 +231,16 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
+_SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
+_SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
+_SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
+_SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
+_SPECULATIVE_MTP_AUTO_REJECTION_REASON = "compatibility_mtp_not_exact"
+_SPECULATIVE_MTP_AUTO_EVIDENCE = (
+    "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json"
+)
+_GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
+_GGUF_MTP_MAX_ACTIVE_REQUESTS = 4
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_grammar",
@@ -263,7 +278,7 @@ class ServerConfig:
 
     model: str
     backend: str = "auto"
-    quant: str = "w4_paro"
+    quant: str = "auto"
     served_model_name: str | None = None
     api_key: str | None = None
     eager_load: bool = True
@@ -288,7 +303,17 @@ class ServerConfig:
     max_active_requests: int | None = None
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
+    speculative_mtp_serving: str = "off"
     created: int = field(default_factory=lambda: int(time.time()))
+
+    def __post_init__(self) -> None:
+        mode = str(self.speculative_mtp_serving).strip().lower().replace("-", "_")
+        if mode not in _SPECULATIVE_MTP_SERVING_MODES:
+            raise ValueError(
+                "speculative_mtp_serving must be one of: "
+                + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
+            )
+        object.__setattr__(self, "speculative_mtp_serving", mode)
 
     @property
     def model_id(self) -> str:
@@ -300,6 +325,39 @@ class ServerConfig:
         if path.exists() and path.name:
             return path.name
         return self.model
+
+
+def _server_model_identity(config: ServerConfig, engine: Any | None = None) -> dict[str, str]:
+    """Return requested model identity, replacing selectors after engine resolution."""
+
+    backend = str(config.backend)
+    quant = str(config.quant)
+    if engine is not None:
+        resolved_backend = str(getattr(engine, "_resolved_backend", "") or "").strip()
+        resolved_quant = str(getattr(engine, "_resolved_quant", "") or "").strip()
+        if resolved_backend and resolved_backend != "auto":
+            backend = resolved_backend
+        if resolved_quant and resolved_quant != "auto":
+            quant = resolved_quant
+    return {"id": config.model_id, "backend": backend, "quant": quant}
+
+
+def _server_model_uses_gguf(config: ServerConfig, engine: Any | None = None) -> bool:
+    """Return whether server grouping must use the retained GGUF width caps."""
+
+    quant = _server_model_identity(config, engine)["quant"]
+    if quant != "auto":
+        return quant.startswith("gguf_")
+
+    path = Path(config.model).expanduser()
+    if path.suffix.lower() == ".gguf":
+        return True
+    from hipengine.loading import resolve_model_path
+
+    path = resolve_model_path(config.model)
+    if path.is_file():
+        return path.suffix.lower() == ".gguf"
+    return path.is_dir() and any(path.glob("*.gguf"))
 
 
 class OpenAIHTTPError(Exception):
@@ -627,11 +685,7 @@ def _build_replay_artifact(
             "json": _redact_replay_value(body_json, redaction=redaction),
             "prompt_hashes": _collect_prompt_hashes(body_json),
         },
-        "model": {
-            "id": config.model_id,
-            "backend": config.backend,
-            "quant": config.quant,
-        },
+        "model": _server_model_identity(config, engine),
         "sampling": _replay_sampling_payload(body_json, redaction=redaction),
         "seeds": _replay_seed_payload(body_json),
         "token_counts": _replay_token_counts(body_json, engine, config),
@@ -1068,15 +1122,47 @@ def _scheduler_fairness_capability() -> dict[str, Any]:
     }
 
 
+def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
+    serving_route = (
+        str(config.speculative_mtp_serving) != "off"
+        and _engine_supports_speculative_mtp(engine)
+    )
+    payload = {
+        "serving_route": bool(serving_route),
+        "sampling_compatible": bool(serving_route),
+        "compatibility_guard": "supports_speculative_mtp_sampling",
+        "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
+        "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "processed_target_verification": False,
+    }
+    if not serving_route:
+        return payload
+    payload.update(
+        {
+            "policy": str(config.speculative_mtp_serving),
+            "request_field": "speculative_mtp",
+            "default_enabled": False,
+            "streaming_compatible": False,
+            "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+        }
+    )
+    if str(config.speculative_mtp_serving) == "auto":
+        payload["auto_route"] = {
+            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "exact_default_required": True,
+            "compatibility_mtp_explicit_only": True,
+            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+        }
+    return payload
+
+
 def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
     tokenizer_caps = _tokenizer_capability_flags(engine)
     tokenizer_backed = tokenizer_caps["tokenize"]
     return {
-        "model": {
-            "id": config.model_id,
-            "backend": config.backend,
-            "quant": config.quant,
-        },
+        "model": _server_model_identity(config, engine),
         "context": {
             "configured_max_context_tokens": config.max_context_tokens,
             "chat_default_max_tokens": config.chat_default_max_tokens,
@@ -1134,15 +1220,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
                 "n",
                 "stop",
             ],
-            "speculative_mtp": {
-                "serving_route": False,
-                "sampling_compatible": False,
-                "compatibility_guard": "supports_speculative_mtp_sampling",
-                "allowed_execution_modes": ["greedy_fast"],
-                "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
-                "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
-                "processed_target_verification": False,
-            },
+            "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
         },
         "cache": {
             "prefix_cache": config.prefix_cache,
@@ -1251,7 +1329,7 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
-def _model_capability_summary() -> dict[str, Any]:
+def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
     return {
         "completions": True,
         "chat_completions": True,
@@ -1262,7 +1340,11 @@ def _model_capability_summary() -> dict[str, Any]:
         "continuations": True,
         "sessions": True,
         "grammars": False,
-        "speculative_mtp": False,
+        "speculative_mtp": (
+            False
+            if config is None
+            else bool(_speculative_mtp_capability(config, engine=engine)["serving_route"])
+        ),
         "tensor_parallel": False,
         "multiple_models": False,
     }
@@ -1367,6 +1449,7 @@ def _choice_telemetry_capability() -> dict[str, Any]:
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
+        "diagnostics": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
 
@@ -1385,7 +1468,7 @@ else:  # pragma: no cover - Pydantic v1 compatibility
 
 class CompletionRequest(_OpenAIBaseModel):
     model: str | None = None
-    prompt: str | list[str] | None = None
+    prompt: str | list[str] | list[int] | list[list[int]] | None = None
     max_tokens: int | None = Field(default=16, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
@@ -1418,6 +1501,7 @@ class CompletionRequest(_OpenAIBaseModel):
     guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
+    speculative_mtp: bool | dict[str, Any] | None = None
 
 
 class ChatMessage(_OpenAIBaseModel):
@@ -1479,6 +1563,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
+    speculative_mtp: bool | dict[str, Any] | None = None
 
 
 class SessionForkRequest(_OpenAIBaseModel):
@@ -1533,12 +1618,15 @@ class _GeneratedBatch:
     usage: dict[str, int]
     details: list[GenerationOutput]
     scheduler_token_chunks: list[dict[str, Any]] | None = None
+    generation_shape: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class _QueuedBatchResult:
     outputs: list[Any]
     scheduler_token_chunks: list[dict[str, Any]] | None = None
+    backend_groups: tuple[dict[str, Any], ...] = ()
+    generation_shape: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1612,6 +1700,40 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if raw is None or raw.strip() == "":
         return bool(default)
     return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _resolve_realized_generation_route(
+    requested_route: str,
+    *,
+    group_rows: int,
+    sampling: SamplingParams,
+) -> tuple[str, dict[str, Any] | None]:
+    """Resolve automatic routing only after the batcher's group is known.
+
+    The currently exposed MTP hook implements the explicitly requested
+    ``llama-compat`` contract.  It is not generated-ID exact against true AR,
+    so automatic requests stay on the exact/default route until an exact MTP
+    hook and matching full-suite evidence exist.
+    """
+
+    route = str(requested_route)
+    if route != _SPECULATIVE_MTP_AUTO_ROUTE:
+        return route, None
+    rows = int(group_rows)
+    if rows < 1:
+        raise ValueError("automatic generation route requires a positive realized group")
+    return (
+        _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        {
+            "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "realized_group_rows": rows,
+            "output_horizon_tokens": int(sampling.max_tokens),
+            "exact_default_required": True,
+            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+        },
+    )
 
 
 def _next_stream_item(iterator: Iterator[Any]) -> object:
@@ -1753,13 +1875,40 @@ def _log_stream_failure(
 
 @dataclass
 class _QueuedGeneration:
-    prompts: tuple[str, ...]
+    prompts: tuple[PromptInput, ...]
     sampling: SamplingParams
     future: asyncio.Future[Any] | None = None
     stream_queue: asyncio.Queue[object] | None = None
     detailed: bool = False
     include_batch_metadata: bool = False
+    route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     cancelled: bool = False
+
+
+class _CompositeGenerationCancellationToken:
+    """Cancellation view that trips when any grouped request token trips."""
+
+    def __init__(self, tokens: Sequence[GenerationCancellationToken]) -> None:
+        self._tokens = tuple(tokens)
+
+    @property
+    def cancelled(self) -> bool:
+        return any(bool(token.cancelled) for token in self._tokens)
+
+    @property
+    def finish_details(self) -> FinishDetails:
+        for token in self._tokens:
+            if token.cancelled:
+                return token.finish_details
+        return FinishDetails(reason="cancelled", cancelled=True)
+
+    def cancel(self, finish_details: FinishDetails | None = None) -> None:
+        for token in self._tokens:
+            token.cancel(finish_details)
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise GenerationCancelled(self.finish_details)
 
 
 class _GenerationBatcher:
@@ -1772,6 +1921,7 @@ class _GenerationBatcher:
         batch_window_seconds: float,
         max_queue_size: int | None = None,
         max_active_requests: int | None = None,
+        route_max_active_requests: Mapping[str, int] | None = None,
         retry_after_seconds: int = 1,
     ) -> None:
         self._engine_factory = engine_factory
@@ -1782,6 +1932,12 @@ class _GenerationBatcher:
         self._max_active_requests = None if max_active_requests is None else int(max_active_requests)
         if self._max_active_requests is not None and self._max_active_requests < 1:
             raise ValueError("max_active_requests must be positive when set")
+        self._route_max_active_requests: dict[str, int] = {}
+        for route, limit in dict(route_max_active_requests or {}).items():
+            route_limit = int(limit)
+            if route_limit < 1:
+                raise ValueError("route max_active_requests limits must be positive")
+            self._route_max_active_requests[str(route)] = route_limit
         self._retry_after_seconds = max(1, int(retry_after_seconds))
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
@@ -1802,8 +1958,44 @@ class _GenerationBatcher:
     def active(self) -> bool:
         return self._worker is not None and not self._worker.done()
 
+    def _route_request_cap(self, route: str) -> int | None:
+        limit = self._max_active_requests
+        route_limit = self._route_max_active_requests.get(str(route))
+        if route_limit is not None:
+            limit = route_limit if limit is None else min(limit, route_limit)
+        return limit
+
     def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
-        return self._max_active_requests is None or len(group) < self._max_active_requests
+        limit = self._route_request_cap(group[0].route) if group else self._max_active_requests
+        return limit is None or len(group) < limit
+
+    def _group_key(self, item: _QueuedGeneration) -> tuple[str, tuple[Any, ...]]:
+        route = str(item.route)
+        return (
+            route,
+            _sampling_key(
+                item.sampling,
+                include_cancellation_token=False,
+            ),
+        )
+
+    @staticmethod
+    def _sampling_for_group(group: Sequence[_QueuedGeneration]) -> SamplingParams:
+        sampling = group[0].sampling
+        if len(group) <= 1:
+            return sampling
+        tokens = [
+            item.sampling.cancellation_token
+            for item in group
+            if item.sampling.cancellation_token is not None
+        ]
+        unique_tokens = tuple(dict.fromkeys(tokens))
+        if len(unique_tokens) <= 1:
+            return sampling
+        return replace(
+            sampling,
+            cancellation_token=_CompositeGenerationCancellationToken(unique_tokens),
+        )
 
     def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:
         if self._max_queue_size is None:
@@ -1821,14 +2013,15 @@ class _GenerationBatcher:
 
     async def submit(
         self,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
         detailed: bool = False,
         include_batch_metadata: bool = False,
+        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
-        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
         self._raise_if_full(error_extra=error_extra)
@@ -1839,6 +2032,7 @@ class _GenerationBatcher:
                 future=future,
                 detailed=bool(detailed),
                 include_batch_metadata=bool(include_batch_metadata),
+                route=str(route),
             )
         )
         if self._worker is None or self._worker.done():
@@ -1847,14 +2041,14 @@ class _GenerationBatcher:
 
     async def stream(
         self,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
 
-        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
         self._raise_if_full(error_extra=error_extra)
@@ -1885,14 +2079,14 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
-                key = _sampling_key(first.sampling)
+                key = self._group_key(first)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
                 while self._queue:
                     item = self._queue.popleft()
                     if _queued_generation_cancelled(item):
                         continue
-                    if _sampling_key(item.sampling) == key and self._group_has_capacity(group):
+                    if self._group_key(item) == key and self._group_has_capacity(group):
                         group.append(item)
                     else:
                         deferred.append(item)
@@ -1918,20 +2112,33 @@ class _GenerationBatcher:
                 if _engine_supports_stream_many(engine):
                     await self._stream_many(group[0], engine)
                     return
-            prompts: list[str] = []
+            prompts: list[PromptInput] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
             for item in group:
                 start = len(prompts)
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
+            queue_group_id = f"queue-{uuid.uuid4().hex}"
+            requested_route = str(group[0].route)
+            group_sampling = self._sampling_for_group(group)
+            route, route_decision = _resolve_realized_generation_route(
+                requested_route,
+                group_rows=len(prompts),
+                sampling=group_sampling,
+            )
+            route_cap = self._route_request_cap(requested_route)
             try:
-                batch_result = await self._generate_prompts(tuple(prompts), group[0].sampling)
+                batch_result = await self._generate_prompts(
+                    tuple(prompts),
+                    group_sampling,
+                    route=route,
+                )
             except Exception as exc:
                 for item in group:
                     _finish_queued_generation(item, exception=exc)
                 return
             outputs = batch_result.outputs
-            for item, start, end in slices:
+            for item_index, (item, start, end) in enumerate(slices):
                 item_outputs: Sequence[Any] = outputs[start:end]
                 if not item.detailed:
                     item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
@@ -1946,6 +2153,19 @@ class _GenerationBatcher:
                         result=_QueuedBatchResult(
                             outputs=list(item_outputs),
                             scheduler_token_chunks=scheduler_token_chunks,
+                            backend_groups=batch_result.backend_groups,
+                            generation_shape=_queue_generation_shape(
+                                route=route,
+                                route_cap=route_cap,
+                                queue_group_id=queue_group_id,
+                                queue_request_count=len(group),
+                                queue_prompt_rows=len(prompts),
+                                item_index=item_index,
+                                item_prompt_offset=start,
+                                item_prompt_rows=end - start,
+                                backend_groups=batch_result.backend_groups,
+                                route_decision=route_decision,
+                            ),
                         ),
                     )
                 else:
@@ -1953,9 +2173,18 @@ class _GenerationBatcher:
         finally:
             self._active_requests = 0
 
-    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> _QueuedBatchResult:
+    async def _generate_prompts(
+        self,
+        prompts: tuple[PromptInput, ...],
+        sampling: SamplingParams,
+        *,
+        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+    ) -> _QueuedBatchResult:
         engine = self._engine_factory()
-        raw_outputs = await _generate_detailed(engine, prompts, sampling)
+        if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+            raw_outputs = await _generate_speculative_mtp_detailed(engine, prompts, sampling)
+        else:
+            raw_outputs = await _generate_detailed(engine, prompts, sampling)
         outputs = list(raw_outputs)
         if len(outputs) != len(prompts):
             raise RuntimeError(
@@ -1964,6 +2193,12 @@ class _GenerationBatcher:
         return _QueuedBatchResult(
             outputs=outputs,
             scheduler_token_chunks=_backend_scheduler_token_chunks(engine),
+            backend_groups=(
+                _backend_generation_group_shape(
+                    engine,
+                    input_rows=len(prompts),
+                ),
+            ),
         )
 
     async def _stream_single(self, item: _QueuedGeneration) -> None:
@@ -2019,7 +2254,7 @@ def _finish_queued_generation(
     item.stream_queue.put_nowait(_STREAM_DONE)
 
 
-async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams) -> AsyncIterator[Any]:
+async def _stream_engine_text(engine: Any, prompt: PromptInput, sampling: SamplingParams) -> AsyncIterator[Any]:
     detailed_streamer = getattr(engine, "stream_detailed", None)
     if callable(detailed_streamer):
         iterator = iter(detailed_streamer(prompt, sampling))
@@ -2060,13 +2295,13 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
 
 async def _stream_engine_many(
     engine: Any,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     sampling: SamplingParams,
 ) -> AsyncIterator[GenerationStreamChunk]:
     streamer = _engine_stream_many_callable(engine)
     if streamer is None:
         raise NotImplementedError("multi-row streaming is not supported by this generator")
-    iterator = iter(streamer(tuple(str(prompt) for prompt in prompts), sampling))
+    iterator = iter(streamer(tuple(prompts), sampling))
     done = False
     try:
         while True:
@@ -2821,6 +3056,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
         max_queue_size=config.max_queued_requests,
         max_active_requests=config.max_active_requests,
+        route_max_active_requests=(
+            {
+                _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
+                _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+                _SPECULATIVE_MTP_AUTO_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
+            }
+            if _server_model_uses_gguf(config, llm)
+            else None
+        ),
         retry_after_seconds=config.queue_retry_after_seconds,
     )
     app.state.hipengine_generation_batcher = generation_batcher
@@ -3082,37 +3326,56 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         max_prompt_tokens = _startup_max_prompt_tokens(max_context)
         if config.startup_scratch_probe:
             scratch_preparer = getattr(engine, "prepare_request_scratch", None)
-            if max_prompt_tokens is None:
+            scratch_probe_context_unknown = max_prompt_tokens is None
+            scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
+            scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
+            if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "backend_hook_unavailable"}
                 _LOGGER.warning("STARTUP_SCRATCH_PROBE: skipped; backend does not expose prepare_request_scratch")
             else:
                 _LOGGER.info(
-                    "STARTUP_SCRATCH_PROBE: max_prompt_tokens=%d max_new_tokens=0 max_batch_size=1 release_after_probe=True",
-                    max_prompt_tokens,
+                    "STARTUP_SCRATCH_PROBE: max_prompt_tokens=%s probe_prompt_tokens=%d max_new_tokens=0 max_batch_size=%d release_after_probe=True",
+                    "unknown" if scratch_probe_context_unknown else str(max_prompt_tokens),
+                    scratch_probe_prompt_tokens,
+                    scratch_probe_batch_size,
                 )
                 try:
+                    def run_scratch_probe() -> Any:
+                        mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
+                        previous_mtp_warmup = os.environ.get(mtp_warmup_env)
+                        os.environ[mtp_warmup_env] = "1" if str(config.speculative_mtp_serving) != "off" else "0"
+                        try:
+                            return scratch_preparer(
+                                max_prompt_tokens=scratch_probe_prompt_tokens,
+                                max_new_tokens=0,
+                                sampling_params=sampling,
+                                max_batch_size=scratch_probe_batch_size,
+                                release_after_probe=True,
+                            )
+                        finally:
+                            if previous_mtp_warmup is None:
+                                os.environ.pop(mtp_warmup_env, None)
+                            else:
+                                os.environ[mtp_warmup_env] = previous_mtp_warmup
+
                     scratch_result = await run_in_threadpool(
-                        lambda: scratch_preparer(
-                            max_prompt_tokens=max_prompt_tokens,
-                            max_new_tokens=0,
-                            sampling_params=sampling,
-                            max_batch_size=1,
-                            release_after_probe=True,
-                        )
+                        run_scratch_probe
                     )
                 except Exception as exc:
                     startup_checks["scratch_probe"] = {
                         "enabled": True,
                         "status": "failed",
-                        "max_prompt_tokens": max_prompt_tokens,
+                        "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                        "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                        "context_unknown": scratch_probe_context_unknown,
                         "exception_type": type(exc).__name__,
                     }
                     _LOGGER.error(
-                        "STARTUP_SCRATCH_PROBE: failed at max_prompt_tokens=%d: %s. "
+                        "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
                         "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        max_prompt_tokens,
+                        scratch_probe_prompt_tokens,
                         exc,
                     )
                     mark_startup_failed(
@@ -3132,7 +3395,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 startup_checks["scratch_probe"] = {
                     "enabled": True,
                     "status": "passed",
-                    "max_prompt_tokens": max_prompt_tokens,
+                    "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                    "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                    "context_unknown": scratch_probe_context_unknown,
                     "result": scratch_result,
                 }
         else:
@@ -3287,7 +3552,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def sampling_params(
         request: CompletionRequest | ChatCompletionRequest,
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         engine: Any,
         *,
         deadline_at: float | None = None,
@@ -3383,13 +3648,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return prompt
 
     async def generate(
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         request: CompletionRequest | ChatCompletionRequest,
         *,
         deadline_at: float | None = None,
         cancellation_token: GenerationCancellationToken | None = None,
         fit_context_extra: Mapping[str, Any] | None = None,
     ) -> _GeneratedBatch:
+        generation_shape: dict[str, Any] | None = None
         try:
             _validate_generation_request(
                 config,
@@ -3429,15 +3695,37 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         }
                     },
                 )
+                generation_route = _speculative_mtp_route_for_request(
+                    config,
+                    request,
+                    engine=engine,
+                    sampling=sampling,
+                )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
+                direct_backend_groups = (
+                    _backend_generation_group_shape(engine, input_rows=len(prompts)),
+                )
+                generation_shape = _queue_generation_shape(
+                    route=generation_route,
+                    route_cap=generation_batcher._route_request_cap(generation_route),
+                    route_cap_applied=False,
+                    queue_group_id=f"direct-{uuid.uuid4().hex}",
+                    queue_request_count=1,
+                    queue_prompt_rows=len(prompts),
+                    item_index=0,
+                    item_prompt_offset=0,
+                    item_prompt_rows=len(prompts),
+                    backend_groups=direct_backend_groups,
+                )
             else:
                 queued_result = await generation_batcher.submit(
                     tuple(prompts),
                     sampling,
                     detailed=True,
                     include_batch_metadata=True,
+                    route=generation_route,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -3451,6 +3739,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if isinstance(queued_result, _QueuedBatchResult):
                     raw_outputs = queued_result.outputs
                     scheduler_token_chunks = queued_result.scheduler_token_chunks
+                    generation_shape = queued_result.generation_shape
                 else:
                     raw_outputs = queued_result
                     scheduler_token_chunks = None
@@ -3493,15 +3782,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             _validate_logprob_details(details, outputs)
         batch = _GeneratedBatch(
             outputs=outputs,
-            usage=_usage(engine, prompts, outputs),
+            usage=_usage(engine, prompts, outputs, details=details),
             details=details,
             scheduler_token_chunks=scheduler_token_chunks,
+            generation_shape=generation_shape,
         )
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
     async def generate_with_request_control(
-        prompts: Sequence[str],
+        prompts: Sequence[PromptInput],
         request: CompletionRequest | ChatCompletionRequest,
         control: _RequestControl | None = None,
         *,
@@ -3892,6 +4182,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def readiness_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         graph = _graph_bucket_metric_values(engine)
@@ -3909,9 +4200,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "ready": bool(readiness.ready),
             "diagnostics": diagnostics,
             "model": {
-                "id": config.model_id,
-                "backend": config.backend,
-                "quant": config.quant,
+                **model_identity,
                 "loaded": bool(readiness.model_loaded),
                 "loaded_model_count": 0 if engine is None else 1,
             },
@@ -3943,7 +4232,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "misses": graph["misses"],
                 "replay_hit_rate": graph["replay_hit_rate"],
             },
-            "device": _selected_device_payload(config),
+            "device": _selected_device_payload(config, engine),
             "queue": {
                 "depth": generation_batcher.queue_depth(),
                 "max_depth": generation_batcher.max_queue_size(),
@@ -4204,6 +4493,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.get("/v1/models")
     async def list_models(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         configured_context = configured_max_context_tokens()
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
@@ -4217,8 +4507,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "owned_by": "hipengine",
                     "hipengine": {
                         "path": config.model,
-                        "backend": config.backend,
-                        "quant": config.quant,
+                        "backend": model_identity["backend"],
+                        "quant": model_identity["quant"],
                         "loaded": bool(readiness.model_loaded),
                         "resident_context": True,
                         "context": {
@@ -4234,7 +4524,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "scale_granularity": config.kv_scale_granularity,
                             "estimate": _kv_capacity_estimate_payload(engine),
                         },
-                        "capabilities": _model_capability_summary(),
+                        "capabilities": _model_capability_summary(config, engine=engine),
                         "capabilities_url": "/v1/hipengine/capabilities",
                         "routing": {
                             "loaded_model_count": 0 if engine is None else 1,
@@ -4248,6 +4538,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.get("/v1/hipengine/capabilities")
     async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        model_identity = _server_model_identity(config, engine)
         tokenizer_caps = _tokenizer_capability_flags(engine)
         stream_logprobs = _engine_supports_stream_logprobs(engine)
         configured_context = configured_max_context_tokens()
@@ -4256,10 +4547,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return {
             "object": "hipengine.capabilities",
             "model": {
-                "id": config.model_id,
+                "id": model_identity["id"],
                 "path": config.model,
-                "backend": config.backend,
-                "quant": config.quant,
+                "backend": model_identity["backend"],
+                "quant": model_identity["quant"],
             },
             "context": {
                 "configured_max_context_tokens": configured_context,
@@ -4369,6 +4660,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
                 },
                 "choice_telemetry": _choice_telemetry_capability(),
+                "generation_shape": {
+                    "non_streaming": True,
+                    "response_path": "hipengine.generation_shape",
+                    "schema_version": 1,
+                    "route_cap_scope": "queue_requests",
+                    "separates": [
+                        "automatic_route_decision",
+                        "route_cap",
+                        "queue_group_requests",
+                        "queue_group_prompt_rows",
+                        "backend_group_rows",
+                        "verifier_rows",
+                    ],
+                    "streaming": False,
+                },
+                "exact_token_prompts": {
+                    "completions": True,
+                    "request_forms": ["token_ids", "token_id_rows"],
+                    "direct_api": "LLM.generate_detailed(token_id_rows, sampling_params)",
+                    "streaming": False,
+                    "echo": False,
+                    "response_identity": "hipengine.prompt_token_accounting",
+                    "generated_id_oracle": "hipengine.token_accounting.choice_generated_token_ids",
+                },
                 "structured_outputs": _structured_outputs_capability(),
                 "grammars": _grammar_capability(),
                 "finish_details": True,
@@ -4477,15 +4792,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ],
                     "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
                 },
-                "speculative_mtp": {
-                    "serving_route": False,
-                    "sampling_compatible": False,
-                    "compatibility_guard": "supports_speculative_mtp_sampling",
-                    "allowed_execution_modes": ["greedy_fast"],
-                    "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
-                    "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
-                    "processed_target_verification": False,
-                },
+                "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
             },
             "cache": {
                 "prefix_cache": prefix_cache_mode,
@@ -4649,6 +4956,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         choices = []
         final_texts: list[str] = []
+        visible_generated_texts: list[str] = []
         cache_action = _session_cache_action(request)
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             previous_text = "" if continuation is None else continuation.generated_texts[index]
@@ -4667,6 +4975,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_reason,
             )
             final_texts.append(text)
+            visible_generated_texts.append(generated_text)
             choice = {
                 "text": text,
                 "index": index,
@@ -4728,6 +5037,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
             },
         }
+        token_accounting = _exact_generated_token_accounting(
+            getattr(app.state, "hipengine_llm", None),
+            batch.details,
+            visible_generated_texts,
+        )
+        if token_accounting is not None:
+            response["hipengine"]["token_accounting"] = token_accounting
+        prompt_token_accounting = _exact_prompt_token_accounting(expanded_prompts)
+        if prompt_token_accounting is not None:
+            response["hipengine"]["prompt_token_accounting"] = prompt_token_accounting
+        if batch.generation_shape is not None:
+            response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
         await _maybe_write_agentic_result_replay_artifact(
             config,
             raw_request,
@@ -4856,6 +5177,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
             choices = []
+            visible_generated_texts: list[str] = []
             requested_cache_action = _session_cache_action(request)
             for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
                 previous_text = "" if continuation is None else continuation.generated_texts[index]
@@ -4960,6 +5282,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if n > 1:
                     choice["request_id"] = _choice_request_id(response_id, 0, index)
                 choices.append(choice)
+                visible_generated_texts.append(_chat_response_format_text(message))
                 await commit_chat_session(
                     request,
                     request_messages=request.messages,
@@ -4984,6 +5307,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 },
             }
+            token_accounting = _exact_generated_token_accounting(
+                getattr(app.state, "hipengine_llm", None),
+                batch.details,
+                visible_generated_texts,
+            )
+            if token_accounting is not None:
+                response["hipengine"]["token_accounting"] = token_accounting
+            if batch.generation_shape is not None:
+                response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -7359,7 +7691,7 @@ def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
     return payload or None
 
 
-def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
+def _selected_device_payload(config: ServerConfig, engine: Any | None = None) -> dict[str, Any]:
     hip_visible = os.environ.get("HIP_VISIBLE_DEVICES")
     rocr_visible = os.environ.get("ROCR_VISIBLE_DEVICES")
     source, visible_devices = _visible_device_selection(
@@ -7367,7 +7699,7 @@ def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
         rocr_visible_devices=rocr_visible,
     )
     return {
-        "backend": config.backend,
+        "backend": _server_model_identity(config, engine)["backend"],
         "hip_visible_devices": hip_visible,
         "rocr_visible_devices": rocr_visible,
         "visible_devices": visible_devices,
@@ -7547,7 +7879,7 @@ def _startup_free_memory_guard(
 
 def _request_max_tokens(
     request: CompletionRequest | ChatCompletionRequest,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     engine: Any,
     max_context_tokens: int | None,
     *,
@@ -7567,14 +7899,14 @@ def _request_max_tokens(
 
 
 def _remaining_context_tokens(
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     engine: Any,
     max_context_tokens: int | None,
 ) -> int | None:
     if max_context_tokens is None:
         return None
     return min(
-        int(max_context_tokens) - _count_tokens_for_admission(engine, str(prompt)) - 1
+        int(max_context_tokens) - _prompt_token_count(engine, prompt) - 1
         for prompt in prompts
     )
 
@@ -7623,6 +7955,22 @@ def _engine_supports_stream_many(engine: Any | None) -> bool:
     return False
 
 
+def _engine_speculative_mtp_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Any] | None:
+    if engine is None:
+        return None
+    supports = getattr(engine, "supports_speculative_mtp", None)
+    if supports is not None and not bool(supports):
+        return None
+    runner = getattr(engine, "generate_speculative_mtp_detailed", None)
+    if callable(runner):
+        return runner
+    return None
+
+
+def _engine_supports_speculative_mtp(engine: Any | None) -> bool:
+    return _engine_speculative_mtp_callable(engine) is not None
+
+
 def _chat_live_many_streaming_allowed(request: ChatCompletionRequest) -> bool:
     return (
         _request_n(request) > 1
@@ -7651,7 +7999,7 @@ def _request_top_logprobs(request: CompletionRequest | ChatCompletionRequest) ->
 
 async def _generate_detailed(
     engine: Any,
-    prompts: tuple[str, ...],
+    prompts: tuple[PromptInput, ...],
     sampling: SamplingParams,
 ) -> list[Any]:
     detailed = getattr(engine, "generate_detailed", None)
@@ -7660,18 +8008,36 @@ async def _generate_detailed(
     return [_coerce_generation_output(item) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
 
 
+async def _generate_speculative_mtp_detailed(
+    engine: Any,
+    prompts: tuple[PromptInput, ...],
+    sampling: SamplingParams,
+) -> list[Any]:
+    runner = _engine_speculative_mtp_callable(engine)
+    if runner is None:
+        raise NotImplementedError("speculative MTP serving is not supported by this engine")
+    return list(await run_in_threadpool(runner, prompts, sampling))
+
+
 def _coerce_generation_output(value: Any) -> GenerationOutput:
     if isinstance(value, GenerationOutput):
         return value
     token_logprobs = getattr(value, "token_logprobs", None)
     finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
-    if token_logprobs is not None or finish_details is not None or telemetry is not None:
+    generated_token_ids = getattr(value, "generated_token_ids", None)
+    if (
+        token_logprobs is not None
+        or finish_details is not None
+        or telemetry is not None
+        or generated_token_ids is not None
+    ):
         return GenerationOutput(
             text=str(getattr(value, "text", value)),
             token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
+            generated_token_ids=generated_token_ids,
         )
     return GenerationOutput(text=str(value))
 
@@ -7753,7 +8119,7 @@ def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) ->
     return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
 
 
-def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
+def _backend_generation_targets(engine: Any) -> tuple[Any, ...]:
     targets: list[Any] = [engine]
     generator = getattr(engine, "_text_generator", None)
     if generator is not None:
@@ -7761,20 +8127,155 @@ def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
         inner = getattr(generator, "inner", None)
         if inner is not None:
             targets.append(inner)
-    for target in targets:
+    return tuple(targets)
+
+
+def _backend_last_batch_generation(engine: Any) -> Mapping[str, Any] | None:
+    for target in _backend_generation_targets(engine):
+        batch_generation = getattr(target, "last_batch_generation", None)
+        if isinstance(batch_generation, Mapping):
+            return batch_generation
+    return None
+
+
+def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
+    for target in _backend_generation_targets(engine):
         batch_generation = getattr(target, "last_batch_generation", None)
         if not isinstance(batch_generation, Mapping):
             continue
         raw_chunks = batch_generation.get("scheduler_token_chunks")
-        if not isinstance(raw_chunks, Sequence) or isinstance(raw_chunks, (str, bytes, bytearray)):
-            continue
-        chunks: list[dict[str, Any]] = []
-        for raw_chunk in raw_chunks:
-            if isinstance(raw_chunk, Mapping):
-                chunks.append(deepcopy(dict(raw_chunk)))
-        if chunks:
-            return chunks
+        if isinstance(raw_chunks, Sequence) and not isinstance(raw_chunks, (str, bytes, bytearray)):
+            chunks = [
+                deepcopy(dict(raw_chunk))
+                for raw_chunk in raw_chunks
+                if isinstance(raw_chunk, Mapping)
+            ]
+            if chunks:
+                return chunks
     return None
+
+
+def _shape_int(value: Any, *, minimum: int = 0) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= minimum else None
+
+
+def _backend_actual_group_rows(
+    batch_generation: Mapping[str, Any] | None,
+    *,
+    input_rows: int,
+) -> list[int]:
+    if batch_generation is not None:
+        candidates = batch_generation.get("actual_backend_group_rows")
+        if candidates is None:
+            candidates = batch_generation.get("group_widths")
+        if isinstance(candidates, Sequence) and not isinstance(
+            candidates,
+            (str, bytes, bytearray),
+        ):
+            widths = [
+                width
+                for raw in candidates
+                if (width := _shape_int(raw, minimum=1)) is not None
+            ]
+            if widths and sum(widths) == int(input_rows):
+                return widths
+        groups = batch_generation.get("groups")
+        if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray)):
+            widths = [
+                width
+                for group in groups
+                if isinstance(group, Mapping)
+                and (width := _shape_int(group.get("width"), minimum=1)) is not None
+            ]
+            if widths and sum(widths) == int(input_rows):
+                return widths
+    return [int(input_rows)]
+
+
+def _backend_verifier_rows(batch_generation: Mapping[str, Any] | None) -> int:
+    if batch_generation is None:
+        return 0
+    for key in ("verifier_rows", "target_verify_rows"):
+        value = _shape_int(batch_generation.get(key))
+        if value is not None:
+            return value
+    speculative = batch_generation.get("speculative_mtp")
+    if isinstance(speculative, Mapping):
+        for key in ("verifier_rows", "target_verify_rows", "linear_state_captured_rows"):
+            value = _shape_int(speculative.get(key))
+            if value is not None:
+                return value
+    batch_timing = batch_generation.get("batch_timing")
+    if isinstance(batch_timing, Mapping):
+        value = _shape_int(batch_timing.get("mtp_target_verify_rows"))
+        if value is not None:
+            return value
+    return 0
+
+
+def _backend_generation_group_shape(engine: Any, *, input_rows: int) -> dict[str, Any]:
+    rows = max(1, int(input_rows))
+    batch_generation = _backend_last_batch_generation(engine)
+    batch_id = None if batch_generation is None else batch_generation.get("batch_id")
+    group_id = str(batch_id).strip() if batch_id is not None else ""
+    if not group_id:
+        group_id = f"backend-{uuid.uuid4().hex}"
+    actual_group_rows = _backend_actual_group_rows(batch_generation, input_rows=rows)
+    verifier_rows = _backend_verifier_rows(batch_generation)
+    return {
+        "id": group_id,
+        "call_index": 0,
+        "prompt_offset": 0,
+        "input_rows": rows,
+        "actual_group_rows": actual_group_rows,
+        "max_actual_group_rows": max(actual_group_rows),
+        "verifier_rows": verifier_rows,
+    }
+
+
+def _queue_generation_shape(
+    *,
+    route: str,
+    route_cap: int | None,
+    route_cap_applied: bool = True,
+    queue_group_id: str,
+    queue_request_count: int,
+    queue_prompt_rows: int,
+    item_index: int,
+    item_prompt_offset: int,
+    item_prompt_rows: int,
+    backend_groups: Sequence[Mapping[str, Any]],
+    route_decision: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    copied_groups = [deepcopy(dict(group)) for group in backend_groups]
+    payload = {
+        "schema_version": 1,
+        "route": str(route),
+        "route_cap": {
+            "scope": "queue_requests",
+            "value": None if route_cap is None else int(route_cap),
+            "applied": bool(route_cap_applied),
+        },
+        "queue_group": {
+            "id": str(queue_group_id),
+            "request_count": int(queue_request_count),
+            "prompt_rows": int(queue_prompt_rows),
+            "item_index": int(item_index),
+            "item_prompt_offset": int(item_prompt_offset),
+            "item_prompt_rows": int(item_prompt_rows),
+        },
+        "backend_groups": copied_groups,
+        "verifier_rows": sum(int(group.get("verifier_rows", 0)) for group in copied_groups),
+    }
+    if route_decision is not None:
+        payload["route_decision"] = deepcopy(dict(route_decision))
+    return payload
 
 
 def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:
@@ -7987,6 +8488,16 @@ def _validate_generation_request(
     route_unsupported_grammar: bool = False,
 ) -> None:
     _request_n(request)
+    if _completion_prompt_uses_token_ids(request):
+        for param in ("stream", "echo", "continuation_id", "session"):
+            value = getattr(request, param, None)
+            if value not in (None, False):
+                raise OpenAIHTTPError(
+                    400,
+                    f"{param} is not supported with exact token-ID prompts",
+                    code="unsupported_parameter",
+                    param=param,
+                )
     extra_keys = _request_extra_keys(request)
     if extra_keys:
         param = sorted(extra_keys)[0]
@@ -8073,7 +8584,7 @@ def _validate_generation_request(
 def _validate_context_budget(
     max_context_tokens: int | None,
     engine: Any,
-    prompts: Sequence[str],
+    prompts: Sequence[PromptInput],
     sampling: SamplingParams,
     *,
     fit_context_extra: Mapping[str, Any] | None = None,
@@ -8084,7 +8595,7 @@ def _validate_context_budget(
     max_context = max(1, int(max_context_tokens))
     max_tokens = max(0, int(sampling.max_tokens))
     for index, prompt in enumerate(prompts):
-        prompt_tokens = _count_tokens_for_admission(engine, str(prompt))
+        prompt_tokens = _prompt_token_count(engine, prompt)
         required = prompt_tokens + max_tokens + 1
         if required > max_context:
             fit_context = _context_fit_payload(
@@ -8144,6 +8655,12 @@ def _count_tokens_for_admission(engine: Any, text: str) -> int:
         return max(0, int(counter(text)))
     except NotImplementedError:
         return 0
+
+
+def _prompt_token_count(engine: Any, prompt: PromptInput) -> int:
+    if isinstance(prompt, str):
+        return _count_tokens_for_admission(engine, prompt)
+    return len(prompt)
 
 
 def _count_tokens_strict(engine: Any, text: str) -> int:
@@ -8600,14 +9117,47 @@ def _tool_call_close_repair_token_sequences(
     return (tuple(int(token_id) for token_id in token_ids),)
 
 
-def _normalize_prompts(prompt: str | list[str] | None) -> tuple[str, ...]:
+def _normalize_prompts(
+    prompt: str | list[str] | list[int] | list[list[int]] | None,
+) -> tuple[PromptInput, ...]:
     if prompt is None:
         raise OpenAIHTTPError(400, "prompt is required", code="invalid_request", param="prompt")
     if isinstance(prompt, str):
         return (prompt,)
     if not prompt:
         raise OpenAIHTTPError(400, "prompt must not be empty", param="prompt")
-    return tuple(str(item) for item in prompt)
+    try:
+        if all(isinstance(item, int) and not isinstance(item, bool) for item in prompt):
+            return (normalize_prompt_input(prompt),)
+        if all(isinstance(item, str) for item in prompt):
+            return tuple(str(item) for item in prompt)
+        if all(
+            isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray))
+            for item in prompt
+        ):
+            return tuple(normalize_prompt_input(item) for item in prompt)
+    except (TypeError, ValueError) as exc:
+        raise OpenAIHTTPError(400, str(exc), code="invalid_request", param="prompt") from exc
+    raise OpenAIHTTPError(
+        400,
+        "prompt must be text, text rows, one token-ID row, or token-ID rows",
+        code="invalid_request",
+        param="prompt",
+    )
+
+
+def _completion_prompt_uses_token_ids(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    if not isinstance(request, CompletionRequest):
+        return False
+    prompt = request.prompt
+    if not isinstance(prompt, list) or not prompt:
+        return False
+    return all(isinstance(item, int) and not isinstance(item, bool) for item in prompt) or all(
+        isinstance(item, list)
+        and bool(item)
+        and all(isinstance(token, int) and not isinstance(token, bool) for token in item)
+        for item in prompt
+    )
 
 
 def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
@@ -8615,6 +9165,97 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
     if n < 1:
         raise OpenAIHTTPError(400, "n must be at least 1", code="invalid_request", param="n")
     return n
+
+
+def _request_speculative_mtp_enabled(request: CompletionRequest | ChatCompletionRequest) -> bool | None:
+    raw = getattr(request, "speculative_mtp", None)
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, Mapping):
+        enabled = raw.get("enabled", True)
+        if isinstance(enabled, bool):
+            return enabled
+        raise OpenAIHTTPError(
+            400,
+            "speculative_mtp.enabled must be a boolean",
+            code="unsupported_parameter",
+            param="speculative_mtp",
+        )
+    raise OpenAIHTTPError(
+        400,
+        "speculative_mtp must be a boolean or object",
+        code="unsupported_parameter",
+        param="speculative_mtp",
+    )
+
+
+def _speculative_mtp_route_for_request(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None,
+    sampling: SamplingParams,
+) -> str:
+    explicit = _request_speculative_mtp_enabled(request)
+    configured_mode = str(config.speculative_mtp_serving)
+    if explicit is False:
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if explicit is None and configured_mode != "auto":
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    explicit_requested = explicit is True
+    if configured_mode == "off":
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp is disabled for this server",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if bool(getattr(request, "stream", False)):
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp does not support streaming requests yet",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if not _engine_supports_speculative_mtp(engine):
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                501,
+                "speculative_mtp is not supported by this model/backend",
+                error_type="unsupported_feature",
+                code="unsupported_feature",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    blockers = speculative_mtp_sampling_blockers(sampling)
+    if blockers:
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp requires raw greedy-fast sampling",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+                extra={
+                    "hipengine": {
+                        "speculative_mtp": {
+                            "blockers": list(blockers),
+                            "compatibility_guard": "supports_speculative_mtp_sampling",
+                        }
+                    }
+                },
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if not supports_speculative_mtp_sampling(sampling):
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if explicit_requested:
+        return _SPECULATIVE_MTP_BATCH_ROUTE
+    return _SPECULATIVE_MTP_AUTO_ROUTE
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
@@ -8739,6 +9380,8 @@ def _continuation_can_create(
     finish_details: Mapping[str, Any],
     backend_continuation_eligible: bool | None = None,
 ) -> bool:
+    if _completion_prompt_uses_token_ids(request):
+        return False
     if backend_continuation_eligible is False:
         return False
     if str(finish_details.get("reason") or "") in (_SESSION_UNSAFE_VISIBLE_REASONS - {"length"}):
@@ -9812,7 +10455,7 @@ def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> s
     return set()
 
 
-def _expand_prompts_for_n(prompts: Sequence[str], n: int) -> tuple[str, ...]:
+def _expand_prompts_for_n(prompts: Sequence[PromptInput], n: int) -> tuple[PromptInput, ...]:
     return tuple(prompt for prompt in prompts for _ in range(int(n)))
 
 
@@ -10294,7 +10937,11 @@ def _stop_tokens_from_stop(
     return tuple(token_ids), tuple(sequences)
 
 
-def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
+def _sampling_key(
+    sampling: SamplingParams,
+    *,
+    include_cancellation_token: bool = True,
+) -> tuple[Any, ...]:
     return (
         int(sampling.max_tokens),
         float(sampling.temperature),
@@ -10317,7 +10964,11 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         None if sampling.seed is None else int(sampling.seed),
         tuple(int(seed) for seed in sampling.row_seeds),
         None if sampling.deadline_at is None else float(sampling.deadline_at),
-        None if sampling.cancellation_token is None else id(sampling.cancellation_token),
+        (
+            None
+            if not include_cancellation_token or sampling.cancellation_token is None
+            else id(sampling.cancellation_token)
+        ),
         bool(sampling.logprobs),
         int(sampling.top_logprobs),
     )
@@ -10681,20 +11332,77 @@ def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[Tok
     return tuple(selected)
 
 
-def _usage(engine: Any, prompts: Sequence[str], outputs: Sequence[str]) -> dict[str, int]:
+def _usage(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+    outputs: Sequence[str],
+    *,
+    details: Sequence[GenerationOutput] | None = None,
+) -> dict[str, int]:
     counter = getattr(engine, "count_tokens", None)
-    if callable(counter):
-        prompt_tokens = sum(_safe_count(counter, text) for text in prompts)
+    prompt_tokens = sum(_prompt_token_count(engine, prompt) for prompt in prompts)
+    exact_rows = _exact_generated_token_rows(details, expected_rows=len(outputs))
+    if exact_rows is not None:
+        completion_tokens = sum(len(row) for row in exact_rows)
+    elif callable(counter):
         completion_tokens = sum(_safe_count(counter, text) for text in outputs)
     else:
-        # Compatibility placeholder until public tokenizer accounting lands.
-        prompt_tokens = 0
+        # Compatibility placeholder for legacy generators without token IDs.
         completion_tokens = 0
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+
+
+def _exact_prompt_token_accounting(prompts: Sequence[PromptInput]) -> dict[str, Any] | None:
+    if not prompts or any(isinstance(prompt, str) for prompt in prompts):
+        return None
+    rows = tuple(tuple(int(token) for token in prompt) for prompt in prompts)
+    return {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [token_ids_sha256(row) for row in rows],
+        "prompt_tokens": [len(row) for row in rows],
+        "total_prompt_tokens": sum(len(row) for row in rows),
+    }
+
+
+def _exact_generated_token_rows(
+    details: Sequence[GenerationOutput] | None,
+    *,
+    expected_rows: int,
+) -> tuple[tuple[int, ...], ...] | None:
+    if details is None or len(details) != int(expected_rows):
+        return None
+    rows: list[tuple[int, ...]] = []
+    for detail in details:
+        if detail.generated_token_ids is None:
+            return None
+        rows.append(tuple(detail.generated_token_ids))
+    return tuple(rows)
+
+
+def _exact_generated_token_accounting(
+    engine: Any,
+    details: Sequence[GenerationOutput],
+    visible_outputs: Sequence[str],
+) -> dict[str, Any] | None:
+    rows = _exact_generated_token_rows(details, expected_rows=len(visible_outputs))
+    if rows is None:
+        return None
+    payload: dict[str, Any] = {
+        "choice_generated_token_ids": [list(row) for row in rows],
+        "choice_generated_tokens": [len(row) for row in rows],
+        "total_generated_tokens": sum(len(row) for row in rows),
+    }
+    counter = getattr(engine, "count_tokens", None)
+    if callable(counter):
+        payload["retokenized_visible_tokens"] = sum(
+            _safe_count(counter, text) for text in visible_outputs
+        )
+    return payload
 
 
 def _safe_count(counter: Any, text: str) -> int:
@@ -12227,10 +12935,15 @@ def _choice_hipengine_payload(
 
 
 def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | None) -> None:
-    telemetry = None if detail is None else detail.telemetry
-    if telemetry is None:
+    if detail is None:
         return
-    payload = telemetry.to_json_dict()
+    telemetry = detail.telemetry
+    payload = {} if telemetry is None else telemetry.to_json_dict()
+    if detail.generated_token_ids is not None:
+        payload["generated_token_ids"] = list(detail.generated_token_ids)
+        payload["generated_tokens"] = len(detail.generated_token_ids)
+    if not payload:
+        return
     finish_details = choice.get("finish_details")
     if isinstance(finish_details, Mapping):
         payload["finish_details"] = dict(finish_details)

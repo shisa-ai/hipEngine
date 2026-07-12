@@ -1,0 +1,352 @@
+{
+  "schema": 1,
+  "kind": "sol_p1_gfx1151_paro_c1_c8_exact_catalog",
+  "created_at": "2026-07-11T02:48:37Z",
+  "status": "accepted_serial_catalog",
+  "performance_claim": true,
+  "performance_claim_scope": "c1_exact_fixture_graph_replay_only",
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "detected_arch": "gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "a18ff7bc428833a5f3d87ed422d04633abbf0b10",
+    "hipengine_dirty": false,
+    "python": "3.12.13",
+    "hip": "7.13.60980-c76140fa27",
+    "amd_clang": "23.0.0git",
+    "rocm_llvm_commit": "7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "layers": 40
+  },
+  "protocol": {
+    "correctness_oracle": "independent_single_request_prefill_native_plus_step",
+    "prompt_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_fixture_sha256": "f568951e1450a5846d00995a6af28c65aaa0ab05377b8c11eb80cc9e33348df4",
+    "prompt_ids_sha256": "b162b2d0c13b1aaa6325ad1efcecc7b8344917039884987cf50152dc69f82388",
+    "prompt_tokens_per_request": 512,
+    "warmup_decode_tokens": 8,
+    "measured_decode_tokens": 128,
+    "tokens_compared_per_sequence": 137,
+    "sampling": "greedy",
+    "c1_repetitions": 3,
+    "c2_c8_repetitions": 1,
+    "timing_scope": "direct resident backend decode wall",
+    "native_candidate_timing_eligibility": "diagnostic_only_when_generated_token_equality_fails"
+  },
+  "c1": {
+    "classification": "accepted",
+    "production_algorithm": "single_request_native_full_prefill_plus_state_bound_graph",
+    "backend_group_width": 1,
+    "correctness": {
+      "oracle": true,
+      "seed_token_id": 17,
+      "final_token_id": 220,
+      "all_three_endpoints_equal": true,
+      "independent_c1_sequence_length": 137,
+      "independent_c1_final_token_id": 220
+    },
+    "measurements": {
+      "decode_tok_s_median": 66.90970872217248,
+      "decode_ms_per_token_median": 14.945514172723051,
+      "prefill_tok_s_median": 856.3271301400223,
+      "prefill_seconds_median": 0.5979023459367454,
+      "decode_seconds_median": 1.9130258141085505,
+      "tracked_peak_bytes": 19482202896,
+      "tracked_peak_gib": 18.14421536028385,
+      "hip_used_peak_sampled_bytes": 19457277952,
+      "owned_session_peak_bytes": 1691516112
+    },
+    "runs": [
+      {
+        "decode_tok_s": 66.94825952215484,
+        "decode_ms_per_token": 14.936908100935398,
+        "sha256": "dcb1762edeb45172cc69041104a21f9062f2e72e4cb313c2b0b8e6e1bae86f01",
+        "bytes": 187380,
+        "source": "/tmp/sol-p1-c1-p512-d128-a18ff7bc.json"
+      },
+      {
+        "decode_tok_s": 66.7538996496926,
+        "decode_ms_per_token": 14.980398227635305,
+        "sha256": "69ac2013cf59ba79796333b777a0f04c2b9f7227a3aad07623f4a67a174319e3",
+        "bytes": 187389,
+        "source": "/tmp/sol-p1-c1-p512-d128-a18ff7bc-r2.json"
+      },
+      {
+        "decode_tok_s": 66.90970872217248,
+        "decode_ms_per_token": 14.945514172723051,
+        "sha256": "bc8969b62f6e7507c09e98dbf1e095ccd229bad0c251a7d0fde2c56d2af0b8c8",
+        "bytes": 187391,
+        "source": "/tmp/sol-p1-c1-p512-d128-a18ff7bc-r3.json"
+      }
+    ]
+  },
+  "width_catalog": [
+    {
+      "client_width": 1,
+      "production_backend_group_widths": [1],
+      "production_algorithm": "true_c1_graph",
+      "classification": "accepted",
+      "generated_token_equality": true,
+      "retained_decode_tok_s": 66.90970872217248
+    },
+    {
+      "client_width": 2,
+      "production_backend_group_widths": [1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 78.52462959237315,
+      "native_diagnostic_ms_per_step_median": 25.49092541448772,
+      "native_algorithm": "native_full_attention_selected_c1_moe_batch_gemv_output_batched_lm_head",
+      "native_caware_decode": true,
+      "source_sha256": "0af4c193f662dbb9128839e974a087b5404da2eab4f6305764e5a16d203942f8"
+    },
+    {
+      "client_width": 3,
+      "production_backend_group_widths": [1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 87.47229383781762,
+      "native_diagnostic_ms_per_step_median": 34.321920946240425,
+      "native_algorithm": "rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_serial_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "6b3cbca008c155ee65324ce9b9db37dc74c251aa833442979afcf4a253345d85"
+    },
+    {
+      "client_width": 4,
+      "production_backend_group_widths": [1, 1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 99.6407020360044,
+      "native_diagnostic_ms_per_step_median": 40.159279480576515,
+      "native_algorithm": "rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_batched_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "1540c291924d45d002402dc0de5156688dc352c061d40ab85a6e0e6d4df77c7e"
+    },
+    {
+      "client_width": 5,
+      "production_backend_group_widths": [1, 1, 1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 102.1775654266796,
+      "native_diagnostic_ms_per_step_median": 48.961280612275004,
+      "native_algorithm": "rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_serial_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "dce04b97361c9fac972a82177b3b5205840568b70280216331667b95787cc68a"
+    },
+    {
+      "client_width": 6,
+      "production_backend_group_widths": [1, 1, 1, 1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2, 2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 109.8059759253558,
+      "native_diagnostic_ms_per_step_median": 54.656001040712,
+      "native_algorithm": "selected_layer_rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_serial_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "cb2cb157ad22c11832181ed00e3570b92356b759365b04238b357943d1a05234"
+    },
+    {
+      "client_width": 7,
+      "production_backend_group_widths": [1, 1, 1, 1, 1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2, 2, 2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 109.58026869636608,
+      "native_diagnostic_ms_per_step_median": 63.85344848968089,
+      "native_algorithm": "rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_serial_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "55431838a0edc1b37f24b80661dab75adcbd6830dfd4c3d15180f7bf817b05d8"
+    },
+    {
+      "client_width": 8,
+      "production_backend_group_widths": [1, 1, 1, 1, 1, 1, 1, 1],
+      "production_algorithm": "scheduler_true_c1_fallback",
+      "classification": "explicitly_serial",
+      "generated_token_equality": false,
+      "equal_prefix_tokens": [2, 2, 2, 2, 2, 2, 2, 2],
+      "first_mismatch_index": 2,
+      "native_token_id": 17,
+      "c1_token_id": 220,
+      "native_diagnostic_tok_s": 115.50770609669134,
+      "native_diagnostic_ms_per_step_median": 69.27524716593325,
+      "native_algorithm": "rowchunk2_full_attention_selected_c1_moe_batch_gemv_output_batched_lm_head",
+      "native_caware_decode": false,
+      "source_sha256": "4aefb02cd8d3cc4d192300156f77ff1a8bd188967af660477b8ae71915c46dac"
+    }
+  ],
+  "localization": {
+    "packed_prefill": {
+      "final_hidden_bit_exact": true,
+      "linear_state_exact": true,
+      "linear_input_exact": true,
+      "full_attention_kv_prefix_exact": true
+    },
+    "selected_c1_moe_default": {
+      "first_decode_step": 0,
+      "first_linear_input_bit_drift_layer": 4,
+      "first_linear_input_max_abs": 0.0001220703125,
+      "first_linear_stage_over_atol_layer": 4,
+      "first_linear_stage": "attn_input",
+      "first_linear_stage_max_abs": 0.001953125,
+      "first_state_mismatch_layer": 4,
+      "first_state": "conv",
+      "first_state_max_abs": 0.00390625,
+      "first_full_attention_over_atol_layer": 7,
+      "first_kv_mismatch_layer": 7,
+      "first_kv_mismatch_position": 512,
+      "generated_sequences": {
+        "batch": [17, 17, 17],
+        "c1": [17, 17, 220]
+      },
+      "raw_sha256": "d2b214805b17b9e50dc95c83f0c00903fa7d03d3cd62c5e5c38184bc9c8e2211",
+      "raw_bytes": 57228613
+    },
+    "grouped_compact_control": {
+      "two_step_generated_sequences": {
+        "batch": [17, 17, 220],
+        "c1": [17, 17, 220]
+      },
+      "full_shrinking_first_mismatch_index": 4,
+      "full_shrinking_batch_token_id": 17,
+      "full_shrinking_c1_token_id": 13,
+      "conclusion": "moves the first mismatch but does not satisfy the full exact gate",
+      "hidden_raw_sha256": "a6e2a9bcbfed5cb2739b6cbbe3a8639077b50907b348d22dd2316ef4a844522d",
+      "hidden_raw_bytes": 63073045,
+      "shrinking_raw_sha256": "58eb263ca69c3150c5e378537493c074b0b530b5cfde7cfeb42828efb0e49680",
+      "shrinking_raw_bytes": 11012
+    },
+    "classification": "numerical route sensitivity accumulates from the first decode step; no tested native algorithm is exact over the required sequence"
+  },
+  "sources": {
+    "matrix_summary": {
+      "path": "/tmp/sol-p1-matrix-a18ff7bc/summary.json",
+      "sha256": "1ff3f002e20f790a359a3db4de2c52b5f65d46ef47f6474a26d309e2921e2aad",
+      "bytes": 88116
+    },
+    "matrix_command": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_equality_matrix.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-sizes 2,3,4,5,6,7,8 --compiler-version-file /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt --require-cached-build --output-dir /tmp/sol-p1-matrix-a18ff7bc --json /tmp/sol-p1-matrix-a18ff7bc/summary.json",
+    "c1_command": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompt-fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-row 0 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt --require-cached-build --graph-replay-decode --json <run.json>"
+  },
+  "architecture_catalog": {
+    "gfx1151": {
+      "status": "accepted_serial_catalog",
+      "c1": "true_c1_graph",
+      "c2_c8": "scheduler_true_c1_fallback"
+    },
+    "gfx1100": {
+      "status": "stale_unverified_no_local_hardware",
+      "routing_eligible_on_gfx1151": false,
+      "next_action": "rerun this exact matrix independently on W7900"
+    }
+  },
+  "decision": {
+    "sol_p1_accepted_on_gfx1151": true,
+    "native_c2_c8_accepted": false,
+    "production_route": "scheduler_true_c1_fallback",
+    "reason": "Every gfx1151 width is now either exact c1 or explicitly serial; clean c2-c8 native candidates all fail the independent-c1 sequence at index 2. gfx1100 evidence remains stale and cannot select gfx1151."
+  },
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-11T02:37:54.063842+00:00",
+    "repo_root": "/tmp/hipengine-sol-p1-a18ff7bc",
+    "hipengine_commit": "a18ff7bc428833a5f3d87ed422d04633abbf0b10",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "env",
+      "HIPENGINE_HIP_ARCH=gfx1151",
+      "python3",
+      "scripts/qwen35_paro_bench.py",
+      "--prompt-fixture",
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "--prompt-row",
+      "0",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--warmup-decode-tokens",
+      "8",
+      "--max-layers",
+      "40",
+      "--require-cached-build",
+      "--graph-replay-decode"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_BACKEND": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.13.60980-c76140fa27",
+    "hipcc_version": "HIP version: 7.13.60980-c76140fa27\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "decode",
+    "timing_protocol": "exact-fixture c1 graph median-of-3 plus c2-c8 independent-c1 correctness matrix",
+    "warmups": 8,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "SOL-P1 is an exact routing catalog; profiler follows only for a correctness-eligible native width"
+    }
+  }
+}

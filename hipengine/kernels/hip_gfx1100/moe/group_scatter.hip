@@ -64,9 +64,17 @@ __global__ void qwen35_moe_wmma_tile_map_kernel(
     int64_t* __restrict__ wmma_expert_start,
     int64_t* __restrict__ tile_expert,
     int64_t* __restrict__ wmma_total_out,
-    int64_t num_experts) {
+    int64_t num_experts,
+    int64_t tile_capacity) {
   extern __shared__ int64_t prefix[];
   const int64_t tid = threadIdx.x;
+
+  if (tile_capacity > 0) {
+    for (int64_t idx = tid; idx < tile_capacity; idx += blockDim.x) {
+      tile_expert[idx] = -1;
+    }
+  }
+  __syncthreads();
 
   int64_t count = 0;
   int64_t padded = 0;
@@ -105,7 +113,10 @@ __global__ void qwen35_moe_wmma_tile_map_kernel(
     const int64_t my_start_tile = (prefix[tid] - padded) / 16;
     const int64_t my_num_tiles = padded / 16;
     for (int64_t t = 0; t < my_num_tiles; t++) {
-      tile_expert[my_start_tile + t] = tid;
+      const int64_t tile_idx = my_start_tile + t;
+      if (tile_capacity <= 0 || tile_idx < tile_capacity) {
+        tile_expert[tile_idx] = tid;
+      }
     }
   }
 }
@@ -274,8 +285,9 @@ extern "C" int hipengine_qwen35_moe_wmma_tile_map(
     int64_t* tile_expert,
     int64_t* wmma_total_out,
     int64_t num_experts,
+    int64_t tile_capacity,
     hipStream_t stream) {
-  if (num_experts <= 0 || num_experts > 1024) {
+  if (num_experts <= 0 || num_experts > 1024 || tile_capacity < 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t threads64 = next_power_of_two_i64(num_experts);
@@ -290,7 +302,8 @@ extern "C" int hipengine_qwen35_moe_wmma_tile_map(
       wmma_expert_start,
       tile_expert,
       wmma_total_out,
-      num_experts);
+      num_experts,
+      tile_capacity);
   return static_cast<int>(hipGetLastError());
 }
 

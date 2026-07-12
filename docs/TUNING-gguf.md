@@ -70,8 +70,8 @@ memory/consumer-card diagnostic.
 | 32K/128 | `1878.052` / `86.486` / `25.108 GiB` | `1496.409` / `76.994` / `21.738 GiB` | `1128.554` / `98.073` / `21.533 GiB` | `1880` / `98.8` / `21.37 GiB` |
 | 128K/128 | `995.295` / `58.066` / `25.108 GiB` | `710.213` / `57.341` / `23.605 GiB` | `480.539` / `64.478` / `23.596 GiB` | `914` / `62.6` / `27.42 GiB` |
 
-Sources: `benchmarks/README.md` 2026-06-14/15 rows and the source-lineage
-PARO table. Caveats:
+Sources: archived [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md)
+2026-06-14/15 rows and its source-lineage PARO table. Caveats:
 
 - The hipEngine column is Q4_K_S while the llama.cpp columns are Q4_K_M; do not
   use this table for 1:1 performance acceptance. The current active loop should

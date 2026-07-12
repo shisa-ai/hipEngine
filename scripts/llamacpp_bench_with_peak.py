@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run ``llama-bench`` for split prefill/decode workloads while sampling
-amdgpu VRAM in the background, and emit a benchmark-results JSON capturing
-the peak VRAM each run touched.
+"""Run ``llama-bench`` for split prefill/decode workloads while sampling an
+amdgpu memory domain in the background, and emit a benchmark-results JSON
+capturing the peak each run touched.
 
 llama-bench itself does not log any peak GPU-memory number (its JSON only
 contains tok/s). We need an external observer because:
@@ -10,7 +10,8 @@ contains tok/s). We need an external observer because:
   separate llama-bench invocations and the second can allocate a wider KV
   buffer than the first.
 * Vulkan and HIP share the amdgpu kernel-driver allocator, so the cleanest
-  cross-backend signal is ``/sys/class/drm/card*/device/mem_info_vram_used``.
+  cross-backend signal is ``/sys/class/drm/card*/device/mem_info_vram_used``
+  on discrete GPUs or ``mem_info_gtt_used`` on UMA APUs.
 
 Polling interval is configurable via ``--poll`` (milliseconds). Sysfs reads
 take a few microseconds, so polling at 1-10 ms is safe even though we do not
@@ -38,6 +39,7 @@ import argparse
 import datetime as _dt
 import io
 import json
+import os
 import re
 import shlex
 import socket
@@ -60,6 +62,8 @@ from hipengine.util.amdgpu_vram import (  # noqa: E402
     list_amdgpu_cards,
     select_card,
 )
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from hipengine.kernels.backends import detect_hip_target_arches  # noqa: E402
 
 _GIB = 1 << 30
 _MIB = 1 << 20
@@ -326,10 +330,12 @@ def _format_markdown(
     rows: list[dict[str, Any]],
     card: AmdgpuCard,
     poll_ms: float,
+    memory_domain: str,
 ) -> str:
     buf = io.StringIO()
-    buf.write(f"## llama.cpp {backend_label} peak VRAM (card {card.card_name}, "
-              f"pci {card.pci_id}, total {card.vram_total_gib:.3f} GiB, "
+    total_gib = card.memory_total_bytes(memory_domain) / _GIB
+    buf.write(f"## llama.cpp {backend_label} peak {memory_domain.upper()} "
+              f"(card {card.card_name}, pci {card.pci_id}, total {total_gib:.3f} GiB, "
               f"poll {poll_ms:.1f} ms)\n\n")
     buf.write("| Workload | prefill tok/s | decode tok/s | prefill peak GiB | "
               "decode peak GiB | row peak GiB | row peak Δ GiB |\n")
@@ -375,6 +381,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model", "-m", required=True, type=Path, help="GGUF model path",
+    )
+    parser.add_argument(
+        "--quant",
+        default="gguf_q4_k_m",
+        help="quantization identity recorded in artifact provenance",
     )
     parser.add_argument(
         "--backend",
@@ -438,6 +449,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--keep-samples",
         action="store_true",
         help="Retain the full VRAM sample trace in the output JSON",
+    )
+    parser.add_argument(
+        "--memory-domain",
+        choices=("vram", "gtt"),
+        default="vram",
+        help="amdgpu memory domain to sample (use gtt for UMA APUs)",
     )
     parser.add_argument("--card-name", help="amdgpu card name override (e.g. card1)")
     parser.add_argument("--pci-id", help="amdgpu PCI id override (e.g. 0000:c3:00.0)")
@@ -543,6 +560,7 @@ def main(argv: list[str] | None = None) -> int:
                 card=card,
                 interval_ms=args.poll,
                 keep_samples=args.keep_samples,
+                memory_domain=args.memory_domain,
             )
             print(
                 f"[run] workload={workload_label} phase={phase} "
@@ -616,18 +634,59 @@ def main(argv: list[str] | None = None) -> int:
     if backend_label == "auto":
         backend_label = detected_backend or "unknown"
 
+    gpu_identity = " ".join(
+        str(record.get("llamacpp_record", {}).get("gpu_info") or "")
+        for record in phase_records
+    ).lower()
+    target_match = re.search(r"\bgfx[0-9a-z]+\b", gpu_identity)
+    target_arch = None if target_match is None else target_match.group(0)
+    if target_arch is None:
+        detected_arches = detect_hip_target_arches()
+        target_arch = detected_arches[0] if detected_arches else None
+    resolved_backend = (
+        "vulkan"
+        if backend_label == "vulkan"
+        else f"hip_{target_arch or 'external'}"
+    )
+    provenance = collect_artifact_provenance(
+        repo_root=_REPO_ROOT,
+        configured_backend=f"llamacpp_{backend_label}",
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
+        model_path=args.model,
+        quant=args.quant,
+        kv_dtype=f"{args.cache_type_k}/{args.cache_type_v}",
+        command=tuple(sys.argv),
+        environment={
+            "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
+            "VK_ICD_FILENAMES": os.environ.get("VK_ICD_FILENAMES"),
+        },
+        build_profile="external_llama_bench",
+        timing_protocol="split prefill/decode llama-bench with amdgpu peak sampling",
+        warmups=0 if args.no_warmup else 1,
+        repetitions=args.repetitions,
+        profiler={"enabled": False, "reason": "topline host-wall sweep"},
+        rocm_version=None,
+        hipcc_version=None,
+    )
+
     artifact: dict[str, Any] = {
         "schema": 1,
         "status": args.status,
         "performance_claim": False,
         "date": _dt.date.today().isoformat(),
-        "hardware": f"amdgpu {card.card_name} pci {card.pci_id} total {card.vram_total_gib:.3f} GiB",
+        "hardware": (
+            f"amdgpu {card.card_name} pci {card.pci_id} "
+            f"{args.memory_domain} total "
+            f"{card.memory_total_bytes(args.memory_domain) / _GIB:.3f} GiB"
+        ),
         "host": socket.gethostname(),
         "tool": "scripts/llamacpp_bench_with_peak.py",
         "tool_version": 1,
         "model_path": str(args.model),
         "model_filename": args.model.name,
         "backend": f"llamacpp_{backend_label}",
+        "provenance": provenance,
         "llama_bench_binary": str(args.llama_bench),
         "build_commit": next(
             (r["llamacpp_record"]["build_commit"]
@@ -661,13 +720,18 @@ def main(argv: list[str] | None = None) -> int:
         "phases_run": phases,
         "workloads_requested": args.workloads,
         "poll_ms": args.poll,
+        "memory_domain": args.memory_domain,
+        "memory_total_bytes": card.memory_total_bytes(args.memory_domain),
+        "memory_total_gib": card.memory_total_bytes(args.memory_domain) / _GIB,
         "card": card.to_dict(),
         "rows": rows,
         "phase_records": phase_records,
         "notes": [
-            "VRAM peak captured by /sys/class/drm/<card>/device/mem_info_vram_used "
-            "polled by hipengine/util/amdgpu_vram.py. Whole-card VRAM, includes "
-            "everything committed through the amdgpu kernel driver.",
+            f"{args.memory_domain.upper()} peak captured by "
+            f"/sys/class/drm/<card>/device/mem_info_{args.memory_domain}_used "
+            "and polled by hipengine/util/amdgpu_vram.py. This is a whole-device "
+            "amdgpu-domain measurement and includes everything committed through "
+            "the kernel driver.",
             "Per-row peak_vram_gib = max(prefill_peak, decode_peak). Delta is "
             "peak minus pre-run baseline so other processes' VRAM is excluded.",
             f"tok/s comes from llama-bench's --output json avg_ts with --repetitions {args.repetitions}.",
@@ -681,6 +745,7 @@ def main(argv: list[str] | None = None) -> int:
         rows=rows,
         card=card,
         poll_ms=args.poll,
+        memory_domain=args.memory_domain,
     )
     print(md)
 

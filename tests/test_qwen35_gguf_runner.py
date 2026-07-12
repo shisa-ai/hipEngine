@@ -114,41 +114,36 @@ def test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt() -> Non
     assert float(np.max(np.abs(bulk_first.logits - serial_first.logits))) <= 0.2
 
 
-def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
+@pytest.mark.parametrize("block_rows", [1, 2, 3, 4])
+def test_qwen35_gguf_target_block_verify_matches_eager_steps(block_rows: int) -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
-    prompt_ids = [760, 4087, 369]
-    with Qwen35GGUFResidentSession(MODEL) as eager:
-        eager_first = eager.prefill(prompt_ids)
-        eager_second = eager.step(eager_first.token_id)
-    with Qwen35GGUFResidentSession(MODEL) as graph_session:
-        graph_first = graph_session.prefill(prompt_ids)
-        with graph_session.capture_decode_graph(position=len(prompt_ids), max_replay_steps=1, record_steps=1) as graph:
-            graph.replay(1)
-            graph_ids = [graph_first.token_id, *graph.read_generated_token_ids(1)]
-            graph_second = graph.read_sample()
+    prompt_ids = [760, 4087, 369, 220]
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=32) as eager:
+        first = eager.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        block_inputs: list[int] = []
+        expected_tokens: list[int] = []
+        current = int(first.token_id)
+        for _ in range(block_rows):
+            block_inputs.append(current)
+            result = eager.step(current, return_logits=False, capture_hidden_seed_fp32=True)
+            expected_tokens.append(int(result.token_id))
+            current = int(result.token_id)
+        eager_after = eager.step(current, return_logits=False)
 
-    assert [eager_first.token_id, eager_second.token_id] == [220, 16]
-    assert graph_ids == [220, 16]
-    assert graph_second.token_id == eager_second.token_id
-    assert graph_second.logits.shape == eager_second.logits.shape == (1, 248320)
-    assert np.all(np.isfinite(graph_second.logits))
-    assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=32) as block_session:
+        block_first = block_session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        assert int(block_first.token_id) == int(first.token_id)
+        hidden_size = int(block_session.runner.hidden_size)
+        block_result = block_session.verify_target_block(block_inputs)
+        block_after = block_session.step(block_result.token_ids[-1], return_logits=False)
+        final_position = int(block_session.position)
 
-
-def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
-    ref = reference_logits.astype(np.float64, copy=False)
-    cand = candidate_logits.astype(np.float64, copy=False)
-    ref_exp = np.exp(ref - float(np.max(ref)))
-    cand_exp = np.exp(cand - float(np.max(cand)))
-    ref_prob = ref_exp / float(np.sum(ref_exp))
-    cand_prob = cand_exp / float(np.sum(cand_exp))
-    return float(np.sum(ref_prob * (np.log(ref_prob + 1.0e-30) - np.log(cand_prob + 1.0e-30))))
-
-
-def _hip_available() -> bool:
-    try:
-        ctypes.CDLL("libamdhip64.so")
-    except OSError:
-        return False
-    return True
+    assert block_result.start_position == len(prompt_ids)
+    assert block_result.input_token_ids == block_inputs
+    assert block_result.token_ids == expected_tokens
+    assert block_result.hidden_seeds.shape == (block_rows, hidden_size)
+    assert block_result.hidden_seeds.dtype == np.float32
+    assert np.all(np.isfinite(block_result.hidden_seeds))
+    assert final_position == len(prompt_ids) + len(block_inputs) + 1
+    assert int(block_after.token_id) == int(eager_after.token_id)

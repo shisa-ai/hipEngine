@@ -1,0 +1,345 @@
+{
+  "schema": 4,
+  "status": "ok",
+  "timestamp": "2026-06-19T14:56:17",
+  "run_tag": "mtp-bench-1781880977",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "Write a short greeting.",
+    "prompt_tokens": 17,
+    "cycles": 5,
+    "draft_n_max": 2,
+    "engine": "hipEngine GGUF MTP"
+  },
+  "metrics": {
+    "accept_per_draft": 0.0,
+    "accepted_per_output": 0.0,
+    "visible_tokens_per_cycle": 1.0,
+    "avg_cycle_ms": 305.82,
+    "avg_decode_ms": 305.82,
+    "avg_ar_decode_ms": 66.82,
+    "avg_mtp_draft_ms": 239.0,
+    "avg_ms_per_visible_token": 305.82,
+    "tokens_per_sec": 3.27,
+    "ar_baseline_tokens_per_sec": 14.96,
+    "speedup_vs_ar_visible": 0.2185,
+    "total_accepted": 0,
+    "total_drafts": 10,
+    "total_output_tokens": 5,
+    "verify_cycle_count": 5,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.0,
+      "accepted_per_output": 0.0,
+      "visible_tokens_per_cycle": 1.0,
+      "avg_cycle_ms": 84.77,
+      "avg_ar_decode_ms": 68.53,
+      "avg_mtp_draft_ms": 16.24,
+      "avg_ms_per_visible_token": 84.77,
+      "tokens_per_sec": 11.8,
+      "speedup_vs_ar_visible": 0.8084,
+      "total_accepted": 0,
+      "total_drafts": 8,
+      "total_output_tokens": 4,
+      "verify_cycle_count": 4
+    }
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "target_token": 13,
+      "target_tokens": [
+        13
+      ],
+      "comparison_target_tokens": [
+        13
+      ],
+      "output_tokens": [
+        13
+      ],
+      "draft_token": 271,
+      "draft_tokens": [
+        271,
+        4277
+      ],
+      "draft_top10_tokens": [
+        [
+          271,
+          198,
+          220,
+          735,
+          1358,
+          4558,
+          248046,
+          97428,
+          108530,
+          110205
+        ],
+        [
+          4277,
+          332,
+          98405,
+          91,
+          9,
+          98118,
+          16,
+          24,
+          18,
+          110205
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "ar_decode_ms": 60.01,
+      "mtp_draft_ms": 1130.02
+    },
+    {
+      "cycle": 1,
+      "target_token": 13,
+      "target_tokens": [
+        13
+      ],
+      "comparison_target_tokens": [
+        13
+      ],
+      "output_tokens": [
+        13
+      ],
+      "draft_token": 9,
+      "draft_tokens": [
+        9,
+        0
+      ],
+      "draft_top10_tokens": [
+        [
+          9,
+          11862,
+          63,
+          207697,
+          30,
+          174548,
+          65915,
+          1076,
+          394,
+          995
+        ],
+        [
+          0,
+          3966,
+          9,
+          30,
+          63,
+          65915,
+          13,
+          271,
+          1076,
+          34471
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "ar_decode_ms": 59.72,
+      "mtp_draft_ms": 14.63
+    },
+    {
+      "cycle": 2,
+      "target_token": 13,
+      "target_tokens": [
+        13
+      ],
+      "comparison_target_tokens": [
+        13
+      ],
+      "output_tokens": [
+        13
+      ],
+      "draft_token": 220,
+      "draft_tokens": [
+        220,
+        321
+      ],
+      "draft_top10_tokens": [
+        [
+          220,
+          321,
+          198,
+          271,
+          46152,
+          1749,
+          98404,
+          171280,
+          466,
+          172325
+        ],
+        [
+          321,
+          220,
+          20,
+          46152,
+          19,
+          16,
+          98404,
+          24,
+          466,
+          22
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "ar_decode_ms": 72.9,
+      "mtp_draft_ms": 17.57
+    },
+    {
+      "cycle": 3,
+      "target_token": 13972,
+      "target_tokens": [
+        13972
+      ],
+      "comparison_target_tokens": [
+        13972
+      ],
+      "output_tokens": [
+        13972
+      ],
+      "draft_token": 72495,
+      "draft_tokens": [
+        72495,
+        33617
+      ],
+      "draft_top10_tokens": [
+        [
+          72495,
+          11862,
+          100241,
+          92018,
+          58750,
+          167437,
+          114386,
+          242836,
+          682,
+          21105
+        ],
+        [
+          33617,
+          0,
+          220,
+          242073,
+          1300,
+          1828,
+          4749,
+          65915,
+          16288,
+          2413
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "ar_decode_ms": 70.72,
+      "mtp_draft_ms": 16.16
+    },
+    {
+      "cycle": 4,
+      "target_token": 1510,
+      "target_tokens": [
+        1510
+      ],
+      "comparison_target_tokens": [
+        1510
+      ],
+      "output_tokens": [
+        1510
+      ],
+      "draft_token": 64,
+      "draft_tokens": [
+        64,
+        786
+      ],
+      "draft_top10_tokens": [
+        [
+          64,
+          72,
+          82,
+          22768,
+          11,
+          81,
+          77,
+          66,
+          11862,
+          0
+        ],
+        [
+          786,
+          17,
+          16,
+          15,
+          9,
+          1338,
+          68,
+          34,
+          291,
+          61
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "ar_decode_ms": 70.77,
+      "mtp_draft_ms": 16.61
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_hipengine_initial_input_capture_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 317,
+  "status": "ready",
+  "qwen35moe_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+  "context_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "embedding_path": "hipengine/runtime/gguf_embedding.py",
+  "layer0_artifact_path": "benchmarks/results/mtp-gguf-iter316-layer0-compare.json",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "position": 16,
+  "token_id": 271,
+  "llamacpp_input_patch": {
+    "ready": true,
+    "input_anchor_count": 1,
+    "capture_label": "h_nextn_input_embed",
+    "patch_scope": "temporary copied llama.cpp source tree only",
+    "input_capture_old_text": "    inpL = build_inp_embd(model.tok_embd);\n\n    cb(inpL, \"model.input_embed\", -1);\n\n    auto * inp = build_inp_mem_hybrid();",
+    "input_capture_new_text": "    inpL = build_inp_embd(model.tok_embd);\n\n    cb(inpL, \"model.input_embed\", -1);\n    cb(inpL, \"h_nextn_input_embed\", -1);\n    res->t_h_nextn = inpL;\n\n    auto * inp = build_inp_mem_hybrid();",
+    "post_output_preserve_state": "needs_patch",
+    "post_output_old_count": 1,
+    "post_output_new_count": 0,
+    "post_output_preserve_old_text": "    cb(cur, \"h_nextn\", -1);\n    res->t_h_nextn = cur;\n\n    if (!cparams.embeddings_nextn_masked && inp_out_ids) {",
+    "post_output_preserve_new_text": "    cb(cur, \"h_nextn_post_output_norm\", -1);\n    // PRE-output_norm diagnostic: keep res->t_h_nextn from before output_norm.\n\n    if (!cparams.embeddings_nextn_masked && inp_out_ids) {",
+    "layer_capture_patch_must_be_absent": true,
+    "layer_capture_patch_count": 0,
+    "final_pre_output_patch_must_be_absent": true,
+    "final_pre_output_patch_count": 0,
+    "anchors": {
+      "build_inp_embd": 171,
+      "model_input_embed_cb": 173,
+      "first_layer_loop": 181,
+      "post_output_h_nextn": 233,
+      "context_unmasked_get_ith": 934
+    },
+    "notes": [
+      "Use a clean base source without h_nextn_layer_out or h_nextn_pre_output_norm so the input embedding tap cannot be overwritten.",
+      "Apply the post-output preserve patch so the later h_nextn assignment cannot overwrite the input embedding tensor."
+    ]
+  },
+  "hipengine_hidden_in_capture": {
+    "ready": true,
+    "facts": {
+      "capture_attention_layer_available": true,
+      "captures_hidden_in_f32": true,
+      "copies_hidden_in_from_target_src_ptr": true,
+      "sets_token_id_device": true,
+      "runs_layer_after_hidden_in_copy_pointer_selection": true,
+      "embedding_launcher_available": true,
+      "embedding_output_bf16": true,
+      "embedding_dispatch_registry_driven": true
+    },
+    "capture_strategy": "Warm prior prompt tokens with session.step(...). Then call session.capture_attention_layer(token_id, position=position, layer_id=0, run_preceding_layers=False) and compare capture.hidden_in_f32 to the patched llama.cpp h_nextn_input_embed row.",
+    "value_field": "hidden_in_f32",
+    "dtype_note": "hipEngine launch_gguf_embedding writes BF16 and hidden_in_f32 copies it back as F32; the llama.cpp input_embed tensor is captured as F32. The next comparison should report both exact F32 delta and a BF16-rounded llama.cpp row delta before deciding this is a semantic mismatch.",
+    "anchors": {
+      "capture_attention_layer": 3637,
+      "hidden_in_f32": 384,
+      "set_token_id_device": 3542,
+      "launch_gguf_embedding": 58,
+      "embedding_output_bf16": 20
+    }
+  },
+  "prior_layer0_result": {
+    "ready": true,
+    "status": "mismatched",
+    "classification": "layer_boundary_mismatch",
+    "layer_id": 0,
+    "rmse": 0.012114962719327636,
+    "max_abs_diff": 0.045740051893517375,
+    "mean_abs_diff": 0.009691874419019086,
+    "llamacpp_layer0_sha256": "9321263b6a72127990374a064373d74941ab3a493cde35c286019bf4318b2777",
+    "hipengine_layer0_sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001",
+    "next_action": "inspect_initial_embedding_or_token_capture"
+  },
+  "comparison_plan": {
+    "first_probe": "input_embed_vs_hidden_in_layer0",
+    "llamacpp_effective_tap": "h_nextn_input_embed",
+    "hipengine_value_field": "hidden_in_f32",
+    "expected_artifacts": [
+      "mtp-gguf-iter318-input-embed-harness-build.json",
+      "mtp-gguf-iter318-input-embed-llamacpp-build-result.json",
+      "mtp-gguf-iter318-input-embed-harness-compile.json",
+      "mtp-gguf-iter318-input-embed-compare.json"
+    ],
+    "interpretation": {
+      "exact_or_bf16_rounded_match": "initial embedding is aligned; investigate layer-0 implementation details",
+      "mismatch": "token embedding lookup/materialization differs before the first decoder layer"
+    }
+  },
+  "decision": {
+    "status": "ready",
+    "conclusion": "initial_input_capture_plan_ready",
+    "next_action": "build_input_embed_capture_and_compare_hidden_in_f32"
+  },
+  "conclusion": "initial_input_capture_plan_ready",
+  "external_checkout_modified": false,
+  "next_action": "build_input_embed_capture_and_compare_hidden_in_f32"
+}

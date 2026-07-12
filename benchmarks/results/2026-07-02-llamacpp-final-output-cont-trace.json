@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_final_output_cont_trace_patch",
+  "date": "2026-07-02",
+  "iteration": 1,
+  "status": "patch_ready",
+  "reason": null,
+  "llamacpp_root": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "source_exists": {
+    "src/llama-graph.cpp": true,
+    "src/models/qwen35moe.cpp": true
+  },
+  "reference_basis": {
+    "observed_llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "source_is_read_only_reference": true,
+    "external_checkout_modified": false
+  },
+  "targets": [
+    "src/llama-graph.cpp",
+    "src/models/qwen35moe.cpp"
+  ],
+  "patch_output": "benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch",
+  "patch_sha256": "b2a645a2bc5d68b883314bbecd93033b8377c8c3e0e88aca82db82c6809a0263",
+  "patch_bytes": 1185,
+  "validation": {
+    "changed": true,
+    "diff_has_graph_target": true,
+    "diff_has_qwen35moe_target": true,
+    "graph_renames_final_output_cont": true,
+    "graph_wants_final_output_cont_prefix": true,
+    "graph_adds_final_output_cont_prefix": true,
+    "qwen35moe_emits_final_output_cont": true,
+    "qwen35moe_uses_cont_3d": true,
+    "qwen35moe_ssm_out_uses_final_output_cont": true,
+    "external_checkout_modified": false
+  },
+  "trace_labels_enabled": [
+    "final_output_cont_0"
+  ],
+  "next_action": "apply_patch_to_temporary_llamacpp_trace_tree_and_capture_final_output_cont"
+}

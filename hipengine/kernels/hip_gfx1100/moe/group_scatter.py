@@ -134,6 +134,7 @@ def qwen35_moe_wmma_tile_map(
     wmma_total_ptr: int,
     num_experts: int,
     *,
+    tile_capacity: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -141,10 +142,19 @@ def qwen35_moe_wmma_tile_map(
     """Map compact expert starts to 16-row WMMA tile starts and tile expert ids."""
 
     _check_num_experts(num_experts)
+    _check_nonnegative(tile_capacity, "tile_capacity")
     library = library or build_qwen35_moe_group_scatter(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_TILE_MAP)
-    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
     fn.restype = ctypes.c_int
     err = fn(
         ctypes.c_void_p(expert_start_compact_ptr),
@@ -152,6 +162,7 @@ def qwen35_moe_wmma_tile_map(
         ctypes.c_void_p(tile_expert_ptr),
         ctypes.c_void_p(wmma_total_ptr),
         ctypes.c_int64(num_experts),
+        ctypes.c_int64(tile_capacity),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -346,6 +357,11 @@ def _check_num_experts(num_experts: int) -> None:
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _check_nonnegative(value: int, name: str) -> None:
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
 
 
 def _check_launch(runtime: HipRuntime, err: int) -> None:

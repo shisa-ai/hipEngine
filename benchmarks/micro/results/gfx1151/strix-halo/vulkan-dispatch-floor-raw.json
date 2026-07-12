@@ -1,0 +1,91 @@
+{
+  "run_tag": "vulkan-dispatch-floor",
+  "status": "diagnostic",
+  "hardware": {
+    "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+    "vendor_id": 4098,
+    "device_id": 5510,
+    "device_type": 1,
+    "api_version": "1.4.348",
+    "driver_version_raw": 109056002,
+    "queue_family": 0
+  },
+  "config": {
+    "counts": [1, 50, 200, 941],
+    "grid_sweep": [1, 128, 1024, 8192],
+    "grid_sweep_count": 941,
+    "n_elements": 256,
+    "reps": 50,
+    "warmup": 10,
+    "local_size_x": 256,
+    "method": "pre-recorded Vulkan command buffer with N compute dispatches; wall time around vkQueueSubmit+vkWaitForFences; shader writes a storage buffer to prevent empty-shader elimination"
+  },
+  "rows": [
+    {
+      "dispatch_count": 1,
+      "grid_blocks": 1,
+      "burst_us_median": 17.277500,
+      "us_per_dispatch": 17.277500,
+      "burst_us_min": 15.238000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 50,
+      "grid_blocks": 1,
+      "burst_us_median": 16.521000,
+      "us_per_dispatch": 0.330420,
+      "burst_us_min": 16.070000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 200,
+      "grid_blocks": 1,
+      "burst_us_median": 18.509500,
+      "us_per_dispatch": 0.092547,
+      "burst_us_min": 17.993000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1,
+      "burst_us_median": 41.047000,
+      "us_per_dispatch": 0.043621,
+      "burst_us_min": 39.595000,
+      "reps": 50
+    }
+  ],
+  "grid_sweep_rows": [
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1,
+      "burst_us_median": 40.370500,
+      "us_per_dispatch": 0.042902,
+      "burst_us_min": 39.164000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 128,
+      "burst_us_median": 217.363500,
+      "us_per_dispatch": 0.230992,
+      "burst_us_min": 212.580000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 1024,
+      "burst_us_median": 1592.520000,
+      "us_per_dispatch": 1.692370,
+      "burst_us_min": 1386.924000,
+      "reps": 50
+    },
+    {
+      "dispatch_count": 941,
+      "grid_blocks": 8192,
+      "burst_us_median": 11271.184000,
+      "us_per_dispatch": 11.977879,
+      "burst_us_min": 10735.128000,
+      "reps": 50
+    }
+  ]
+}

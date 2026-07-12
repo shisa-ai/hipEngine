@@ -115,6 +115,15 @@ class HipRuntime:
     def stream_synchronize(self, stream: int) -> None:
         self.check(self.library.hipStreamSynchronize(ctypes.c_void_p(stream)))
 
+    def stream_wait_event(self, stream: int, event: int, *, flags: int = 0) -> None:
+        self.check(
+            self.library.hipStreamWaitEvent(
+                ctypes.c_void_p(stream),
+                ctypes.c_void_p(event),
+                ctypes.c_uint(flags),
+            )
+        )
+
     def stream_begin_capture(self, stream: int, mode: int = 2) -> None:
         self.check(self.library.hipStreamBeginCapture(ctypes.c_void_p(stream), ctypes.c_int(mode)))
 
@@ -146,6 +155,31 @@ class HipRuntime:
 
     def graph_destroy(self, graph: int) -> None:
         self.check(self.library.hipGraphDestroy(ctypes.c_void_p(graph)))
+
+    def event_create(self, *, flags: int = 0) -> int:
+        event = ctypes.c_void_p()
+        self.check(self.library.hipEventCreateWithFlags(ctypes.byref(event), ctypes.c_uint(flags)))
+        return 0 if event.value is None else int(event.value)
+
+    def event_destroy(self, event: int) -> None:
+        self.check(self.library.hipEventDestroy(ctypes.c_void_p(event)))
+
+    def event_record(self, event: int, stream: int = 0) -> None:
+        self.check(self.library.hipEventRecord(ctypes.c_void_p(event), ctypes.c_void_p(stream)))
+
+    def event_synchronize(self, event: int) -> None:
+        self.check(self.library.hipEventSynchronize(ctypes.c_void_p(event)))
+
+    def event_elapsed_time_ms(self, start: int, stop: int) -> float:
+        elapsed = ctypes.c_float()
+        self.check(
+            self.library.hipEventElapsedTime(
+                ctypes.byref(elapsed),
+                ctypes.c_void_p(start),
+                ctypes.c_void_p(stop),
+            )
+        )
+        return float(elapsed.value)
 
     def device_synchronize(self) -> None:
         self.check(self.library.hipDeviceSynchronize())
@@ -192,6 +226,8 @@ class HipRuntime:
         self.library.hipStreamDestroy.restype = ctypes.c_int
         self.library.hipStreamSynchronize.argtypes = [ctypes.c_void_p]
         self.library.hipStreamSynchronize.restype = ctypes.c_int
+        self.library.hipStreamWaitEvent.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+        self.library.hipStreamWaitEvent.restype = ctypes.c_int
         self.library.hipStreamBeginCapture.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.library.hipStreamBeginCapture.restype = ctypes.c_int
         self.library.hipStreamEndCapture.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
@@ -210,6 +246,20 @@ class HipRuntime:
         self.library.hipGraphExecDestroy.restype = ctypes.c_int
         self.library.hipGraphDestroy.argtypes = [ctypes.c_void_p]
         self.library.hipGraphDestroy.restype = ctypes.c_int
+        self.library.hipEventCreateWithFlags.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint]
+        self.library.hipEventCreateWithFlags.restype = ctypes.c_int
+        self.library.hipEventDestroy.argtypes = [ctypes.c_void_p]
+        self.library.hipEventDestroy.restype = ctypes.c_int
+        self.library.hipEventRecord.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.library.hipEventRecord.restype = ctypes.c_int
+        self.library.hipEventSynchronize.argtypes = [ctypes.c_void_p]
+        self.library.hipEventSynchronize.restype = ctypes.c_int
+        self.library.hipEventElapsedTime.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        self.library.hipEventElapsedTime.restype = ctypes.c_int
         self.library.hipDeviceSynchronize.argtypes = []
         self.library.hipDeviceSynchronize.restype = ctypes.c_int
         self.library.hipGetErrorString.argtypes = [ctypes.c_int]

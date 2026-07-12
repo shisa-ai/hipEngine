@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "kind": "gguf_mtp_b2_topk_parity_blocker",
+  "native_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+  "native_prompt": "Write a short greeting.",
+  "native_summary": {
+    "draft_n_max": 2,
+    "cycles": 5,
+    "accept_per_draft": 0.0,
+    "rejection_diagnostic": [
+      {
+        "cycle": 0,
+        "target_tokens": [
+          20
+        ],
+        "draft_tokens": [
+          24,
+          26
+        ],
+        "target_in_draft_top10": [
+          true
+        ],
+        "target_rank_in_draft_top10": [
+          2
+        ],
+        "draft_top10_tokens_depth1": [
+          24,
+          20,
+          16,
+          19,
+          22,
+          15,
+          21,
+          17,
+          18,
+          23
+        ]
+      },
+      {
+        "cycle": 1,
+        "target_tokens": [
+          220
+        ],
+        "draft_tokens": [
+          24,
+          17
+        ],
+        "target_in_draft_top10": [
+          false
+        ],
+        "target_rank_in_draft_top10": [
+          null
+        ],
+        "draft_top10_tokens_depth1": [
+          24,
+          15,
+          21,
+          26,
+          17,
+          22,
+          20,
+          19,
+          23,
+          18
+        ]
+      },
+      {
+        "cycle": 2,
+        "target_tokens": [
+          220
+        ],
+        "draft_tokens": [
+          16,
+          15
+        ],
+        "target_in_draft_top10": [
+          false
+        ],
+        "target_rank_in_draft_top10": [
+          null
+        ],
+        "draft_top10_tokens_depth1": [
+          16,
+          17,
+          18,
+          20,
+          19,
+          15,
+          21,
+          23,
+          24,
+          22
+        ]
+      },
+      {
+        "cycle": 3,
+        "target_tokens": [
+          220
+        ],
+        "draft_tokens": [
+          20,
+          15
+        ],
+        "target_in_draft_top10": [
+          false
+        ],
+        "target_rank_in_draft_top10": [
+          null
+        ],
+        "draft_top10_tokens_depth1": [
+          20,
+          16,
+          21,
+          19,
+          24,
+          23,
+          17,
+          22,
+          18,
+          15
+        ]
+      },
+      {
+        "cycle": 4,
+        "target_tokens": [
+          220
+        ],
+        "draft_tokens": [
+          16,
+          15
+        ],
+        "target_in_draft_top10": [
+          false
+        ],
+        "target_rank_in_draft_top10": [
+          null
+        ],
+        "draft_top10_tokens_depth1": [
+          16,
+          20,
+          17,
+          18,
+          23,
+          24,
+          21,
+          19,
+          22,
+          15
+        ]
+      }
+    ]
+  },
+  "available_llamacpp_trace_fixture": {
+    "path": "benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json",
+    "prompt_name": "explain_concept",
+    "prompt_tokens": 17,
+    "draft_n": 2,
+    "observed_top_k": 3,
+    "covers_native_prompt": false
+  },
+  "needed_llamacpp_trace": {
+    "prompt": "Write a short greeting.",
+    "draft_n_max": 2,
+    "top_k": 10,
+    "temperature": 0.0,
+    "purpose": "Compare llama.cpp draft-mtp candidate top-10 against native draft_top10_tokens for cycles where target 220 is absent from native top-10.",
+    "parser": "scripts/llamacpp_mtp_draft_trace.py",
+    "required_log_detail": "LOG_DBG common_speculative_impl_draft_mtp::draft candidate lines plus accepted N/M lines"
+  },
+  "local_availability": {
+    "model_exists": true,
+    "llama_server_candidates": [
+      {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+        "exists": true
+      },
+      {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-server",
+        "exists": false
+      }
+    ]
+  },
+  "interpretation": "No committed llama.cpp draft candidate trace currently covers the greeting prompt. Existing native artifact shows target 220 absent from native depth-1 top-10 in cycles 1-4; parity decision requires a matching llama.cpp draft-mtp top-k trace before changing model math or pursuing latency-only work."
+}

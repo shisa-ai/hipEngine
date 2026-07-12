@@ -117,7 +117,7 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_q4_k_prefill_dual_wmma_kernel<unsigned short>", "dense_q4_k_prefill"),
         ("gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>", "dense_q4_k_prefill"),
         # GDN
-        ("qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_kernel<unsigned short>", "gdn_prefill_recurrent"),
+        ("qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_kernel", "gdn_prefill_recurrent"),
         ("qwen35_gdn_prefill_recurrent_k2_kernel", "gdn_prefill_recurrent"),
         ("qwen35_gdn_prefill_recurrent_segments_k2_kernel", "gdn_prefill_recurrent"),
         ("qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel<unsigned short>", "gdn_prefill_rmsnorm_gate"),

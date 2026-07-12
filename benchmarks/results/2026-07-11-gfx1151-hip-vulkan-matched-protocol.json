@@ -1,0 +1,105 @@
+{
+  "kind": "hipengine_benchmark_result",
+  "schema_version": 1,
+  "date": "2026-07-11",
+  "status": "accepted_complete_matrix",
+  "performance_claim": true,
+  "bench": "hip_vulkan_timing_contract_v2_bounded_matrix",
+  "scope": "gfx1151_matched_old_protocol_stack_refresh",
+  "ratio_definition": "HIP burst GPU median divided by Vulkan burst GPU median; values greater than 1 favor Vulkan",
+  "source": {
+    "repo": "/tmp/hipengine-gfx1151-micro-matched-20260711",
+    "canonical_repo": "/home/lhl/hipEngine-main",
+    "commit": "0e566a4559b52a8bfc65ccdbda22556ae9112279",
+    "detached": true,
+    "dirty": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "device_id": "0x1586",
+    "gfx_arch": "gfx1151",
+    "compute_units": 40,
+    "clock_policy": "automatic"
+  },
+  "software": {
+    "hip": "TheRock 7.15.0a20260711",
+    "hipcc": "HIP 7.15.0-0000000",
+    "amd_clang_commit": "aa451e1fe6a793394d6733051b1778633063ae96",
+    "kernel": "7.1.3-2-cachyos",
+    "mesa_radv": "26.1.4-arch3.1",
+    "vulkan_api": "1.4.354",
+    "device_packages": [
+      "rocm-sdk-device-gfx1151 7.15.0a20260711",
+      "amd-torch-device-gfx1151 2.10.0+rocm7.15.0a20260711",
+      "amd-torchvision-device-gfx1151 0.25.0+rocm7.15.0a20260711"
+    ],
+    "environment_gate": "corrected updater completed all 27 rocm-sdk tests, Torch resolved gfx1151, and pip check passed"
+  },
+  "protocol": {
+    "timing_modes": [
+      "serial_latency",
+      "independent_throughput"
+    ],
+    "independent_lanes": 4,
+    "paired_family_repetitions": 10,
+    "paired_family_warmups": 3,
+    "paired_family_samples": 5,
+    "dispatch_repetitions": 20,
+    "dispatch_warmups": 5,
+    "comparison_to_old": "exactly matches the 2026-07-10 retained sampling counts; benchmark sources and shapes are unchanged",
+    "raw_root": "/tmp/hipengine-micro-v2-gfx1151-matched-20260711",
+    "environment_sha256": "3e984fcb5f5a8667ce5780f05f425950b1e79d6f62f78a2e96c108ef3449abe1"
+  },
+  "runtime": {
+    "wall_seconds": 249.322993041,
+    "wall_human": "4m09.323s"
+  },
+  "matrix_gate": {
+    "requested_comparisons": 22,
+    "valid_comparisons": 22,
+    "valid_burst_gpu_rows": 232,
+    "complete": true
+  },
+  "synthetic_ranges": {
+    "serial_latency": {
+      "dispatch_grid": [1.1283092394827996, 10.750633929802193],
+      "geometry": [0.7067071874766196, 0.9919339500731016],
+      "reduction": [0.659089304487249, 0.9841082745121422],
+      "memory_waitcnt": [0.8914137336745298, 1.1092310688285365],
+      "packed_dot": [3.05421527312065, 3.204466065498711],
+      "vopd": [1.0607382574576734, 1.1810885292382944],
+      "sampler": [0.5171989927647913, 1.1424776249756656],
+      "two_stage_reduction": [0.6809671428138034, 0.9575942087815601]
+    },
+    "independent_throughput": {
+      "dispatch_grid": [1.1151628949993966, 142.38374095048698],
+      "geometry": [2.6194757546621084, 20.832018337623982],
+      "reduction": [2.525485084630568, 21.024071332131633],
+      "memory_waitcnt": [1.0064469198725603, 1.1704238787685783],
+      "packed_dot": [3.832513271550751, 4.1967119371225285],
+      "vopd": [1.010195773571864, 1.1026648086094744],
+      "sampler": [1.5259844735799948, 10.014941968490259],
+      "two_stage_reduction": [0.8250925855715917, 1.8259983053224085]
+    }
+  },
+  "production_combined_ranges": {
+    "serial_latency": {
+      "q4_selected_dual": [0.91623612884984, 0.9797583812624903],
+      "q6_selected_down_x8": [0.5527378614942909, 0.5527378614942909],
+      "dense_q8_0": [0.5515385423956686, 0.8790837552190347]
+    },
+    "independent_throughput": {
+      "q4_selected_dual": [0.8541208157612036, 0.9730519838034843],
+      "q6_selected_down_x8": [0.4802562163509987, 0.4802562163509987],
+      "dense_q8_0": [0.4481956625773981, 1.152469440607521]
+    }
+  },
+  "correctness_diagnosis": {
+    "strict_protocol": "The current 20-repetition template first fails Vulkan independent Q4 at zero-based fixture slice 10 (11th repetition), where aggregate KL changes from 0.004753242485 to 0.07952005314. Q6 KL changes from 0.006045591408 to 0.007755592208 at slice 14 but remains valid; its gate first fails at slice 17 (18th repetition), where top-1 changes from 1.0 to 0.875.",
+    "old_protocol": "The 10-repetition protocol passes Q4 at KL 0.004753242485 and top-1 1.0, and Q6 at KL 0.006045591408 and top-1 1.0.",
+    "mesa_control": "Mesa/RADV 26.1.2 reproduces the 20-repetition failures, while Mesa 26.1.4 passes the 10-repetition protocol.",
+    "queue_control": "One-, two-, and four-queue results are identical for the failing cases.",
+    "interpretation": "The longer protocol includes deterministic fixture slices absent from the retained timing protocol; repetition does not degrade a fixed input. This is stricter coverage, not evidence of a Mesa update, queue synchronization, gfx architecture, or TheRock packaging regression."
+  },
+  "interpretation": "The complete stack-refresh matrix preserves the production conclusion: HIP wins every serialized Q4, Q6, and dense Q8_0 combined row, and all Q4/Q6 independent combined rows."
+}

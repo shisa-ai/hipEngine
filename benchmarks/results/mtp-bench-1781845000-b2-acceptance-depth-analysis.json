@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "source": "benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json",
+  "summary": {
+    "depth1_generated": 15,
+    "depth1_accepted": 2,
+    "depth2_generated": 15,
+    "depth2_verified": 2,
+    "depth2_accepted": 1,
+    "full_depth2_accept_cycles": [
+      {
+        "slug": "count",
+        "cycle": 2,
+        "targets": [
+          220,
+          16
+        ],
+        "drafts": [
+          220,
+          16
+        ]
+      }
+    ],
+    "depth1_accept_rate": 0.13333333333333333,
+    "depth2_unconditional_accept_rate": 0.06666666666666667,
+    "depth2_conditional_accept_rate": 0.5
+  },
+  "prompts": [
+    {
+      "slug": "capital",
+      "prompt": "What is the capital of France?",
+      "cycles": [
+        {
+          "cycle": 0,
+          "target_tokens": [
+            59
+          ],
+          "draft_tokens": [
+            2037,
+            2037
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 1,
+          "target_tokens": [
+            2037
+          ],
+          "draft_tokens": [
+            84,
+            80
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 2,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            2037,
+            2037
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 3,
+          "target_tokens": [
+            16
+          ],
+          "draft_tokens": [
+            20,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 4,
+          "target_tokens": [
+            15,
+            92
+          ],
+          "draft_tokens": [
+            15,
+            15
+          ],
+          "accepted_draft_tokens": 1
+        }
+      ],
+      "depth1_generated": 5,
+      "depth1_accepted": 1,
+      "depth2_generated": 5,
+      "depth2_verified": 1,
+      "depth2_accepted": 0,
+      "depth1_accept_rate": 0.2,
+      "depth2_conditional_accept_rate": 0.0
+    },
+    {
+      "slug": "count",
+      "prompt": "Count from one to five.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "target_tokens": [
+            256
+          ],
+          "draft_tokens": [
+            466,
+            2972
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 1,
+          "target_tokens": [
+            256
+          ],
+          "draft_tokens": [
+            220,
+            20
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 2,
+          "target_tokens": [
+            220,
+            16
+          ],
+          "draft_tokens": [
+            220,
+            16
+          ],
+          "accepted_draft_tokens": 2
+        },
+        {
+          "cycle": 3,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            15,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 4,
+          "target_tokens": [
+            271
+          ],
+          "draft_tokens": [
+            17,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        }
+      ],
+      "depth1_generated": 5,
+      "depth1_accepted": 1,
+      "depth2_generated": 5,
+      "depth2_verified": 1,
+      "depth2_accepted": 1,
+      "depth1_accept_rate": 0.2,
+      "depth2_conditional_accept_rate": 1.0
+    },
+    {
+      "slug": "greeting",
+      "prompt": "Write a short greeting.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "target_tokens": [
+            20
+          ],
+          "draft_tokens": [
+            24,
+            26
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 1,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            24,
+            17
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 2,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            16,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 3,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            20,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        },
+        {
+          "cycle": 4,
+          "target_tokens": [
+            220
+          ],
+          "draft_tokens": [
+            16,
+            15
+          ],
+          "accepted_draft_tokens": 0
+        }
+      ],
+      "depth1_generated": 5,
+      "depth1_accepted": 0,
+      "depth2_generated": 5,
+      "depth2_verified": 0,
+      "depth2_accepted": 0,
+      "depth1_accept_rate": 0.0,
+      "depth2_conditional_accept_rate": null
+    }
+  ],
+  "interpretation": {
+    "unconditional_accept_per_draft_note": "Schema-4 accept_per_draft counts all generated depth-2 drafts, including those never target-verified because depth 1 rejected.",
+    "conditional_depth2_note": "Depth-2 conditional acceptance is measured only among cycles where depth 1 matched and target verification advanced to depth 2."
+  }
+}

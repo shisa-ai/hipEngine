@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-09",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "hardware": "gfx1151 / Radeon 8060S",
+  "model": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+  "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "quant": "w4_paro",
+  "server_env": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE": "1",
+    "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP": "1",
+    "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS": "1"
+  },
+  "server_command": "PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend auto --quant w4_paro --served-model-name llama --generation-batch-window-ms 200 --max-active-requests 8 --max-context-tokens 1024 --metrics prometheus --host 127.0.0.1 --port 18085 --log-level warning",
+  "client_command": "PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18085 --model llama --prompt-names code_python --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency 1 --extra-payload '{\"n\":6}' --out <artifact>",
+  "workload": {
+    "api": "/v1/completions",
+    "prompt": "code_python",
+    "prompt_tokens": 28,
+    "max_tokens": 128,
+    "extra_payload": {
+      "n": 6
+    },
+    "temperature": 0,
+    "top_p": 1,
+    "ignore_eos": true,
+    "batch_window_ms": 200,
+    "concurrency": 1,
+    "server_rows": 6
+  },
+  "interpretation": {
+    "primary_target": "Make native rows=6 linear-attention segments correct so the c6 server path can use selected-c1 MoE without linear rowchunk2.",
+    "fastest_timed_shape": "selected_c1_moe_native_linear",
+    "fastest_timed_shape_status": "known hidden-red from the local c6 hidden-bisect; not promotable",
+    "current_correctness_bridge": "selected_c1_moe_linear_rowchunk2",
+    "estimated_decode_step_recovery_ms_if_native_linear_is_fixed": 12.482,
+    "estimated_decode_step_recovery_basis": "64.101 ms/step repaired selected-c1+rowchunk2 minus 51.619 ms/step selected-c1+native-linear diagnostic"
+  },
+  "rows": [
+    {
+      "name": "grouped_moe_native_linear",
+      "moe_decode_path": "grouped_compact",
+      "linear_attention_decode_path": "native_batch_segments",
+      "linear_attention_row_chunk_size": 0,
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "linear_attention_projection_path": "native_batch",
+      "backend_generated_tok_s": 8.67,
+      "batch_decode_step_ms_avg": 56.873,
+      "batch_decode_ms": 7222.93,
+      "batch_prefill_ms": 260.162,
+      "status": "hidden-red based on local c6 hidden-bisect; timing only",
+      "source_artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6proj.json"
+    },
+    {
+      "name": "selected_c1_moe_linear_rowchunk2",
+      "moe_decode_path": "selected_c1_batch",
+      "linear_attention_decode_path": "native_batch_row_chunks",
+      "linear_attention_row_chunk_size": 2,
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "linear_attention_projection_path": "native_batch",
+      "backend_generated_tok_s": 8.14,
+      "batch_decode_step_ms_avg": 64.101,
+      "batch_decode_ms": 8140.821,
+      "batch_prefill_ms": 243.545,
+      "status": "server-visible c6 correctness bridge; direct local c6 equality shape is green, but this server timing is not a throughput win",
+      "source_artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-c6repair.json"
+    },
+    {
+      "name": "selected_c1_moe_native_linear",
+      "moe_decode_path": "selected_c1_batch",
+      "linear_attention_decode_path": "native_batch_segments",
+      "linear_attention_row_chunk_size": 0,
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "linear_attention_projection_path": "native_batch",
+      "backend_generated_tok_s": 9.01,
+      "batch_decode_step_ms_avg": 51.619,
+      "batch_decode_ms": 6555.608,
+      "batch_prefill_ms": 245.418,
+      "status": "fastest c6 server timing, but hidden-red based on local c6 hidden-bisect; this is the next repair target",
+      "source_artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-selected-c1-no-linear-rowchunk.json"
+    },
+    {
+      "name": "grouped_moe_linear_rowchunk2",
+      "moe_decode_path": "grouped_compact",
+      "linear_attention_decode_path": "native_batch_row_chunks",
+      "linear_attention_row_chunk_size": 2,
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "linear_attention_projection_path": "native_batch",
+      "backend_generated_tok_s": 7.59,
+      "batch_decode_step_ms_avg": 71.877,
+      "batch_decode_ms": 9128.36,
+      "batch_prefill_ms": 246.897,
+      "status": "hidden-red based on local c6 hidden-bisect and slower than the selected-c1 repaired bridge",
+      "source_artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-code-python-n6-bw200-native-decode-warmup-retained-defaults-grouped-linear-rowchunk.json"
+    }
+  ],
+  "related_correctness_artifacts": [
+    "benchmarks/results/2026-07-09-hipengine-qwen35-c6-linear-rowchunk-hidden-bisect-summary.json",
+    "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json",
+    "benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json"
+  ]
+}

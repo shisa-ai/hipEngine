@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "accepted",
+  "kind": "projection_dispatch_evidence",
+  "rows": 6,
+  "created_utc": "2026-07-09T03:05:00Z",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "note": "Source retained-bench hardware.arch reports the default gfx1100 label, while rocminfo in each source artifact reports gfx1151."
+  },
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "workload": {
+    "concurrency": 6,
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 0,
+    "max_layers": 40,
+    "batch_decode_moe_path": "selected_c1",
+    "batch_decode_full_attention_path": "native_batch_row_chunks",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_full_attention_row_chunk_layers": "all",
+    "batch_decode_linear_path": "batch_segments",
+    "batch_decode_linear_row_chunk_size": 2,
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_sample_mode": "serial_lm_head",
+    "current_projection_path": "batch",
+    "row_gemv_baseline_projection_path": "selected_c1"
+  },
+  "source_artifacts": {
+    "current_projection": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-nativeproj-serial-sampler-local-equality.json",
+    "row_gemv_baseline": "benchmarks/results/2026-07-09-hipengine-qwen35-c6-p512-d128-rowchunk2-full-linear-moe-selected-c1-selectedproj-serial-sampler-local-equality.json"
+  },
+  "measurements": {
+    "current_projection_decode_tok_s_aggregate": 87.61225903492758,
+    "current_projection_decode_tok_s_per_request": 14.60204317248793,
+    "current_projection_median_step_seconds": 0.06828186206985265,
+    "row_gemv_baseline_decode_tok_s_aggregate": 84.7089977687462,
+    "row_gemv_baseline_decode_tok_s_per_request": 14.118166294791033,
+    "row_gemv_baseline_median_step_seconds": 0.07058012648485601
+  },
+  "correctness": {
+    "current_projection_generated_token_equality": true,
+    "current_projection_prefix_lengths": [129, 129, 129, 129, 129, 129],
+    "row_gemv_baseline_generated_token_equality": true,
+    "row_gemv_baseline_prefix_lengths": [129, 129, 129, 129, 129, 129]
+  },
+  "evidence": {
+    "artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json",
+    "source_artifact_path": "benchmarks/results/2026-07-09-hipengine-qwen35-native-c6-projection-dispatch/c6-projection-evidence.json",
+    "aggregate_vs_row_gemv": 1.0342733516232505,
+    "per_request_vs_row_gemv": 1.0342733516232505,
+    "accepted": true
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "schema": "hipengine-diagnostic-v1",
+  "date": "2026-07-02",
+  "performance_claim": false,
+  "diagnostic": "resident MTP dense-attention host recompute",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "name": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M"
+  },
+  "workload": {
+    "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+    "prompt_reasoning": "off",
+    "prompt_tokens": 40,
+    "cycles": 4,
+    "draft_n_max": 2,
+    "route": "hipEngine llama-compat active diagnostic, host-chain stage readback"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --record-draft-stage-stats --record-draft-cache-rows 0,1,2,16,32,40,48,49 --record-draft-attention-debug --output /tmp/hipengine-mtp-attn-debug/hipengine-stage.json",
+  "source_trace": "/tmp/hipengine-mtp-attn-debug/hipengine-stage.json",
+  "validation": [
+    "python3 -m py_compile scripts/gguf_mtp_bench.py hipengine/speculative/mtp_resident_draft.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py",
+    "PYTHONPATH=. python3 -m pytest tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_record_draft_attention_debug_diagnostic tests/test_gguf_mtp_bench_metrics.py::test_main_rejects_draft_attention_debug_without_stage_stats tests/test_gguf_mtp_bench_metrics.py::test_main_rejects_draft_attention_debug_without_device_kv tests/test_mtp_resident_draft_device_commit.py::test_record_stage_stats_passes_requested_cache_rows tests/test_mtp_resident_draft_device_commit.py::test_attention_debug_recomputes_dense_attention_from_device_rows -q",
+    "PYTHONPATH=. python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py -q"
+  ],
+  "cycle_3": {
+    "seq_position": 49,
+    "target_tokens": [
+      65342,
+      18078,
+      28649
+    ],
+    "draft_tokens": [
+      65342,
+      18078
+    ],
+    "accepted_draft_tokens": 2,
+    "visible_output_tokens": 3
+  },
+  "attention_debug": {
+    "depth_0": {
+      "token_id": 1103,
+      "position": 49,
+      "cache_tokens": 50,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 256,
+      "scale": 0.0625,
+      "cpu_device_mae_mean": 0.00000041,
+      "cpu_device_max_abs": 0.0000093,
+      "top_row_histogram": [
+        {
+          "row": 48,
+          "heads": 7
+        },
+        {
+          "row": 49,
+          "heads": 9
+        }
+      ],
+      "example_heads": [
+        {
+          "query_head": 0,
+          "kv_head": 0,
+          "top_rows": [
+            48,
+            49,
+            46,
+            42,
+            47
+          ],
+          "top_weights": [
+            0.52676362,
+            0.14613266,
+            0.07838533,
+            0.07215027,
+            0.04916806
+          ],
+          "cpu_device_mae": 0.00000021,
+          "cpu_device_max_abs": 0.00000119
+        },
+        {
+          "query_head": 1,
+          "kv_head": 0,
+          "top_rows": [
+            49,
+            38,
+            42,
+            20,
+            48
+          ],
+          "top_weights": [
+            0.9910453,
+            0.00214158,
+            0.00205889,
+            0.00109566,
+            0.00069703
+          ],
+          "cpu_device_mae": 0.00000003,
+          "cpu_device_max_abs": 0.00000048
+        },
+        {
+          "query_head": 10,
+          "kv_head": 1,
+          "top_rows": [
+            49,
+            10,
+            47,
+            48,
+            2
+          ],
+          "top_weights": [
+            0.98918855,
+            0.00330553,
+            0.00136,
+            0.00113025,
+            0.00108735
+          ],
+          "cpu_device_mae": 0.00000002,
+          "cpu_device_max_abs": 0.00000024
+        }
+      ]
+    },
+    "depth_1": {
+      "token_id": 65342,
+      "position": 50,
+      "cache_tokens": 51,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 256,
+      "scale": 0.0625,
+      "cpu_device_mae_mean": 0.0000004,
+      "cpu_device_max_abs": 0.00001025,
+      "top_row_histogram": [
+        {
+          "row": 49,
+          "heads": 2
+        },
+        {
+          "row": 50,
+          "heads": 14
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "ruled_out": [
+      "hipEngine resident dense-attention kernel math for this trace",
+      "missing early prompt rows as the dominant hipEngine attention-weight source at depth 0"
+    ],
+    "active_target": "llama.cpp effective attention execution at seq position 49: FA-on mask/layout/scale/GQA mapping or per-head weight distribution",
+    "why": "hipEngine GPU attention matches a host recomputation over the resident dense K/V cache to <= 1.025e-5 max abs. At depth 0, every head's highest attention weight is row 48 or 49, which were already close to llama.cpp in the row trace, yet llama.cpp attn_pregate rms remains 1.410 vs hipEngine 1.056."
+  }
+}

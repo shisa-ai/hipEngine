@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "kind": "gguf_hidden_precision_decision_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 300,
+  "status": "decided",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "doc_path": "docs/MTP-gguf.md",
+  "token_audit_path": "benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json",
+  "earliest_divergence_path": "benchmarks/results/mtp-gguf-iter298-hidden-in-earliest-divergence.json",
+  "runner_abi": {
+    "facts": {
+      "current_hidden_seed_contract_dtype": "BF16",
+      "current_hidden_seed_llama_compatible": false,
+      "current_hidden_seed_marks_llama_incompatible": true,
+      "fp32_hidden_seed_contract_dtype": "FP32",
+      "fp32_hidden_seed_contract_present": true,
+      "fp32_hidden_seed_populated_guard": true,
+      "fp32_seed_populated_from_bf16_source": true,
+      "default_activation_buffer_dtype": "BF16",
+      "session_hidden_buffer_nbytes_expression": "self.runner.hidden_size * 2",
+      "session_hidden_buffers_allocated": true,
+      "prefill_hidden_buffers_allocated": true,
+      "run_prompt_hidden_returns_uint16_bits": true,
+      "session_embedding_writes_hidden_a_bf16_buffer": true,
+      "capture_hidden_in_uses_bf16_copy": true,
+      "logits_api_expects_hidden_bits_uint16": true,
+      "current_runtime_activation_lane": "bf16"
+    },
+    "anchors": {
+      "current_hidden_seed_contract": 287,
+      "fp32_hidden_seed_contract": 268,
+      "current_hidden_seed_dtype": 301,
+      "fp32_hidden_seed_dtype": 278,
+      "session_hidden_bytes": 3118,
+      "session_embedding_launch": 757,
+      "capture_hidden_in_bf16_copy": 3755
+    }
+  },
+  "doc_contract": {
+    "requires_fp32_seed": true,
+    "matched_terms": [
+      "Target hidden-row seed = POST output-norm hidden, at fp32",
+      "GGML_TYPE_F32",
+      "post-norm fp32 hidden seed"
+    ],
+    "anchors": {
+      "target_hidden_seed_section": 211,
+      "ggml_type_f32": 218
+    }
+  },
+  "numeric_evidence": {
+    "token_audit_status": "explained",
+    "token_audit_conclusion": "layer0_drift_is_bf16_embedding_output",
+    "llamacpp_matches_raw_dequant": true,
+    "hipengine_matches_bf16_round": true,
+    "llamacpp_vs_hipengine_embedding_rmse": 4.314661795910361e-06,
+    "llamacpp_vs_hipengine_embedding_max_abs": 8.296966552734375e-05,
+    "earliest_first_mismatch_layer": 0,
+    "earliest_layer0_rmse": 4.314661795910361e-06,
+    "earliest_layer0_max_abs": 8.296966552734375e-05,
+    "earliest_layer0_preceding_precision_contractions": 0
+  },
+  "decision": {
+    "status": "decided",
+    "conclusion": "fp32_seed_target_exists_but_activation_lane_is_bf16",
+    "keep_default_runtime": "bf16_activation_buffers",
+    "reason": "llama.cpp layer0 hidden_in equals raw dequantized F32 embedding, hipEngine embedding equals BF16-rounded output, the documented MTP seed contract requires FP32 post-output_norm hidden, and the current runtime activation buffers remain BF16.",
+    "next_action": "capture_fp32_hidden_seed_vs_llamacpp_post_output_norm_oracle"
+  },
+  "conclusion": "fp32_seed_target_exists_but_activation_lane_is_bf16",
+  "external_checkout_modified": false,
+  "next_action": "capture_fp32_hidden_seed_vs_llamacpp_post_output_norm_oracle"
+}

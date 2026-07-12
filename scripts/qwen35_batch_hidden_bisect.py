@@ -1937,6 +1937,7 @@ def _run_batch_hidden(
     require_cached_build: bool,
     trace_decode_start: int = 0,
     trace_decode_end: int | None = None,
+    collect_full_context_oracle: bool = True,
 ) -> HiddenRun:
     rows = len(prompts)
     with Qwen35ParoResidentSession(
@@ -2013,15 +2014,18 @@ def _run_batch_hidden(
                     getattr(session, "_decode_full_attention_trace", None)
                 )
                 decode_full_attention_by_step.append(decode_full_attention_layers)
-                decode_full_context_oracles_by_step.append(
-                    _decode_full_context_oracles_from_trace(
-                        session,
-                        decode_full_attention_layers,
-                        rows=rows,
-                        positions=positions,
-                        slots=tuple(range(rows)),
+                if collect_full_context_oracle:
+                    decode_full_context_oracles_by_step.append(
+                        _decode_full_context_oracles_from_trace(
+                            session,
+                            decode_full_attention_layers,
+                            rows=rows,
+                            positions=positions,
+                            slots=tuple(range(rows)),
+                        )
                     )
-                )
+                else:
+                    decode_full_context_oracles_by_step.append({})
                 decode_full_kv_samples_by_step.append(
                     _copy_decode_full_kv_samples(
                         session,
@@ -2077,6 +2081,7 @@ def _run_c1_hidden(
     trace_decode_start: int = 0,
     trace_decode_end: int | None = None,
     c1_decode_path: str = "serial",
+    collect_full_context_oracle: bool = True,
 ) -> HiddenRun:
     if c1_decode_path not in {"serial", "native_batch"}:
         raise ValueError("c1_decode_path must be serial or native_batch")
@@ -2190,16 +2195,17 @@ def _run_c1_hidden(
                         decode_full_attention_rows_by_step[step],
                         decode_full_attention_layers,
                     )
-                    _merge_decode_full_context_oracle_rows(
-                        decode_full_context_oracle_rows_by_step[step],
-                        _decode_full_context_oracles_from_trace(
-                            session,
-                            decode_full_attention_layers,
-                            rows=1,
-                            positions=(position,),
-                            slots=(0,),
-                        ),
-                    )
+                    if collect_full_context_oracle:
+                        _merge_decode_full_context_oracle_rows(
+                            decode_full_context_oracle_rows_by_step[step],
+                            _decode_full_context_oracles_from_trace(
+                                session,
+                                decode_full_attention_layers,
+                                rows=1,
+                                positions=(position,),
+                                slots=(0,),
+                            ),
+                        )
                     _merge_decode_full_kv_sample_rows(
                         decode_full_kv_sample_rows_by_step[step],
                         _copy_decode_full_kv_samples(session, rows=1, positions=(position,), slots=(0,)),
@@ -5374,9 +5380,10 @@ def _summarize_layer_limit(
     state_focus_atol: float | None = None,
     layer_types: Sequence[str] | None = None,
     focus_hidden_flat_indices: Sequence[int] = (),
+    summarize_linear_states: bool = True,
 ) -> dict[str, Any]:
     prefill = _prefill_summary(batch, c1, atol=atol, focus_hidden_flat_indices=focus_hidden_flat_indices)
-    prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol)
+    prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol) if summarize_linear_states else None
     prefill_linear_inputs = _prefill_linear_input_summary(
         batch,
         c1,
@@ -5409,7 +5416,11 @@ def _summarize_layer_limit(
     )
     decode_full_context_oracle = _decode_full_context_oracle_summary(batch, c1)
     decode_full_kv_samples = _decode_full_kv_sample_summary(batch, c1, atol=0.0)
-    decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol, focus_atol=state_focus_atol)
+    decode_linear_states = (
+        _decode_linear_state_summary(batch, c1, atol=state_atol, focus_atol=state_focus_atol)
+        if summarize_linear_states
+        else None
+    )
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -5688,6 +5699,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Last decode step (exclusive) for expensive per-layer traces; defaults to --decode-tokens.",
     )
     parser.add_argument(
+        "--skip-full-context-oracle",
+        action="store_true",
+        help="Skip the expensive NumPy full-attention context oracle while keeping traced stages, KV samples, hidden comparisons, and token checks.",
+    )
+    parser.add_argument(
+        "--skip-linear-state-summary",
+        action="store_true",
+        help="Skip expensive prefill/decode linear-state diff summaries while keeping hidden, token, stage, and KV checks.",
+    )
+    parser.add_argument(
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_c1"),
         default="grouped_compact",
@@ -5724,6 +5745,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
     )
     parser.add_argument(
+        "--batch-decode-linear-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic native linear-attention row chunk size for hidden-bisect probes; positive values below batch size keep native segmented kernels but split linear-attention rows and block native-caware claims.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
         default="native_batch",
@@ -5739,6 +5766,38 @@ def build_parser() -> argparse.ArgumentParser:
         "--batch-decode-full-attn-row-chunk-layers",
         default="",
         help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
+    )
+    parser.add_argument(
+        "--compare-full-attn-rowchunk-boundary",
+        action="store_true",
+        help="Run two c>N batch variants and compare native no-rowchunk full-attention against the rowchunk repair instead of comparing the batch run to independent c=1 sessions.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention context-only native row chunk size for hidden-bisect probes; positive values below batch size keep native kernels but split only the context rows and block native-caware claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-context-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention suffix native row chunk size for hidden-bisect probes; positive values below batch size keep batch QKV/append/context and split only gate/O/post/MoE suffix work.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the suffix row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-suffix-row-chunk-include-gate",
+        action="store_true",
+        help="For suffix row chunks, compute batch context only and include the attention gate in each row chunk instead of using batch context+gate.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -5873,19 +5932,57 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         if args.max_sequence_length < max(prompt_lengths) + total_decode_tokens + 1:
             raise ValueError("max_sequence_length must cover prompt_length + warmup_decode_tokens + decode_tokens + 1")
     resolved_linear_projection_path = _resolved_batch_decode_linear_projection_path(args)
+    linear_row_chunk_size = int(getattr(args, "batch_decode_linear_row_chunk_size", 0) or 0)
+    if linear_row_chunk_size < 0:
+        raise ValueError("batch-decode-linear-row-chunk-size must be non-negative")
     full_attention_row_chunk_size = int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
     if full_attention_row_chunk_size < 0:
         raise ValueError("batch-decode-full-attn-row-chunk-size must be non-negative")
+    full_attention_context_row_chunk_size = int(
+        getattr(args, "batch_decode_full_attn_context_row_chunk_size", 0) or 0
+    )
+    if full_attention_context_row_chunk_size < 0:
+        raise ValueError("batch-decode-full-attn-context-row-chunk-size must be non-negative")
+    full_attention_suffix_row_chunk_size = int(
+        getattr(args, "batch_decode_full_attn_suffix_row_chunk_size", 0) or 0
+    )
+    if full_attention_suffix_row_chunk_size < 0:
+        raise ValueError("batch-decode-full-attn-suffix-row-chunk-size must be non-negative")
     force_full_attention_row_chunks = (
         args.batch_decode_full_attn_path == "native_batch"
         and args.batch_size > 1
         and 0 < full_attention_row_chunk_size < args.batch_size
     )
+    force_full_attention_context_row_chunks = (
+        args.batch_decode_full_attn_path == "native_batch"
+        and args.batch_size > 1
+        and 0 < full_attention_context_row_chunk_size < args.batch_size
+    )
+    force_full_attention_suffix_row_chunks = (
+        args.batch_decode_full_attn_path == "native_batch"
+        and args.batch_size > 1
+        and 0 < full_attention_suffix_row_chunk_size < args.batch_size
+    )
+    compare_full_attention_rowchunk_boundary = bool(
+        getattr(args, "compare_full_attn_rowchunk_boundary", False)
+    )
+    if compare_full_attention_rowchunk_boundary:
+        if not force_full_attention_row_chunks:
+            raise ValueError(
+                "compare-full-attn-rowchunk-boundary requires native_batch full-attention "
+                "and 0 < --batch-decode-full-attn-row-chunk-size < --batch-size"
+            )
+        if force_full_attention_context_row_chunks or force_full_attention_suffix_row_chunks:
+            raise ValueError("compare-full-attn-rowchunk-boundary cannot be combined with context/suffix rowchunk diagnostics")
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "mode": "qwen35_paro_native_hidden_bisect",
+        "mode": (
+            "qwen35_paro_native_hidden_bisect_rowchunk_boundary"
+            if compare_full_attention_rowchunk_boundary
+            else "qwen35_paro_native_hidden_bisect"
+        ),
         "command": _command(argv),
         "performance_claim": False,
         "workload": {
@@ -5908,6 +6005,14 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "trace_decode_start": int(trace_decode_start),
             "trace_decode_end": int(trace_decode_end),
             "trace_decode_window": [int(trace_decode_start), int(trace_decode_end)],
+            "skip_full_context_oracle": bool(args.skip_full_context_oracle),
+            "skip_linear_state_summary": bool(args.skip_linear_state_summary),
+            "compare_full_attention_rowchunk_boundary": bool(compare_full_attention_rowchunk_boundary),
+            "comparison_variant_labels": (
+                {"batch": "native_no_rowchunk", "c1": "native_full_attention_rowchunk_repair"}
+                if compare_full_attention_rowchunk_boundary
+                else {"batch": "native_batch", "c1": "independent_c1"}
+            ),
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
@@ -5918,11 +6023,23 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
             "batch_decode_linear_moe_path": str(args.batch_decode_linear_moe_path),
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
+            "batch_decode_linear_row_chunk_size": int(linear_row_chunk_size),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
             "batch_decode_full_attention_row_chunk_size": full_attention_row_chunk_size,
             "batch_decode_full_attention_row_chunk_layers": str(
                 getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
             ).strip(),
+            "batch_decode_full_attention_context_row_chunk_size": int(full_attention_context_row_chunk_size),
+            "batch_decode_full_attention_context_row_chunk_layers": str(
+                getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
+            ).strip(),
+            "batch_decode_full_attention_suffix_row_chunk_size": int(full_attention_suffix_row_chunk_size),
+            "batch_decode_full_attention_suffix_row_chunk_layers": str(
+                getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or ""
+            ).strip(),
+            "batch_decode_full_attention_suffix_row_chunk_include_gate": bool(
+                getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False)
+            ),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
             "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
@@ -5947,8 +6064,11 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_state_path == "batch_segments"
                 and args.batch_decode_linear_moe_path == "grouped_compact"
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
+                and linear_row_chunk_size == 0
                 and args.batch_decode_full_attn_path == "native_batch"
                 and not force_full_attention_row_chunks
+                and not force_full_attention_context_row_chunks
+                and not force_full_attention_suffix_row_chunks
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_scratch_path == "batch"
@@ -5965,17 +6085,34 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_post_attn_path == "batch"
             ),
             "full_attention_decode_path": (
+                "native_batch_vs_row_chunks"
+                if compare_full_attention_rowchunk_boundary
+                else
                 "per_row_context_fallback"
                 if args.batch_decode_full_attn_path == "per_row" and args.prompt_length + args.decode_tokens < 1024
                 else "native_batch_row_chunks"
                 if force_full_attention_row_chunks and args.prompt_length + args.decode_tokens < 1024
+                else "native_context_row_chunks"
+                if force_full_attention_context_row_chunks and args.prompt_length + args.decode_tokens < 1024
+                else "native_suffix_row_chunks_include_gate"
+                if (
+                    force_full_attention_suffix_row_chunks
+                    and getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False)
+                    and args.prompt_length + args.decode_tokens < 1024
+                )
+                else "native_suffix_row_chunks"
+                if force_full_attention_suffix_row_chunks and args.prompt_length + args.decode_tokens < 1024
                 else "batch_context"
                 if args.prompt_length + args.decode_tokens < 1024
                 else "per_row_splitk_fallback"
             ),
         },
         "correctness": {
-            "oracle": "hidden tensors and generated-token IDs vs independent c=1 resident sessions",
+            "oracle": (
+                "hidden tensors and generated-token IDs for native no-rowchunk c>N batch vs rowchunk-repair c>N batch"
+                if compare_full_attention_rowchunk_boundary
+                else "hidden tensors and generated-token IDs vs independent c=1 resident sessions"
+            ),
             "hidden_atol": float(args.hidden_atol),
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
@@ -6047,6 +6184,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         args.batch_decode_linear_output_path
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE"] = str(linear_row_chunk_size)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if args.batch_decode_full_attn_path == "per_row" else "1"
     )
@@ -6054,6 +6192,21 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = str(
         getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
     ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE"] = str(
+        full_attention_context_row_chunk_size
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = str(
+        getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
+    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE"] = str(
+        full_attention_suffix_row_chunk_size
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS"] = str(
+        getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or ""
+    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE"] = (
+        "1" if getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False) else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if args.batch_decode_attn_input_path == "per_row" else "0"
     )
@@ -6154,42 +6307,98 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     layer_types = tuple(str(layer_type) for layer_type in getattr(runner.config, "layer_types", ()))
     compiler_version = _compiler_version(args.compiler_version_file)
     layer_summaries: list[dict[str, Any]] = []
-    for layer_limit in layer_limits:
-        batch = _run_batch_hidden(
-            runner,
-            prompts,
-            layer_limit=layer_limit,
-            decode_tokens=total_decode_tokens,
-            max_sequence_length=args.max_sequence_length,
-            compiler_version=compiler_version,
-            require_cached_build=args.require_cached_build,
-            trace_decode_start=trace_decode_start,
-            trace_decode_end=trace_decode_end,
-        )
-        c1 = _run_c1_hidden(
-            runner,
-            prompts,
-            layer_limit=layer_limit,
-            decode_tokens=total_decode_tokens,
-            max_sequence_length=args.max_sequence_length,
-            compiler_version=compiler_version,
-            require_cached_build=args.require_cached_build,
-            trace_decode_start=trace_decode_start,
-            trace_decode_end=trace_decode_end,
-            c1_decode_path=str(args.c1_decode_path),
-        )
-        layer_summaries.append(
-            _summarize_layer_limit(
-                batch,
-                c1,
+    if compare_full_attention_rowchunk_boundary:
+        rowchunk_layers_env = str(getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or "").strip()
+        for layer_limit in layer_limits:
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = "0"
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = ""
+            native_no_rowchunk = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
+                full_attention_row_chunk_size
+            )
+            os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = rowchunk_layers_env
+            rowchunk_repair = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            summary = _summarize_layer_limit(
+                native_no_rowchunk,
+                rowchunk_repair,
                 layer_limit=layer_limit,
                 atol=args.hidden_atol,
                 state_atol=args.state_atol,
                 state_focus_atol=args.state_focus_atol,
                 layer_types=layer_types,
                 focus_hidden_flat_indices=focus_hidden_flat_indices,
+                summarize_linear_states=not bool(args.skip_linear_state_summary),
             )
-        )
+            summary["comparison_kind"] = "full_attention_rowchunk_boundary"
+            summary["variant_labels"] = {
+                "batch": "native_no_rowchunk",
+                "c1": "native_full_attention_rowchunk_repair",
+            }
+            layer_summaries.append(summary)
+        os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(full_attention_row_chunk_size)
+        os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = rowchunk_layers_env
+    else:
+        for layer_limit in layer_limits:
+            batch = _run_batch_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            c1 = _run_c1_hidden(
+                runner,
+                prompts,
+                layer_limit=layer_limit,
+                decode_tokens=total_decode_tokens,
+                max_sequence_length=args.max_sequence_length,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                trace_decode_start=trace_decode_start,
+                trace_decode_end=trace_decode_end,
+                c1_decode_path=str(args.c1_decode_path),
+                collect_full_context_oracle=not bool(args.skip_full_context_oracle),
+            )
+            layer_summaries.append(
+                _summarize_layer_limit(
+                    batch,
+                    c1,
+                    layer_limit=layer_limit,
+                    atol=args.hidden_atol,
+                    state_atol=args.state_atol,
+                    state_focus_atol=args.state_focus_atol,
+                    layer_types=layer_types,
+                    focus_hidden_flat_indices=focus_hidden_flat_indices,
+                    summarize_linear_states=not bool(args.skip_linear_state_summary),
+                )
+            )
 
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)
     hidden_bit_drift = _first_hidden_bit_drift(layer_summaries)

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "kind": "gguf_mtp_sampling_settings",
+  "name": "gguf_mtp_b2_greedy_seed12345",
+  "purpose": "Shared deterministic sampling/request settings for the MTP-GGUF B2 parity gate. Use this for both hipEngine and llama.cpp parity precheck inputs; do not compare accepted/output metrics unless token-id parity, the draft top-k contract, and this sampling gate all pass.",
+  "sampling": {
+    "target": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "draft": {
+      "budget": "B2",
+      "draft_max": 2,
+      "selection": "greedy_top1_from_topk",
+      "selected_index": 0,
+      "temperature": 0.0,
+      "top_k": 10,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "request": {
+      "prompt_render": "raw",
+      "stream": false,
+      "cache_prompt": false,
+      "max_tokens": 128,
+      "ignore_eos": false
+    },
+    "comparability": {
+      "accepted_per_output_denominator": "accepted_target_tokens / emitted_output_tokens",
+      "accept_per_draft_denominator": "accepted_draft_tokens / proposed_draft_tokens",
+      "requires_token_id_parity": true,
+      "requires_numeric_gate": true
+    }
+  },
+  "llamacpp_request_mapping": {
+    "completion": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "n_predict": 128,
+      "stream": false,
+      "cache_prompt": false,
+      "ignore_eos": false
+    },
+    "server": {
+      "spec_type": "draft-mtp",
+      "spec_draft_n_max": 2,
+      "spec_draft_selection": "greedy_top1_from_topk",
+      "spec_draft_selected_index": 0,
+      "spec_draft_top_k": 10
+    }
+  },
+  "hipengine_request_mapping": {
+    "target": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "max_new_tokens": 128
+    },
+    "draft": {
+      "budget": 2,
+      "selection": "greedy_top1_from_topk",
+      "selected_index": 0,
+      "top_k": 10
+    }
+  }
+}

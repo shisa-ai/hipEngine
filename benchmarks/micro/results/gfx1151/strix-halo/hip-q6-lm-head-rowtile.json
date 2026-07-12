@@ -1,0 +1,276 @@
+{
+  "artifact_ref": "benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json",
+  "backend": "hip",
+  "bench": "q6_lm_head_rowtile_probe",
+  "classification": "real_slice_probe",
+  "correctness": {
+    "all_pass": true,
+    "rows": 6
+  },
+  "environment": null,
+  "environment_ref": "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+  "hardware": {
+    "gfx_arch": "gfx1151",
+    "gpu": "Radeon 8060S Graphics"
+  },
+  "kind": "hipengine_micro_result",
+  "measurements": {
+    "rows": [
+      {
+        "backend": "hip",
+        "chunks": [
+          1
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 32768,
+        "q6_lm_head_median_us": 273.67939949035645,
+        "rows": 1,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 275.46470165252686,
+            "median_ms": 0.27367939949035647,
+            "median_us": 273.67939949035645,
+            "min_us": 271.6042995452881,
+            "p05_us": 271.700177192688,
+            "p95_us": 275.221962928772,
+            "samples_us": [
+              275.46470165252686,
+              273.67939949035645,
+              274.25100803375244,
+              271.6042995452881,
+              272.0836877822876
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      },
+      {
+        "backend": "hip",
+        "chunks": [
+          4
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 32768,
+        "q6_lm_head_median_us": 411.6799831390381,
+        "rows": 4,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 414.6852970123291,
+            "median_ms": 0.4116799831390381,
+            "median_us": 411.6799831390381,
+            "min_us": 410.3896141052246,
+            "p05_us": 410.60211181640625,
+            "p95_us": 414.1495418548584,
+            "samples_us": [
+              410.3896141052246,
+              414.6852970123291,
+              411.4521026611328,
+              411.6799831390381,
+              412.0065212249756
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      },
+      {
+        "backend": "hip",
+        "chunks": [
+          6,
+          2
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 32768,
+        "q6_lm_head_median_us": 750.3339767456055,
+        "rows": 8,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 752.1512031555176,
+            "median_ms": 0.7503339767456054,
+            "median_us": 750.3339767456055,
+            "min_us": 737.128496170044,
+            "p05_us": 739.6300792694092,
+            "p95_us": 751.9902038574219,
+            "samples_us": [
+              737.128496170044,
+              750.3339767456055,
+              749.6364116668701,
+              751.3462066650391,
+              752.1512031555176
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      },
+      {
+        "backend": "hip",
+        "chunks": [
+          1
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 152064,
+        "q6_lm_head_median_us": 1150.6671905517578,
+        "rows": 1,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 1152.396583557129,
+            "median_ms": 1.1506671905517578,
+            "median_us": 1150.6671905517578,
+            "min_us": 1146.2231636047363,
+            "p05_us": 1147.0941543579102,
+            "p95_us": 1152.2049713134766,
+            "samples_us": [
+              1146.2231636047363,
+              1152.396583557129,
+              1150.6671905517578,
+              1150.5781173706055,
+              1151.4385223388672
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      },
+      {
+        "backend": "hip",
+        "chunks": [
+          4
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 152064,
+        "q6_lm_head_median_us": 1820.8450317382812,
+        "rows": 4,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 1825.5369186401367,
+            "median_ms": 1.8208450317382812,
+            "median_us": 1820.8450317382812,
+            "min_us": 1817.403221130371,
+            "p05_us": 1818.0094146728516,
+            "p95_us": 1824.7215270996094,
+            "samples_us": [
+              1820.8450317382812,
+              1820.4341888427734,
+              1821.4599609375,
+              1825.5369186401367,
+              1817.403221130371
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      },
+      {
+        "backend": "hip",
+        "chunks": [
+          6,
+          2
+        ],
+        "correctness": {
+          "max_abs": 0.0,
+          "oracle": "HIP Q6_K T16 rowtile chunked output versus per-row decode output",
+          "pass": true
+        },
+        "correctness_pass": true,
+        "in_features": 2048,
+        "out_features": 152064,
+        "q6_lm_head_median_us": 3341.6053771972656,
+        "rows": 8,
+        "timing": {
+          "q6_t16_rowtile_chunked_f32": {
+            "max_us": 3380.567169189453,
+            "median_ms": 3.341605377197266,
+            "median_us": 3341.6053771972656,
+            "min_us": 3325.6675720214844,
+            "p05_us": 3327.6612854003906,
+            "p95_us": 3373.0738830566406,
+            "samples_us": [
+              3341.6053771972656,
+              3380.567169189453,
+              3343.1007385253906,
+              3335.6361389160156,
+              3325.6675720214844
+            ]
+          }
+        },
+        "variant": "q6_t16_rowtile_chunked_f32"
+      }
+    ]
+  },
+  "notes": "HIP production-style Q6_K T16 lm-head rowtile baseline. Rows larger than six use the same small-B chunking policy as the runtime.",
+  "schema_version": 1,
+  "source": {
+    "branch": "benchmarks-micro",
+    "commit": "c4f026915ece76bedb23ccd52ceab02cc04dd540",
+    "dirty": false,
+    "repo": "/home/lhl/hipEngine-benchmarks-micro",
+    "source_hash": "sha256:c65fdf09bead502077a797bb91888e7a0c8cc66a11e2e367f7d54d1a4f58448f"
+  },
+  "timing_config": {
+    "method": "HIP events around production-style Q6_K T16 rowtile chunks; transfer and build excluded",
+    "reps": 10,
+    "samples": 5,
+    "warmup": 3
+  },
+  "wrapper": {
+    "build_dir": "/tmp/hipengine-q6-lmhead-retained",
+    "command": [
+      "python3",
+      "benchmarks/micro/runners/q6_lm_head_rowtile_probe.py",
+      "--backend",
+      "hip",
+      "--environment-json",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+      "--environment-ref",
+      "benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json",
+      "--gfx-arch",
+      "gfx1151",
+      "--hardware-gpu",
+      "Radeon 8060S Graphics",
+      "--shapes",
+      "2048x32768,2048x152064",
+      "--rows-list",
+      "1,4,8",
+      "--reps",
+      "10",
+      "--warmup",
+      "3",
+      "--samples",
+      "5",
+      "--build-dir",
+      "/tmp/hipengine-q6-lmhead-retained",
+      "--out",
+      "benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json",
+      "--pretty"
+    ],
+    "cwd": "/home/lhl/hipEngine-benchmarks-micro",
+    "schema": "hipengine.micro.q6_lm_head_rowtile_probe.v1"
+  }
+}

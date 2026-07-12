@@ -1,0 +1,123 @@
+#version 450
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint in_features;
+    uint out_features;
+    uint experts;
+    uint q8_blocks_per_row;
+    uint out_packed;
+    uint blocks_per_row;
+    uint rep;
+    uint xq_slice;
+    uint output_slice;
+} pc;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    uint x_bf16[];
+};
+
+layout(set = 0, binding = 1) buffer XQBuffer {
+    uint xq_words[];
+};
+
+float bf16_to_f32(uint bits) {
+    return uintBitsToFloat((bits & 0xffffu) << 16);
+}
+
+uint load_bf16(uint element_index) {
+    uint packed = x_bf16[element_index >> 1u];
+    return (packed >> ((element_index & 1u) * 16u)) & 0xffffu;
+}
+
+uint i8_to_byte(int value) {
+    return uint(value) & 0xffu;
+}
+
+// Keep q8_1 storage bit-stable across SPIR-V drivers instead of relying on
+// implementation-specific lowering of packHalf2x16 and GLSL round().
+uint f32_to_f16_rne(float value) {
+    uint bits = floatBitsToUint(value);
+    uint sign_bit = (bits >> 16u) & 0x8000u;
+    uint exponent = (bits >> 23u) & 0xffu;
+    uint mantissa = bits & 0x7fffffu;
+    if (exponent == 0xffu) {
+        return sign_bit | (mantissa == 0u ? 0x7c00u : 0x7e00u);
+    }
+
+    int half_exponent = int(exponent) - 127 + 15;
+    if (half_exponent >= 31) {
+        return sign_bit | 0x7c00u;
+    }
+    if (half_exponent <= 0) {
+        if (half_exponent < -10) {
+            return sign_bit;
+        }
+        mantissa |= 0x800000u;
+        uint shift = uint(14 - half_exponent);
+        uint half_mantissa = mantissa >> shift;
+        uint remainder_mask = (1u << shift) - 1u;
+        uint remainder = mantissa & remainder_mask;
+        uint halfway = 1u << (shift - 1u);
+        if (remainder > halfway ||
+            (remainder == halfway && (half_mantissa & 1u) != 0u)) {
+            ++half_mantissa;
+        }
+        return sign_bit | half_mantissa;
+    }
+
+    uint half_bits = sign_bit | (uint(half_exponent) << 10u) | (mantissa >> 13u);
+    uint remainder = mantissa & 0x1fffu;
+    if (remainder > 0x1000u ||
+        (remainder == 0x1000u && (half_bits & 1u) != 0u)) {
+        ++half_bits;
+    }
+    return half_bits;
+}
+
+uint pack_half2_rne(vec2 values) {
+    return f32_to_f16_rne(values.x) | (f32_to_f16_rne(values.y) << 16u);
+}
+
+int round_away_from_zero(float value) {
+    return int(sign(value) * floor(abs(value) + 0.5));
+}
+
+void main() {
+    uint q8_block = gl_WorkGroupID.x;
+    uint row = gl_WorkGroupID.y;
+    uint lane = gl_LocalInvocationID.x;
+    if (row >= pc.rows || q8_block >= pc.q8_blocks_per_row || lane >= 32u) {
+        return;
+    }
+
+    uint k = q8_block * 32u + lane;
+    uint x_slice_base = pc.rep * pc.rows * pc.in_features;
+    float xv = k < pc.in_features
+        ? bf16_to_f32(load_bf16(x_slice_base + row * pc.in_features + k))
+        : 0.0;
+    float amax = subgroupMax(abs(xv));
+    float sum = subgroupAdd(xv);
+    float d = amax / 127.0;
+    int q = amax == 0.0 ? 0 : round_away_from_zero(xv / d);
+    q = clamp(q, -128, 127);
+
+    uint xq_slice_base = pc.xq_slice * pc.rows * pc.q8_blocks_per_row * 9u;
+    uint block_word = xq_slice_base + (row * pc.q8_blocks_per_row + q8_block) * 9u;
+    if (lane < 9u) {
+        xq_words[block_word + lane] = 0u;
+    }
+    memoryBarrierBuffer();
+    barrier();
+
+    if (lane == 0u) {
+        xq_words[block_word] = pack_half2_rne(vec2(d, sum));
+    }
+
+    uint q_word = block_word + 1u + (lane >> 2);
+    uint q_shift = (lane & 3u) * 8u;
+    atomicOr(xq_words[q_word], i8_to_byte(q) << q_shift);
+}

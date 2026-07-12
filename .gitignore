@@ -18,6 +18,9 @@ build/
 dist/
 .eggs/
 
+# Local resolver state; this library checkout does not track a uv lockfile.
+uv.lock
+
 # Model weights / fixtures that are too large to track
 /models/
 /weights/

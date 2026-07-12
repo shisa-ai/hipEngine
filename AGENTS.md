@@ -12,6 +12,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Cross-session handoff:** `WORKLOG.md`. Append-only, chronological; log decisions, commands, measurements, and next actions as they happen.
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
+- **No benchmark gaming.** Tuning a metric to the specific inputs being measured is an INVALID benchmark, not a win. Concretely: never hardcode token IDs / candidate-id reranks / prompt-conditioned branches that lift acceptance, top-1, or speed on the fixed prompt(s) under test. Optimize the model/kernels, not the score. Acceptance/speed/quality for speculative or sampling paths must be validated on the **full multi-prompt mtp-bench category suite** (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all of `code`/`general_en`/`general_ja`/`mixed_ja_en`) plus category-heldouts, never a single fixed prompt. MTP speedup claims require a true no-MTP autoregressive baseline from the same benchmark protocol; verifier-derived `off`/`B0` rows are diagnostic only. Single-prompt-overfit numbers are not retainable and any prior rows derived from them are marked INVALID. See `docs/BENCHMARK.md` "Anti-gaming".
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
 - **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in `WORKLOG.md`. Cycle-wall, verified sub-window, launch-count, and H2D/D2H reductions count even when same-session AR variance hides the headline ratio; microseconds compound.
 - **Refactor debt is tracked.** Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear after the optimal path is proven go in `docs/REFACTOR.md`. Add to it while the context is fresh instead of relying on future archeology.
@@ -44,7 +45,8 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Append-only cross-session journal. |
-| `benchmarks/README.md` | Human-readable current-fastest benchmark rollup and comparison tables. |
+| `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
+| `benchmarks/HISTORY.md` | Archived experiment rollup, superseded diagnostics, source-lineage targets, and external baselines. |
 | `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
 | `benchmarks/results/` | Compact JSON artifacts for accepted/blocked/rejected benchmark attempts. |
 | `pyproject.toml` | Package metadata and extras. Do not casually add hard deps. |

@@ -1,0 +1,369 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "mode": "paro_prefill_aotriton_stream_isolation",
+  "measured_revision": "01e2cec5b566773a5298367a537aa14087c5e789",
+  "implementation": {
+    "default": "one lazy nonblocking AOTriton stream with main-to-AOT and AOT-to-main reusable HIP events",
+    "selection": "isolate AOTriton query rows >=512; keep the proven-safe 256-row bucket on the caller stream",
+    "rollback_env": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0",
+    "production_files": [
+      "hipengine/runtime/qwen35_paro.py",
+      "hipengine/runtime/qwen35_paro_runner.py"
+    ]
+  },
+  "platform": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "rocm": "HIP 7.15.0-0000000",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "fingerprint_algorithm": "sha256-directory-manifest-v1"
+  },
+  "workload": {
+    "prompt_source": "repeated token ID 9707",
+    "prompt_tokens": 4096,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "warmups": 2,
+    "measured_repetitions": 5,
+    "prefill_chunks": {
+      "linear": 256,
+      "moe": 256,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024
+    },
+    "aotriton_min_prompt_tokens": 512,
+    "decode_graph_replay": true
+  },
+  "performance": {
+    "control_same_stream": {
+      "prefill_tok_s": {
+        "median": 885.1409518078208,
+        "min": 826.0611682389762,
+        "max": 898.7133981029995,
+        "mean": 871.5645859442745,
+        "stdev": 31.605543213772226,
+        "count": 5
+      },
+      "decode_tok_s": {
+        "median": 62.70451564580027,
+        "min": 62.54243595890024,
+        "max": 62.72459524476161,
+        "count": 5
+      },
+      "tracked_peak_allocated_gib": 19.026067212224007,
+      "hip_used_peak_sampled_gib": 18.28833770751953
+    },
+    "candidate_isolated_stream": {
+      "prefill_tok_s": {
+        "median": 1089.031241389256,
+        "min": 1070.4903139460248,
+        "max": 1091.7090732021854,
+        "mean": 1085.41954753232,
+        "stdev": 8.525346620816801,
+        "count": 5
+      },
+      "decode_tok_s": {
+        "median": 62.715418028862565,
+        "min": 62.71008776551237,
+        "max": 62.71995502366333,
+        "count": 5
+      },
+      "tracked_peak_allocated_gib": 19.026067212224007,
+      "hip_used_peak_sampled_gib": 18.28925323486328
+    },
+    "candidate_vs_control": {
+      "prefill_percent": 23.034782106172756,
+      "decode_percent": 0.017386918549666674,
+      "tracked_peak_allocated_gib_delta": 0.0
+    },
+    "candidate_vs_prior_rows": {
+      "retained_exact_854_346_percent": 27.469578061962707,
+      "old_diagnostic_1062_248_percent": 2.52137367067351,
+      "llamacpp_hip_q4_k_m_1009_240_percent": 7.906072033337552,
+      "llamacpp_vulkan_q4_k_m_1016_580_percent": 7.126959156117163,
+      "comparability_note": "PARO W4 versus llama.cpp Q4_K_M is an external raw-throughput target, not a same-math A/B."
+    }
+  },
+  "shape_refresh": {
+    "protocol": {
+      "workloads": ["1K/128", "32K/128", "64K/128", "128K/128"],
+      "warmups": 2,
+      "measured_repetitions": 5,
+      "warmup_decode_tokens": 4,
+      "decode_graph_replay": true,
+      "performance_order": ["control 1K+32K", "candidate 1K+32K", "control 64K", "candidate 64K", "candidate 128K", "control 128K"],
+      "session_scope": "32K, 64K, and 128K are max-shape/right-sized sessions; the 1K negative control shares the max-32K session and is not a topline replacement",
+      "long_queue_elapsed_seconds": 6501,
+      "all_followup_elapsed_seconds_approx": 7280
+    },
+    "negative_control": {
+      "workload": "1K/128",
+      "aotriton_query_rows": 256,
+      "isolation_branch_entered": false,
+      "control_prefill_tok_s": 1180.652351978163,
+      "candidate_prefill_tok_s": 1191.1361149964139,
+      "prefill_delta_percent": 0.8879635906950512,
+      "control_decode_tok_s": 61.72865146064815,
+      "candidate_decode_tok_s": 61.67868277516674,
+      "tracked_peak_allocated_gib": 18.70762450993061,
+      "final_token_ids_equal": true,
+      "classification": "no causal effect: both env settings execute the same 256-query caller-stream route; ranges overlap and the max-32K session is not the right-sized 1K topline protocol",
+      "published_action": "retain the existing right-sized 1208.343 prefill / 61.746 decode / 18.051 GiB row"
+    },
+    "retained_results": {
+      "32K/128": {
+        "aotriton_query_rows": 4096,
+        "control": {
+          "prefill_tok_s": {"median": 765.3161820437688, "min": 764.4159457092951, "max": 765.912033341778, "stdev": 0.656470582565981, "count": 5},
+          "decode_tok_s": {"median": 50.421233202406576, "min": 50.3415578937377, "max": 50.43496773055805, "count": 5},
+          "tracked_peak_allocated_gib": 19.729396894574165
+        },
+        "candidate": {
+          "prefill_tok_s": {"median": 906.1445159962262, "min": 903.515164277468, "max": 912.90504288836, "stdev": 4.2820533383554285, "count": 5},
+          "decode_tok_s": {"median": 50.342297516245225, "min": 50.32744569581727, "max": 50.34531414385787, "count": 5},
+          "tracked_peak_allocated_gib": 19.729396894574165
+        },
+        "candidate_vs_control": {"prefill_percent": 18.401327092859443, "decode_percent": -0.1565524703540655, "tracked_peak_gib_delta": 0.0},
+        "candidate_vs_prior_retained_prefill_percent": 19.071183774281653,
+        "candidate_vs_llamacpp_hip_prefill_percent": 21.867819518635166,
+        "candidate_vs_llamacpp_vulkan_prefill_percent": 11.193881630071335,
+        "five_run_final_token_ids": {"control": [220, 220, 220, 220, 220], "candidate": [220, 220, 220, 220, 220]}
+      },
+      "64K/128": {
+        "aotriton_query_rows": 4096,
+        "control": {
+          "prefill_tok_s": {"median": 621.6907886486517, "min": 618.4574286567871, "max": 626.9487903713663, "stdev": 3.721334313478062, "count": 5},
+          "decode_tok_s": {"median": 42.0478985791518, "min": 42.010553695103866, "max": 42.09829226233302, "count": 5},
+          "tracked_peak_allocated_gib": 20.403322257101536
+        },
+        "candidate": {
+          "prefill_tok_s": {"median": 716.7750277696805, "min": 701.2965205769149, "max": 728.7634876406336, "stdev": 10.096138607089076, "count": 5},
+          "decode_tok_s": {"median": 42.0940943623195, "min": 42.063879578532315, "max": 42.113342547294096, "count": 5},
+          "tracked_peak_allocated_gib": 20.403322257101536
+        },
+        "candidate_vs_control": {"prefill_percent": 15.294458411988089, "decode_percent": 0.1098646656044977, "tracked_peak_gib_delta": 0.0},
+        "candidate_vs_prior_retained_prefill_percent": 15.725707924146114,
+        "candidate_vs_llamacpp_hip_prefill_percent": 24.958382557112845,
+        "candidate_vs_llamacpp_vulkan_prefill_percent": 8.44224247393701,
+        "five_run_final_token_ids": {"control": [220, 220, 220, 220, 220], "candidate": [220, 220, 220, 220, 220]}
+      },
+      "128K/128": {
+        "aotriton_query_rows": 4096,
+        "control": {
+          "prefill_tok_s": {"median": 418.83775541627864, "min": 415.734826725077, "max": 423.6155855224714, "stdev": 3.1520633157604783, "count": 5},
+          "decode_tok_s": {"median": 30.350723188111836, "min": 30.330946118835307, "max": 30.364517761365594, "count": 5},
+          "tracked_peak_allocated_gib": 22.123909033834934
+        },
+        "candidate": {
+          "prefill_tok_s": {"median": 474.64119352478326, "min": 470.6024928526218, "max": 478.62778885101994, "stdev": 2.9743178394827714, "count": 5},
+          "decode_tok_s": {"median": 30.38581495248178, "min": 30.357907654428182, "max": 30.390228415612935, "count": 5},
+          "tracked_peak_allocated_gib": 22.123909033834934
+        },
+        "candidate_vs_control": {"prefill_percent": 13.32340205410616, "decode_percent": 0.11562085078649087, "tracked_peak_gib_delta": 0.0},
+        "candidate_vs_prior_retained_prefill_percent": 8.717447995685678,
+        "candidate_vs_llamacpp_hip_prefill_percent": 21.565407711993178,
+        "candidate_vs_llamacpp_vulkan_prefill_percent": -0.4502643680664664,
+        "five_run_final_token_ids": {"control": [220, 220, 220, 220, 220], "candidate": [220, 220, 220, 220, 220]}
+      }
+    },
+    "correctness": {
+      "32K/128": {"status": "accepted", "seed_token_id": 13743, "final_hidden_sha256": "747b503a2dec9a6ec8553a009ad7106fda7c31c3e73eed80b28e180bdf7b52c7", "persistent_state_aggregate_sha256": "496af033eb2e7917f5f2ab17b5bf0e33412f85a374a60fabdcee83f6ecc4a885", "mismatch_paths": [], "compared_families": {"linear_conv_gdn": 30, "full_attention_kv": 10}},
+      "64K/128": {"status": "accepted", "seed_token_id": 4256, "final_hidden_sha256": "13378dcdb63084e042e336dc2208ce73f86c2c0699175ca4886bf2f509570690", "persistent_state_aggregate_sha256": "acc07c0d1dfde55e33be0034f9503bb502fec08177e79dfd63d13413f4b991b9", "mismatch_paths": [], "compared_families": {"linear_conv_gdn": 30, "full_attention_kv": 10}},
+      "128K/128": {"status": "accepted", "seed_token_id": 49556, "final_hidden_sha256": "87c78fbae561dd6bf9c4aa6ef0989dd9566632688da498233c8c8952929acd00", "persistent_state_aggregate_sha256": "886a68bc2294a370e71d2ad6b43fa7dd34abdbd5d0232b3693b31ad253e63365", "mismatch_paths": [], "compared_families": {"linear_conv_gdn": 30, "full_attention_kv": 10}}
+    },
+    "command_templates": {
+      "performance": "[HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0 for control; unset for candidate] python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads <SHAPE> --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json <OUTPUT>",
+      "exactness": "python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length <32768|65536|131072> --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json <OUTPUT>"
+    }
+  },
+  "correctness": {
+    "status": "accepted",
+    "sampled_seed_token_id": 13743,
+    "final_hidden_sha256": "f2fd15eef23018a8cc4a4832a76491171e0ec3a434c5d640b7af3496c45d2678",
+    "persistent_state_aggregate_sha256": "c2328617d0bd6512976e6c8a332be2827fe4f87ec4a7368d9e55523e335d2c5f",
+    "mismatch_paths": [],
+    "compared_families": {
+      "linear_conv_gdn": 30,
+      "full_attention_kv": 10
+    },
+    "five_run_final_token_ids": {
+      "control": [17, 17, 17, 17, 17],
+      "candidate": [17, 17, 17, 17, 17]
+    }
+  },
+  "isolation_diagnostics": {
+    "accumulator_domain": {
+      "layer_2_min": -13.584869,
+      "layer_2_max": 4.723076,
+      "layer_4_min": -7.517517,
+      "layer_4_max": 4.157738,
+      "finite_values_per_slice": 2097152,
+      "values_outside_plus_minus_16": 0,
+      "conclusion": "precise expf overflow/subnormal-domain hypothesis rejected"
+    },
+    "identical_conv_replay_us": {
+      "before_layer_2": 120.936,
+      "after_layer_3_kv_append": 118.018,
+      "after_layer_3_aotriton_same_stream": 1834.637,
+      "after_layer_3_aotriton_fresh_replay_stream": 118.385,
+      "aotriton_isolated_then_default_replay": 119.093
+    },
+    "aotriton_kernel_scratch_bytes": {
+      "query_rows_4096": [2560],
+      "query_rows_256": [992, 1008]
+    },
+    "aotriton_on_off_4k_prefill_tok_s": {
+      "on": 849.5574867653602,
+      "off": 270.655662668,
+      "conclusion": "retain AOTriton and isolate its queue; do not replace it"
+    },
+    "root_cause_status": "Queue-local high-scratch interaction is proven; ROCr persistent scratch assignment is a plausible mechanism, not yet an upstream root-cause conclusion."
+  },
+  "scope": {
+    "retained_workloads": ["4K/128", "32K/128", "64K/128", "128K/128"],
+    "unchanged_safe_query_rows": 256,
+    "unchanged_published_shapes": ["512/128", "1K/128"],
+    "refresh_pending": [],
+    "gfx1100_status": "unverified; validate before transferring the scheduling policy as a gfx1100 performance claim"
+  },
+  "commands": {
+    "control": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0 python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-aot-isolation-20260712/final-control-4K-128.json",
+    "candidate": "python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json",
+    "exactness": "python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length 4096 --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json /tmp/hipengine-aot-isolation-20260712/final-exactness-4K.json"
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-control-4K-128.json",
+      "sha256": "4101d4c66cf53df8fbcee62c8d0942f75a4728b1ecc3e750eac164ada1a83f0c"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json",
+      "sha256": "8c92a0c22e8f0a4d84631e4e7d4d2d9713aac3b0e76db334d76905b38957b47c"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-exactness-4K.json",
+      "sha256": "b6cda16666b72c7e672cf916c03a8c79e2087313e42b061fcee57ca8d6072e53"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-shapes-20260712/control-1K-32K.json",
+      "sha256": "d2f11f449d7a5bb70164b2d07578dda49819161b3168f4184113156929a9a697"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-shapes-20260712/candidate-1K-32K.json",
+      "sha256": "0e95c1971b6e64ad3f827d742ee6e02b1a2fd6e95a2721d5b206c1789b49f336"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-shapes-20260712/exactness-32K.json",
+      "sha256": "70af69bdcb702e6b5fdec36dcfbe2f3a8dd195f38cf7e4394164f75dacf2b6a3"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/control-64K.json",
+      "sha256": "5c1c277dac60b25189dd6d6442aa46e622438e9109dfbddfff4985a1bea22086"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/candidate-64K.json",
+      "sha256": "f8f0c1af159c7a5d84b0d4238d9054f93ba8404f0adfb7e2ac3b9bec28165975"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/exactness-64K.json",
+      "sha256": "2b5672dac21ea732f13690b003ee3177b8ee21ca40a2508008f26a961501daf8"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/candidate-128K.json",
+      "sha256": "6c4eb9934c5f826f0ad2e19489a5928163f67b021857f43ffd0f5b1daa427db8"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/control-128K.json",
+      "sha256": "afcbc115eab301931712517f02137db5f5555347845ab98b79b3b82925f72cd3"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-long-20260712/exactness-128K.json",
+      "sha256": "82cf08e47b696efae41d744c281c7a95a2ccabbd7307fa3a968ace073657a785"
+    }
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T10:06:59.768216+00:00",
+    "repo_root": "/tmp/hipengine-aot-isolation-clean",
+    "hipengine_commit": "01e2cec5b566773a5298367a537aa14087c5e789",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine", "paro",
+      "--model", "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--backend", "hip_gfx1151",
+      "--shared-expert-format", "packed_paro_w4",
+      "--token-id", "9707",
+      "--workloads", "4K/128",
+      "--warmup-runs", "2",
+      "--measured-runs", "5",
+      "--warmup-decode-tokens", "4",
+      "--compiler-version-file", "/tmp/hipengine-sol-r1-20260712/hipcc-version.txt",
+      "--require-cached-build",
+      "--attn-aotriton-min-tokens", "512",
+      "--graph-replay-decode",
+      "--json", "/tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "tuned_profile": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single right-sized resident session; two discarded warmups; five measured repetitions; separate prefill/decode wall; graph capture excluded",
+    "warmups": 2,
+    "repetitions": 5,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "notes": [
+    "The control range is broad under the repeated-run protocol; the median selection is corroborated by a second clean c3a03ed1 A/B (+26.15%) and the isolated kernel replay.",
+    "The candidate supersedes the PARO 4K, 32K, 64K, and 128K rows. Published 512/1K rows retain the original safe 256-query path.",
+    "The 1K follow-up is a structural negative control in a max-32K session: the isolation branch is not entered, the ranges overlap, and no 1K topline is replaced.",
+    "AOTriton remains required: disabling it is approximately 3.14x slower at 4K in the diagnostic screen."
+  ]
+}

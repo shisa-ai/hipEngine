@@ -72,6 +72,8 @@ def test_qwen35_moe_group_scatter_wrappers_validate_before_gpu_load() -> None:
         qwen35_moe_group_prefix(0, 0, 0, 0, 1, 0)
     with pytest.raises(ValueError, match="num_experts"):
         qwen35_moe_wmma_tile_map(0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="tile_capacity"):
+        qwen35_moe_wmma_tile_map(0, 0, 0, 0, 1, tile_capacity=-1)
     with pytest.raises(ValueError, match="total_lanes"):
         qwen35_moe_group_scatter(0, 0, 0, 0, 0, 0, 0, 0, 1)
     with pytest.raises(ValueError, match="top_k"):

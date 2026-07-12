@@ -11,15 +11,25 @@ from hipengine.kernels.hip_gfx1100.convert.cast import (
     plan_cast_build,
     register_cast_kernels,
 )
+from hipengine.kernels.hip_gfx1100.convert.gather import (
+    build_gather,
+    gather_f32_rows_by_i32id,
+    plan_gather_build,
+    register_gather_kernels,
+)
 
 __all__ = [
     "bf16_to_f32",
     "build_cast",
+    "build_gather",
     "f32_to_bf16",
     "f32_to_fp16",
     "fp16_to_bf16",
     "fp16_to_bf16_strided_rows",
     "fp16_to_f32",
+    "gather_f32_rows_by_i32id",
     "plan_cast_build",
+    "plan_gather_build",
     "register_cast_kernels",
+    "register_gather_kernels",
 ]

@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_paro_true_c1_shrinking_correctness",
+  "created_at": "2026-07-10T08:15:12Z",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "detected_arch": "gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "0c1845170955af48fd52413228d1699dcf72364c",
+    "hipengine_dirty": false,
+    "python": "3.12.13",
+    "hip": "7.13.60980-c76140fa27",
+    "amd_clang": "23.0.0git",
+    "rocm_llvm_commit": "7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO-packed",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "layers": 40
+  },
+  "protocol": {
+    "correctness_oracle": "independent_single_request_prefill_decode",
+    "prompt_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_tokens_per_request": 512,
+    "initial_batch_width": 8,
+    "live_widths": [8, 7, 6, 5, 4, 3, 2, 1],
+    "steps_per_width": 2,
+    "decode_tokens_by_request": [16, 14, 10, 6, 2, 4, 8, 12],
+    "cancellation_slot_order": [4, 5, 3, 6, 2, 7, 1],
+    "max_sequence_length": 1024,
+    "sampling": "greedy",
+    "native_compact_prefill": true,
+    "performance_scope": "none; correctness diagnostic only"
+  },
+  "commands": {
+    "serial": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt --require-cached-build --decode-execution serial --json /tmp/hipengine-prebench/paro-c9-c16/shrinking-c8-c1-serial-clean-0c184517.json",
+    "native": "env PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-gfx1151-readme-clean4175/hipcc-version.txt --require-cached-build --decode-execution native --json /tmp/hipengine-prebench/paro-c9-c16/shrinking-c8-c1-native-clean-0c184517.json"
+  },
+  "results": {
+    "serial_c1_decode_bridge": {
+      "status": "eq_ok",
+      "row_equality": [true, true, true, true, true, true, true, true],
+      "raw_artifact_sha256": "7655b92b4813f4f4ed903c3fd04734f2066bff560da33f65f0c8e380452ac79a"
+    },
+    "native_batch_decode": {
+      "status": "mismatch_found",
+      "row_equality": [false, false, false, false, false, false, false, false],
+      "first_mismatch": {
+        "live_width": 8,
+        "generated_token_index": 2,
+        "all_rows": true,
+        "native_token_id": 17,
+        "c1_token_id": 220
+      },
+      "raw_artifact_sha256": "5f9919d5b4b8f9ab6a642ade09e2a3499eea6b413499fb709da0a563ee8b0b8f"
+    },
+    "production_c9_route_smoke": {
+      "source_worktree": "detached 0c1845170955af48fd52413228d1699dcf72364c; hipengine_dirty=false",
+      "api": "LLM.generate_detailed",
+      "requests": 9,
+      "prompt": "token 23066 (' hello') repeated 512 times",
+      "max_tokens": 4,
+      "all_outputs_equal": true,
+      "output_text": " dI\\u",
+      "execution_path": "scheduler_true_c1_fallback",
+      "group_widths": [1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "group_modes": ["true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph", "true_c1_graph"],
+      "max_session_width": 1
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "routing_eligible": false,
+    "production_route": "scheduler_true_c1_fallback",
+    "reason": "Native c8 diverges from the independent c1 oracle before the first width transition. Direct c2-c8 timings measured with the former batch-shaped c1 oracle cannot select production routing."
+  }
+}
