@@ -430,6 +430,7 @@ def test_w7900_readme_refresh_wrapper_encodes_retained_topline_contract() -> Non
     assert "--backend hip_gfx1100" in text
     assert "512/128 1K/128 4K/128 32K/128 64K/128 128K/128" in text
     assert "--warmup-runs 2 --measured-runs 5" in text
+    assert 'AMDGPU_CARD_NAME_W7900="${AMDGPU_CARD_NAME_W7900:-card1}"' in text
     assert "--memory-domain vram" in text
     assert "merge_readme_sweep_components.py" in text
     assert "--platform gfx1100" in text

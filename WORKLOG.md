@@ -152795,3 +152795,66 @@ graphless decode launch-collapse path without regressing target/serial parity.
   After implementation, `python3 -m pytest tests/test_gfx1151_readme_refresh.py
   -q` passes 13 tests; `py_compile`, `bash -n`, Ruff, and `git diff --check`
   pass.
+
+## 2026-07-12 - Refresh v0.3.0 W7900 topline and capacity evidence
+
+- Measured from clean detached hipEngine `8116c453` on Radeon Pro W7900/gfx1100
+  with TheRock HIP `7.15.0-0000000`, current packed PARO model fingerprint
+  `995a8c67...d917`, exact Q4_K_M fingerprint `936659d6...89fb`, repeated token
+  9707, and workloads 512/128, 1K/128, 4K/128, 32K/128, 64K/128, 128K/128.
+  hipEngine used one right-sized session per shape, two discarded warmups, five
+  measured runs, and production graph decode. llama.cpp used split prefill and
+  decode, one internal warmup, and five samples per phase.
+- W7900 GGUF G1 oracle passed before measurement: llama.cpp and hipEngine emit
+  the same repeated stream, and four transitions are byte-exact for hidden,
+  all 30 Conv/GDN state families, and all 10 live K/V families. Artifact:
+  `benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json`.
+- Retained decode medians, PARO/GGUF/llama.cpp-HIP/Vulkan, are respectively:
+  512 `115.599/89.873/80.756/107.786`; 1K
+  `103.238/94.751/80.805/107.555`; 4K `105.943/96.551/79.768/103.066`; 32K
+  `92.438/83.673/74.304/91.835`; 64K `78.260/71.644/69.010/83.746`; 128K
+  `60.663/56.745/60.933/70.833 tok/s`. PARO prefill is
+  `2917.732/2995.876/2943.038/2108.868/1584.131/1056.252 tok/s` across the same
+  shapes. All final IDs are stable and every sample-variance gate passes.
+- Peak memory, PARO/GGUF/HIP/Vulkan, is 512
+  `18.144/21.478/21.606/21.260 GiB` and 128K
+  `22.124/25.493/24.089/23.824 GiB`; intermediate shapes are in the summary.
+  hipEngine is tracked allocator high-water; llama.cpp is absolute whole-device
+  VRAM sampled every 10 ms. Corrected an audit mistake: `rocm-smi card0` is the
+  W7900, but the sampler consumes DRM/sysfs names, where `card1` is the 48 GiB
+  W7900 and `card0` is the 24 GiB XTX. Discarded an initial wrong-counter run,
+  killed its orphaned process, returned W7900 to idle, and reran both external
+  controls cleanly with DRM `card1`.
+- Top-level artifact
+  `benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json` is
+  `accepted_topline`, `performance_claim=true`; all provenance, correctness,
+  identity, variance, W7900-device, and VRAM-scope promotion gates pass.
+  llama.cpp HIP is `1ebf790cd`/9648; Vulkan is `263cc04a5`/9600.
+- Current capacity one-shot rows use the same commit/model/compiler: 128K BF16
+  is **22.1239 GiB** tracked peak; 256K INT8 per-token/head with FP16 scales is
+  **23.9572 GiB**, only **0.0428 GiB** below the 24 GiB portability gate. INT8
+  retains 2,686,976,000 payload plus 20,992,000 scale bytes; all layout audits
+  pass and no BF16 shadow exists.
+- The required Qwen3.6 128K/128 BF16-vs-INT8 rollout rejects promotion. FP16
+  scales produce mean/max KL **3.7646/10.0796**, top-1 **3.88%**, and generated
+  mismatch at index 2. FP32 scales also reject at **3.6300/10.0198 KL**,
+  **7.75%** top-1, and the same mismatch. Published
+  `benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json` plus both
+  quality diagnostics. The README must describe 256K as physical allocation
+  capacity only, not supported/usable INT8.
+- Updated W7900 benchmark tables, platform index, root benchmark exports, and
+  changelog. Corrected the committed wrapper default to DRM/sysfs `card1` and
+  added a regression assertion so future W7900 memory runs cannot silently
+  sample the XTX counter.
+- Publication validation: the focused benchmark bundle passes **25 tests**;
+  Ruff, shell syntax, JSON parsing, artifact promotion assertions, README sync,
+  and `git diff --check` pass. A bare `uv run pytest -q` is invalid in this
+  checkout because the environment's editable install resolves `hipengine` and
+  `scripts` from `/home/lhl/hipEngine` rather than `/home/lhl/hipEngine-main`.
+  Retrying correctly with `PYTHONPATH=$PWD` proceeds through 11% and then
+  segfaults in the unrelated GPU test
+  `tests/test_gguf_block_verify_low_rows.py::test_block_verify_matches_serial_exact_below_conv_kernel`
+  while launching `gguf_q8_0_embedding_bf16_out`. No changed benchmark tooling
+  or documentation is on that stack. This is a pre-existing full-suite GPU
+  runner blocker, not evidence against the retained benchmark artifacts; it was
+  not debugged because this host is scoped to benchmark/release evidence only.

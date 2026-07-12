@@ -1,0 +1,908 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_readme_four_engine_topline",
+  "status": "accepted_topline",
+  "performance_claim": true,
+  "date": "2026-07-13",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "measured_hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+  "workloads": [
+    "512/128",
+    "1K/128",
+    "4K/128",
+    "32K/128",
+    "64K/128",
+    "128K/128"
+  ],
+  "columns": [
+    {
+      "key": "hipengine_paro",
+      "label": "hipEngine PARO"
+    },
+    {
+      "key": "hipengine_gguf",
+      "label": "hipEngine GGUF"
+    },
+    {
+      "key": "llamacpp_hip",
+      "label": "llama.cpp HIP"
+    },
+    {
+      "key": "llamacpp_vulkan",
+      "label": "llama.cpp Vulkan"
+    }
+  ],
+  "protocol": {
+    "hipengine": "one right-sized resident session per workload; 2 discarded warmups + median of 5 measured repetitions",
+    "llamacpp": "split prefill/decode llama-bench; 1 internal warmup + median of 5 samples per phase",
+    "prefill_decode_units": "tokens per second",
+    "hipengine_memory": "tracked allocator high-water GiB",
+    "llamacpp_memory": "whole-device amdgpu VRAM-used peak GiB sampled every 10 ms"
+  },
+  "models": {
+    "hipengine_paro": {
+      "quant": "w4_paro",
+      "fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+        "size_bytes": 20497454388,
+        "sampled_bytes": 16442350,
+        "file_count": 18,
+        "exists": true,
+        "path_type": "directory"
+      }
+    },
+    "gguf_columns": {
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": {
+        "hipengine": "bf16",
+        "llamacpp": "f16/f16"
+      },
+      "fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+        "size_bytes": 22663387424,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "exists": true,
+        "path_type": "file"
+      }
+    }
+  },
+  "llamacpp_builds": {
+    "hip": {
+      "commit": "1ebf790cd",
+      "build_number": 9648,
+      "gpu_info": "AMD Radeon Pro W7900"
+    },
+    "vulkan": {
+      "commit": "263cc04a5",
+      "build_number": 9600,
+      "gpu_info": "AMD Radeon Pro W7900 (RADV NAVI31), AMD Radeon RX 7900 XTX (RADV NAVI31)"
+    }
+  },
+  "gates": {
+    "hipengine_rollups_accepted": true,
+    "llamacpp_structural_contract_passed": true,
+    "llamacpp_all_phase_returncodes_zero": true,
+    "llamacpp_all_phase_variance_passed": true,
+    "all_component_provenance_clean": true,
+    "all_components_target_gfx1100": true,
+    "all_components_same_harness_commit": true,
+    "gguf_model_identity_matches": true,
+    "llamacpp_vram_memory_scope_passed": true,
+    "llamacpp_builds_and_device_identified": true,
+    "all_passed": true,
+    "assembly_provenance_clean": true
+  },
+  "tables": {
+    "prefill_tok_s": [
+      {
+        "workload": "512/128",
+        "hipengine_paro": 2917.7316719234977,
+        "hipengine_gguf": 644.7190882514661,
+        "llamacpp_hip": 2412.32,
+        "llamacpp_vulkan": 2627.99
+      },
+      {
+        "workload": "1K/128",
+        "hipengine_paro": 2995.87648908148,
+        "hipengine_gguf": 676.176757310854,
+        "llamacpp_hip": 2389.67,
+        "llamacpp_vulkan": 2631.75
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_paro": 2943.037536511594,
+        "hipengine_gguf": 677.6179176161241,
+        "llamacpp_hip": 2255.08,
+        "llamacpp_vulkan": 2521.77
+      },
+      {
+        "workload": "32K/128",
+        "hipengine_paro": 2108.8684655920956,
+        "hipengine_gguf": 628.3644613896819,
+        "llamacpp_hip": 1667.64,
+        "llamacpp_vulkan": 1943.92
+      },
+      {
+        "workload": "64K/128",
+        "hipengine_paro": 1584.1310405136157,
+        "hipengine_gguf": 572.6118873893581,
+        "llamacpp_hip": 1291.82,
+        "llamacpp_vulkan": 1414.47
+      },
+      {
+        "workload": "128K/128",
+        "hipengine_paro": 1056.251756051298,
+        "hipengine_gguf": 484.21181190588067,
+        "llamacpp_hip": 891.949,
+        "llamacpp_vulkan": 1079.28
+      }
+    ],
+    "decode_tok_s": [
+      {
+        "workload": "512/128",
+        "hipengine_paro": 115.59930677853538,
+        "hipengine_gguf": 89.87270296254509,
+        "llamacpp_hip": 80.7564,
+        "llamacpp_vulkan": 107.786
+      },
+      {
+        "workload": "1K/128",
+        "hipengine_paro": 103.23805473076716,
+        "hipengine_gguf": 94.7508224954457,
+        "llamacpp_hip": 80.8046,
+        "llamacpp_vulkan": 107.555
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_paro": 105.9430606423192,
+        "hipengine_gguf": 96.55074602053884,
+        "llamacpp_hip": 79.7681,
+        "llamacpp_vulkan": 103.066
+      },
+      {
+        "workload": "32K/128",
+        "hipengine_paro": 92.43848932600189,
+        "hipengine_gguf": 83.67324209738932,
+        "llamacpp_hip": 74.3042,
+        "llamacpp_vulkan": 91.8354
+      },
+      {
+        "workload": "64K/128",
+        "hipengine_paro": 78.2599221311165,
+        "hipengine_gguf": 71.64416739909014,
+        "llamacpp_hip": 69.0104,
+        "llamacpp_vulkan": 83.7456
+      },
+      {
+        "workload": "128K/128",
+        "hipengine_paro": 60.662949412318625,
+        "hipengine_gguf": 56.74539904285776,
+        "llamacpp_hip": 60.9329,
+        "llamacpp_vulkan": 70.8333
+      }
+    ],
+    "peak_gib": [
+      {
+        "workload": "512/128",
+        "hipengine_paro": 18.144213318824768,
+        "hipengine_gguf": 21.477776296436787,
+        "llamacpp_hip": 21.606285095214844,
+        "llamacpp_vulkan": 21.260231018066406
+      },
+      {
+        "workload": "1K/128",
+        "hipengine_paro": 18.366626903414726,
+        "hipengine_gguf": 21.710381522774696,
+        "llamacpp_hip": 21.61798858642578,
+        "llamacpp_vulkan": 21.21961212158203
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_paro": 19.16110749542713,
+        "hipengine_gguf": 22.99488216638565,
+        "llamacpp_hip": 21.674484252929688,
+        "llamacpp_vulkan": 21.278160095214844
+      },
+      {
+        "workload": "32K/128",
+        "hipengine_paro": 19.86443717777729,
+        "hipengine_gguf": 23.558860778808594,
+        "llamacpp_hip": 22.216339111328125,
+        "llamacpp_vulkan": 21.855358123779297
+      },
+      {
+        "workload": "64K/128",
+        "hipengine_paro": 20.403322257101536,
+        "hipengine_gguf": 24.203407764434814,
+        "llamacpp_hip": 22.89502716064453,
+        "llamacpp_vulkan": 22.511615753173828
+      },
+      {
+        "workload": "128K/128",
+        "hipengine_paro": 22.123909033834934,
+        "hipengine_gguf": 25.492501735687256,
+        "llamacpp_hip": 24.088592529296875,
+        "llamacpp_vulkan": 23.824134826660156
+      }
+    ]
+  },
+  "llamacpp_phase_statistics": {
+    "hip": [
+      {
+        "workload": "512/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2412.32,
+        "mean": 2431.418,
+        "stdev": 38.824725626847666,
+        "min": 2391.98,
+        "max": 2488.76,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "512/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 80.7564,
+        "mean": 80.58968,
+        "stdev": 0.39164814183141317,
+        "min": 79.8896,
+        "max": 80.7846,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "1K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2389.67,
+        "mean": 2387.176,
+        "stdev": 16.38482010886912,
+        "min": 2368.6,
+        "max": 2406.81,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "1K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 80.8046,
+        "mean": 80.66218,
+        "stdev": 0.3407367341511607,
+        "min": 80.0532,
+        "max": 80.8289,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "4K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2255.08,
+        "mean": 2255.914,
+        "stdev": 15.337417644440697,
+        "min": 2235.82,
+        "max": 2272.92,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "4K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 79.7681,
+        "mean": 79.58734,
+        "stdev": 0.4392173072637268,
+        "min": 78.8023,
+        "max": 79.8036,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "32K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 1667.64,
+        "mean": 1666.666,
+        "stdev": 3.048766963872411,
+        "min": 1662.26,
+        "max": 1669.86,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "32K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 74.3042,
+        "mean": 74.12852,
+        "stdev": 0.3972228241176495,
+        "min": 73.4186,
+        "max": 74.3242,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "64K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 1291.82,
+        "mean": 1292.05,
+        "stdev": 1.0033444074693352,
+        "min": 1290.84,
+        "max": 1293.6,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "64K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 69.0104,
+        "mean": 68.84574,
+        "stdev": 0.37939687399871935,
+        "min": 68.1674,
+        "max": 69.0353,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "128K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 891.949,
+        "mean": 891.8081999999999,
+        "stdev": 0.4263164317734095,
+        "min": 891.084,
+        "max": 892.207,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "128K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 60.9329,
+        "mean": 60.78328,
+        "stdev": 0.3346422149101932,
+        "min": 60.1847,
+        "max": 60.9375,
+        "variance_gate_passed": true
+      }
+    ],
+    "vulkan": [
+      {
+        "workload": "512/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2627.99,
+        "mean": 2658.768,
+        "stdev": 58.81708824822948,
+        "min": 2620.28,
+        "max": 2758.76,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "512/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 107.786,
+        "mean": 107.6576,
+        "stdev": 0.2631013112852132,
+        "min": 107.331,
+        "max": 107.928,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "1K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2631.75,
+        "mean": 2636.916,
+        "stdev": 33.38555346253827,
+        "min": 2606.35,
+        "max": 2691.21,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "1K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 107.555,
+        "mean": 107.3758,
+        "stdev": 0.34068783365421146,
+        "min": 106.946,
+        "max": 107.722,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "4K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 2521.77,
+        "mean": 2516.912,
+        "stdev": 22.567243296424174,
+        "min": 2490.38,
+        "max": 2539.76,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "4K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 103.066,
+        "mean": 103.0438,
+        "stdev": 0.12235072537586203,
+        "min": 102.915,
+        "max": 103.215,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "32K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 1943.92,
+        "mean": 1943.706,
+        "stdev": 4.660561125014933,
+        "min": 1936.09,
+        "max": 1948.39,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "32K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 91.8354,
+        "mean": 91.71414,
+        "stdev": 0.28898853437463523,
+        "min": 91.2193,
+        "max": 91.9376,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "64K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 1414.47,
+        "mean": 1412.406,
+        "stdev": 8.672446598278997,
+        "min": 1397.59,
+        "max": 1420.39,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "64K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 83.7456,
+        "mean": 83.71997999999999,
+        "stdev": 0.11897200090777332,
+        "min": 83.5262,
+        "max": 83.8337,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "128K/128",
+        "phase": "prefill",
+        "count": 5,
+        "median": 1079.28,
+        "mean": 1079.518,
+        "stdev": 0.5072179018923029,
+        "min": 1079.09,
+        "max": 1080.23,
+        "variance_gate_passed": true
+      },
+      {
+        "workload": "128K/128",
+        "phase": "decode",
+        "count": 5,
+        "median": 70.8333,
+        "mean": 70.83292,
+        "stdev": 0.11243728029439387,
+        "min": 70.6833,
+        "max": 70.9895,
+        "variance_gate_passed": true
+      }
+    ]
+  },
+  "components": {
+    "hipengine_paro": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json",
+      "name": "2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json",
+      "sha256": "0a53053de2aff1360bf338039d6cc2c7104042b86e35791f48dc7dd34a643b5c",
+      "bytes": 214479,
+      "component_status": "accepted_topline",
+      "component_performance_claim": true
+    },
+    "hipengine_gguf": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json",
+      "name": "2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json",
+      "sha256": "697bd4149dc6b54634d1ea2f3f23c36aad2868fe57fc8fb2b526bd30b778f93e",
+      "bytes": 211254,
+      "component_status": "accepted_topline",
+      "component_performance_claim": true
+    },
+    "llamacpp_hip": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json",
+      "name": "2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json",
+      "sha256": "692078dc347e29549062402687741ac75050a2de2b266d4d781578d94e5099d0",
+      "bytes": 45821,
+      "component_status": "diagnostic_retained",
+      "component_performance_claim": false
+    },
+    "llamacpp_vulkan": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json",
+      "name": "2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json",
+      "sha256": "68d3896c00c423e7aef84dbdec42b3b0b930d1a0e31b174593ef4845f8566172",
+      "bytes": 46369,
+      "component_status": "diagnostic_retained",
+      "component_performance_claim": false
+    }
+  },
+  "component_provenance": {
+    "hipengine_paro": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 1,
+      "collected_at": "2026-07-12T17:34:30.596414+00:00",
+      "repo_root": "/tmp/hipengine-w7900-v030-8116c453",
+      "hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+      "git_branch": null,
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "hip_gfx1100",
+      "resolved_backend": "hip_gfx1100",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "model_fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+        "size_bytes": 20497454388,
+        "sampled_bytes": 16442350,
+        "file_count": 18,
+        "exists": true,
+        "path_type": "directory"
+      },
+      "quant": "w4_paro",
+      "kv_dtype": "bf16",
+      "command": [
+        "/tmp/hipengine-w7900-v030-8116c453/scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "paro",
+        "--model",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "--backend",
+        "hip_gfx1100",
+        "--shared-expert-format",
+        "packed_paro_w4",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "512/128",
+        "--warmup-runs",
+        "2",
+        "--measured-runs",
+        "5",
+        "--warmup-decode-tokens",
+        "4",
+        "--compiler-version-file",
+        "/tmp/hipengine-w7900-v030/topline/hipcc-version-713.txt",
+        "--require-cached-build",
+        "--attn-aotriton-min-tokens",
+        "512",
+        "--graph-replay-decode",
+        "--json",
+        "/tmp/hipengine-w7900-v030/topline/hipengine-paro-512-128.json"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1100",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": "7.2.4",
+      "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+      "build_profile": "readme_resident_sweep",
+      "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+      "warmups": 2,
+      "repetitions": 5,
+      "profiler": {
+        "enabled": false,
+        "reason": "topline host-wall sweep"
+      }
+    },
+    "hipengine_gguf": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 1,
+      "collected_at": "2026-07-12T18:00:08.943813+00:00",
+      "repo_root": "/tmp/hipengine-w7900-v030-8116c453",
+      "hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+      "git_branch": null,
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "hip_gfx1100",
+      "resolved_backend": "hip_gfx1100",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+        "size_bytes": 22663387424,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "bf16",
+      "command": [
+        "/tmp/hipengine-w7900-v030-8116c453/scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "512/128",
+        "--warmup-runs",
+        "2",
+        "--measured-runs",
+        "5",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--compiler-version-file",
+        "/tmp/hipengine-w7900-v030/topline/hipcc-version-713.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/hipengine-w7900-v030/topline/hipengine-gguf-512-128.json"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1100",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": "7.2.4",
+      "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+      "build_profile": "readme_resident_sweep",
+      "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+      "warmups": 2,
+      "repetitions": 5,
+      "profiler": {
+        "enabled": false,
+        "reason": "topline host-wall sweep"
+      }
+    },
+    "llamacpp_hip": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 1,
+      "collected_at": "2026-07-12T19:47:44.827283+00:00",
+      "repo_root": "/tmp/hipengine-w7900-v030-8116c453",
+      "hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+      "git_branch": null,
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "llamacpp_hip",
+      "resolved_backend": "hip_gfx1100",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+        "size_bytes": 22663387424,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "f16/f16",
+      "command": [
+        "/tmp/hipengine-w7900-v030-8116c453/scripts/llamacpp_bench_with_peak.py",
+        "--llama-bench",
+        "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-bench",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip",
+        "--workloads",
+        "512/128",
+        "1K/128",
+        "4K/128",
+        "32K/128",
+        "64K/128",
+        "128K/128",
+        "--repetitions",
+        "5",
+        "--ngl",
+        "99",
+        "--flash-attn",
+        "1",
+        "--cache-type-k",
+        "f16",
+        "--cache-type-v",
+        "f16",
+        "--poll",
+        "10",
+        "--card-name",
+        "card1",
+        "--memory-domain",
+        "vram",
+        "--extra-args",
+        "-dev ROCm0",
+        "--output",
+        "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json"
+      ],
+      "environment": {
+        "HIP_VISIBLE_DEVICES": "0",
+        "VK_ICD_FILENAMES": null
+      },
+      "rocm_version": null,
+      "hipcc_version": null,
+      "build_profile": "external_llama_bench",
+      "timing_protocol": "split prefill/decode llama-bench with amdgpu peak sampling",
+      "warmups": 1,
+      "repetitions": 5,
+      "profiler": {
+        "enabled": false,
+        "reason": "topline host-wall sweep"
+      }
+    },
+    "llamacpp_vulkan": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 1,
+      "collected_at": "2026-07-12T20:11:14.020669+00:00",
+      "repo_root": "/tmp/hipengine-w7900-v030-8116c453",
+      "hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+      "git_branch": null,
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "llamacpp_vulkan",
+      "resolved_backend": "vulkan",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+        "size_bytes": 22663387424,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "f16/f16",
+      "command": [
+        "/tmp/hipengine-w7900-v030-8116c453/scripts/llamacpp_bench_with_peak.py",
+        "--llama-bench",
+        "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "vulkan",
+        "--workloads",
+        "512/128",
+        "1K/128",
+        "4K/128",
+        "32K/128",
+        "64K/128",
+        "128K/128",
+        "--repetitions",
+        "5",
+        "--ngl",
+        "99",
+        "--flash-attn",
+        "1",
+        "--cache-type-k",
+        "f16",
+        "--cache-type-v",
+        "f16",
+        "--poll",
+        "10",
+        "--card-name",
+        "card1",
+        "--memory-domain",
+        "vram",
+        "--extra-args",
+        "-dev Vulkan0",
+        "--output",
+        "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json"
+      ],
+      "environment": {
+        "HIP_VISIBLE_DEVICES": null,
+        "VK_ICD_FILENAMES": null
+      },
+      "rocm_version": null,
+      "hipcc_version": null,
+      "build_profile": "external_llama_bench",
+      "timing_protocol": "split prefill/decode llama-bench with amdgpu peak sampling",
+      "warmups": 1,
+      "repetitions": 5,
+      "profiler": {
+        "enabled": false,
+        "reason": "topline host-wall sweep"
+      }
+    }
+  },
+  "linked_correctness": {
+    "gguf_external_and_state_oracle": "benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json",
+    "paro_fixture_gate": "benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json"
+  },
+  "notes": [
+    "The llama.cpp component tools intentionally emit performance_claim=false; this top-level artifact is the promotion boundary after checking their samples, return codes, build/model/device identity, and clean harness provenance.",
+    "The PARO column uses W4 PARO/BF16 KV. The other three columns use the same Q4_K_M GGUF; hipEngine uses BF16 KV and llama.cpp uses f16 KV.",
+    "Peak-memory numbers have different scopes: hipEngine is tracked owned allocation, while llama.cpp is absolute whole-device VRAM usage. Compare trends within a column; do not interpret small cross-column deltas as allocator efficiency."
+  ],
+  "assembly": {
+    "created_at": "2026-07-12T20:11:35.055620+00:00",
+    "repo_root": "/tmp/hipengine-w7900-v030-8116c453",
+    "hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "command": [
+      "/tmp/hipengine-w7900-v030-8116c453/scripts/assemble_gfx1151_readme_topline.py",
+      "--platform",
+      "gfx1100",
+      "--hipengine-paro",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json",
+      "--hipengine-gguf",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json",
+      "--llamacpp-hip",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json",
+      "--llamacpp-vulkan",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json",
+      "--gguf-correctness",
+      "benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json",
+      "--paro-correctness",
+      "benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json",
+      "--json",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json",
+      "--markdown",
+      "/tmp/hipengine-w7900-v030/summary/topline-tables.md"
+    ]
+  }
+}
