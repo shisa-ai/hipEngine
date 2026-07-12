@@ -1,10 +1,18 @@
 # gfx1151 PARO/GGUF Optimization Ledger
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12.
 
-Status: the local gfx1151 evidence sprint is closed, and the post-topline
+Status: `SOL-R0` is the next-point-release blocker. Reproduce and recover the
+reported **30%+ PARO decode throughput loss** across the release decode matrix
+after the recent correctness/verification hardening, without backing out the
+state, KV, token, or lifecycle fixes that made the route correct. The magnitude
+is a working release report, not a retained performance claim, until R0 emits a
+matched clean known-good/current A/B. All unrelated compiler/kernel candidates
+are deferred until R0 closes or the release owner explicitly unblocks them.
+
+The local gfx1151 evidence sprint is otherwise closed, and the post-topline
 recovery phase is ready for pickup. Every evidence-sprint item is accepted,
-rejected, or parked with a named reactivation gate; `SOL-R1` through `SOL-R9`
+rejected, or parked with a named reactivation gate; `SOL-R0` through `SOL-R9`
 below turn the remaining performance gaps into ordered experiments. Cross-GPU
 V10 remains blocked on W7900 hardware, V11 remains blocked until queued R7
 supplies matched Q6 math/layout, and DFlash R8 remains blocked on a materially
@@ -101,6 +109,28 @@ invalid historical speed, identifies the smallest exact experiment that can
 change each premise, and delays the expensive public rerun until a default has
 actually changed.
 
+### Release Blocker: R0 PARO Decode Recovery
+
+The recent correctness/verification pass made the PARO route defensible, but
+the working release comparison reports a broad **30%+ decode loss** versus the
+intended pre-pass point-release baseline. Recovering that lost throughput is
+more valuable and more urgent than the deferred GGUF/compiler candidates below.
+It blocks the next point release.
+
+The June 15-to-July 11 c1 table below does not close this question. It is not a
+matched last-known-good/current A/B for the correctness-pass boundary and does
+not cover every shipping decode route. R0 must first name the exact good commit,
+bad commit, runtime policy, model fingerprint, shape matrix, and commands. It
+must then separate unavoidable correct math from accidental costs such as
+diagnostic readback, validation retained on the hot path, forced serialization,
+fallback dispatch, graph-policy changes, or lost kernel selection. Those are
+hypotheses to bisect, not presumed causes.
+
+The recovery rule is strict: preserve exact hidden/state/KV/token behavior and
+retain every measured, non-regressive reduction as soon as it is proven. Do not
+trade correctness back for the old rate, and do not require a minimum aggregate
+percentage before accepting a clear component or end-to-end win.
+
 ### Published Checkpoint And Comparison Limits
 
 The current public checkpoint is complete. The root [`README.md`](../README.md)
@@ -141,8 +171,11 @@ Each cell is `2026-06-15 -> 2026-07-11 tok/s (delta)`. Decode length is 128.
 
 Interpretation:
 
-- PARO decode is stable to 0.32% at every shape. The actionable loss is c1
-  prefill, not a general PARO correctness tax.
+- PARO c1 decode is stable to 0.32% *within this particular June 15-to-July 11
+  diagnostic comparison*. That does not supersede R0: these are not the named
+  last-known-good/current correctness-pass endpoints, and the table does not
+  cover every release decode route. Establishing and recovering the reported
+  release regression now precedes c1 prefill work.
 - The old PARO path forced every prefill family to chunk 256 at every shape.
   Current code is unchunked at 512/1K and uses 1024 for linear/MoE/post/RoPE
   plus a 4096 attention-query chunk at 4K and above. Reproducing the old rates
@@ -176,6 +209,7 @@ correctness contracts.
 
 | Priority | ID | Work package | Current state | Exit / handoff gate |
 | ---: | --- | --- | --- | --- |
+| 0 | `SOL-R0` | Reproduce, bisect, and recover the recent PARO decode regression across the point-release matrix while preserving the correctness/verification fixes. | `open`; **next-point-release blocker** | A clean matched known-good/current A/B names the first performance-changing revision or policy; every affected default route recovers its exact non-regressive wins, and the release matrix passes hidden/state/KV/token plus wall-time gates. |
 | 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `open` | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
@@ -187,6 +221,31 @@ correctness contracts.
 | 9 | `SOL-R9` | Final validation and publication refresh after retained defaults settle. | `blocked until a default changes or recovery closes` | Full test gate passes; affected toplines, speculative/concurrency tables, artifacts, changelog, and both READMEs are regenerated together. |
 
 ### Recovery Playbooks
+
+#### R0: PARO Decode Release Regression
+
+Start with measurement and revision/policy bisection, not a speculative kernel
+rewrite. Freeze the point-release workload identity: exact PARO model snapshot
+and fingerprint, `w4_paro`, KV dtype, prompt fixtures, context/decode lengths,
+concurrency and sampling mode, resolved gfx1151 backend, HIP/compiler stack,
+TuneD/clock state, and graph/eager policy. Include the six c1 decode shapes and
+every c>N/server decode route whose shipping default changed during the
+correctness pass.
+
+Run the last-known-good release candidate and current exact route under the same
+cached-build protocol. If the 30%+ working report reproduces, bisect commits and
+runtime policy independently until the first performance-changing boundary is
+named. Join wall time to a marker/kernel-family profile and launch/sync counts;
+audit whether correctness instrumentation, readbacks, serial fallbacks, route
+selection, graph admission, or cache/build behavior leaked into steady decode.
+
+Recover the smallest exact unit first. Each retained change must pass the
+existing hidden, all 30 Conv/GDN state-family, all 10 live-KV-family, generated
+token/order, lifecycle, and sampler gates that motivated the correctness pass.
+Update the compact artifact and benchmark rollup for every retained win. R0
+closes only when the affected release matrix is recovered or each remaining
+delta is bounded to a named correctness-essential operation with profiler
+evidence and an explicit release decision.
 
 #### R1: PARO c1 Prefill
 
@@ -314,11 +373,13 @@ The required order is:
 #### R9: Final Rerun And README Publication
 
 Do not spend another full four-engine sweep merely to confirm an unchanged
-default. After the retained recovery units settle, run the narrow gates for
-each unit, then the repository-wide `uv run pytest -v` milestone gate. The last
-runtime milestone passed all 5,997 collected tests at `8d0e0f24`; later
-benchmark/docs work passed its focused suites, so any new runtime/kernel change
-requires a new full pass.
+default. R0 is the exception that activates an immediate point-release handoff:
+once its PARO decode defaults settle, run the narrow R0 gates and the
+repository-wide `uv run pytest -v` milestone gate, refresh the affected release
+tables, and make the release decision without waiting for R1-R8 or the deferred
+candidate queue. The last runtime milestone passed all 5,997 collected tests at
+`8d0e0f24`; later benchmark/docs work passed its focused suites, so any new
+runtime/kernel change requires a new full pass.
 
 Then rerun the complete gfx1151 four-engine six-shape protocol and regenerate
 the separate prefill, decode, and peak-memory tables. Rerun the exact/default,
@@ -770,17 +831,23 @@ in the item tables above; do not replay that historical order.
 
 | Order | Work package | Items | Why now |
 | ---: | --- | --- | --- |
-| 1 | Recover PARO c1 prefill buckets | R1 | Highest-confidence same-code recovery; decode is already stable. |
-| 2 | Close exact GGUF MTP horizon economics | R2 | A no-code 64/128 rerun may change the 5% natural24 premise; exact commit is bounded if it does not. |
-| 3 | Establish production serial concurrency, then exact native c2 | R3, R4 | A measured shipping control precedes algorithm work; c2 is the smallest general exact batch. |
-| 4 | Profile and replace the GGUF prefill bottleneck | R5 | The old fast route is invalid; a current family profile must select a new exact candidate. |
-| 5 | Localize long-context decode gaps | R6 | 128K cannot inherit the 512-token Amdahl table by assumption. |
-| 6 | Implement and close matched Q6 | R7, V11 | Lower-priority backend work starts with the missing peer implementation; unmatched HIP/Vulkan ratios remain prohibited. |
-| 7 | Reopen DFlash only when drafter quality changes | R8, S4-S7 | Current 0.14825x economics cannot be repaired by wider groups or readback tuning. |
-| 8 | Full validation and public rerun | R9 | Publish only after retained defaults settle. |
+| 1 | Recover the release-blocking PARO decode regression | R0 | The reported 30%+ loss is the largest actionable near-term opportunity and blocks the next point release; preserve every correctness fix while bisecting the performance boundary. |
+| 2 | Validate, publish, and decide the point release | R9 after R0 | The release should not wait for unrelated optimization once exact PARO decode recovery is ready. |
+| 3 | Recover PARO c1 prefill buckets | R1 | Highest-confidence same-code prefill recovery after decode is back on its release footing. |
+| 4 | Close exact GGUF MTP horizon economics | R2 | A no-code 64/128 rerun may change the 5% natural24 premise; exact commit is bounded if it does not. |
+| 5 | Establish production serial concurrency, then exact native c2 | R3, R4 | A measured shipping control precedes algorithm work; c2 is the smallest general exact batch. |
+| 6 | Profile and replace the GGUF prefill bottleneck | R5 | The old fast route is invalid; a current family profile must select a new exact candidate. |
+| 7 | Localize long-context decode gaps | R6 | 128K cannot inherit the 512-token Amdahl table by assumption. |
+| 8 | Implement and close matched Q6 | R7, V11 | Lower-priority backend work starts with the missing peer implementation; unmatched HIP/Vulkan ratios remain prohibited. |
+| 9 | Reopen DFlash only when drafter quality changes | R8, S4-S7 | Current 0.14825x economics cannot be repaired by wider groups or readback tuning. |
+| 10 | Run deferred gfx1151 kernel/compiler candidates | Post-R0 queue | Preserve the measured leads, but do not displace release recovery with unrelated implementation work. |
 
 V10's W7900 matrix is independent hardware work and may run whenever the GPU is
 available. It does not reorder local gfx1151 recovery.
+
+R1-R8, V10/V11, and the deferred candidate queue are not point-release blockers
+unless the release owner explicitly adds them to the release scope. The release
+critical path is R0 followed by the R9 validation/publication handoff.
 
 Cross-GPU work is not allowed to block useful local gfx1151 progress, but no
 gfx1100/gfx1151 shared default is promoted without both architectures or an
@@ -829,6 +896,10 @@ The post-topline phase is pickup-complete only when each ready R item is
 accepted, rejected, or parked on new evidence rather than restating the old
 premise:
 
+- R0 identifies the matched last-known-good/current PARO decode boundary,
+  preserves all correctness/verification guarantees, and either recovers every
+  affected release route or bounds the residual to named correctness-essential
+  GPU/host work with an explicit point-release decision;
 - R1 has a current-code exact forced-256 A/B at all six shapes and a per-bucket
   keep/reject decision;
 - R2 has natural 64/128 full-suite and heldout true-AR evidence, plus an exact
@@ -849,3 +920,32 @@ premise:
   change. If no default changes, the existing `d1231ee0`/`7e9aad21` checkpoint
   remains current and the no-rerun decision is recorded instead of generating
   redundant toplines.
+
+## Deferred Post-R0 Performance Candidates
+
+This queue records the next likely gfx1151 opportunities so they are not lost,
+but it is subordinate to the PARO decode release blocker. Do not begin an
+unrelated implementation from this table while R0 is open unless the release
+owner explicitly changes the order. Percentage ranges below are Amdahl steering
+estimates, not performance claims or acceptance cutoffs; every exact,
+non-regressive measured win remains retainable regardless of size.
+
+The source profile is the clean SOL-G4 p512/d128 GGUF eager trace, refreshed for
+the retained Q8T16 wave/block result by the 2026-07-12 production A/B. Its main
+buckets are dense Q8T16 `44.25%`, selected-MoE GEMV `21.72%`, attention core
+`10.68%`, and Q6 lm-head `10.06%` of traced GPU time.
+
+| Deferred order | Candidate | Why it remains plausible | First bounded experiment after R0 | Amdahl steering estimate |
+| ---: | --- | --- | --- | ---: |
+| 0 | Revalidate the current gfx1151 GGUF graph default. | On HIP 7.15, clean scalar and wave/block G5 controls remain exact but state-bound replay is `0.246%`/`0.293%` slower than same-run eager. | One more balanced current-stack eager/graph A/B; restore eager as the production selector if graph does not reproduce a win. | Measured recovery is about `0.25%-0.30%` for this protocol. |
+| 1 | Extend explicit wave/block indexing to sibling Q8T16 bodies. | The retained dual-split change improved its production leaf `1.349%`. The still-scalar single, triple-split, and concatenated-dual bodies use the same `k -> block/lane` structure and together represented `21.59%` of SOL-G4 GPU time. | Test triple-split first for structural transfer confidence (`5.93%` share), then single for aggregate leverage (`12.21%`), then concatenated dual (`3.44%`); require paired micro and exact model-family A/B for each. | Roughly `0.25%-0.60%` full-model if those bodies inherit a `1.3%-3.1%` leaf reduction. |
+| 2 | Reduce exact selected-MoE GEMV live ranges/instruction cost. | Selected GEMVs represented `21.72%` of GPU time; the Q4 dual+SiLU kernel reports `200` VGPR while selected-down reports `104/128`, a kernel-specific resource signal rather than a blanket spill theory. | Join counters and ISA to the exact hot shapes, then try a bounded lifetime/column-work change. Do not repeat rejected launch-bound sweeps or assume existing accuracy-traded dp4a diagnostics transfer. | About `1%-2%` full-model for a real `5%-10%` family reduction. |
+| 3 | Build a GQA-aware c1 paged-attention decode shape. | Attention represented `10.68%` of GPU time. The current per-Q-head blocks serve 16 Q heads from 2 KV heads, so a grouped design may reuse K/V work across each eight-head group; upside grows with context. | First run a context/counter sweep proving repeated KV traffic or value-scan limits, then test grouped-Q-head reuse while preserving the `KVLiveSpans` ABI and exact reduction/state gates. The already-rejected generic 128-thread override is not this experiment. | Potentially `1%-3%` at p512 if the attention bucket falls materially; larger long-context upside is conditional. |
+| 4 | Remove surgical dispatch and intermediate-memory boundaries. | The latest marked wave/block profile records `20.873 ms/token` host wall versus `19.199 ms/token` summed GPU kernels, a `1.674 ms/token` residual that is not all proven dispatch. Router and RMSNorm are high-count candidates, but grid parallelism must survive. | Capture a dedicated steady decode gap/launch trace; fuse only a single-use producer/consumer boundary that removes both a launch and real tensor traffic. Avoid recomputing a shared normalized vector per output tile. | Several tenths per safe boundary; approximately `1%` cumulative is plausible but unmeasured. |
+| 5 | Revisit Q6T16 lm-head layout/work distribution only with new evidence. | The full-vocabulary Q6 lm-head is one `~1.84 ms/token` call and `~10%` of GPU time, so a genuine body improvement transfers directly. | Use counters/ISA to justify a replacement layout or output-work mapping. Do not retry the rejected block-256, launch-bound, chunked/fused-argmax, or unmatched HIP/Vulkan variants. | Roughly `0.9%-1.8%` full-model for a `10%-20%` leaf reduction; confidence is lower than rows 1-3. |
+
+Packed-dot compiler attribution remains diagnostic rather than a product target
+until a current production body exposes the same bottleneck. Broad Wave64,
+generic launch-bound sweeps, blanket `-ffast-math`, manual LDS spilling, and
+undocumented scheduler flags remain outside this queue without new counter and
+production-wall evidence.
