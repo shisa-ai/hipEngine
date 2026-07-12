@@ -152116,3 +152116,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. pytest -q tests/test_paro_prefill_conv_domain.py` (`4 passed`).
   Next: retain clean diagnostics, then implement one event-linked dedicated
   AOTriton stream and measure the exact 4K c=1 production path.
+
+## 2026-07-12 - Implement the event-linked AOTriton prefill queue
+
+- Added one lazy session-owned nonblocking HIP stream and two reusable events.
+  Full-attention prelude/QKV/KV append stay on the caller stream; an input-ready
+  event releases only AOTriton to the isolated stream; an output-ready event
+  releases projection/post/MoE back to the caller. Session reset/close retain
+  device-wide synchronization and close destroys both events and the stream.
+- RED first: the decode-state event-order test failed because no bridge type or
+  stream argument existed, and both single/packed resident tests failed because
+  no bridge was forwarded. GREEN asserts AOTriton runs on stream 7 while main
+  work stays on stream 3, with event records `(11,3),(12,7)` and waits
+  `(7,11),(3,12)`. A lifecycle test proves one stream/two events are reused and
+  destroyed exactly once.
+- The default-on `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` keeps an
+  explicit `0` rollback/bisection route; refactor removal criteria are recorded
+  in `docs/REFACTOR.md`. No target-arch or quant branch was added.
+- Dirty production screen command:
+  `python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/1 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-c1-next-20260712/aot-isolated-production-4k-screen-dirty.json`.
+  It measured `1123.620 tok/s` median (`1119.452..1124.615`) versus the
+  same-suite pre-bridge `849.557` screen (+32.26%) and the retained exact
+  `854.346` row (+31.52%). Tracked peak stayed `19.025994 GiB`; all measured
+  previews were `[13743,54120,9171]` and final token `9171`.
+- Added `scripts/paro_prefill_aotriton_stream_exactness.py`. Exact command:
+  `python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length 4096 --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json /tmp/hipengine-c1-next-20260712/aotriton-stream-exactness-4k-dirty.json`.
+  Isolated/control both sampled seed `13743`, final-hidden SHA-256
+  `f2fd15ee...d2678`, and aggregate persistent-state SHA-256
+  `c2328617...d2c5f`; all 30 Conv/GDN and 10 live K/V families match with zero
+  mismatch paths.
+- GREEN: py_compile for both runtime modules and the new gate; all `231`
+  adjacent decode-state/resident-layout/prefill-policy/diagnostic tests pass.
+  These dirty runs validate the candidate but are not the retained claim; next
+  commit the implementation, then run a clean five-repetition 4K A/B and clean
+  exactness artifact before rollup.

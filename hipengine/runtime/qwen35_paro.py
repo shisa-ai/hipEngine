@@ -398,6 +398,31 @@ def qwen35_grouped_moe_weighted_token_sums(
 
 
 @dataclass(frozen=True)
+class AotritonPrefillStreamBridge:
+    """Event-linked nonblocking stream used only for high-scratch AOTriton work."""
+
+    stream: int
+    input_ready_event: int
+    output_ready_event: int
+
+    def __post_init__(self) -> None:
+        if self.stream <= 0 or self.input_ready_event <= 0 or self.output_ready_event <= 0:
+            raise ValueError("AOTriton prefill stream bridge requires nonzero HIP handles")
+
+    def wait_for_inputs(self, runtime: HipRuntime, source_stream: int) -> None:
+        if int(source_stream) == self.stream:
+            raise ValueError("AOTriton prefill bridge must use a stream distinct from its source")
+        runtime.event_record(self.input_ready_event, int(source_stream))
+        runtime.stream_wait_event(self.stream, self.input_ready_event)
+
+    def release_output(self, runtime: HipRuntime, destination_stream: int) -> None:
+        if int(destination_stream) == self.stream:
+            raise ValueError("AOTriton prefill bridge must use a stream distinct from its destination")
+        runtime.event_record(self.output_ready_event, self.stream)
+        runtime.stream_wait_event(int(destination_stream), self.output_ready_event)
+
+
+@dataclass(frozen=True)
 class Qwen35ParoAttentionScratch:
     attn_input: Tensor
     q_rot: Tensor
@@ -6061,6 +6086,7 @@ class Qwen35ParoDecodeState:
         cu_seqlens_q: Tensor | None = None,
         cu_seqlens_k: Tensor | None = None,
         aotriton_attention: bool = False,
+        aotriton_bridge: AotritonPrefillStreamBridge | None = None,
         aotriton_kv_rows: int | None = None,
         retained_key_cache: Tensor | None = None,
         retained_value_cache: Tensor | None = None,
@@ -6202,6 +6228,10 @@ class Qwen35ParoDecodeState:
                 DType.BF16,
                 attention_scratch.gated_attn.device,
             )
+            aotriton_stream = stream
+            if aotriton_bridge is not None:
+                aotriton_bridge.wait_for_inputs(self.runtime, stream)
+                aotriton_stream = aotriton_bridge.stream
             attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
                 attention_scratch,
                 cu_seqlens_q=cu_seqlens_q,
@@ -6214,8 +6244,10 @@ class Qwen35ParoDecodeState:
                 value_cache=value_cache,
                 attn_bf16_out=aotriton_attn_bf16_out,
                 library=library,
-                stream=stream,
+                stream=aotriton_stream,
             )
+            if aotriton_bridge is not None:
+                aotriton_bridge.release_output(self.runtime, stream)
             attn_out = self.project_full_attention_o_bf16_attn_gate_fp16(
                 attn_bf16,
                 gate,
@@ -6318,6 +6350,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         block_size: int = 256,
         aotriton_attention: bool = False,
+        aotriton_bridge: AotritonPrefillStreamBridge | None = None,
         aotriton_max_seqlen_q: int | None = None,
         aotriton_max_seqlen_k: int | None = None,
         library=None,
@@ -6382,6 +6415,10 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
         if aotriton_attention:
+            aotriton_stream = stream
+            if aotriton_bridge is not None:
+                aotriton_bridge.wait_for_inputs(self.runtime, stream)
+                aotriton_stream = aotriton_bridge.stream
             attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
                 attention_scratch,
                 cu_seqlens_q=cu_seqlens_q,
@@ -6392,8 +6429,10 @@ class Qwen35ParoDecodeState:
                 max_seqlen_q=aotriton_max_seqlen_q,
                 max_seqlen_k=aotriton_max_seqlen_k,
                 library=library,
-                stream=stream,
+                stream=aotriton_stream,
             )
+            if aotriton_bridge is not None:
+                aotriton_bridge.release_output(self.runtime, stream)
             attn_out = self.project_full_attention_o_bf16_attn_gate_fp16(
                 attn_bf16,
                 gate,

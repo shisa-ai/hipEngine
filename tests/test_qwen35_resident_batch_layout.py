@@ -654,6 +654,8 @@ def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_defau
     )
     session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens, **_kwargs: object(), session)
     session._ensure_moe_prefill_scratch = MethodType(lambda self, layer_id=None, *, tokens: object(), session)
+    aotriton_bridge = object()
+    session._ensure_prefill_aotriton_bridge = lambda: aotriton_bridge
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -694,6 +696,7 @@ def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_defau
     assert len(state.run_calls) == 2
     assert [call[1]["tokens"] for call in state.run_calls] == [2, 2]
     assert all(call[1]["aotriton_attention"] is True for call in state.run_calls)
+    assert all(call[1]["aotriton_bridge"] is aotriton_bridge for call in state.run_calls)
     assert [call[1]["aotriton_kv_rows"] for call in state.run_calls] == [2, 4]
     assert all(call[1]["cu_seqlens_q"] is not None for call in state.run_calls)
     assert all(call[1]["cu_seqlens_k"] is not None for call in state.run_calls)
@@ -714,6 +717,46 @@ def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_defau
         assert kwargs["retained_append_spans"].scale_metadata.k_scale.dtype is DType.FP16
     assert len(runtime.memcpy_async_calls) == 2
     assert [call[0] for call in runtime.memcpy_async_calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
+
+
+def test_qwen35_resident_prefill_aotriton_bridge_is_reused_and_released() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session._prefill_aotriton_stream = 0
+    session._prefill_aotriton_input_ready_event = 0
+    session._prefill_aotriton_output_ready_event = 0
+    calls: list[tuple[str, int]] = []
+
+    class FakeRuntime:
+        def stream_create(self):
+            calls.append(("stream_create", 7))
+            return 7
+
+        def event_create(self):
+            handle = 11 if not any(name == "event_create" for name, _handle in calls) else 12
+            calls.append(("event_create", handle))
+            return handle
+
+        def event_destroy(self, event):
+            calls.append(("event_destroy", int(event)))
+
+        def stream_destroy(self, stream):
+            calls.append(("stream_destroy", int(stream)))
+
+    session.runtime = FakeRuntime()
+
+    first = session._ensure_prefill_aotriton_bridge()
+    second = session._ensure_prefill_aotriton_bridge()
+
+    assert first == second
+    assert (first.stream, first.input_ready_event, first.output_ready_event) == (7, 11, 12)
+    assert calls == [("stream_create", 7), ("event_create", 11), ("event_create", 12)]
+
+    session._release_prefill_aotriton_bridge()
+
+    assert calls[-3:] == [("event_destroy", 12), ("event_destroy", 11), ("stream_destroy", 7)]
+    assert session._prefill_aotriton_stream == 0
+    assert session._prefill_aotriton_input_ready_event == 0
+    assert session._prefill_aotriton_output_ready_event == 0
 
 
 def test_qwen35_resident_native_prefill_plan_accepts_full_attention_layers() -> None:
@@ -1264,6 +1307,8 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_aotriton_varlen_w
     value = Tensor.from_handle(0x6000, (4, 256, 1, 2), DType.BF16, device)
     session._full_cache_all_slots = lambda layer_id: (key, value)
     session._prefill_use_aotriton_attention_resolved = lambda rows: True
+    aotriton_bridge = object()
+    session._ensure_prefill_aotriton_bridge = lambda: aotriton_bridge
     session._ensure_full_prefill_scratch = lambda *, tokens, aotriton_attention=False: SimpleNamespace(
         name="attention",
         tokens=tokens,
@@ -1307,6 +1352,7 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_aotriton_varlen_w
     assert session._last_packed_prefill_blockers == []
     assert state.calls[0][0].ptr == 0x1000
     assert state.calls[0][1]["aotriton_attention"] is True
+    assert state.calls[0][1]["aotriton_bridge"] is aotriton_bridge
     assert state.calls[0][1]["aotriton_max_seqlen_q"] == 2
     assert state.calls[0][1]["aotriton_max_seqlen_k"] == 2
     assert state.calls[0][1]["attention_scratch"].aotriton_attention is True

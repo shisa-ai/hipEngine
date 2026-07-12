@@ -24,6 +24,8 @@ class FakeRuntime:
         self.freed: list[int] = []
         self.memsets: list[tuple[int, int, int]] = []
         self.copies: list[tuple[int, int, int, int]] = []
+        self.event_records: list[tuple[int, int]] = []
+        self.stream_waits: list[tuple[int, int]] = []
 
     def malloc(self, nbytes: int) -> int:
         ptr = self.next_ptr
@@ -46,6 +48,13 @@ class FakeRuntime:
 
     def memcpy_async(self, dst: int, src: int, nbytes: int, kind, stream: int) -> None:
         self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    def event_record(self, event: int, stream: int = 0) -> None:
+        self.event_records.append((int(event), int(stream)))
+
+    def stream_wait_event(self, stream: int, event: int, *, flags: int = 0) -> None:
+        assert flags == 0
+        self.stream_waits.append((int(stream), int(event)))
 
 
 def _config() -> Qwen35ParoConfig:
@@ -1438,6 +1447,11 @@ def test_qwen35_decode_state_aotriton_prefill_reuses_attention_query_buffer(monk
     )
     cu_q = _tensor(0x6000, (2,), "int32")
     cu_k = _tensor(0x7000, (2,), "int32")
+    aotriton_bridge = qwen_runtime.AotritonPrefillStreamBridge(
+        stream=7,
+        input_ready_event=11,
+        output_ready_event=12,
+    )
     seen: dict[str, Tensor] = {}
     calls: list[str] = []
 
@@ -1456,6 +1470,7 @@ def test_qwen35_decode_state_aotriton_prefill_reuses_attention_query_buffer(monk
     def fake_aotriton(*args, **kwargs):
         calls.append("aotriton")
         assert kwargs["query_bf16"].ptr == seen["query_bf16"].ptr
+        assert kwargs["stream"] == 7
         return kwargs["attn_bf16_out"]
 
     monkeypatch.setattr(state, "prefill_full_attention_aotriton_varlen_gqa_bf16", fake_aotriton)
@@ -1478,8 +1493,10 @@ def test_qwen35_decode_state_aotriton_prefill_reuses_attention_query_buffer(monk
         cu_seqlens_q=cu_q,
         cu_seqlens_k=cu_k,
         aotriton_attention=True,
+        aotriton_bridge=aotriton_bridge,
         aotriton_kv_rows=2,
         tokens=2,
+        stream=3,
     )
 
     assert out is moe_scratch.moe_out
@@ -1487,6 +1504,8 @@ def test_qwen35_decode_state_aotriton_prefill_reuses_attention_query_buffer(monk
     assert seen["query_bf16"].dtype is DType.BF16
     assert "attn.aotriton_q_bf16" not in state.workspace.names
     assert calls == ["input_norm", "rotate", "qkv", "rope", "append", "aotriton", "o_proj", "post_norm", "grouped_moe"]
+    assert runtime.event_records == [(11, 3), (12, 7)]
+    assert runtime.stream_waits == [(7, 11), (3, 12)]
 
 
 def test_qwen35_decode_state_run_full_attention_prefill_fp16_can_force_c1_moe(monkeypatch) -> None:

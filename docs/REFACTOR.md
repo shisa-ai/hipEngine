@@ -844,3 +844,22 @@ should be boring.
 - Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
   avoids live c6 groups in retained/default operation. Do not use this
   comparison mode for throughput claims.
+
+## `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM`
+
+- Added 2026-07-12 as a default-on PARO prefill rollback/bisection control.
+  The retained path creates one lazy nonblocking stream plus two reusable HIP
+  events, runs only AOTriton attention on that stream, and keeps all pre/post
+  work on the caller stream. Setting the flag to `0` restores the old
+  same-stream dispatch without changing model math.
+- Purpose: isolate AOTriton's high-scratch dispatch from the queue used by
+  later low-scratch linear-attention convolution kernels. On gfx1151 the same
+  captured convolution changes from about `1.83 ms` after same-stream
+  AOTriton to `119 us` when AOTriton uses the isolated queue. The first
+  production 4K screen moves `854.346 -> 1123.620 tok/s` (+31.52%) with
+  identical sampled seed, final hidden, all 30 Conv/GDN state families, and
+  all 10 live K/V families. Formal clean retention is still pending.
+- Remove when: the clean gfx1151 rollup is retained and either gfx1100 is
+  validated with the same scheduling or the ROCr/AOTriton queue-scratch issue
+  is fixed upstream. Then remove the opt-out and its duplicate same-stream
+  route; keep one proven scheduling policy.
