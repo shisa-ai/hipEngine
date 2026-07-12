@@ -6,6 +6,16 @@
   "performance_claim": false,
   "capacity_claim": true,
   "usable_int8_256k_claim": false,
+  "source_revision_equivalence": {
+    "measured_commit": "8116c4531fa79bb94690042023da8c9360648052",
+    "reachable_rebased_commit": "8708304f49e55c697c4cd0df7b6a038d57ecb3cf",
+    "runtime_and_benchmark_code_identical": true,
+    "only_different_paths": [
+      "WORKLOG.md",
+      "docs/PROCESS-IMPROVEMENT.md"
+    ],
+    "verification_command": "git diff --name-only 8116c4531fa79bb94690042023da8c9360648052..8708304f49e55c697c4cd0df7b6a038d57ecb3cf"
+  },
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",

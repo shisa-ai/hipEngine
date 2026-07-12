@@ -8,6 +8,16 @@
   },
   "correctness_claim": true,
   "created_at": "2026-07-12T17:31:46.061585+00:00",
+  "source_revision_equivalence": {
+    "measured_commit": "8116c4531fa79bb94690042023da8c9360648052",
+    "reachable_rebased_commit": "8708304f49e55c697c4cd0df7b6a038d57ecb3cf",
+    "runtime_and_benchmark_code_identical": true,
+    "only_different_paths": [
+      "WORKLOG.md",
+      "docs/PROCESS-IMPROVEMENT.md"
+    ],
+    "verification_command": "git diff --name-only 8116c4531fa79bb94690042023da8c9360648052..8708304f49e55c697c4cd0df7b6a038d57ecb3cf"
+  },
   "external_oracle": {
     "commands": {
       "completion": [

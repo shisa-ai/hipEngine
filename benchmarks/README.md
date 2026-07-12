@@ -178,8 +178,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-07-12 | clean hipEngine `8116c453`; TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: 128K BF16 is **22.124 GiB** tracked; 256K INT8 is **23.957 GiB** with no BF16 shadow. The required Qwen3.6 128K/128 rollout rejects both FP16- and FP32-scale INT8, so 256K is allocation evidence only, not a usable route. | Current diagnostic table | Rerun after INT8 KV write/decode math, scale policy, attention accumulation, or model changes; require the Qwen3.6 long-rollout gate before support. |
-| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean hipEngine `8116c453`; TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: 128K BF16 is **22.124 GiB** tracked; 256K INT8 is **23.957 GiB** with no BF16 shadow. The required Qwen3.6 128K/128 rollout rejects both FP16- and FP32-scale INT8, so 256K is allocation evidence only, not a usable route. | Current diagnostic table | Rerun after INT8 KV write/decode math, scale policy, attention accumulation, or model changes; require the Qwen3.6 long-rollout gate before support. |
+| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
@@ -209,8 +209,9 @@ script copies this marked block into the root README byte-for-byte.
 
 ### gfx1100 model throughput
 
-This is the clean 2026-07-12 W7900 refresh at hipEngine `8116c453` on
-TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident
+This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
+(rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
+`docs/PROCESS-IMPROVEMENT.md` differ) on TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident
 session, two discarded warmups, and five measured repetitions; the tables
 report medians. PARO and GGUF both use their admitted state-bound graph decode
 routes, with capture excluded from steady decode timing. llama.cpp uses one
@@ -556,7 +557,8 @@ tables remain recoverable from the linked compact artifacts, changelog, and
 ### W7900 PARO context capacity, 2026-07-12
 
 **Status: current capacity measurement; INT8 quality rejected.** Clean detached
-hipEngine `8116c453` on W7900/gfx1100 and TheRock HIP 7.15 used the current
+hipEngine `8116c453` (rebased-equivalent reachable `8708304f`; runtime and
+benchmark code identical) on W7900/gfx1100 and TheRock HIP 7.15 used the current
 Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 generated tokens, four
 warmup tokens, current chunk autotuning, and graph decode. The physical layout
 and 24 GiB portability gates pass, but the required Qwen3.6 long-rollout gate

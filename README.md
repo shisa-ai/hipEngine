@@ -86,8 +86,9 @@ isolated experiment with its own gates (see
 
 ## Memory Usage
 
-The clean 2026-07-12 W7900 run at hipEngine `8116c453` measures the current
-Qwen3.6 packed PARO model under the 24 GiB portability gate. Both physical
+The clean 2026-07-12 W7900 run measured hipEngine `8116c453`
+(rebased-equivalent reachable `8708304f`; runtime and benchmark code identical)
+against the current Qwen3.6 packed PARO model under the 24 GiB portability gate. Both physical
 capacity/layout rows pass, but the required Qwen3.6 long-rollout quality gate
 rejects INT8 KV. Accordingly, 256K INT8 is reported as allocation capacity—not
 as a supported or usable route.
@@ -127,8 +128,9 @@ commit/build, GPU, full command, and whole-card sampling artifact.
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-**Status: retained.** This clean 2026-07-12 refresh uses hipEngine `8116c453`,
-TheRock HIP 7.15, right-sized resident sessions, production graph decode, two
+**Status: retained.** This clean 2026-07-12 refresh measured hipEngine
+`8116c453` (rebased-equivalent reachable `8708304f`; runtime and benchmark code
+identical), TheRock HIP 7.15, right-sized resident sessions, production graph decode, two
 discarded plus five measured hipEngine runs, and five llama.cpp samples per
 phase. The W7900-local GGUF oracle passes external tokens and byte-exact
 hidden/Conv/GDN/KV state. All six rows pass clean provenance, stable finite
