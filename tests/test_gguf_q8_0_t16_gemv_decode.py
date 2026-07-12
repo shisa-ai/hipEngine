@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_f32_bf16_out,
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
@@ -564,6 +565,49 @@ def test_q8_t16_dual_split_thread_override_matches_cpu_oracle(threads: int, q8_t
     expected_b_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected_b))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual_a), expected_a_bf16, **_TOL)
     np.testing.assert_allclose(_bf16_u16_to_f32(actual_b), expected_b_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("threads", [64, 128])
+def test_q8_t16_dual_split_waveblock_matches_exact_bits(threads: int, q8_t16_library) -> None:
+    rows, in_features, out_features_a, out_features_b = 3, 512, 64, 128
+    rng = np.random.default_rng(5700 + threads)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+        threads=threads,
+    )
+    expected_a, expected_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+        threads=threads,
+    )
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

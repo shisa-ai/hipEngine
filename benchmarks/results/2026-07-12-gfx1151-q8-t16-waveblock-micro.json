@@ -1,0 +1,112 @@
+{
+  "kind": "hipengine_gguf_q8_t16_waveblock_micro",
+  "schema_version": 1,
+  "created_at": "2026-07-12T13:26:51+09:00",
+  "status": "diagnostic_accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "classification": {
+    "passed": true,
+    "conclusion": "Explicit wave/block K indexing is bit-exact and reduces the production-shaped Q8_0 T16 dual-split kernel by a median 3.108% across both A/B orders; production-model validation remains the promotion gate."
+  },
+  "workload": {
+    "operation": "gguf_q8_0_t16_dual_split_gemv",
+    "rows": 1,
+    "in_features": 2048,
+    "out_features_a": 8192,
+    "out_features_b": 4096,
+    "threads": 128,
+    "weight_matrix_mb": 26.739,
+    "weight_pool_copies": 3,
+    "weight_pool_mb": 80.2,
+    "warmup_iterations": 80,
+    "timed_iterations": 400
+  },
+  "trials": [
+    {
+      "order": ["exact", "waveblock"],
+      "exact_us": 136.51,
+      "waveblock_us": 132.37,
+      "latency_reduction_pct": 3.0327448538568507,
+      "speedup": 1.0312759688751227
+    },
+    {
+      "order": ["waveblock", "exact"],
+      "exact_us": 136.32,
+      "waveblock_us": 131.98,
+      "latency_reduction_pct": 3.1836854460093926,
+      "speedup": 1.0328837702682225
+    }
+  ],
+  "summary": {
+    "median_exact_us": 136.415,
+    "median_waveblock_us": 132.175,
+    "median_latency_reduction_pct": 3.1081625920902987,
+    "median_speedup": 1.0320786835634574,
+    "exact_achieved_read_bw_gbs_range": [195.9, 196.1],
+    "waveblock_achieved_read_bw_gbs_range": [202.0, 202.6]
+  },
+  "correctness": {
+    "fixture": "tests/test_gguf_q8_0_t16_gemv_decode.py::test_q8_t16_dual_split_waveblock_matches_exact_bits",
+    "threads_tested": [64, 128],
+    "result": "2 passed; both split outputs bit-identical to the production exact kernel"
+  },
+  "static_resources": {
+    "compiler_flag": "-Rpass-analysis=kernel-resource-usage",
+    "exact": {"sgpr": 33, "vgpr": 49, "scratch_bytes_per_lane": 0, "spills": 0, "occupancy_waves_per_simd": 16, "lds_bytes_per_block": 256},
+    "waveblock": {"sgpr": 29, "vgpr": 50, "scratch_bytes_per_lane": 0, "spills": 0, "occupancy_waves_per_simd": 16, "lds_bytes_per_block": 256}
+  },
+  "profiler": {
+    "kind": "rocprofv3 kernel trace",
+    "candidate_kernel": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>",
+    "baseline_kernel": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, false>",
+    "workgroup_size_x": 128,
+    "trace_sha256": "71aae0176ea23b26e046d30db4e6a83815dc5a9af998a626ba6b1b0b8a8c08a6"
+  },
+  "commands": [
+    "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 1 --threads 128 --modes exact,waveblock --iters 400 --warmup 80 --json /tmp/2026-07-12-q8-t16-waveblock-exact-first.json",
+    "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 1 --threads 128 --modes waveblock,exact --iters 400 --warmup 80 --json /tmp/2026-07-12-q8-t16-waveblock-candidate-first.json",
+    "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-q8-waveblock-rocprof-20260712 --output-file q8-waveblock -- /home/lhl/miniforge3/envs/therock/bin/python3 -m pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py::test_q8_t16_dual_split_waveblock_matches_exact_bits[128]"
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T13:26:51+09:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "019e49a256c1bcc3d108dd3f189a16d4e0c9284c",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 255,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": null,
+    "model_revision": null,
+    "model_fingerprint": null,
+    "quant": "gguf_q8_0_t16_v1",
+    "kv_dtype": null,
+    "command": [
+      "scripts/gguf_q8_0_t16_pair_microbench.py",
+      "--rows", "1",
+      "--threads", "128",
+      "--modes", "exact,waveblock",
+      "--iters", "400",
+      "--warmup", "80"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "tuned_profile": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "build_profile": "decode (-mllvm -amdgpu-unroll-threshold-local=600 -mcumode)",
+    "timing_protocol": "paired-order host-wall, 80 warmup + 400 timed, >2x estimated MALL weight pool",
+    "warmups": 80,
+    "repetitions": 2,
+    "profiler": {"enabled": true, "kind": "rocprofv3 kernel trace"}
+  }
+}

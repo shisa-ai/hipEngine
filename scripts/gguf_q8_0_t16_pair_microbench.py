@@ -53,7 +53,7 @@ def main() -> None:
     ap.add_argument(
         "--modes",
         default="exact,q8_1_dp4a,prequant_q8_1_dp4a",
-        help="Comma-separated: exact, rowtile2, rowtile4, q8_1_dp4a, prequant_q8_1_dp4a",
+        help="Comma-separated: exact, waveblock, rowtile2, rowtile4, q8_1_dp4a, prequant_q8_1_dp4a",
     )
     ap.add_argument(
         "--shape",
@@ -78,7 +78,7 @@ def main() -> None:
     rows_list = _parse_csv_ints(args.rows)
     threads_list = _parse_csv_ints(args.threads)
     modes = [part.strip() for part in args.modes.split(",") if part.strip()]
-    allowed_modes = {"exact", "rowtile2", "rowtile4", "q8_1_dp4a", "prequant_q8_1_dp4a"}
+    allowed_modes = {"exact", "waveblock", "rowtile2", "rowtile4", "q8_1_dp4a", "prequant_q8_1_dp4a"}
     unknown_modes = sorted(set(modes) - allowed_modes)
     if unknown_modes:
         raise ValueError(f"unknown modes: {', '.join(unknown_modes)}")
@@ -96,6 +96,7 @@ def main() -> None:
         gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+        gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out,
     )
     from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
     from tests._gguf_synthetic_weights import make_q8_0_weight
@@ -136,11 +137,13 @@ def main() -> None:
         out_b_buf = malloc(rows * out_b * 2, runtime=rt)
         try:
             def go(i: int) -> None:
-                if mode in {"exact", "rowtile2", "rowtile4"}:
+                if mode in {"exact", "waveblock", "rowtile2", "rowtile4"}:
                     if mode == "rowtile2":
                         exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out
                     elif mode == "rowtile4":
                         exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+                    elif mode == "waveblock":
+                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out
                     else:
                         exact_fn = gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
                     exact_fn(

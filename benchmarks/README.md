@@ -837,6 +837,10 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **gfx1151 Q8T16 wave/block indexing:** the [2026-07-12 paired-order microbenchmark](results/2026-07-12-gfx1151-q8-t16-waveblock-micro.json)
+  measures the production-shaped dual-split leaf at **136.415 -> 132.175 us**
+  median (**-3.108%**) with bit-identical outputs and unchanged occupancy. It
+  remains diagnostic only until the production p512/d128 model gate passes.
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900
