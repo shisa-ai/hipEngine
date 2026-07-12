@@ -2710,36 +2710,47 @@ def _tokenizer_eos_id(tokenizer: Any | None) -> int | None:
     return ids[0] if ids else None
 
 
-# Chat-model end-of-turn tokens, in priority order. ``<|im_end|>`` is the
-# ChatML/Qwen turn terminator the model actually emits (and the ``eos_token``
-# declared by these tokenizers); ``main`` only looked up ``<|endoftext|>``, so
-# chat turns never hit EOS and ran to ``max_tokens``. ``</s>`` covers the
-# Llama-2 / Mistral family. ``<|im_start|>`` is a turn *start* marker, not an
-# end token, so it is deliberately excluded.
+# Qwen end-of-turn tokens, in priority order. The low-level ``tokenizers``
+# object does not expose generation_config.json, so keep this model-specific
+# fallback until special-token metadata is supplied by the model plugin.
+# ``<|im_start|>`` is deliberately excluded because it starts a turn.
 _EOS_TOKEN_CANDIDATES: tuple[str, ...] = (
     "<|im_end|>",
     "<|endoftext|>",
-    "</s>",
 )
 
 
+def _normalize_eos_token_ids(value: Any) -> tuple[int, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        values = (value,)
+    else:
+        try:
+            values = tuple(value)
+        except TypeError:
+            values = (value,)
+    normalized: list[int] = []
+    for raw_value in values:
+        try:
+            token_id = int(raw_value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if token_id >= 0 and token_id not in normalized:
+            normalized.append(token_id)
+    return tuple(normalized)
+
+
 def _tokenizer_eos_ids(tokenizer: Any | None) -> tuple[int, ...]:
-    """All EOS token ids for ``tokenizer``: explicit attr, then candidates."""
+    """Return explicit EOS ids followed by Qwen tokenizer fallbacks."""
     if tokenizer is None:
         return ()
-    found: list[int] = []
-    attr_id = getattr(tokenizer, "eos_token_id", None)
-    if attr_id is not None:
-        found.append(int(attr_id))
+    found = list(_normalize_eos_token_ids(getattr(tokenizer, "eos_token_id", None)))
     token_to_id = getattr(tokenizer, "token_to_id", None)
-    if callable(token_to_id):
-        for candidate in _EOS_TOKEN_CANDIDATES:
-            try:
-                value = token_to_id(candidate)
-            except Exception:
-                value = None
-            if value is not None and int(value) not in found:
-                found.append(int(value))
+    for candidate in _EOS_TOKEN_CANDIDATES:
+        value = _lookup_token_id(token_to_id, candidate)
+        if value is not None and value not in found:
+            found.append(value)
     return tuple(found)
 
 

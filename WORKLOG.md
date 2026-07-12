@@ -152560,3 +152560,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   metric, suite, and README-sync tests; `git diff --check`; README block sync;
   both compact JSON files; both recorded patch SHA-256 values; and the earlier
   fresh-clone ordered patch replay/combined-diff equality check.
+
+## 2026-07-12 - Recognize Qwen chat EOS sets in PARO generation
+
+- Integrated and hardened GitHub PR #3 from source commit `1dc95be8`. The
+  shipped `tokenizers.Tokenizer.from_file()` object has no `eos_token_id`
+  attribute, so the old PARO helper always selected `<|endoftext|>` (`248044`)
+  and did not stop when Qwen chat emitted `<|im_end|>` (`248046`). The installed
+  `Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` fixture independently confirms
+  `generation_config.json` EOS `[248046, 248044]` and tokenizer EOS
+  `<|im_end|>`.
+- PARO EOS discovery now preserves normalized explicit scalar or sequence ids,
+  then resolves only the two Qwen fallback markers through callable or mapping
+  `token_to_id` interfaces. Invalid/negative ids are ignored, duplicates retain
+  first-seen priority, and unrelated `</s>` plus the turn-start marker
+  `<|im_start|>` are not inferred as EOS. The primary `248046` continues into
+  the single-id sampler request contract; both Qwen ids terminate host-side
+  generation. The string fallback is tracked in `docs/REFACTOR.md` until model
+  plugins supply authoritative special-token metadata.
+- Added portable `tokenizers.Tokenizer` coverage, scalar/sequence normalization,
+  mapping lookup, explicit-request preservation, and real-checkpoint config
+  integration. Upgraded the generator regression so a prefill-produced
+  `<|im_end|>` must terminate before decode and report `reason=eos`,
+  `eos_token_id=248046` rather than running to the length limit.
+- Validation on the isolated PR worktree after merging current `main`:
+  `python3 -m pytest tests/test_qwen35_paro_tokenizer_eos.py
+  tests/test_generation_qwen35_paro.py tests/test_sampling.py
+  tests/test_generation_registry.py -q` passed; `python3 -m compileall -q
+  hipengine tests scripts`, `python3 scripts/smoke.py --mode registry`,
+  `python3 scripts/smoke.py --mode cpu-fixtures`, and `git diff --check` passed.
+  The complete declared environment run `uv run --extra dev python -m pytest
+  -q` reached 100% with exit 0 and only the existing Starlette deprecation and
+  NumPy overflow warnings.
+- The standalone default `python3 scripts/check_fixtures.py` remains red on the
+  differently shaped `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`
+  (`KeyError: expected`) after four passing fixtures; the identical failure was
+  reproduced on unmodified `main`. The supported `cpu-fixtures` smoke passes,
+  and this host-only EOS change does not touch fixture or kernel math.
