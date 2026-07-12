@@ -152069,3 +152069,9 @@ graphless decode launch-collapse path without regressing target/serial parity.
   scope as llama.cpp whole-device GTT. No metric or evidence status changed.
 - `python3 scripts/sync_benchmark_readme.py --check` and `git diff --check`
   pass.
+
+## 2026-07-12 - Credit dedicated gfx1151 profiling hardware
+
+- Added the requested one-line root README callout thanking Framework for
+  sending a dedicated Framework Desktop Strix Halo motherboard for this
+  profiling and tuning work. Benchmark claims and metrics are unchanged.
