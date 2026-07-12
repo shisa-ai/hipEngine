@@ -210,7 +210,7 @@ correctness contracts.
 | Priority | ID | Work package | Current state | Exit / handoff gate |
 | ---: | --- | --- | --- | --- |
 | 0 | `SOL-R0` | Reproduce, bisect, and recover the recent PARO decode regression across the point-release matrix while preserving the correctness/verification fixes. | `open`; **next-point-release blocker** | A clean matched known-good/current A/B names the first performance-changing revision or policy; every affected default route recovers its exact non-regressive wins, and the release matrix passes hidden/state/KV/token plus wall-time gates. |
-| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery retained at all six shapes; 4K selected-region profile names the next diagnostic | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
+| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery retained at all six shapes; scoped AOTriton queue isolation closes the 4K residual; 32K-128K refresh pending | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
 | 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `open after R3`; RED fixture work may start earlier | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or G8. |
@@ -266,8 +266,12 @@ PARO snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV,
 repeated token `9707`, right-sized sessions, graph-replay decode, two discarded
 plus five measured repetitions, TheRock HIP 7.15 / clang `aa451e1f`, and TuneD
 `accelerator-performance`. The clean control is detached `240c5daf`; the clean
-exact candidate is detached `9944e481`. The 128K five-run control/candidate
-sweep is complete.
+six-shape exact candidate is detached `9944e481`. The 128K five-run
+control/candidate sweep is complete. The subsequent 4K-only queue-isolation
+control/candidate is clean detached `01e2cec5`; it supersedes the 4K row only.
+Because the new scheduling also applies to current 4096-row long-context
+attention chunks, the 32K-128K numbers remain pre-isolation snapshots until
+their long sweep is refreshed.
 
 Keep four checkpoints distinct. The June 15 old diagnostic used one measured
 run and the former all-256 route; it is history, not a promotion control. The
@@ -300,6 +304,20 @@ W4; it is an external throughput target, not a same-math control.
 | 32K/128 | `50.368` | `50.362` | `50.307` | `50.351` | +0.09% |
 | 64K/128 | `41.966` | `42.032` | `42.038` | `42.149` | +0.26% |
 | 128K/128 | `30.286` | `30.316` | `30.320` | `30.371` | +0.17% |
+
+###### Final 4K queue-isolation retention
+
+| Metric | Prior retained (`9944e481`) | Same-commit control (`01e2cec5`, isolation off) | Current default (`01e2cec5`) | Default vs control | Default vs prior |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Prefill tok/s | `854.346` | `885.141` | **`1089.031`** | **+23.03%** | **+27.47%** |
+| Decode tok/s | `62.765` | `62.705` | `62.715` | +0.017% | -0.08% |
+| Tracked peak GiB | `19.026` | `19.026` | `19.026` | `0.000` | `0.000` |
+
+This is a right-sized 4K/128 session with two discarded warmups and five
+measured repetitions. The candidate range is `1070.490..1091.709 tok/s`; the
+same-commit control range is broader at `826.061..898.713 tok/s`, but the
+selection is corroborated by an independent clean `c3a03ed1` A/B
+(`883.600 -> 1114.634 tok/s`, +26.15%) and the isolated-kernel replay below.
 
 The retained candidate is intentionally narrower than the old all-256 route.
 The gfx1151 architecture overlay changes only linear-attention and MoE layer
@@ -335,14 +353,15 @@ Correctness selected that narrower policy:
   policy oracle above proves the candidate delta while that pre-existing
   fixture/snapshot mismatch remains separate work.
 
-The recovery is not uniformly incomplete. Relative to the old diagnostic, the
-new exact path is **+19.17% at 512**, **+13.23% at 1K**, **-19.57% at 4K**,
-**-7.45% at 32K**, **-0.54% at 64K**, and **+2.55% at 128K**. Relative to the
-published llama.cpp HIP prefill row, it is **+7.43%**, **+15.83%**, **-15.35%**,
-**+2.35%**, **+7.98%**, and **+11.82%**, respectively. Thus 4K is the clear
-residual regression; 32K is a smaller historical gap but already beats
-llama.cpp HIP, while 64K/128K are recovered. Decode is unchanged within
-`-0.25%..+0.26%`; this is a prefill-only change.
+Relative to the old diagnostic, the current retained rows are **+19.17% at
+512**, **+13.23% at 1K**, **+2.52% at 4K**, **-7.45% at 32K**, **-0.54% at
+64K**, and **+2.55% at 128K**. Relative to the published llama.cpp HIP prefill
+row, they are **+7.43%**, **+15.83%**, **+7.91%**, **+2.35%**, **+7.98%**, and
+**+11.82%**, respectively. The 4K residual is therefore closed and PARO is the
+raw-throughput leader at that shape. The 32K-128K comparisons still use the
+`9944e481` pre-isolation snapshots and must not be attributed to `01e2cec5`
+until refreshed. Decode is unchanged within the matched noise envelope; this
+is a prefill-only change.
 
 The current implementation couples `full_attn_query_chunk_size` to the outer
 chunk for the entire full-attention layer. Reducing it to 256 therefore chunks
@@ -386,32 +405,42 @@ at about `170-186 us/chunk` for every linear layer. This is a downstream
 execution cliff triggered at the same layer boundary as the correctness split,
 not evidence that the attention core is the remaining hot family.
 
-The conv body performs four FP32 products followed by precise
-`value / (1 + expf(-value))`. A valid post-full-attention activation domain
-driving the precise `expf` slow path is therefore the leading *hypothesis*,
-not yet a finding; scratch placement or another state carried across the full
-layer remains possible. A no-source-change diagnostic that forced the existing
-workspace release policy at every layer-type transition was exact at the
-generated-preview boundary but slowed the 4K screen from `854.346` to
-`805.201 tok/s` (-5.75%). Repeated free/allocation is not a usable fix, though
-that wall result alone does not isolate allocator cost from convolution time.
+The follow-up isolation rejects the activation-domain hypothesis. Exact
+layer-2/layer-4 FP32 accumulators span `-13.584869..4.723076` and
+`-7.517517..4.157738`; all `2,097,152` values per slice are finite and none lie
+outside `+/-16`. Crossing activation and weight captures does not move the
+cliff. Releasing the whole prefill workspace also does not recover it.
 
-The next bounded work is diagnostic, before a stage-split implementation:
+The transition is queue-local and occurs inside AOTriton dispatch. Replaying
+the identical captured convolution measures `120.936 us` before layer 2,
+`118.018 us` after layer-3 K/V append, and `1834.637 us` immediately after
+layer-3 AOTriton on the same stream. A fresh replay stream measures
+`118.385 us`; running AOTriton on a dedicated nonblocking stream and returning
+to the original stream measures `119.093 us`. The exact 4096-query AOTriton
+kernel reports `2560` bytes of scratch, while the numerically rejected
+full-layer 256-row experiment reports only `992/1008` bytes and does not poison
+later convolution execution. ROCr's documented persistent per-queue scratch
+assignment is a plausible mechanism, but the upstream ROCr/AOTriton root cause
+remains an inference rather than a concluded compiler defect.
 
-1. Capture a small histogram/tap of the convolution accumulator immediately
-   before SiLU for an exact layer-2 and layer-4 chunk, then replay the same
-   kernel/input to confirm whether runtime follows the value distribution.
-2. If the precise-`expf` domain explains the cliff, test only saturation-domain
-   exact shortcuts first and require bit-exact conv output plus final hidden,
-   Conv/GDN, K/V, and token hashes. `__expf`/fast-math is a relaxed numerical
-   candidate, not an exact default.
-3. If it does not, profile a preallocated/separate scratch owner across the
-   first full-to-linear transition. Do not retry timed `hipFree`/`hipMalloc`
-   churn.
-4. Keep decoupled full-size AOTriton reduction plus 256-row pre/post/MoE
-   staging behind the layer-3 prepared-Q/K/V/gate through MoE stage oracle;
-   it is now second-line because the profile did not name AOTriton as the
-   residual bottleneck.
+The retained default therefore keeps all pre/post work on the caller stream
+and sends only AOTriton query rows `>=512` through one lazy session-owned
+nonblocking stream linked by two reusable HIP events. The proven-safe 256-row
+bucket stays on the caller stream, so the established 512/1K route is
+unchanged. `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0` remains the
+rollback control. Disabling AOTriton entirely is rejected: the 4K screen falls
+from `849.557` to `270.656 tok/s` with the same final token.
+
+The final clean differential gate samples the same seed `13743`, final-hidden
+SHA-256 `f2fd15eef23018a8cc4a4832a76491171e0ec3a434c5d640b7af3496c45d2678`,
+and aggregate persistent-state SHA-256
+`c2328617d0bd6512976e6c8a332be2827fe4f87ec4a7368d9e55523e335d2c5f`;
+all 30 Conv/GDN and 10 live K/V families match with zero mismatch paths.
+Retained evidence is
+[`2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`](../benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json).
+The remaining bounded follow-up is the right-sized 32K/64K/128K refresh, then
+gfx1100 validation before transferring this scheduling policy as a W7900
+performance claim.
 
 #### R2: Exact GGUF MTP
 

@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "mode": "paro_prefill_aotriton_stream_isolation",
+  "measured_revision": "01e2cec5b566773a5298367a537aa14087c5e789",
+  "implementation": {
+    "default": "one lazy nonblocking AOTriton stream with main-to-AOT and AOT-to-main reusable HIP events",
+    "selection": "isolate AOTriton query rows >=512; keep the proven-safe 256-row bucket on the caller stream",
+    "rollback_env": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0",
+    "production_files": [
+      "hipengine/runtime/qwen35_paro.py",
+      "hipengine/runtime/qwen35_paro_runner.py"
+    ]
+  },
+  "platform": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "rocm": "HIP 7.15.0-0000000",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "fingerprint_algorithm": "sha256-directory-manifest-v1"
+  },
+  "workload": {
+    "prompt_source": "repeated token ID 9707",
+    "prompt_tokens": 4096,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "warmups": 2,
+    "measured_repetitions": 5,
+    "prefill_chunks": {
+      "linear": 256,
+      "moe": 256,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024
+    },
+    "aotriton_min_prompt_tokens": 512,
+    "decode_graph_replay": true
+  },
+  "performance": {
+    "control_same_stream": {
+      "prefill_tok_s": {
+        "median": 885.1409518078208,
+        "min": 826.0611682389762,
+        "max": 898.7133981029995,
+        "mean": 871.5645859442745,
+        "stdev": 31.605543213772226,
+        "count": 5
+      },
+      "decode_tok_s": {
+        "median": 62.70451564580027,
+        "min": 62.54243595890024,
+        "max": 62.72459524476161,
+        "count": 5
+      },
+      "tracked_peak_allocated_gib": 19.026067212224007,
+      "hip_used_peak_sampled_gib": 18.28833770751953
+    },
+    "candidate_isolated_stream": {
+      "prefill_tok_s": {
+        "median": 1089.031241389256,
+        "min": 1070.4903139460248,
+        "max": 1091.7090732021854,
+        "mean": 1085.41954753232,
+        "stdev": 8.525346620816801,
+        "count": 5
+      },
+      "decode_tok_s": {
+        "median": 62.715418028862565,
+        "min": 62.71008776551237,
+        "max": 62.71995502366333,
+        "count": 5
+      },
+      "tracked_peak_allocated_gib": 19.026067212224007,
+      "hip_used_peak_sampled_gib": 18.28925323486328
+    },
+    "candidate_vs_control": {
+      "prefill_percent": 23.034782106172756,
+      "decode_percent": 0.017386918549666674,
+      "tracked_peak_allocated_gib_delta": 0.0
+    },
+    "candidate_vs_prior_rows": {
+      "retained_exact_854_346_percent": 27.469578061962707,
+      "old_diagnostic_1062_248_percent": 2.52137367067351,
+      "llamacpp_hip_q4_k_m_1009_240_percent": 7.906072033337552,
+      "llamacpp_vulkan_q4_k_m_1016_580_percent": 7.126959156117163,
+      "comparability_note": "PARO W4 versus llama.cpp Q4_K_M is an external raw-throughput target, not a same-math A/B."
+    }
+  },
+  "correctness": {
+    "status": "accepted",
+    "sampled_seed_token_id": 13743,
+    "final_hidden_sha256": "f2fd15eef23018a8cc4a4832a76491171e0ec3a434c5d640b7af3496c45d2678",
+    "persistent_state_aggregate_sha256": "c2328617d0bd6512976e6c8a332be2827fe4f87ec4a7368d9e55523e335d2c5f",
+    "mismatch_paths": [],
+    "compared_families": {
+      "linear_conv_gdn": 30,
+      "full_attention_kv": 10
+    },
+    "five_run_final_token_ids": {
+      "control": [17, 17, 17, 17, 17],
+      "candidate": [17, 17, 17, 17, 17]
+    }
+  },
+  "isolation_diagnostics": {
+    "accumulator_domain": {
+      "layer_2_min": -13.584869,
+      "layer_2_max": 4.723076,
+      "layer_4_min": -7.517517,
+      "layer_4_max": 4.157738,
+      "finite_values_per_slice": 2097152,
+      "values_outside_plus_minus_16": 0,
+      "conclusion": "precise expf overflow/subnormal-domain hypothesis rejected"
+    },
+    "identical_conv_replay_us": {
+      "before_layer_2": 120.936,
+      "after_layer_3_kv_append": 118.018,
+      "after_layer_3_aotriton_same_stream": 1834.637,
+      "after_layer_3_aotriton_fresh_replay_stream": 118.385,
+      "aotriton_isolated_then_default_replay": 119.093
+    },
+    "aotriton_kernel_scratch_bytes": {
+      "query_rows_4096": [2560],
+      "query_rows_256": [992, 1008]
+    },
+    "aotriton_on_off_4k_prefill_tok_s": {
+      "on": 849.5574867653602,
+      "off": 270.655662668,
+      "conclusion": "retain AOTriton and isolate its queue; do not replace it"
+    },
+    "root_cause_status": "Queue-local high-scratch interaction is proven; ROCr persistent scratch assignment is a plausible mechanism, not yet an upstream root-cause conclusion."
+  },
+  "scope": {
+    "retained_workloads": ["4K/128"],
+    "unchanged_safe_query_rows": 256,
+    "unchanged_published_shapes": ["512/128", "1K/128"],
+    "refresh_pending": ["32K/128", "64K/128", "128K/128"],
+    "gfx1100_status": "unverified; validate before transferring the scheduling policy as a gfx1100 performance claim"
+  },
+  "commands": {
+    "control": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0 python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-aot-isolation-20260712/final-control-4K-128.json",
+    "candidate": "python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json",
+    "exactness": "python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length 4096 --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json /tmp/hipengine-aot-isolation-20260712/final-exactness-4K.json"
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-control-4K-128.json",
+      "sha256": "4101d4c66cf53df8fbcee62c8d0942f75a4728b1ecc3e750eac164ada1a83f0c"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json",
+      "sha256": "8c92a0c22e8f0a4d84631e4e7d4d2d9713aac3b0e76db334d76905b38957b47c"
+    },
+    {
+      "path": "/tmp/hipengine-aot-isolation-20260712/final-exactness-4K.json",
+      "sha256": "b6cda16666b72c7e672cf916c03a8c79e2087313e42b061fcee57ca8d6072e53"
+    }
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T10:06:59.768216+00:00",
+    "repo_root": "/tmp/hipengine-aot-isolation-clean",
+    "hipengine_commit": "01e2cec5b566773a5298367a537aa14087c5e789",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine", "paro",
+      "--model", "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--backend", "hip_gfx1151",
+      "--shared-expert-format", "packed_paro_w4",
+      "--token-id", "9707",
+      "--workloads", "4K/128",
+      "--warmup-runs", "2",
+      "--measured-runs", "5",
+      "--warmup-decode-tokens", "4",
+      "--compiler-version-file", "/tmp/hipengine-sol-r1-20260712/hipcc-version.txt",
+      "--require-cached-build",
+      "--attn-aotriton-min-tokens", "512",
+      "--graph-replay-decode",
+      "--json", "/tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "tuned_profile": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single right-sized resident session; two discarded warmups; five measured repetitions; separate prefill/decode wall; graph capture excluded",
+    "warmups": 2,
+    "repetitions": 5,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "notes": [
+    "The control range is broad under the repeated-run protocol; the median selection is corroborated by a second clean c3a03ed1 A/B (+26.15%) and the isolated kernel replay.",
+    "The candidate's 4K result supersedes only the old PARO 4K row. Published 512/1K rows retain the original safe 256-query path; 32K-128K must be refreshed before attributing a new long-context rate to this change.",
+    "AOTriton remains required: disabling it is approximately 3.14x slower at 4K in the diagnostic screen."
+  ]
+}

@@ -152183,3 +152183,48 @@ graphless decode launch-collapse path without regressing target/serial parity.
   decode-state/resident-layout/prefill-policy/diagnostic tests pass. The 4K
   clean A/B must be repeated at the scoped commit before final retention; long
   32K-128K throughput refresh remains explicit follow-up.
+
+## 2026-07-12 - Retain scoped AOTriton queue isolation at 4K
+
+- Final measurements came from clean detached `01e2cec5`, Radeon 8060S/gfx1151,
+  TheRock HIP `7.15.0-0000000` / clang `aa451e1f`, kernel
+  `7.1.3-2-cachyos`, TuneD `accelerator-performance`, Qwen3.6-35B-A3B PARO
+  snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, W4 PARO, BF16 KV,
+  repeated token `9707`, right-sized 4K/128 sessions, graph decode, two
+  discarded warmups, and five measured repetitions.
+- Same-commit control command:
+  `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0 python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-aot-isolation-20260712/final-control-4K-128.json`.
+  It measured prefill median `885.140952 tok/s`
+  (`826.061168..898.713398`) and decode median `62.704516 tok/s`.
+- Candidate command was identical without the rollback env and wrote
+  `/tmp/hipengine-aot-isolation-20260712/final-candidate-4K-128.json`. It
+  measured prefill median `1089.031241 tok/s`
+  (`1070.490314..1091.709073`), **+23.0348%** matched and **+27.4696%** versus
+  the prior retained `854.346`; decode was `62.715418 tok/s` (+0.0174%
+  matched). Tracked peak was identical at `19.026067 GiB`; sampled HIP peak
+  was `18.288338/18.289253 GiB` control/candidate. Every measured final ID was
+  `17`, and previews matched.
+- Exactness command:
+  `python3 scripts/paro_prefill_aotriton_stream_exactness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --prompt-length 4096 --token-id 9707 --compiler-version-file /tmp/hipengine-sol-r1-20260712/hipcc-version.txt --require-cached-build --json /tmp/hipengine-aot-isolation-20260712/final-exactness-4K.json`.
+  Control/candidate share seed `13743`, final-hidden SHA-256
+  `f2fd15eef23018a8cc4a4832a76491171e0ec3a434c5d640b7af3496c45d2678`,
+  and aggregate persistent-state SHA-256
+  `c2328617d0bd6512976e6c8a332be2827fe4f87ec4a7368d9e55523e335d2c5f`;
+  all 30 Conv/GDN and 10 live K/V families match with no mismatch paths.
+- Raw SHA-256 is `4101d4c6...f0c` control, `8c92a0c2...47c` candidate, and
+  `b6cda166...e53` exactness. Compact retained evidence is
+  `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`.
+  Provenance is clean and the artifact's canonical model identity validates.
+- Retention scope is 4K/128. The threshold keeps the known-safe 256-query
+  512/1K route unchanged. Current 32K-128K profiles use 4096-query chunks and
+  now isolate too, so their published `9944e481` numbers remain explicitly
+  pre-isolation snapshots pending a long sweep; no new long-context rate is
+  claimed. gfx1100 remains unverified for this scheduling policy.
+- Rollup validation initially exposed a stale test that still required the
+  superseded July 11 PARO column. `tests/test_benchmark_readme_sync.py` now
+  constructs the documented composite from the July 11 matched GGUF/llama
+  artifact, the six-shape PARO recovery artifact, and the 4K isolation
+  artifact while preserving exact value checks. GREEN:
+  `PYTHONPATH=. pytest -q tests/test_benchmark_readme_sync.py tests/test_benchmark_provenance.py`
+  (`10 passed`), `python3 scripts/sync_benchmark_readme.py --check`, artifact
+  canonical-provenance validation, and `git diff --check`.

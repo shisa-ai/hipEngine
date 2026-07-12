@@ -858,10 +858,12 @@ should be boring.
   4096-row AOTriton to `119 us` when AOTriton uses the isolated queue. The
   clean 256-row AOTriton trace uses much less scratch (`992/1008` versus
   `2560` bytes) and does not trigger the cliff. The first
-  production 4K screen moves `854.346 -> 1123.620 tok/s` (+31.52%) with
-  identical sampled seed, final hidden, all 30 Conv/GDN state families, and
-  all 10 live K/V families. Formal clean retention is still pending.
-- Remove when: the clean gfx1151 rollup is retained and either gfx1100 is
-  validated with the same scheduling or the ROCr/AOTriton queue-scratch issue
-  is fixed upstream. Then remove the opt-out and its duplicate same-stream
-  route; keep one proven scheduling policy.
+  final clean 4K/128 A/B moves `885.141 -> 1089.031 tok/s` (+23.03%) with
+  identical sampled seed, final hidden, all 30 Conv/GDN state families, all
+  10 live K/V families, and unchanged `19.026 GiB` tracked peak. Retained
+  evidence: `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`.
+- Remove when: 32K-128K are refreshed, gfx1100 is validated with the same
+  scheduling or explicitly excluded, and either the ROCr/AOTriton queue-scratch
+  issue is fixed upstream or the rollback has survived one release cycle.
+  Then remove the opt-out and its duplicate same-stream route; keep one proven
+  scheduling policy.
