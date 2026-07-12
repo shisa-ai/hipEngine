@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: see git log.
+Last updated: 2026-07-13.
 
 This document is the working guide for turning the current single-request
 resident runtime into a vLLM-style continuous-batching serving path on a
@@ -76,24 +76,30 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 ## Current answer
 
-**hipEngine has most host-side continuous-batching scaffolding, but gfx1151
-native PARO batching is correctness-red against the independent c1 contract.**
-The July c2-c8 generated-token rows used a batch-shaped width-1 reference. At
-`0c184517` with `hipengine_dirty=false`, the c8-to-c1 gate accepts the serial c1
-decode bridge on 8/8 rows and rejects native c8 on 0/8 rows at generated token
-index 2. Production greedy and sampled batches use exact width-1 sessions; the
-schema-1 native profile is not routing-eligible.
+**hipEngine has host-side batching scaffolding, not a production continuous
+model loop, and its two production model paths are asymmetric.** Native PARO
+batching remains correctness-red against independent c1, so production greedy
+and sampled PARO batches use exact width-1 sessions. GGUF now has a production
+packed-prefill/packed-decode route: on 2026-07-13 its first executable c>N gate
+matched independent c1 generated tokens for all 10 natural prompt-suite rows in
+three c10 repeats on gfx1151. That GGUF result is a correctness diagnostic, not
+a retained throughput row, and does not yet replace hidden/state/KV,
+ragged/shrinking/sparse-slot, long-context, or server-lifecycle gates.
 
 What is in place:
 
 - The server and `LLM.generate()` paths have prompt-list batching, `n>1`
   lowering, streaming through per-request queues, request ids, per-row seeds,
   and Prometheus metrics hooks.
-- `SubmitPollTextGenerator` and `ResidentEngineLoop` provide a persistent
-  `submit`/`poll`/`cancel` driver around `ResidentBatchScheduler` for tests and
-  host integration, with `RECLAIM → ADMIT → PREFILL/DECODE` tick policy,
-  per-request completion metadata, graph-bucket bookkeeping, and unified cancel,
-  disconnect, EOS, max-token, and timeout reclaim.
+- `ResidentEngineLoop` provides a persistent `submit`/`poll`/`cancel` driver
+  around `ResidentBatchScheduler` for tests and host integration. The public
+  `SubmitPollTextGenerator`, however, creates a per-call loop and runs the inner
+  model generation as one batch; it is not yet the long-lived production owner
+  described in the destination state.
+- Coalesced HTTP cancellation is isolated at the group boundary: one cancelled
+  client no longer aborts unrelated rows. Until runners consume row-scoped
+  cancellation tokens, that cancelled row finishes as discarded work; the
+  shared backend call is aborted only after every grouped request is cancelled.
 - The KV/prefix scaffolding exists: `ChunkedKVPool` grows/shrinks in chunks,
   keeps append-only block ids, reports current admission capacity, supports
   shared-prefix refcounts and copy-on-write forks, and `RadixCache` indexes
@@ -111,6 +117,13 @@ What is still not green:
   gates must then pass against single-request `prefill_native()+step()` before
   a schema-2 profile can select native execution. The dated notebook below
   records the earlier batch-shaped-oracle bisections.
+- GGUF packed AR is generated-token-green on the full 10-prompt category suite
+  for three c10 repeats at eight output tokens, with `native_caware_decode=true`
+  and no serial fallback. Artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`.
+  Promotion remains blocked on hidden/Conv/GDN/KV equality, repeated
+  ragged/shrinking/sparse-slot transitions, long-context behavior, server-level
+  cancellation/admission coverage, and retained profiler/scaling evidence.
 - BF16 primitive
   c=2/4/8 KV append/full-attention correctness passes, and generated-token
   equality passed the former batch-shaped reference for the c=2/c=4/c=8
@@ -2058,14 +2071,14 @@ Levers, in priority:
 
 | Layer | Current status | Evidence / code | Blocks retained c>N |
 | --- | --- | --- | --- |
-| OpenAI server | Non-streaming compatible requests still coalesce through `_GenerationBatcher`; streaming and non-streaming now share request accounting, `n>1` lowers to multiple choices with request ids, and `/metrics` is available behind `--metrics prometheus` / `HIPENGINE_METRICS=prometheus`. | `hipengine/server/api.py:_GenerationBatcher`, `_choice_request_id`, `_row_seeds_for_request`, `_render_prometheus_metrics`; `pytest -q tests/test_server_api.py -q`. | Coalescer can be demoted once native c>N equality/perf is green; no retained throughput claim comes from HTTP coalescing alone. |
-| Public `LLM.generate()` / loop adapter | The public generator can be wrapped by `SubmitPollTextGenerator`, preserving outputs while exercising submit/poll semantics in tests. | `hipengine/generation/engine_loop.py:SubmitPollTextGenerator`; `pytest -q tests/test_generation_batch_scheduler.py -q`. | Native Qwen/PARO c>N decode equality and retained benchmark evidence. |
-| Engine loop / scheduler | `ResidentEngineLoop` and `ResidentBatchScheduler` own pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, completion routing, and unified reclaim. | `hipengine/generation/engine_loop.py:ResidentEngineLoop`; `hipengine/generation/batch_scheduler.py`; scheduler tests. | Runtime equality/perf gates, not host-loop shape. |
+| OpenAI server | Compatible non-streaming requests coalesce into static prompt-list calls through `_GenerationBatcher`; streaming and non-streaming share request accounting, `n>1` lowers to choices with request ids, and `/metrics` is opt-in. A cancelled member no longer aborts live neighbors; all-member cancellation still stops the shared call. | `hipengine/server/api.py:_GenerationBatcher`, `_CompositeGenerationCancellationToken`; `pytest -q tests/test_server_api.py -q`. | Row-scoped cancellation/reclaim and mid-generation admission still require the model-owning loop; HTTP coalescing alone is not continuous batching. |
+| Public `LLM.generate()` / loop adapter | `SubmitPollTextGenerator` preserves request ids and submit/poll-shaped accounting, but constructs one loop per API call and delegates the complete batch to the inner generator in a single decode work item. | `hipengine/generation/engine_loop.py:SubmitPollTextGenerator`; `pytest -q tests/test_generation_batch_scheduler.py -q`. | Replace the adapter scaffold with one long-lived model runner that advances and reclaims rows token by token. |
+| Engine loop / scheduler | `ResidentEngineLoop` and `ResidentBatchScheduler` implement pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, completion routing, and reclaim in host tests. They are not yet the owner of production PARO/GGUF model state. | `hipengine/generation/engine_loop.py:ResidentEngineLoop`; `hipengine/generation/batch_scheduler.py`; scheduler tests. | Runtime integration plus equality/lifecycle/performance gates, not more host-only shape. |
 | Prefill | BF16 compact/native prompt-list prefill is live; scheduler tests cover chunk/policy plumbing. INT8 retained c>N prefill remains blocked. | `prefill_native_packed`, `CompactPromptSlab`, `scripts/qwen35_batch_packed_prefill_correctness.py`; `tests/test_generation_batch_scheduler.py`. | INT8 c>N parity and retained end-to-end equality. |
-| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. c=2/c=4/c=8 512/128 generated equality is green with the no-selected auto `batch` projection path (128-thread batch-GEMV QKV/Z under native metadata), native segmented linear state, batch-GEMV/Marlin linear output, grouped-compact MoE using compact-row selected GEMV for c<=8 decode, c=2 native full-attention as one batch, and c=3/c=4/c=8 native full-attention rowchunk2 plus row-aware batch-GEMV full-attention output; retained-bench artifacts now drop the stale generated-equality and BF16/context<1024 full-attention support blockers only after embedding passing equality/native-context evidence. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | Projection-dispatch/retained evidence and retained benchmark/profiler evidence. |
+| Decode runtime | PARO production uses width-1 sessions because every native c2-c8 width fails independent-c1 sequence equality; a current c2/512/4 rerun diverges on the first decode transition. GGUF production has packed prefill and packed decode; the natural10 c10 diagnostic is generated-token-green for 3/3 repeats with no serial fallback. | PARO `step_batch_serial` / `step_batch_native`; GGUF `prefill_batch_native` / `step_batch_native`; P1/P2 artifacts; `2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`. | PARO needs a general exact c2 algorithm. GGUF needs hidden/state/KV and lifecycle gates before retained throughput. |
 | Sampler | `PerRowSamplingParams` and sampler blocks exist; native `batched_lm_head` now uses a row-aware `hipengine_batch_argmax_f32` launch and is evidence-gated by generated-token equality plus sampler provenance. The retained bench's no-flag c=2/4/8 diagnostic path now auto-attaches the repo-retained sampler equality artifacts so primary equality probes exercise the row-aware sampler instead of the older serial LM-head loop. | `hipengine/generation/batch_scheduler.py:PerRowSamplingParams`; `hipengine.dispatch.sampling`; `hipengine/kernels/hip_gfx1100/linear/lm_head.*`; `scripts/qwen35_batch_retained_bench.py`; `tests/test_lm_head_plan.py`; `tests/test_generation_batch_scheduler.py`. | Retained native throughput is still blocked by projection/dispatch/profiler/graph-replay gates, not by the sampler launch itself. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K long-context decode is labeled per-row fallback. | `scripts/qwen35_batch_correctness.py`; `/tmp/hipengine-multiloop-c{2,4,8}-correctness.json`; attention dispatch tests. | Row-aware split-K reducer; INT8 end-to-end gate. |
-| MoE / quant kernels | The c<=8 decode path now uses grouped-compact MoE without per-row selected-c1 replay: compact sorted expert rows run through selected AWQ GEMV for gate/up/down, the shared expert uses row-aware GEMV, and `lane_to_row` is cleared before rebuilding the inverse combine map. c=2/c=4/c=8 generated-token equality is green with all-grouped MoE, the c=2 layer-limit-40 hidden oracle is hidden/token green vs independent c=1 native-batch, and the retained-bench/hidden-bisect defaults now use grouped MoE for global/linear/full-attention subpaths. | `hipengine/runtime/qwen35_paro.py`; `tests/test_qwen35_decode_state.py`; `scripts/qwen35_batch_retained_bench.py`; `scripts/qwen35_batch_hidden_bisect.py`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-default-matrix/summary.json`. | Retained benchmark/profiler/scaling evidence; larger prefill/grouped WMMA throughput remains separate from the c<=8 decode correctness gate. |
+| MoE / quant kernels | PARO has row-aware/grouped diagnostic kernels, but none of the complete native c2-c8 algorithms passes the current independent-c1 sequence gate. GGUF Q4_K_M packed AR is token-equality-green on the natural10 diagnostic; the other GGUF template quants remain unexecuted under c>N. | PARO P1 exact catalog; GGUF executable c>N diagnostic and natural10 artifact. | Complete path-local hidden/state/KV equality first; only then profile grouped reuse or tune quant-specific kernels. |
 | KV pool | Chunked grow/shrink, append-only block ids, current admission capacity, prefix refcounts, and copy-on-write forks are implemented in host tests. | `hipengine/kvcache/pool.py:ChunkedKVPool`, `admit_with_shared_prefix`, `fork_copy_on_write`; `pytest -q tests/test_kvcache_policy.py -q`. | Device/runtime retained equality and perf, not the host allocator contract. |
 | Prefix / radix cache | `RadixCache` indexes block-aligned token prefixes; server exposes prefix-cache mode and `n>1` lowering uses distinct row seeds/request ids. | `hipengine/kvcache/radix.py:RadixCache`; `hipengine/server/api.py`; kvcache/server tests. | Broader retained coverage and future DMS/KVTC policy work; no flat prefix-LRU peer path. |
 | Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability, and the c=2/c=4/c=8 profiler preflights are captured as compact JSON rather than retaining raw rocprof dumps. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c{2,4,8}-profiler-preflight/profiler-c{2,4,8}.json`. | Accepted retained rows still need graph-replay profiler evidence and accepted benchmark rollup promotion. |
@@ -2452,9 +2465,9 @@ cell at c=2/4/8 are not c>N-eligible regardless of the engine-loop work.
 
 | (model, quant, KV) | c=1 long | c=2 512/128 | c=4 512/128 | c=8 512/128 |
 | --- | --- | --- | --- | --- |
-| Qwen3.5/PARO × w4_paro × BF16 | retained | eq_ok *(blocked fallback)* | eq_ok *(blocked fallback)* | eq_ok *(blocked fallback)* |
+| Qwen3.5/PARO × w4_paro × BF16 | retained | rejected_correctness *(native; production serial)* | rejected_correctness *(native; production serial)* | rejected_correctness *(native; production serial)* |
 | Qwen3.5/PARO × w4_paro × INT8/per-token-head | retained (capacity) | not_started | not_started | not_started |
-| GGUF × Q4_K × BF16 | retained | not_started | not_started | not_started |
+| GGUF × Q4_K × BF16 | retained | eq_ok *(token diagnostic only)* | eq_ok *(token diagnostic only)* | eq_ok *(chunked token diagnostic only)* |
 | GGUF × Q5_K × BF16 | retained | not_started | not_started | not_started |
 | GGUF × Q6_K × BF16 | retained | not_started | not_started | not_started |
 | GGUF × Q8_0 × BF16 | retained | not_started | not_started | not_started |
@@ -2465,9 +2478,10 @@ Status legend: `not_started`, `primitive_ok` (kernel correctness only),
 correctness fallbacks), `retained` (accepted retained row),
 `rejected_correctness` (equality failed).
 
-GGUF c>N coverage is required for the repo's namesake quant path. It can
-follow the Qwen3.5/PARO equality template once the engine loop and per-row
-sampler are live.
+The Q4_K cells summarize generated-token evidence only: the 2026-07-13 c10
+natural-suite diagnostic executes c4+c4+c2 packed chunks for three repeats and
+matches every independent c1 row. They do not satisfy the 512/128 protocol or
+hidden/state/KV/lifecycle/performance gates. Q5_K/Q6_K/Q8_0 remain template-only.
 
 ## Benchmark eligibility gates
 
@@ -3796,12 +3810,19 @@ levers" above and
       item remains open for retained aggregate scaling and full native c4/c8
       attention; c=2/c4/c8 projection dispatch now uses selected c-aware paths
       but is still not a retained throughput claim.
-- [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
+- [x] **C3.5 GGUF c>N diagnostic.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`
-      status with exact command. Evidence: `scripts/qwen35_batch_gguf_diagnostic.py`
-      emitted `/tmp/hipengine-gguf-c2-diagnostic.json` with `status=blocked`
-      and exact command `python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4`; the template also preserves
+      status with exact command. `scripts/qwen35_batch_gguf_diagnostic.py`
+      keeps CPU-safe template mode and now adds `--execute`, `--repeat-runs`,
+      and `--prompt-suite` for a real production packed-AR comparison against
+      independent c1. The gfx1151 Q4_K_M full 10-prompt category suite passes
+      all rows across three c10 repeats at eight output tokens with
+      `native_caware_decode=true` and no serial fallback; artifact:
+      `benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`.
+      This closes the generated-token diagnostic only; hidden/state/KV,
+      shrinking/sparse, long-context, Q5/Q6/Q8, profiler, and throughput gates
+      remain open. Template mode preserves
       `HIP_VISIBLE_DEVICES` in its native c>N and independent c=1 command labels
       for GPU1/XTX re-baseline runs. The c-sweep planner now has
       `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
@@ -3819,7 +3840,8 @@ levers" above and
       after each INT8 row, including stale c=8
       fixture/backend/decode/quant/artifact/env-prefix rejection and duplicate
       c=8 GGUF fixture/diagnostic flag rejection;
-      covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
+      covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`,
+      `test_gguf_cN_diagnostic_executes_independent_c1_equality`,
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C3.6 native LM-head/sampler launch.** Replace the per-row
@@ -4306,8 +4328,13 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
       projection throughput claim; covered by
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] Validate GGUF Q4_K/Q5_K/Q6_K/Q8_0 c=2/4/8 with the same gates.
-      Progress: `scripts/qwen35_batch_c_sweep.py --include-gguf` now plans
-      blocked GGUF c>N diagnostics for all four template quants at c>1 with
+      Progress: Q4_K_M now has an executable generated-token gate. The full
+      natural10 suite passes independent-c1 equality for three c10 repeats at
+      eight tokens through packed c4+c4+c2 chunks, with no serial fallback.
+      Hidden/state/KV, shrinking/sparse, long-context, and retained 512/128
+      gates are still missing, and Q5_K/Q6_K/Q8_0 remain unexecuted.
+      `scripts/qwen35_batch_c_sweep.py --include-gguf` also plans
+      blocked GGUF c>N templates for all four quants at c>1 with
       `HIP_VISIBLE_DEVICES` preserved in the command labels, and validates that
       summaries keep the template fixture, exact per-c quant order/set, and artifact filenames bound to those commands; this is planning
       coverage only and does not close the item because generated-token equality
@@ -4719,3 +4746,9 @@ The correct phrasing for current diagnostics is:
 > c>N scheduler serial bridge diagnostic: batch-shaped slots and KV metadata,
 > but active rows execute serially through the c=1 layer path. Aggregate
 > decode throughput remains roughly c=1, so the row is blocked/non-retained.
+
+For the new GGUF evidence:
+
+> GGUF packed c>N generated-token diagnostic: all natural-suite rows matched
+> independent c1 for the tested short horizon, with no serial decode fallback.
+> Hidden/state/KV lifecycle and retained throughput remain unproven.

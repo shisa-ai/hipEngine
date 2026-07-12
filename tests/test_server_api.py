@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -3997,6 +3998,9 @@ def test_generation_batcher_coalesces_speculative_mtp_with_request_tokens() -> N
         assert grouped_sampling.cancellation_token is not None
         assert grouped_sampling.cancellation_token.cancelled is False
         second_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is False
+        grouped_sampling.cancellation_token.raise_if_cancelled()
+        first_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
         assert grouped_sampling.cancellation_token.cancelled is True
         with pytest.raises(GenerationCancelled):
             grouped_sampling.cancellation_token.raise_if_cancelled()
@@ -4476,7 +4480,7 @@ def test_generation_batcher_keeps_different_deadlines_separate() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_coalesces_default_route_with_request_tokens() -> None:
+def test_generation_batcher_coalesces_default_route_without_cross_request_cancellation() -> None:
     async def run() -> None:
         fake = FakeLLM()
         first_token = GenerationCancellationToken()
@@ -4503,9 +4507,53 @@ def test_generation_batcher_coalesces_default_route_with_request_tokens() -> Non
         assert grouped_sampling.cancellation_token is not None
         assert grouped_sampling.cancellation_token.cancelled is False
         first_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is False
+        grouped_sampling.cancellation_token.raise_if_cancelled()
+        second_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
         assert grouped_sampling.cancellation_token.cancelled is True
         with pytest.raises(GenerationCancelled):
             grouped_sampling.cancellation_token.raise_if_cancelled()
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_live_neighbor_survives_member_cancellation() -> None:
+    class CancellationAwareLLM(FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+            self.resume = threading.Event()
+
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            self.started.set()
+            assert self.resume.wait(timeout=5.0)
+            assert sampling_params.cancellation_token is not None
+            sampling_params.cancellation_token.raise_if_cancelled()
+            return super().generate_detailed(prompts, sampling_params)
+
+    async def run() -> None:
+        fake = CancellationAwareLLM()
+        first_token = GenerationCancellationToken()
+        second_token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+        first_task = asyncio.create_task(
+            batcher.submit(("one",), SamplingParams(max_tokens=2, cancellation_token=first_token))
+        )
+        second_task = asyncio.create_task(
+            batcher.submit(("two",), SamplingParams(max_tokens=2, cancellation_token=second_token))
+        )
+
+        assert await asyncio.to_thread(fake.started.wait, 5.0)
+        first_token.cancel()
+        fake.resume.set()
+        first, second = await asyncio.gather(first_task, second_task)
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two"]
+        assert fake.calls[0][0] == ("one", "two")
 
     asyncio.run(run())
 

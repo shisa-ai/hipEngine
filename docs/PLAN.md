@@ -475,7 +475,8 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 | Question | Answer |
 |---|---|
 | Can current hipEngine run real c=8 PARO decode? | No retained native route. The former c=2/c=4/c=8 generated-token comparison used a batch-shaped width-1 oracle; independent-c1 testing fails native c8 at token index 2. Production fails closed to width-1 sessions. |
-| Does current hipEngine implement continuous batching? | Partially. The engine loop, scheduler, and OpenAI coalescer have batch-shaped request accounting, but mixed prefill/decode admission, compaction/reclaim, and retained c>N perf are not complete. |
+| Can current hipEngine run native GGUF c>N AR? | As a correctness diagnostic, yes. The production packed-prefill/packed-decode route matched independent c1 generated tokens for all 10 natural prompt-suite rows across three c10 repeats on gfx1151. This does not yet prove hidden/state/KV identity, sparse/shrinking lifecycle safety, long-context coverage, or retained throughput. |
+| Does current hipEngine implement continuous batching? | No production continuous loop yet. The host scheduler types are batch-shaped and the OpenAI worker coalesces a static arrival group, but `SubmitPollTextGenerator` creates a per-call scaffold whose inner model generation completes as one batch. Requests are not admitted into or reclaimed from a live model step loop mid-generation. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
@@ -498,10 +499,15 @@ Why the design is better positioned:
 
 Current blockers that keep c>N diagnostic rather than retained:
 
-- The public c=1 generator path remains separate from the c>N diagnostic
-  scheduler/bench path. Production serving still needs one continuous-batching
-  owner for admission, mixed prefill/decode work, slot compaction/reclaim,
-  sampler/output routing, and metrics.
+- The public loop adapter remains a host lifecycle scaffold around a complete
+  inner generation call. Production serving still needs one model-owning
+  continuous-batching loop for mid-generation admission, mixed prefill/decode
+  work, slot compaction/reclaim, per-row cancellation, sampler/output routing,
+  and metrics.
+- PARO native c2 remains correctness-red against independent c1 on the first
+  decode transition. GGUF now has a green multi-prompt generated-token
+  diagnostic, but hidden/Conv/GDN/KV identity, ragged/shrinking/sparse slots,
+  long context, and retained profiler/scaling gates are still open.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
