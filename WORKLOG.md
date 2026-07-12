@@ -152987,3 +152987,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `-0.9858 GiB`), increasing the 24 GiB margin from `0.0428` to `1.0287 GiB`.
   Raw diagnostic: `/tmp/hipengine-compact-prefill-table-256k-int8.json`.
   A clean-source confirmation is required before publishing the retained row.
+
+## 2026-07-13 — Add real-cache PARO KV format ablation harness
+
+- Added `scripts/qwen35_paro_kv_format_ablation.py` to capture sampled BF16
+  full-attention K/V distributions, calibrate clipping, estimate 256K format
+  memory, and rank candidate formats with teacher-forced model-logit gates
+  before adding production kernels. Candidate cache values are quantized and
+  reconstructed on the host, then written back into the BF16 resident cache.
+  The harness labels the limitation that each current-token row is BF16 during
+  its own attention and is round-tripped immediately afterward; every retained
+  candidate still needs a native runtime gate.
+- RED-first unit coverage checks writer-accurate float-scale code generation
+  plus FP16 stored-scale reconstruction, groupwise error behavior,
+  distribution/reconstruction summaries, K/V mixed-format memory accounting,
+  candidate parsing, and budget-constrained recommendation.
+- W7900 harness smoke (`32/2`, four model layers, candidates baseline/group16)
+  completed in `13.88 s`. Group16 reduced emulated matched-context mean KL from
+  `0.0014288` to `0.00000862` and K/V sample NRMSE from
+  `0.00770/0.00841` to `0.00466/0.00512`; clipping calibration selected `1.0`
+  (no clipping) for both K and V. These are harness diagnostics, not retained
+  model-quality claims.
+- Validation: `ruff check` passes after cleanup; focused script/quality tests
+  report `14 passed`; live smoke artifact is
+  `/tmp/hipengine-kv-format-ablation-smoke.json`.
