@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`9944e481d6a6e92a7af7f1ea0d22ee00dec81e72`
+`01e2cec5b566773a5298367a537aa14087c5e789`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -184,6 +184,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained reference**: all six shapes pass clean provenance, finite/stable-ID correctness, five-sample variance, matched Q4_K_M identity, and the four-column promotion gate. The current table replaces only its PARO column with the separately retained recovery below. | Yes | Rerun GGUF/llama columns after a measured path/build/stack change; rerun all four together when a fully matched refresh is required. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1 prefill recovery | 2026-07-12 | clean control `240c5daf` and candidate `9944e481`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained**: exact linear/MoE 256-row architecture profile improves all six prefill shapes by **14.35%-51.11%**, leaves decode within **-0.25%..+0.26%**, and matches final hidden plus all Conv/GDN/KV state at 512/4K/128K. | Yes, PARO column | Rerun after PARO prefill chunk/staging/math, compiler, model, prompt, or tuned/clock policy changes; validate separately on gfx1100 before transfer. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO 4K AOTriton queue isolation | 2026-07-12 | clean same-commit control/candidate `01e2cec5`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained at 4K/128**: event-linked isolated AOTriton queue improves prefill **885.141 -> 1089.031 tok/s** (+23.03%), leaves decode flat at **62.705 -> 62.715 tok/s**, holds tracked peak at **19.026 GiB**, and matches final hidden plus all 30 Conv/GDN and 10 K/V families. | Yes, 4K PARO row | Refresh 32K-128K before attributing long-context rates to this scheduling; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-11 | hipEngine `c941c158`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: external and production tokens match; four hidden/layer/Conv/GDN/KV checkpoints are finite and byte-exact. `performance_claim=false`; unrelated untracked files are disclosed. | Diagnostic link only | Rerun after eager math/state/KV changes; run separately on W7900 before using it to refresh gfx1100 performance. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
@@ -207,16 +208,20 @@ script copies this marked block into the root README byte-for-byte.
 ### gfx1151 model throughput
 
 The GGUF and llama.cpp columns are the clean 2026-07-11 matched refresh at
-hipEngine `d1231ee0`; the PARO column is the clean 2026-07-12 exact recovery at
-`9944e481` on TheRock HIP 7.15 and TuneD `accelerator-performance`. Each
-hipEngine shape uses its own right-sized resident session, two discarded
-warmups, and five measured repetitions; the tables report medians. llama.cpp
-uses one internal warmup plus five samples per split prefill/decode phase. The
-linked artifacts check sample variance, model/build/device identity, clean
-provenance, and path-specific correctness before setting
+hipEngine `d1231ee0`. PARO 512/1K and 32K-128K are the clean six-shape exact
+recovery at `9944e481`; the 4K row is the clean scoped AOTriton queue-isolation
+refresh at `01e2cec5`, all on TheRock HIP 7.15 and TuneD
+`accelerator-performance`. Each hipEngine shape uses its own right-sized
+resident session, two discarded warmups, and five measured repetitions; the
+tables report medians. The new scheduling also applies to current 4096-row
+long-context attention chunks, so 32K-128K are explicitly the last retained
+pre-isolation snapshots pending refresh, not measured `01e2cec5` rates.
+llama.cpp uses one internal warmup plus five samples per split prefill/decode
+phase. The linked artifacts check sample variance, model/build/device identity,
+clean provenance, and path-specific correctness before setting
 `performance_claim=true`. Because the PARO quant/path differs from the other
-three columns, this table is a current throughput rollup, not a same-math
-four-engine A/B.
+three columns, this table is a throughput rollup, not a same-math four-engine
+A/B.
 
 Bold marks the best raw value in each row (highest throughput or lowest
 reported peak memory). It is descriptive only: PARO uses W4 PARO rather than
@@ -229,7 +234,7 @@ Q4_K_M, and the memory columns do not share one allocator scope.
 | --- | ---: | ---: | ---: | ---: |
 | 512/128 | **1140.101** | 430.767 | 1061.260 | 1067.770 |
 | 1K/128 | **1208.343** | 437.467 | 1043.230 | 1069.870 |
-| 4K/128 | 854.346 | 403.946 | 1009.240 | **1016.580** |
+| 4K/128 | **1089.031** | 403.946 | 1009.240 | 1016.580 |
 | 32K/128 | 761.011 | 369.942 | 743.547 | **814.923** |
 | 64K/128 | 619.374 | 334.395 | 573.611 | **660.974** |
 | 128K/128 | 436.582 | 270.601 | 390.441 | **476.788** |
@@ -240,7 +245,7 @@ Q4_K_M, and the memory columns do not share one allocator scope.
 | --- | ---: | ---: | ---: | ---: |
 | 512/128 | **66.767** | 49.536 | 50.939 | 62.396 |
 | 1K/128 | 61.746 | 52.192 | 50.818 | **62.136** |
-| 4K/128 | **62.765** | 52.999 | 50.126 | 60.097 |
+| 4K/128 | **62.715** | 52.999 | 50.126 | 60.097 |
 | 32K/128 | 50.351 | 43.947 | 44.240 | **51.319** |
 | 64K/128 | 42.149 | 37.477 | 39.326 | **44.422** |
 | 128K/128 | 30.371 | 27.862 | 32.114 | **34.948** |
@@ -267,6 +272,7 @@ are excluded from phase throughput, while the separate SOL-G5 row below is the
 capture-inclusive GGUF graph proof.
 
 Artifacts: [PARO exact prefill recovery](results/2026-07-12-gfx1151-paro-prefill-recovery.json),
+[PARO 4K AOTriton queue isolation](results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
 [accepted July 11 matched summary](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
 [hipEngine PARO](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
 [hipEngine GGUF](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),

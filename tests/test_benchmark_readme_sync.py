@@ -20,14 +20,28 @@ def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
 
 def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None:
     repo_root = Path(__file__).resolve().parents[1]
+    results_dir = repo_root / "benchmarks/results"
     artifact_path = (
-        repo_root
-        / "benchmarks/results/2026-07-11-gfx1151-readme-refresh-"
+        results_dir
+        / "2026-07-11-gfx1151-readme-refresh-"
         "20260711-d1231ee0-summary.json"
     )
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    paro_recovery = json.loads(
+        (results_dir / "2026-07-12-gfx1151-paro-prefill-recovery.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    paro_4k_isolation = json.loads(
+        (
+            results_dir
+            / "2026-07-12-gfx1151-paro-aotriton-stream-isolation.json"
+        ).read_text(encoding="utf-8")
+    )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    canonical_values = canonical.replace("**", "")
+    root_values = root_readme.replace("**", "")
 
     assert artifact["schema"] == 1
     assert artifact["status"] == "accepted_topline"
@@ -41,6 +55,17 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     assert artifact["assembly"]["dirty"] is False
     assert artifact["gates"]["all_passed"] is True
     assert all(artifact["gates"].values())
+    assert paro_recovery["status"] == "accepted"
+    assert paro_recovery["performance_claim"] is True
+    assert paro_recovery["correctness_claim"] is True
+    assert paro_recovery["provenance"]["hipengine_commit"].startswith("9944e481")
+    assert paro_recovery["provenance"]["dirty"] is False
+    assert paro_4k_isolation["status"] == "accepted"
+    assert paro_4k_isolation["performance_claim"] is True
+    assert paro_4k_isolation["correctness_claim"] is True
+    assert paro_4k_isolation["measured_revision"].startswith("01e2cec5")
+    assert paro_4k_isolation["provenance"]["dirty"] is False
+    assert paro_4k_isolation["correctness"]["mismatch_paths"] == []
 
     workloads = ["512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128"]
     columns = [
@@ -63,6 +88,12 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         "| Workload | hipEngine PARO | hipEngine GGUF | "
         "llama.cpp HIP | llama.cpp Vulkan |"
     )
+    recovery_rows = {row["workload"]: row for row in paro_recovery["results"]}
+    paro_result_keys = {
+        "prefill_tok_s": "candidate_prefill_tok_s",
+        "decode_tok_s": "candidate_decode_tok_s",
+        "peak_gib": "candidate_peak_gib",
+    }
     for table_key, heading in headings.items():
         rows = artifact["tables"][table_key]
         assert [row["workload"] for row in rows] == workloads
@@ -71,13 +102,30 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert table_header in canonical
         assert table_header in root_readme
         for row in rows:
+            paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
+            if row["workload"] == "4K/128":
+                isolated = paro_4k_isolation["performance"][
+                    "candidate_isolated_stream"
+                ]
+                isolation_keys = {
+                    "prefill_tok_s": ("prefill_tok_s", "median"),
+                    "decode_tok_s": ("decode_tok_s", "median"),
+                    "peak_gib": ("tracked_peak_allocated_gib",),
+                }
+                path = isolation_keys[table_key]
+                paro_value = isolated[path[0]]
+                if len(path) == 2:
+                    paro_value = paro_value[path[1]]
             published_row = (
-                f"| {row['workload']} | {row['hipengine_paro']:.3f} | "
+                f"| {row['workload']} | {paro_value:.3f} | "
                 f"{row['hipengine_gguf']:.3f} | {row['llamacpp_hip']:.3f} | "
                 f"{row['llamacpp_vulkan']:.3f} |"
             )
-            assert published_row in canonical
-            assert published_row in root_readme
+            assert published_row in canonical_values
+            assert published_row in root_values
+
+    assert "32K-128K are explicitly the last retained" in canonical
+    assert "pre-isolation snapshots pending refresh" in canonical
 
     for name, component in artifact["components"].items():
         assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name
