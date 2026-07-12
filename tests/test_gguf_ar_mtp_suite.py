@@ -7,6 +7,42 @@ import pytest
 from scripts import gguf_ar_mtp_suite as suite
 
 
+def test_suite_accepts_backend_admitted_graph_ar_protocol() -> None:
+    ar = {
+        "timing_protocol": {
+            "decode_repack": True,
+            "use_gemv_decode": True,
+            "use_wmma_prefill": True,
+            "decode_path": "graph_replay",
+            "graph_replay_decode": True,
+            "graph_steps_per_replay": 1,
+            "graph_capture_in_decode_ms": True,
+        },
+        "prompt_metrics": [{"prompt_sha256": "same"}],
+    }
+    mtp = {"prompts": [{"prompt_sha256": "same"}]}
+
+    assert suite._enforce_apple_to_apple(ar, mtp) == []
+
+
+def test_suite_rejects_incomplete_graph_ar_protocol() -> None:
+    ar = {
+        "timing_protocol": {
+            "decode_repack": True,
+            "use_gemv_decode": True,
+            "use_wmma_prefill": True,
+            "decode_path": "graph_replay",
+            "graph_replay_decode": True,
+            "graph_steps_per_replay": 1,
+            "graph_capture_in_decode_ms": False,
+        }
+    }
+
+    assert suite._enforce_apple_to_apple(ar, {}) == [
+        "AR graph timing excludes capture/instantiate/close from decode_ms"
+    ]
+
+
 def test_suite_default_mtp_route_is_current_speed_row() -> None:
     assert suite.DEFAULT_MTP_ROUTE == "resident-b1-probe-block-direct-cap32k-minrows2-pmin05"
     assert suite.DEFAULT_MTP_ROUTE in suite.MTP_ROUTES

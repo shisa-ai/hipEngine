@@ -1067,8 +1067,20 @@ def _enforce_apple_to_apple(ar: dict[str, Any], mtp: dict[str, Any]) -> list[str
     for key in ("decode_repack", "use_gemv_decode", "use_wmma_prefill"):
         if not tp.get(key, False):
             problems.append(f"AR timing_protocol.{key} is not True ({tp.get(key)!r})")
-    if tp.get("decode_path") not in (None, "eager_step"):
-        problems.append(f"AR decode_path is {tp.get('decode_path')!r}, expected eager_step")
+    decode_path = tp.get("decode_path")
+    if decode_path not in (None, "eager_step", "graph_replay"):
+        problems.append(
+            f"AR decode_path is {decode_path!r}, expected backend-admitted eager_step or graph_replay"
+        )
+    elif decode_path == "graph_replay":
+        if tp.get("graph_replay_decode") is not True:
+            problems.append("AR graph timing does not report graph_replay_decode=true")
+        if tp.get("graph_steps_per_replay") != 1:
+            problems.append(
+                f"AR graph_steps_per_replay is {tp.get('graph_steps_per_replay')!r}, expected 1"
+            )
+        if tp.get("graph_capture_in_decode_ms") is not True:
+            problems.append("AR graph timing excludes capture/instantiate/close from decode_ms")
     # Prompt-set hash parity: the MTP summary records prompt sha256 per prompt;
     # the AR baseline records prompt_metrics[].prompt_sha256. Compare the sets.
     ar_hashes = {r.get("prompt_sha256") for r in ar.get("prompt_metrics", []) if r.get("prompt_sha256")}

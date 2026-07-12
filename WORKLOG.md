@@ -152690,3 +152690,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **34.161 -> 93.114 tok/s** with capture included (`23.937 ms` capture,
   `257.750 ms` complete decode). Full natural-prompt economics and benchmark
   rollup remain the next clean-commit validation step.
+
+## 2026-07-12 - Accept backend-qualified graph AR in the MTP suite
+
+- The first clean post-promotion exact/default full run exposed one stale suite
+  assertion: the wrapper still required `decode_path=eager_step` even though it
+  now explicitly requests backend graph admission. The child measurements were
+  clean and useful (`99.02 AR`, best B3 `69.88 tok/s`, `0.7057x`), but the
+  wrapper correctly exited 2 with `apple_to_apple_ok=false`; this attempt is not
+  the retained artifact.
+- Added RED tests for a complete graph timing contract and for a graph artifact
+  that omits capture cost. `_enforce_apple_to_apple()` now accepts either the
+  backend-admitted eager fallback or a graph route only when it records
+  `graph_replay_decode=true`, one step/replay, and capture/instantiate/close
+  inside `decode_ms`. Invalid/mixed decode paths remain rejected.
+- `python3 -m pytest tests/test_gguf_ar_mtp_suite.py
+  tests/test_gguf_true_ar_category_bench.py -q` passes all 32 tests. The clean
+  exact and `llama-compat` suites will be rerun after this fix is committed.
