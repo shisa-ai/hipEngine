@@ -72,6 +72,16 @@ class PolicySpec:
         }
 
 
+def _parse_index_list(text: str) -> tuple[int, ...]:
+    value = str(text).strip().lower()
+    if value in {"", "none", "empty", "-"}:
+        return ()
+    indices = tuple(sorted({int(item.strip()) for item in value.split(",") if item.strip()}))
+    if any(item < 0 for item in indices):
+        raise ValueError("policy indices must be non-negative")
+    return indices
+
+
 def _apply_policy_arrays(
     key: np.ndarray,
     value: np.ndarray,
@@ -416,7 +426,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         small_window=args.small_window,
         large_window=args.large_window,
     )
-    if args.policies != "default":
+    if args.policies == "custom":
+        custom_format = (
+            baseline_format
+            if args.custom_format == "baseline_max"
+            else FormatSpec("group64", k_group_size=64, v_group_size=64)
+        )
+        policies = [
+            PolicySpec(
+                "custom",
+                custom_format,
+                bf16_layer_indices=_parse_index_list(args.custom_bf16_layers),
+                bf16_head_indices=_parse_index_list(args.custom_bf16_heads),
+                sink_tokens=int(args.custom_sink_tokens),
+                recent_tokens=int(args.custom_recent_tokens),
+            )
+        ]
+    elif args.policies != "default":
         requested = {item.strip() for item in args.policies.split(",") if item.strip()}
         known = {item.name for item in policies}
         if not requested or requested - known:
@@ -512,7 +538,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--decode-steps", type=int, default=4)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--max-layers", type=int, default=40)
-    parser.add_argument("--policies", default="default")
+    parser.add_argument("--policies", default="default", help="default, custom, or comma-separated built-in names")
+    parser.add_argument("--custom-format", choices=("baseline_max", "group64"), default="baseline_max")
+    parser.add_argument("--custom-bf16-layers", default="none", help="Full-attention layer ordinals for --policies custom")
+    parser.add_argument("--custom-bf16-heads", default="none", help="KV head indices for --policies custom")
+    parser.add_argument("--custom-sink-tokens", type=int, default=0)
+    parser.add_argument("--custom-recent-tokens", type=int, default=0)
     parser.add_argument("--small-window", type=int, default=64)
     parser.add_argument("--large-window", type=int, default=128)
     parser.add_argument("--scale-dtype", choices=("fp16", "fp32"), default="fp16")
@@ -530,8 +561,13 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("prompt_length", "small_window", "large_window", "target_context_tokens"):
         if int(getattr(args, name)) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
-    if args.decode_steps < 0 or args.extra_budget_gib < 0.0:
-        raise ValueError("decode steps and extra budget must be non-negative")
+    if (
+        args.decode_steps < 0
+        or args.extra_budget_gib < 0.0
+        or args.custom_sink_tokens < 0
+        or args.custom_recent_tokens < 0
+    ):
+        raise ValueError("decode steps, extra budget, and custom windows must be non-negative")
     payload = run(args)
     text = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     if args.json is not None:
