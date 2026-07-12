@@ -152858,3 +152858,10 @@ graphless decode launch-collapse path without regressing target/serial parity.
   or documentation is on that stack. This is a pre-existing full-suite GPU
   runner blocker, not evidence against the retained benchmark artifacts; it was
   not debugged because this host is scoped to benchmark/release evidence only.
+- A concurrent `git pull --rebase` rewrote the benchmark-preparation commit
+  `8116c453` to reachable main commit `8708304f` while the detached measurement
+  worktree was running. `git diff --name-only 8116c453..8708304f` contains only
+  `WORKLOG.md` and `docs/PROCESS-IMPROVEMENT.md`; runtime and benchmark code are
+  identical. Added this measured-to-rebased equivalence explicitly to the
+  topline, capacity, and G1 artifacts plus the README/changelog, so provenance
+  remains truthful while the release has a reachable reproduction revision.

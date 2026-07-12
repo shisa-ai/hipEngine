@@ -3,9 +3,19 @@
   "kind": "gfx1100_readme_four_engine_topline",
   "status": "accepted_topline",
   "performance_claim": true,
-  "date": "2026-07-13",
+  "date": "2026-07-12",
   "hardware": "AMD Radeon Pro W7900, gfx1100",
   "measured_hipengine_commit": "8116c4531fa79bb94690042023da8c9360648052",
+  "source_revision_equivalence": {
+    "measured_commit": "8116c4531fa79bb94690042023da8c9360648052",
+    "reachable_rebased_commit": "8708304f49e55c697c4cd0df7b6a038d57ecb3cf",
+    "runtime_and_benchmark_code_identical": true,
+    "only_different_paths": [
+      "WORKLOG.md",
+      "docs/PROCESS-IMPROVEMENT.md"
+    ],
+    "verification_command": "git diff --name-only 8116c4531fa79bb94690042023da8c9360648052..8708304f49e55c697c4cd0df7b6a038d57ecb3cf"
+  },
   "workloads": [
     "512/128",
     "1K/128",
