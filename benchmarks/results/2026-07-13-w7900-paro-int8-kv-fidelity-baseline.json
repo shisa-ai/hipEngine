@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "kind": "w7900_paro_int8_kv_fidelity_baseline",
+  "date": "2026-07-13",
+  "status": "quality_rejected_reference_tasks_unscorable",
+  "performance_claim": false,
+  "usable_int8_claim": false,
+  "source": {
+    "hipengine_commit": "a2bda64052e1595fa39cefa1d65bc92eccc248eb",
+    "branch": "kv-int8-accuracy",
+    "source_clean": true,
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint_sha256": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000"
+  },
+  "protocol": {
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "quant": "w4_paro",
+    "reference_kv": "bf16",
+    "candidate_kv": "int8_per_token_head",
+    "candidate_scale_dtype": "fp16",
+    "candidate_scale_granularity": "per_token_head",
+    "logit_context": "BF16 reference tokens forced into candidate",
+    "rollout_context": "independent greedy rollouts",
+    "synthetic_prompt": "token 9707 repeated to each requested length",
+    "quality_thresholds": {
+      "kl_mean_max": 0.05,
+      "top1_agreement_min": 0.9
+    }
+  },
+  "commands": {
+    "matched_context": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_int8_kv_quality_sweep.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompt-lengths 512,4K,32K,128K --decode-steps 16 --token-id 9707 --max-layers 40 --kl-threshold 0.05 --top1-threshold 0.9 --comparison-mode both --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-kv-int8-baseline-matched-20260713.json",
+    "bounded_task_smoke": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_kv_quality_smoke.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --suite benchmarks/prompts/kv-int8-long-context-smoke.jsonl --context-tokens 4096 --max-new-tokens 48 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-kv-int8-task-smoke-4k-20260713.json"
+  },
+  "raw_diagnostics": {
+    "matched_context_path": "/tmp/hipengine-kv-int8-baseline-matched-20260713.json",
+    "matched_context_sha256": "43a8914649ff51c543018019d50acb2023da98f7d3213b3c43c4a753961c47e7",
+    "task_smoke_path": "/tmp/hipengine-kv-int8-task-smoke-4k-20260713.json",
+    "task_smoke_sha256": "dfdcfa83cb73a022a5d25729d39cb8edc8600241d1607221078ab8ff6d49f604"
+  },
+  "matched_context_rows": [
+    {
+      "workload": "512/16",
+      "mean_kl": 0.5384916924037784,
+      "max_kl": 1.6420860833010282,
+      "top1_agreement": 0.5294117647058824,
+      "first_top1_mismatch_position": 2,
+      "free_generated_first_mismatch": 1,
+      "free_first_context_divergent_logit_position": 3,
+      "free_matched_history_mean_kl": 0.3576494729465427,
+      "free_full_rollout_mean_kl": 3.8939985716996497,
+      "memory_audit_pass": true,
+      "passed": false
+    },
+    {
+      "workload": "4K/16",
+      "mean_kl": 0.5687483374867055,
+      "max_kl": 1.735231350496685,
+      "top1_agreement": 0.5294117647058824,
+      "first_top1_mismatch_position": 2,
+      "free_generated_first_mismatch": 1,
+      "free_first_context_divergent_logit_position": 3,
+      "free_matched_history_mean_kl": 0.26282416444036033,
+      "free_full_rollout_mean_kl": 2.1040376978233284,
+      "memory_audit_pass": true,
+      "passed": false
+    },
+    {
+      "workload": "32K/16",
+      "mean_kl": 1.5671701625869359,
+      "max_kl": 3.1636954579240033,
+      "top1_agreement": 0.11764705882352941,
+      "first_top1_mismatch_position": 1,
+      "free_generated_first_mismatch": 0,
+      "free_first_context_divergent_logit_position": 2,
+      "free_matched_history_mean_kl": 0.04105301497109147,
+      "free_full_rollout_mean_kl": 2.194929779612043,
+      "memory_audit_pass": true,
+      "passed": false
+    },
+    {
+      "workload": "128K/16",
+      "mean_kl": 0.8512848774989155,
+      "max_kl": 4.973818720956827,
+      "top1_agreement": 0.4117647058823529,
+      "first_top1_mismatch_position": 3,
+      "first_four_kl": [
+        0.0,
+        0.007098275601207943,
+        0.29353339508809545,
+        1.919987986461772
+      ],
+      "free_generated_first_mismatch": 2,
+      "free_first_context_divergent_logit_position": 4,
+      "free_matched_history_mean_kl": 0.5551549142877689,
+      "free_full_rollout_mean_kl": 2.2450981997373094,
+      "memory_audit_pass": true,
+      "passed": false
+    }
+  ],
+  "bounded_task_smoke": {
+    "suite_sha256": "606f85806386bd657b64ad149c92413b47324a81db41b87d94820cb2efff9b00",
+    "context_tokens": 4096,
+    "categories": [
+      "retrieval",
+      "multihop",
+      "aggregation",
+      "long_doc",
+      "code"
+    ],
+    "status": "reference_unscorable",
+    "reference_score": 0.0,
+    "candidate_score": 0.0,
+    "reference_failures": [
+      "retrieval_access_code",
+      "multihop_clearance_phrase",
+      "aggregation_crate_total",
+      "long_doc_final_retention",
+      "code_pipeline_result"
+    ],
+    "candidate_regressions": [],
+    "all_output_token_ids_differ": true,
+    "reference_peak_allocated_bytes": 20574032380,
+    "candidate_peak_allocated_bytes": 20538204676
+  },
+  "decision": {
+    "strict_logit_gate_passed": false,
+    "task_gate_evaluable": false,
+    "task_gate_blocker": "BF16 PARO produced no scorable FINAL answer on all five bounded 4K tasks",
+    "next_action": "localize quantization sensitivity with format/layer ablations; task utility cannot promote until the BF16 PARO semantic baseline is independently validated"
+  },
+  "interpretation": [
+    "Matched-context metrics remove post-mismatch rollout cascade and remain far outside KL<=0.05/top1>=0.90 at every tested length.",
+    "Free-running full-rollout metrics are behavioral divergence only, not intrinsic quantization-error estimates.",
+    "The five-category task suite cannot establish INT8 task retention because the same hipEngine BF16 PARO path is unscorable on every row."
+  ]
+}

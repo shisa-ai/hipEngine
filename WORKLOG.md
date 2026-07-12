@@ -152934,3 +152934,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   produce a `FINAL:` answer and decoded as number/punctuation fragments. This is
   now explicit baseline evidence to investigate rather than being misclassified
   as an INT8 task-quality pass. Candidate output was also unscorable.
+
+## 2026-07-13 — Measure clean W7900 PARO INT8 KV fidelity baseline
+
+- Clean source commit `a2bda640`, Qwen3.6 PARO model revision `437eba06`, W7900
+  `gfx1100`, ROCm `7.2.4`, HIP `7.15.0-0000000`. Ran repeated token `9707` at
+  `512/16`, `4K/16`, `32K/16`, and `128K/16` with BF16-reference-token matched
+  context plus separate free-running rollouts. Exact command and raw hashes are
+  retained in
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json`.
+- Matched-context mean KL / top-1 agreement rejected at every length:
+  `512 0.53849/52.94%`, `4K 0.56875/52.94%`, `32K 1.56717/11.76%`, and
+  `128K 0.85128/41.18%`, versus required `<=0.05/>=90%`. All INT8 no-shadow
+  memory audits passed. At 128K the first four matched-history KL values were
+  `0.0, 0.00710, 0.29353, 1.91999`, with the first top-1 mismatch at logit
+  position 3.
+- The old free-running headline materially overstated intrinsic error after
+  divergence: at 128K/16, matched-context mean KL is `0.85128`, while the
+  independent full-rollout mean is `2.24510`. It does not change the rejection:
+  the matched-token result itself is far outside the gate.
+- Ran all five bounded task rows at 4K/48. BF16 and INT8 both scored `0/5`; the
+  BF16 path emitted no `FINAL:` answer for retrieval, multihop, aggregation,
+  long-document, or code. Status is therefore `reference_unscorable`, not an
+  INT8 pass or measured task regression. The task harness remains useful once
+  the BF16 PARO semantic baseline is independently validated.
