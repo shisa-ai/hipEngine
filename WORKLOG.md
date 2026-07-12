@@ -151770,3 +151770,42 @@ graphless decode launch-collapse path without regressing target/serial parity.
   It succeeds and reports `14` SGPR, `26` VGPR, zero scratch/spills/LDS, and
   estimated occupancy `16` waves/SIMD for that compile-only diagnostic. These
   are tool-validation facts, not a new timing or optimization claim.
+
+## 2026-07-12 - Q8T16 dual-split wave/block indexing micro A/B
+
+- Targeted the largest single leaf in the accepted SOL-G4 gfx1151 eager
+  profile: `q8_0_t16_dual_split_gemv` is `4.170 ms/token`, or `22.662%` of
+  profiled GPU time; the dense-Q8 family is `8.143 ms/token` / `44.25%`.
+- The required lineage audit command
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
+  because the configured read-only checkout
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. This change optimizes the
+  existing in-tree body and does not port external code.
+- Added a compile-time BF16 A/B body for only the Q8T16 dual-split kernel. The
+  candidate iterates `block_idx = wave; block_idx += waves` and reconstructs
+  `k = block_idx * 32 + lane`, preserving every thread's K sequence and FP32
+  accumulation order at the supported 64/128 workgroup sizes.
+- RED: the new bit-exact fixture initially failed collection because
+  `gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out` did not exist.
+  GREEN: `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .../therock/bin/python3 -m
+  pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py -k waveblock` -> `2 passed`;
+  both split outputs are bit-identical at 64 and 128 threads.
+- Production-shaped cache-controlled A/B on Radeon 8060S/gfx1151, TheRock HIP
+  `7.15.0-0000000` / clang `aa451e1f...`, TuneD
+  `accelerator-performance`, rows=1, `2048x(8192+4096)`, threads=128, 80
+  warmups + 400 timed calls, and three weight copies / 80.2 MB (>2x estimated
+  MALL): exact-first **136.51 -> 132.37 us** (`-3.033%`); candidate-first
+  **136.32 -> 131.98 us** (`-3.184%`). Median is
+  **136.415 -> 132.175 us** (`-3.108%`, `1.0321x`).
+- `-Rpass-analysis=kernel-resource-usage` reports exact `33 SGPR / 49 VGPR`
+  versus wave/block `29 / 50`, both zero scratch/spills, 256 B LDS, and 16
+  waves/SIMD. A cached rocprofv3 fixture trace passed and contains both
+  `<unsigned short,unsigned short,true>` and `<...,false>` kernels with
+  workgroup 128; raw trace SHA-256 is
+  `71aae0176ea23b26e046d30db4e6a83815dc5a9af998a626ba6b1b0b8a8c08a6`.
+- The 5% full-model cutoff mentioned during the task was an unsourced agent
+  heuristic, not repository policy, and was withdrawn. Per the evidence and
+  performance-win rules, this exact repeatable kernel reduction advances to a
+  clean production p512/d128 gate.
+- Compact artifact:
+  `benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-micro.json`.

@@ -840,3 +840,15 @@ should be boring.
 - Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
   avoids live c6 groups in retained/default operation. Do not use this
   comparison mode for throughput claims.
+
+## Q8T16 dual-split wave/block A/B wrapper
+
+- Added 2026-07-12 as a compile-time BF16 diagnostic alongside the production
+  scalar-K-indexed dual-split kernel. It exists only to make the exact
+  production-shaped microbenchmark and profiler comparison reproducible.
+- Result: gfx1151 rows=1 `2048x(8192+4096)` improves
+  **136.415 -> 132.175 us** median (**-3.108%**) with bit-identical outputs,
+  unchanged 16-wave occupancy, and no spills.
+- Remove when: the wave/block body passes the clean production p512/d128 gate
+  and replaces the scalar-K body, or immediately if that gate finds a concrete
+  regression. Do not expose the diagnostic wrapper through runtime dispatch.
