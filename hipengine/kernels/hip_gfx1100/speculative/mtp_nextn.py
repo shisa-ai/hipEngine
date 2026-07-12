@@ -87,6 +87,8 @@ def _cached_upload(name: str, data: "np.ndarray", *, runtime=None) -> "DeviceBuf
 
 def clear_weight_cache():
     """Free all cached weight buffers."""
+    if not _WEIGHT_CACHE:
+        return
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import free as hip_free
     runtime = get_hip_runtime()

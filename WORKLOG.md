@@ -152921,3 +152921,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
   PyPI remains at 0.2.2 and neither the v0.3.0 Git tag nor GitHub release exists.
   The final artifacts will be rebuilt from the release commit containing this
   entry so the tagged source and uploaded sdist match exactly.
+- The first trusted-publish run
+  `https://github.com/shisa-ai/hipEngine/actions/runs/29210493640` stopped before
+  build/upload because the session-wide MTP weight-cache cleanup fixture called
+  `get_hip_runtime()` even when its cache was empty. On the Ubuntu/no-ROCm
+  runner that raised `OSError: libamdhip64.so` during setup for nearly every
+  otherwise CPU-only test. Made `clear_weight_cache()` return before loading HIP
+  when there is nothing to free; non-empty caches retain the existing device
+  free path. Added a regression that replaces the HIP loader with a failure and
+  verifies empty cleanup never calls it. That regression and a representative
+  CPU-only speculative-interface test both pass. PyPI was not reached by the
+  failed workflow; the tag/release will be recreated at this fix commit before
+  the trusted-publishing retry.
