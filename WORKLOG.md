@@ -152903,3 +152903,12 @@ graphless decode launch-collapse path without regressing target/serial parity.
   allocation capacity only because the Qwen3.6 128K/128 quality gate rejects
   both FP16- and FP32-scale variants. Release validation is restarted from the
   integrated code revision before any push/tag/upload.
+- Fixed three real GPU-launch tests that forced `HIPENGINE_HIP_ARCH=gfx1151`
+  even on gfx1100/W7900. The block-verify, MTP dense-attention, and Q6_K T16
+  rowtile gates now consume the session-scoped detected HIP target fixture;
+  intentional build-plan and environment-isolation unit tests keep their fixed
+  architecture inputs. Collection passed for all three tests and the small
+  `test_mtp_dense_attn_f32_gate.py` kernel gate passed on detected gfx1151. Per
+  user direction, the two model-heavy gates and another full suite were not
+  rerun; the integrated Python 3.12 full suite had already passed before this
+  test-harness-only correction.
