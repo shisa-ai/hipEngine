@@ -152771,3 +152771,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   density, with a stretch **12.578 -> 8.556 ms/output** target to match
   llama.cpp. This is orchestration infrastructure, not a monolithic math
   megakernel or a promise to transfer defaults without per-device evidence.
+
+## 2026-07-12 - Prepare retained W7900 release-topline tooling
+
+- Audited the v0.3.0 benchmark gaps. The release-facing missing rows are the
+  stale six-shape W7900 Qwen3.6 model sweep and stale PARO BF16/INT8 context
+  capacity record. The accepted topline protocol is 512/128 through 128K/128,
+  one right-sized resident session per shape, two discarded warmups plus five
+  measured repetitions, current production graph decode for both PARO and
+  GGUF, and five-sample llama.cpp HIP/Vulkan controls on the exact GGUF.
+- Generalized the existing gfx1151 component merger and four-column promotion
+  gate to accept explicit `gfx1100` platform contracts. The gate now checks the
+  platform-specific target architecture, W7900 identity, discrete VRAM memory
+  domain, clean provenance, exact model identity, sample counts/variance, and
+  retained finite/stable-output requirements without changing gfx1151 defaults.
+- Updated `scripts/run_w7900_readme_refresh.sh` to require a clean measurement
+  worktree, use the current W7900 `card0` VRAM domain, run independent
+  right-sized hipEngine sessions, enable the admitted GGUF graph route, take
+  five llama.cpp samples per phase, merge gfx1100 rollups, and expose a strict
+  `summary`/`topline` promotion phase.
+- RED/GREEN: the new gfx1100 rollup, W7900 wrapper, and VRAM topline tests first
+  failed on unsupported platform arguments and the stale wrapper contract.
+  After implementation, `python3 -m pytest tests/test_gfx1151_readme_refresh.py
+  -q` passes 13 tests; `py_compile`, `bash -n`, Ruff, and `git diff --check`
+  pass.

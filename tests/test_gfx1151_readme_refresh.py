@@ -261,6 +261,65 @@ def test_component_rollup_promotes_six_clean_right_sized_workloads(
     }
 
 
+def test_component_rollup_can_target_gfx1100(tmp_path: Path) -> None:
+    components = []
+    provenance = _provenance()
+    provenance.update(
+        {
+            "configured_backend": "hip_gfx1100",
+            "resolved_backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "device_name": "AMD Radeon Pro W7900",
+            "environment": {"HIPENGINE_HIP_ARCH": "gfx1100"},
+        }
+    )
+    for index, workload in enumerate(STANDARD_WORKLOADS, start=1):
+        runs = [
+            {
+                "measured": True,
+                "correctness_sanity": {
+                    "finite_final_logit": True,
+                    "final_token_id": index,
+                },
+            }
+            for _ in range(5)
+        ]
+        payload = {
+            "engine": "paro",
+            "model": "/model",
+            "quant": "w4_paro",
+            "workloads": [workload],
+            "provenance": provenance,
+            "summary_by_workload": {
+                workload: {
+                    "prefill_tok_s": {"count": 5, "median": 100.0, "stdev": 1.0},
+                    "decode_tok_s": {"count": 5, "median": 50.0, "stdev": 0.1},
+                    "final_token_ids": [index] * 5,
+                    "final_token_ids_stable": True,
+                }
+            },
+            "runs_by_workload": {workload: runs},
+            "max_sequence_length": index * 1024,
+            "persistent_session_load_seconds": 1.0,
+            "persistent_session_memory": {"summary": {"peak": index}},
+            "extra": {"backend": "hip_gfx1100", "target_arch": "gfx1100"},
+        }
+        path = tmp_path / f"gfx1100-{index}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        components.append((path, payload))
+
+    output = _merge_component_payloads(
+        components,
+        engine="paro",
+        provenance=provenance,
+        platform="gfx1100",
+    )
+
+    assert output["kind"] == "gfx1100_readme_model_sweep_rollup"
+    assert output["performance_claim_scope"].startswith("gfx1100")
+    assert output["performance_claim"] is True
+
+
 def test_component_rollup_accepts_paro_and_gguf_finite_logit_keys() -> None:
     assert _finite_final_logit_passed({"finite_final_logit": True}) is True
     assert _finite_final_logit_passed({"finite_final_logits": True}) is True
@@ -360,6 +419,23 @@ def _fake_hipengine_rollup(*, engine: str, quant: str) -> dict[str, object]:
         },
         "provenance": provenance,
     }
+
+
+def test_w7900_readme_refresh_wrapper_encodes_retained_topline_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts/run_w7900_readme_refresh.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert "HIPENGINE_HIP_ARCH=gfx1100" in text
+    assert "--backend hip_gfx1100" in text
+    assert "512/128 1K/128 4K/128 32K/128 64K/128 128K/128" in text
+    assert "--warmup-runs 2 --measured-runs 5" in text
+    assert "--memory-domain vram" in text
+    assert "merge_readme_sweep_components.py" in text
+    assert "--platform gfx1100" in text
+    assert "--graph-replay-decode" in text
+    assert "--repetitions 5" in text
+    assert "summary" in text
 
 
 def _fake_llamacpp_artifact(*, backend: str) -> dict[str, object]:
@@ -475,3 +551,43 @@ def test_topline_assembler_promotes_only_complete_stable_four_engine_matrix(
     assert bad_output["status"] == "rejected_topline_gate"
     assert bad_output["performance_claim"] is False
     assert bad_output["gates"]["llamacpp_all_phase_variance_passed"] is False
+
+
+def test_topline_assembler_promotes_gfx1100_vram_matrix(tmp_path: Path) -> None:
+    sources = {
+        "hipengine_paro": (tmp_path / "paro.json", _fake_hipengine_rollup(engine="paro", quant="w4_paro")),
+        "hipengine_gguf": (tmp_path / "gguf.json", _fake_hipengine_rollup(engine="gguf", quant="gguf_q4_k_m")),
+        "llamacpp_hip": (tmp_path / "llama-hip.json", _fake_llamacpp_artifact(backend="hip")),
+        "llamacpp_vulkan": (tmp_path / "llama-vulkan.json", _fake_llamacpp_artifact(backend="vulkan")),
+    }
+    for column, (path, payload) in sources.items():
+        provenance = payload["provenance"]
+        provenance["target_arch"] = "gfx1100"
+        provenance["device_name"] = "AMD Radeon Pro W7900"
+        if column.startswith("hipengine"):
+            provenance["configured_backend"] = "hip_gfx1100"
+            provenance["resolved_backend"] = "hip_gfx1100"
+            payload["kind"] = "gfx1100_readme_model_sweep_rollup"
+        else:
+            payload["memory_domain"] = "vram"
+            payload["gpu_info"] = "AMD Radeon Pro W7900"
+            for record in payload["phase_records"]:
+                record["vram"]["memory_domain"] = "vram"
+                record["llamacpp_record"]["gpu_info"] = "AMD Radeon Pro W7900"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    output = _assemble_topline(
+        sources,
+        platform="gfx1100",
+        linked_correctness={
+            "gguf_external_and_state_oracle": "benchmarks/results/w7900-g1.json",
+            "paro_fixture_gate": "benchmarks/results/w7900-paro.json",
+        },
+    )
+
+    assert output["kind"] == "gfx1100_readme_four_engine_topline"
+    assert output["hardware"] == "AMD Radeon Pro W7900, gfx1100"
+    assert output["protocol"]["llamacpp_memory"].startswith("whole-device amdgpu VRAM-used")
+    assert output["gates"]["all_components_target_gfx1100"] is True
+    assert output["gates"]["llamacpp_vram_memory_scope_passed"] is True
+    assert output["performance_claim"] is True

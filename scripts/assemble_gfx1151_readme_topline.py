@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate and assemble the four-column gfx1151 README model sweep."""
+"""Gate and assemble a four-column gfx1100/gfx1151 README model sweep."""
 
 from __future__ import annotations
 
@@ -34,6 +34,33 @@ COLUMN_LABELS = {
     "llamacpp_hip": "llama.cpp HIP",
     "llamacpp_vulkan": "llama.cpp Vulkan",
 }
+PLATFORM_CONFIG = {
+    "gfx1100": {
+        "hardware": "AMD Radeon Pro W7900, gfx1100",
+        "device_marker": "w7900",
+        "memory_domain": "vram",
+        "default_correctness": {
+            "gguf_external_and_state_oracle": "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-eager-p512-d4.json",
+            "paro_fixture_gate": "benchmarks/results/2026-07-12-w7900-gfx1100-paro-transfer-correctness.json",
+        },
+    },
+    "gfx1151": {
+        "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151",
+        "device_marker": "8060s",
+        "memory_domain": "gtt",
+        "default_correctness": {
+            "gguf_external_and_state_oracle": "benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json",
+            "paro_fixture_gate": "benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json",
+        },
+    },
+}
+
+
+def _platform_config(platform: str) -> Mapping[str, Any]:
+    try:
+        return PLATFORM_CONFIG[platform]
+    except KeyError as exc:
+        raise ValueError(f"unsupported README topline platform {platform!r}") from exc
 
 
 def _sha256(path: Path) -> str:
@@ -98,11 +125,12 @@ def _model_identity(provenance: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def _validate_hipengine_rollup(
-    payload: Mapping[str, Any], *, engine: str
+    payload: Mapping[str, Any], *, engine: str, platform: str = "gfx1151"
 ) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, bool]]:
+    _platform_config(platform)
     provenance = validate_artifact_provenance(payload.get("provenance") or {}, require_model=True)
     structural = bool(
-        payload.get("kind") == "gfx1151_readme_model_sweep_rollup"
+        payload.get("kind") == f"{platform}_readme_model_sweep_rollup"
         and payload.get("engine") == engine
         and payload.get("status") == "accepted_topline"
         and payload.get("performance_claim") is True
@@ -143,14 +171,15 @@ def _validate_hipengine_rollup(
         "correctness": correctness_passed,
         "statistics": stats_ok,
         "clean": provenance.get("dirty") is False,
-        "target_gfx1151": provenance.get("target_arch") == "gfx1151",
+        "target_platform": provenance.get("target_arch") == platform,
     }
     return provenance, rows, gates
 
 
 def _validate_llamacpp(
-    payload: Mapping[str, Any], *, backend: str
+    payload: Mapping[str, Any], *, backend: str, platform: str = "gfx1151"
 ) -> tuple[dict[str, Any], dict[str, dict[str, float]], list[dict[str, Any]], dict[str, bool]]:
+    config = _platform_config(platform)
     provenance = validate_artifact_provenance(payload.get("provenance") or {}, require_model=True)
     expected_backend = f"llamacpp_{backend}"
     common = payload.get("common_args") or {}
@@ -167,7 +196,7 @@ def _validate_llamacpp(
         and provenance.get("warmups") == 1
     )
     memory_scope = bool(
-        payload.get("memory_domain") == "gtt"
+        payload.get("memory_domain") == config["memory_domain"]
         and isinstance(payload.get("poll_ms"), (int, float))
         and 0.0 < float(payload["poll_ms"]) <= 10.0
     )
@@ -222,8 +251,8 @@ def _validate_llamacpp(
         "returncodes": returncodes_ok,
         "variance": variance_ok and values_ok,
         "clean": provenance.get("dirty") is False,
-        "target_gfx1151": provenance.get("target_arch") == "gfx1151",
-        "radeon_8060s": "8060s" in gpu_info,
+        "target_platform": provenance.get("target_arch") == platform,
+        "device_identity": str(config["device_marker"]) in gpu_info,
         "memory_scope": memory_scope,
         "build_identity": bool(payload.get("build_commit") and payload.get("build_number")),
     }
@@ -231,22 +260,26 @@ def _validate_llamacpp(
 
 
 def _assemble_topline(
-    sources: Mapping[str, tuple[Path, Mapping[str, Any]]]
+    sources: Mapping[str, tuple[Path, Mapping[str, Any]]],
+    *,
+    platform: str = "gfx1151",
+    linked_correctness: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
+    config = _platform_config(platform)
     if set(sources) != set(COLUMNS):
         raise ValueError(f"expected sources {list(COLUMNS)}, received {sorted(sources)}")
 
     paro_prov, paro_rows, paro_gates = _validate_hipengine_rollup(
-        sources["hipengine_paro"][1], engine="paro"
+        sources["hipengine_paro"][1], engine="paro", platform=platform
     )
     gguf_prov, gguf_rows, gguf_gates = _validate_hipengine_rollup(
-        sources["hipengine_gguf"][1], engine="gguf"
+        sources["hipengine_gguf"][1], engine="gguf", platform=platform
     )
     llama_hip_prov, llama_hip_rows, llama_hip_stats, llama_hip_gates = _validate_llamacpp(
-        sources["llamacpp_hip"][1], backend="hip"
+        sources["llamacpp_hip"][1], backend="hip", platform=platform
     )
     llama_vk_prov, llama_vk_rows, llama_vk_stats, llama_vk_gates = _validate_llamacpp(
-        sources["llamacpp_vulkan"][1], backend="vulkan"
+        sources["llamacpp_vulkan"][1], backend="vulkan", platform=platform
     )
     provenances = (paro_prov, gguf_prov, llama_hip_prov, llama_vk_prov)
 
@@ -259,8 +292,8 @@ def _assemble_topline(
     )
     llama_structural = llama_hip_gates["structural"] and llama_vk_gates["structural"]
     all_clean = all(provenance.get("dirty") is False for provenance in provenances)
-    all_target_gfx1151 = all(
-        provenance.get("target_arch") == "gfx1151" for provenance in provenances
+    all_target_platform = all(
+        provenance.get("target_arch") == platform for provenance in provenances
     )
     same_harness_commit = len(
         {provenance.get("hipengine_commit") for provenance in provenances}
@@ -276,8 +309,8 @@ def _assemble_topline(
     llama_builds_identified = (
         llama_hip_gates["build_identity"]
         and llama_vk_gates["build_identity"]
-        and llama_hip_gates["radeon_8060s"]
-        and llama_vk_gates["radeon_8060s"]
+        and llama_hip_gates["device_identity"]
+        and llama_vk_gates["device_identity"]
     )
     gates = {
         "hipengine_rollups_accepted": hip_rollups_accepted,
@@ -285,10 +318,10 @@ def _assemble_topline(
         "llamacpp_all_phase_returncodes_zero": llama_all_phase_returncodes_zero,
         "llamacpp_all_phase_variance_passed": llama_all_phase_variance_passed,
         "all_component_provenance_clean": all_clean,
-        "all_components_target_gfx1151": all_target_gfx1151,
+        f"all_components_target_{platform}": all_target_platform,
         "all_components_same_harness_commit": same_harness_commit,
         "gguf_model_identity_matches": gguf_identity_matches,
-        "llamacpp_gtt_memory_scope_passed": llama_memory_scope,
+        f"llamacpp_{config['memory_domain']}_memory_scope_passed": llama_memory_scope,
         "llamacpp_builds_and_device_identified": llama_builds_identified,
     }
     accepted = all(gates.values())
@@ -328,11 +361,11 @@ def _assemble_topline(
     llama_vk = sources["llamacpp_vulkan"][1]
     return {
         "schema": 1,
-        "kind": "gfx1151_readme_four_engine_topline",
+        "kind": f"{platform}_readme_four_engine_topline",
         "status": "accepted_topline" if accepted else "rejected_topline_gate",
         "performance_claim": accepted,
         "date": dt.date.today().isoformat(),
-        "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151",
+        "hardware": config["hardware"],
         "measured_hipengine_commit": paro_prov["hipengine_commit"],
         "workloads": list(STANDARD_WORKLOADS),
         "columns": [
@@ -343,7 +376,7 @@ def _assemble_topline(
             "llamacpp": "split prefill/decode llama-bench; 1 internal warmup + median of 5 samples per phase",
             "prefill_decode_units": "tokens per second",
             "hipengine_memory": "tracked allocator high-water GiB",
-            "llamacpp_memory": "whole-device amdgpu GTT-used peak GiB sampled every 10 ms",
+            "llamacpp_memory": f"whole-device amdgpu {str(config['memory_domain']).upper()}-used peak GiB sampled every 10 ms",
         },
         "models": {
             "hipengine_paro": {
@@ -384,14 +417,13 @@ def _assemble_topline(
             "llamacpp_hip": llama_hip_prov,
             "llamacpp_vulkan": llama_vk_prov,
         },
-        "linked_correctness": {
-            "gguf_external_and_state_oracle": "benchmarks/results/2026-07-11-sol-g1-gfx1151-gguf-eager-p512-d4.json",
-            "paro_fixture_gate": "benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json",
-        },
+        "linked_correctness": dict(
+            linked_correctness or config["default_correctness"]
+        ),
         "notes": [
             "The llama.cpp component tools intentionally emit performance_claim=false; this top-level artifact is the promotion boundary after checking their samples, return codes, build/model/device identity, and clean harness provenance.",
             "The PARO column uses W4 PARO/BF16 KV. The other three columns use the same Q4_K_M GGUF; hipEngine uses BF16 KV and llama.cpp uses f16 KV.",
-            "Peak-memory numbers have different scopes: hipEngine is tracked owned allocation, while llama.cpp is absolute whole-device GTT usage. Compare trends within a column; do not interpret small cross-column deltas as allocator efficiency.",
+            f"Peak-memory numbers have different scopes: hipEngine is tracked owned allocation, while llama.cpp is absolute whole-device {str(config['memory_domain']).upper()} usage. Compare trends within a column; do not interpret small cross-column deltas as allocator efficiency.",
         ],
     }
 
@@ -445,12 +477,15 @@ def _git_assembly_record(repo_root: Path) -> dict[str, Any]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", choices=tuple(PLATFORM_CONFIG), default="gfx1151")
     parser.add_argument("--hipengine-paro", type=Path, required=True)
     parser.add_argument("--hipengine-gguf", type=Path, required=True)
     parser.add_argument("--llamacpp-hip", type=Path, required=True)
     parser.add_argument("--llamacpp-vulkan", type=Path, required=True)
     parser.add_argument("--json", type=Path, required=True)
     parser.add_argument("--markdown", type=Path)
+    parser.add_argument("--gguf-correctness")
+    parser.add_argument("--paro-correctness")
     return parser
 
 
@@ -466,7 +501,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         column: (path, json.loads(path.read_text(encoding="utf-8")))
         for column, path in paths.items()
     }
-    payload = _assemble_topline(sources)
+    linked_correctness = None
+    if args.gguf_correctness or args.paro_correctness:
+        if not args.gguf_correctness or not args.paro_correctness:
+            raise ValueError("both --gguf-correctness and --paro-correctness are required together")
+        linked_correctness = {
+            "gguf_external_and_state_oracle": args.gguf_correctness,
+            "paro_fixture_gate": args.paro_correctness,
+        }
+    payload = _assemble_topline(
+        sources,
+        platform=args.platform,
+        linked_correctness=linked_correctness,
+    )
     assembly = _git_assembly_record(REPO_ROOT)
     payload["assembly"] = assembly
     if assembly["dirty"]:
