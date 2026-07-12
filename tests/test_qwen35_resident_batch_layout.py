@@ -60,6 +60,8 @@ def test_aotriton_isolated_prefill_stream_skips_proven_safe_256_row_bucket(
     assert runner_module._aotriton_isolated_prefill_stream_applies(512) is True
     monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "0")
     assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is False
+    monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "1")
+    assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is True
 
 
 def test_retained_batch_defaults_select_certified_linear_output_path(

@@ -210,7 +210,7 @@ correctness contracts.
 | Priority | ID | Work package | Current state | Exit / handoff gate |
 | ---: | --- | --- | --- | --- |
 | 0 | `SOL-R0` | Reproduce, bisect, and recover the recent PARO decode regression across the point-release matrix while preserving the correctness/verification fixes. | `open`; **next-point-release blocker** | A clean matched known-good/current A/B names the first performance-changing revision or policy; every affected default route recovers its exact non-regressive wins, and the release matrix passes hidden/state/KV/token plus wall-time gates. |
-| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery plus scoped AOTriton queue isolation retained across all six shapes; 1K negative control unchanged | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
+| 1 | `SOL-R1` | Current-code PARO c1 prefill chunk A/B. | `accepted`: exact gfx1151 linear/MoE recovery plus scoped AOTriton queue isolation retained across all six shapes; 1K negative control unchanged; the 4096-query isolation policy transfers positively to gfx1100 while linear/MoE-256 does not | Per-shape current policy versus forced-256 is state/token exact and five-run faster; promote only winning buckets. |
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `open` | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
 | 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `open after R3`; RED fixture work may start earlier | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or G8. |
@@ -455,9 +455,36 @@ families with zero mismatch paths:
 
 Retained evidence is
 [`2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`](../benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json).
-The gfx1151 shape refresh is complete. The remaining bounded follow-up is
-gfx1100 validation before transferring this scheduling policy as a W7900
-performance claim.
+The gfx1151 six-shape refresh and hardware-local gfx1100 transfer validation
+are complete.
+
+##### R1 gfx1100 Transfer Check, 2026-07-12
+
+The clean W7900/gfx1100 matrix at `255e5aca` tests the two transferable R1
+levers rather than assuming gfx1151 ratios apply:
+
+- AOTriton queue isolation **does transfer**, but at a much smaller magnitude.
+  The initial off/on/off ordering drifted enough to give a false negative, so a
+  reverse on/off/on sequence balanced 15 measured samples per mode. Isolated
+  prefill changes by **+1.638%/+0.495%/+0.192%** at 512/1K/4K, while total
+  measured wall falls by **1.653%/0.127%/0.562%**. Differential gates at all
+  three shapes match the sampled seed, final hidden, all 30 Conv/GDN state
+  families, and all 10 live K/V families byte-for-byte. This matrix measured
+  the earlier global-isolation policy: 512/1K use the 256-query route that the
+  merged threshold now leaves same-stream, while 4K uses 4096-query AOTriton
+  and directly validates the scoped default. Keep that scoped bridge and its
+  explicit rollback flag.
+- The gfx1151 linear/MoE-256 chunk profile **does not transfer**. With queue
+  mode held equally same-stream, gfx1100 prefill changes by
+  **-7.723%/-8.782%/-6.398%** at 512/1K/4K. Candidate ranges are wholly below
+  control at every shape. Tracked peak falls only `0.58%/1.72%/0.70%`; stable
+  IDs do not justify paying the throughput loss. Keep the generic gfx1100
+  chunks and do not broaden the gfx1151 architecture overlay.
+
+The compact transfer evidence is
+[`2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`](../benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json).
+R1 is complete; do not retry activation-domain shortcuts, allocator churn, or
+global chunk transfer.
 
 #### R2: Exact GGUF MTP
 

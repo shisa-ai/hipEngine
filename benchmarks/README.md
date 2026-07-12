@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`01e2cec5b566773a5298367a537aa14087c5e789`
+`255e5aca1a385850ae83adc07d44b40489724903`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -180,6 +180,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | --- | --- | --- | --- | --- | --- | --- |
 | Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Diagnostic link only | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`. The repeated `9707` stream is externally validated on the exact model at gfx1151, but this old gfx1100 run predates the four-step state/KV oracle and current provenance contract. | Diagnostic link only | Run the G1 oracle and repeated performance protocol on W7900 at one clean revision; do not transfer the gfx1151 state result as hardware evidence. |
+| Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained reference**: all six shapes pass clean provenance, finite/stable-ID correctness, five-sample variance, matched Q4_K_M identity, and the four-column promotion gate. The current table replaces only its PARO column with the separately retained recovery below. | Yes | Rerun GGUF/llama columns after a measured path/build/stack change; rerun all four together when a fully matched refresh is required. |
@@ -426,6 +427,40 @@ No artifact in the repository supports the former llama.cpp Q8_0 memory values
 printed in the root README. Those numeric tables were removed. A future
 llama.cpp memory row needs the model fingerprint, llama.cpp commit/build, GPU,
 exact command, whole-card sampling method, and compact artifact.
+
+### W7900 PARO gfx1151 transfer gate, 2026-07-12
+
+**Status: retained scoped-default validation and retained negative transfer
+decision.** Clean detached `255e5aca` on W7900/GPU0 used the exact packed W4
+PARO/BF16-KV model, repeated token `9707`, graph decode, TheRock HIP 7.15, two
+discarded plus five measured runs per leg, and cached JIT. Because the first
+off/on/off AOTriton sequence drifted with run order, the reverse on/off/on
+sequence completes a balanced 15-sample comparison per mode.
+
+| Workload | Same-stream prefill | Isolated prefill | Prefill delta | Total measured wall reduction |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `2843.083` | `2889.650` | **+1.638%** | **1.653%** |
+| 1K/128 | `2951.433` | `2966.051` | **+0.495%** | **0.127%** |
+| 4K/128 | `2924.276` | `2929.897` | **+0.192%** | **0.562%** |
+
+At 512, 1K, and 4K the isolated and same-stream legs match sampled seed, final
+hidden, all 30 Conv/GDN state families, and all 10 live K/V families
+byte-for-byte. This matrix was measured before queue isolation was narrowed by
+query shape, so its isolated leg includes the 256-query 512/1K route as well as
+the 4096-query 4K route. The merged runtime keeps 256-query AOTriton on the
+caller stream and isolates query rows >=512. The 4K result therefore directly
+validates the merged gfx1100 default; 512/1K remain supporting exact transfer
+diagnostics rather than claims for the final route. No additional runtime
+change is needed.
+
+The architecture-specific chunk profile does not transfer. With AOTriton queue
+mode held equally same-stream, linear/MoE-256 changes prefill by
+`-7.723%/-8.782%/-6.398%` at 512/1K/4K. Its `0.58%-1.72%` tracked-memory
+reduction does not offset disjoint, uniformly slower throughput ranges, so
+`gfx1100` keeps the generic chunk policy.
+
+Artifact:
+[`2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`](results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json).
 
 ### W7900 model sweep, 2026-07-07
 

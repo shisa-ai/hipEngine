@@ -866,7 +866,14 @@ should be boring.
   families. The 1K 256-query negative control never enters isolation and is
   not promoted. Retained evidence:
   `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`.
-- Remove when: gfx1100 is validated with the same scheduling or explicitly
-  excluded, and either the ROCr/AOTriton queue-scratch issue is fixed upstream
-  or the rollback has survived one release cycle. Then remove the opt-out and
-  its duplicate same-stream route; keep one proven scheduling policy.
+- A clean W7900/gfx1100 transfer matrix measured the earlier global-isolation
+  policy in balanced 15-sample legs. Isolated prefill changes by
+  `+1.638%/+0.495%/+0.192%` and total measured wall falls by
+  `1.653%/0.127%/0.562%` at 512/1K/4K, with byte-exact hidden/state/KV at every
+  shape. The merged threshold intentionally leaves the 256-query 512/1K path
+  same-stream; its 4K/4096-query result directly validates the scoped gfx1100
+  default. Retained evidence:
+  `benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`.
+- Remove when: the ROCr/AOTriton queue-scratch issue is fixed upstream or the
+  rollback has survived one release cycle. Then remove the opt-out and its
+  duplicate same-stream route; keep one proven scheduling policy.

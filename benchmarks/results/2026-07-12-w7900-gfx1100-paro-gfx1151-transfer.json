@@ -1,0 +1,509 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_paro_gfx1151_transfer_matrix",
+  "created_at": "2026-07-12T10:31:29.209155+00:00",
+  "status": "accepted_partial_transfer",
+  "classification": "retained_scoped_default_validation_and_rejected_chunk_transfer",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "source": {
+    "measured_commit": "255e5aca1a385850ae83adc07d44b40489724903",
+    "clean_detached_worktree": "/tmp/hipengine-w7900-transfer-20260712-100719",
+    "measured_clean": true,
+    "runtime_default_change_required": false,
+    "landing_changes": "tests/documentation/evidence only after integration; merged runtime already scopes isolation to AOTriton query rows >=512"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T10:25:57.068923+00:00",
+    "repo_root": "/tmp/hipengine-w7900-transfer-20260712-100719",
+    "hipengine_commit": "255e5aca1a385850ae83adc07d44b40489724903",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "/tmp/hipengine-w7900-transfer-20260712-100719/scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "paro",
+      "--model",
+      "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--backend",
+      "hip_gfx1100",
+      "--shared-expert-format",
+      "packed_paro_w4",
+      "--token-id",
+      "9707",
+      "--workloads",
+      "512/128",
+      "1K/128",
+      "4K/128",
+      "--warmup-runs",
+      "2",
+      "--measured-runs",
+      "5",
+      "--warmup-decode-tokens",
+      "4",
+      "--compiler-version-file",
+      "/tmp/hipengine-w7900-transfer-20260712-100719-results/hipcc-version.txt",
+      "--require-cached-build",
+      "--attn-aotriton-min-tokens",
+      "512",
+      "--graph-replay-decode",
+      "--json",
+      "/tmp/hipengine-w7900-transfer-20260712-100719-results/queue-on-a.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 2,
+    "repetitions": 5,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "workload": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "model_snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "prompt_token_id": 9707,
+    "shapes": [
+      "512/128",
+      "1K/128",
+      "4K/128"
+    ],
+    "warmup_decode_tokens": 4,
+    "graph_replay_decode": true,
+    "warmup_runs": 2,
+    "measured_runs_per_leg": 5,
+    "compiler": "HIP version: 7.15.0-0000000"
+  },
+  "aotriton_isolated_queue": {
+    "source_commit": "c3a03ed1c9eea759268088e19fa3d8828b5e0de6",
+    "candidate": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1",
+    "control": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0",
+    "order": [
+      "off-a",
+      "on",
+      "off-b",
+      "on-a",
+      "off-c",
+      "on-b"
+    ],
+    "decision": "keep_merged_scoped_default_on_for_query_rows_ge_512",
+    "results": [
+      {
+        "workload": "512/128",
+        "samples_per_mode": 15,
+        "same_stream_prefill_tok_s": 2843.0833340743734,
+        "isolated_prefill_tok_s": 2889.6503920442597,
+        "prefill_delta_percent": 1.6379068953688236,
+        "same_stream_decode_tok_s": 113.21035459976555,
+        "isolated_decode_tok_s": 115.64800691732229,
+        "decode_delta_percent": 2.1532061498920507,
+        "same_stream_wall_seconds_excluding_load": 1.3590810979994785,
+        "isolated_wall_seconds_excluding_load": 1.3366130549984518,
+        "wall_reduction_percent": 1.6531789776267858,
+        "same_stream_prefill_range_tok_s": [
+          2816.567065072549,
+          2926.939753573139
+        ],
+        "isolated_prefill_range_tok_s": [
+          2854.047569302902,
+          2944.1118217847916
+        ],
+        "same_stream_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "isolated_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      {
+        "workload": "1K/128",
+        "samples_per_mode": 15,
+        "same_stream_prefill_tok_s": 2951.433150073739,
+        "isolated_prefill_tok_s": 2966.0507969284163,
+        "prefill_delta_percent": 0.4952728424261421,
+        "same_stream_decode_tok_s": 103.25335078176617,
+        "isolated_decode_tok_s": 103.18200577332476,
+        "decode_delta_percent": -0.06909703937085787,
+        "same_stream_wall_seconds_excluding_load": 1.634901935999551,
+        "isolated_wall_seconds_excluding_load": 1.6328181279986893,
+        "wall_reduction_percent": 0.1274576752878823,
+        "same_stream_prefill_range_tok_s": [
+          2922.469684709023,
+          3002.4076142453587
+        ],
+        "isolated_prefill_range_tok_s": [
+          2945.8570631390153,
+          3012.7140652501785
+        ],
+        "same_stream_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "isolated_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      {
+        "workload": "4K/128",
+        "samples_per_mode": 15,
+        "same_stream_prefill_tok_s": 2924.2757905882427,
+        "isolated_prefill_tok_s": 2929.8965917174637,
+        "prefill_delta_percent": 0.1922117314417271,
+        "same_stream_decode_tok_s": 104.92136963040974,
+        "isolated_decode_tok_s": 105.88600427611597,
+        "decode_delta_percent": 0.9193881562013395,
+        "same_stream_wall_seconds_excluding_load": 2.668565013999796,
+        "isolated_wall_seconds_excluding_load": 2.653572981002071,
+        "wall_reduction_percent": 0.561801302163292,
+        "same_stream_prefill_range_tok_s": [
+          2894.419597741541,
+          2951.4003886479586
+        ],
+        "isolated_prefill_range_tok_s": [
+          2900.6279151274707,
+          2939.9769982279245
+        ],
+        "same_stream_final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17
+        ],
+        "isolated_final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17,
+          17
+        ]
+      }
+    ],
+    "correctness": {
+      "passed": true,
+      "shapes": [
+        {
+          "prompt_length": 512,
+          "passed": true,
+          "mismatches": [],
+          "seed_token_id": 16,
+          "final_hidden_sha256": "ff6c94d5e323c2eeedf4f7a5855a57d9630b168a61db9a7a950174686aa65c79",
+          "persistent_state_sha256": "2f86cc6edca96055ad2e783c3211995b37bda957f7540d8d0650987b9a8b3273",
+          "linear_state_family_count": 30,
+          "full_kv_family_count": 10,
+          "raw_sha256": "d89cf6a660d3bc49df8abae22454b556d1559c68b95e6ff9943a5b810810e621"
+        },
+        {
+          "prompt_length": 1024,
+          "passed": true,
+          "mismatches": [],
+          "seed_token_id": 13743,
+          "final_hidden_sha256": "8f3d13cd068f4885eb6c9dcf28157c235242d4f3a32dc58bd1bd3c19d8d21324",
+          "persistent_state_sha256": "050ae44655b957e57d28694106c9409d4f58ffd250a0d39d97b4f49c83d241f2",
+          "linear_state_family_count": 30,
+          "full_kv_family_count": 10,
+          "raw_sha256": "8160d326ee98fb22f0d336f9cf6a548870fda239aba41417eaa858c2d38978a9"
+        },
+        {
+          "prompt_length": 4096,
+          "passed": true,
+          "mismatches": [],
+          "seed_token_id": 13743,
+          "final_hidden_sha256": "21c8ae8c925b16f88623b48c3588666ee3cc55034337a46476430307ac541347",
+          "persistent_state_sha256": "b959f2f967fe35cde3c7e1842c0a43b46da56d00589fc05e8cc99f20befd640e",
+          "linear_state_family_count": 30,
+          "full_kv_family_count": 10,
+          "raw_sha256": "6fce94c9a502f9244099fcecc0d8dcc6f9838adcfe731556ceb6ecb7d298c8a5"
+        }
+      ],
+      "contract": "byte-identical sampled seed, final hidden, 30 Conv/GDN state families, and 10 live K/V families"
+    },
+    "raw_sha256": {
+      "queue_off-a": "fa11a11ebfe556f9aa929942376f86ce91c4241769f60183a11287f5293a24a4",
+      "queue_off-b": "0425f9cfa2e9f80d269b4a7c74a4848af079e9e36f38b917d857d673f0df2deb",
+      "queue_off-c": "4a52272993efa0c74ae8c06e46878cac86e2e5aad4e913f58a8e39efd6fbd5af",
+      "queue_on": "4b977ed45d746078e142a4a7c3243b44cd6306cefd35603ec8f3934aa218e65f",
+      "queue_on-a": "5efcb47394d6bdbc31c5294da00a9a55154047a97ec188d4908af26646c325ca",
+      "queue_on-b": "0199153fdbea63de4ef1e9100dc19174fe2d65967364afcc984a483243ba7139"
+    }
+  },
+  "gfx1151_linear_moe_chunk256_transfer": {
+    "source_commit": "fad70ffd8116666d407f4a1e9a8c0edc55e035a9",
+    "candidate": "gfx1151-equivalent 256-row linear/MoE chunks with the current full-attention policy preserved",
+    "control": "current gfx1100 chunk policy; isolated queue disabled equally in both variants",
+    "decision": "reject_on_gfx1100",
+    "reason": "prefill throughput regresses at every shape with disjoint candidate/control ranges; memory savings do not offset the wall loss",
+    "results": [
+      {
+        "workload": "512/128",
+        "samples_per_variant": 5,
+        "control_prefill_tok_s": 2863.4282259113165,
+        "candidate_prefill_tok_s": 2642.2758049371187,
+        "prefill_delta_percent": -7.7233443106056505,
+        "control_decode_tok_s": 113.14667999347691,
+        "candidate_decode_tok_s": 114.48094897155077,
+        "decode_delta_percent": 1.1792382932939605,
+        "control_peak_gib": 18.144213318824768,
+        "candidate_peak_gib": 18.039154648780823,
+        "peak_delta_percent": -0.5790202539944,
+        "control_prefill_range_tok_s": [
+          2850.620710138343,
+          2888.7511955012733
+        ],
+        "candidate_prefill_range_tok_s": [
+          2633.266438604201,
+          2662.1740953480094
+        ],
+        "candidate_chunks": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "control_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "candidate_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "raw_control_sha256": "33c1e03d83e332f8e18370948213703f521d9d2b1a441765656a489804ef718f",
+        "raw_candidate_sha256": "6d9fc41478e8e6b2e9705bbe132cee535ebf4d791d5aa10325a130962c5623d9"
+      },
+      {
+        "workload": "1K/128",
+        "samples_per_variant": 5,
+        "control_prefill_tok_s": 2946.222841898853,
+        "candidate_prefill_tok_s": 2687.4711436467796,
+        "prefill_delta_percent": -8.782489042319241,
+        "control_decode_tok_s": 103.4511989993458,
+        "candidate_decode_tok_s": 103.19235407021996,
+        "decode_delta_percent": -0.2502096946478849,
+        "control_peak_gib": 18.366626903414726,
+        "candidate_peak_gib": 18.05145089328289,
+        "peak_delta_percent": -1.7160255488896436,
+        "control_prefill_range_tok_s": [
+          2936.4598410122912,
+          2956.1530418729067
+        ],
+        "candidate_prefill_range_tok_s": [
+          2682.742940867352,
+          2697.8011324160757
+        ],
+        "candidate_chunks": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "control_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "candidate_final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "raw_control_sha256": "a262a32eec5638f8f7b4acc75399d2f5ee28ec4084f24d98099024a5d32c485f",
+        "raw_candidate_sha256": "f4efce283a1837e4db715493c9c28e2b1ad334bfa54f6a1b04a8d0db67648aee"
+      },
+      {
+        "workload": "4K/128",
+        "samples_per_variant": 5,
+        "control_prefill_tok_s": 2912.678298558787,
+        "candidate_prefill_tok_s": 2726.315452665498,
+        "prefill_delta_percent": -6.398332626898839,
+        "control_decode_tok_s": 104.59816533849926,
+        "candidate_decode_tok_s": 104.83243057672605,
+        "decode_delta_percent": 0.22396687118619862,
+        "control_peak_gib": 19.16110749542713,
+        "candidate_peak_gib": 19.026067212224007,
+        "peak_delta_percent": -0.7047624112298978,
+        "control_prefill_range_tok_s": [
+          2904.992727738073,
+          2925.9254330344415
+        ],
+        "candidate_prefill_range_tok_s": [
+          2712.767689810046,
+          2748.266637666936
+        ],
+        "candidate_chunks": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "control_final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17
+        ],
+        "candidate_final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17
+        ],
+        "raw_control_sha256": "cd114554d62441810444941eee815423b96b8eb5261fccf1c7d081a85024acf8",
+        "raw_candidate_sha256": "ab437c2def94ba0a58b7a389802082e99f35a29eeb675fe6176dfc3a17d2af64"
+      }
+    ],
+    "correctness_scope": "finite logits and stable final IDs only; full state gate intentionally not run after decisive performance rejection"
+  },
+  "hip_vulkan_transfer_read": {
+    "source": "docs/HIP-vs-VULKAN.md",
+    "applied": "measure queue/submission behavior and architecture-specific policies on-device rather than transferring gfx1151 ratios",
+    "not_selected": [
+      "broad Vulkan backend",
+      "packed-dot magnitude transfer",
+      "VOPD",
+      "wave64",
+      "generic reduction sweeps",
+      "GGUF-only Q8T16 wave/block indexing"
+    ]
+  },
+  "commands": {
+    "performance_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=<0|1> python3 scripts/qwen35_readme_sweep.py --engine paro --model <snapshot> --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 512/128 1K/128 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file <file> --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json <output>",
+    "exactness_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/paro_prefill_aotriton_stream_exactness.py --model <snapshot> --backend hip_gfx1100 --prompt-length <512|1024|4096> --token-id 9707 --compiler-version-file <file> --require-cached-build --json <output>"
+  },
+  "notes": [
+    "The first off/on/off screen alone was misleading because throughput drifted with run order; the reverse on/off/on sequence balances 15 samples per mode and is the retained comparison.",
+    "The matrix was measured before the >=512-query threshold landed, so isolation covered both the 256-query 512/1K route and the 4096-query 4K route.",
+    "The merged runtime leaves 256-query 512/1K AOTriton same-stream and isolates query rows >=512; the 4K result directly validates that scoped gfx1100 default, while 512/1K remain supporting transfer diagnostics.",
+    "Chunk256 is architecture-specific: its gfx1151 win does not transfer to W7900/gfx1100."
+  ],
+  "artifact_content_sha256_without_self": "3d7094642088c7e68e97094efb94f80661d30fb5a8ba67751a5ce3ee3c2f242b"
+}
