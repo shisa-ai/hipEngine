@@ -151728,3 +151728,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   measured lack of a broad performance change explicit.
 - Re-read the complete scratch document after the edit. No benchmark result,
   retained artifact, or ROCm report changed.
+
+## 2026-07-12 - Define HIP/Vulkan optimization and upstream triage funnel
+
+- Audited the proposed ROCm optimization checklist against the retained
+  timing/ISA evidence, current micro sources, the installed TheRock compiler,
+  and primary LLVM, ROCm, and Mesa documentation. The useful ideas are
+  launch/resource inspection, graph/fusion work, source-level live-range and
+  unroll controls, documented AMDGPU builtins, and minimized upstream reports;
+  the response's broad gfx1151-regression and high-impact-launch-bounds claims
+  are not established by current evidence.
+- Added `docs/HIP-vs-VULKAN.md` "Optimization and Escalation Plan". It starts
+  with an explicit already-satisfied/already-tested/ruled-out/inapplicable/
+  unproven table so future work does not repeat native-target/O3, fixed
+  workgroup, spill, dot4, wave64, generic reduction/VOPD, FP-atomic, or broad
+  hidden-LLVM-flag experiments.
+- Recorded the remaining in-tree funnel: select a shipped hot bucket, control
+  clocks/source/math/submission, join static ISA and dynamic counters, try the
+  lowest-risk HIP source/runtime lever, gate any inline ISA narrowly, then
+  bisect compiler builds. Added component-specific evidence packets for
+  LLVM/Clang, HIP/HSA runtime, KFD/MES/driver/firmware, and Mesa/RADV escalation.
+- Confirmed that lack of PTX is not lack of inspectable evidence: the existing
+  ISA runners generate saved HIP intermediates/code objects and parse HIP
+  resource metadata plus final HIP/RADV ISA statistics. Official AMDGPU LLVM
+  IR/code-object, builtins, HIP performance/graph, rocprofv3, and RADV pipeline
+  references are linked from the dashboard.
+- The installed TheRock `7.15.0a20260711` compiler rejects
+  `hipcc --resource-usage --version` with `unknown argument`, despite the option
+  appearing in current ROCm performance documentation. The exact fallback was
+  validated with:
+
+  ```bash
+  hipcc --offload-arch=gfx1151 -O3 -std=c++17 \
+    -Rpass-analysis=kernel-resource-usage \
+    -DHIPENGINE_DOT_MODE=0 -DHIPENGINE_DOT_GROUPS=8 \
+    -DHIPENGINE_BLOCK_SIZE=256 -c \
+    benchmarks/micro/runners/hip_dot_path.hip \
+    -o /tmp/hip-dot-resource.o
+  ```
+
+  It succeeds and reports `14` SGPR, `26` VGPR, zero scratch/spills/LDS, and
+  estimated occupancy `16` waves/SIMD for that compile-only diagnostic. These
+  are tool-validation facts, not a new timing or optimization claim.
