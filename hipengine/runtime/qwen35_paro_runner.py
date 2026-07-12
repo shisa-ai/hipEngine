@@ -112,6 +112,7 @@ from hipengine.loading.materialize import (
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
+    AotritonPrefillStreamBridge,
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
     Qwen35ParoDenseMlpScratch,
@@ -140,6 +141,7 @@ _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMO
 _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT = 26.0
 _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB"
 _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT = 1024
+_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
@@ -178,6 +180,10 @@ def _env_is_blank(name: str) -> bool:
 
 def _retained_batch_defaults_enabled() -> bool:
     return _env_flag(_RETAINED_BATCH_DEFAULTS_ENV, default=False)
+
+
+def _aotriton_isolated_prefill_stream_enabled() -> bool:
+    return _env_flag(_AOTRITON_ISOLATED_PREFILL_STREAM_ENV, default=True)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1637,6 +1643,9 @@ class Qwen35ParoResidentSession:
         self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
         self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None
         self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | Qwen35ParoMoeScratch | None = None
+        self._prefill_aotriton_stream = 0
+        self._prefill_aotriton_input_ready_event = 0
+        self._prefill_aotriton_output_ready_event = 0
         self._host_sampling_params: Any | None = None
         self._host_sampling_state: RowSamplingState | None = None
         self._host_sampling_states_by_slot: dict[int, RowSamplingState] | None = None
@@ -1683,14 +1692,13 @@ class Qwen35ParoResidentSession:
     def close(self) -> None:
         if self.closed:
             return
-        # Kernel launches use the default stream throughout this resident session.
-        # Once prefill no longer spends ~10s in accidental on-demand build calls,
-        # callers can close a session while decode/prefill work is still queued;
-        # freeing those buffers early can corrupt the next session in the same
-        # process.  Synchronize before releasing any device allocations.
+        # Callers can close while default-stream work or the isolated AOTriton
+        # prefill stream is still queued. Synchronize before releasing either
+        # stream resources or their device allocations.
         self.runtime.device_synchronize()
         self.closed = True
         self._invalidate_verify_graph_cache()
+        self._release_prefill_aotriton_bridge()
         self._release_prefill_workspace()
         self._release_prefill_hidden_buffer()
         for state in reversed(self.states):
@@ -2472,6 +2480,10 @@ class Qwen35ParoResidentSession:
                 "layer_limit": native_prefill_plan.layer_limit,
                 "aotriton_attention": self._prefill_use_aotriton_attention_resolved(len(tokens)),
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
+                "aotriton_isolated_prefill_stream": (
+                    self._prefill_use_aotriton_attention_resolved(len(tokens))
+                    and _aotriton_isolated_prefill_stream_enabled()
+                ),
                 "kv_storage_dtype": self.kv_storage_dtype.value,
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
@@ -3315,6 +3327,48 @@ class Qwen35ParoResidentSession:
         # the slow direct streaming INT8 path remains available for explicit
         # diagnostics and very-long memory-gate prompts.
         return self._prefill_int8_uses_oracle_attention(tokens)
+
+    def _ensure_prefill_aotriton_bridge(self) -> AotritonPrefillStreamBridge:
+        stream = int(getattr(self, "_prefill_aotriton_stream", 0))
+        input_ready = int(getattr(self, "_prefill_aotriton_input_ready_event", 0))
+        output_ready = int(getattr(self, "_prefill_aotriton_output_ready_event", 0))
+        if stream and input_ready and output_ready:
+            return AotritonPrefillStreamBridge(stream, input_ready, output_ready)
+        if stream or input_ready or output_ready:
+            raise RuntimeError("partial AOTriton prefill stream bridge state")
+
+        new_stream = self.runtime.stream_create()
+        new_input_ready = 0
+        new_output_ready = 0
+        try:
+            new_input_ready = self.runtime.event_create()
+            new_output_ready = self.runtime.event_create()
+        except Exception:
+            if new_output_ready:
+                self.runtime.event_destroy(new_output_ready)
+            if new_input_ready:
+                self.runtime.event_destroy(new_input_ready)
+            if new_stream:
+                self.runtime.stream_destroy(new_stream)
+            raise
+        self._prefill_aotriton_stream = int(new_stream)
+        self._prefill_aotriton_input_ready_event = int(new_input_ready)
+        self._prefill_aotriton_output_ready_event = int(new_output_ready)
+        return AotritonPrefillStreamBridge(new_stream, new_input_ready, new_output_ready)
+
+    def _release_prefill_aotriton_bridge(self) -> None:
+        output_ready = int(getattr(self, "_prefill_aotriton_output_ready_event", 0))
+        input_ready = int(getattr(self, "_prefill_aotriton_input_ready_event", 0))
+        stream = int(getattr(self, "_prefill_aotriton_stream", 0))
+        if output_ready:
+            self.runtime.event_destroy(output_ready)
+        if input_ready:
+            self.runtime.event_destroy(input_ready)
+        if stream:
+            self.runtime.stream_destroy(stream)
+        self._prefill_aotriton_output_ready_event = 0
+        self._prefill_aotriton_input_ready_event = 0
+        self._prefill_aotriton_stream = 0
 
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
@@ -4424,6 +4478,11 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
+        aotriton_bridge = (
+            self._ensure_prefill_aotriton_bridge()
+            if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
+            else None
+        )
         release_workspace_between_layer_types = self._should_minimize_prefill_workspace_overlap(tokens)
         previous_layer_type: str | None = None
         for layer_id, state in enumerate(self.states):
@@ -4522,6 +4581,7 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_q=cu_seqlens_q,
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
+                        aotriton_bridge=aotriton_bridge,
                         aotriton_kv_rows=end,
                         retained_key_cache=retained_key_cache if retained_append_spans is not None else None,
                         retained_value_cache=retained_value_cache if retained_append_spans is not None else None,
@@ -4740,6 +4800,11 @@ class Qwen35ParoResidentSession:
                                 cu_seqlens_q=cu_seqlens_q,
                                 cu_seqlens_k=cu_seqlens_k,
                                 aotriton_attention=use_aotriton_attention,
+                                aotriton_bridge=(
+                                    self._ensure_prefill_aotriton_bridge()
+                                    if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
+                                    else None
+                                ),
                                 aotriton_kv_rows=segment_rows,
                                 tokens=segment_rows,
                                 block_size=self.block_size,
@@ -4782,6 +4847,11 @@ class Qwen35ParoResidentSession:
                         tokens=rows,
                         block_size=self.block_size,
                         aotriton_attention=use_aotriton_attention,
+                        aotriton_bridge=(
+                            self._ensure_prefill_aotriton_bridge()
+                            if use_aotriton_attention and _aotriton_isolated_prefill_stream_enabled()
+                            else None
+                        ),
                         aotriton_max_seqlen_q=max_segment_rows,
                         aotriton_max_seqlen_k=max_segment_rows,
                         library=self.libraries,
