@@ -152335,3 +152335,81 @@ graphless decode launch-collapse path without regressing target/serial parity.
   correctness gate.
 - Compact artifact:
   `benchmarks/results/2026-07-12-w7900-gpu0-paro-current-512-4k-20260712-080357-diagnostic.json`.
+
+## 2026-07-12 - Test gfx1151 PARO prefill transfers on gfx1100
+
+- Reviewed the accepted SOL-R1 linear/MoE-256 profile (`fad70ffd`), the
+  event-linked AOTriton queue (`c3a03ed1`), current `docs/SOL-OPTIMIZATION.md`,
+  and `docs/HIP-vs-VULKAN.md`. The cross-backend dashboard explicitly warns
+  that gfx1151 magnitudes and even directions do not generally transfer to
+  gfx1100; only queue/dispatch behavior and the geometry/reduction timing-mode
+  split are qualitatively consistent. Therefore tested the queue and chunk
+  policies directly, while rejecting broad Vulkan, packed-dot, VOPD, wave64,
+  generic-reduction, and GGUF-only Q8T16 transfers as unsupported PARO-prefill
+  candidates.
+- Used clean detached `255e5aca` on GPU0 Radeon Pro W7900/gfx1100, exact PARO
+  model fingerprint `995a8c67...d917`, W4 PARO/BF16 KV, repeated token `9707`,
+  TheRock HIP `7.15.0-0000000` / clang `f58b06dc`, graph decode, cached JIT,
+  two discarded plus five measured runs per leg, and no competing KFD process.
+  Raw components remain under
+  `/tmp/hipengine-w7900-transfer-20260712-100719-results/`; the compact artifact
+  retains each SHA-256.
+- Queue performance used this command template with `<mode>` set to `0` or `1`:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=<mode> python3
+  scripts/qwen35_readme_sweep.py --engine paro --model <snapshot> --backend
+  hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads
+  512/128 1K/128 4K/128 --warmup-runs 2 --measured-runs 5
+  --warmup-decode-tokens 4 --compiler-version-file
+  /tmp/hipengine-w7900-transfer-20260712-100719-results/hipcc-version.txt
+  --require-cached-build --attn-aotriton-min-tokens 512
+  --graph-replay-decode --json <output>`.
+- The first off/on/off sequence was order-sensitive: pooled same-stream versus
+  isolated appeared `2936.207 -> 2905.080 tok/s` at 4K (-1.06%). Instead of
+  architecture-gating from that false negative, ran reverse on/off/on and
+  pooled balanced **15 samples per mode**. Final same-stream -> isolated
+  prefill is `2843.083 -> 2889.650` (**+1.638%**) at 512,
+  `2951.433 -> 2966.051` (**+0.495%**) at 1K, and
+  `2924.276 -> 2929.897 tok/s` (**+0.192%**) at 4K. Total measured wall falls
+  **1.653% / 0.127% / 0.562%**, respectively. Keep the existing global
+  default-on bridge and rollback flag; no runtime source change is required.
+- Ran `scripts/paro_prefill_aotriton_stream_exactness.py` at prompt lengths
+  512, 1024, and 4096. Every differential gate passes with identical sampled
+  seed, final hidden SHA-256, all 30 Conv/GDN state families, and all 10 live
+  K/V families. This is hardware-local full-state evidence, not an inference
+  from the gfx1151 gate.
+- Tested the gfx1151-equivalent linear/MoE-256 profile with queue mode fixed
+  same-stream in both variants. 512/1K used manual `linear=256, moe=256`; 4K
+  additionally preserved the current `query/post/RoPE=4096/1024/1024` policy.
+  Five-run control -> candidate prefill is
+  `2863.428 -> 2642.276` (**-7.723%**),
+  `2946.223 -> 2687.471` (**-8.782%**), and
+  `2912.678 -> 2726.315 tok/s` (**-6.398%**). Candidate ranges are wholly below
+  control at all three shapes. Tracked peak falls only
+  `0.579% / 1.716% / 0.705%`; stable IDs do not justify the throughput loss.
+  Reject chunk transfer and retain the generic gfx1100 policy.
+- Added regression coverage for the existing default-on AOTriton flag and its
+  explicit environment override. Adjacent CPU validation passed all tests in
+  `test_qwen35_resident_batch_layout.py`, `test_qwen35_decode_state.py`,
+  `test_paro_prefill_aotriton_stream_exactness.py`, and
+  `test_qwen35_prefill_workspace_policy.py`; the final focused flag tests also
+  pass and `git diff --check` is clean.
+- Compact retained/negative-transfer artifact:
+  `benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`.
+
+## 2026-07-12 - Integrate W7900 transfer evidence with scoped queue isolation
+
+- Rebasing the W7900 transfer work onto `origin/main` brought in `01e2cec5` and
+  `1864022c`: the runtime now isolates only AOTriton query rows `>=512`, keeps
+  the proven-safe 256-query 512/1K route same-stream, and retains a clean exact
+  gfx1151 4K/128 result of `885.141 -> 1089.031 tok/s` (+23.03%).
+- The W7900 matrix at `255e5aca` predates that threshold and measured global
+  isolation. Its 4K workload uses 4096-query AOTriton, so the exact
+  `2924.276 -> 2929.897 tok/s` prefill result and 0.562% total-wall reduction
+  directly validate the merged scoped gfx1100 default. Its exact 512/1K
+  256-query results remain supporting transfer diagnostics, not claims for the
+  final dispatch route. The linear/MoE-256 rejection remains unchanged.
+- Conflict resolution preserves the incoming scoped implementation and clean
+  gfx1151 artifact, the local W7900 artifact/negative chunk decision, and the
+  incoming benchmark topline refresh. Documentation and artifact labels were
+  reconciled to avoid describing the merged policy as global isolation.
