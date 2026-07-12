@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_mtp_transfer_suite",
+  "created_at": "2026-07-12T11:30:00Z",
+  "status": "accepted_hipengine_routes_with_external_diagnostic",
+  "classification": "gfx1151_gguf_mtp_routes_transfer_to_gfx1100",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": {
+    "performance_claim": "hipEngine true-AR, exact/default, and llama-compat columns only",
+    "external_comparator": "llama.cpp HIP is diagnostic_retained with performance_claim=false",
+    "semantic_contract": "exact/default is serial-prefix preserving; llama-compat is accuracy-traded and explicit-only",
+    "top_level_provenance": "clean exact/default measurement; llama-compat retains a second canonical provenance block below"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-12T11:23:27.349584+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "d50aa4d13ff03f50537cfa7f7c5358ab321e43ad",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_ar_mtp_suite.py",
+      "--scope",
+      "full",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--mtp-route",
+      "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+      "--record-cycle-stage-timings",
+      "--require-cached-build"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000; AMD clang 23.0.0git aa451e1f",
+    "build_profile": "gguf_ar_mtp_suite_exact",
+    "timing_protocol": "true_ar_eager_decode_plus_child_cycle_stage_wall",
+    "warmups": null,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "hip_visible_devices": "0",
+    "host": "epyc"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF with one embedded MTP block",
+    "kv_dtype_hipengine": "bf16",
+    "kv_dtype_llamacpp": "f16",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sampled_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "reasoning": "off",
+    "sampling": "greedy"
+  },
+  "correctness": {
+    "status": "passed",
+    "oracle_commit": "b81102b4b15d0e38e2a519581b6efdea5c1faf8a",
+    "oracle_clean": true,
+    "prompt": "[9707] * 512",
+    "decode_steps": 4,
+    "external_and_hipengine_tokens": [9707, 9707, 9707, 9707, 9707],
+    "serial_prefix_state_exact": true,
+    "hidden_exact": true,
+    "layer_outputs_exact": "40/40 at every transition",
+    "conv_gdn_families_exact": "30/30 at every transition",
+    "live_kv_families_exact": "10/10 at every transition",
+    "source_sha256": "f4a8ebdb9dc81c4ca4b40a6cafc4d4c03d123eb7358ca09f3055ec02ec9ac375"
+  },
+  "hipengine_exact_default": {
+    "status": "accepted",
+    "performance_claim": true,
+    "semantic_contract": "serial-prefix preserving exact/default",
+    "measured_commit": "d50aa4d13ff03f50537cfa7f7c5358ab321e43ad",
+    "measured_clean": true,
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP 7.15.0-0000000, AMD clang 23.0.0git aa451e1f",
+    "route": "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+    "protocol": "full ten-prompt fixed 10-cycle suite; budgets B1-B5; one in-process model load; cycle-stage wall",
+    "true_ar": {
+      "decode_tokens_per_prompt": 60,
+      "total_output_tokens": 600,
+      "decode_tok_s": 34.48760450966486
+    },
+    "budgets": {
+      "b1": {
+        "decode_tok_s": 41.134696728627425,
+        "vs_true_ar": 1.1927,
+        "draft_acceptance": 0.7564102564102564,
+        "accepted_per_output": 0.3710691823899371,
+        "total_output_tokens": 159,
+        "cycle_wall_ms_per_output": 24.421044025157236
+      },
+      "b2": {
+        "decode_tok_s": 43.64720787631561,
+        "vs_true_ar": 1.2656,
+        "draft_acceptance": 0.7589285714285714,
+        "accepted_per_output": 0.4594594594594595,
+        "total_output_tokens": 185,
+        "cycle_wall_ms_per_output": 23.015038378378375
+      },
+      "b3": {
+        "decode_tok_s": 45.9643316786174,
+        "vs_true_ar": 1.3328,
+        "draft_acceptance": 0.7352941176470589,
+        "accepted_per_output": 0.5,
+        "total_output_tokens": 200,
+        "cycle_wall_ms_per_output": 21.847496999999997
+      },
+      "b4": {
+        "decode_tok_s": 43.041699055009865,
+        "vs_true_ar": 1.248,
+        "draft_acceptance": 0.6917808219178082,
+        "accepted_per_output": 0.5024875621890548,
+        "total_output_tokens": 201,
+        "cycle_wall_ms_per_output": 23.332913930348262
+      },
+      "b5": {
+        "decode_tok_s": 44.4508993605232,
+        "vs_true_ar": 1.2889,
+        "draft_acceptance": 0.7034482758620689,
+        "accepted_per_output": 0.504950495049505,
+        "total_output_tokens": 202,
+        "cycle_wall_ms_per_output": 22.59022326732673
+      }
+    },
+    "best_budget": "b3",
+    "apple_to_apple_ok": true,
+    "command": "python3.12 scripts/gguf_ar_mtp_suite.py --scope full --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --record-cycle-stage-timings --require-cached-build --output <exact-full.json>",
+    "source_sha256": "81a0c1a40c73ce9c1e43f603a35a7f369039ec82bd75135019bdf878351f62d7"
+  },
+  "hipengine_llama_compat": {
+    "provenance": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 1,
+      "collected_at": "2026-07-12T11:12:55.362203+00:00",
+      "repo_root": "/home/lhl/hipEngine-main",
+      "hipengine_commit": "b81102b4b15d0e38e2a519581b6efdea5c1faf8a",
+      "git_branch": "main",
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "auto",
+      "resolved_backend": "hip_gfx1100",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+        "size_bytes": 22663387424,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [0, 11331169424, 22662338848],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "bf16",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "scripts/gguf_ar_mtp_suite.py",
+        "--scope",
+        "full",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--prompts",
+        "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "--mtp-route",
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+        "--budgets",
+        "2",
+        "--cycles",
+        "24",
+        "--max-output-tokens",
+        "24",
+        "--record-cycle-stage-timings",
+        "--require-cached-build"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1100",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": "7.2.4",
+      "hipcc_version": "HIP version: 7.15.0-0000000; AMD clang 23.0.0git aa451e1f",
+      "build_profile": "gguf_ar_mtp_suite_llama_compat",
+      "timing_protocol": "true_ar_eager_decode_plus_child_cycle_stage_wall",
+      "warmups": null,
+      "repetitions": 1,
+      "profiler": null
+    },
+    "status": "accepted_explicit_accuracy_traded",
+    "performance_claim": true,
+    "semantic_contract": "llama-compatible direct partial commit/dp4a; not serial-prefix-equivalent; explicit-only",
+    "measured_commit": "b81102b4b15d0e38e2a519581b6efdea5c1faf8a",
+    "measured_clean": true,
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP 7.15.0-0000000, AMD clang 23.0.0git aa451e1f",
+    "route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+    "protocol": "B2 natural24/cyclecap24; full ten-prompt suite plus fixed category-heldouts; one in-process model load; cycle-stage wall",
+    "true_ar": {
+      "total_output_tokens": 240,
+      "decode_tok_s": 34.28081545435681
+    },
+    "full": {
+      "prompts": 10,
+      "total_output_tokens": 240,
+      "decode_tok_s": 52.577387341994,
+      "vs_true_ar": 1.533726,
+      "draft_acceptance": 0.8295454545454546,
+      "accepted_per_output": 0.6083333333333333,
+      "cycle_wall_ms_per_output": 19.045320416666666
+    },
+    "train": {
+      "prompts": 6,
+      "total_output_tokens": 144,
+      "true_ar_decode_tok_s": 34.302801,
+      "decode_tok_s": 54.06399825793783,
+      "vs_true_ar": 1.576081,
+      "draft_acceptance": 0.8811881188118812,
+      "accepted_per_output": 0.6180555555555556,
+      "cycle_wall_ms_per_output": 18.5221875
+    },
+    "heldout": {
+      "prompts": 4,
+      "total_output_tokens": 96,
+      "true_ar_decode_tok_s": 34.24789,
+      "decode_tok_s": 50.49469016773705,
+      "vs_true_ar": 1.474388,
+      "draft_acceptance": 0.76,
+      "accepted_per_output": 0.59375,
+      "cycle_wall_ms_per_output": 19.83001979166667
+    },
+    "categories": {
+      "code": {
+        "prompts": 4,
+        "true_ar_decode_tok_s": 34.11850954757078,
+        "decode_tok_s": 58.006042,
+        "vs_true_ar": 1.700134,
+        "draft_acceptance": 0.953846,
+        "accepted_per_output": 0.645833,
+        "cycle_wall_ms_per_output": 17.263457
+      },
+      "general_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 34.288808679227074,
+        "decode_tok_s": 49.736294,
+        "vs_true_ar": 1.450511,
+        "draft_acceptance": 0.756757,
+        "accepted_per_output": 0.583333,
+        "cycle_wall_ms_per_output": 20.1307
+      },
+      "general_ja": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 34.42825762538392,
+        "decode_tok_s": 47.045908966166145,
+        "vs_true_ar": 1.366491,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 21.28277083333333
+      },
+      "mixed_ja_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 34.45303020980999,
+        "decode_tok_s": 51.92950569601766,
+        "vs_true_ar": 1.507255,
+        "draft_acceptance": 0.8285714285714286,
+        "accepted_per_output": 0.6041666666666666,
+        "cycle_wall_ms_per_output": 19.28621666666667
+      }
+    },
+    "apple_to_apple_ok": true,
+    "command": "python3.12 scripts/gguf_ar_mtp_suite.py --scope full --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output <compat-full.json>",
+    "source_sha256": "7cb7e9a9f9216ae7419dcd39814f79cc95557dae86e2a36139542adee74f2277"
+  },
+  "llamacpp_hip": {
+    "status": "diagnostic_retained",
+    "performance_claim": false,
+    "protocol": "llama-server c1, B2 draft-MTP, natural24, reasoning off, greedy, f16 KV, flash attention; server-reported decode timing",
+    "base_decode_tok_s": 81.4691881833016,
+    "mtp_decode_tok_s": 119.04531608763521,
+    "mtp_vs_base": 1.4612311567385354,
+    "client_base_tok_s": 58.00718714415895,
+    "client_mtp_tok_s": 73.58496963402779,
+    "client_mtp_vs_base": 1.2685491791069798,
+    "draft_acceptance": 0.8117647058823529,
+    "accepted_per_output": 0.575,
+    "backend_decode_ms_per_output": 8.4001625,
+    "binary": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+      "version": "9600",
+      "self_reported_commit": "263cc04a5",
+      "sha256": "278dc57266d5ae20c4f07cf51867b99d2f64d90a21622ae4c1108cae97dcecf2",
+      "compiler": "GNU 16.1.1"
+    },
+    "source_checkout_at_measurement": {
+      "commit": "e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6",
+      "dirty": false,
+      "note": "The checkout commit is newer than the prebuilt binary; binary self-report and hash are authoritative for this diagnostic."
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 python3.12 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --ctx-size 8192 --concurrency 1 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --draft-max 2 --mode both --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=--reasoning --server-extra-arg=off --output <llamacpp.json>",
+    "source_sha256": "8f6dc07dc0a4ca01c863763165b1c7d4f44b977e8d67cade1b4fcb719c928279"
+  },
+  "conclusions": [
+    "Both gfx1151-derived hipEngine GGUF MTP routes transfer to gfx1100 on the full category suite.",
+    "Exact/default B3 improves 34.488 to 45.964 tok/s (1.3328x) while preserving serial-prefix semantics.",
+    "Explicit llama-compat B2 improves 34.281 to 52.577 tok/s (1.5337x); train and heldout draft acceptance are 88.12% and 76.00%.",
+    "Every category and the heldout split beat its true no-MTP AR control.",
+    "llama.cpp HIP build 9600 is substantially faster in this diagnostic at 119.045 tok/s MTP, but its external row is not a promoted hipEngine performance claim.",
+    "Fixed-cycle exact and natural24 compatibility/llama.cpp rows use different output horizons and must not be ranked as one protocol."
+  ]
+}

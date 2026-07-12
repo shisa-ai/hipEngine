@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hipengine.benchmark.provenance import validate_artifact_provenance
+
 
 def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -162,6 +164,96 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
 
     for correctness_path in artifact["linked_correctness"].values():
         assert (repo_root / correctness_path).is_file()
+
+
+def test_gfx1100_mtp_topline_publishes_ar_exact_compat_and_llamacpp() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    artifact = json.loads(
+        (
+            repo_root
+            / "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json"
+        ).read_text(encoding="utf-8")
+    )
+    canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
+    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
+
+    assert artifact["status"] == "accepted_hipengine_routes_with_external_diagnostic"
+    assert artifact["performance_claim"] is True
+    assert artifact["correctness_claim"] is True
+    validate_artifact_provenance(artifact["provenance"])
+    validate_artifact_provenance(artifact["hipengine_llama_compat"]["provenance"])
+    assert artifact["provenance"]["dirty"] is False
+    assert artifact["hipengine_llama_compat"]["provenance"]["dirty"] is False
+    assert artifact["hardware"]["target_arch"] == "gfx1100"
+    assert artifact["hardware"]["device"] == "AMD Radeon Pro W7900"
+    assert artifact["correctness"]["serial_prefix_state_exact"] is True
+    assert artifact["correctness"]["conv_gdn_families_exact"] == (
+        "30/30 at every transition"
+    )
+    assert artifact["correctness"]["live_kv_families_exact"] == (
+        "10/10 at every transition"
+    )
+
+    exact = artifact["hipengine_exact_default"]
+    compat = artifact["hipengine_llama_compat"]
+    llamacpp = artifact["llamacpp_hip"]
+    assert exact["status"] == "accepted"
+    assert exact["measured_clean"] is True
+    assert exact["best_budget"] == "b3"
+    assert exact["apple_to_apple_ok"] is True
+    assert compat["status"] == "accepted_explicit_accuracy_traded"
+    assert compat["measured_clean"] is True
+    assert compat["apple_to_apple_ok"] is True
+    assert llamacpp["status"] == "diagnostic_retained"
+    assert llamacpp["performance_claim"] is False
+    assert llamacpp["binary"]["self_reported_commit"] == "263cc04a5"
+    assert llamacpp["binary"]["version"] == "9600"
+
+    exact_b3 = exact["budgets"]["b3"]
+    full = compat["full"]
+    expected_main_rows = [
+        (
+            f"| Decode | {exact['true_ar']['decode_tok_s']:.2f} tok/s fixed / "
+            f"{compat['true_ar']['decode_tok_s']:.2f} tok/s natural24 | "
+            f"**{exact_b3['decode_tok_s']:.2f} tok/s** | "
+            f"**{full['decode_tok_s']:.2f} tok/s** | "
+            f"{llamacpp['mtp_decode_tok_s']:.2f} tok/s |"
+        ),
+        (
+            f"| MTP / own AR | 1.0000x | **{exact_b3['vs_true_ar']:.4f}x** | "
+            f"**{full['vs_true_ar']:.4f}x** | "
+            f"{llamacpp['mtp_vs_base']:.4f}x |"
+        ),
+    ]
+    expected_split_rows = [
+        (
+            f"| Train | {compat['train']['prompts']} | "
+            f"{compat['train']['true_ar_decode_tok_s']:.2f} | "
+            f"**{compat['train']['decode_tok_s']:.2f}** | "
+            f"**{compat['train']['vs_true_ar']:.4f}x** | "
+            f"**{100 * compat['train']['draft_acceptance']:.2f}%**"
+        ),
+        (
+            f"| Heldout | {compat['heldout']['prompts']} | "
+            f"{compat['heldout']['true_ar_decode_tok_s']:.2f} | "
+            f"**{compat['heldout']['decode_tok_s']:.2f}** | "
+            f"**{compat['heldout']['vs_true_ar']:.4f}x** | "
+            f"**{100 * compat['heldout']['draft_acceptance']:.2f}%**"
+        ),
+    ]
+    header = (
+        "| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | "
+        "hipEngine GGUF `llama-compat` | llama.cpp HIP |"
+    )
+    for readme in (canonical, root_readme):
+        assert "#### GGUF MTP comparison, Radeon Pro W7900/gfx1100" in readme
+        assert header in readme
+        assert "##### W7900 `llama-compat` full-suite transfer gate" in readme
+        assert "acceptance is **88.12% / 76.00%**" in readme
+        for expected in expected_main_rows:
+            assert expected in readme
+        for expected in expected_split_rows:
+            assert expected in readme
 
 
 def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
