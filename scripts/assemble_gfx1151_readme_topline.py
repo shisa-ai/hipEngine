@@ -40,8 +40,8 @@ PLATFORM_CONFIG = {
         "device_marker": "w7900",
         "memory_domain": "vram",
         "default_correctness": {
-            "gguf_external_and_state_oracle": "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-eager-p512-d4.json",
-            "paro_fixture_gate": "benchmarks/results/2026-07-12-w7900-gfx1100-paro-transfer-correctness.json",
+            "gguf_external_and_state_oracle": "benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json",
+            "paro_fixture_gate": "benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json",
         },
     },
     "gfx1151": {

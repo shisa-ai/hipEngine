@@ -74,7 +74,10 @@ if [[ "${ALLOW_UNTRACKED:-0}" != "1" ]] &&
 fi
 
 HIP_VISIBLE_DEVICES_W7900="${HIP_VISIBLE_DEVICES_W7900:-0}"
-AMDGPU_CARD_NAME_W7900="${AMDGPU_CARD_NAME_W7900:-card0}"
+# This is the DRM/sysfs card name consumed by VramSampler, not rocm-smi's
+# independently numbered card label. On the canonical dual-GPU host,
+# /sys/class/drm/card1 is the 48 GiB W7900 selected as HIP/Vulkan device 0.
+AMDGPU_CARD_NAME_W7900="${AMDGPU_CARD_NAME_W7900:-card1}"
 THEROCK_PY="${THEROCK_PY:-/home/lhl/mambaforge/envs/therock/bin/python3.12}"
 THEROCK_ROOT="${THEROCK_ROOT:-$("$THEROCK_PY" -m rocm_sdk path --root)}"
 HIPCC_VERSION_FILE="${HIPCC_VERSION_FILE:-$LOGDIR/hipcc-version-713.txt}"
@@ -344,8 +347,8 @@ run_summary() {
   local hip_json="$OUTDIR/${DATE_PREFIX}-llamacpp-hip-q4km-f16kv.json"
   local vulkan_json="$OUTDIR/${DATE_PREFIX}-llamacpp-vulkan-q4km-f16kv.json"
   local summary_json="$OUTDIR/${DATE_PREFIX}-summary.json"
-  local gguf_correctness="${GGUF_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-gfx1100-gguf-eager-p512-d4.json}"
-  local paro_correctness="${PARO_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-gfx1100-paro-transfer-correctness.json}"
+  local gguf_correctness="${GGUF_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json}"
+  local paro_correctness="${PARO_CORRECTNESS_ARTIFACT:-benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json}"
 
   echo "[run] four-column W7900 promotion gate -> $summary_json" | tee -a "$LOGDIR/run.log"
   "${THEROCK_ENV[@]}" "$THEROCK_PY" \

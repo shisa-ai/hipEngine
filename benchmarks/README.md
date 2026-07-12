@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-12**
 
 Latest measured hipEngine revision in this scoreboard:
-`202bd2f0a5972c6c7dfce7d029ae1a1aa4ed2f24`
+`8116c4531fa79bb94690042023da8c9360648052`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -178,8 +178,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-05-19 | hipEngine `ae229513`; compiler version not retained; artifact tree changed only `README.md` | **Stale diagnostic**: full commands and memory scopes are retained, but the build environment is incomplete and the quality gate uses a Qwen3.5 fixture for a Qwen3.6 capacity run | Diagnostic link only | Rerun BF16 and INT8 capacity plus a Qwen3.6 long-rollout quality gate at one clean revision |
-| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-07 | hipEngine `b4edca09`; TheRock HIP `7.13.26162-1140233ffe`; llama.cpp `263cc04a5` build 9600 | **Stale diagnostic**: top-level artifact has `performance_claim=false`. The repeated `9707` stream is externally validated on the exact model at gfx1151, but this old gfx1100 run predates the four-step state/KV oracle and current provenance contract. | Diagnostic link only | Run the G1 oracle and repeated performance protocol on W7900 at one clean revision; do not transfer the gfx1151 state result as hardware evidence. |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-07-12 | clean hipEngine `8116c453`; TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: 128K BF16 is **22.124 GiB** tracked; 256K INT8 is **23.957 GiB** with no BF16 shadow. The required Qwen3.6 128K/128 rollout rejects both FP16- and FP32-scale INT8, so 256K is allocation evidence only, not a usable route. | Current diagnostic table | Rerun after INT8 KV write/decode math, scale policy, attention accumulation, or model changes; require the Qwen3.6 long-rollout gate before support. |
+| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean hipEngine `8116c453`; TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
@@ -206,6 +206,72 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 Only rows with an eligible evidence status appear in this section. The sync
 script copies this marked block into the root README byte-for-byte.
+
+### gfx1100 model throughput
+
+This is the clean 2026-07-12 W7900 refresh at hipEngine `8116c453` on
+TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident
+session, two discarded warmups, and five measured repetitions; the tables
+report medians. PARO and GGUF both use their admitted state-bound graph decode
+routes, with capture excluded from steady decode timing. llama.cpp uses one
+internal warmup plus five samples per split prefill/decode phase. The W7900
+four-step GGUF oracle passes external tokens plus byte-exact hidden, all 30
+Conv/GDN state families, and all 10 live K/V families; every measured sweep
+row has finite logits, stable final IDs, clean provenance, and <=5% sample
+variance.
+
+Bold marks the best raw value in each row. It is descriptive only: PARO is W4
+PARO/BF16 KV, while the other columns use the same Q4_K_M GGUF with hipEngine
+BF16 KV and llama.cpp F16 KV. Memory scopes also differ.
+
+<!-- BEGIN TOPLINE:W7900_SWEEP -->
+#### Prefill tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **2917.732** | 644.719 | 2412.320 | 2627.990 |
+| 1K/128 | **2995.876** | 676.177 | 2389.670 | 2631.750 |
+| 4K/128 | **2943.038** | 677.618 | 2255.080 | 2521.770 |
+| 32K/128 | **2108.868** | 628.364 | 1667.640 | 1943.920 |
+| 64K/128 | **1584.131** | 572.612 | 1291.820 | 1414.470 |
+| 128K/128 | 1056.252 | 484.212 | 891.949 | **1079.280** |
+
+#### Decode tok/s
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **115.599** | 89.873 | 80.756 | 107.786 |
+| 1K/128 | 103.238 | 94.751 | 80.805 | **107.555** |
+| 4K/128 | **105.943** | 96.551 | 79.768 | 103.066 |
+| 32K/128 | **92.438** | 83.673 | 74.304 | 91.835 |
+| 64K/128 | 78.260 | 71.644 | 69.010 | **83.746** |
+| 128K/128 | 60.663 | 56.745 | 60.933 | **70.833** |
+
+#### Peak memory GiB
+
+| Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **18.144** | 21.478 | 21.606 | 21.260 |
+| 1K/128 | **18.367** | 21.710 | 21.618 | 21.220 |
+| 4K/128 | **19.161** | 22.995 | 21.674 | 21.278 |
+| 32K/128 | **19.864** | 23.559 | 22.216 | 21.855 |
+| 64K/128 | **20.403** | 24.203 | 22.895 | 22.512 |
+| 128K/128 | **22.124** | 25.493 | 24.089 | 23.824 |
+<!-- END TOPLINE:W7900_SWEEP -->
+
+hipEngine memory is its tracked allocator high-water; llama.cpp is absolute
+whole-device W7900 VRAM used, sampled from DRM sysfs `card1` every 10 ms. The
+host's `rocm-smi` card labels use a different numbering scheme; the retained
+artifact validates the 48 GiB W7900 device rather than the idle 24 GiB XTX.
+Use memory values for within-column context growth, not small cross-column
+allocator-efficiency claims.
+
+Artifacts: [accepted summary](results/2026-07-12-w7900-v030-8116c453-summary.json),
+[hipEngine PARO](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
+[hipEngine GGUF](results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
+[llama.cpp HIP](results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json),
+[llama.cpp Vulkan](results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json),
+and [W7900 GGUF oracle](results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).
 
 ### gfx1151 model throughput
 
@@ -487,52 +553,40 @@ links without publishing their numeric rows as current results. Their removed
 tables remain recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### W7900 PARO context capacity, 2026-05-19
+### W7900 PARO context capacity, 2026-07-12
 
-**Status: stale diagnostic.** The artifact records hipEngine `ae229513`, exact
-commands, immutable model snapshots, tracked allocator memory, sampled HIP VRAM,
-retained KV bytes, and no BF16 shadow. It does not record the compiler version,
-and its correctness gate uses a deterministic Qwen3.5 fixture rather than a
-Qwen3.6 long-rollout evaluation.
+**Status: current capacity measurement; INT8 quality rejected.** Clean detached
+hipEngine `8116c453` on W7900/gfx1100 and TheRock HIP 7.15 used the current
+Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 generated tokens, four
+warmup tokens, current chunk autotuning, and graph decode. The physical layout
+and 24 GiB portability gates pass, but the required Qwen3.6 long-rollout gate
+does not. Therefore 256K INT8 is an allocation-capacity result, not a usable or
+supported route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
-No eligible capacity row; the dated artifact remains linked below pending rerun.
+| Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Quality status |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| PARO BF16 KV | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
+| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **23.957 GiB** | 0.043 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 128K/128 rollout |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
-Run record:
+The capacity rows are one run each because memory needs one high-water
+measurement, not five performance repetitions. Timings are diagnostic only.
+The INT8 row retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
+bytes across ten full-attention layers, with no persistent BF16 K/V shadow.
 
-| Field | Value |
-| --- | --- |
-| GPU/backend | AMD Radeon Pro W7900, gfx1100, `hip_gfx1100` |
-| Source | `ae22951377865f0db65b57c4641dc82bdf4db3f9`; artifact write had only `README.md` modified |
-| Model | Qwen3.6 packed PARO snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e`; W4 PARO; 40 layers |
-| Prompt/decode | Repeated token `9707`; 128 or 256K prompt; 128 decode tokens; 4 warmup decode tokens |
-| Prefill | AOTriton threshold 512; chunks `1024/1024/3072/1024/1024` for linear/MoE/full-attention query/post/RoPE |
-| KV | BF16 or INT8 per token/head with FP16 scales; fixed paged KV; no persistent BF16 shadow |
-| Memory | Sampled HIP whole-device peak and hipEngine tracked allocator peak are different scopes; retained KV is decimal GB as reported by the artifact |
-| Artifact | [`2026-05-19...memory-diagnostic.json`](results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json) |
+The matched Qwen3.6 BF16-vs-INT8 128K/128 quality run is finite and passes the
+layout audit, but diverges at generated index 2. FP16 scales measure mean/max KL
+**3.7646/10.0796** and **3.88%** top-1 agreement; an FP32-scale follow-up also
+rejects at **3.6300/10.0198 KL** and **7.75%** top-1. This supersedes the old
+Qwen3.5-fixture implication. Do not describe 256K INT8 as supported until a
+current Qwen3.6 long-rollout gate passes.
 
-The artifact embeds all three original commands. The 256K INT8 command was:
-
-```bash
-python3 scripts/qwen35_paro_bench.py \
-  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
-  --prompt-length 262144 --token-id 9707 \
-  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
-  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-  --require-cached-build --attn-aotriton-min-tokens 512 \
-  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
-  --prefill-full-attn-query-chunk-size 3072 \
-  --prefill-full-attn-post-chunk-size 1024 \
-  --prefill-full-attn-rope-chunk-size 1024 \
-  --kv-storage int8_per_token_head \
-  --json benchmarks/results/<date>-w7900-paro-256k-int8-kv.json
-```
-
-No artifact in the repository supports the former llama.cpp Q8_0 memory values
-printed in the root README. Those numeric tables were removed. A future
-llama.cpp memory row needs the model fingerprint, llama.cpp commit/build, GPU,
-exact command, whole-card sampling method, and compact artifact.
+Artifact:
+[`2026-07-12-w7900-v030-paro-context-capacity.json`](results/2026-07-12-w7900-v030-paro-context-capacity.json).
+Quality diagnostics:
+[FP16 scales](results/2026-07-12-w7900-v030-paro-int8-kv-128k-quality.json)
+and [FP32 scales](results/2026-07-12-w7900-v030-paro-int8-kv-fp32scale-128k-quality.json).
 
 ### W7900 PARO gfx1151 transfer gate, 2026-07-12
 
@@ -568,40 +622,13 @@ reduction does not offset disjoint, uniformly slower throughput ranges, so
 Artifact:
 [`2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`](results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json).
 
-### W7900 model sweep, 2026-07-07
+### Superseded W7900 model sweep, 2026-07-07
 
-**Status: stale diagnostic.** The linked artifact records the last complete
-same-host sweep. It is not a retained performance claim. hipEngine PARO is W4 PARO with
-BF16 KV; the other three columns use Q4_K_M GGUF with BF16/f16 KV. The PARO
-column is therefore not a same-quant comparison. The GGUF column repeatedly
-selected token `9707`. SOL-G1 proves that exact stream matches llama.cpp and
-has byte-exact four-step state on gfx1151, but the old W7900 row predates that
-hardware-local gate and sets `performance_claim=false`. Do not use its
-throughput as a baseline until the sweep and oracle are rerun together on
-W7900.
-
-<!-- BEGIN TOPLINE:W7900_SWEEP -->
-No eligible model-throughput row; the `performance_claim=false` sweep remains linked below pending correctness rerun.
-<!-- END TOPLINE:W7900_SWEEP -->
-
-Run record:
-
-| Field | Value |
-| --- | --- |
-| GPU | AMD Radeon Pro W7900, gfx1100, `HIP_VISIBLE_DEVICES=0`, amdgpu `card1`, 44.984 GiB |
-| hipEngine source | Clean detached worktree at `b4edca09f9553e5b3de755d2d0ada9e30f8c7d1e` (2026-07-07) |
-| hipEngine build | TheRock HIP `7.13.26162-1140233ffe`; cached JIT required during measurement |
-| hipEngine model/session | Qwen3.6-35B-A3B PARO snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; Qwen3.6-35B-A3B MTP-bearing `UD-Q4_K_M.gguf`; one resident session allocated for `128K/128` |
-| hipEngine repetitions | Repeated-token prompts; 2 discarded warmup runs and 5 measured runs per shape; medians reported; PARO uses 4 warmup decode tokens and graph replay; GGUF uses 1 warmup decode token and eager decode |
-| llama.cpp | Commit `263cc04a5`, build 9600; `-ngl 99 -fa 1 -ctk f16 -ctv f16`; `ROCm0` or `Vulkan0`; one `llama-bench` repetition per split prefill/decode phase |
-| Memory scope | hipEngine tracked allocator peak; llama.cpp whole-card amdgpu peak sampled every 10 ms. Compare memory columns only with this scope difference in view. |
-| Refresh runner | [`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh) |
-| Summary | [`2026-07-07...summary.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) |
-
-Component artifacts: [hipEngine PARO](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json),
-[hipEngine GGUF](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json),
-[llama.cpp HIP](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json), and
-[llama.cpp Vulkan](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json).
+**Status: superseded diagnostic.** This used one max-128K hipEngine session,
+eager GGUF decode, one llama.cpp sample per phase, and no W7900-local state
+oracle. The accepted clean 2026-07-12 table above replaces it. Historical
+artifacts remain available from
+[`2026-07-07...summary.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json).
 
 ### Superseded gfx1151 model sweep, 2026-06-15
 

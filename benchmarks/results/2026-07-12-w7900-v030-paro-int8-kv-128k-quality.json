@@ -1,0 +1,2592 @@
+{
+  "backend": "hip_gfx1100",
+  "blocked_reason": "one or more PARO KV quality rows failed",
+  "candidate_kv_policy": {
+    "block_size": 256,
+    "int8_admission_gated": false,
+    "int8_explicit": true,
+    "policy_class": "FixedPagedKVPolicy",
+    "requested_scale_dtype": "fp16",
+    "requested_scale_granularity": "per_token_head",
+    "requested_storage": "int8_per_token_head",
+    "resolved_storage_dtype": "int8_per_token_head",
+    "scale_metadata_format": {
+      "granularity": "per_token_head",
+      "k_scale": "per_token_head",
+      "present": true,
+      "scale_dtype": "fp16",
+      "v_scale": "per_token_head"
+    },
+    "selection_reason": "explicit_int8",
+    "spans_mode": "uniform",
+    "storage_dtype": "int8_per_token_head"
+  },
+  "command": "python3 scripts/qwen35_paro_int8_kv_quality_sweep.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompt-lengths 128K --decode-steps 128 --token-id 9707 --max-layers 40 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /home/lhl/hipEngine-main/benchmarks/results/2026-07-12-w7900-v030-paro-int8-kv-128k-quality.json",
+  "decode_steps": 128,
+  "elapsed_seconds": 295.1104948659995,
+  "max_layers": 40,
+  "max_sequence_length": 131202,
+  "mode": "qwen35_paro_int8_kv_quality_sweep",
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "notes": [
+    "Correctness/quality diagnostic only; no throughput row is retained from this script.",
+    "BF16 KV resident PARO is the reference; candidate KV storage is selected by --kv-storage.",
+    "Quality gate uses mean KL <= threshold and top-1 agreement >= threshold over prefill seed plus decode logits."
+  ],
+  "performance_claim": false,
+  "prefill_config_request": {
+    "attn_aotriton_min_tokens": 512,
+    "full_attn_post_chunk_size": 0,
+    "full_attn_query_chunk_size": 0,
+    "full_attn_rope_chunk_size": 0,
+    "linear_chunk_size": 0,
+    "moe_chunk_size": 0,
+    "prefill_chunk_autotune": true,
+    "prefill_chunk_memory_budget_gib": 0.0
+  },
+  "prompt": null,
+  "prompt_lengths": [
+    131072
+  ],
+  "quality_thresholds": {
+    "kl_mean_max": 0.05,
+    "top1_agreement_min": 0.9
+  },
+  "quant": "w4_paro",
+  "reference_kv_policy": {
+    "block_size": 256,
+    "int8_admission_gated": false,
+    "int8_explicit": false,
+    "policy_class": "FixedPagedKVPolicy",
+    "requested_scale_dtype": "fp16",
+    "requested_scale_granularity": "per_token_head",
+    "requested_storage": "bf16",
+    "resolved_storage_dtype": "bf16",
+    "scale_metadata_format": {
+      "granularity": null,
+      "k_scale": null,
+      "present": false,
+      "scale_dtype": null,
+      "v_scale": null
+    },
+    "selection_reason": "explicit_bf16",
+    "spans_mode": "uniform",
+    "storage_dtype": "bf16"
+  },
+  "requested_backend": "hip_gfx1100",
+  "rows": [
+    {
+      "candidate": {
+        "decode_seconds": 2.221477644001425,
+        "decode_steps": 128,
+        "finite_logits": true,
+        "generated": [
+          {
+            "logit": 11.039311408996582,
+            "token_id": 1359,
+            "token_text": "ayout"
+          },
+          {
+            "logit": 10.944676399230957,
+            "token_id": 186146,
+            "token_text": " emis"
+          },
+          {
+            "logit": 11.202706336975098,
+            "token_id": 173581,
+            "token_text": " quà"
+          },
+          {
+            "logit": 11.909651756286621,
+            "token_id": 338,
+            "token_text": " g"
+          },
+          {
+            "logit": 10.674566268920898,
+            "token_id": 98677,
+            "token_text": "涉及"
+          },
+          {
+            "logit": 9.989645004272461,
+            "token_id": 5265,
+            "token_text": " related"
+          },
+          {
+            "logit": 9.464865684509277,
+            "token_id": 65,
+            "token_text": "b"
+          },
+          {
+            "logit": 11.011612892150879,
+            "token_id": 120271,
+            "token_text": "您当前"
+          },
+          {
+            "logit": 11.568399429321289,
+            "token_id": 75,
+            "token_text": "l"
+          },
+          {
+            "logit": 9.678986549377441,
+            "token_id": 4821,
+            "token_text": " unit"
+          },
+          {
+            "logit": 12.682929992675781,
+            "token_id": 256,
+            "token_text": "  "
+          },
+          {
+            "logit": 10.859026908874512,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 9.661300659179688,
+            "token_id": 1779,
+            "token_text": "          "
+          },
+          {
+            "logit": 11.834529876708984,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.486776351928711,
+            "token_id": 201,
+            "token_text": "\r"
+          },
+          {
+            "logit": 10.416704177856445,
+            "token_id": 53840,
+            "token_text": "opo"
+          },
+          {
+            "logit": 10.178450584411621,
+            "token_id": 1699,
+            "token_text": " inst"
+          },
+          {
+            "logit": 9.293511390686035,
+            "token_id": 102208,
+            "token_text": "宗旨"
+          },
+          {
+            "logit": 10.74515438079834,
+            "token_id": 29728,
+            "token_text": " consulting"
+          },
+          {
+            "logit": 10.35310173034668,
+            "token_id": 129547,
+            "token_text": "油性"
+          },
+          {
+            "logit": 11.044068336486816,
+            "token_id": 72,
+            "token_text": "i"
+          },
+          {
+            "logit": 10.361205101013184,
+            "token_id": 272,
+            "token_text": " c"
+          },
+          {
+            "logit": 10.382299423217773,
+            "token_id": 272,
+            "token_text": " c"
+          },
+          {
+            "logit": 13.559478759765625,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 13.38248062133789,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 8.434975624084473,
+            "token_id": 5513,
+            "token_text": "�"
+          },
+          {
+            "logit": 10.3560152053833,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 12.334970474243164,
+            "token_id": 272,
+            "token_text": " c"
+          },
+          {
+            "logit": 13.22751522064209,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.588847160339355,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.92979907989502,
+            "token_id": 257,
+            "token_text": "    "
+          },
+          {
+            "logit": 10.532777786254883,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 11.650312423706055,
+            "token_id": 18675,
+            "token_text": " refers"
+          },
+          {
+            "logit": 12.273681640625,
+            "token_id": 272,
+            "token_text": " c"
+          },
+          {
+            "logit": 10.826696395874023,
+            "token_id": 1157,
+            "token_text": " ent"
+          },
+          {
+            "logit": 9.606524467468262,
+            "token_id": 2972,
+            "token_text": " **"
+          },
+          {
+            "logit": 9.256206512451172,
+            "token_id": 9026,
+            "token_text": "uite"
+          },
+          {
+            "logit": 13.3157377243042,
+            "token_id": 3882,
+            "token_text": " hot"
+          },
+          {
+            "logit": 12.521753311157227,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.301133155822754,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 11.447198867797852,
+            "token_id": 113101,
+            "token_text": "热度"
+          },
+          {
+            "logit": 7.518649578094482,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 11.820728302001953,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.222332954406738,
+            "token_id": 113101,
+            "token_text": "热度"
+          },
+          {
+            "logit": 9.887430191040039,
+            "token_id": 35673,
+            "token_text": " ost"
+          },
+          {
+            "logit": 9.286747932434082,
+            "token_id": 22,
+            "token_text": "7"
+          },
+          {
+            "logit": 10.057562828063965,
+            "token_id": 9922,
+            "token_text": " sweet"
+          },
+          {
+            "logit": 9.201371192932129,
+            "token_id": 141885,
+            "token_text": "入口处"
+          },
+          {
+            "logit": 9.550864219665527,
+            "token_id": 22821,
+            "token_text": "notice"
+          },
+          {
+            "logit": 11.035296440124512,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 14.727584838867188,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.77440071105957,
+            "token_id": 16308,
+            "token_text": " introduction"
+          },
+          {
+            "logit": 10.966201782226562,
+            "token_id": 33621,
+            "token_text": " notices"
+          },
+          {
+            "logit": 11.132881164550781,
+            "token_id": 70529,
+            "token_text": "asley"
+          },
+          {
+            "logit": 9.813335418701172,
+            "token_id": 6616,
+            "token_text": ".co"
+          },
+          {
+            "logit": 10.139450073242188,
+            "token_id": 259,
+            "token_text": " t"
+          },
+          {
+            "logit": 11.595253944396973,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 10.580604553222656,
+            "token_id": 9456,
+            "token_text": "ooter"
+          },
+          {
+            "logit": 9.927728652954102,
+            "token_id": 155072,
+            "token_text": "isso"
+          },
+          {
+            "logit": 11.1815767288208,
+            "token_id": 133660,
+            "token_text": "涂上"
+          },
+          {
+            "logit": 12.06808853149414,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.533452987670898,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 12.374211311340332,
+            "token_id": 5265,
+            "token_text": " related"
+          },
+          {
+            "logit": 10.311263084411621,
+            "token_id": 101687,
+            "token_text": "成熟"
+          },
+          {
+            "logit": 9.529048919677734,
+            "token_id": 928,
+            "token_text": "cho"
+          },
+          {
+            "logit": 11.167703628540039,
+            "token_id": 75,
+            "token_text": "l"
+          },
+          {
+            "logit": 10.836825370788574,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 10.07491397857666,
+            "token_id": 338,
+            "token_text": " g"
+          },
+          {
+            "logit": 11.288973808288574,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 9.744754791259766,
+            "token_id": 226970,
+            "token_text": "cules"
+          },
+          {
+            "logit": 9.449898719787598,
+            "token_id": 98690,
+            "token_text": "不了"
+          },
+          {
+            "logit": 10.254411697387695,
+            "token_id": 13972,
+            "token_text": "illy"
+          },
+          {
+            "logit": 11.0721435546875,
+            "token_id": 113115,
+            "token_text": "相关内容"
+          },
+          {
+            "logit": 10.068953514099121,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 13.893184661865234,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 14.911595344543457,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.80698299407959,
+            "token_id": 17,
+            "token_text": "2"
+          },
+          {
+            "logit": 11.65811538696289,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.05191707611084,
+            "token_id": 16501,
+            "token_text": " behaviour"
+          },
+          {
+            "logit": 8.631925582885742,
+            "token_id": 102360,
+            "token_text": "为中心"
+          },
+          {
+            "logit": 9.054080963134766,
+            "token_id": 119362,
+            "token_text": "未有"
+          },
+          {
+            "logit": 11.284610748291016,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 13.593628883361816,
+            "token_id": 2192,
+            "token_text": " title"
+          },
+          {
+            "logit": 10.384803771972656,
+            "token_id": 49857,
+            "token_text": " unite"
+          },
+          {
+            "logit": 13.122444152832031,
+            "token_id": 2192,
+            "token_text": " title"
+          },
+          {
+            "logit": 10.589075088500977,
+            "token_id": 54853,
+            "token_text": "Cool"
+          },
+          {
+            "logit": 11.929177284240723,
+            "token_id": 2192,
+            "token_text": " title"
+          },
+          {
+            "logit": 11.9860258102417,
+            "token_id": 17,
+            "token_text": "2"
+          },
+          {
+            "logit": 12.59438419342041,
+            "token_id": 1901,
+            "token_text": " head"
+          },
+          {
+            "logit": 11.664624214172363,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 10.763517379760742,
+            "token_id": 361,
+            "token_text": " <"
+          },
+          {
+            "logit": 11.362821578979492,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.435609817504883,
+            "token_id": 430,
+            "token_text": " as"
+          },
+          {
+            "logit": 9.869186401367188,
+            "token_id": 109679,
+            "token_text": "美味"
+          },
+          {
+            "logit": 9.529810905456543,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 10.130205154418945,
+            "token_id": 5265,
+            "token_text": " related"
+          },
+          {
+            "logit": 10.807798385620117,
+            "token_id": 113161,
+            "token_text": "脆弱"
+          },
+          {
+            "logit": 9.268096923828125,
+            "token_id": 113907,
+            "token_text": "您在"
+          },
+          {
+            "logit": 9.389720916748047,
+            "token_id": 69,
+            "token_text": "f"
+          },
+          {
+            "logit": 9.491138458251953,
+            "token_id": 100885,
+            "token_text": "成年"
+          },
+          {
+            "logit": 12.036230087280273,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.587236404418945,
+            "token_id": 5265,
+            "token_text": " related"
+          },
+          {
+            "logit": 13.072858810424805,
+            "token_id": 440,
+            "token_text": " with"
+          },
+          {
+            "logit": 11.808966636657715,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 11.53264331817627,
+            "token_id": 1137,
+            "token_text": " --"
+          },
+          {
+            "logit": 13.336459159851074,
+            "token_id": 735,
+            "token_text": " |"
+          },
+          {
+            "logit": 9.422402381896973,
+            "token_id": 1076,
+            "token_text": "..."
+          },
+          {
+            "logit": 11.128467559814453,
+            "token_id": 3715,
+            "token_text": "unit"
+          },
+          {
+            "logit": 9.841853141784668,
+            "token_id": 44125,
+            "token_text": " frontend"
+          },
+          {
+            "logit": 9.722360610961914,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 12.759530067443848,
+            "token_id": 299,
+            "token_text": "as"
+          },
+          {
+            "logit": 11.490686416625977,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 10.70932388305664,
+            "token_id": 13,
+            "token_text": "."
+          },
+          {
+            "logit": 10.868900299072266,
+            "token_id": 318,
+            "token_text": " ("
+          },
+          {
+            "logit": 12.707223892211914,
+            "token_id": 15235,
+            "token_text": " Hol"
+          },
+          {
+            "logit": 11.79116439819336,
+            "token_id": 7896,
+            "token_text": " units"
+          },
+          {
+            "logit": 11.720819473266602,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 12.43002700805664,
+            "token_id": 437,
+            "token_text": "(\""
+          },
+          {
+            "logit": 9.294866561889648,
+            "token_id": 15121,
+            "token_text": "Conf"
+          },
+          {
+            "logit": 10.410573959350586,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 13.429899215698242,
+            "token_id": 287,
+            "token_text": "es"
+          },
+          {
+            "logit": 11.778063774108887,
+            "token_id": 24163,
+            "token_text": " indexes"
+          },
+          {
+            "logit": 12.467819213867188,
+            "token_id": 593,
+            "token_text": " /"
+          },
+          {
+            "logit": 11.70850658416748,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 12.648735046386719,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 14.772880554199219,
+            "token_id": 328,
+            "token_text": " \""
+          },
+          {
+            "logit": 12.203356742858887,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 11.277441024780273,
+            "token_id": 257,
+            "token_text": "    "
+          }
+        ],
+        "generated_token_ids": [
+          1359,
+          186146,
+          173581,
+          338,
+          98677,
+          5265,
+          65,
+          120271,
+          75,
+          4821,
+          256,
+          5125,
+          1779,
+          220,
+          201,
+          53840,
+          1699,
+          102208,
+          29728,
+          129547,
+          72,
+          272,
+          272,
+          220,
+          220,
+          5513,
+          5125,
+          272,
+          220,
+          5125,
+          257,
+          5125,
+          18675,
+          272,
+          1157,
+          2972,
+          9026,
+          3882,
+          5125,
+          5125,
+          113101,
+          220,
+          5125,
+          113101,
+          35673,
+          22,
+          9922,
+          141885,
+          22821,
+          5125,
+          5125,
+          16308,
+          33621,
+          70529,
+          6616,
+          259,
+          66,
+          9456,
+          155072,
+          133660,
+          220,
+          220,
+          5265,
+          101687,
+          928,
+          75,
+          66,
+          338,
+          66,
+          226970,
+          98690,
+          13972,
+          113115,
+          220,
+          220,
+          220,
+          17,
+          220,
+          16501,
+          102360,
+          119362,
+          5125,
+          2192,
+          49857,
+          2192,
+          54853,
+          2192,
+          17,
+          1901,
+          535,
+          361,
+          220,
+          430,
+          109679,
+          66,
+          5265,
+          113161,
+          113907,
+          69,
+          100885,
+          220,
+          5265,
+          440,
+          535,
+          1137,
+          735,
+          1076,
+          3715,
+          44125,
+          328,
+          299,
+          5189,
+          13,
+          318,
+          15235,
+          7896,
+          328,
+          437,
+          15121,
+          328,
+          287,
+          24163,
+          593,
+          328,
+          328,
+          328,
+          66,
+          257
+        ],
+        "owned_buffer_summary_after_decode": {
+          "allocation_bytes": 1526675456,
+          "buffer_bytes": 1764889460,
+          "full_attention_kv_payload_bytes": 1344798720,
+          "full_attention_kv_payload_bytes_per_element": 1.0,
+          "full_attention_kv_scale_bytes": 10506240,
+          "full_attention_kv_total_bytes": 1355304960,
+          "full_attention_layer_count": 10,
+          "kv_scale_dtype": "fp16",
+          "kv_scale_granularity": "per_token_head",
+          "kv_storage_dtype": "int8_per_token_head",
+          "owned_direct_bytes": 3291564916
+        },
+        "owned_buffer_summary_after_prefill": {
+          "allocation_bytes": 1526675456,
+          "buffer_bytes": 1764889460,
+          "full_attention_kv_payload_bytes": 1344798720,
+          "full_attention_kv_payload_bytes_per_element": 1.0,
+          "full_attention_kv_scale_bytes": 10506240,
+          "full_attention_kv_total_bytes": 1355304960,
+          "full_attention_layer_count": 10,
+          "kv_scale_dtype": "fp16",
+          "kv_scale_granularity": "per_token_head",
+          "kv_storage_dtype": "int8_per_token_head",
+          "owned_direct_bytes": 3291564916
+        },
+        "prefill_chunk_sizes": {
+          "full_attn_post": 1024,
+          "full_attn_query": 4096,
+          "full_attn_rope": 1024,
+          "linear": 1024,
+          "moe": 1024
+        },
+        "prefill_chunk_tuning": {
+          "applied": true,
+          "chunk_sizes": {
+            "full_attn_post": 1024,
+            "full_attn_query": 4096,
+            "full_attn_rope": 1024,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "estimated_peak_gib": 20.0,
+          "max_sequence_length": 131072,
+          "memory_budget_gib": 24.74140625,
+          "reason": "manual_long_equiv_gt1k",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1100"
+        },
+        "prefill_seconds": 123.72084077800537,
+        "prompt_length": 131072,
+        "seed": {
+          "logit": 10.171213150024414,
+          "token_id": 49556,
+          "token_text": "uptools"
+        }
+      },
+      "candidate_generated_token_ids": [
+        1359,
+        186146,
+        173581,
+        338,
+        98677,
+        5265,
+        65,
+        120271,
+        75,
+        4821,
+        256,
+        5125,
+        1779,
+        220,
+        201,
+        53840,
+        1699,
+        102208,
+        29728,
+        129547,
+        72,
+        272,
+        272,
+        220,
+        220,
+        5513,
+        5125,
+        272,
+        220,
+        5125,
+        257,
+        5125,
+        18675,
+        272,
+        1157,
+        2972,
+        9026,
+        3882,
+        5125,
+        5125,
+        113101,
+        220,
+        5125,
+        113101,
+        35673,
+        22,
+        9922,
+        141885,
+        22821,
+        5125,
+        5125,
+        16308,
+        33621,
+        70529,
+        6616,
+        259,
+        66,
+        9456,
+        155072,
+        133660,
+        220,
+        220,
+        5265,
+        101687,
+        928,
+        75,
+        66,
+        338,
+        66,
+        226970,
+        98690,
+        13972,
+        113115,
+        220,
+        220,
+        220,
+        17,
+        220,
+        16501,
+        102360,
+        119362,
+        5125,
+        2192,
+        49857,
+        2192,
+        54853,
+        2192,
+        17,
+        1901,
+        535,
+        361,
+        220,
+        430,
+        109679,
+        66,
+        5265,
+        113161,
+        113907,
+        69,
+        100885,
+        220,
+        5265,
+        440,
+        535,
+        1137,
+        735,
+        1076,
+        3715,
+        44125,
+        328,
+        299,
+        5189,
+        13,
+        318,
+        15235,
+        7896,
+        328,
+        437,
+        15121,
+        328,
+        287,
+        24163,
+        593,
+        328,
+        328,
+        328,
+        66,
+        257
+      ],
+      "candidate_kv_memory_audit_after_decode": {
+        "full_attention_kv_payload_bytes": 1344798720,
+        "full_attention_kv_scale_bytes": 10506240,
+        "missing_int8_scale_layers": [],
+        "passed": true,
+        "persistent_bf16_kv_layers": [],
+        "required": true
+      },
+      "candidate_kv_memory_audit_after_prefill": {
+        "full_attention_kv_payload_bytes": 1344798720,
+        "full_attention_kv_scale_bytes": 10506240,
+        "missing_int8_scale_layers": [],
+        "passed": true,
+        "persistent_bf16_kv_layers": [],
+        "required": true
+      },
+      "candidate_seed_token_id": 49556,
+      "decode_steps": 128,
+      "finite_logits": true,
+      "generated_first_mismatch": {
+        "index": 2,
+        "left": 471,
+        "right": 173581
+      },
+      "generated_match": false,
+      "kl_pass": false,
+      "logit_gate": {
+        "candidate_top1": [
+          49556,
+          1359,
+          186146,
+          173581,
+          338,
+          98677,
+          5265,
+          65,
+          120271,
+          75,
+          4821,
+          256,
+          5125,
+          1779,
+          220,
+          201,
+          53840,
+          1699,
+          102208,
+          29728,
+          129547,
+          72,
+          272,
+          272,
+          220,
+          220,
+          5513,
+          5125,
+          272,
+          220,
+          5125,
+          257,
+          5125,
+          18675,
+          272,
+          1157,
+          2972,
+          9026,
+          3882,
+          5125,
+          5125,
+          113101,
+          220,
+          5125,
+          113101,
+          35673,
+          22,
+          9922,
+          141885,
+          22821,
+          5125,
+          5125,
+          16308,
+          33621,
+          70529,
+          6616,
+          259,
+          66,
+          9456,
+          155072,
+          133660,
+          220,
+          220,
+          5265,
+          101687,
+          928,
+          75,
+          66,
+          338,
+          66,
+          226970,
+          98690,
+          13972,
+          113115,
+          220,
+          220,
+          220,
+          17,
+          220,
+          16501,
+          102360,
+          119362,
+          5125,
+          2192,
+          49857,
+          2192,
+          54853,
+          2192,
+          17,
+          1901,
+          535,
+          361,
+          220,
+          430,
+          109679,
+          66,
+          5265,
+          113161,
+          113907,
+          69,
+          100885,
+          220,
+          5265,
+          440,
+          535,
+          1137,
+          735,
+          1076,
+          3715,
+          44125,
+          328,
+          299,
+          5189,
+          13,
+          318,
+          15235,
+          7896,
+          328,
+          437,
+          15121,
+          328,
+          287,
+          24163,
+          593,
+          328,
+          328,
+          328,
+          66,
+          257
+        ],
+        "first_top1_mismatch": {
+          "candidate": 173581,
+          "index": 3,
+          "reference": 471
+        },
+        "kl": [
+          0.0,
+          0.007098275601207943,
+          0.29353339508809545,
+          1.919987986461772,
+          1.8927884276157336,
+          2.516625115058832,
+          1.2438495732486914,
+          2.6295930100036515,
+          2.0918434533091457,
+          2.2566298280630828,
+          2.7401803612683597,
+          2.885692939406424,
+          3.0650634778442036,
+          3.119125949645904,
+          2.849737164757821,
+          3.0667670115893575,
+          5.588153426571979,
+          7.138776784268229,
+          3.7035168433144645,
+          3.1468186493058767,
+          3.135001626968297,
+          3.0071322161745484,
+          2.702883245696415,
+          3.7693679552008152,
+          4.568876794095321,
+          4.016087386434176,
+          3.3531529406761753,
+          2.732124334698573,
+          2.9713425642718962,
+          3.1549325322833126,
+          3.2057711533216153,
+          3.6037417272277197,
+          8.191169935627045,
+          3.0449592716702933,
+          2.81762775969017,
+          3.143170889305561,
+          3.216945359904011,
+          6.857374033091956,
+          4.020335165896022,
+          2.923672728896844,
+          3.119578878741465,
+          3.160881751929177,
+          1.3692777540949783,
+          3.4758549102883256,
+          3.0573238586449634,
+          5.461097196649136,
+          4.194617355790492,
+          4.888234552335821,
+          3.6253603522201403,
+          3.407643902101502,
+          4.6300940053639765,
+          7.1656670183247,
+          2.912429255237737,
+          3.3068302446026334,
+          4.338273832579114,
+          3.2839653369755726,
+          2.417905709739097,
+          3.517965304243799,
+          3.990979167093966,
+          4.861077687879595,
+          8.062388024320795,
+          3.5609358760697516,
+          2.536850992501195,
+          2.521450093245453,
+          3.1362457573315865,
+          3.18210071912581,
+          3.898272593271892,
+          3.4233689693795974,
+          7.875078715728432,
+          3.203426894347206,
+          3.2783878872107595,
+          2.9543001639023188,
+          5.874515835047846,
+          4.683910895625987,
+          3.4143990885689606,
+          4.595743239614377,
+          9.582847340924477,
+          2.4145950768340776,
+          3.9884521804803965,
+          6.871981214549922,
+          5.55698761780728,
+          5.374254855072303,
+          5.193106112848711,
+          3.891609180710063,
+          4.016792426080569,
+          2.2752994341496944,
+          9.296383965900848,
+          3.4539025171239324,
+          1.8936669520125877,
+          3.7247708340002403,
+          3.9817343065719233,
+          3.294823005979087,
+          4.212045136239262,
+          3.839283520196282,
+          3.172201787897658,
+          2.800137419985513,
+          2.7906704205510753,
+          3.078418911749836,
+          3.353276550198517,
+          2.9233512204564858,
+          3.084616221605766,
+          2.1039318727762013,
+          3.003344683283111,
+          3.6985694492897645,
+          3.9084470289255884,
+          4.1942567361715986,
+          4.211374416776708,
+          2.6605363096422048,
+          3.4360251816788594,
+          3.2000431450175313,
+          2.4114694683325384,
+          3.49673675113912,
+          3.7505261961883907,
+          3.5190891403532465,
+          3.2311986705452846,
+          3.1412968079924752,
+          10.079637164212054,
+          3.0722918661467467,
+          4.408634687338837,
+          3.149295128341681,
+          3.112315819550432,
+          5.237226500444894,
+          7.144307905425792,
+          5.3142859453403295,
+          4.481692006871973,
+          3.6337474942766335,
+          5.176655111949459,
+          5.37183533846886,
+          2.4418765104980853
+        ],
+        "max_abs_argmax_logit_delta": 14.726726055145264,
+        "max_kl": 10.079637164212054,
+        "mean_kl": 3.7646026407797417,
+        "positions": 129,
+        "reference_top1": [
+          49556,
+          1359,
+          186146,
+          471,
+          338,
+          18907,
+          113161,
+          11073,
+          67,
+          267,
+          16375,
+          535,
+          66,
+          19094,
+          292,
+          292,
+          641,
+          417,
+          65,
+          2795,
+          1120,
+          97593,
+          220,
+          66,
+          103755,
+          7896,
+          21147,
+          430,
+          1137,
+          560,
+          11,
+          7270,
+          220,
+          7270,
+          97906,
+          7063,
+          48744,
+          13,
+          135967,
+          6093,
+          15121,
+          8357,
+          35621,
+          2502,
+          35621,
+          35621,
+          35621,
+          13,
+          220,
+          64339,
+          16431,
+          45593,
+          33845,
+          735,
+          3026,
+          132171,
+          307,
+          96384,
+          96384,
+          5189,
+          5189,
+          471,
+          471,
+          23600,
+          220,
+          1083,
+          5513,
+          11350,
+          5189,
+          272,
+          825,
+          825,
+          918,
+          65,
+          825,
+          113115,
+          5189,
+          5189,
+          5189,
+          877,
+          5189,
+          69,
+          220,
+          220,
+          220,
+          220,
+          220,
+          5060,
+          66,
+          44125,
+          113907,
+          123373,
+          1515,
+          49621,
+          5125,
+          5125,
+          5125,
+          5125,
+          5265,
+          10954,
+          220,
+          220,
+          220,
+          220,
+          17374,
+          27276,
+          55200,
+          5125,
+          220,
+          9006,
+          2502,
+          66,
+          128171,
+          535,
+          535,
+          5125,
+          220,
+          2502,
+          535,
+          535,
+          535,
+          535,
+          220,
+          12066,
+          69,
+          220,
+          197,
+          220,
+          220
+        ],
+        "top1_agreement": 0.03875968992248062,
+        "top1_matches": [
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "memory_audit_pass": true,
+      "passed": false,
+      "prompt_length": 131072,
+      "reference": {
+        "decode_seconds": 2.1690949690018897,
+        "decode_steps": 128,
+        "finite_logits": true,
+        "generated": [
+          {
+            "logit": 10.991393089294434,
+            "token_id": 1359,
+            "token_text": "ayout"
+          },
+          {
+            "logit": 11.09147834777832,
+            "token_id": 186146,
+            "token_text": " emis"
+          },
+          {
+            "logit": 9.827128410339355,
+            "token_id": 471,
+            "token_text": " -"
+          },
+          {
+            "logit": 12.869094848632812,
+            "token_id": 338,
+            "token_text": " g"
+          },
+          {
+            "logit": 12.500184059143066,
+            "token_id": 18907,
+            "token_text": "OO"
+          },
+          {
+            "logit": 9.595253944396973,
+            "token_id": 113161,
+            "token_text": "脆弱"
+          },
+          {
+            "logit": 9.184175491333008,
+            "token_id": 11073,
+            "token_text": " Vi"
+          },
+          {
+            "logit": 9.888042449951172,
+            "token_id": 67,
+            "token_text": "d"
+          },
+          {
+            "logit": 9.648240089416504,
+            "token_id": 267,
+            "token_text": "st"
+          },
+          {
+            "logit": 9.298460006713867,
+            "token_id": 16375,
+            "token_text": " jew"
+          },
+          {
+            "logit": 10.114851951599121,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 8.945536613464355,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 9.36387825012207,
+            "token_id": 19094,
+            "token_text": "oses"
+          },
+          {
+            "logit": 10.418856620788574,
+            "token_id": 292,
+            "token_text": " b"
+          },
+          {
+            "logit": 10.964615821838379,
+            "token_id": 292,
+            "token_text": " b"
+          },
+          {
+            "logit": 11.93700122833252,
+            "token_id": 641,
+            "token_text": " ."
+          },
+          {
+            "logit": 12.104438781738281,
+            "token_id": 417,
+            "token_text": " B"
+          },
+          {
+            "logit": 13.117146492004395,
+            "token_id": 65,
+            "token_text": "b"
+          },
+          {
+            "logit": 10.298906326293945,
+            "token_id": 2795,
+            "token_text": " cent"
+          },
+          {
+            "logit": 11.71316146850586,
+            "token_id": 1120,
+            "token_text": " import"
+          },
+          {
+            "logit": 9.974699974060059,
+            "token_id": 97593,
+            "token_text": "潮"
+          },
+          {
+            "logit": 10.275374412536621,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 11.051459312438965,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 10.102896690368652,
+            "token_id": 103755,
+            "token_text": "进口"
+          },
+          {
+            "logit": 11.336094856262207,
+            "token_id": 7896,
+            "token_text": " units"
+          },
+          {
+            "logit": 9.776951789855957,
+            "token_id": 21147,
+            "token_text": "UIT"
+          },
+          {
+            "logit": 11.811217308044434,
+            "token_id": 430,
+            "token_text": " as"
+          },
+          {
+            "logit": 11.188924789428711,
+            "token_id": 1137,
+            "token_text": " --"
+          },
+          {
+            "logit": 12.824384689331055,
+            "token_id": 560,
+            "token_text": " u"
+          },
+          {
+            "logit": 9.475515365600586,
+            "token_id": 11,
+            "token_text": ","
+          },
+          {
+            "logit": 12.016661643981934,
+            "token_id": 7270,
+            "token_text": " ui"
+          },
+          {
+            "logit": 15.745163917541504,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.717611312866211,
+            "token_id": 7270,
+            "token_text": " ui"
+          },
+          {
+            "logit": 9.752910614013672,
+            "token_id": 97906,
+            "token_text": "充分"
+          },
+          {
+            "logit": 10.103514671325684,
+            "token_id": 7063,
+            "token_text": " meaning"
+          },
+          {
+            "logit": 10.185738563537598,
+            "token_id": 48744,
+            "token_text": "bdd"
+          },
+          {
+            "logit": 13.191763877868652,
+            "token_id": 13,
+            "token_text": "."
+          },
+          {
+            "logit": 9.697647094726562,
+            "token_id": 135967,
+            "token_text": "充分体现"
+          },
+          {
+            "logit": 9.19024658203125,
+            "token_id": 6093,
+            "token_text": " solution"
+          },
+          {
+            "logit": 9.712808609008789,
+            "token_id": 15121,
+            "token_text": "Conf"
+          },
+          {
+            "logit": 10.298646926879883,
+            "token_id": 8357,
+            "token_text": " ut"
+          },
+          {
+            "logit": 7.445887088775635,
+            "token_id": 35621,
+            "token_text": "Solution"
+          },
+          {
+            "logit": 10.324934959411621,
+            "token_id": 2502,
+            "token_text": " ;"
+          },
+          {
+            "logit": 8.370965957641602,
+            "token_id": 35621,
+            "token_text": "Solution"
+          },
+          {
+            "logit": 10.987449645996094,
+            "token_id": 35621,
+            "token_text": "Solution"
+          },
+          {
+            "logit": 12.623625755310059,
+            "token_id": 35621,
+            "token_text": "Solution"
+          },
+          {
+            "logit": 12.998353958129883,
+            "token_id": 13,
+            "token_text": "."
+          },
+          {
+            "logit": 11.156746864318848,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.188457489013672,
+            "token_id": 64339,
+            "token_text": "%C"
+          },
+          {
+            "logit": 12.2968168258667,
+            "token_id": 16431,
+            "token_text": "alc"
+          },
+          {
+            "logit": 14.251505851745605,
+            "token_id": 45593,
+            "token_text": "Calc"
+          },
+          {
+            "logit": 10.453866958618164,
+            "token_id": 33845,
+            "token_text": ".eu"
+          },
+          {
+            "logit": 10.950161933898926,
+            "token_id": 735,
+            "token_text": " |"
+          },
+          {
+            "logit": 12.064062118530273,
+            "token_id": 3026,
+            "token_text": "OS"
+          },
+          {
+            "logit": 11.083000183105469,
+            "token_id": 132171,
+            "token_text": "和别人"
+          },
+          {
+            "logit": 7.975513935089111,
+            "token_id": 307,
+            "token_text": " n"
+          },
+          {
+            "logit": 10.218655586242676,
+            "token_id": 96384,
+            "token_text": "周"
+          },
+          {
+            "logit": 10.811457633972168,
+            "token_id": 96384,
+            "token_text": "周"
+          },
+          {
+            "logit": 11.970843315124512,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 15.757780075073242,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 11.459759712219238,
+            "token_id": 471,
+            "token_text": " -"
+          },
+          {
+            "logit": 13.23023509979248,
+            "token_id": 471,
+            "token_text": " -"
+          },
+          {
+            "logit": 10.600503921508789,
+            "token_id": 23600,
+            "token_text": " Related"
+          },
+          {
+            "logit": 10.656702041625977,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 7.9568867683410645,
+            "token_id": 1083,
+            "token_text": " into"
+          },
+          {
+            "logit": 9.501827239990234,
+            "token_id": 5513,
+            "token_text": "�"
+          },
+          {
+            "logit": 10.262165069580078,
+            "token_id": 11350,
+            "token_text": "Related"
+          },
+          {
+            "logit": 14.485764503479004,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 9.989418983459473,
+            "token_id": 272,
+            "token_text": " c"
+          },
+          {
+            "logit": 10.43834400177002,
+            "token_id": 825,
+            "token_text": "View"
+          },
+          {
+            "logit": 11.241405487060547,
+            "token_id": 825,
+            "token_text": "View"
+          },
+          {
+            "logit": 12.266575813293457,
+            "token_id": 918,
+            "token_text": ".b"
+          },
+          {
+            "logit": 12.037257194519043,
+            "token_id": 65,
+            "token_text": "b"
+          },
+          {
+            "logit": 10.303072929382324,
+            "token_id": 825,
+            "token_text": "View"
+          },
+          {
+            "logit": 10.073005676269531,
+            "token_id": 113115,
+            "token_text": "相关内容"
+          },
+          {
+            "logit": 15.135754585266113,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 9.14440631866455,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 12.022482872009277,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 13.491286277770996,
+            "token_id": 877,
+            "token_text": ".com"
+          },
+          {
+            "logit": 12.7076997756958,
+            "token_id": 5189,
+            "token_text": ".as"
+          },
+          {
+            "logit": 10.640741348266602,
+            "token_id": 69,
+            "token_text": "f"
+          },
+          {
+            "logit": 12.183384895324707,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 13.36240005493164,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 12.680195808410645,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 13.549744606018066,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 14.356524467468262,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.339969635009766,
+            "token_id": 5060,
+            "token_text": " evid"
+          },
+          {
+            "logit": 9.980414390563965,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 9.576422691345215,
+            "token_id": 44125,
+            "token_text": " frontend"
+          },
+          {
+            "logit": 8.887551307678223,
+            "token_id": 113907,
+            "token_text": "您在"
+          },
+          {
+            "logit": 10.698407173156738,
+            "token_id": 123373,
+            "token_text": "中心和"
+          },
+          {
+            "logit": 11.656990051269531,
+            "token_id": 1515,
+            "token_text": "ES"
+          },
+          {
+            "logit": 10.802082061767578,
+            "token_id": 49621,
+            "token_text": " arte"
+          },
+          {
+            "logit": 9.531982421875,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 11.813438415527344,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 11.241639137268066,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.416131019592285,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 10.459507942199707,
+            "token_id": 5265,
+            "token_text": " related"
+          },
+          {
+            "logit": 10.862419128417969,
+            "token_id": 10954,
+            "token_text": "puter"
+          },
+          {
+            "logit": 9.631473541259766,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 12.7589750289917,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 11.198033332824707,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 10.74032974243164,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 11.661744117736816,
+            "token_id": 17374,
+            "token_text": " ub"
+          },
+          {
+            "logit": 10.482159614562988,
+            "token_id": 27276,
+            "token_text": " united"
+          },
+          {
+            "logit": 10.483721733093262,
+            "token_id": 55200,
+            "token_text": "OrCreate"
+          },
+          {
+            "logit": 10.011214256286621,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 11.422000885009766,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 11.000397682189941,
+            "token_id": 9006,
+            "token_text": " observ"
+          },
+          {
+            "logit": 10.644896507263184,
+            "token_id": 2502,
+            "token_text": " ;"
+          },
+          {
+            "logit": 10.528828620910645,
+            "token_id": 66,
+            "token_text": "c"
+          },
+          {
+            "logit": 9.576610565185547,
+            "token_id": 128171,
+            "token_text": "看不懂"
+          },
+          {
+            "logit": 9.838848114013672,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 11.56383228302002,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 10.971729278564453,
+            "token_id": 5125,
+            "token_text": " notice"
+          },
+          {
+            "logit": 15.497896194458008,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.987377166748047,
+            "token_id": 2502,
+            "token_text": " ;"
+          },
+          {
+            "logit": 11.763947486877441,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 11.95988941192627,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 10.344164848327637,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 13.670435905456543,
+            "token_id": 535,
+            "token_text": " :"
+          },
+          {
+            "logit": 15.376513481140137,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 9.419230461120605,
+            "token_id": 12066,
+            "token_text": " ble"
+          },
+          {
+            "logit": 10.300861358642578,
+            "token_id": 69,
+            "token_text": "f"
+          },
+          {
+            "logit": 12.308202743530273,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 12.719465255737305,
+            "token_id": 197,
+            "token_text": "\t"
+          },
+          {
+            "logit": 12.395264625549316,
+            "token_id": 220,
+            "token_text": " "
+          },
+          {
+            "logit": 14.151046752929688,
+            "token_id": 220,
+            "token_text": " "
+          }
+        ],
+        "generated_token_ids": [
+          1359,
+          186146,
+          471,
+          338,
+          18907,
+          113161,
+          11073,
+          67,
+          267,
+          16375,
+          535,
+          66,
+          19094,
+          292,
+          292,
+          641,
+          417,
+          65,
+          2795,
+          1120,
+          97593,
+          220,
+          66,
+          103755,
+          7896,
+          21147,
+          430,
+          1137,
+          560,
+          11,
+          7270,
+          220,
+          7270,
+          97906,
+          7063,
+          48744,
+          13,
+          135967,
+          6093,
+          15121,
+          8357,
+          35621,
+          2502,
+          35621,
+          35621,
+          35621,
+          13,
+          220,
+          64339,
+          16431,
+          45593,
+          33845,
+          735,
+          3026,
+          132171,
+          307,
+          96384,
+          96384,
+          5189,
+          5189,
+          471,
+          471,
+          23600,
+          220,
+          1083,
+          5513,
+          11350,
+          5189,
+          272,
+          825,
+          825,
+          918,
+          65,
+          825,
+          113115,
+          5189,
+          5189,
+          5189,
+          877,
+          5189,
+          69,
+          220,
+          220,
+          220,
+          220,
+          220,
+          5060,
+          66,
+          44125,
+          113907,
+          123373,
+          1515,
+          49621,
+          5125,
+          5125,
+          5125,
+          5125,
+          5265,
+          10954,
+          220,
+          220,
+          220,
+          220,
+          17374,
+          27276,
+          55200,
+          5125,
+          220,
+          9006,
+          2502,
+          66,
+          128171,
+          535,
+          535,
+          5125,
+          220,
+          2502,
+          535,
+          535,
+          535,
+          535,
+          220,
+          12066,
+          69,
+          220,
+          197,
+          220,
+          220
+        ],
+        "owned_buffer_summary_after_decode": {
+          "allocation_bytes": 1526675456,
+          "buffer_bytes": 3099181940,
+          "full_attention_kv_payload_bytes": 2689597440,
+          "full_attention_kv_payload_bytes_per_element": 2.0,
+          "full_attention_kv_scale_bytes": 0,
+          "full_attention_kv_total_bytes": 2689597440,
+          "full_attention_layer_count": 10,
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "kv_storage_dtype": "bf16",
+          "owned_direct_bytes": 4625857396
+        },
+        "owned_buffer_summary_after_prefill": {
+          "allocation_bytes": 1526675456,
+          "buffer_bytes": 3099181940,
+          "full_attention_kv_payload_bytes": 2689597440,
+          "full_attention_kv_payload_bytes_per_element": 2.0,
+          "full_attention_kv_scale_bytes": 0,
+          "full_attention_kv_total_bytes": 2689597440,
+          "full_attention_layer_count": 10,
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "kv_storage_dtype": "bf16",
+          "owned_direct_bytes": 4625857396
+        },
+        "prefill_chunk_sizes": {
+          "full_attn_post": 1024,
+          "full_attn_query": 4096,
+          "full_attn_rope": 1024,
+          "linear": 1024,
+          "moe": 1024
+        },
+        "prefill_chunk_tuning": {
+          "applied": true,
+          "chunk_sizes": {
+            "full_attn_post": 1024,
+            "full_attn_query": 4096,
+            "full_attn_rope": 1024,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "estimated_peak_gib": 20.0,
+          "max_sequence_length": 131072,
+          "memory_budget_gib": 24.74140625,
+          "reason": "manual_long_equiv_gt1k",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1100"
+        },
+        "prefill_seconds": 123.91257762599707,
+        "prompt_length": 131072,
+        "seed": {
+          "logit": 10.171213150024414,
+          "token_id": 49556,
+          "token_text": "uptools"
+        }
+      },
+      "reference_generated_token_ids": [
+        1359,
+        186146,
+        471,
+        338,
+        18907,
+        113161,
+        11073,
+        67,
+        267,
+        16375,
+        535,
+        66,
+        19094,
+        292,
+        292,
+        641,
+        417,
+        65,
+        2795,
+        1120,
+        97593,
+        220,
+        66,
+        103755,
+        7896,
+        21147,
+        430,
+        1137,
+        560,
+        11,
+        7270,
+        220,
+        7270,
+        97906,
+        7063,
+        48744,
+        13,
+        135967,
+        6093,
+        15121,
+        8357,
+        35621,
+        2502,
+        35621,
+        35621,
+        35621,
+        13,
+        220,
+        64339,
+        16431,
+        45593,
+        33845,
+        735,
+        3026,
+        132171,
+        307,
+        96384,
+        96384,
+        5189,
+        5189,
+        471,
+        471,
+        23600,
+        220,
+        1083,
+        5513,
+        11350,
+        5189,
+        272,
+        825,
+        825,
+        918,
+        65,
+        825,
+        113115,
+        5189,
+        5189,
+        5189,
+        877,
+        5189,
+        69,
+        220,
+        220,
+        220,
+        220,
+        220,
+        5060,
+        66,
+        44125,
+        113907,
+        123373,
+        1515,
+        49621,
+        5125,
+        5125,
+        5125,
+        5125,
+        5265,
+        10954,
+        220,
+        220,
+        220,
+        220,
+        17374,
+        27276,
+        55200,
+        5125,
+        220,
+        9006,
+        2502,
+        66,
+        128171,
+        535,
+        535,
+        5125,
+        220,
+        2502,
+        535,
+        535,
+        535,
+        535,
+        220,
+        12066,
+        69,
+        220,
+        197,
+        220,
+        220
+      ],
+      "reference_seed_token_id": 49556,
+      "seed_match": true,
+      "top1_pass": false,
+      "workload": "128K/128"
+    }
+  ],
+  "schema": 1,
+  "status": "rejected_correctness",
+  "summary": {
+    "first_failing_row": "128K/128",
+    "max_kl_by_workload": {
+      "128K/128": 10.079637164212054
+    },
+    "passed": false,
+    "top1_by_workload": {
+      "128K/128": 0.03875968992248062
+    }
+  },
+  "target_arch": "gfx1100",
+  "token_id": 9707
+}
