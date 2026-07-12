@@ -152,6 +152,17 @@ def target_block_needs_linear_state_snapshot(
     )
 
 
+def invalidate_target_graph_after_block_verify(target_graph):
+    """Close a graph captured before block verification advanced resident state."""
+
+    target_graph.close()
+    return (
+        None,
+        False,
+        "target block verifier advanced resident state; fell back to eager target verification",
+    )
+
+
 def target_block_state_replay_uses_serial_exact(
     *,
     replay_state_commit: bool,
@@ -3012,6 +3023,12 @@ def main(argv: list[str] | None = None):
                 elapsed_ms = (t1 - t0) * 1000
                 add_cycle_stage("target_block_verify_total", elapsed_ms)
                 ar_decode_ms += elapsed_ms
+                if block_verify_used and target_graph is not None:
+                    (
+                        target_graph,
+                        target_graph_verify_enabled,
+                        target_graph_verify_fallback_reason,
+                    ) = invalidate_target_graph_after_block_verify(target_graph)
             can_batched_verify = (
                 bool(args.target_graph_batched_verify)
                 and target_graph_verify_enabled
