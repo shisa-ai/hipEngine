@@ -37,37 +37,70 @@ serial-prefix transitions across hidden state, all 30 Conv/GDN families, and
 all 10 live K/V families. The exact fixed-cycle row and natural24 columns use
 different output horizons and must not be ranked as one protocol. llama.cpp
 uses prebuilt HIP binary `263cc04a5`/build 9600 and remains
-`performance_claim=false`.
+`performance_claim=false`. Its `119.05/81.47 tok/s` values are native
+llama.cpp reporting, not transition-normalized cross-engine rates: that run
+requested 24 outputs, but llama.cpp starts `predicted_ms` after the first
+output is sampled. Do not rank that column directly until W7900 is rerun with
+the `N+1` transition contract below.
 
 Artifact: [W7900 GGUF MTP transfer](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json).
 
-### gfx1151 retained reference, Radeon 8060S
+### gfx1151 current refresh, Radeon 8060S
 
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
 | --- | ---: | ---: | ---: |
-| Headline route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
-| Headline MTP decode | 61.98 tok/s (1.1312x own AR) | 71.52 tok/s (1.3055x own AR) | 71.91 tok/s (1.3835x own AR) |
-| Matched natural24 B2 MTP decode | 52.04 tok/s (diagnostic) | 71.52 tok/s | 71.91 tok/s |
-| Matched natural24 own AR | 54.80 tok/s | 54.79 tok/s | 51.98 tok/s |
-| Matched natural24 cycle wall/output | 19.248 ms | 14.005 ms | 14.269 ms |
+| Route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural25 request / 24 timed transitions |
+| Canonical/native MTP decode | 51.81 tok/s (0.9571x own AR) | **69.50 tok/s (1.2776x own AR)** | 69.44 tok/s native (1.3752x; not cross-engine comparable) |
+| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **69.38 tok/s** | 66.66 tok/s |
+| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **54.40 tok/s** | 48.47 tok/s |
+| Cross-engine MTP / own AR | n/a | 1.2755x | 1.3752x |
+| Draft acceptance | 72.33% | 77.72% | 79.56% |
+| Accepted draft/output | 53.49% | 59.58% | 57.60% |
+| Complete wall/output or timed transition | 19.360 ms/output | 14.413 ms/output | 15.001 ms/transition |
 | State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
 
-The exact/default route remains the semantic control. Its retained 61.98 tok/s
-row uses a fixed-cycle horizon and cannot be ranked directly against the
-natural24 columns. `llama-compat` is the closer structural comparison with
-llama.cpp, but remains opt-in. The locally instrumented llama.cpp stage rerun
-has dirty source provenance and `performance_claim=false`.
+The current correctness/state-lifecycle pass changes the exact/default result
+materially: B5 is **51.81 versus 54.14 AR tok/s (0.9571x)**, so exact MTP no
+longer wins on gfx1151. The old 61.98 tok/s row remains historical evidence,
+not a current headline. Replay/commit increased from 0.019 to 2.766 ms/output,
+accounting for most of the 16.162 to 19.360 ms/output cycle-wall increase.
 
-Artifacts: [retained exact B5](../benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
-[exact natural24 B1-B5](../benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json),
-[retained `llama-compat` B2](../benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json),
-and [llama.cpp HIP B2 stage rerun](../benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
+Explicit `llama-compat` remains a full-suite win: full/train/heldout are
+**1.2776x / 1.3034x / 1.2408x**, train/heldout acceptance is
+**82.08% / 71.79%**, and all four categories beat their own true AR controls.
+It remains opt-in because direct partial commit is not serial-prefix-equivalent.
 
-The gfx1151 eager target control remains correctness-certified by
-[`SOL-G1`](SOL-OPTIMIZATION.md): for the exact Q4_K_M model and
-`[9707] * 512`, llama.cpp and hipEngine emit the same five-token repeated
-trajectory, and four teacher-forced transitions match fresh serial prefixes
-byte-for-byte across hidden rows, Conv/GDN state, and live K/V.
+At matched decode boundaries, hipEngine `llama-compat` is **69.38 tok/s** and
+llama.cpp is **66.66 tok/s** over exactly 24 timed transitions per prompt.
+hipEngine uses BF16 KV and llama.cpp uses F16 KV, so this is timer-matched but
+not identical model execution. The llama.cpp source is dirty but its complete
+instrumentation patchset is retained; the binary hash is authoritative and the
+external row remains `performance_claim=false`.
+
+The clean HIP 7.15 gfx1151 oracle repeats llama.cpp token `9707` and passes four
+byte-exact serial-prefix transitions across hidden state, all 40 layer outputs,
+all 30 Conv/GDN state families, and all 10 live K/V families.
+
+Artifacts: [current gfx1151 refresh](../benchmarks/results/2026-07-12-gfx1151-gguf-mtp-refresh.json),
+[llama.cpp patchset](../benchmarks/llama.cpp/README.md),
+[historical exact B5](../benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
+and [historical `llama-compat` B2](../benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
+
+## Cross-Engine Decode Timing Boundary
+
+The canonical boundary is maintained in
+[`benchmarks/README.md`](../benchmarks/README.md#cross-engine-gguf-decode-timing-contract).
+In compact form:
+
+1. hipEngine AR counts returned post-prefill `session.step()` transitions;
+2. hipEngine MTP cross-engine rates use complete `cycle_wall_ms` rather than
+   the narrower legacy draft+target stage sum;
+3. llama.cpp samples its first output before `t_start_generation`, so native
+   `predicted_n / predicted_ms` counts one untimed token per request;
+4. request `N+1` llama.cpp outputs and report
+   `sum(predicted_n - 1) * 1000 / sum(predicted_ms)` for `N` comparable timed
+   transitions;
+5. client/HTTP wall and direct decode wall remain separate scopes.
 
 ## Server And Concurrency Status
 
@@ -123,8 +156,29 @@ python3 scripts/gguf_ar_mtp_suite.py \
   --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
   --budgets 2 --cycles 24 --max-output-tokens 24 \
   --record-cycle-stage-timings \
+  --require-cached-build \
   --output benchmarks/results/<date>-ar-mtp-llama-compat-natural24.json
 ```
+
+llama.cpp transition-matched natural prompts (`N=24`):
+
+```bash
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /path/to/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --ctx-size 8192 --concurrency 1 --gpu-layers 99 \
+  --flash-attn on --cache-type-k f16 --cache-type-v f16 \
+  --draft-max 2 --mode both --protocol natural \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --max-tokens 25 --seed 12345 --temperature 0 \
+  --top-k 1 --top-p 1 --min-p 0 \
+  --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output benchmarks/results/<date>-llamacpp-natural25.json
+```
+
+Use the emitted `aggregate_decode_transition_per_second` and
+`transition_normalized_*` fields for cross-engine tables; retain native
+`predicted_per_second` only as llama.cpp self-reporting.
 
 Use [`scripts/mtp_verifier_rocprof.py`](../scripts/mtp_verifier_rocprof.py) for
 verifier profiling. Do not wrap the parent prompt-suite/economics harness in

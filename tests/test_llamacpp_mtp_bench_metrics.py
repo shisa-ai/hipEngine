@@ -32,10 +32,21 @@ def test_llamacpp_mtp_natural_summary_reports_accepted_per_output() -> None:
 
     assert summary["draft_acceptance"] == 0.5
     assert summary["accepted_per_output"] == 5 / 15
+    assert summary["first_output_tokens_untimed"] == 2
+    assert summary["timed_decode_transitions"] == 13
+    assert summary["transition_normalized_predicted_per_second"] == 13 / 0.15
+    assert summary["aggregate_decode_transition_per_second"] == 13 / 0.15
     assert summary["denominators"] == {
         "draft_acceptance": "draft_n_accepted / draft_n",
         "accepted_per_output": "draft_n_accepted / predicted_n",
+        "native_predicted_per_second": "predicted_n / predicted_ms",
+        "transition_normalized_predicted_per_second": (
+            "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+        ),
     }
+    assert summary["timing_boundary"]["cross_engine_rule"] == (
+        "request N+1 outputs and report N timed transitions per prompt"
+    )
 
 
 def test_llamacpp_mtp_natural_summary_reports_concurrent_client_wall() -> None:
@@ -67,6 +78,8 @@ def test_llamacpp_mtp_natural_summary_reports_concurrent_client_wall() -> None:
     assert summary["concurrency"] == 2
     assert summary["aggregate_decode_ms_total"] == 320.0
     assert summary["aggregate_decode_predicted_per_second"] == 150.0
+    assert summary["timed_decode_transitions"] == 46
+    assert summary["aggregate_decode_transition_per_second"] == 143.75
     assert summary["client_wall_s_total"] == 0.95
     assert summary["request_wall_s_total"] == 1.7000000000000002
     assert summary["client_aggregate_predicted_per_second"] == 48 / 0.95
@@ -97,6 +110,7 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
                         "summary": {
                             "predicted_per_second_weighted": 50.0,
                             "aggregate_decode_predicted_per_second": 100.0,
+                            "aggregate_decode_transition_per_second": 96.0,
                             "client_aggregate_predicted_per_second": 45.0,
                             "accepted_per_output": None,
                         }
@@ -115,6 +129,7 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
                         "summary": {
                             "predicted_per_second_weighted": 75.0,
                             "aggregate_decode_predicted_per_second": 180.0,
+                            "aggregate_decode_transition_per_second": 168.0,
                             "client_aggregate_predicted_per_second": 90.0,
                             "draft_acceptance": 0.5,
                             "accepted_per_output": 0.25,
@@ -137,9 +152,11 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
 
     assert artifact["summary"]["natural"]["mtp_accepted_per_output"] == 0.25
     assert artifact["summary"]["natural"]["aggregate_decode_speedup"] == 1.8
+    assert artifact["summary"]["natural"]["transition_normalized_speedup"] == 1.75
     assert artifact["summary"]["natural"]["client_aggregate_speedup"] == 2.0
     assert artifact["summary"]["token_repeat"]["mtp_accepted_per_output"] == 0.5
     assert "agg_decode_speedup=1.800x" in text
+    assert "transition_speedup=1.750x" in text
     assert "client_speedup=2.000x" in text
     assert "accepted/output=0.250" in text
     assert "accepted/output=0.500" in text
