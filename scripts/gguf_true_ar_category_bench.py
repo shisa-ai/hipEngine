@@ -72,6 +72,15 @@ def build_true_ar_artifact(
         metric_row.setdefault("prompt_chars", len(str(prompt_row["prompt"])))
         metric_row.setdefault("prompt_sha256", prompt_sha256(str(prompt_row["prompt"])))
     commands = validate_command_provenance({"commands": commands}, label="true AR artifact")
+    graph_rows = [bool(row.get("graph_replay_decode", False)) for row in prompt_metrics]
+    graph_effective = bool(graph_rows) and all(graph_rows)
+    graph_steps = {
+        int(row.get("graph_steps_per_replay", 0) or 0) for row in prompt_metrics
+    }
+    decode_path = "graph_replay" if graph_effective else "eager_step"
+    if any(graph_rows) and not graph_effective:
+        decode_path = "mixed"
+    effective_graph_steps = graph_steps.pop() if len(graph_steps) == 1 else 0
     return {
         "schema": 1,
         "kind": "hipengine_gguf_true_ar_category_baseline",
@@ -91,7 +100,11 @@ def build_true_ar_artifact(
             kv_dtype="bf16",
             command=(sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]),
             build_profile="gguf_true_ar",
-            timing_protocol="eager_decode_loop",
+            timing_protocol=(
+                "state_bound_graph_decode_loop_capture_included"
+                if graph_effective
+                else "eager_decode_loop"
+            ),
             warmups=None,
             repetitions=1,
         ),
@@ -101,9 +114,10 @@ def build_true_ar_artifact(
         "decode_tokens": int(args.decode_tokens),
         "warmup_decode_tokens": int(args.warmup_decode_tokens),
         "timing_protocol": {
-            "decode_path": "eager_step",
-            "graph_replay_decode": False,
-            "graph_steps_per_replay": 0,
+            "decode_path": decode_path,
+            "graph_replay_decode": graph_effective,
+            "graph_steps_per_replay": effective_graph_steps if graph_effective else 0,
+            "graph_capture_in_decode_ms": graph_effective,
             "decode_repack": bool(getattr(args, "decode_repack", False)),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),
@@ -123,8 +137,8 @@ def build_true_ar_artifact(
         "notes": [
             "True no-MTP autoregressive resident GGUF path; no draft/proposal/MTP kernels are invoked.",
             "Prompt tokens use scripts.gguf_mtp_bench.build_chat_prompt() so the prompt suite matches GGUF-MTP diagnostics.",
-            "Default timing mirrors the retained production GGUF benchmark path: GEMV decode enabled and measured decode via HIP graph replay with graph capture excluded.",
-            "decode_ms measures the autoregressive decode loop after prefill and optional warmup; model load, prefill, warmup, and graph capture are excluded.",
+            "Default timing mirrors production admission: a backend-qualified state-bound graph is used only when the requested transition horizon meets its measured break-even.",
+            "decode_ms measures complete autoregressive decode after prefill and optional warmup; model load, prefill, and warmup are excluded, while graph capture/instantiate/close are included when graph replay is active.",
             "Use as --true-ar-baseline-json input for scripts/gguf_mtp_category_bench.py.",
         ],
     }
@@ -162,12 +176,45 @@ def run_prompt_true_ar(
         generated.append(next_token)
     warmup_ms = 1000.0 * (time.perf_counter() - warmup_start)
 
+    minimum_fn = getattr(session, "decode_graph_min_replay_steps", None)
+    graph_minimum = minimum_fn() if callable(minimum_fn) else None
+    use_graph = bool(
+        graph_replay_decode
+        and int(graph_steps_per_replay) == 1
+        and graph_minimum is not None
+        and int(decode_tokens) >= int(graph_minimum)
+        and callable(getattr(session, "capture_decode_graph", None))
+    )
     final = None
+    graph_capture_ms = 0.0
     decode_start = time.perf_counter()
-    for step_index in range(int(decode_tokens)):
-        final = session.step(next_token, return_logits=(step_index == int(decode_tokens) - 1))
-        next_token = int(final.token_id)
-        generated.append(next_token)
+    if use_graph:
+        capture_start = time.perf_counter()
+        graph = session.capture_decode_graph(
+            position=int(session.position),
+            steps_per_replay=1,
+            max_replay_steps=int(decode_tokens),
+            attention_max_context_len=int(session.position) + int(decode_tokens),
+        )
+        graph_capture_ms = 1000.0 * (time.perf_counter() - capture_start)
+        try:
+            for step_index in range(int(decode_tokens)):
+                graph.replay(1)
+                final = graph.read_sample(
+                    return_logits=(step_index == int(decode_tokens) - 1)
+                )
+                next_token = int(final.token_id)
+                generated.append(next_token)
+        finally:
+            graph.close()
+    else:
+        for step_index in range(int(decode_tokens)):
+            final = session.step(
+                next_token,
+                return_logits=(step_index == int(decode_tokens) - 1),
+            )
+            next_token = int(final.token_id)
+            generated.append(next_token)
     decode_ms = 1000.0 * (time.perf_counter() - decode_start)
     finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
 
@@ -183,8 +230,11 @@ def run_prompt_true_ar(
         "prefill_ms": prefill_ms,
         "warmup_decode_ms": warmup_ms,
         "warmup_decode_tokens": int(warmup_decode_tokens),
-        "graph_replay_decode": False,
-        "graph_steps_per_replay": 0,
+        "graph_replay_decode": use_graph,
+        "graph_replay_requested": bool(graph_replay_decode),
+        "graph_replay_min_steps": None if graph_minimum is None else int(graph_minimum),
+        "graph_steps_per_replay": 1 if use_graph else 0,
+        "graph_capture_ms_included": graph_capture_ms,
         "graph_capture_ms_excluded": 0.0,
         "finite_final_logits": finite_logits,
         "final_token_id": None if final is None else int(final.token_id),
@@ -205,9 +255,12 @@ def main() -> int:
     parser.add_argument("--force-bulk-prefill", action="store_true")
     parser.add_argument("--no-bulk-prefill", action="store_true")
     parser.add_argument("--bulk-prefill-attention-mode", choices=("bulk", "native"), default="bulk")
-    # Decode is always eager (the HIP decode graph was retired; see WORKLOG
-    # 2026-06-28 "#8 moot"). These flags are vestigial and ignored.
-    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--graph-replay-decode",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use a state-bound graph only when the backend admits this decode horizon.",
+    )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
@@ -258,9 +311,12 @@ def main() -> int:
                 "decode_ms": 1.0,
                 "decode_tok_s": 1000.0 * int(args.decode_tokens),
                 "warmup_decode_tokens": int(args.warmup_decode_tokens),
-                "graph_replay_decode": bool(args.graph_replay_decode),
-                "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
+                "graph_replay_decode": False,
+                "graph_replay_requested": bool(args.graph_replay_decode),
+                "graph_replay_min_steps": None,
+                "graph_steps_per_replay": 0,
                 "decode_repack": bool(args.decode_repack),
+                "graph_capture_ms_included": 0.0,
                 "graph_capture_ms_excluded": 0.0,
                 "finite_final_logits": True,
                 "dry_run": True,
