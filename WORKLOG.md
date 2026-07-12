@@ -152912,3 +152912,12 @@ graphless decode launch-collapse path without regressing target/serial parity.
   user direction, the two model-heavy gates and another full suite were not
   rerun; the integrated Python 3.12 full suite had already passed before this
   test-harness-only correction.
+- Completed the v0.3.0 artifact preflight from a clean detached worktree at
+  `014fee50`: Git LFS integrity and `compileall` passed; `build` produced the
+  0.3.0 sdist and non-pure
+  `py3-none-manylinux_2_39_x86_64` wheel; Twine accepted both; wheel metadata
+  reports `Root-Is-Purelib: false`, `Requires-Python: >=3.10`, and version
+  0.3.0; and an isolated install successfully ran `hipengine serve --help`.
+  PyPI remains at 0.2.2 and neither the v0.3.0 Git tag nor GitHub release exists.
+  The final artifacts will be rebuilt from the release commit containing this
+  entry so the tagged source and uploaded sdist match exactly.
