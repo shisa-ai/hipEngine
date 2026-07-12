@@ -152746,3 +152746,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   resolved W7900/gfx1100. Added a RED/GREEN contract and made `_hardware()` map
   explicit `HIPENGINE_HIP_ARCH=gfx1100|gfx1151`; the compact artifact uses the
   authoritative child provenance. No measurement changed.
+
+## 2026-07-12 - Plan a cross-backend native speculative cycle launcher
+
+- Reran current rebuilt llama.cpp HIP `1ebf790cd`/build 9648 on W7900 with the
+  ten natural prompts, F16 KV, B2, reasoning off, and 25 requested outputs.
+  Transition-normalized base/MTP is **78.250 -> 116.878 tok/s (1.4936x)**;
+  draft acceptance is 81.56% and accepted/output is 58.40%. hipEngine's current
+  `llama-compat` has slightly higher accepted/output (60.83%) but reaches only
+  79.701 tok/s, proving W7900 compute/acceptance is not the primary blocker.
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-12-w7900-llamacpp-mtp-natural25-diagnostic.json`
+  with the exact command, timer normalization, source hash, and explicit
+  `performance_claim=false` status.
+- Added a new current-findings section to `docs/MTP-gguf.md`. The plan replaces
+  a gfx1100-only launch-collapse idea with one provider-neutral native C/C++
+  speculative cycle launcher for GGUF MTP, PARO MTP, DFlash, gfx1100, and
+  gfx1151. It defines a raw-pointer device control block, registry-resolved
+  provider adapters, device-resident accept/commit/KV metadata, optional stable
+  subgraphs, one Python boundary per cycle, N0-N5 delivery order, exact
+  fallbacks, and backend/provider-specific promotion gates.
+- Current break-even targets are recorded: `llama-compat` needs complete cycle
+  wall **32.12 -> <=27.36 ms/cycle (-14.8%)** to beat graph AR at present
+  density, with a stretch **12.578 -> 8.556 ms/output** target to match
+  llama.cpp. This is orchestration infrastructure, not a monolithic math
+  megakernel or a promise to transfer defaults without per-device evidence.

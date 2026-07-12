@@ -1,0 +1,80 @@
+{
+  "schema": "hipengine.llamacpp_mtp_external_comparison.v1",
+  "date": "2026-07-12",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Demonstrate that W7900 compute can produce an MTP speedup under a native C++ orchestration path; this is design evidence for a cross-backend native speculative cycle launcher, not a promoted hipEngine result.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "kv_dtype": "f16"
+  },
+  "software": {
+    "hipengine_commit": "25947d32fa902c5a5bd2f27675a2101675ac8916",
+    "hipengine_dirty": false,
+    "llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llamacpp_build": 9648,
+    "llamacpp_dirty_instrumentation_preserved": true,
+    "server_binary": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "concurrency": 1,
+    "ctx_size": 8192,
+    "request_outputs_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "timed_transitions_total": 240,
+    "reasoning": "off",
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "flash_attention": true,
+    "draft_max": 2,
+    "timing": "llama.cpp predicted_ms starts after the first sampled output; transition rates use (predicted_n - 1 per request) / predicted_ms"
+  },
+  "results": {
+    "base": {
+      "native_tok_s": 81.51059344276618,
+      "transition_normalized_tok_s": 78.25016970505553,
+      "client_output_tok_s": 58.62776457392443,
+      "aggregate_decode_ms": 3067.0860000000007
+    },
+    "mtp": {
+      "native_tok_s": 121.74787087323418,
+      "transition_normalized_tok_s": 116.8779560383048,
+      "client_output_tok_s": 75.87491944751885,
+      "aggregate_decode_ms": 2053.424,
+      "draft_tokens": 179,
+      "accepted_draft_tokens": 146,
+      "draft_acceptance": 0.8156424581005587,
+      "accepted_per_output": 0.584
+    },
+    "transition_speedup": 1.4936447611404176,
+    "transition_delta_pct": 49.36447611404176
+  },
+  "comparison_context": {
+    "hipengine_graph_ar_tok_s": 93.30419935098574,
+    "hipengine_llama_compat_mtp_tok_s": 79.70112079701121,
+    "hipengine_llama_compat_accepted_per_output": 0.6083333333333333,
+    "llamacpp_mtp_vs_hipengine_llama_compat": 1.466455618924516,
+    "interpretation": "llama.cpp MTP is faster despite slightly lower accepted/output, so W7900 compute and acceptance are not the primary blockers; hipEngine launch/orchestration cost is the main portability gap."
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --ctx-size 8192 --concurrency 1 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --draft-max 2 --mode both --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/w7900-llamacpp-gfx1100-base-mtp-natural25-current.json",
+  "source_artifact": {
+    "path": "/tmp/w7900-llamacpp-gfx1100-base-mtp-natural25-current.json",
+    "sha256": "f508b8334602fc802b72922ae1ae53bed6c6102c43bc7dd29c4cf53feb0c5cc4",
+    "size_bytes": 39660
+  },
+  "notes": [
+    "External diagnostic only: llama.cpp uses F16 KV and a preserved dirty instrumentation patchset, while hipEngine uses BF16 KV.",
+    "The transition speedup ratio is unaffected by the untimed-first-output numerator correction because base and MTP use the same request count and output horizon.",
+    "No hipEngine performance row is promoted by this artifact."
+  ]
+}

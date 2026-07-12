@@ -1,6 +1,6 @@
 # MTP-GGUF Plan
 
-Last updated: 2026-06-15
+Last updated: 2026-07-12
 Branch: `mtp-gguf`
 
 This document is the working plan for making hipEngine's **GGUF** inference path
@@ -188,6 +188,178 @@ From [`TUNING-gfx1151.md`](TUNING-gfx1151.md):
   gfx1151; the APU may amortize scarce memory traffic differently
   (TUNING-gfx1151.md:81-83). This is the operating-point question OQ4 / M6 must
   answer per-device.
+
+## 2026-07-12 gfx1100 Finding and Cross-Backend Native Cycle Launcher
+
+The current W7900 result changes the optimization diagnosis. The hardware does
+not lack enough compute to make MTP useful: llama.cpp demonstrates a large MTP
+speedup on the same card and GGUF. hipEngine's remaining gap is primarily how
+we submit and orchestrate a speculative cycle, not a missing gfx1151 kernel port
+or insufficient W7900 arithmetic throughput.
+
+Durable evidence:
+
+- hipEngine graph-AR correction and current MTP economics:
+  [`2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json`](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
+- Current rebuilt llama.cpp base-vs-MTP diagnostic:
+  [`2026-07-12-w7900-llamacpp-mtp-natural25-diagnostic.json`](../benchmarks/results/2026-07-12-w7900-llamacpp-mtp-natural25-diagnostic.json).
+
+Matched natural25 request / 24 timed-transition results on W7900:
+
+| Route | AR tok/s | MTP tok/s | MTP / AR | accepted/output |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine `llama-compat` | **93.30** | 79.70 | **0.8542x** | **0.608** |
+| llama.cpp HIP build 9648 | 78.25 | **116.88** | **1.4936x** | 0.584 |
+
+The llama.cpp row is an external diagnostic (`performance_claim=false`): it
+uses F16 KV and the preserved dirty instrumentation patchset, while hipEngine
+uses BF16 KV. It is nevertheless decisive for architecture planning. llama.cpp
+is **46.6% faster than hipEngine MTP despite slightly lower accepted/output**,
+so acceptance and available GPU compute are not the primary blockers.
+
+### Current Break-Even Accounting
+
+For hipEngine `llama-compat` B2:
+
+- `240 / 94 = 2.553` visible outputs/cycle;
+- graph AR costs `10.718 ms/transition`, so the equivalent AR budget is
+  `2.553 * 10.718 = 27.36 ms/cycle`;
+- hipEngine MTP costs `12.578 ms/output`, or `32.12 ms/cycle`;
+- target verification alone costs about `28.41 ms/cycle`, before proposal,
+  acceptance, and commit overhead.
+
+At current acceptance, the complete cycle therefore needs at least a **14.8%**
+wall reduction merely to beat hipEngine AR. Matching llama.cpp's
+`8.556 ms/transition` requires about a **32%** reduction in hipEngine MTP wall
+per visible output. Perfect B2 acceptance (three visible outputs every cycle)
+would approximately break even at current cycle cost, but llama.cpp wins with
+lower acceptance, confirming that execution cost is the more important lever.
+
+Exact/default B3 has a harder current regime: about two visible outputs per
+cycle, `29.39 ms/cycle` MTP wall, and only `20.25 ms/cycle` of equivalent graph
+AR work. It needs roughly a **31%** cycle reduction at unchanged density.
+
+### gfx1151 Parity Status
+
+The GGUF MTP implementation is source-level shared across both RDNA backends:
+`hip_gfx1151` aliases the registered gfx1100 callables and recompiles the same
+HIP bodies for gfx1151. The current exact and `llama-compat` routes, dp4a/X8/Q8
+sidecars, draft optimizations, target verifier, and accept/commit machinery are
+not missing a gfx1151-only kernel family on W7900.
+
+What did not transfer was the performance environment. gfx1151's integrated
+CPU/GPU architecture has much cheaper submission, so Python/ctypes launch
+orchestration was less visible and the shared path could match or beat
+llama.cpp there. On discrete gfx1100, graph AR removes the eager launch tax,
+but MTP still executes a data-dependent proposal/verify/accept/commit cycle
+through many host submissions. The AR graph admission fixed the denominator;
+it did not solve MTP cycle submission.
+
+This means the next implementation should not be a gfx1100-only workaround.
+The same host-bound orchestration is avoidable on gfx1151 and in the PARO and
+DFlash speculative stacks, even where it is not yet the largest measured
+bucket. Build one provider-neutral native path, then validate and promote it
+separately per backend/provider.
+
+### Target Architecture: Native Speculative Cycle Launcher
+
+Build a native C/C++ launcher (working name `NativeSpecCycleLauncher`) that
+reduces the hot loop to one host-language boundary per speculative cycle, with
+a later option to run multiple cycles per call. It is an orchestration layer,
+not a monolithic math megakernel.
+
+The launcher should:
+
+1. Consume a versioned, provider-neutral device control block containing raw
+   pointers and bounded shapes for active rows, candidate budgets, token IDs,
+   positions, parent/depth metadata, `KVLiveSpans`, hidden seeds, acceptance
+   summaries, commit rows, and output cursors.
+2. Use kernel handles/launch descriptors resolved once through the four-axis
+   registry before the hot loop. Do **not** add backend/quant/provider branches
+   to engine or model code. GGUF MTP, PARO MTP, and DFlash attach adapters that
+   populate the common control block and resolve their registered primitives.
+3. Submit proposal/NextN, target verification, sampling/acceptance, recurrent
+   and KV commit/scatter, reseed, and cursor update from native code on
+   session-owned streams. Python must not dispatch each layer or kernel.
+4. Keep candidate IDs, probabilities, accept lengths, commit rows, recurrent
+   state choices, and KV transaction metadata device-resident. Return only the
+   bounded visible-output/result payload needed by the scheduler/API; avoid
+   per-stage scalar D2H synchronization.
+5. Preserve `KVLiveSpans` as the attention ABI for every provider. The native
+   launcher receives the spans/control pointers; it must not introduce a
+   `(block_table, context_len)` shortcut.
+6. Support stable shape buckets such as `(provider, B, verifier rows, context
+   bucket, route)` and optionally use HIP graphs for proven stable subgraphs.
+   Native C++ submission is the baseline because acceptance and commit are
+   data-dependent; correctness must not depend on one giant fixed graph.
+7. Keep the current Python/orchestrated chain as the exact fallback and oracle.
+   Existing unfused primitive chains remain registered for every fused kernel,
+   as required by the project invariants.
+
+The C ABI must take raw device pointers and scalar metadata, never framework
+tensors. Provider adapters belong at the plugin boundary. A conceptual registry
+shape is `(backend, speculative_cycle, provider_quant, native_v1)`, with the
+exact layer/quant names following the existing registry catalog rather than
+hard-coded dispatch branches.
+
+### Shared Scope
+
+The launcher is intended for all current speculative providers:
+
+- GGUF integrated NextN/MTP (`exact/default` and explicit `llama-compat`);
+- PARO target plus MTP sidecar;
+- dense 27B DFlash;
+- future tree/coverage speculative policies that use the shared
+  `DraftBatch`/`TargetVerifyBatch`/accept/commit contracts.
+
+Provider-neutral does not mean one performance policy. Each provider keeps its
+own proposal graph, verifier shape, state semantics, and registry keys. The
+common layer owns cycle control, native launch sequencing, device-resident
+accept/commit metadata, and scheduler-facing results.
+
+### Delivery Order
+
+1. **N0 — ABI and oracle:** define the versioned control/result blocks, lifecycle,
+   error/status contract, pointer ownership, and a CPU/fake-launcher test. Add a
+   mechanical validator for every nested shape/pointer/count field.
+2. **N1 — Native target block:** move one fixed B2/B3 target verifier bucket to a
+   C++ launcher while leaving proposal and commit unchanged. Prove identical
+   target rows, logits/top-1, hidden seeds, recurrent state, and KV.
+3. **N2 — Device accept/commit:** consume target top-1 on device and produce the
+   accepted count, commit rows, reseed row, recurrent/KV transaction, and output
+   summary without intermediate host reads.
+4. **N3 — Complete native cycle:** include proposal/NextN and cursor update so
+   one Python call owns a complete cycle. Measure host calls, HIP submissions,
+   GPU kernel wall, and complete cycle wall separately.
+5. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
+   DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
+   each provider before default promotion.
+6. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
+   launcher to continue until EOS, cancellation/deadline, output-buffer limit,
+   or an explicit scheduler yield point.
+
+### Promotion Gates
+
+- Full multi-prompt category suite plus heldouts; no single-prompt tuning.
+- Exact/default token, hidden, all Conv/GDN state, and all live K/V equality.
+  Accuracy-traded routes retain their explicit semantic labels and compare
+  against their own current outputs.
+- Standard new-kernel gate: KL `<= 0.05`, top-1 `>= 90%`, plus a profiler trace
+  proving the expected registered kernels ran.
+- gfx1100 primary break-even: `llama-compat` complete cycle
+  `<= 27.36 ms/cycle` at current density, then beat the current **93.30 tok/s**
+  graph AR control. Exact/default requires its own same-protocol break-even.
+- Stretch target: close the current **12.578 -> 8.556 ms/output** gap to
+  llama.cpp MTP without reducing acceptance or changing the route contract.
+- gfx1151 must be non-regressive on its full suite even if host submission is a
+  smaller fraction there. A gfx1100 win does not transfer automatically.
+- Retain as default only when exact/non-regressive for the provider/backend;
+  otherwise keep the native launcher as an explicit diagnostic and preserve the
+  fallback.
+
+This work supersedes a gfx1100-only launch-collapse plan. The implementation is
+shared infrastructure; performance evidence and defaults remain backend- and
+provider-specific.
 
 ## llama.cpp MTP Contract To Match
 
@@ -820,6 +992,10 @@ Acceptance:
 
 Only after M5 acceptance parity:
 
+- Make the cross-backend `NativeSpecCycleLauncher` described in the 2026-07-12
+  section the primary orchestration workstream. Start with a native target-block
+  bucket, then move accept/commit metadata and the complete cycle device-side;
+  reuse the same ABI for GGUF MTP, PARO MTP, and DFlash.
 - Profile B1 and best-density B row into:
   - NextN draft block;
   - target verifier;
@@ -1105,11 +1281,29 @@ is now answered by the M1 required/optional table.)
       resolves through the four-axis registry on gfx1100/gfx1151 to the native
       bounded top-k sampler wrapper; runtime integration still waits on native
       NextN execution.
+- [ ] Define and validate the provider-neutral native speculative cycle
+      control/result ABI, raw-pointer ownership, shape buckets, and exact
+      Python fallback contract (N0).
+- [ ] Implement a native C++ target-block launcher plus device-resident
+      accept/commit summary for one GGUF B2/B3 bucket (N1/N2), then close the
+      full natural-prompt correctness and profiler gates.
+- [ ] Extend the complete native cycle to shared GGUF MTP, PARO MTP, and DFlash
+      provider adapters; validate gfx1100 and gfx1151 independently before any
+      default promotion (N3/N4).
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 
 ## Decision Log
 
+- 2026-07-12: W7900 graph AR corrected the production denominator to
+  `93.30 tok/s`; hipEngine `llama-compat` MTP is `79.70 tok/s (0.8542x)`, while
+  transition-normalized llama.cpp on the same W7900 reaches
+  `78.25 -> 116.88 tok/s (1.4936x)` with slightly lower accepted/output. This
+  disproves an insufficient-compute explanation and identifies native cycle
+  launch/orchestration as the portability gap. Chose a provider-neutral C/C++
+  speculative cycle launcher with device-resident accept/commit metadata for
+  GGUF MTP, PARO MTP, DFlash, gfx1100, and gfx1151 rather than a gfx1100-only
+  workaround.
 - 2026-06-15: Created `mtp-gguf` branch and this plan after gfx1151 diagnostics
   showed llama.cpp B4 around `0.743/0.747` accepted/output and `1.7-1.8x` speedup
   while hipEngine PARO+sidecar MTP stayed below AR. The branch goal is to match
