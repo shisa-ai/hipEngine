@@ -152865,3 +152865,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   identical. Added this measured-to-rebased equivalence explicitly to the
   topline, capacity, and G1 artifacts plus the README/changelog, so provenance
   remains truthful while the release has a reachable reproduction revision.
+
+## 2026-07-13 — Add matched-context PARO INT8 KV fidelity instrumentation
+
+- Created branch `kv-int8-accuracy` for the INT8 KV fidelity, compact metadata,
+  and bounded long-context quality work.
+- Extended `scripts/qwen35_paro_int8_kv_quality_sweep.py` schema 2 with a
+  BF16-reference-token teacher-forced candidate rollout. The admission gate now
+  uses matched-context KL/top-1; independent greedy rollout output remains
+  separate and reports the last still-comparable logit position before token
+  histories diverge. Added per-position reference-token log-probability/rank
+  diagnostics and explicit decode input IDs.
+- No RED-first run was practical for the additive schema/instrumentation surface:
+  the script had no matched-context execution interface to invoke before the
+  implementation. Focused unit coverage in
+  `tests/test_qwen35_paro_int8_kv_quality_sweep.py` checks reference-token
+  metrics, cascade boundaries, and forced-token execution. Focused CPU bundle:
+  `PYTHONPATH=$PWD python3 -m pytest
+  tests/test_qwen35_paro_int8_kv_quality_sweep.py
+  tests/test_qwen35_kv_e2e_fixture_gate.py
+  tests/test_qwen35_resident_batch_layout.py -q` passed **152 tests**.
+- Live W7900/gfx1100 smoke used the clean Qwen3.6 PARO snapshot, cached HIP
+  compiler version, repeated token `9707`, `512/4`, FP16-scale
+  `int8_per_token_head`, and `--comparison-mode both`. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3
+  scripts/qwen35_paro_int8_kv_quality_sweep.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --prompt-lengths 512 --decode-steps 4 --token-id 9707 --max-layers 40
+  --comparison-mode both --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build
+  --kv-storage int8_per_token_head --json
+  /tmp/hipengine-kv-int8-accuracy-instrumentation-smoke.json`.
+  Instrumentation behaved
+  as intended: matched and reference decode input IDs were both
+  `[16, 198, 4795, 13]`; free rollout first diverged at generated index 1 and
+  correctly marked logit position 3 as the first unequal-history comparison.
+  The quality row rejected (expected diagnostic result): matched KL by position
+  was `0.0/0.78374/0.28920/0.58985/1.06016`, top-1 agreement `0.6`. Output:
+  `/tmp/hipengine-kv-int8-accuracy-instrumentation-smoke.json`.

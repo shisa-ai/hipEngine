@@ -285,6 +285,15 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
   --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
 ```
 
+For Qwen3.6/PARO long-context admission, also run
+`scripts/qwen35_paro_int8_kv_quality_sweep.py --comparison-mode both` on the
+promotion shapes. The quality gate uses the candidate rollout forced with the
+BF16 reference token inputs, so every KL/top-1 position has the same token
+history. The independent greedy rollout is diagnostic: only its
+`matched_history_logit_gate` is an intrinsic fidelity comparison; metrics after
+`first_context_divergent_logit_position` include rollout cascade and must not be
+reported as quantization-only error.
+
 For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
 expected to pass via the BF16 mirror. Long contexts must pass with
 `--require-no-bf16-mirror`; the safety fallback keeps 8 of 10 full-attention
