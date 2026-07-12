@@ -676,6 +676,22 @@ def test_arg_parser_exposes_batched_target_graph_verify_diagnostic() -> None:
     assert args.target_graph_batched_verify is True
 
 
+def test_target_block_commit_invalidates_preexisting_target_graph() -> None:
+    class FakeGraph:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    graph = FakeGraph()
+    target_graph, enabled, reason = bench.invalidate_target_graph_after_block_verify(graph)
+
+    assert graph.closed is True
+    assert target_graph is None
+    assert enabled is False
+    assert reason == "target block verifier advanced resident state; fell back to eager target verification"
+
+
 def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
     args = build_arg_parser().parse_args(
         ["--target-block-verify", "--target-block-verify-mode", "native", "--target-block-wmma-prefill"]

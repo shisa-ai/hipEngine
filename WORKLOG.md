@@ -152413,3 +152413,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   gfx1151 artifact, the local W7900 artifact/negative chunk decision, and the
   incoming benchmark topline refresh. Documentation and artifact labels were
   reconciled to avoid describing the merged policy as global isolation.
+
+## 2026-07-12 - Invalidate stale GGUF MTP target graphs after block commit
+
+- The first W7900 full exact/default GGUF MTP B1 prompt exposed a lifecycle
+  failure after the SOL-G5 state-bound graph guard landed: target block verify
+  and direct commit advanced the resident session from position 42 to 45, then
+  a graph captured at position 42 attempted replay and failed closed with
+  `decode graph state generation mismatch: expected 42, observed 45`. The
+  preceding gfx1100 SOL-G1 oracle passed the repeated llama.cpp trajectory and
+  four byte-exact hidden/30-Conv-GDN/10-KV transitions, localizing the issue to
+  graph/block composition rather than eager model state.
+- Added a RED unit gate proving block commit must close and disable a preexisting
+  target graph. The MTP harness now invalidates that graph immediately after a
+  block verifier advances resident state and records the explicit eager-target
+  fallback reason; it never attempts stale replay later in the prompt.
+- GREEN validation: all 129 tests in `tests/test_gguf_mtp_bench_metrics.py` and
+  `tests/test_gguf_ar_mtp_suite.py` pass. A cached GPU0 W7900/gfx1100 B1
+  10-cycle reproducer now completes with `apple_to_apple_ok=true`, graph rows
+  only before the first block commit, the expected fallback reason afterward,
+  and no state-generation failure. The one-prompt rate (`33.81` versus `33.88
+  tok/s` AR, `0.9982x`) is a smoke diagnostic, not a performance claim.
