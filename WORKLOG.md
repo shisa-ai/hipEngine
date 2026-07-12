@@ -153036,3 +153036,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and group64 into the mixed-layer/residual policy sweep; do not promote a
   format yet. Compact diagnostic:
   `benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json`.
+
+## 2026-07-13 — Add mixed-layer/head/residual KV policy harness
+
+- Added `scripts/qwen35_paro_kv_policy_ablation.py` on top of the real-cache
+  format harness. It emulates selective BF16 full-attention layer ordinals,
+  selective BF16 KV heads, fixed attention-sink and recent-token BF16 residual
+  windows, group64 combinations, and data-driven sensitive-layer sets. Memory
+  accounting distinguishes primary layer/head replacement from an additional
+  BF16 residual side cache over the INT8 primary.
+- RED-first tests cover exact preservation masks for layer/head/sink/recent
+  combinations, overlap-safe 256K memory accounting, and gate/budget-aware
+  recommendation ordering. The recent window quantizes only the row that falls
+  out after each decode step rather than repeatedly requantizing old history.
+- W7900 four-layer `32/2` smoke exercised baseline, layer, head, and combined
+  sink/recent routes. It completed successfully and selected the sole
+  full-attention layer as expected (`KL 0`, top-1 `100%`); the baseline
+  emulation was KL `0.0014288`, top-1 `100%`. This is mechanics validation only.
+- Validation: `ruff check` passed; focused format/policy tests report `8 passed`;
+  live artifact `/tmp/hipengine-kv-policy-ablation-smoke.json`.
