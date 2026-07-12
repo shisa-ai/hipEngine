@@ -198,12 +198,108 @@ version-matching pass.
 - Add a new cross-backend slice only when a current production profile exposes
   a hot bucket whose answer would change routing or implementation priority.
 
+## Optimization and Escalation Plan
+
+### Start here: already tested, ruled out, or inapplicable
+
+The generic optimization checklist is useful, but it must not reset completed
+controls or turn hypotheses into conclusions. “Ruled out” below means ruled
+out as the broad explanation for the retained gaps; a new production kernel
+may still present a different measured bottleneck.
+
+| Suggested lever or explanation | Classification | Current evidence | Policy |
+| --- | --- | --- | --- |
+| Native target and optimization level | Already satisfied | Retained HIP micros compile explicitly for `gfx1100` or `gfx1151` at `-O3`; the ISA tools already generate saved intermediates and final code objects during their runs. | Keep these fixed in every A/B. They are prerequisites, not new optimizations. |
+| `__launch_bounds__` / fixed workgroup | Already tested; not a general cause | Relevant dot, memory, sampler, geometry, and two-stage runners already have fixed-shape launch-bound controls. Fixed-block/workgroup experiments did not broadly close the gaps. | Retest the second occupancy hint only for a profiled kernel whose resource report predicts a useful occupancy boundary. Never assume it is automatically high impact. |
+| Register pressure, missing `__restrict__`, or compiler spills | Ruled out as the broad explanation | Relevant retained HIP micros already use restricted pointers. Retained ISA rows report no HIP scratch or spills as the general explanation. | Shorten live ranges or tune unrolling only against measured VGPR/occupancy evidence. Do not manually spill to LDS without a demonstrated register bottleneck. |
+| Missing packed-dot lowering | Ruled out | HIP already uses `__builtin_amdgcn_sudot4`, and retained Q4/Q6 ISA joins show dot4 instructions on both backends. | Investigate surrounding loads, address arithmetic, reductions, waits, and scheduling; do not repeat basic dot-lowering probes. |
+| Wave64 | Ruled out as a recovery | Wave64 did not close the packed-dot or memory gaps; fixed-wave64 geometry regressed. | Keep wave32 for these paths unless a different production kernel supplies contrary evidence. |
+| Generic reduction, accumulator, two-stage, or VOPD variants | Already tested; no broad recovery | Generic LDS/subgroup/accumulator/two-stage and VOPD controls are retained. HIP, not RADV, emits VOPD in the relevant retained gfx1151 ISA rows. | Do not repeat broad sweeps. Add a variant only when a production profile identifies a different hot shape or dependency contract. |
+| `-ffast-math` | Inapplicable as a blanket fix | It changes the floating-point contract and is not needed to explain integer dot lowering. | Test only on a named floating-point kernel with an explicit accuracy budget and the normal KL/top-1 gate; never enable globally from this comparison. |
+| `-munsafe-fp-atomics` | Inapplicable to retained targets | The retained target kernels are not blocked on floating-point atomic lowering. | Reconsider only if profiling identifies an FP-atomic hot path. |
+| Manual LDS spilling | Inapplicable without a register bottleneck | The retained HIP ISA rows do not spill, and adding LDS traffic can reduce rather than improve performance. | Do not try it without resource/counter evidence that occupancy is limited by a live range we cannot otherwise remove. |
+| Undocumented `-mllvm` if-conversion or scheduler switches | Unproven and unstable | No retained result establishes that these switches help, and backend option names/semantics can change between LLVM builds. | Disposable diagnosis only: first confirm the exact compiler accepts the option, record it in the artifact, and never make it a product default without a same-suite win. |
+| “gfx1151 LLVM regression” | Not established | Cross-architecture ratios differ, but gfx1100 and gfx1151 are different devices. The matched ROCm 7.13-to-7.15 gfx1151 snapshots show no uniform performance change. | Do not call this a compiler regression without a same-device compiler-version A/B or a minimized target-specific ISA/codegen defect. |
+
+The most promising existing compiler diagnostic remains packed dot on gfx1151,
+because its Vulkan lead is stable and much larger than on gfx1100. It is not
+yet a production optimization target: current combined Q4, Q6, and dense-Q8
+operations mostly favor HIP or sit near parity. Extend its retained ISA work
+with dynamic counters only if production profiling exposes the same packed-dot
+body. The dispatch floor is separately actionable through production fusion
+and graph replay, followed by HSA/AQL/queue tracing if a residual floor remains.
+
+### What we can inspect despite having no PTX equivalent
+
+The absence of a stable PTX-like virtual ISA is not an attribution dead end.
+HIP/Clang can preserve LLVM IR, AMDGPU assembly, and the final HSA ELF code
+object; that object records kernel resource metadata and contains the final
+machine code. Vulkan supplies SPIR-V, while RADV can dump its lowered shader
+statistics and final ACO ISA. The two front-end pipelines do not share an IR,
+but their final ISA executes on the same GPU and can be compared alongside
+dynamic counters.
+
+For this repository, use the existing `benchmarks/micro/runners/isa_stats.py`,
+`q4_selected_dual_isa_stats.py`, and `q6_x8_isa_stats.py` extractors rather than
+an approximate one-off disassembly command. Their artifacts retain exact build
+commands, source hashes, HIP code-object metadata, and parsed
+`llvm-objdump`/RADV `shaderstats` evidence. On the retained TheRock 7.15 compiler,
+`-Rpass-analysis=kernel-resource-usage` also reports SGPR/VGPR use, scratch,
+spills, LDS, and estimated waves/SIMD. The similarly named
+`hipcc --resource-usage` option shown in current ROCm documentation is rejected
+by this exact compiler build, so it is not a reproducibility command here.
+
+### Work we control
+
+Optimization should proceed from a shipped hot bucket, not from the largest
+synthetic ratio. Each stage has a stop gate:
+
+| Order | Lever in this tree | Required evidence before retaining it |
+| ---: | --- | --- |
+| 1 | Profile the current PARO and GGUF server paths, including graph replay and eager fallbacks. Name the kernel, layer, quant, shape, launch count, and serialized/overlapped behavior. | The bucket is exposed in production wall time and the proposed change can affect it. |
+| 2 | Make the A/B controlled: exact source and math, native `--offload-arch`, fixed or continuously sampled clocks, interleaved backend/variant order, identical buffers, and the applicable correctness oracle. | Timing distributions reproduce; a clock, submission-class, or layout mismatch cannot explain the result. |
+| 3 | Join static and dynamic evidence: LLVM IR/AMDGPU ISA, RADV final ISA, workgroup/wave mode, SGPR/VGPR/LDS/scratch/spills, instruction classes and waitcnts, plus filtered `rocprofv3` counters or PC/thread trace where supported. | One concrete bottleneck is identified; static instruction counts alone are not treated as timing proof. |
+| 4 | Try the lowest-risk matching HIP change: fewer launches/fusion or graph reuse; then layout and work distribution; then lifetime, aliasing, and unroll changes; then a documented AMDGPU builtin or scheduler intrinsic. | The same production-shaped slice improves, passes its full correctness gate, and does not regress the surrounding suite. |
+| 5 | Use narrow inline AMDGCN assembly or a standalone HSACO only when the final ISA shows a specific sequence LLVM cannot express or schedule adequately. | The sequence is small, architecture-gated, has an unfused/reference fallback, and improves end-to-end production wall—not only a synthetic kernel. |
+| 6 | Bisect compiler builds on the same hardware and unchanged source when codegen remains suspect. | A good/bad compiler boundary or a minimal stable codegen reproducer exists before escalation. |
+
+Dispatch and kernel-body work remain separate. For the former, our controllable
+levers are graph instantiation/reuse, graph-node parameter updates, fewer graph
+launches, fusion, persistent buffers, and removal of host synchronizations. For
+the latter, the controllable levers are algorithm/layout, native workgroup and
+wave geometry, source-level live ranges, alias information, bounded unrolling,
+and target-specific builtins. A faster Vulkan command-buffer floor is not
+evidence that changing HIP kernel math will reduce dispatch overhead.
+
+### Work that may require upstream ownership
+
+We can work around or even patch open-source components, but these durable
+fixes are not under normal hipEngine release control:
+
+| Isolated symptom | Likely owner after isolation | What hipEngine must supply |
+| --- | --- | --- |
+| Inferior HIP ISA for matched math after source/layout controls | Clang/LLVM AMDGPU backend, normally triaged through ROCm and then LLVM when minimized | Standalone HIP reproducer, exact compiler commits and commands, saved IR/code object, final ISA/resource diff, same-device timings/counters, and correctness. |
+| Residual HIP graph/direct-launch submission floor with a trivial kernel body | HIP runtime and possibly HSA queue handling | Direct-versus-instantiated-graph trace, graph topology/reuse details, host API and kernel timestamps, node counts, stream/dependency contract, and Vulkan command-buffer control. |
+| Queue scheduling or clock-residency behavior that survives runtime controls | KFD/MES, amdgpu kernel driver, firmware, or power-management stack | Fixed/sampled clocks, kernel/firmware versions, queue/AQL evidence, system trace, and a minimal non-hipEngine reproducer where practical. |
+| Incorrect or inferior Vulkan final shader after matched SPIR-V/source controls | Mesa RADV/NIR/ACO | Minimal SPIR-V/GLSL, `RADV_DEBUG=shaders,shaderstats` output, exact Mesa commit, ISA/counters, and correctness. |
+
+Do not file a generic “LLVM is slower than ACO” bug from ratio tables. A
+compiler-quality issue is ready when one minimal matched kernel reproduces on
+the named GPU, backend submission overhead is excluded, correctness passes,
+the final ISA or counters identify a concrete loss, and a compiler-version
+boundary or stable current-main result is recorded. The parent ROCm issue can
+carry the user-visible cross-backend report; a linked LLVM issue should contain
+the reduced backend/codegen case. Runtime or driver evidence should be routed
+to that component rather than folded into the compiler claim.
+
 ## Open Gates
 
 | Priority | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
 | 0 | Fix-clock W7900 dispatch/stream attribution | Open | Interleaved one/four-stream and graph controls plus queue/AQL traces separate runtime submission from clock residency. |
 | 1 | Profile current PARO and GGUF server paths | Open | A shipped hot slice is identified by layer family and submission behavior before another Vulkan experiment is added. |
+| 1 | Select one production-backed HIP optimization target | Waiting on production profile | A retained hot bucket maps to an existing cross-backend diagnostic; static ISA and filtered dynamic counters identify a concrete source, layout, scheduling, or submission lever. |
+| 1 | Build an issue-quality compiler/runtime packet | Decision-gated | A minimal matched reproducer satisfies the component-specific evidence gate above; broad ratio tables alone do not open an upstream bug. |
 | 1 | Validate portable Vulkan q8_1 rounding on gfx1100 | gfx1151 complete; W7900 access pending | The retained shader receives the same strict Q4/Q6 and full paired runtime validation on gfx1100; no result is inferred while the W7900 host is unavailable. |
 | 1 | Match Q6 lm-head math/layout | Blocked on comparable implementation | HIP and Vulkan use identical quantization, activation layout, output coverage, and rowtile algorithm before any ratio is reported. |
 | 2 | Production Vulkan or hand ISA | Decision-gated | A clean matched production slice wins in the relevant timing mode and final combined operation, then improves end-to-end wall without a memory/correctness regression. |
@@ -215,3 +311,9 @@ version-matching pass.
 - [Canonical benchmark scoreboard](../benchmarks/README.md)
 - [RDNA3 roofline](ROOFLINE.md)
 - [Optimization punchlist](SOL-OPTIMIZATION.md)
+- [LLVM AMDGPU backend and code-object reference](https://llvm.org/docs/AMDGPUUsage.html)
+- [Clang AMDGPU builtin reference](https://clang.llvm.org/docs/AMDGPUBuiltinReference.html)
+- [HIP performance guidelines](https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/performance_guidelines.html)
+- [HIP graph guide](https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_runtime_api/hipgraph.html)
+- [rocprofv3 tracing and counter guide](https://rocm.docs.amd.com/projects/rocprofiler-sdk/en/latest/how-to/using-rocprofv3.html)
+- [Mesa RADV shader compilation pipeline](https://docs.mesa3d.org/drivers/radv.html)
