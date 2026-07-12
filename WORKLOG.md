@@ -152933,3 +152933,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
   CPU-only speculative-interface test both pass. PyPI was not reached by the
   failed workflow; the tag/release will be recreated at this fix commit before
   the trusted-publishing retry.
+- Trusted-publish retry
+  `https://github.com/shisa-ai/hipEngine/actions/runs/29210736213` confirmed the
+  blanket no-ROCm setup errors were fixed, then exposed nine independent
+  portability failures: five late CLI-validation tests did not stub HIP
+  availability, one float32 diagnostic fixture used a cross-runner-fragile
+  `1e-7` tolerance, one optional Vulkan compile probe did not check for headers,
+  and two fake-runner dispatch tests accidentally built their cast shim. Kept
+  the corrections test-scoped: stubbed HIP for the five validation contracts,
+  used a documented `1e-6` float32 diagnostic tolerance, added a Vulkan header
+  probe/skip, and supplied the fake runner a cached fake cast handle. All nine
+  exact failed node IDs pass locally. The retry again stopped before artifact
+  build or PyPI publication.

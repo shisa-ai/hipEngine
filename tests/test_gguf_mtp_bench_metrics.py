@@ -218,7 +218,9 @@ def test_fused_b1_block_probe_selector_is_only_for_adaptive_b1_probe() -> None:
     assert should_use_fused_b1_block_probe(**{**kwargs, "cycle_root_topk_accept": 40}) is False
 
 
-def test_fused_b1_block_probe_validation_rejects_inert_config(capsys) -> None:
+def test_fused_b1_block_probe_validation_rejects_inert_config(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["--fused-b1-block-probe"])
 
@@ -1140,7 +1142,12 @@ def test_main_rejects_draft_attention_debug_without_device_kv(monkeypatch, capsy
     assert "--record-draft-attention-debug requires --mtp-device-kv-cache" in capsys.readouterr().err
 
 
-def test_main_rejects_resident_draft_sync_stage_timings_without_cycle_timings(capsys) -> None:
+def test_main_rejects_resident_draft_sync_stage_timings_without_cycle_timings(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["--resident-mtp-draft", "--resident-mtp-draft-sync-stage-timings"])
 
@@ -1151,7 +1158,12 @@ def test_main_rejects_resident_draft_sync_stage_timings_without_cycle_timings(ca
     )
 
 
-def test_main_rejects_resident_draft_sync_stage_timings_without_resident_draft(capsys) -> None:
+def test_main_rejects_resident_draft_sync_stage_timings_without_resident_draft(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["--record-cycle-stage-timings", "--resident-mtp-draft-sync-stage-timings"])
 
@@ -1159,7 +1171,12 @@ def test_main_rejects_resident_draft_sync_stage_timings_without_resident_draft(c
     assert "--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft" in capsys.readouterr().err
 
 
-def test_main_rejects_target_block_sync_stage_timings_without_cycle_timings(capsys) -> None:
+def test_main_rejects_target_block_sync_stage_timings_without_cycle_timings(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["--target-block-verify", "--target-block-sync-stage-timings"])
 
@@ -1167,7 +1184,12 @@ def test_main_rejects_target_block_sync_stage_timings_without_cycle_timings(caps
     assert "--target-block-sync-stage-timings requires --record-cycle-stage-timings" in capsys.readouterr().err
 
 
-def test_main_rejects_target_block_sync_stage_timings_without_block_verify(capsys) -> None:
+def test_main_rejects_target_block_sync_stage_timings_without_block_verify(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["--record-cycle-stage-timings", "--target-block-sync-stage-timings"])
 

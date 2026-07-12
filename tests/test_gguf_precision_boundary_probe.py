@@ -54,12 +54,15 @@ def test_precision_boundary_probe_rejects_shape_mismatches() -> None:
 
 def _assert_metrics_close(actual: dict[str, object], expected: dict[str, object]) -> None:
     assert actual["shape"] == expected["shape"]
+    # NumPy/CPU reduction order can move these float32 diagnostics by a few
+    # ULPs across runners; the fixture is a boundary probe, not a bitwise gate.
+    tolerance = 1.0e-6
     for key, expected_value in expected.items():
         if key == "shape":
             continue
         if isinstance(expected_value, list):
-            np.testing.assert_allclose(actual[key], expected_value, rtol=1.0e-7, atol=1.0e-7)
+            np.testing.assert_allclose(actual[key], expected_value, rtol=tolerance, atol=tolerance)
         elif isinstance(expected_value, (int, float)):
-            assert actual[key] == pytest.approx(expected_value, rel=1.0e-7, abs=1.0e-7)
+            assert actual[key] == pytest.approx(expected_value, rel=tolerance, abs=tolerance)
         else:
             assert actual[key] == expected_value

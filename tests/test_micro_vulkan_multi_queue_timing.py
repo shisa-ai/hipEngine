@@ -30,6 +30,15 @@ def test_multi_queue_header_compiles_and_probes_queue_selection(tmp_path: Path) 
     compiler = shutil.which("c++") or shutil.which("g++")
     if compiler is None or ctypes.util.find_library("vulkan") is None:
         pytest.skip("Vulkan compiler/runtime is unavailable")
+    header_probe = subprocess.run(
+        [compiler, "-std=c++17", "-x", "c++", "-fsyntax-only", "-"],
+        input="#include <vulkan/vulkan.h>\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if header_probe.returncode != 0:
+        pytest.skip("Vulkan development headers are unavailable")
 
     source = tmp_path / "probe.cpp"
     executable = tmp_path / "probe"
