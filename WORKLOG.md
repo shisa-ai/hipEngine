@@ -152597,3 +152597,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   (`KeyError: expected`) after four passing fixtures; the identical failure was
   reproduced on unmodified `main`. The supported `cpu-fixtures` smoke passes,
   and this host-only EOS change does not touch fixture or kernel math.
+
+## 2026-07-13 - [PROCESS] Draft sprint and decision organization for review
+
+- Reviewed q27 methodology at clean `97f6aba63047` against hipEngine's current
+  planning/evidence surfaces. Drafted candidate incremental practices for human
+  review; none are adopted by this entry:
+  standalone decision briefs, measure-first Phase 0 probes with thresholds fixed
+  before implementation, predicted-versus-observed attribution, explicit reopen
+  triggers, skimmable verdict headings, and shipping-default parity gates.
+- Added `docs/PROCESS-IMPROVEMENT.md` as an explicitly unapproved proposal. It
+  recommends immutable `S-YYYYMMDD-short-slug` sprint IDs and
+  `D-YYYYMMDD-short-slug` decision IDs instead of global `000-` ordering, while
+  retaining local phase order (`P0`, `P1`, `P2`). The human lead will decide
+  which, if any, conventions to implement.
+- Proposed an incremental document taxonomy in which a future single
+  `docs/planning/README.md` would own active/queued/blocked/parked/closed sprint
+  state; sprint briefs own one bounded outcome; decision briefs own durable
+  choices; stable root docs remain architecture/domain references; dashboards
+  summarize current evidence; artifacts remain claim evidence; `WORKLOG.md`
+  remains chronology rather than the active queue. Closed sprint paths stay
+  immutable, while physical archive space is reserved for superseded notebooks.
+- Documented proposed tuple-level WIP ownership,
+  dependency/high-conflict-file rules, a compact sprint template, correctness
+  classes, frozen GO/STOP fields, claims-audit guidance, and an explicit rule
+  preserving exact non-regressive component wins even when a larger invasive
+  design misses its keep bar. Existing docs and thousands of artifacts are not
+  bulk-renamed or retrofitted.
+- `AGENTS.md` and `docs/README.md` remain unchanged by the amended proposal;
+  the draft does not modify policy, active-document roles, or reading paths.
+- Docs-only validation: re-read all 434 lines of
+  `docs/PROCESS-IMPROVEMENT.md`; `git diff --check` passed; the new file exists
+  and is readable; and the draft plus live `WORKLOG.md` contain no conflict
+  markers. No GPU or code test was required.
