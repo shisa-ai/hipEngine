@@ -849,13 +849,15 @@ should be boring.
 
 - Added 2026-07-12 as a default-on PARO prefill rollback/bisection control.
   The retained path creates one lazy nonblocking stream plus two reusable HIP
-  events, runs only AOTriton attention on that stream, and keeps all pre/post
-  work on the caller stream. Setting the flag to `0` restores the old
-  same-stream dispatch without changing model math.
+  events for AOTriton query rows above the proven-safe 256-row bucket, and
+  keeps all pre/post work on the caller stream. Setting the flag to `0`
+  restores the old same-stream dispatch without changing model math.
 - Purpose: isolate AOTriton's high-scratch dispatch from the queue used by
   later low-scratch linear-attention convolution kernels. On gfx1151 the same
   captured convolution changes from about `1.83 ms` after same-stream
-  AOTriton to `119 us` when AOTriton uses the isolated queue. The first
+  4096-row AOTriton to `119 us` when AOTriton uses the isolated queue. The
+  clean 256-row AOTriton trace uses much less scratch (`992/1008` versus
+  `2560` bytes) and does not trigger the cliff. The first
   production 4K screen moves `854.346 -> 1123.620 tok/s` (+31.52%) with
   identical sampled seed, final hidden, all 30 Conv/GDN state families, and
   all 10 live K/V families. Formal clean retention is still pending.

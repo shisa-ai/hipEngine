@@ -51,6 +51,17 @@ def test_dflash_verify_sync_phases_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert runner_module._dflash_verify_sync_phases_enabled() is False
 
 
+def test_aotriton_isolated_prefill_stream_skips_proven_safe_256_row_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", raising=False)
+    assert runner_module._aotriton_isolated_prefill_stream_applies(256) is False
+    assert runner_module._aotriton_isolated_prefill_stream_applies(511) is False
+    assert runner_module._aotriton_isolated_prefill_stream_applies(512) is True
+    monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "0")
+    assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is False
+
+
 def test_retained_batch_defaults_select_certified_linear_output_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -655,7 +666,7 @@ def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_defau
     session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens, **_kwargs: object(), session)
     session._ensure_moe_prefill_scratch = MethodType(lambda self, layer_id=None, *, tokens: object(), session)
     aotriton_bridge = object()
-    session._ensure_prefill_aotriton_bridge = lambda: aotriton_bridge
+    session._prefill_aotriton_bridge_for_rows = lambda rows: aotriton_bridge
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -1308,7 +1319,7 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_aotriton_varlen_w
     session._full_cache_all_slots = lambda layer_id: (key, value)
     session._prefill_use_aotriton_attention_resolved = lambda rows: True
     aotriton_bridge = object()
-    session._ensure_prefill_aotriton_bridge = lambda: aotriton_bridge
+    session._prefill_aotriton_bridge_for_rows = lambda rows: aotriton_bridge
     session._ensure_full_prefill_scratch = lambda *, tokens, aotriton_attention=False: SimpleNamespace(
         name="attention",
         tokens=tokens,
