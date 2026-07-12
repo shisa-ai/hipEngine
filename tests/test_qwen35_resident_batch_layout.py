@@ -272,6 +272,81 @@ def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DT
     return session, captured
 
 
+def test_qwen35_context_overhead_uses_compact_prefill_block_table() -> None:
+    tokens = 256 * 1024
+    block_size = 256
+    max_batch_size = 1
+    _decode_chunk, max_splits = runner_module._paged_attn_decode_split_config(
+        tokens,
+        block_size=block_size,
+        chunk_size=256,
+    )
+    blocks = (max(tokens, 256 * max_splits) + block_size - 1) // block_size
+
+    overhead = runner_module._qwen35_paro_context_overhead_bytes(
+        tokens,
+        block_size=block_size,
+        chunk_size=256,
+        max_batch_size=max_batch_size,
+    )
+
+    scalar_metadata = 3 * tokens * DType.INT64.itemsize
+    expected = 2 * blocks * DType.INT32.itemsize + scalar_metadata
+    assert overhead == expected
+    assert overhead < 8 * 1024**2
+
+
+def test_qwen35_prefill_block_table_grows_to_chunk_rows_and_reuses_storage() -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.blocks = 5
+    session.prefill_capacity_rows = 100
+    initial = DeviceBuffer(0x1000, session.blocks * DType.INT32.itemsize)
+    session.prefill_block_table_buf = initial
+    session.prefill_block_table_capacity_rows = 1
+    session._prefill_block_table_is_uniform = True
+    session.buffers = [initial]
+    captured: list[np.ndarray] = []
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.frees: list[int] = []
+            self.synchronizations = 0
+
+        def device_synchronize(self) -> None:
+            self.synchronizations += 1
+
+        def free(self, ptr: int) -> None:
+            self.frees.append(int(ptr))
+
+    session.runtime = FakeRuntime()
+
+    def fake_dev(self, array: np.ndarray) -> DeviceBuffer:
+        contiguous = np.ascontiguousarray(array)
+        captured.append(contiguous.copy())
+        buffer = DeviceBuffer(0x2000 + len(captured) * 0x1000, contiguous.nbytes)
+        self.buffers.append(buffer)
+        return buffer
+
+    session._dev = MethodType(fake_dev, session)
+
+    table = session._prefill_block_table_rows(3, start=17)
+
+    assert table.shape == (3, 5)
+    assert table.ptr == session.prefill_block_table_buf.ptr
+    assert session.prefill_block_table_capacity_rows == 3
+    assert captured[0].shape == (3, 5)
+    assert np.array_equal(captured[0], np.tile(np.arange(5, dtype=np.int32), (3, 1)))
+    assert session.runtime.frees == [initial.ptr]
+    assert initial not in session.buffers
+
+    reused = session._prefill_block_table_rows(2, start=99)
+    assert reused.ptr == table.ptr
+    assert reused.shape == (2, 5)
+    assert len(captured) == 1
+
+
 def test_qwen35_resident_prefill_hidden_buffer_is_lazy_single_buffer() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
@@ -1488,7 +1563,7 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_full_
     ]
     assert [call[1]["append_spans"].base_offsets.ptr for call in state.calls] == [
         0xA000,
-        0xA000 + second_start * DType.INT32.itemsize,
+        0xA000,
     ]
     assert [
         call[1].get("prefill_spans", call[1].get("decode_spans")).live_counts.ptr
@@ -1499,10 +1574,7 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_full_
     ]
     assert local_table_copies == [
         (0xA000, segment_rows[0] * DType.INT32.itemsize),
-        (
-            0xA000 + second_start * DType.INT32.itemsize,
-            segment_rows[1] * DType.INT32.itemsize,
-        ),
+        (0xA000, segment_rows[1] * DType.INT32.itemsize),
     ]
     assert copies == [
         (0x1000, 0x9100, segment_rows[0] * session.hidden_nbytes, 5),

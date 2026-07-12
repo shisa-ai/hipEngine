@@ -213,6 +213,10 @@ def _compact_owned_summary(summary: dict[str, Any]) -> dict[str, Any]:
         "kv_storage_dtype": summary.get("kv_storage_dtype"),
         "kv_scale_dtype": summary.get("kv_scale_dtype"),
         "kv_scale_granularity": summary.get("kv_scale_granularity"),
+        "prefill_block_table_bytes": int(summary.get("prefill_block_table_bytes", 0)),
+        "prefill_block_table_capacity_rows": int(
+            summary.get("prefill_block_table_capacity_rows", 0)
+        ),
     }
 
 
