@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -259,69 +260,102 @@ def test_gfx1100_mtp_topline_publishes_ar_exact_compat_and_llamacpp() -> None:
 def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     results = repo_root / "benchmarks/results"
-    exact_fixed = json.loads(
-        (results / "2026-07-02-ar-mtp-default-parallelattn-full.json").read_text(
+    artifact = json.loads(
+        (results / "2026-07-12-gfx1151-gguf-mtp-refresh.json").read_text(
             encoding="utf-8"
         )
-    )
-    exact_natural = json.loads(
-        (
-            results / "2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json"
-        ).read_text(encoding="utf-8")
-    )
-    compat = json.loads(
-        (
-            results
-            / "2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-"
-            "cyclecap24-f32head-full.json"
-        ).read_text(encoding="utf-8")
-    )
-    llamacpp = json.loads(
-        (
-            results / "2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json"
-        ).read_text(encoding="utf-8")
     )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert exact_fixed["apple_to_apple_ok"] is True
-    assert exact_natural["apple_to_apple_ok"] is True
+    assert artifact["status"] == "accepted_compat_with_exact_negative_and_external_diagnostic"
+    assert artifact["performance_claim"] is True
+    assert artifact["correctness_claim"] is True
+    assert artifact["correctness"]["serial_prefix_state_exact"] is True
+    exact = artifact["hipengine_exact_default"]
+    compat = artifact["hipengine_llama_compat"]
+    llamacpp = artifact["llamacpp_hip"]
+    assert exact["apple_to_apple_ok"] is True
+    assert exact["mtp_beats_ar"] is False
     assert compat["apple_to_apple_ok"] is True
     assert llamacpp["status"] == "diagnostic_retained"
     assert llamacpp["performance_claim"] is False
+    assert artifact["timing_contract"]["llamacpp_cross_engine"].startswith(
+        "request N+1 outputs"
+    )
+    assert llamacpp["transition_normalized"]["timed_decode_transitions_per_prompt"] == 24
+    assert llamacpp["transition_normalized"]["base_decode_tok_s"] == (
+        240_000 / llamacpp["transition_normalized"]["base_decode_ms_total"]
+    )
+    assert llamacpp["transition_normalized"]["mtp_decode_tok_s"] == (
+        240_000 / llamacpp["transition_normalized"]["mtp_decode_ms_total"]
+    )
+    assert compat["cross_engine_cycle_wall"]["decode_tok_s"] == (
+        1000 / compat["full"]["cycle_wall_ms_per_output"]
+    )
 
-    exact_b5 = exact_fixed["mtp_by_budget"]["b5"]
-    exact_b2 = exact_natural["mtp_by_budget"]["b2"]
-    compat_b2 = compat["mtp_by_budget"]["b2"]
-    llama_summary = llamacpp["summary"]["natural"]
-    llama_timing = llamacpp["stage_timing_summary"]["measured_excluding_first_task"]
+    exact_b5 = exact["budgets"]["b5"]
+    full = compat["full"]
+    llama_native = llamacpp["native_reported"]
+    llama_transition = llamacpp["transition_normalized"]
     expected_rows = [
         (
-            f"| Headline MTP decode | {exact_b5['decode_tok_s_weighted']:.2f} "
-            f"tok/s ({exact_b5['vs_ar_ratio']:.4f}x own AR) | "
-            f"{compat_b2['decode_tok_s_weighted']:.2f} tok/s "
-            f"({compat_b2['vs_ar_ratio']:.4f}x own AR) | "
-            f"{llama_summary['mtp_weighted_predicted_per_second']:.2f} tok/s "
-            f"({llama_summary['speedup']:.4f}x own AR) |"
+            f"| Canonical/native MTP decode | {exact_b5['decode_tok_s']:.2f} "
+            f"tok/s ({exact_b5['vs_true_ar']:.4f}x own AR) | "
+            f"**{full['decode_tok_s']:.2f} tok/s ({full['vs_true_ar']:.4f}x own AR)** | "
+            f"{llama_native['mtp_decode_tok_s']:.2f} tok/s native "
+            f"({llama_native['mtp_vs_base']:.4f}x own AR; not cross-engine comparable) |"
         ),
         (
-            f"| Matched natural24 B2 MTP decode | "
-            f"{exact_b2['decode_tok_s_weighted']:.2f} tok/s (diagnostic) | "
-            f"{compat_b2['decode_tok_s_weighted']:.2f} tok/s | "
-            f"{llama_summary['mtp_weighted_predicted_per_second']:.2f} tok/s |"
+            f"| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | "
+            f"**{compat['cross_engine_cycle_wall']['decode_tok_s']:.2f} tok/s** | "
+            f"{llama_transition['mtp_decode_tok_s']:.2f} tok/s |"
         ),
         (
-            f"| Matched natural24 own AR | "
-            f"{exact_natural['ar']['decode_tok_s_weighted']:.2f} tok/s | "
-            f"{compat['ar']['decode_tok_s_weighted']:.2f} tok/s | "
-            f"{llama_summary['base_weighted_predicted_per_second']:.2f} tok/s |"
+            f"| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | "
+            f"**{compat['true_ar']['decode_tok_s']:.2f} tok/s** | "
+            f"{llama_transition['base_decode_tok_s']:.2f} tok/s |"
         ),
         (
-            f"| Matched natural24 cycle wall/output | "
-            f"{exact_b2['cycle_wall_ms_per_output']:.3f} ms | "
-            f"{compat_b2['cycle_wall_ms_per_output']:.3f} ms | "
-            f"{llama_timing['cycle_wall_ms_per_output']:.3f} ms |"
+            f"| Full | {full['prompts']} | {compat['true_ar']['decode_tok_s']:.2f} | "
+            f"**{full['decode_tok_s']:.2f}** | **{full['vs_true_ar']:.4f}x** | "
+            f"{100 * full['draft_acceptance']:.2f}% | "
+            f"{100 * full['accepted_per_output']:.2f}% | "
+            f"{full['cycle_wall_ms_per_output']:.3f} ms |"
         ),
+    ]
+    split_rows = {
+        "Full": (compat["full"], compat["true_ar"]["decode_tok_s"]),
+        "Train": (compat["train"], compat["train"]["true_ar_decode_tok_s"]),
+        "Heldout": (compat["heldout"], compat["heldout"]["true_ar_decode_tok_s"]),
+        "`code`": (
+            compat["categories"]["code"],
+            compat["categories"]["code"]["true_ar_decode_tok_s"],
+        ),
+        "`general_en`": (
+            compat["categories"]["general_en"],
+            compat["categories"]["general_en"]["true_ar_decode_tok_s"],
+        ),
+        "`general_ja`": (
+            compat["categories"]["general_ja"],
+            compat["categories"]["general_ja"]["true_ar_decode_tok_s"],
+        ),
+        "`mixed_ja_en`": (
+            compat["categories"]["mixed_ja_en"],
+            compat["categories"]["mixed_ja_en"]["true_ar_decode_tok_s"],
+        ),
+    }
+    expected_split_rows = [
+        (
+            f"| {label} | {row['prompts']} | {ar_tok_s:.2f} | "
+            f"**{row['decode_tok_s']:.2f}** | **{row['vs_true_ar']:.4f}x** | "
+            f"{'**' if label in {'Train', 'Heldout'} else ''}"
+            f"{100 * row['draft_acceptance']:.2f}%"
+            f"{'**' if label in {'Train', 'Heldout'} else ''} | "
+            f"{100 * row['accepted_per_output']:.2f}% | "
+            f"{row['cycle_wall_ms_per_output']:.3f} ms |"
+        )
+        for label, (row, ar_tok_s) in split_rows.items()
     ]
     header = (
         "| Metric | hipEngine GGUF exact/default | "
@@ -329,10 +363,34 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     )
     for readme in (canonical, root_readme):
         assert header in readme
-        assert "`llama-compat` is the closer 1:1 performance comparison" in readme
-        assert "(`performance_claim=false`)" in readme
+        assert "##### gfx1151 `llama-compat` full-suite gate" in readme
+        assert "one-untimed-token numerator" in readme
+        assert "`performance_claim=false`" in readme
         for expected_row in expected_rows:
             assert expected_row in readme
+        for expected_row in expected_split_rows:
+            assert expected_row in readme
+
+
+def test_llamacpp_benchmark_patchset_manifest_is_complete() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    patch_root = repo_root / "benchmarks/llama.cpp"
+    manifest = json.loads((patch_root / "manifest.json").read_text(encoding="utf-8"))
+
+    assert manifest["upstream"]["base_commit"] == (
+        "6e9007ae61f4e994c27484759caac6ef2aa32b30"
+    )
+    assert manifest["instrumented_source"]["head_commit"] == (
+        "1ebf790cda38d827559548f67b0469189690cc8c"
+    )
+    assert len(manifest["instrumented_source"]["local_commits"]) == 7
+    assert manifest["validation"]["fresh_clone_git_apply_check"] is True
+    assert manifest["validation"]["combined_diff_matches_captured_working_tree"] is True
+    for patch in manifest["patches"]:
+        path = patch_root / patch["path"]
+        assert path.is_file()
+        assert path.stat().st_size == patch["bytes"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == patch["sha256"]
 
 
 def test_gfx1151_legacy_paro_diagnostic_is_linked_but_not_published() -> None:
