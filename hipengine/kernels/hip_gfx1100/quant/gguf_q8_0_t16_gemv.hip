@@ -1079,9 +1079,9 @@ extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out_a, void* out_b,
     int64_t rows, int64_t in_features, int64_t out_features_a, int64_t out_features_b,
     int64_t threads, hipStream_t stream) {
-  return launch_dual_split<uint16_t, uint16_t, false>(x, tiles_a, tiles_b, out_a, out_b,
-                                                     rows, in_features, out_features_a,
-                                                     out_features_b, threads, stream);
+  return launch_dual_split<uint16_t, uint16_t, true>(x, tiles_a, tiles_b, out_a, out_b,
+                                                    rows, in_features, out_features_a,
+                                                    out_features_b, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_waveblock_bf16_bf16_out(
