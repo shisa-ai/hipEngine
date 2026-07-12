@@ -1042,9 +1042,15 @@ def _git_commit() -> str:
 
 
 def _hardware() -> str:
-    return os.environ.get("HIPENGINE_HW_LABEL") or (
-        "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)"
-    )
+    explicit = os.environ.get("HIPENGINE_HW_LABEL")
+    if explicit:
+        return explicit
+    target_arch = (os.environ.get("HIPENGINE_HIP_ARCH") or "").strip()
+    if target_arch == "gfx1100":
+        return "AMD Radeon Pro W7900 (gfx1100)"
+    if target_arch == "gfx1151":
+        return "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)"
+    return "AMD RDNA GPU (target arch unresolved)"
 
 
 def _run(cmd: list[str], env: dict[str, str], log: Path) -> None:

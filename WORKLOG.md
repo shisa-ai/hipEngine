@@ -152707,3 +152707,42 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - `python3 -m pytest tests/test_gguf_ar_mtp_suite.py
   tests/test_gguf_true_ar_category_bench.py -q` passes all 32 tests. The clean
   exact and `llama-compat` suites will be rerun after this fix is committed.
+
+## 2026-07-12 - Publish corrected W7900 GGUF graph-AR economics
+
+- Clean standalone natural24 graph AR at `ac0adb3f`, W7900/gfx1100, ROCm
+  7.2.4, exact Q4_K_M/BF16 KV, ten prompts and 240 transitions measured
+  **94.040 tok/s**. Every prompt used the graph, all final logits were finite,
+  and category rates were `94.278/92.124/95.124/94.450 tok/s`. All ten
+  generated preview/tail arrays match the prior clean eager artifact exactly.
+- Rebuilt llama.cpp HIP `1ebf790cd`/build 9648 for actual gfx1100 and reran the
+  same ten prompts with F16 KV, flash attention, greedy/reasoning-off, and 25
+  requested outputs. Native decode is `81.547 tok/s`; the correct 240-transition
+  rate is **78.285 tok/s** (`12.774 ms/transition`), client output wall is
+  `58.669 tok/s`. This replaces the old unnormalized W7900 AR comparison.
+- Retained full exact/default suite at clean `202bd2f0`:
+  `apple_to_apple_ok=true`, graph AR **98.754 tok/s**, B1-B5
+  `60.825/65.463/68.496/65.119/67.348 tok/s`. Best B3 is only **0.6936x AR**,
+  with 73.53% draft acceptance, 50.00% accepted/output, and
+  `14.696 ms/output` complete cycle wall.
+- Retained natural24 `llama-compat` suite at the same clean commit:
+  `apple_to_apple_ok=true`, graph AR **93.304 tok/s**, B2 **79.701 tok/s
+  (0.8542x AR)**, 82.95% draft acceptance, 60.83% accepted/output, and
+  `12.578 ms/output`. Train/heldout ratios are `0.8749x/0.8252x`; category
+  ratios are code/general-en/general-ja/mixed `0.9291x/0.8338x/0.7647x/0.8375x`.
+  Every scope now loses to production graph AR.
+- At the strict cross-engine natural24 boundary, hipEngine's same-wrapper
+  **93.304 tok/s** is **1.19185x / +19.19%** versus llama.cpp's
+  transition-normalized **78.285 tok/s**. The hipEngine timer includes graph
+  capture/instantiate/close; llama.cpp uses its internal post-first-output
+  `predicted_ms`. BF16/F16 KV remains the only accepted execution mismatch.
+- Published compact artifact
+  `benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json` and
+  updated the benchmark/root tables, platform index, parity dashboard, and
+  changelog. The previous MTP-wins-AR rows remain historical evidence only;
+  they used a non-production eager denominator.
+- The suite wrapper's display-only hardware field still defaulted to gfx1151
+  during the W7900 run, while all four child provenance records correctly
+  resolved W7900/gfx1100. Added a RED/GREEN contract and made `_hardware()` map
+  explicit `HIPENGINE_HIP_ARCH=gfx1100|gfx1151`; the compact artifact uses the
+  authoritative child provenance. No measurement changed.

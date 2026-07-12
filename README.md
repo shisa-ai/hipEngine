@@ -240,46 +240,55 @@ B2 natural24 structure used by the llama.cpp comparison.
 <!-- BEGIN TOPLINE:SPECULATIVE -->
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
 | --- | ---: | ---: | ---: | ---: |
-| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
-| Decode | 34.49 tok/s fixed / 34.28 tok/s natural24 | **45.96 tok/s** | **52.58 tok/s** | 119.05 tok/s |
-| Own true AR | same route | 34.49 tok/s | 34.28 tok/s | 81.47 tok/s |
-| MTP / own AR | 1.0000x | **1.3328x** | **1.5337x** | 1.4612x |
-| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
-| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
-| MTP cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
+| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
+| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route |
+| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a |
+| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
+| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
+| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive |
 
-Exact/default and `llama-compat` both pass the complete ten-prompt gfx1100
-transfer gate against their own true no-MTP controls. Exact is the semantic
-control. `llama-compat` is explicit-only because direct partial commit is not
-serial-prefix-equivalent. The exact row uses a fixed ten-cycle horizon; the AR,
-`llama-compat`, and llama.cpp natural24 rows use a 24-token output cap. Do not
-rank fixed-cycle exact directly against natural24 as one protocol. The
-llama.cpp column uses server-reported decode timing from prebuilt HIP binary
-`263cc04a5`/build 9600 and remains an external diagnostic with
-`performance_claim=false`. This W7900 row predates the transition-normalized
-contract and must not be ranked directly against hipEngine until it is rerun
-with `N+1` requested outputs for `N` timed decode transitions.
+The old `34.28-34.49 tok/s` true-AR denominator was an eager-only benchmark
+path, not the fastest production no-MTP route. gfx1100 had no backend graph
+capability even though the state-bound implementation was already shared with
+gfx1151. A clean W7900 p512/d24 gate now passes all 24 hidden/GDN/KV/token
+transitions and moves capture-inclusive wall from **30.536 to 12.514 ms/token
+(2.4402x)**. The full natural24 suite matches every prior eager generated-token
+preview/tail and moves **34.28 -> 93.30 tok/s** in the same MTP wrapper.
 
-##### W7900 `llama-compat` full-suite transfer gate
+At the matched cross-engine boundary, hipEngine counts 240 complete post-prefill
+transitions including graph capture/instantiate/close; llama.cpp build 9648
+requests 25 outputs and counts the 240 timed transitions inside `predicted_ms`.
+hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**. BF16 versus F16 KV remains
+disclosed. llama.cpp stays an external diagnostic with
+`performance_claim=false` because its local instrumentation patchset is dirty
+but preserved.
+
+Neither MTP route beats the corrected production AR control. Exact/default
+remains the semantic control; `llama-compat` remains explicit-only because
+direct partial commit is not serial-prefix-equivalent. The fixed-cycle exact
+and natural24 compatibility rows are different protocols and are not ranked
+against each other.
+
+##### W7900 `llama-compat` full-suite gate against graph AR
 
 | Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | 34.28 | **52.58** | **1.5337x** | 82.95% | 60.83% | 19.045 ms |
-| Train | 6 | 34.30 | **54.06** | **1.5761x** | **88.12%** | 61.81% | 18.522 ms |
-| Heldout | 4 | 34.25 | **50.49** | **1.4744x** | **76.00%** | 59.38% | 19.830 ms |
-| `code` | 4 | 34.12 | **58.01** | **1.7001x** | 95.38% | 64.58% | 17.263 ms |
-| `general_en` | 2 | 34.29 | **49.74** | **1.4505x** | 75.68% | 58.33% | 20.131 ms |
-| `general_ja` | 2 | 34.43 | **47.05** | **1.3665x** | 69.23% | 56.25% | 21.283 ms |
-| `mixed_ja_en` | 2 | 34.45 | **51.93** | **1.5073x** | 82.86% | 60.42% | 19.286 ms |
+| Full | 10 | **93.30** | 79.70 | **0.8542x** | 82.95% | 60.83% | 12.578 ms |
+| Train | 6 | **93.73** | 82.01 | **0.8749x** | **88.12%** | 61.81% | 12.224 ms |
+| Heldout | 4 | **92.67** | 76.47 | **0.8252x** | **76.00%** | 59.38% | 13.110 ms |
+| `code` | 4 | **93.63** | 86.99 | **0.9291x** | 95.38% | 64.58% | 11.523 ms |
+| `general_en` | 2 | **90.99** | 75.87 | **0.8338x** | 75.68% | 58.33% | 13.212 ms |
+| `general_ja` | 2 | **94.38** | 72.17 | **0.7647x** | 69.23% | 56.25% | 13.889 ms |
+| `mixed_ja_en` | 2 | **93.98** | 78.71 | **0.8375x** | 82.86% | 60.42% | 12.744 ms |
 
-All four categories and the heldout split beat true AR. Train/heldout draft
-acceptance is **88.12% / 76.00%**; the gap is disclosed rather than averaged
-away. This is a speed transfer result for the explicit accuracy-traded
-compatibility contract, not evidence that `llama-compat` should become the
-automatic/default route.
+All four categories and heldout lose to graph AR despite unchanged strong draft
+acceptance. This corrects the earlier false MTP-win conclusion without changing
+the compatibility semantics. Artifact:
+[`2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json`](results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
 
 #### GGUF MTP comparison, Radeon 8060S/gfx1151
 

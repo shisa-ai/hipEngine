@@ -1,0 +1,141 @@
+{
+  "schema": "hipengine.gguf_graph_ar_refresh.v1",
+  "date": "2026-07-12",
+  "status": "accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm_version": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "kv_dtype_hipengine": "bf16",
+    "kv_dtype_llamacpp": "f16",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "software": {
+    "graph_gate_commit": "833921ce05da7d5d8d922a0dd4288e72053fb922",
+    "graph_admission_commit": "ac0adb3f96ea82de7d98d54f5d267cd7a7c790ba",
+    "retained_suite_commit": "202bd2f0a5972c6c7dfce7d029ae1a1aa4ed2f24",
+    "llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llamacpp_build": 9648,
+    "llamacpp_source_dirty_instrumentation_preserved": true,
+    "all_hipengine_measurements_clean": true
+  },
+  "finding": {
+    "root_cause": "The gfx1100 true-AR category baseline forced 708 eager HIP launches per token because gfx1100 had no state-bound graph capability, even though the mirrored gfx1151 runtime already contained the graph implementation.",
+    "resolution": "Admit one session-bound graph for gfx1100 windows with at least 24 transitions and restore backend-qualified graph use in the true-AR harness.",
+    "leaf_kernel_tuning_required_to_close_gap": false
+  },
+  "graph_correctness_and_break_even": {
+    "workload": "repeated token 9707, prompt 512, 24 decode transitions",
+    "timing": "capture, instantiate, 24 relaunches, sample reads, synchronization, close, and destroy included",
+    "eager_median_ms_per_token": 30.536375833333334,
+    "eager_median_tok_s": 32.74782853924681,
+    "graph_median_ms_per_token": 12.51391675,
+    "graph_median_tok_s": 79.91103185179811,
+    "graph_tok_s_samples": [80.09634201607939, 80.09278401959939, 79.84151060936489, 79.91103185179811, 79.60048595698674],
+    "speedup": 2.4401933018559783,
+    "wall_reduction_pct": 59.01963999165913,
+    "state_keyed_recapture_tok_s_rejected": 22.220447281697645,
+    "checked_transitions": 24,
+    "third_and_later_launches_checked": 22,
+    "hidden_gdn_kv_token_exact": true,
+    "minimum_admitted_transitions": 24
+  },
+  "matched_natural24": {
+    "protocol": "ten mtp-bench category prompts, greedy, reasoning off, one warmup, 24 timed post-prefill transitions per prompt, load/prefill/warmup excluded; hipEngine graph capture/instantiate/close included",
+    "prompt_token_counts": [40, 50, 47, 52, 39, 40, 43, 43, 64, 71],
+    "timed_transitions": 240,
+    "all_graph_outputs_match_prior_eager_preview_and_tail": true,
+    "prior_eager": {
+      "commit": "b81102b4b15d0e38e2a519581b6efdea5c1faf8a",
+      "tok_s": 34.28081545435681,
+      "ms_per_transition": 29.17083683333333
+    },
+    "state_bound_graph": {
+      "commit": "202bd2f0a5972c6c7dfce7d029ae1a1aa4ed2f24",
+      "tok_s": 93.30419935098574,
+      "ms_per_transition": 10.717631220844243,
+      "speedup_vs_prior_eager": 2.721761373361016,
+      "delta_vs_prior_eager_pct": 172.17613733610162,
+      "categories_tok_s": {
+        "code": 93.62593201697443,
+        "general_en": 90.98917292656994,
+        "general_ja": 94.37949835085591,
+        "mixed_ja_en": 93.97866532709155
+      }
+    },
+    "llamacpp_base": {
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "request_outputs": 25,
+      "timed_transitions": 240,
+      "native_tok_s": 81.54704530590743,
+      "transition_normalized_tok_s": 78.28516349367113,
+      "ms_per_transition": 12.7738125,
+      "client_output_tok_s": 58.669306028259086,
+      "performance_claim": false
+    },
+    "hipengine_vs_llamacpp_transition_rate": 1.1918503479721134,
+    "hipengine_vs_llamacpp_delta_pct": 19.185034797211344
+  },
+  "mtp_reclassification": {
+    "exact_default_fixed_10_cycles": {
+      "true_ar_tok_s": 98.75393683147,
+      "best_budget": 3,
+      "mtp_tok_s": 68.49596558762688,
+      "mtp_vs_ar": 0.6936,
+      "draft_acceptance": 0.7352941176470589,
+      "accepted_per_output": 0.5,
+      "cycle_wall_ms_per_output": 14.6964475,
+      "apple_to_apple_ok": true,
+      "verdict": "MTP does not beat production graph AR"
+    },
+    "llama_compat_natural24": {
+      "true_ar_tok_s": 93.30419935098574,
+      "mtp_tok_s": 79.70112079701121,
+      "mtp_vs_ar": 0.8542072205903258,
+      "draft_acceptance": 0.8295454545454546,
+      "accepted_per_output": 0.6083333333333333,
+      "cycle_wall_ms_per_output": 12.57813375,
+      "apple_to_apple_ok": true,
+      "verdict": "Accuracy-traded MTP remains diagnostic and does not beat production graph AR",
+      "splits": {
+        "train": {"ar_tok_s": 93.73446345142402, "mtp_tok_s": 82.01296260436719, "ratio": 0.8749499339361849, "draft_acceptance": 0.8811881188118812},
+        "heldout": {"ar_tok_s": 92.66615886909491, "mtp_tok_s": 76.4678237735278, "ratio": 0.8251968648182587, "draft_acceptance": 0.76}
+      },
+      "categories": {
+        "code": {"ar_tok_s": 93.62593201697443, "mtp_tok_s": 86.9872509310354, "ratio": 0.9290935647536686},
+        "general_en": {"ar_tok_s": 90.98917292656994, "mtp_tok_s": 75.86533902323376, "ratio": 0.8337842468846111},
+        "general_ja": {"ar_tok_s": 94.37949835085591, "mtp_tok_s": 72.1685134789734, "ratio": 0.7646630331800117},
+        "mixed_ja_en": {"ar_tok_s": 93.97866532709155, "mtp_tok_s": 78.71046029221259, "ratio": 0.8375354131521429}
+      }
+    }
+  },
+  "commands": {
+    "graph_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_decode_graph_g5.py --backend hip_gfx1100 --prompt-length 512 --correctness-steps 24 --timing-steps 24 --warmups 1 --repetitions 5 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --out /tmp/w7900-gguf-decode-graph-g5-clean-p512-d24.json",
+    "natural_graph_ar": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-tokens 24 --warmup-decode-tokens 1 --decode-repack --use-gemv-decode --use-wmma-prefill --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/w7900-gguf-true-ar-graph-natural24-clean.json",
+    "llamacpp_base": "HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --ctx-size 8192 --concurrency 1 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --mode base --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/w7900-llamacpp-gfx1100-base-natural25-clean.json",
+    "exact_mtp": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --record-cycle-stage-timings --require-cached-build --output /tmp/w7900-gguf-mtp-graph-ar-clean-20260712-r2/exact-full.json",
+    "compat_mtp": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/w7900-gguf-mtp-graph-ar-clean-20260712-r2/compat-full.json"
+  },
+  "source_artifacts": {
+    "graph_gate": {"path": "/tmp/w7900-gguf-decode-graph-g5-clean-p512-d24.json", "sha256": "b8f7ec07c36ce2609383ac1c824cbd9635fe97bd0030e8964e367b087d447a4f"},
+    "natural_graph_ar": {"path": "/tmp/w7900-gguf-true-ar-graph-natural24-clean.json", "sha256": "924def7f41fee7762254fe0047ea810b79cef2eba013df5fef5e0d222fd7b757"},
+    "llamacpp_base": {"path": "/tmp/w7900-llamacpp-gfx1100-base-natural25-clean.json", "sha256": "adb0103934efd82067b171ff9a8f9fa6254aa801e4645a8c4d857694ab1bcda2"},
+    "exact_mtp": {"path": "/tmp/w7900-gguf-mtp-graph-ar-clean-20260712-r2/exact-full.json", "sha256": "cbb38f4ab3b50420aabc91b3a4c71eafd8c16a00f2a2577de43642a483939205"},
+    "compat_mtp": {"path": "/tmp/w7900-gguf-mtp-graph-ar-clean-20260712-r2/compat-full.json", "sha256": "ab606822b8c4b1faf351d3ef7bb25d760945742c243bab0a83ae865df42d1dc0"},
+    "prior_eager": {"path": "/tmp/hipengine-gfx1100-gguf-mtp-full-20260712-200202/compat-raw/true-ar-baseline.json", "sha256": "514f995b27515bec790e312915abf73e80353e9f59185021c30eff99cac17e42"}
+  },
+  "notes": [
+    "The wrapper's legacy hardware display field defaulted to gfx1151, but every child provenance record resolves hip_gfx1100/gfx1100 and AMD Radeon Pro W7900; this compact artifact uses the child provenance.",
+    "The exact fixed-cycle and natural24 compatibility rows remain distinct protocols.",
+    "llama.cpp is an external diagnostic because its source tree includes the preserved instrumentation patchset and its KV dtype is F16 rather than BF16.",
+    "The old MTP-wins-AR conclusion was caused by comparing MTP against a non-production eager AR denominator; both current MTP routes lose to the admitted production graph AR control."
+  ]
+}

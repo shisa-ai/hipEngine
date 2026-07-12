@@ -17,33 +17,38 @@ supported RDNA backends. Exact/default is serial-prefix preserving;
 accuracy-traded replication lane. llama.cpp HIP is an external diagnostic
 comparator, not a promoted hipEngine topline.
 
-### gfx1100 current transfer, Radeon Pro W7900
+### gfx1100 current refresh, Radeon Pro W7900
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
 | --- | ---: | ---: | ---: | ---: |
-| Route | No MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural24 diagnostic |
-| Decode | 34.49 fixed / 34.28 natural24 tok/s | 45.96 tok/s | 52.58 tok/s | 119.05 tok/s |
-| MTP / own AR | 1.0000x | 1.3328x | 1.5337x | 1.4612x |
-| Draft acceptance | n/a | 73.53% | 82.95% | 81.18% |
-| Accepted draft/output | n/a | 50.00% | 60.83% | 57.50% |
-| Cycle/backend wall per output | n/a | 21.847 ms | 19.045 ms | 8.400 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
+| Decode | **98.75 fixed / 93.30 natural24 tok/s** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
+| MTP / own AR | 1.0000x | 0.6936x | 0.8542x | n/a |
+| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
+| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
+| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native autoregressive |
 
-The full ten-prompt gate passes for both hipEngine routes. `llama-compat` beats
-its true AR control in every category and on heldouts: full/train/heldout are
-**1.5337x / 1.5761x / 1.4744x**, while train/heldout draft acceptance is
-**88.12% / 76.00%**. The W7900 oracle independently passes four byte-exact
-serial-prefix transitions across hidden state, all 30 Conv/GDN families, and
-all 10 live K/V families. The exact fixed-cycle row and natural24 columns use
-different output horizons and must not be ranked as one protocol. llama.cpp
-uses prebuilt HIP binary `263cc04a5`/build 9600 and remains
-`performance_claim=false`. Its `119.05/81.47 tok/s` values are native
-llama.cpp reporting, not transition-normalized cross-engine rates: that run
-requested 24 outputs, but llama.cpp starts `predicted_ms` after the first
-output is sampled. Do not rank that column directly until W7900 is rerun with
-the `N+1` transition contract below.
+The previous W7900 AR denominator was not the production graph route. gfx1100
+lacked `GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS`, and the category harness ignored
+its graph flag, so it submitted 708 eager launches/token. The shared graph
+implementation itself was already present. Clean p512/d24 evidence passes all
+24 hidden/GDN/KV/token transitions and moves capture-inclusive wall
+**30.536 -> 12.514 ms/token (2.4402x)**. The full natural suite matches every
+prior eager generated preview/tail and moves **34.28 -> 93.30 tok/s**.
 
-Artifact: [W7900 GGUF MTP transfer](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json).
+At the canonical cross-engine boundary, hipEngine is **93.30 tok/s** and the
+rebuilt instrumented llama.cpp `1ebf790cd`/build 9648 is **78.29 tok/s** over
+240 timed transitions, so hipEngine leads by **19.19%**. BF16/F16 KV remains
+disclosed and llama.cpp remains `performance_claim=false`.
+
+The correction reverses the MTP economics: neither exact/default nor
+`llama-compat` beats production graph AR, and every natural24 category plus
+heldout is below AR. Exact remains the semantic control; `llama-compat` remains
+explicit and accuracy-traded. Fixed-cycle exact and natural24 remain separate
+protocols.
+
+Artifact: [W7900 graph-AR refresh](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
 
 ### gfx1151 current refresh, Radeon 8060S
 
@@ -127,7 +132,7 @@ not reconstruct completion counts from decoded text.
 | 0 | Exact-ID OpenAI c1/c2/c4/c8 refresh | Awaiting rerun | One clean artifact joins exact IDs, provenance, queue/backend/verifier shapes, owned timing, request wall, and same-server AR/MTP controls. |
 | 1 | Current verifier-stage attribution | Awaiting the corrected rerun | Profile the final child process after cache warmup; rank target verify, LM-head/sample, proposal/update, commit/scatter, and host synchronization by owned wall. |
 | 1 | Compatibility semantic decision | Open | Either preserve `llama-compat` as an explicitly accuracy-traded mode or produce an exact state lifecycle with the same end-to-end advantage. |
-| 2 | gfx1100 portability | **Closed 2026-07-12** | W7900 oracle plus full exact/default, `llama-compat`, and llama.cpp HIP comparator are published; rerun only when the named route/build/protocol changes. |
+| 2 | gfx1100 portability | **Closed 2026-07-12** | W7900 24-step graph state gate, full graph-AR/exact/`llama-compat` suites, and transition-matched rebuilt llama.cpp base comparator are published; rerun only when the named route/build/protocol changes. |
 
 No new kernel or route is retained from a single prompt. Acceptance, speed, and
 quality changes use the complete category suite plus held-outs, as required by
