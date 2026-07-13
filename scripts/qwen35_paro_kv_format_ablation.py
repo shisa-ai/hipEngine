@@ -445,8 +445,36 @@ def _candidate_catalog(head_dim: int) -> dict[str, FormatSpec]:
         ),
         "key_group16": FormatSpec("key_group16", k_group_size=16, v_group_size=h),
         "value_group16": FormatSpec("value_group16", k_group_size=h, v_group_size=16),
-        "key_int8_value_bf16": FormatSpec("key_int8_value_bf16", k_mode="int8", v_mode="bf16", k_group_size=h, v_group_size=h),
-        "key_bf16_value_int8": FormatSpec("key_bf16_value_int8", k_mode="bf16", v_mode="int8", k_group_size=h, v_group_size=h),
+        "key_group32_value_group16": FormatSpec(
+            "key_group32_value_group16", k_group_size=32, v_group_size=16
+        ),
+        "key_group16_value_group32": FormatSpec(
+            "key_group16_value_group32", k_group_size=16, v_group_size=32
+        ),
+        "key_int8_value_bf16": FormatSpec(
+            "key_int8_value_bf16", k_mode="int8", v_mode="bf16", k_group_size=h, v_group_size=h
+        ),
+        "key_group32_value_bf16": FormatSpec(
+            "key_group32_value_bf16", k_mode="int8", v_mode="bf16", k_group_size=32, v_group_size=h
+        ),
+        "key_group16_value_bf16": FormatSpec(
+            "key_group16_value_bf16", k_mode="int8", v_mode="bf16", k_group_size=16, v_group_size=h
+        ),
+        "key_hadamard_group32_value_bf16": FormatSpec(
+            "key_hadamard_group32_value_bf16",
+            k_mode="int8",
+            v_mode="bf16",
+            k_group_size=32,
+            v_group_size=h,
+            strategy="hadamard_groupwise",
+            hadamard_group_size=32,
+        ),
+        "key_bf16_value_int8": FormatSpec(
+            "key_bf16_value_int8", k_mode="bf16", v_mode="int8", k_group_size=h, v_group_size=h
+        ),
+        "key_bf16_value_group32": FormatSpec(
+            "key_bf16_value_group32", k_mode="bf16", v_mode="int8", k_group_size=h, v_group_size=32
+        ),
     }
 
 
@@ -564,25 +592,38 @@ def _roundtrip_pair(key: np.ndarray, value: np.ndarray, spec: FormatSpec, *, sca
     if spec.strategy == "kvarn":
         return _kvarn_roundtrip_pair(key, value, spec, scale_dtype=scale_dtype)
     if spec.strategy == "hadamard_groupwise":
-        key_rotated = _normalized_hadamard(key, group_size=spec.hadamard_group_size)
-        value_rotated = _normalized_hadamard(value, group_size=spec.hadamard_group_size)
-        key_restored = _roundtrip_component(
-            key_rotated,
-            mode=spec.k_mode,
-            group_size=spec.k_group_size,
-            clip_ratio=spec.k_clip_ratio,
-            scale_dtype=scale_dtype,
-        )
-        value_restored = _roundtrip_component(
-            value_rotated,
-            mode=spec.v_mode,
-            group_size=spec.v_group_size,
-            clip_ratio=spec.v_clip_ratio,
-            scale_dtype=scale_dtype,
-        )
+        def roundtrip_hadamard_component(
+            values: np.ndarray,
+            *,
+            mode: str,
+            group_size: int,
+            clip_ratio: float,
+        ) -> np.ndarray:
+            if mode == "bf16":
+                return np.asarray(values, dtype=np.float32).copy()
+            rotated = _normalized_hadamard(values, group_size=spec.hadamard_group_size)
+            restored = _roundtrip_component(
+                rotated,
+                mode=mode,
+                group_size=group_size,
+                clip_ratio=clip_ratio,
+                scale_dtype=scale_dtype,
+            )
+            return _normalized_hadamard(restored, group_size=spec.hadamard_group_size)
+
         return (
-            _normalized_hadamard(key_restored, group_size=spec.hadamard_group_size),
-            _normalized_hadamard(value_restored, group_size=spec.hadamard_group_size),
+            roundtrip_hadamard_component(
+                key,
+                mode=spec.k_mode,
+                group_size=spec.k_group_size,
+                clip_ratio=spec.k_clip_ratio,
+            ),
+            roundtrip_hadamard_component(
+                value,
+                mode=spec.v_mode,
+                group_size=spec.v_group_size,
+                clip_ratio=spec.v_clip_ratio,
+            ),
         )
     return (
         _roundtrip_component(key, mode=spec.k_mode, group_size=spec.k_group_size, clip_ratio=spec.k_clip_ratio, scale_dtype=scale_dtype),
