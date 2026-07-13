@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import ctypes
-from types import SimpleNamespace
+from dataclasses import dataclass
+from types import MethodType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -119,6 +120,28 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 3], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.asarray([0, 3, 4], dtype=np.int32))
     assert layout.blocks_per_slot == 2
+
+
+def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(1, 2, 3, 4), start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(5, 6, 7), start_position=0),
+        )
+    )
+
+    assert gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        layout,
+        aotriton_threshold=4,
+    )
+    assert not gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        layout,
+        aotriton_threshold=5,
+    )
+    assert not gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        layout,
+        aotriton_threshold=0,
+    )
 
 
 def test_gguf_packed_verify_layout_honors_slot_capacity() -> None:
@@ -317,6 +340,196 @@ def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:
             block_size=0,
             runtime=SimpleNamespace(),
         )
+
+
+def test_gguf_packed_ar_exact_linear_attention_slices_slot_state() -> None:
+    cfg = SimpleNamespace(
+        hidden_size=8,
+        ssm_group_count=1,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=2,
+        ssm_inner_size=6,
+    )
+    runner = object.__new__(gguf_runner.Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=cfg)
+    conv_row_nbytes = 10 * 4 * 4
+    recurrent_row_nbytes = 2 * 2 * 3 * 4
+
+    @dataclass(frozen=True)
+    class DecodeScratch:
+        layer_conv_states: tuple[DeviceBuffer | None, ...]
+        layer_recurrent_states: tuple[DeviceBuffer | None, ...]
+
+    decode_scratch = DecodeScratch(
+        layer_conv_states=(DeviceBuffer(0x2000, 2 * conv_row_nbytes),),
+        layer_recurrent_states=(DeviceBuffer(0x4000, 2 * recurrent_row_nbytes),),
+    )
+    scratch = SimpleNamespace(attn_out=DeviceBuffer(0x6000, 2 * 8 * 2))
+    attention_calls: list[tuple[int, ...]] = []
+    ffn_calls: list[tuple[int, int, int, int]] = []
+
+    def fake_attention(
+        self,
+        layer_id,
+        hidden_ptr,
+        attn_out_ptr,
+        row_scratch,
+        *,
+        hidden_f32_ptr=None,
+        stream=0,
+    ):
+        attention_calls.append(
+            (
+                int(layer_id),
+                int(hidden_ptr),
+                int(attn_out_ptr),
+                int(row_scratch.layer_conv_states[layer_id].ptr),
+                int(row_scratch.layer_recurrent_states[layer_id].ptr),
+                int(hidden_f32_ptr),
+                int(stream),
+            )
+        )
+
+    def fake_ffn(self, layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch_arg, *, rows, **kwargs):
+        assert scratch_arg is scratch
+        ffn_calls.append((int(layer_id), int(hidden_ptr), int(attn_out_ptr), int(rows)))
+
+    runner._run_linear_attention_attn_only = MethodType(fake_attention, runner)
+    runner._run_post_attention_ffn_rows = MethodType(fake_ffn, runner)
+
+    runner._run_linear_attention_decode_slot_rows_exact(
+        0,
+        0x8000,
+        0x9000,
+        scratch,
+        rows=2,
+        state_indices=(1, 0),
+        decode_scratch=decode_scratch,
+        hidden_f32_ptr=0xA000,
+        stream=7,
+    )
+
+    assert attention_calls == [
+        (
+            0,
+            0x8000,
+            0x6000,
+            0x2000 + conv_row_nbytes,
+            0x4000 + recurrent_row_nbytes,
+            0xA000,
+            7,
+        ),
+        (
+            0,
+            0x8000 + 8 * 2,
+            0x6000 + 8 * 2,
+            0x2000,
+            0x4000,
+            0xA000 + 8 * 4,
+            7,
+        ),
+    ]
+    assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
+
+
+def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> None:
+    cfg = SimpleNamespace(
+        layer_types=(FULL_ATTENTION,),
+        head_count_kv=2,
+        key_length=4,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21,), start_position=7),
+        ),
+        block_size=4,
+    )
+    packed_key = DeviceBuffer(0x10000, layout.total_physical_positions * 16)
+    packed_value = DeviceBuffer(0x20000, layout.total_physical_positions * 16)
+    packed_state = SimpleNamespace(
+        blocks_per_slot=layout.blocks_per_slot,
+        block_size=layout.block_size,
+        full_cache=lambda layer_id: (packed_key, packed_value),
+    )
+
+    def slot(slot_id: int):
+        key = DeviceBuffer(0x30000 + slot_id * 0x1000, 16 * 32)
+        value = DeviceBuffer(0x40000 + slot_id * 0x1000, 16 * 32)
+        scratch = SimpleNamespace(
+            full_cache=lambda layer_id: (key, value),
+            position_host=np.zeros((1,), dtype=np.int64),
+            context_host=np.zeros((1,), dtype=np.int64),
+            position_buf=DeviceBuffer(0x50000 + slot_id * 0x100, 8),
+            context_buf=DeviceBuffer(0x60000 + slot_id * 0x100, 8),
+        )
+        return SimpleNamespace(
+            scratch=scratch,
+            _position=0,
+            _runtime_state_library=object(),
+        )
+
+    sessions = (slot(0), slot(1))
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.copies.append((int(dst), int(src), int(nbytes)))
+
+    runtime = FakeRuntime()
+    positions: list[int] = []
+    monkeypatch.setattr(
+        gguf_runner,
+        "set_decode_position_i64",
+        lambda position_ptr, context_ptr, position, **kwargs: positions.append(int(position)),
+    )
+
+    owner._scatter_packed_decode_state(
+        sessions,
+        layout,
+        packed_state,
+        runtime=runtime,
+        stream=0,
+        copy_full_kv=True,
+    )
+
+    row_nbytes = 16
+    slot_physical_rows = layout.blocks_per_slot * layout.block_size
+    assert runtime.copies == [
+        (0x30000, 0x10000, 6 * row_nbytes),
+        (0x40000, 0x20000, 6 * row_nbytes),
+        (
+            0x31000,
+            0x10000 + slot_physical_rows * row_nbytes,
+            8 * row_nbytes,
+        ),
+        (
+            0x41000,
+            0x20000 + slot_physical_rows * row_nbytes,
+            8 * row_nbytes,
+        ),
+    ]
+    assert positions == [6, 8]
+    assert [session._position for session in sessions] == [6, 8]
+
+    runtime.copies.clear()
+    positions.clear()
+    owner._scatter_packed_decode_state(
+        sessions,
+        layout,
+        packed_state,
+        runtime=runtime,
+        stream=0,
+        copy_kv=False,
+    )
+
+    assert runtime.copies == []
+    assert positions == [6, 8]
 
 
 def test_hip_event_stage_recorder_accumulates_aliases_and_closes() -> None:

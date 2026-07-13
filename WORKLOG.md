@@ -153100,3 +153100,102 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Documentation validation checks relative links, balanced code fences,
   trailing whitespace, and `git diff --check`; no GPU run is required or
   claimed for this docs-only unit.
+
+## 2026-07-13 - Make GGUF packed AR state/KV exact through c4 lifecycle
+
+- Audited the production GGUF packed-prefill/packed-decode path on the Radeon
+  8060S/gfx1151 TheRock HIP 7.15 environment with
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. The initial RED used two
+  independently c1-prefilled packed sessions versus two shared-runner c1
+  references, four decode transitions, deferred state scatter, and a final
+  flush. Tokens stayed exact (`[9707,264] -> [9707,6669] -> [9707,2020] ->
+  [9707,314] -> [9707,3741]`), but both Conv/GDN and live BF16 K/V hashes
+  diverged.
+- Decode bisection found byte-identical layer-0 input, QKV/Z, and Conv output.
+  The first numerical drift was the layer-0 linear-attention output: packed
+  decode projected the segmented GDN kernel's BF16 decode-order output while
+  c1 projected its FP32 output. Layer 1 was the first persistent Conv/GDN
+  mismatch and layer 3 the first K/V mismatch. The existing token-chain GDN
+  control fixed row 0 but incorrectly treated row 1 as a continuation, proving
+  that it could not replace a segment-aware route.
+- Added `_run_linear_attention_decode_slot_rows_exact()`: each packed AR token
+  row receives a `DeviceBuffer` view into its own packed Conv/GDN state slab and
+  executes the scalar attention kernels; full attention and MoE/FFN remain
+  row-batched. Packed state is mutated directly, so AR decode no longer captures
+  and recommits verifier-shaped linear-state rows. One-step state/KV became
+  byte-exact immediately.
+- Four deferred decode transitions exposed a separate flush bug: only the last
+  dirty K/V row was scattered to the slot sessions. Deferred flush now copies
+  the full live packed prefix, while immediate `scatter_state=True` keeps its
+  incremental one-row copy. The four-step decode-only oracle then matched all
+  30 Conv/GDN and 10 live K/V families after flush.
+- Packed-prefill RED still first changed persistent linear state at layer 32
+  and K/V at layer 35. Layer-output capture localized the first BF16 hidden
+  difference to full-attention layer 31 (`448/32768` BF16 values per row,
+  max abs `0.001953125`); layers 0-30 were byte-exact. Reusing the existing
+  span-aware paged-prefill reduction made the short packed slab exact. Packed
+  prefill now uses that reduction below the AOTriton threshold. When any slot
+  reaches the 512-row AOTriton threshold, full attention runs slot-locally with
+  the same c1 AOTriton/paged selection while linear attention and MoE remain
+  packed; slot-local K/V is then reimported before the first packed decode.
+- Added executable `scripts/gguf_packed_ar_state_oracle.py`. It compares greedy
+  trajectories, all resident FP32 Conv/GDN bytes, and every live BF16 K/V byte
+  against independent c1; supports `independent_c1|packed` prefill, c2-c4,
+  equal/ragged prompts, four deferred steady steps, and c4→c3→c2→c1
+  middle-hole shrink. Its failure mode identified the original layer-32 RED;
+  the repaired retained T16/WMMA/GEMV route passes:
+  - steady c4, prompt lengths `[16,16,16,16]`, d4;
+  - sparse shrink live slots `[0,1,2,3] -> [0,2,3] -> [0,3] -> [3]`;
+  - ragged AOTriton boundary `[512,64,64,64]`, d4.
+  Each gate reports exact tokens, packed-prefill state, every lifecycle
+  checkpoint, final Conv/GDN, and final live K/V. Equal p512×c2 is outside the
+  current hidden-slab admission (`1024` rows versus capacity `768`), so the
+  admitted ragged p512 case is the long-row boundary gate.
+- Re-ran the public category gate:
+  `scripts/qwen35_batch_gguf_diagnostic.py --rows 10 --backend hip_gfx1151
+  --quant gguf_q4_k_m --max-new-tokens 8 --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-suite
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --repeat-runs 3 --execute`.
+  All 10 prompts across `code/general_en/general_ja/mixed_ja_en` matched
+  independent c1 for 3/3 repeats through production c4+c4+c2 chunks;
+  `native_caware_decode=true`, no serial fallback.
+- Ran a single exact-accounting OpenAI-server natural24 diagnostic with retained
+  flags (`DECODE_REPACK=1`, `WMMA_PREFILL=1`, `GEMV_DECODE=1`), 5 ms batching,
+  route cap 4, 240 exact generated tokens/run. Warm c1/c2/c4/c8 measured
+  **35.34/51.07/59.23/59.19 generated tok/s** (`1.6749x` c1→c8). This is
+  `performance_claim=false`: one sweep, dirty repair worktree, no profiler. The
+  historical c4 `82.46 predicted tok/s` artifact counted `274` predicted units
+  for 240 requested outputs and is not an exact-accounting baseline.
+- Added compact correctness and diagnostic artifacts:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json`
+  and
+  `benchmarks/results/2026-07-13-gfx1151-gguf-exact-concurrency-diagnostic.json`.
+  Updated `docs/PLAN.md`, `docs/CONCURRENCY.md`, `docs/SOL-OPTIMIZATION.md`,
+  `docs/REFACTOR.md`, and `benchmarks/CHANGELOG.md`. G8 remains open for
+  per-layer hidden capture, live admission/cancellation, one-group c5-c8,
+  profiler evidence, and repeated exact-accounting scaling.
+- Focused CPU validation:
+  `PYTHONPATH=$PWD uv run --extra dev python -m pytest -q
+  tests/test_gguf_packed_verify_layout.py
+  tests/test_gguf_packed_ar_state_oracle.py
+  tests/test_generation_qwen35_gguf_sampling.py` passes all 67 tests; adding
+  `tests/test_qwen35_gguf_runner.py` yields the same 67 passes plus 9 guarded
+  GPU skips. Pycompile passes. No kernel body or registry key changed, so this
+  unit does not claim a new-kernel lineage/rocprof gate.
+- The full deterministic test set is green across a split 6,068-node run. This
+  host exposes `/opt/rocm/bin/amdgpu-arch` to the plain `uv` environment without
+  exposing a loadable HIP runtime, so an unqualified run selects gfx1151 for
+  provenance but cannot name the device. The stable CPU command was
+  `HIPENGINE_BACKEND=cpu PYTHONPATH=$PWD uv run --extra dev python -m pytest -q`
+  with only the two explicit auto-HIP provenance nodes and the auto-backend
+  selection node deselected; it completed with no failures. Those three nodes
+  then pass together without the backend override. `compileall`, registry
+  smoke, CPU-fixture smoke, and `smoke-add-plan` pass; the torch audit finds
+  only optional tooling/scripts and no executable `hipengine/` hot-path use.
+- The documented recursive `scripts/check_fixtures.py` command remains blocked
+  by a pre-existing schema mismatch outside this unit: tracked fixture
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`
+  (`8e9f4479`, 2026-06-09) uses `expected_block`/`expected_selected`, while the
+  generic loader requires `expected`. The seven canonical root CPU fixtures
+  all pass through `scripts/smoke.py --mode cpu-fixtures`; no fixture file or
+  checker was changed here.

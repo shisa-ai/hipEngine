@@ -726,6 +726,28 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _packed_prefill_requires_slot_local_full_attention(
+    layout: _GGUFPackedVerifyLayout,
+    *,
+    aotriton_threshold: int | None = None,
+) -> bool:
+    """Return whether a packed slab contains a c1 AOTriton-sized slot."""
+
+    threshold = (
+        int(PrefillConfig().attn_aotriton_min_tokens)
+        if aotriton_threshold is None
+        else int(aotriton_threshold)
+    )
+    return bool(
+        threshold > 0
+        and any(
+            int(layout.cu_seqlens[index + 1]) - int(layout.cu_seqlens[index])
+            >= threshold
+            for index in range(int(layout.slot_count))
+        )
+    )
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot target recurrent/KV state for a future packed verifier."""
@@ -1960,6 +1982,8 @@ class Qwen35GGUFFullStackRunner:
         max_positions: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        allow_aotriton: bool = True,
+        paged_max_context_len: int | None = None,
     ) -> bool:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -2142,9 +2166,14 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
         threshold = int(PrefillConfig().attn_aotriton_min_tokens)
-        use_aotriton = threshold > 0 and rows >= threshold
+        use_aotriton = bool(allow_aotriton and threshold > 0 and rows >= threshold)
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
+        paged_context_len = end if paged_max_context_len is None else int(paged_max_context_len)
+        if paged_context_len <= 0 or paged_context_len > int(scratch.max_positions):
+            raise ValueError(
+                "paged_max_context_len must be positive and within the prefill scratch capacity"
+            )
 
         if use_aotriton:
             aotriton_library = self._aotriton_prefill_library()
@@ -2242,7 +2271,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.full_gated.ptr,
                 scratch.prefill_spans,
                 rows,
-                end,
+                paged_context_len,
                 scratch.block_size,
                 cfg.head_count,
                 cfg.head_count_kv,
@@ -2938,6 +2967,112 @@ class Qwen35GGUFFullStackRunner:
             activation_dtype=GGUF_ACTIVATION_F32,
             stream=stream,
             runtime=runtime,
+        )
+
+    def _run_linear_attention_decode_slot_rows_exact(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        state_indices: tuple[int, ...],
+        decode_scratch,
+        stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "ar_batch_linear_attn",
+    ) -> None:
+        """Run c1-exact linear attention per slot, then the row-bulk FFN.
+
+        Packed AR decode has one token row per independent resident slot.  The
+        segmented prefill-GDN kernel writes a BF16 decode-order output, whereas
+        scalar decode projects the GDN kernel's FP32 output.  That rounding is
+        enough to perturb the next layer's persistent state.  Slice the packed
+        Conv/GDN slabs by slot and reuse the scalar attention kernels so each
+        row updates its own canonical state with c1 math.  MoE/FFN remains a
+        single multi-row launch chain.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if len(state_indices) != rows:
+            raise ValueError("state_indices must contain one entry per decode row")
+        if self.weights is None:
+            raise RuntimeError("GGUF weights are not materialized")
+        cfg = self.weights.config
+        base_conv = decode_scratch.layer_conv_states[layer_id]
+        base_recurrent = decode_scratch.layer_recurrent_states[layer_id]
+        if base_conv is None or base_recurrent is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
+        conv_row_nbytes = (
+            int(self.linear_qkv_width)
+            * int(cfg.ssm_conv_kernel)
+            * DType.FP32.itemsize
+        )
+        recurrent_row_nbytes = (
+            int(cfg.ssm_time_step_rank)
+            * int(cfg.ssm_state_size)
+            * int(self.ssm_value_dim)
+            * DType.FP32.itemsize
+        )
+        max_state_index = max(int(index) for index in state_indices)
+        if min(int(index) for index in state_indices) < 0:
+            raise ValueError("state_indices must be non-negative")
+        if int(base_conv.nbytes) < (max_state_index + 1) * conv_row_nbytes:
+            raise ValueError("packed Conv state slab is smaller than the requested slot rows")
+        if int(base_recurrent.nbytes) < (max_state_index + 1) * recurrent_row_nbytes:
+            raise ValueError("packed recurrent state slab is smaller than the requested slot rows")
+
+        hidden_row_nbytes = int(self.hidden_size) * DType.BF16.itemsize
+        hidden_f32_row_nbytes = int(self.hidden_size) * DType.FP32.itemsize
+        for row, state_index in enumerate(state_indices):
+            conv_states = list(decode_scratch.layer_conv_states)
+            recurrent_states = list(decode_scratch.layer_recurrent_states)
+            conv_states[layer_id] = DeviceBuffer(
+                int(base_conv.ptr) + int(state_index) * conv_row_nbytes,
+                conv_row_nbytes,
+            )
+            recurrent_states[layer_id] = DeviceBuffer(
+                int(base_recurrent.ptr) + int(state_index) * recurrent_row_nbytes,
+                recurrent_row_nbytes,
+            )
+            row_scratch = replace(
+                decode_scratch,
+                layer_conv_states=tuple(conv_states),
+                layer_recurrent_states=tuple(recurrent_states),
+            )
+            self._run_linear_attention_attn_only(
+                layer_id,
+                int(hidden_ptr) + row * hidden_row_nbytes,
+                int(scratch.attn_out.ptr) + row * hidden_row_nbytes,
+                row_scratch,
+                hidden_f32_ptr=(
+                    None
+                    if hidden_f32_ptr is None
+                    else int(hidden_f32_ptr) + row * hidden_f32_row_nbytes
+                ),
+                stream=stream,
+            )
+
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=f"{stage_prefix}_ffn",
         )
 
     def _run_native_attention_bulk_ffn_layer_rows(
@@ -9562,6 +9697,9 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
+        slot_local_full_prefill = _packed_prefill_requires_slot_local_full_attention(
+            layout
+        )
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
@@ -9583,25 +9721,64 @@ class Qwen35GGUFResidentSession:
                         stage_prefix="ar_prefill_batch_linear_attn",
                     )
                 elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
-                    layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
-                        cos_table=self.scratch.cos_table,
-                        sin_table=self.scratch.sin_table,
-                    )
-                    self.runner._run_full_attention_decode_batch_layer_rows(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        layer_scratch,
-                        stream=stream,
-                        expert_sidecar=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="ar_prefill_batch_full_attn",
-                    )
+                    if slot_local_full_prefill:
+                        for slot_index, session in enumerate(session_tuple):
+                            if session.scratch is None or session._bulk_prefill_scratch is None:
+                                raise RuntimeError("packed prefill slot scratch is closed")
+                            row_start = int(layout.cu_seqlens[slot_index])
+                            row_end = int(layout.cu_seqlens[slot_index + 1])
+                            slot_rows = row_end - row_start
+                            start_position = int(layout.row_positions[row_start])
+                            end_position = start_position + slot_rows
+                            slot_scratch = session._bulk_prefill_scratch.for_chunk(
+                                start_position,
+                                slot_rows,
+                                total_tokens=end_position,
+                                runtime=runtime,
+                                stream=stream,
+                            )
+                            layer_scratch = session._full_attention_prefill_scratch_for_layer(
+                                slot_scratch,
+                                layer_id,
+                            )
+                            row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+                            self.runner._run_full_attention_prefill_layer_aotriton(
+                                layer_id,
+                                src.ptr + row_start * row_nbytes,
+                                dst.ptr + row_start * row_nbytes,
+                                layer_scratch,
+                                cos_table_ptr=int(session.scratch.cos_table.ptr),
+                                sin_table_ptr=int(session.scratch.sin_table.ptr),
+                                max_positions=int(session.scratch.max_positions),
+                                stream=stream,
+                                expert_sidecar=None,
+                            )
+                    else:
+                        key_cache, value_cache = packed_state.full_cache(layer_id)
+                        layer_scratch = replace(
+                            packed_scratch,
+                            key_cache=key_cache,
+                            value_cache=value_cache,
+                            cos_table=self.scratch.cos_table,
+                            sin_table=self.scratch.sin_table,
+                        )
+                        # Packed rows are separate slot-major sequences. The
+                        # paged prefill kernel consumes row-local spans and
+                        # matches the c1 reduction order below the AOTriton
+                        # threshold; its compact wrapper describes one sequence.
+                        self.runner._run_full_attention_prefill_layer_aotriton(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            layer_scratch,
+                            cos_table_ptr=int(self.scratch.cos_table.ptr),
+                            sin_table_ptr=int(self.scratch.sin_table.ptr),
+                            max_positions=int(self.scratch.max_positions),
+                            stream=stream,
+                            expert_sidecar=None,
+                            allow_aotriton=False,
+                            paged_max_context_len=int(layout.max_live_count),
+                        )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
@@ -9663,6 +9840,7 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
+            copy_kv=not slot_local_full_prefill,
         )
         if hidden_seed_buf is not None:
             hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
@@ -9699,8 +9877,16 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_sessions = ()
         self._packed_decode_last_layout = None
         self._packed_decode_state_dirty = False
-        self._packed_decode_session_ids = tuple(id(session) for session in session_tuple)
-        self._packed_decode_positions = tuple(int(session.position) for session in session_tuple)
+        self._packed_decode_session_ids = (
+            ()
+            if slot_local_full_prefill
+            else tuple(id(session) for session in session_tuple)
+        )
+        self._packed_decode_positions = (
+            ()
+            if slot_local_full_prefill
+            else tuple(int(session.position) for session in session_tuple)
+        )
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -9746,11 +9932,11 @@ class Qwen35GGUFResidentSession:
         """Consume one decode token for each resident session in one packed pass.
 
         This is the AR-serving counterpart to ``verify_target_blocks_batch``.
-        It uses the same row-shaped GGUF kernels, but every input row is
-        committed, so it skips verifier hidden-row D2H and deferred
-        linear-state scatter.  Consecutive calls with the same session tuple keep
-        the packed workspace canonical and avoid re-importing per-slot Conv/GDN
-        and full-attention history.
+        Linear attention is c1-exact per slot while MoE/FFN and full attention
+        remain row-batched. Every input row is committed, so the path skips
+        verifier hidden-row D2H. Consecutive calls with the same session tuple
+        keep the packed workspace canonical and avoid re-importing per-slot
+        Conv/GDN and full-attention history.
         """
 
         token_tuple = tuple(int(token) for token in token_ids)
@@ -9822,7 +10008,6 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
-        self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
@@ -9854,17 +10039,18 @@ class Qwen35GGUFResidentSession:
         with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
-                    self.runner._run_linear_attention_prefill_layer_rows(
+                    self.runner._run_linear_attention_decode_slot_rows_exact(
                         layer_id,
                         src.ptr,
                         dst.ptr,
                         packed_scratch,
                         rows=rows,
+                        state_indices=tuple(
+                            int(index) for index in layout.row_slot_indices.tolist()
+                        ),
                         stream=stream,
                         decode_scratch=linear_decode_scratch,
                         expert_sidecar=None,
-                        linear_state_rows=self._verify_linear_state_row_pair(layer_id),
-                        commit_final_linear_state=False,
                         hidden_f32_ptr=None,
                         out_f32_ptr=None,
                         stage_timings=None,
@@ -9895,12 +10081,6 @@ class Qwen35GGUFResidentSession:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
 
-            self._commit_packed_decode_linear_state_rows(
-                layout,
-                packed_state,
-                runtime=runtime,
-                stream=stream,
-            )
             output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
             gguf_rmsnorm_bf16_f32_weight(
                 src.ptr,
@@ -11187,6 +11367,8 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
+        copy_full_kv: bool = False,
+        copy_kv: bool = True,
     ) -> None:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -11221,25 +11403,29 @@ class Qwen35GGUFResidentSession:
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
-                elif layer_type == FULL_ATTENTION:
+                elif layer_type == FULL_ATTENTION and copy_kv:
                     src_key, src_value = packed_state.full_cache(layer_id)
                     dst_key, dst_value = session.scratch.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    nbytes = slot_rows * row_nbytes
+                    copy_start = 0 if copy_full_kv else start_position
+                    copy_rows = end_position if copy_full_kv else slot_rows
+                    nbytes = copy_rows * row_nbytes
                     runtime.memcpy_async(
-                        dst_key.ptr + start_position * row_nbytes,
-                        src_key.ptr + (physical_base + start_position) * row_nbytes,
+                        dst_key.ptr + copy_start * row_nbytes,
+                        src_key.ptr + (physical_base + copy_start) * row_nbytes,
                         nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
                     runtime.memcpy_async(
-                        dst_value.ptr + start_position * row_nbytes,
-                        src_value.ptr + (physical_base + start_position) * row_nbytes,
+                        dst_value.ptr + copy_start * row_nbytes,
+                        src_value.ptr + (physical_base + copy_start) * row_nbytes,
                         nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
+                elif layer_type == FULL_ATTENTION:
+                    continue
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             session._position = end_position
@@ -11291,6 +11477,7 @@ class Qwen35GGUFResidentSession:
             self._packed_verify_state,
             runtime=runtime,
             stream=stream,
+            copy_full_kv=True,
         )
         if stream:
             runtime.stream_synchronize(stream)
