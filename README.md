@@ -48,7 +48,12 @@ artifacts may still show the historical
 those rows use the same packed PARO architecture and remain the evidence for the
 numbers below.
 
-- INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+- Experimental packed INT8 and tail-four mixed-KV policies are available
+  explicitly for PARO/GGUF, but **256K is not yet a supported route**:
+  all-layer INT8 fails fidelity, while the mild mixed layout passes native GGUF
+  accuracy but fails PARO accuracy and quality-preserving XTX request-scratch
+  capacity. The physical 24 GB safe default remains 208 Ki with BF16 KV; see
+  [Memory Usage](#memory-usage).
 - The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
 - Non-streaming completion/chat responses carry exact generated token IDs and all-choice counts under `hipengine.token_accounting`; `usage.completion_tokens` uses those IDs instead of re-tokenizing decoded text whenever the generator provides them.
 - Direct generation and non-streaming `/v1/completions` accept the same exact token-ID rows for PARO and GGUF. The server returns input hashes/counts under `hipengine.prompt_token_accounting`, and `scripts/exact_token_generation.py` gates HTTP output against a direct 512/128 generated-ID oracle.
@@ -90,9 +95,11 @@ The clean 2026-07-13 profile-aware BF16 frontier (`5a49b16d`) directly tests
 the current Qwen3.6 packed PARO model on a physical 24 GB gfx1100 card. The
 automatic low-memory prefill profile makes **208 Ki the recommended safe BF16
 cap** with 0.361 GiB observed headroom; 220 Ki completes but leaves only about
-78 MiB and is edge-only. Separately, compact 256K INT8 (`d6504544`) fits its
-tracked layout gate, but matched-context and bounded task quality reject it.
-Accordingly, 256K INT8 remains allocation capacity—not a supported route.
+78 MiB and is edge-only. Separately, compact 256K all-layer INT8 (`d6504544`)
+fits its tracked layout gate but fails fidelity. Native tail-four mixed KV saves
+18.75% of K/V and passes the tested GGUF accuracy gates, but PARO accuracy and
+the quality-preserving 256 Ki XTX request-scratch allocation reject. Accordingly,
+256K remains diagnostic allocation capacity—not a supported route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
 | Route / profile | Hardware | Context/decode | Tracked peak | Observed device peak | Device/card margin | Capacity / quality status |
@@ -102,6 +109,21 @@ Accordingly, 256K INT8 remains allocation capacity—not a supported route.
 | PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | 220 Ki (225,280)/128 | 23.369 GiB | **23.908 GiB** | **+0.076 GiB (~78 MiB)** | Physical pass, but **edge only—not safe cap** |
 | PARO BF16 KV, default 48 GB-card profile | W7900 | 220 Ki (225,280)/128 | 24.090 GiB | at least 24.832 GiB | at most -0.848 GiB vs 24 GB card | Rejected for this larger-chunk profile |
 | PARO INT8 per-token/head KV, FP16 scales | W7900 | 256K/128 | **22.971 GiB** | 21.041 GiB phase sample | +1.029 GiB tracked | **Rejected** by Qwen3.6 matched-context and task gates |
+| PARO tail-four Hadamard-group32 mixed KV, BF16-oracle prefill | RX 7900 XTX 24 GB | 256 Ki (262,144)/128 request scratch | **23.469 GiB before failed allocation** | 22.566 GiB after clean OOM | 1.418 GiB free before request scratch; insufficient | **Rejected:** `HIP error 2` OOM and PARO fidelity failure; no segfault |
+| PARO tail-four Hadamard-group32 mixed KV, direct-streaming control | RX 7900 XTX 24 GB | 256 Ki (262,144)/128 request scratch | **23.290 GiB** | **23.590 GiB** live sample | **+0.394 GiB** live | Allocation passes, but direct packed prefill is **correctness-rejected** |
+
+The native explicit `tail4_hadamard_group32` layout keeps K/V for
+full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
+`27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
+rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
+BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
+while writing packed tail K/V, then releases that oracle before decode. Native
+GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
+KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
+1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
+the mixed policy remains explicit and non-default: its quality-preserving 256
+Ki request scratch OOMs, while the allocation-passing direct route fails
+fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
