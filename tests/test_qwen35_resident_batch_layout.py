@@ -13,7 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation import CompactPromptSlab
-from hipengine.kvcache import FixedPagedKVPolicy
+from hipengine.kvcache import FixedPagedKVPolicy, resolve_kv_policy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
@@ -622,6 +622,75 @@ def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> No
     assert audit["retained_kv_scale_bytes"] == k_scale_buf.nbytes + v_scale_buf.nbytes
     assert audit["persistent_bf16_kv_layers"] == []
     assert audit["bf16_shadow_candidates"] == []
+    assert audit["persistent_bf16_shadow_exists"] is False
+
+
+def test_qwen35_resident_tail4_hadamard_layout_allocates_bf16_prefix_and_packed_tail() -> None:
+    session, captured = _resident_allocation_session(
+        storage_dtype="int8_per_token_head",
+        scale_dtype=DType.FP16,
+    )
+    session.config = SimpleNamespace(
+        num_key_value_heads=2,
+        head_dim=32,
+        layer_types=tuple("full_attention" for _ in range(10)),
+    )
+    session.batch_layout = Qwen35ParoResidentBatchLayout(
+        max_batch_size=session.max_batch_size,
+        hidden_size=8,
+        max_sequence_length=512,
+        block_size=session.block_size,
+        blocks=session.blocks,
+        num_key_value_heads=session.config.num_key_value_heads,
+        head_dim=session.config.head_dim,
+    )
+    session.kv_policy = resolve_kv_policy("tail4_hadamard_group32").create_policy()
+    session.kv_storage_dtype = session.kv_policy.storage_dtype
+    session.kv_storage_layout = session.kv_policy.storage_layout
+    session.kv_scale_granularity = session.kv_policy.scale_granularity
+    session.max_sequence_length = 512
+    session.position_buf = DeviceBuffer(0xA00000, session.max_batch_size * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0xA00100, session.max_batch_size * DType.INT64.itemsize)
+    session.block_table = _tensor(0xA00200, (session.blocks,), DType.INT32)
+
+    session._allocate_full_attention_cache(0)
+    session._allocate_full_attention_cache(6)
+
+    prefix_key, prefix_value, prefix_key_buf, prefix_value_buf = session.full_caches[0]
+    tail_key, tail_value, tail_key_buf, tail_value_buf = session.full_caches[6]
+    assert prefix_key.dtype is prefix_value.dtype is DType.BF16
+    assert tail_key.dtype is tail_value.dtype is DType.INT8
+    assert prefix_key_buf.nbytes == tail_key_buf.nbytes * 2
+    assert prefix_value_buf.nbytes == tail_value_buf.nbytes * 2
+    assert 0 not in session.full_cache_scales
+    tail_metadata = session._slot_full_scale_metadata(6, 0)
+    assert tail_metadata is not None
+    assert tail_metadata.granularity == "hadamard_group32"
+    assert tail_metadata.k_scale.shape == (session.blocks, session.block_size, 2, 1)
+    _, append_spans, decode_spans = session._slot_full_spans(6, 0)
+    assert append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert decode_spans.scale_metadata is not None
+    assert decode_spans.scale_metadata.granularity == "hadamard_group32"
+
+    summary = session.owned_buffer_summary()
+    by_layer = {item["layer_id"]: item for item in summary["full_attention_layers"]}
+    assert summary["kv_storage_layout"] == "tail4_hadamard_group32"
+    assert by_layer[0]["storage_dtype"] == "bf16"
+    assert by_layer[0]["scale_metadata"] is None
+    assert by_layer[6]["storage_dtype"] == "int8_per_token_head"
+    assert by_layer[6]["scale_metadata"]["granularity"] == "hadamard_group32"
+    assert [item[2] for item in captured] == [
+        np.dtype(np.uint16),
+        np.dtype(np.uint16),
+        np.dtype(np.int8),
+        np.dtype(np.int8),
+        np.dtype(np.float16),
+        np.dtype(np.float16),
+    ]
+    audit = session.kv_memory_audit()
+    assert audit["passed"] is True
+    assert audit["preserved_bf16_kv_layers"] == [0]
+    assert audit["persistent_bf16_kv_layers"] == []
     assert audit["persistent_bf16_shadow_exists"] is False
 
 
