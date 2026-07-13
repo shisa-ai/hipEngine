@@ -153912,3 +153912,10 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`;
   `benchmarks/README.md` and `benchmarks/CHANGELOG.md` carry the explicit-only
   decision.
+- Updated GitHub issue `#4` with `gh issue edit`: the title now states the two
+  remaining requirements (fidelity-safe and prefill-memory-safe), and the body
+  distinguishes persistent K/V savings from transient scratch, documents the
+  native GGUF/PARO split, records the clean HIP OOM/no-segfault result, and sets
+  the next two open gates. Verified the 141-line remote body at
+  `https://github.com/shisa-ai/hipEngine/issues/4` with SHA-256
+  `e60a1b2b36cbe4974c42e01945b8150369c09bdc5175de857a5b4d91be2aa30a`.
