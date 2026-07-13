@@ -153070,3 +153070,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   sets, and sink/recent windows. This avoids rerunning the twelve-minute full
   sensitivity matrix while checking the obvious near-gate combinations and
   longer-context transfer.
+
+## 2026-07-13 — Reject mixed PARO KV policies after 4K transfer
+
+- Clean targeted `512/8` follow-ups found two emulated passes inside the 1 GiB
+  budget: per-head INT8 with BF16 full-attention ordinals `0,1,2` plus 64-token
+  sink/recent residuals (`KL 0.02281`, top-1 `100%`, `+800,849,920` bytes), and
+  group64 with the same mixed policy (`KL 0.00445`, top-1 `100%`,
+  `+844,890,112` bytes).
+- Neither transferred to `4K/8`: per-head fell to KL `0.02173`, top-1 `77.78%`;
+  group64 to KL `0.02467`, top-1 `66.67%`. Increasing sink/recent windows from
+  64 to 512 did not recover top-1. A clean 4K single-layer sensitivity sweep
+  ranked ordinals `2,0,4` highest, but those three-layer combinations also
+  rejected at `4K/16`: group32 was best at KL `0.04136`, top-1 `82.35%`.
+- The most accurate 4K primary-only candidate was group64 plus BF16 prefix 4:
+  `4K/8` KL `0.00998`, top-1 `88.89%`; `4K/16` KL `0.03254`, top-1 `76.47%`.
+  It still fails and projects `+1,103,101,952` bytes at 256K, consuming all but
+  about 1.4 MiB of the compact-table gain measured against the 24 GiB tracked
+  peak. Per-head prefix 4 also rejected (`4K/16` KL `0.04922`, top-1 `64.71%`).
+- Product task scoring remains unavailable: the BF16 reference itself scored
+  `0/5` on retrieval, multihop, aggregation, long-document, and code, so the
+  status is `reference_unscorable`, not a mixed-policy pass or regression.
+- Decision: no format/mixed/residual candidate is evidence-backed for runtime
+  implementation. Do not add group32/group64 or mixed-cache production
+  complexity for a path that already fails the bounded 4K matched-context gate.
+  Keep explicit INT8 KV diagnostic/approximate only. Artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json`.
