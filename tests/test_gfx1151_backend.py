@@ -82,7 +82,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
-    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -109,7 +109,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
         )
-        == "baseline"
+        == "shared_x"
     )
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (

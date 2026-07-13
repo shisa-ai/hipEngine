@@ -115,6 +115,28 @@ def test_t16_q4_explicit_shared_x_mode_resolves_candidate(
     assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
 
 
+def test_t16_q4_gfx1151_auto_resolves_promoted_shared_x(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", raising=False)
+    gate = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
+    up = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
+    down = _fake_weight("gguf_q5_k_t16_v1", backend="hip_gfx1151")
+    resolved_variants: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        del backend, layer, quant, missing
+        resolved_variants.append(variant)
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+
+    plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
+
+    assert plan is not None
+    assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
+
+
 def test_t16_q4_invalid_explicit_mode_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

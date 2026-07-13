@@ -13,10 +13,11 @@ tokens exact. The ten-prompt gate is also exact across all 250 checked logits
 and every timed trajectory, with decode +0.023%. GPF-2D is accepted for a
 gfx1151-scoped `auto` promotion and is now the scoped default; gfx1100 remains
 fused pending an independent transfer gate. A clean max-context six-shape
-stress run confirms the automatic route from 512 through 128K. `GPF-3A` is the
-active follow-up: an exact Q4T16 shared-activation kernel cuts the real
-40-layer selected gate/up replay by 15.31%, with full-model promotion evidence
-still pending.
+stress run confirms the automatic route from 512 through 128K. Exact Q4T16
+shared-activation `GPF-3A` also passes its clean full-model gate: 512/1K/4K
+prefill improves **747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s**
+with byte-identical logits and trajectories and neutral aggregate decode.
+`shared_x` is now the gfx1151-scoped automatic route; gfx1100 stays baseline.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -204,7 +205,7 @@ baseline to restore verbatim.
 | `GPF-2B` register-resident wave32 tree | [`candidate diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json): `954.063/1031.350/847.981 tok/s` at 512/1K/4K; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json): 2.266x/2.058x at 512/4K | Boundary KL/top-1 passes, but [`natural trajectory gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-trajectory-rejection.json) retains only 3/10 complete 128-step trajectories | Rejected for default; retain only as an explicit speed/numerical diagnostic |
 | `GPF-2C` register-resident ordered wave32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json): `368.702/383.292/354.672 tok/s` at 512/1K/4K, -12.98%/-14.58%/-13.50%; recurrence `928.006 ms` | Plain/segment output and FP32 state byte-exact; 46 focused tests pass; decode within -0.31%..-0.24% | Rejected: ordered shuffles remain slower than fused despite state residency |
 | `GPF-2D` scalar-exact LDS32 residency | [`focus candidate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json): `753.489/799.844/686.840 tok/s` at 512/1K/4K; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json): 6/6; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json): `420.959 -> 753.891` and `408.359 -> 687.831 tok/s` at 512/4K; [`automatic six-shape stress gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json): `751.993/804.420/688.545/589.866/504.730/372.892 tok/s` | Sampled token, hidden seed, resident Conv/GDN state, and required layer outputs byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json): 250/250 exact logits, all timed trajectories exact, decode +0.023%; default stress IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused pending transfer evidence; right-sized publication sweep remains |
-| `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%), selected pair total `176.410 -> 158.535 ms` (-10.13%) | BF16 and FP16 output bytes exact on uneven/empty/multi-block fixtures; identical 40-layer routing and sampled token | Retain explicit candidate; production alias unchanged pending clean balanced 512/1K/4K full-model and decode gate |
+| `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%); [`clean full-model A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json): 512/1K/4K `747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s` (+3.11%/+2.42%/+1.94%) | BF16/FP16 fixture bytes and full-model logits byte-exact; every 128-step measured trajectory identical; aggregate decode wall -0.0031% | **Promoted on gfx1151** through backend capability; gfx1100 stays baseline pending transfer evidence |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -341,7 +342,7 @@ select current code without a fresh profile.
 | 4 | `GPF-2C` | **Rejected:** register-resident exact ordered-wave recurrence | Byte-exact, but focused 512/1K/4K prefill loses 12.98%-14.58% and recurrence loses 16.86% |
 | 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate; keep gfx1100 fused pending transfer and run right-sized final rollup after active candidates settle |
 | 6 | `GPF-M1` | **Default profile complete:** exact GDN 221.873 ms, dense Q8T16 156.474 ms, Q4T16 selected 116.075 ms, Q5T16 selected 56.181 ms at 512 | These measured families select GPF-3A and its successors |
-| 7 | `GPF-3A` | **Replay gate passed; scoped selector and full-model gate implemented:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Exact BF16/FP16 fixture; real Q4 replay -15.31%; `auto` remains baseline on both backends while `scripts/gguf_q4_t16_prefill_ab.py` gates explicit `shared_x` at 512/1K/4K |
+| 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
 | 8 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
 | 9 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
 | 10 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
@@ -512,9 +513,15 @@ us (-25.45%)** on the tiny exact fixture; VGPR rises **48 -> 56**, while both
 routes use zero scratch/LDS. On the resident 35B model's identical 40-layer,
 512-token routing, Q4 gate/up replay falls **114.633 -> 97.082 ms (-15.31%)**
 and all selected gate/up+down pairs fall **176.410 -> 158.535 ms (-10.13%)**.
-The sampled token and routing are identical. This is family-local evidence,
-not a full-model promotion: the production alias remains unchanged until a
-clean balanced 512/1K/4K prefill and decode gate passes.
+The sampled token and routing are identical. The subsequent clean balanced
+full-model gate at commit `95d484df` records baseline -> `shared_x` prefill of
+**747.764 -> 771.027 tok/s (+3.11%)** at 512, **804.150 -> 823.624 (+2.42%)**
+at 1K, and **687.676 -> 701.042 (+1.94%)** at 4K. All three 248,320-logit
+comparisons are byte-identical (`KL=0`, top-1 100%), every measured 129-ID
+prefill/decode trajectory matches, and aggregate decode wall is
+**7527.985 -> 7527.750 ms (-0.0031%)**. GPF-3A is therefore promoted through
+the gfx1151 backend capability; gfx1100 remains on baseline without transfer
+evidence.
 
 The executable full-model gate is
 [`scripts/gguf_q4_t16_prefill_ab.py`](../scripts/gguf_q4_t16_prefill_ab.py).
