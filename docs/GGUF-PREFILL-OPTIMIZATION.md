@@ -387,7 +387,7 @@ select current code without a fresh profile.
 | 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
-| 10 | `GPF-4` | **Activated:** apply the existing isolated AOTriton stream policy to GGUF so high-scratch attention does not poison later convolution on the caller queue | Same-shape exact off/on A/B at 512/4K/128K; no short-context regression; retain only if the measured convolution/wall residual falls |
+| 10 | `GPF-4` | **Candidate implemented, default-off:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | 512/4K are byte-exact across logits/hidden/all state/KV; dirty focus is +0.96%/+22.63% and 4K convolution falls 90.68%; clean detached 128K plus promotion gate remains |
 | 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
@@ -744,6 +744,54 @@ Selection evidence is
 Promotion still requires exact 512/4K/128K off/on state and logit gates plus a
 balanced full-wall A/B; profile evidence alone does not make the route default.
 
+## GPF-4: GGUF AOTriton Queue Isolation Candidate
+
+RED added three GGUF-specific unit requirements: an explicit/default policy,
+an AOTriton bridge parameter on the full-attention runner, and lazy
+stream/event reuse plus release on the resident session. All three failed on
+the published route. GREEN reuses `AotritonPrefillStreamBridge`: Q/K/V and the
+FP32-to-BF16 query cast remain on the caller stream, an input-ready event gates
+only AOTriton's high-scratch launch on one lazy nonblocking stream, and an
+output-ready event gates the existing post-attention BF16 gate on the caller
+stream. Session close synchronizes and releases both events and the stream.
+
+The candidate remains default-off in this implementation commit. Explicit
+`HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1` selects it on either HIP
+backend for testing; no backend package capability promotes it yet. This
+preserves gfx1100 and the published gfx1151 default until clean long-context
+evidence exists.
+
+Fresh-process differential correctness at repeated token `9707` is exact:
+
+| Context | Sampled token | Compared parts | FP32 logits | FP32 hidden seed | 30 Conv/GDN pairs | 10 live K/V pairs |
+| ---: | ---: | ---: | --- | --- | --- | --- |
+| 512 | 9707 / 9707 | 82 | byte-exact | byte-exact | all byte-exact | all byte-exact |
+| 4K | 9707 / 9707 | 82 | byte-exact | byte-exact | all byte-exact | all byte-exact |
+
+A fresh process is part of the timing contract. A same-session off/on
+interleave is invalid for this candidate: once a baseline AOTriton launch has
+contaminated the caller queue, later candidate legs cannot undo the persistent
+queue-local state. That diagnostic measured flat and is deliberately excluded.
+One discarded warmup plus three measured runs in a fresh process per mode give:
+
+| Context | Same-stream off tok/s | Isolated on tok/s | Delta | Peak off/on GiB |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 819.834 | 827.678 | **+0.96%** | 21.478 / 21.478 |
+| 4K | 743.990 | 912.357 | **+22.63%** | 22.995 / 22.995 |
+
+These focus rows are not retained performance claims because the candidate was
+uncommitted. They are strong implementation evidence. A no-warmup candidate
+4K trace independently moves host prefill **5.475 -> 4.617 s**, kernel sum
+**5396.575 -> 4543.829 ms (-15.80%)**, and convolution
+**952.870 -> 88.839 ms (-90.68%)**, while AOTriton itself stays flat
+(**150.316 -> 148.791 ms**). This directly confirms the selected queue-cliff
+mechanism rather than merely shifting time to attention.
+
+Compact focus evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json).
+Next commit the default-off candidate, then run clean detached 128K and fresh-
+process 512/4K confirmation before adding the gfx1151 backend capability.
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -939,10 +987,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   an independent fresh-graph/session lifecycle soak with unknown subphase.
   Do not rerun the full model sweep to investigate it; first add phase markers
   and bounded lifecycle-only coverage.
-- GPF-M2's fresh traces select GPF-4. At 4K, hipEngine convolution is
-  **952.870 ms / 17.66%** versus llama.cpp **32.980 ms / 0.88%**; the bounded
-  128K hipEngine sample keeps convolution at **17.68%**. The candidate is
-  scheduling-only GGUF AOTriton queue isolation, not another GDN rewrite.
+- GPF-M2's fresh traces select GPF-4. The default-off implementation is exact
+  at 512/4K across FP32 logits/hidden plus all Conv/GDN/live-KV parts. Dirty
+  fresh-process focus improves **+0.96%/+22.63%**, and 4K convolution falls
+  **952.870 -> 88.839 ms (-90.68%)**. Clean detached 128K and promotion gates
+  remain; this is scheduling-only queue isolation, not another GDN rewrite.
 - No benchmark process is intentionally left running. The optimization
   implementation tranche is active at GPF-4.
 
@@ -950,11 +999,13 @@ The required fresh profile is complete: 512/4K use full hipEngine and matched
 llama.cpp traces, 128K uses a bounded hipEngine family sample plus a complete
 llama.cpp trace. It selects GPF-4's GGUF AOTriton queue isolation because the
 4K convolution residual is 28.89x llama.cpp and remains 17.68% of the bounded
-128K sample. Next implement that scheduling-only candidate and run exact
-512/4K/128K off/on state/logit plus balanced wall gates. Keep token-parallel /
-prefix GDN as the high-effort fallback. Validate any shared-default transfer
-independently on gfx1100; a gfx1151-only exact win may remain
-architecture-scoped.
+128K sample. The
+default-off candidate is now implemented, 512/4K byte-exact, and strongly
+positive in dirty focus. Next validate it from a clean detached commit at 128K
+and repeat fresh-process 512/4K before adding the gfx1151 package capability.
+Keep token-parallel/prefix GDN as the high-effort fallback. Validate any
+shared-default transfer independently on gfx1100; a gfx1151-only exact win may
+remain architecture-scoped.
 
 ## Document Ownership
 
