@@ -1,0 +1,527 @@
+{
+  "contexts": [
+    {
+      "candidate_elapsed_seconds": 28.605105672992067,
+      "candidate_memory_audit": {
+        "full_attention_kv_payload_bytes": 44564480,
+        "full_attention_kv_scale_bytes": 348160,
+        "missing_int8_scale_layers": [],
+        "passed": true,
+        "persistent_bf16_kv_layers": [],
+        "required": true
+      },
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_paro_kv_functional_mc.py",
+        "--model",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "--suite",
+        "benchmarks/prompts/kv-int8-long-context-mc.jsonl",
+        "--context-tokens",
+        "4096",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt",
+        "--require-cached-build",
+        "--backend",
+        "hip_gfx1100",
+        "--shared-expert-format",
+        "packed_paro_w4",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp16",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--json",
+        "/tmp/hipengine-kv-functional-mc-clean-4096.json"
+      ],
+      "context_tokens": 4096,
+      "raw_diagnostic": {
+        "path": "/tmp/hipengine-kv-functional-mc-clean-4096.json",
+        "sha256": "303f1638ae2062c99feb11823d7bb6ea230aa0a226b8f1feaba534f6bcfc5099"
+      },
+      "reference_elapsed_seconds": 28.840901663003024,
+      "rows": [
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -4.026485204696655,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.015379250082035412,
+            "B": 0.01659151839715659,
+            "C": 0.9301788035550849,
+            "D": 0.03785042796572316
+          },
+          "candidate_retained": false,
+          "category": "retrieval",
+          "choice_match": true,
+          "expected_choice": "B",
+          "full_logits": {
+            "max_kl": 1.2373120972824987,
+            "mean_kl": 1.2373120972824987,
+            "top1_agreement": 0.0
+          },
+          "id": "retrieval_access_code_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": -2.7875707149505615,
+          "reference_qualified": false,
+          "reference_restricted_probabilities": {
+            "A": 0.04492003279151291,
+            "B": 0.052656897350883275,
+            "C": 0.8552278706138924,
+            "D": 0.047195199243711274
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -0.23850107192993164,
+          "candidate_regression": true,
+          "candidate_restricted_probabilities": {
+            "A": 0.07895507130949224,
+            "B": 0.16386703918158943,
+            "C": 0.4235230828315445,
+            "D": 0.3336548066773738
+          },
+          "candidate_retained": false,
+          "category": "multihop",
+          "choice_match": false,
+          "expected_choice": "D",
+          "full_logits": {
+            "max_kl": 0.4226491749305069,
+            "mean_kl": 0.4226491749305069,
+            "top1_agreement": 1.0
+          },
+          "id": "multihop_clearance_phrase_mc",
+          "reference_choice": "D",
+          "reference_expected_margin": 0.30356359481811523,
+          "reference_qualified": true,
+          "reference_restricted_probabilities": {
+            "A": 0.018588603826611674,
+            "B": 0.029498407442635727,
+            "C": 0.40426465715070786,
+            "D": 0.5476483315800448
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": 3.844630241394043,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.020924203554762478,
+            "B": 0.0005316484370329573,
+            "C": 0.9780265287186929,
+            "D": 0.0005176192895116348
+          },
+          "candidate_retained": true,
+          "category": "aggregation",
+          "choice_match": true,
+          "expected_choice": "C",
+          "full_logits": {
+            "max_kl": 0.06161433515503478,
+            "mean_kl": 0.06161433515503478,
+            "top1_agreement": 1.0
+          },
+          "id": "aggregation_crate_total_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": 3.7215921878814697,
+          "reference_qualified": true,
+          "reference_restricted_probabilities": {
+            "A": 0.023598613872025435,
+            "B": 0.0005240982805694717,
+            "C": 0.9753341828879925,
+            "D": 0.000543104959412617
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -1.4546281099319458,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.1582759524386586,
+            "B": 0.018119588062931465,
+            "C": 0.6778785580409104,
+            "D": 0.14572590145749953
+          },
+          "candidate_retained": false,
+          "category": "long_doc",
+          "choice_match": true,
+          "expected_choice": "A",
+          "full_logits": {
+            "max_kl": 0.07301803639089344,
+            "mean_kl": 0.07301803639089344,
+            "top1_agreement": 1.0
+          },
+          "id": "long_doc_final_retention_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": -1.4808194860816002,
+          "reference_qualified": false,
+          "reference_restricted_probabilities": {
+            "A": 0.16412189002805366,
+            "B": 0.020928790745368457,
+            "C": 0.7215696219835295,
+            "D": 0.09337969724304827
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -3.1227965354919434,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.02687076387115881,
+            "B": 0.030696156549246595,
+            "C": 0.6971035663167618,
+            "D": 0.24532951326283278
+          },
+          "candidate_retained": false,
+          "category": "code",
+          "choice_match": true,
+          "expected_choice": "B",
+          "full_logits": {
+            "max_kl": 0.562335823456956,
+            "mean_kl": 0.562335823456956,
+            "top1_agreement": 0.0
+          },
+          "id": "code_pipeline_result_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": -4.422472953796387,
+          "reference_qualified": false,
+          "reference_restricted_probabilities": {
+            "A": 0.012301997764448524,
+            "B": 0.011251600545394246,
+            "C": 0.9372811991470901,
+            "D": 0.03916520254306704
+          }
+        }
+      ],
+      "status": "partially_scorable",
+      "summary": {
+        "candidate_regressions": [
+          "multihop_clearance_phrase_mc"
+        ],
+        "candidate_retained": 1,
+        "fully_scorable": false,
+        "reference_failures": [
+          "retrieval_access_code_mc",
+          "long_doc_final_retention_mc",
+          "code_pipeline_result_mc"
+        ],
+        "reference_qualified": 2,
+        "total": 5
+      }
+    },
+    {
+      "candidate_elapsed_seconds": 100.43267719700816,
+      "candidate_memory_audit": {
+        "full_attention_kv_payload_bytes": 338165760,
+        "full_attention_kv_scale_bytes": 2641920,
+        "missing_int8_scale_layers": [],
+        "passed": true,
+        "persistent_bf16_kv_layers": [],
+        "required": true
+      },
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_paro_kv_functional_mc.py",
+        "--model",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "--suite",
+        "benchmarks/prompts/kv-int8-long-context-mc.jsonl",
+        "--context-tokens",
+        "32768",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt",
+        "--require-cached-build",
+        "--backend",
+        "hip_gfx1100",
+        "--shared-expert-format",
+        "packed_paro_w4",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp16",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--json",
+        "/tmp/hipengine-kv-functional-mc-clean-32768.json"
+      ],
+      "context_tokens": 32768,
+      "raw_diagnostic": {
+        "path": "/tmp/hipengine-kv-functional-mc-clean-32768.json",
+        "sha256": "0cf4e79053082fca859c3d9ab4142541913e1e58935324235fa20db095c62f94"
+      },
+      "reference_elapsed_seconds": 101.39707172500493,
+      "rows": [
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -5.147876471281052,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.00444717192487958,
+            "B": 0.005087247128914844,
+            "C": 0.8753408176663292,
+            "D": 0.11512476327987638
+          },
+          "candidate_retained": false,
+          "category": "retrieval",
+          "choice_match": true,
+          "expected_choice": "B",
+          "full_logits": {
+            "max_kl": 0.8054223829652071,
+            "mean_kl": 0.8054223829652071,
+            "top1_agreement": 0.0
+          },
+          "id": "retrieval_access_code_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": -6.208187818527222,
+          "reference_qualified": false,
+          "reference_restricted_probabilities": {
+            "A": 0.02264932959899604,
+            "B": 0.0016118692550917764,
+            "C": 0.8007768764795924,
+            "D": 0.17496192466631996
+          }
+        },
+        {
+          "candidate_choice": "D",
+          "candidate_expected_margin": 0.5783922672271729,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.03703296039932909,
+            "B": 0.17553106240038457,
+            "C": 0.28292780716750426,
+            "D": 0.504508170032782
+          },
+          "candidate_retained": true,
+          "category": "multihop",
+          "choice_match": true,
+          "expected_choice": "D",
+          "full_logits": {
+            "max_kl": 0.4580684989489013,
+            "mean_kl": 0.4580684989489013,
+            "top1_agreement": 0.0
+          },
+          "id": "multihop_clearance_phrase_mc",
+          "reference_choice": "D",
+          "reference_expected_margin": 0.9379442930221558,
+          "reference_qualified": true,
+          "reference_restricted_probabilities": {
+            "A": 0.1419464071676232,
+            "B": 0.11999441241294242,
+            "C": 0.20762768869647985,
+            "D": 0.5304314917229546
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": 3.419093608856201,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.03169368124814354,
+            "B": 0.00023235840127659355,
+            "C": 0.9679795298066954,
+            "D": 9.443054388453873e-05
+          },
+          "candidate_retained": true,
+          "category": "aggregation",
+          "choice_match": true,
+          "expected_choice": "C",
+          "full_logits": {
+            "max_kl": 0.03534491849551634,
+            "mean_kl": 0.03534491849551634,
+            "top1_agreement": 0.0
+          },
+          "id": "aggregation_crate_total_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": 3.6582274436950684,
+          "reference_qualified": true,
+          "reference_restricted_probabilities": {
+            "A": 0.025121428897615667,
+            "B": 0.0002430531956447705,
+            "C": 0.9745235321169565,
+            "D": 0.00011198578978305355
+          }
+        },
+        {
+          "candidate_choice": "A",
+          "candidate_expected_margin": 0.10239458084106445,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.40503055493998774,
+            "B": 0.010882365158346199,
+            "C": 0.36561026916673006,
+            "D": 0.2184768107349361
+          },
+          "candidate_retained": true,
+          "category": "long_doc",
+          "choice_match": true,
+          "expected_choice": "A",
+          "full_logits": {
+            "max_kl": 0.21307328096226405,
+            "mean_kl": 0.21307328096226405,
+            "top1_agreement": 1.0
+          },
+          "id": "long_doc_final_retention_mc",
+          "reference_choice": "A",
+          "reference_expected_margin": 0.6972522735595703,
+          "reference_qualified": true,
+          "reference_restricted_probabilities": {
+            "A": 0.5017885396140757,
+            "B": 0.010463734869819177,
+            "C": 0.24986643661522903,
+            "D": 0.2378812889008762
+          }
+        },
+        {
+          "candidate_choice": "C",
+          "candidate_expected_margin": -3.458467960357666,
+          "candidate_regression": false,
+          "candidate_restricted_probabilities": {
+            "A": 0.02867020018517593,
+            "B": 0.020029537413804664,
+            "C": 0.6363037318227582,
+            "D": 0.31499653057826116
+          },
+          "candidate_retained": false,
+          "category": "code",
+          "choice_match": true,
+          "expected_choice": "B",
+          "full_logits": {
+            "max_kl": 0.38892259213257346,
+            "mean_kl": 0.38892259213257346,
+            "top1_agreement": 0.0
+          },
+          "id": "code_pipeline_result_mc",
+          "reference_choice": "C",
+          "reference_expected_margin": -3.7540606260299683,
+          "reference_qualified": false,
+          "reference_restricted_probabilities": {
+            "A": 0.014133525155150796,
+            "B": 0.016207496993902497,
+            "C": 0.691964420353191,
+            "D": 0.27769455749775585
+          }
+        }
+      ],
+      "status": "partially_scorable",
+      "summary": {
+        "candidate_regressions": [],
+        "candidate_retained": 3,
+        "fully_scorable": false,
+        "reference_failures": [
+          "retrieval_access_code_mc",
+          "code_pipeline_result_mc"
+        ],
+        "reference_qualified": 3,
+        "total": 5
+      }
+    }
+  ],
+  "date": "2026-07-13",
+  "full_benchmark_claim": false,
+  "interpretation": [
+    "At 4K, INT8 changes the known-correct BF16 multihop choice D to incorrect C while retaining the qualified aggregation answer.",
+    "At 32K, INT8 retains all three BF16-qualified choices (multihop, aggregation, long-document) despite full-logit KL of 0.0353-0.4581.",
+    "High KL can therefore change a bounded functional decision, but it does not imply every answer changes; the result is partial because BF16 qualifies only 2/5 at 4K and 3/5 at 32K.",
+    "This five-task restricted-choice diagnostic is not a full long-context or free-generation quality benchmark and cannot promote INT8 while the strict matched-context gate fails."
+  ],
+  "kind": "w7900_paro_int8_kv_bounded_functional_mc",
+  "performance_claim": false,
+  "protocol": {
+    "answer_prefix": "The correct option is ",
+    "candidate_kv": "int8_per_token_head",
+    "candidate_scale_dtype": "fp16",
+    "candidate_scale_granularity": "per_token_head",
+    "candidate_scorable_only_if_reference_correct": true,
+    "free_generation_claim": false,
+    "model": "Qwen3.6-35B-A3B W4-PARO packed",
+    "reference_kv": "bf16",
+    "scoring": "restricted A-D next-token choice after fixed assistant prefix",
+    "task_categories": [
+      "retrieval",
+      "multihop",
+      "aggregation",
+      "long_doc",
+      "code"
+    ]
+  },
+  "schema": 1,
+  "source": {
+    "build_profile": "kv_int8_functional_mc",
+    "collected_at": "2026-07-13T04:44:05.885702+00:00",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "scripts/qwen35_paro_kv_functional_mc.py",
+      "--model",
+      "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--suite",
+      "benchmarks/prompts/kv-int8-long-context-mc.jsonl",
+      "--context-tokens",
+      "32768",
+      "--max-layers",
+      "40",
+      "--compiler-version-file",
+      "/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt",
+      "--require-cached-build",
+      "--backend",
+      "hip_gfx1100",
+      "--shared-expert-format",
+      "packed_paro_w4",
+      "--kv-storage",
+      "int8_per_token_head",
+      "--kv-scale-dtype",
+      "fp16",
+      "--kv-scale-granularity",
+      "per_token_head",
+      "--json",
+      "/tmp/hipengine-kv-functional-mc-clean-32768.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0"
+    },
+    "git_branch": "kv-int8-accuracy",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_commit": "2743798ffedc408db7a9607e385b8460b24f82a1",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16_vs_int8_per_token_head",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "exists": true,
+      "file_count": 18,
+      "path_type": "directory",
+      "sampled_bytes": 16442350,
+      "size_bytes": 20497454388,
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917"
+    },
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "profiler": null,
+    "quant": "w4_paro",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "7.2.4",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "serial restricted-choice tasks; no warmup; timing diagnostic only",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "status": "partially_scorable_mixed_outcome",
+  "suite": {
+    "path": "benchmarks/prompts/kv-int8-long-context-mc.jsonl",
+    "sha256": "7cb1655a8ba51391bee92ed7e6986c34f02bde8edacf92f5ba74c1963b4f0bdd"
+  },
+  "usable_int8_claim": false
+}
