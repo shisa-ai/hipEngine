@@ -28,8 +28,9 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # Clean GPF-2D exactness, balanced-wall, and natural-trajectory/decode gates
 # admit the scalar-exact LDS32 GDN prefill schedule on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32"
-# GPF-3A remains explicit until its clean full-model prefill/decode gate passes.
-GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "baseline"
+# Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
+# selected-dual Q4T16 prefill schedule on gfx1151.
+GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",

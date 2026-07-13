@@ -153646,3 +153646,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   GREEN plus the existing GDN A/B and trajectory-gate regression tests pass
   **18/18**; Ruff check/format and `git diff --check` pass. Next run it from a
   clean detached worktree with cached builds before changing backend policy.
+
+## 2026-07-13 - GPF-3A passes clean full-model gate; promote on gfx1151
+
+- Ran committed `95d484df` from clean detached
+  `/tmp/hipengine-gpf3a-gate` on Radeon 8060S/gfx1151, TheRock HIP 7.15,
+  kernel 7.1.3-2-cachyos, and TuneD `accelerator-performance`. The first
+  cache-only launch stopped before measurement on a missing source-keyed
+  AOTriton wrapper. Prebuilt only that wrapper outside the benchmark process,
+  verified the detached tree remained clean, and reran the unchanged command
+  with `--require-cached-build`.
+- Exact command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_q4_t16_prefill_ab.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend auto --contexts 512,1024,4096 --prompt-token-id 9707 --decode-steps 128 --warmups 1 --repetitions 4 --bulk-attention-mode bulk --graph-replay-decode --decode-repack --use-wmma-prefill --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf3a-full-model-clean-512-1k-4k.json`.
+- Balanced median baseline -> shared-X prefill:
+  - 512: **684.708 -> 664.049 ms**, **747.764 -> 771.027 tok/s**
+    (**+3.11% throughput**, -3.02% wall); every paired wall delta is negative.
+  - 1K: **1273.395 -> 1243.286 ms**, **804.150 -> 823.624 tok/s**
+    (**+2.42% throughput**, -2.36% wall); every paired wall delta is negative.
+  - 4K: **5956.294 -> 5842.728 ms**, **687.676 -> 701.042 tok/s**
+    (**+1.94% throughput**, -1.91% wall); every paired wall delta is negative.
+- All three 248,320-element FP32 logit vectors are byte-identical (`KL=0`,
+  top-1 100%, max absolute difference 0). Every measured prefill sample plus
+  128-token decode trajectory is identical. Aggregate median decode wall is
+  **7527.985 -> 7527.750 ms (-0.0031%)**; the individual decode speedups are
+  1.000010x/1.000041x/1.000044x. Provenance reports no staged, unstaged, or
+  untracked files. The full gate took about **172 seconds (2.9 minutes)** of
+  observed command wall.
+- Full local artifact sha256 is
+  `1972795005e8478cbcdf090ed02700d90938f4e50b88a8cfb9c8f26ffa1ba49e`;
+  compact retained artifact is
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json`.
+  Decision is `promote_shared_x`. Backend capability now selects shared-X only
+  on gfx1151; gfx1100 remains baseline pending an independent transfer gate.
