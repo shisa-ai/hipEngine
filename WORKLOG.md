@@ -153012,3 +153012,50 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passes at 100%; focused in-flight cancellation tests pass; `py_compile`, JSON
   parsing, and `git diff --check` pass. Ruff is not installed in the current
   `uv --extra dev` environment, so no Ruff result is claimed.
+- Continued the PARO c2 RED from the same Radeon 8060S/gfx1151 TheRock
+  environment. `scripts/qwen35_batch_hidden_bisect.py` localized the first
+  native hidden drift to full-attention layer 3 at L4/d1 (row 1 max abs
+  `0.0123138428`); row-local full attention clears L4, then L5/d2 identifies
+  the linear/MoE path. The full L40/d4 exact split is selected-c1 batch MoE,
+  row-local full-attention pre-QKV/append/context/gate with batch O/post/MoE,
+  and batch-GEMV linear output. No kernel body was ported; the documented
+  `/home/lhl/amd-gpu-tuning` lineage references are absent on this host, so no
+  external-lineage claim is made.
+- Added a production-scoped `exact_hybrid` c2 contract instead of selecting
+  diagnostic environment flags. It admits only gfx1151, greedy sampling,
+  exactly two BF16-KV rows, and `max(prompt)+max_tokens <= 1023`; it uses packed
+  prefill, native segmented linear attention, batch-GEMV linear output,
+  selected-c1 batch MoE, row-local full-attention pre-O work, and batch
+  O/post/MoE. Unsupported admission shapes fall back to true c1; a live c2
+  group that shrinks uses the exact row-serial bridge for its remainder.
+  Telemetry reports `scheduler_native_packed_prefill_exact_hybrid_decode`, no
+  serial layer-decode fallback for a fixed live c2 group, and
+  `throughput_claim_eligible=false`.
+- Found and isolated a separate public c1 oracle bug on gfx1151:
+  `python3 scripts/qwen35_decode_graph_fixture_gate.py --model /home/lhl/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --max-new-tokens 8 --json /tmp/hipengine-paro-c1-graph-gate-current.json`
+  rejected graph/eager token equality (`eager [17,220,17,13,17,17,17,17]`,
+  graph `[17,18,16,220,17,13,198,17]`); graph wall was also slightly slower
+  (`0.133842` vs `0.133048` s). Public PARO greedy decode now keeps the
+  previously validated gfx1100 graph policy but uses canonical eager resident
+  steps on unvalidated architectures, including gfx1151.
+- Public `LLM.generate_detailed()` correctness is green without experimental
+  envs. On the two 512-token fixture rows at d8, c2 exactly matches independent
+  eager c1:
+  `[524,17374,52,16,16,16,16,16]` and
+  `[23962,220,197,58,27,33010,257,197]`. A second gate loaded all 10 prompts
+  from `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, generated each as
+  independent c1, then generated five c2 pairs at d8: **10/10 rows exact**
+  across `code`, `general_en`, `general_ja`, and `mixed_ja_en`; all five groups
+  recorded the exact-hybrid path, batch-GEMV linear output, and no serial
+  fallback. The retained harness's p512/d128 version of the same split is also
+  129/129 exact for both rows.
+- A single diagnostic p512/d128 timing of the exact split measured
+  `70.7078` aggregate tok/s versus the current serial bridge's `60.6105`
+  aggregate tok/s (`+16.66%`). This is not promoted as a retained performance
+  row: it has one repetition, no profiler/primitive attachments, and the route
+  intentionally reports `throughput_claim_eligible=false`.
+- RED/GREEN coverage now checks graph-policy eager fallback, gfx1100/gfx1151
+  graph admission, gfx1151-only exact-hybrid admission, the generator's exact
+  c2 route, and the runtime's selected-MoE/row-local-attention/batch-GEMV split.
+  `PYTHONPATH=$PWD uv run --extra dev python -m pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py`
+  passes all 201 tests.

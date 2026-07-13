@@ -41,7 +41,8 @@ Related source-of-truth docs:
 | Per-row sampler | Sampling parameters (temperature, top-k, top-p, repetition penalty, seed, stop tokens) are independent per active row. |
 | Packed/native prefill | Multiple prompt rows packed into one prefill slab and launched through row-shaped kernels. |
 | Serial bridge | A correctness-first path with batch-shaped slots/KV metadata but active rows execute through the c=1 layer path. Diagnostics only; not a throughput claim. |
-| True-c1 fallback | Each request uses an exact width-1 resident session with single-request prefill and decode. This is the gfx1151 production route until native batching passes the schema-2 evidence contract. |
+| True-c1 fallback | Each request uses an exact width-1 resident session with single-request prefill and decode. This remains the PARO route outside the narrow gfx1151 greedy-BF16 c2 hybrid. |
+| Exact c2 hybrid | The gfx1151-only PARO greedy-BF16 route for exactly two requests below 1024 context tokens: packed prefill, native segmented linear attention with batch-GEMV linear output, selected-c1 batch MoE, and row-local full-attention pre-O work followed by batch O/post/MoE. It is generated-token exact but not yet a fully native c-aware or retained-throughput route. |
 
 ## Destination state
 
@@ -77,13 +78,14 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 ## Current answer
 
 **hipEngine has host-side batching scaffolding, not a production continuous
-model loop, and its two production model paths are asymmetric.** Native PARO
-batching remains correctness-red against independent c1, so production greedy
-and sampled PARO batches use exact width-1 sessions. GGUF now has a production
-packed-prefill/packed-decode route: on 2026-07-13 its first executable c>N gate
-matched independent c1 generated tokens for all 10 natural prompt-suite rows in
-three c10 repeats on gfx1151. That GGUF result is a correctness diagnostic, not
-a retained throughput row, and does not yet replace hidden/state/KV,
+model loop, and its two production model paths are asymmetric.** PARO now has
+a narrow gfx1151 greedy-BF16 c2 exact hybrid below 1024 context tokens; sampled,
+other-width, other-KV, longer-context, and other-architecture PARO groups still
+use exact width-1 sessions. GGUF has a production packed-prefill/packed-decode
+route: on 2026-07-13 its first executable c>N gate matched independent c1
+generated tokens for all 10 natural prompt-suite rows in three c10 repeats on
+gfx1151. Both multi-row results remain correctness diagnostics rather than
+retained throughput rows and do not yet replace hidden/state/KV,
 ragged/shrinking/sparse-slot, long-context, or server-lifecycle gates.
 
 What is in place:
@@ -111,12 +113,18 @@ What is in place:
 
 What is still not green:
 
-- The Qwen/PARO native c>N decode path is experimental. The first task is a
-  teacher-forced hidden/linear-state/KV bisect of the c8 token-index-2
-  divergence. Direct c2-c8, sparse, ragged, shrinking, profiler, and scaling
-  gates must then pass against single-request `prefill_native()+step()` before
-  a schema-2 profile can select native execution. The dated notebook below
-  records the earlier batch-shaped-oracle bisections.
+- Qwen/PARO's fully native c>N decode path remains experimental. A 2026-07-13
+  c2 bisection localized the first native drift to full-attention layer 3 and
+  then to linear-output/MoE reduction order. The production-safe gfx1151 c2
+  hybrid now fixes the exact split explicitly: batch-GEMV linear output,
+  selected-c1 batch MoE, and row-local full-attention pre-O work with batch
+  O/post/MoE. It matches independent eager c1 for both 512-token fixture rows
+  through 128 output tokens and all 10 canonical category prompts through
+  eight output tokens, with no serial layer-decode fallback. The route is
+  deliberately limited to greedy BF16, exactly two rows, and context below
+  1024; gfx1100 and all broader shapes remain unverified. Hidden/state/KV,
+  shrink/sparse/ragged, profiler, repetitions, and scaling still block a
+  schema-2 retained profile.
 - GGUF packed AR is generated-token-green on the full 10-prompt category suite
   for three c10 repeats at eight output tokens, with `native_caware_decode=true`
   and no serial fallback. Artifact:

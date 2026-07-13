@@ -12,7 +12,7 @@ import time
 from typing import Any, ClassVar
 import uuid
 
-from hipengine.dispatch import NativeBatchWidthProfile, plan_batch_width_partition
+from hipengine.dispatch import BatchWidthGroup, NativeBatchWidthProfile, plan_batch_width_partition
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -60,6 +60,41 @@ def _prompt_ids(model_path: Path, prompt: PromptInput) -> tuple[int, ...]:
         return tuple(int(token) for token in prompt)
     _last_token_id, prompt_ids = _select_token(model_path, prompt, None)
     return tuple(int(token) for token in prompt_ids)
+
+
+_EXACT_HYBRID_C2_MAX_CONTEXT = 1023
+
+
+def _exact_hybrid_c2_route_blockers(
+    *,
+    model_path: Path,
+    prompts: tuple[PromptInput, ...],
+    max_tokens: int,
+    kv_policy: Any,
+    target_arch: str | None,
+) -> tuple[str, ...]:
+    """Return conservative blockers for the correctness-backed c2 hybrid."""
+
+    blockers: list[str] = []
+    normalized_arch = "" if target_arch is None else str(target_arch).split(":", 1)[0]
+    if normalized_arch != "gfx1151":
+        blockers.append("exact PARO c2 hybrid is currently certified only on gfx1151")
+    if len(prompts) != 2:
+        blockers.append("exact PARO hybrid currently requires exactly two requests")
+    storage_dtype = getattr(getattr(kv_policy, "storage_dtype", None), "value", None)
+    if storage_dtype != "bf16":
+        blockers.append("exact PARO c2 hybrid currently requires BF16 KV")
+    if not blockers:
+        prompt_lengths = tuple(len(_prompt_ids(model_path, prompt)) for prompt in prompts)
+        if any(length <= 0 for length in prompt_lengths):
+            blockers.append("exact PARO c2 hybrid requires non-empty prompts")
+        max_context = max(prompt_lengths) + max(0, int(max_tokens))
+        if max_context > _EXACT_HYBRID_C2_MAX_CONTEXT:
+            blockers.append(
+                "exact PARO c2 hybrid is certified only below split-K context "
+                f"({_EXACT_HYBRID_C2_MAX_CONTEXT} tokens)"
+            )
+    return tuple(blockers)
 
 
 @dataclass
@@ -181,6 +216,27 @@ class Qwen35ParoOneTokenGenerator:
             )
         )
         if width_profile is None or width_profile.blockers or profile_position_blockers:
+            exact_hybrid_blockers = _exact_hybrid_c2_route_blockers(
+                model_path=Path(self.model_path),
+                prompts=request.prompts,
+                max_tokens=request.max_tokens,
+                kv_policy=kv_policy,
+                target_arch=getattr(runner, "target_arch", None),
+            )
+            if not exact_hybrid_blockers:
+                outputs = self._generate_batch(
+                    runner,
+                    request.prompts,
+                    request.max_tokens,
+                    ignore_eos=request.ignore_eos,
+                    kv_policy=kv_policy,
+                    sampler_mode=plan.mode.value,
+                    deadline_at=request.deadline_at,
+                    cancellation_token=request.cancellation_token,
+                    exact_hybrid_c2=True,
+                )
+                self.last_generation_outputs = tuple(outputs)
+                return list(self.last_generation_outputs)
             outputs = self._generate_batch_true_c1_fallback(
                 runner,
                 request.prompts,
@@ -864,22 +920,41 @@ class Qwen35ParoOneTokenGenerator:
         remaining = max_tokens - 1
         if remaining:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            with session.capture_decode_graph(
-                position=len(prompt_ids),
-                steps_per_replay=1,
-                max_replay_steps=remaining,
-                record_steps=remaining,
-            ) as graph:
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                graph.replay(remaining)
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                token_ids = graph.read_generated_token_ids(remaining)
-                raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-            for token_id in token_ids:
-                generated_text.append(_decode_token_cached(session.tokenizer, token_id))
-                generated_token_ids.append(int(token_id))
-                if not ignore_eos and _is_eos(session.tokenizer, token_id):
-                    break
+            graph_policy = getattr(session, "greedy_decode_graph_eligible", None)
+            graph_eligible = True if not callable(graph_policy) else bool(graph_policy())
+            if graph_eligible:
+                with session.capture_decode_graph(
+                    position=len(prompt_ids),
+                    steps_per_replay=1,
+                    max_replay_steps=remaining,
+                    record_steps=remaining,
+                ) as graph:
+                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    graph.replay(remaining)
+                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    token_ids = graph.read_generated_token_ids(remaining)
+                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                for token_id in token_ids:
+                    generated_text.append(_decode_token_cached(session.tokenizer, token_id))
+                    generated_token_ids.append(int(token_id))
+                    if not ignore_eos and _is_eos(session.tokenizer, token_id):
+                        break
+            else:
+                current_result = next_result
+                for offset in range(remaining):
+                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    current_result = session.step(
+                        current_result.token_id,
+                        position=len(prompt_ids) + offset,
+                        sample=True,
+                    )
+                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
+                    if current_result is None:
+                        raise RuntimeError("eager decode did not produce next-token logits")
+                    generated_text.append(current_result.token_text)
+                    generated_token_ids.append(int(current_result.token_id))
+                    if not ignore_eos and _is_eos(session.tokenizer, current_result.token_id):
+                        break
         return GenerationOutput(
             text="".join(generated_text),
             generated_token_ids=generated_token_ids,
@@ -1054,6 +1129,7 @@ class Qwen35ParoOneTokenGenerator:
         sampler_mode: str,
         deadline_at: float | None,
         cancellation_token: Any | None,
+        exact_hybrid_c2: bool = False,
     ) -> list[GenerationOutput]:
         """Generate a prompt list through the scheduler-owned c>N path.
 
@@ -1072,6 +1148,8 @@ class Qwen35ParoOneTokenGenerator:
                 raise ValueError("prompt produced no tokens")
             prompt_rows.append([int(token) for token in prompt_ids])
         batch_size = len(prompt_rows)
+        if exact_hybrid_c2 and batch_size != 2:
+            raise ValueError("exact PARO hybrid decode requires batch_size=2")
         required_sequence_length = max(len(row) for row in prompt_rows) + max_tokens + 1
         session_capacity = _session_capacity_for(required_sequence_length)
         session = self._get_session(
@@ -1140,6 +1218,8 @@ class Qwen35ParoOneTokenGenerator:
         decode_steps = 0
         native_decode_steps = 0
         native_decode_group_calls = 0
+        exact_hybrid_decode_steps = 0
+        exact_hybrid_decode_group_calls = 0
         serial_decode_row_calls = 0
         partitioned_decode_steps = 0
         decode_partition_histogram: Counter[str] = Counter()
@@ -1180,18 +1260,22 @@ class Qwen35ParoOneTokenGenerator:
                 raise TypeError("native_batch_width_profile() must return NativeBatchWidthProfile or None")
             if profile is not None:
                 native_width_profile_payload = profile.to_json_dict()
-            plan = plan_batch_width_partition(
-                len(sorted_step_rows),
-                profile=profile if hasattr(session, "step_batch_native") else None,
-                positions=tuple(int(item[3]) for item in sorted_step_rows),
-            )
+            if exact_hybrid_c2 and len(sorted_step_rows) == 2:
+                decode_groups = (BatchWidthGroup("native", 2, 1.0),)
+            else:
+                decode_groups = plan_batch_width_partition(
+                    len(sorted_step_rows),
+                    profile=profile if hasattr(session, "step_batch_native") else None,
+                    positions=tuple(int(item[3]) for item in sorted_step_rows),
+                ).groups
             decode_started_at = time.perf_counter()
             result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult | None] = {}
             effective_groups: list[tuple[str, int]] = []
             cursor = 0
             step_native_rows = 0
+            step_exact_hybrid_rows = 0
             step_serial_rows = 0
-            for group in plan.groups:
+            for group in decode_groups:
                 group_rows = sorted_step_rows[cursor : cursor + group.width]
                 cursor += group.width
                 group_slots = [int(item[0]) for item in group_rows]
@@ -1200,18 +1284,33 @@ class Qwen35ParoOneTokenGenerator:
                 group_positions = [int(item[3]) for item in group_rows]
                 results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
                 if group.mode == "native":
+                    use_exact_hybrid = exact_hybrid_c2 and group.width == 2
                     try:
                         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        results = session.step_batch_native(
-                            group_token_ids,
-                            positions=group_positions,
-                            slots=group_slots,
-                            sample=True,
-                        )
+                        if use_exact_hybrid:
+                            results = session.step_batch_native(
+                                group_token_ids,
+                                positions=group_positions,
+                                slots=group_slots,
+                                sample=True,
+                                exact_hybrid=True,
+                            )
+                        else:
+                            results = session.step_batch_native(
+                                group_token_ids,
+                                positions=group_positions,
+                                slots=group_slots,
+                                sample=True,
+                            )
                         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        native_decode_group_calls += 1
-                        step_native_rows += group.width
-                        effective_groups.append(("native", group.width))
+                        if use_exact_hybrid:
+                            exact_hybrid_decode_group_calls += 1
+                            step_exact_hybrid_rows += group.width
+                            effective_groups.append(("exact_hybrid", group.width))
+                        else:
+                            native_decode_group_calls += 1
+                            step_native_rows += group.width
+                            effective_groups.append(("native", group.width))
                     except NotImplementedError:
                         serial_decode_fallback = True
                         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
@@ -1248,6 +1347,8 @@ class Qwen35ParoOneTokenGenerator:
             results = tuple(result_by_request[request_id] for request_id in request_ids_for_step)
             if step_native_rows and step_serial_rows == 0:
                 native_decode_steps += 1
+            if step_exact_hybrid_rows and step_serial_rows == 0:
+                exact_hybrid_decode_steps += 1
             if len(effective_groups) > 1:
                 partitioned_decode_steps += 1
             signature = "+".join(f"{mode}:{width}" for mode, width in effective_groups)
@@ -1268,9 +1369,15 @@ class Qwen35ParoOneTokenGenerator:
             decode_steps += 1
 
         native_decode_complete = decode_steps > 0 and native_decode_steps == decode_steps and not serial_decode_fallback
+        exact_hybrid_decode_complete = (
+            exact_hybrid_c2
+            and decode_steps > 0
+            and exact_hybrid_decode_steps == decode_steps
+            and not serial_decode_fallback
+        )
         batch_execution = session.batch_execution_metadata(
             scheduler_owned=True,
-            native_decode=native_decode_complete,
+            native_decode=native_decode_complete or exact_hybrid_decode_complete,
         )
         batch_execution_payload = (
             batch_execution.to_json_dict()
@@ -1286,9 +1393,15 @@ class Qwen35ParoOneTokenGenerator:
             "batch_decode_steps": float(decode_steps),
             "batch_native_decode_steps": float(native_decode_steps),
             "batch_native_decode_group_calls": float(native_decode_group_calls),
+            "batch_exact_hybrid_decode_steps": float(exact_hybrid_decode_steps),
+            "batch_exact_hybrid_decode_group_calls": float(exact_hybrid_decode_group_calls),
             "batch_serial_decode_rows": float(serial_decode_row_calls),
         }
-        if partitioned_decode_steps:
+        if exact_hybrid_c2 and partitioned_decode_steps:
+            execution_path = "scheduler_native_packed_prefill_exact_hybrid_partitioned_decode"
+        elif exact_hybrid_decode_complete:
+            execution_path = "scheduler_native_packed_prefill_exact_hybrid_decode"
+        elif partitioned_decode_steps:
             execution_path = "scheduler_native_packed_prefill_partitioned_decode"
         elif native_decode_complete:
             execution_path = "scheduler_native_packed_prefill_native_decode"
@@ -1321,6 +1434,14 @@ class Qwen35ParoOneTokenGenerator:
             ),
             "batch_execution": batch_execution_payload,
         }
+        if exact_hybrid_c2:
+            self.last_batch_generation.update(
+                {
+                    "exact_hybrid_c2": True,
+                    "exact_hybrid_decode_steps": exact_hybrid_decode_steps,
+                    "exact_hybrid_decode_group_calls": exact_hybrid_decode_group_calls,
+                }
+            )
         self.last_batch_generation["scheduler_token_chunks"] = _batch_scheduler_token_chunks(
             request_ids,
             prompt_rows_by_request,
