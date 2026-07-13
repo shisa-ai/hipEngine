@@ -153677,3 +153677,68 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `py_compile`, suite CLI help, `git diff --check`, and the independent 500K
   E4M3FN bitwise cross-check pass. No GPU measurement or native format was
   attempted in this design unit.
+
+## 2026-07-13 — Identify a mild 256 Ki asymmetric INT8 candidate
+
+- Ran the clean nine-row S1 host-fidelity matrix on the W7900 at commit
+  `e463083e`, exact Q4_K_M fingerprint
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`,
+  and canonical prompt-suite SHA
+  `fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a`.
+  Command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3
+  scripts/qwen35_gguf_kv_asymmetric_suite.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100
+  --prompt-length 512 --decode-steps 8 --sample-tokens 128
+  --target-context-tokens 262400 --scale-dtype fp16 --kl-threshold 0.05
+  --top1-threshold 0.90 --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --attn-aotriton-min-tokens 512
+  --wall-time-budget-seconds 1200 --json
+  /tmp/hipengine-kv-asymmetric-20260713/s1-512-d8.json`. S1 completed in
+  `263.070 s`; five rows passed all ten natural/category prompts (including
+  four heldouts) plus `mixed_v1`: all three INT8-K/BF16-V rows, tail-four
+  Hadamard-group32 INT8 K/V, and tail-four E4M3 K/V. Plain tail-four
+  per-head/group32 each missed one top-1 on `mixed_ja_en_translate`; all-layer
+  E4M3-K/BF16-V failed `general_ja_plan`.
+- Transferred only those five S1-qualified rows together to 4K/16 with the same
+  suite. Command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3
+  scripts/qwen35_gguf_kv_asymmetric_suite.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100
+  --prompt-length 4096 --decode-steps 16 --sample-tokens 128
+  --target-context-tokens 262400 --candidates
+  key_int8_value_bf16,key_group32_value_bf16,key_hadamard_group32_value_bf16,tail4_hadamard_group32,tail4_fp8_e4m3
+  --scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.90
+  --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --attn-aotriton-min-tokens 512
+  --wall-time-budget-seconds 1800 --json
+  /tmp/hipengine-kv-asymmetric-20260713/s2-4096-d16.json`. S2 completed in
+  `628.450 s`. All-layer K-only rows passed all ten natural prompts but failed
+  `mixed_v1` at `0.31984-0.32989` mean KL and `88.24%` top-1.
+- The two selective-layer rows passed every S2 scope. Tail-four
+  Hadamard-group32 INT8 K/V reached aggregate mean/max KL
+  `0.0001226466/0.004491313` and `100%` top-1; tail-four E4M3 reached
+  `0.0007896465/0.04564691` and `100%`. INT8 therefore has `6.438x` lower mean
+  KL than FP8 here despite FP8's dynamic range. This is evidence that preserving
+  the six sensitive full-attention layers matters more than choosing floating
+  versus integer eight-bit storage. On RDNA3, INT8 is also the hardware-relevant
+  path; E4M3 remains a host storage-quality comparator with no speed claim.
+- Re-ran the best all-layer K-only boundary plus both finalists at exact 4K/16.
+  All candidate summaries and every one of the 11 per-prompt logit gates matched
+  exactly. Raw SHA-256 values are `031101f8...` (S1), `e28ecc8b...` (S2), and
+  `6ed7723c...` (reproduction); full hashes and exact commands are retained in
+  `benchmarks/results/2026-07-13-w7900-gguf-asymmetric-kv-mild-256ki-screen.json`.
+- Capacity remains a projection, not a physical/native claim. At 262,400 rows,
+  tail-four Hadamard group32 is `4.066467 GiB` KV, 18.75% below BF16, and
+  projects `23.621986 GiB` whole-card peak / `0.362389 GiB` margin from the
+  physical 208 Ki W4-PARO anchor. The selected native target is BF16 K/V on
+  full-attention layers `3,7,11,15,19,23` and Hadamard-group32 INT8 K/V only on
+  `27,31,35,39`. No native cache, direct 256 Ki run, throughput result, or
+  supported-context change has been made.
+- Publication validation: 24 focused tests pass; Ruff, `py_compile`, JSON parse,
+  `git diff --check`, benchmark link checks, and README export sync pass. Next
+  gate is a native PARO implementation with an unfused BF16 fallback, CPU
+  reference and profiler proof, this full multi-prompt suite, native speed, and
+  physical RX 7900 XTX 256 Ki capacity validation.

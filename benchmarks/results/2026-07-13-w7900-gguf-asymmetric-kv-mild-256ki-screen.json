@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_asymmetric_kv_mild_256ki_fidelity_screen",
+  "date": "2026-07-13",
+  "title": "W7900 multi-prompt mild 256 Ki asymmetric INT8/FP8 KV fidelity screen",
+  "status": "tail4_hadamard_int8_candidate_identified_native_unimplemented",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "capacity_projection_only": true,
+  "decision": {
+    "winner": "tail4_hadamard_group32",
+    "summary": "Keep the first six of ten full-attention layers in BF16 and use Hadamard-group32 INT8 K/V only for full-attention layers 27,31,35,39. This row passes every 512/8 and 4096/16 natural, heldout, category, and mixed prompt gate and reproduces exactly at S2. It has 6.44x lower aggregate S2 mean KL than tail-four E4M3 while being the hardware-relevant codec on RDNA3.",
+    "winner_s2_mean_kl": 0.00012264659572146051,
+    "winner_s2_max_kl": 0.004491312950505682,
+    "winner_s2_top1_agreement": 1.0,
+    "fp8_s2_mean_kl": 0.0007896464879897204,
+    "fp8_to_int8_mean_kl_ratio": 6.4383889609383536,
+    "full_attention_layer_ids": [3, 7, 11, 15, 19, 23, 27, 31, 35, 39],
+    "preserved_bf16_layer_ids": [3, 7, 11, 15, 19, 23],
+    "quantized_tail_layer_ids": [27, 31, 35, 39],
+    "native_kernel_implemented": false,
+    "physical_256ki_run_completed": false,
+    "supported_kv_status_changed": false,
+    "next_gate": "Implement a native PARO tail-four Hadamard-group32 INT8 storage/read path with BF16 fallback; then run CPU-reference correctness, kernel trace, exact multi-prompt fidelity, native speed, and physical RX 7900 XTX 256 Ki capacity gates."
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "weight_format": "GGUF Q4_K_M",
+    "kv_reference": "BF16",
+    "full_attention_layers": 10,
+    "full_attention_layer_ids": [3, 7, 11, 15, 19, 23, 27, 31, 35, 39],
+    "kv_heads": 2,
+    "head_dim": 256,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    }
+  },
+  "hardware": {
+    "fidelity_screen_gpu": "AMD Radeon Pro W7900",
+    "fidelity_screen_device_index": 0,
+    "capacity_target_gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "rocm_version": "7.2.4",
+    "hipcc_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "rdna3_fp8_qualification": "E4M3 is host-emulated storage-fidelity evidence only. gfx1100 has no native FP8 matrix or conversion path; no FP8 speed claim is made."
+  },
+  "provenance": {
+    "harness": "scripts/qwen35_gguf_kv_asymmetric_suite.py",
+    "representation_math_source": "scripts/qwen35_paro_kv_format_ablation.py",
+    "hipengine_commit": "e463083e0e9af0ba9f7598811919e76558bcc0b3",
+    "git_branch": "kv-int8-accuracy",
+    "source_clean_all_runs": true,
+    "prompt_suite_path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "natural_prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "heldout_prompt_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "includes_mixed_v1": true
+  },
+  "protocol": {
+    "comparison": "Same-weight GGUF BF16-reference-token matched context with host-emulated candidate storage reconstructed to BF16 before attention.",
+    "candidate_selection": "S1 runs all nine fixed candidates across the complete 11-case suite at 512/8. Only candidates passing every prompt plus the projected >=0.25 GiB capacity margin advance together to S2 at 4096/16.",
+    "natural_prompt_construction": "Exact Qwen chat envelope; deterministic rotation/repetition of the other nine committed prompts; selected prompt preserved in full as final user query.",
+    "prompt_cases": 11,
+    "natural_prompts": 10,
+    "heldout_prompts": 4,
+    "mixed_control": "mixed_v1",
+    "sample_tokens_per_prompt": 128,
+    "gate": {
+      "kl_mean_max_per_prompt": 0.05,
+      "top1_agreement_min_per_prompt": 0.9,
+      "transfer_rule": "Every natural full/train/heldout/category row and mixed_v1 must pass, and the physical-card projection must retain at least 0.25 GiB headroom."
+    },
+    "target_memory": {
+      "nominal_prompt_tokens": 262144,
+      "capacity_guard_rows": 256,
+      "retained_rows": 262400,
+      "bf16_reference_bytes": 5373952000,
+      "maximum_kv_bytes_for_operational_margin": 4487012352,
+      "capacity_model": {
+        "target_runtime": "hipEngine Qwen3.6-35B-A3B W4-PARO on RX 7900 XTX low-memory profile",
+        "source_artifact": "benchmarks/results/2026-07-13-gfx1100-paro-bf16-context-frontier.json",
+        "device_capacity_bytes": 25753026560,
+        "anchor_prompt_tokens": 212992,
+        "anchor_retained_rows": 213248,
+        "anchor_peak_bytes": 25364897792,
+        "anchor_kv_bytes": 4367319040,
+        "minimum_headroom_bytes": 268435456
+      }
+    },
+    "limitations": [
+      "Host representation emulation only; no native packed cache or throughput measurement.",
+      "The 256 Ki whole-device margin is projected from the measured W4-PARO 208 Ki physical-card non-KV anchor, not directly measured for GGUF or a native mixed cache.",
+      "The current decode row attends in BF16 and is round-tripped only afterward.",
+      "Passing this screen identifies a native implementation candidate; it does not make INT8, FP8, or 256 Ki context supported."
+    ]
+  },
+  "commands": {
+    "environment": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100",
+    "s1": "python3 scripts/qwen35_gguf_kv_asymmetric_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100 --prompt-length 512 --decode-steps 8 --sample-tokens 128 --target-context-tokens 262400 --scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --wall-time-budget-seconds 1200 --json /tmp/hipengine-kv-asymmetric-20260713/s1-512-d8.json",
+    "s2": "python3 scripts/qwen35_gguf_kv_asymmetric_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100 --prompt-length 4096 --decode-steps 16 --sample-tokens 128 --target-context-tokens 262400 --candidates key_int8_value_bf16,key_group32_value_bf16,key_hadamard_group32_value_bf16,tail4_hadamard_group32,tail4_fp8_e4m3 --scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --wall-time-budget-seconds 1800 --json /tmp/hipengine-kv-asymmetric-20260713/s2-4096-d16.json",
+    "s2_reproduction": "python3 scripts/qwen35_gguf_kv_asymmetric_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100 --prompt-length 4096 --decode-steps 16 --sample-tokens 128 --target-context-tokens 262400 --candidates key_group32_value_bf16,tail4_hadamard_group32,tail4_fp8_e4m3 --scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --wall-time-budget-seconds 1800 --json /tmp/hipengine-kv-asymmetric-20260713/s2-repro-4096-d16.json"
+  },
+  "s1_512_d8": {
+    "elapsed_seconds": 263.0700818750047,
+    "positions_per_prompt": 9,
+    "transfer_eligible_candidates": [
+      "key_int8_value_bf16",
+      "key_group32_value_bf16",
+      "key_hadamard_group32_value_bf16",
+      "tail4_hadamard_group32",
+      "tail4_fp8_e4m3"
+    ],
+    "candidates": [
+      {"name": "baseline_max", "mean_kl": 0.0004515160777478553, "max_kl": 0.009980274988365094, "top1_agreement": 0.98989898989899, "prompt_gates_passed": 10, "first_failed_prompt": "mixed_ja_en_translate", "transfer_eligible": false},
+      {"name": "key_int8_value_bf16", "mean_kl": 0.0007719161260111077, "max_kl": 0.031484324370816934, "top1_agreement": 1.0, "prompt_gates_passed": 11, "first_failed_prompt": null, "transfer_eligible": true},
+      {"name": "key_group32_value_bf16", "mean_kl": 0.0006367589318453801, "max_kl": 0.015897692883236024, "top1_agreement": 1.0, "prompt_gates_passed": 11, "first_failed_prompt": null, "transfer_eligible": true},
+      {"name": "key_hadamard_group32_value_bf16", "mean_kl": 0.0013820461039338128, "max_kl": 0.025046905270248426, "top1_agreement": 1.0, "prompt_gates_passed": 11, "first_failed_prompt": null, "transfer_eligible": true},
+      {"name": "key_fp8_e4m3_value_bf16", "mean_kl": 0.0019738346524862463, "max_kl": 0.05503951036140409, "top1_agreement": 0.98989898989899, "prompt_gates_passed": 10, "first_failed_prompt": "general_ja_plan", "transfer_eligible": false},
+      {"name": "tail4_int8_per_head", "mean_kl": 0.00018654545524361075, "max_kl": 0.00875198166353198, "top1_agreement": 0.98989898989899, "prompt_gates_passed": 10, "first_failed_prompt": "mixed_ja_en_translate", "transfer_eligible": false},
+      {"name": "tail4_group32", "mean_kl": 0.00018028756072797458, "max_kl": 0.008693425784514933, "top1_agreement": 0.98989898989899, "prompt_gates_passed": 10, "first_failed_prompt": "mixed_ja_en_translate", "transfer_eligible": false},
+      {"name": "tail4_hadamard_group32", "mean_kl": 0.00018380845220190614, "max_kl": 0.008800231809167872, "top1_agreement": 1.0, "prompt_gates_passed": 11, "first_failed_prompt": null, "transfer_eligible": true},
+      {"name": "tail4_fp8_e4m3", "mean_kl": 0.0006147283758749728, "max_kl": 0.021610037287067133, "top1_agreement": 1.0, "prompt_gates_passed": 11, "first_failed_prompt": null, "transfer_eligible": true}
+    ]
+  },
+  "s2_4096_d16": {
+    "elapsed_seconds": 628.450387208999,
+    "positions_per_prompt": 17,
+    "transfer_eligible_candidates": ["tail4_hadamard_group32", "tail4_fp8_e4m3"],
+    "candidates": [
+      {
+        "name": "key_int8_value_bf16",
+        "target_context_bytes": 4040960000,
+        "reduction_vs_bf16": 0.248046875,
+        "projected_margin_gib": 0.6654186248779297,
+        "all_natural_category_gates_passed": true,
+        "natural": {"mean_kl": 0.0006690136824092426, "max_kl": 0.01702271697188753, "top1_agreement": 0.9941176470588236},
+        "heldout": {"mean_kl": 0.0006077985276295521, "max_kl": 0.01702271697188753, "top1_agreement": 1.0},
+        "mixed_v1": {"mean_kl": 0.3294733895391236, "max_kl": 5.304251799406505, "top1_agreement": 0.8823529411764706},
+        "transfer_eligible": false
+      },
+      {
+        "name": "key_group32_value_bf16",
+        "target_context_bytes": 4114432000,
+        "reduction_vs_bf16": 0.234375,
+        "projected_margin_gib": 0.5969924926757812,
+        "all_natural_category_gates_passed": true,
+        "natural": {"mean_kl": 0.0004640955674169351, "max_kl": 0.010340234942637822, "top1_agreement": 0.9882352941176471},
+        "heldout": {"mean_kl": 0.0004250138154289224, "max_kl": 0.007105981691404009, "top1_agreement": 0.9852941176470589},
+        "mixed_v1": {"mean_kl": 0.3198422389198617, "max_kl": 5.101826244540393, "top1_agreement": 0.8823529411764706},
+        "transfer_eligible": false
+      },
+      {
+        "name": "key_hadamard_group32_value_bf16",
+        "target_context_bytes": 4114432000,
+        "reduction_vs_bf16": 0.234375,
+        "projected_margin_gib": 0.5969924926757812,
+        "all_natural_category_gates_passed": true,
+        "natural": {"mean_kl": 0.0006128789013785057, "max_kl": 0.03137012366182565, "top1_agreement": 0.9882352941176471},
+        "heldout": {"mean_kl": 0.0005214712663384858, "max_kl": 0.011309031885944721, "top1_agreement": 0.9852941176470589},
+        "mixed_v1": {"mean_kl": 0.3298941703813774, "max_kl": 5.303536062520031, "top1_agreement": 0.8823529411764706},
+        "transfer_eligible": false
+      },
+      {
+        "name": "tail4_hadamard_group32",
+        "format": "BF16 K/V on full-attention layers 3,7,11,15,19,23; Hadamard-group32 INT8 K/V with FP16 scales on layers 27,31,35,39",
+        "target_context_bytes": 4366336000,
+        "reduction_vs_bf16": 0.1875,
+        "projected_peak_gib": 23.621986389160156,
+        "projected_margin_gib": 0.36238861083984375,
+        "all": {"mean_kl": 0.00012264659572146051, "max_kl": 0.004491312950505682, "top1_agreement": 1.0},
+        "natural": {"mean_kl": 0.00011736337756661408, "max_kl": 0.004491312950505682, "top1_agreement": 1.0},
+        "train": {"mean_kl": 0.00009046798244794885, "max_kl": 0.004491312950505682, "top1_agreement": 1.0},
+        "heldout": {"mean_kl": 0.00015770647024461188, "max_kl": 0.0037716517318911852, "top1_agreement": 1.0},
+        "mixed_v1": {"mean_kl": 0.00017547877726992493, "max_kl": 0.0011291292651908359, "top1_agreement": 1.0},
+        "categories": {
+          "code": {"mean_kl": 0.000047016822369988376, "max_kl": 0.0008413019047479942, "top1_agreement": 1.0},
+          "general_en": {"mean_kl": 0.000044748163454463146, "max_kl": 0.0005940589314824968, "top1_agreement": 1.0},
+          "general_ja": {"mean_kl": 0.0001570370822886302, "max_kl": 0.0037716517318911852, "top1_agreement": 1.0},
+          "mixed_ja_en": {"mean_kl": 0.0002909979973500002, "max_kl": 0.004491312950505682, "top1_agreement": 1.0}
+        },
+        "transfer_eligible": true
+      },
+      {
+        "name": "tail4_fp8_e4m3",
+        "format": "BF16 K/V on full-attention layers 3,7,11,15,19,23; raw saturating OCP E4M3FN K/V on layers 27,31,35,39",
+        "target_context_bytes": 4299161600,
+        "reduction_vs_bf16": 0.19999999999999996,
+        "projected_peak_gib": 23.559425354003906,
+        "projected_margin_gib": 0.42494964599609375,
+        "all": {"mean_kl": 0.0007896464879897204, "max_kl": 0.04564690562996656, "top1_agreement": 1.0},
+        "natural": {"mean_kl": 0.0008511200721471523, "max_kl": 0.04564690562996656, "top1_agreement": 1.0},
+        "train": {"mean_kl": 0.0011610824643288806, "max_kl": 0.04564690562996656, "top1_agreement": 1.0},
+        "heldout": {"mean_kl": 0.0003861764838745599, "max_kl": 0.007675979309616433, "top1_agreement": 1.0},
+        "mixed_v1": {"mean_kl": 0.000174910646415402, "max_kl": 0.0011410965059595213, "top1_agreement": 1.0},
+        "categories": {
+          "code": {"mean_kl": 0.000544080192510676, "max_kl": 0.03192549004090261, "top1_agreement": 1.0},
+          "general_en": {"mean_kl": 0.0005479507560766544, "max_kl": 0.010926721850898307, "top1_agreement": 1.0},
+          "general_ja": {"mean_kl": 0.0008211965677533838, "max_kl": 0.007675979309616433, "top1_agreement": 1.0},
+          "mixed_ja_en": {"mean_kl": 0.0017982926518843713, "max_kl": 0.04564690562996656, "top1_agreement": 1.0}
+        },
+        "transfer_eligible": true
+      }
+    ]
+  },
+  "s2_reproduction": {
+    "elapsed_seconds": 437.7039977880049,
+    "candidates": ["key_group32_value_bf16", "tail4_hadamard_group32", "tail4_fp8_e4m3"],
+    "candidate_summary_exact": true,
+    "all_11_prompt_logit_gates_exact": true,
+    "transfer_eligible_candidates": ["tail4_hadamard_group32", "tail4_fp8_e4m3"]
+  },
+  "raw_diagnostics": [
+    {"path": "/tmp/hipengine-kv-asymmetric-20260713/s1-512-d8.json", "sha256": "031101f89a7fd12856e68f85fe79d4bbb691bb0a0d51b6f855874b0d401e2c3d", "size_bytes": 649049},
+    {"path": "/tmp/hipengine-kv-asymmetric-20260713/s2-4096-d16.json", "sha256": "e28ecc8b6fc0ce24cccdb8874a2e542a09b9c3427db2bc10143696d66d7ec5", "size_bytes": 514196},
+    {"path": "/tmp/hipengine-kv-asymmetric-20260713/s2-repro-4096-d16.json", "sha256": "6ed7723c5517f54fba4cbc68edfe1dfb18be9731f07c77b6ad62f5beb7dbf9d0", "size_bytes": 317728}
+  ],
+  "validation": {
+    "finite_logits_all_rows": true,
+    "source_clean_all_runs": true,
+    "json_parse": "passed",
+    "unit_tests": "python3 -m pytest -q tests/test_qwen35_gguf_kv_asymmetric_suite.py tests/test_qwen35_gguf_kv_format_ablation.py tests/test_qwen35_paro_kv_format_ablation.py --tb=short",
+    "unit_tests_passed": 24,
+    "ruff": "passed",
+    "py_compile": "passed",
+    "readme_sync_check": "passed"
+  }
+}
