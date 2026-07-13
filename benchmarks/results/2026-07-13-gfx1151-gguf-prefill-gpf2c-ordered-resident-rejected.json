@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_candidate",
+  "status": "rejected",
+  "performance_claim": false,
+  "candidate": "GPF-2C register-resident ordered wave32 GDN prefill",
+  "conclusion": "Register residency preserves byte-exact fused arithmetic and recovers most of the non-resident wave32 loss, but the ordered shuffle reconstruction leaves recurrence and full prefill slower than fused at every focused context.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "control_commit": "ddb3f27d1ab169518c24ccbbe126bf0bac3029dc",
+    "candidate_base_commit": "cf3e82506a9a672f0b0ea33f25ddfa9ebdc6b0f6",
+    "candidate_dirty": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workloads": ["512/128", "1K/128", "4K/128"],
+    "prompt_source": "repeated token 9707",
+    "control": "clean detached worktree; two discarded warmups; five measured repetitions",
+    "candidate": "one discarded warmup; three measured repetitions per workload",
+    "common_flags": [
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode=bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode"
+    ],
+    "selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wave32",
+    "default_changed": false
+  },
+  "correctness": {
+    "change_scope": "State lifetime only: four FP32 recurrent-state rows per lane are loaded once before the token loop and stored once after it; ordered shuffles, explicit FMA sites, token order, and output expression are unchanged.",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py",
+    "focused_result": "46 passed",
+    "exact_matrix": "plain and segment wave32 recurrence output plus FP32 resident state are byte-exact to fused",
+    "timed_final_token_ids": {
+      "512/128": [9707, 9707, 9707],
+      "1K/128": [9707, 9707, 9707],
+      "4K/128": [9707, 9707, 9707]
+    }
+  },
+  "measurements": {
+    "512/128": {
+      "control_prefill_tok_s": 423.70846235388416,
+      "candidate_prefill_tok_s": 368.70229068665367,
+      "prefill_delta_pct": -12.982080027773668,
+      "control_decode_tok_s": 49.11579674450292,
+      "candidate_decode_tok_s": 48.96585989881601,
+      "decode_delta_pct": -0.3052721438417838,
+      "candidate_range": [368.6109949394236, 368.79968920331095]
+    },
+    "1K/128": {
+      "control_prefill_tok_s": 448.6940367628607,
+      "candidate_prefill_tok_s": 383.2917389120796,
+      "prefill_delta_pct": -14.576145990847412,
+      "control_decode_tok_s": 51.657443106756936,
+      "candidate_decode_tok_s": 51.53347293813334,
+      "decode_delta_pct": -0.239985104116347,
+      "candidate_range": [383.27104171660136, 383.3268662830446]
+    },
+    "4K/128": {
+      "control_prefill_tok_s": 410.02287664315725,
+      "candidate_prefill_tok_s": 354.6715078203824,
+      "prefill_delta_pct": -13.49958062728952,
+      "control_decode_tok_s": 52.50465089682453,
+      "candidate_decode_tok_s": 52.36177178458009,
+      "decode_delta_pct": -0.27212658270064916,
+      "candidate_range": [354.55609230833915, 354.82424347703795]
+    },
+    "nonresident_exact_wave32_512_prefill_tok_s": 128.879,
+    "resident_recovery_vs_nonresident_pct": 186.08407163824495,
+    "sources": {
+      "control": "/tmp/gpf-m0-baseline-512-1k-4k.json (sha256 9dc28fa4a0d2b259ea4bd470988adf80fb88a7b2222b9b4a2a6f155425dfe499)",
+      "candidate_512": "/tmp/gpf-2c-ordered-resident-screen-512.json (sha256 55b0cf00c979d8cf27508febd423333e5565900e59d4b652aa76fd91397db3a7)",
+      "candidate_1k_4k": "/tmp/gpf-2c-ordered-resident-screen-1k-4k.json (sha256 87778d7e80b2078732db6870d52ff22aa04e67353d37cedc52fababdc7fd204c)"
+    }
+  },
+  "profile": {
+    "cache_clean": true,
+    "tokens": 512,
+    "total_kernel_ms": 1398.998655,
+    "recurrent_ms": 928.005716,
+    "recurrent_dispatches": 30,
+    "recurrent_share_pct": 66.33356741861914,
+    "recurrent_delta_vs_fused_pct": 16.85965796479312,
+    "prepare_ms": 25.798848,
+    "rmsnorm_gate_ms": 9.692823,
+    "workgroup_size": 256,
+    "vgpr_count": 80,
+    "scratch_bytes": 0,
+    "lds_bytes": 0,
+    "source": "/tmp/gpf-2c-rocprof-512-ordered-resident-summary.json (sha256 0d4863bc63ba907b581d552a2c09697290f593dd689df2ab80c2cc4d1ce4e563)"
+  },
+  "lineage": {
+    "external_check": "python3 scripts/check_lineage.py --kind kernel --diff stat could not run because the configured read-only parent /home/lhl/amd-gpu-tuning/nano-vllm-amd is absent",
+    "port": false,
+    "reason": "In-tree state-lifetime scheduling change; no external source copied"
+  },
+  "next_action": "Test an exact LDS-resident value-column tile: one thread retains a value column's serial 0..127 contraction while a 32- or 64-column block keeps recurrent state in LDS across the token loop, avoiding both per-token global state traffic and ordered wave shuffles."
+}

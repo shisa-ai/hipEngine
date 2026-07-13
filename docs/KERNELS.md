@@ -281,9 +281,23 @@ records `qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_kernel`, 30
 dispatches, `61.411 ms` total, workgroup 256, 40 VGPR, zero scratch/LDS. The
 six-case full-model matrix has identical sampled tokens, KL
 `3.48e-6..5.39e-5`, and 100% top-1, but not byte-identical hidden/recurrent
-state. The candidate remains explicit-only pending the numerical-contract and
-generated-trajectory promotion gates; see
+state. The candidate remained explicit while the numerical-contract and
+generated-trajectory gates ran; see
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json`.
+The completed gate rejects the tree as a default because only 3/10 natural
+prompts preserve the complete fused 128-step trajectory.
+
+GPF-2C moves the exact ordered-wave variant's four state rows per lane into
+registers without changing shuffles, explicit FMA sites, token order, or the
+output expression. Plain and segment-aware output plus FP32 state remain byte-
+exact and the 46-test GDN correctness/routing bundle passes. Residency recovers
+512 prefill from the non-resident exact wave's `128.879` to `368.702 tok/s`,
+but fused remains faster at 512/1K/4K by 12.98%/14.58%/13.50%. Its cache-clean
+recurrence is `928.006 ms / 30`, 16.86% slower than fused, with workgroup 256,
+80 VGPR, and no scratch/LDS. Keep `chain_wave32` diagnostic-only. The next
+exact candidate should retain one scalar thread per value column and keep a
+32- or 64-column recurrent-state tile in LDS across the token loop; see
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json`.
 
 ## DFlash / MTP lineage map
 

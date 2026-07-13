@@ -153368,3 +153368,51 @@ graphless decode launch-collapse path without regressing target/serial parity.
   trajectory gate after seeing the failure. `auto` stays fused and
   `chain_wave32_tree` remains a rejected diagnostic. Next is GPF-2C: retain
   exact ordered shuffles while moving four state rows per lane into registers.
+
+## 2026-07-13 - Reject GPF-2C exact ordered register residency
+
+- Kernel preflight reread `docs/KERNELS.md`. The required
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` could not produce
+  a report because the configured read-only parent
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. GPF-2C is an in-tree
+  state-lifetime schedule change; no external source was copied and no parent
+  drift claim is made.
+- Changed only the exact ordered wave32 recurrence state lifetime: every lane
+  loads its four FP32 recurrent-state rows before the serial token loop, updates
+  them in registers, and stores them after the loop. Ordered shuffles, explicit
+  FMA sites, token order, and the output expression are unchanged. No new RED
+  was necessary because this is a performance-only lifetime change and the
+  existing byte-exact plain/segment wave32 tests are the direct regression
+  oracle; the old **128.879 tok/s** non-resident wall is the performance RED.
+- Focused validation passes **46 tests**:
+  `HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD
+  uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py
+  tests/test_qwen35_gguf_gdn_prefill_routing.py`. Plain and segmented wave32
+  output plus FP32 resident state remain byte-for-byte identical to fused.
+- The exact candidate is not fast enough. Against clean fused M0
+  **423.708/448.694/410.023 tok/s**, one discarded warmup plus three measured
+  repetitions produce **368.702/383.292/354.672 tok/s** at 512/1K/4K
+  (**-12.98%/-14.58%/-13.50%**). Decode is
+  **48.966/51.533/52.362 tok/s**, within -0.31%..-0.24% of control, and every
+  measured final ID is `9707`. Full local artifacts:
+  `/tmp/gpf-2c-ordered-resident-screen-512.json` (sha256
+  `55b0cf00c979d8cf27508febd423333e5565900e59d4b652aa76fd91397db3a7`) and
+  `/tmp/gpf-2c-ordered-resident-screen-1k-4k.json` (sha256
+  `87778d7e80b2078732db6870d52ff22aa04e67353d37cedc52fababdc7fd204c`).
+  Residency still recovers 512 by **186.08%** versus the non-resident exact
+  wave, proving that state traffic was one blocker rather than the only one.
+- Cache-clean `rocprofv3 --kernel-trace` after an out-of-profiler cache build
+  records the expected
+  `qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_kernel`: recurrence
+  is **928.006 ms / 30**, **66.33%** of **1398.999 ms** total kernels and
+  **16.86% slower** than fused recurrence. It uses workgroup 256, 80 VGPR, zero
+  scratch, and zero LDS. Prepare/gate add **25.799/9.693 ms**. Summary:
+  `/tmp/gpf-2c-rocprof-512-ordered-resident-summary.json` (sha256
+  `0d4863bc63ba907b581d552a2c09697290f593dd689df2ab80c2cc4d1ce4e563`).
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json`.
+  `auto` remains fused. Next exact candidate is GPF-2D: keep one scalar-exact
+  thread per value column while retaining a 32- or 64-column recurrent-state
+  tile in LDS across the token loop, avoiding both per-token global state
+  traffic and ordered cross-lane reconstruction.

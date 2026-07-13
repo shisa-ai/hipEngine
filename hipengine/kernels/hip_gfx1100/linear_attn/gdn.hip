@@ -1089,7 +1089,9 @@ __global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_segments_kernel(
 // rows are sharded four-per-lane for loads and updates, while lane 0 rebuilds
 // the exact 0..127 contraction order through source-lane shuffles. Keeping the
 // key/state operands separate until lane 0 evaluates the expression preserves
-// the same contraction/FMA opportunity as the scalar exact kernel.
+// the same contraction/FMA opportunity as the scalar exact kernel. Each lane
+// keeps its four state rows in registers across the complete token loop; this
+// changes state lifetime only, not contraction or update order.
 __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_body(
     const float* __restrict__ query_raw,
     const float* __restrict__ key_raw,
@@ -1110,7 +1112,15 @@ __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_
     int lane) {
   constexpr int kWaveWidth = 32;
   constexpr int kHeadKDim = 128;
-  volatile float* recurrent_state_v = recurrent_state;
+  constexpr int kRowsPerLane = kHeadKDim / kWaveWidth;
+  float state_shard[kRowsPerLane];
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    state_shard[row] =
+        recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim];
+  }
+
   for (int64_t token = start; token < end; ++token) {
     const int64_t head_offset = token * num_v_heads + v_head;
     const int64_t qk_base = head_offset * kHeadKDim;
@@ -1123,8 +1133,7 @@ __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_
     for (int state_group = 0; state_group < kHeadKDim; state_group += kWaveWidth) {
       const int idx = state_group + lane;
       const float lane_key = key_raw[qk_base + idx];
-      const float lane_state =
-          recurrent_state_v[state_col + static_cast<int64_t>(idx) * head_v_dim];
+      const float lane_state = state_shard[state_group / kWaveWidth];
 #pragma unroll
       for (int source_lane = 0; source_lane < kWaveWidth; ++source_lane) {
         const float ordered_key = __shfl(lane_key, source_lane, kWaveWidth);
@@ -1147,14 +1156,12 @@ __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_
 #pragma unroll
     for (int state_group = 0; state_group < kHeadKDim; state_group += kWaveWidth) {
       const int idx = state_group + lane;
-      const int64_t state_offset =
-          state_col + static_cast<int64_t>(idx) * head_v_dim;
+      const int row = state_group / kWaveWidth;
       const float q_lane = query_raw[qk_base + idx] * q_scale;
       const float k_lane = key_raw[qk_base + idx] * k_scale;
-      const float decayed_state =
-          recurrent_state_v[state_offset] * decay_value;
+      const float decayed_state = state_shard[row] * decay_value;
       const float next_state = fmaf(k_lane, delta, decayed_state);
-      recurrent_state_v[state_offset] = next_state;
+      state_shard[row] = next_state;
 
 #pragma unroll
       for (int eight = 0; eight < kWaveWidth; eight += 8) {
@@ -1183,6 +1190,13 @@ __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_
     if (lane == 0) {
       out[head_offset * head_v_dim + value_idx] = out_acc;
     }
+  }
+
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim] =
+        state_shard[row];
   }
 }
 
