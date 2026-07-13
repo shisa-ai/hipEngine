@@ -100,6 +100,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_scalar,
 )
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
+from hipengine.runtime.qwen35_paro import AotritonPrefillStreamBridge
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
     linear_state_pair_commit_chunked_i32,
@@ -2146,6 +2147,7 @@ class Qwen35GGUFFullStackRunner:
         sin_table_ptr: int,
         max_positions: int,
         stream: int = 0,
+        aotriton_bridge: AotritonPrefillStreamBridge | None = None,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         allow_aotriton: bool = True,
         paged_max_context_len: int | None = None,
@@ -2343,6 +2345,10 @@ class Qwen35GGUFFullStackRunner:
         if use_aotriton:
             aotriton_library = self._aotriton_prefill_library()
 
+            # Keep pre/post work on the caller stream. Only the high-scratch
+            # AOTriton dispatch moves to the event-linked isolated queue.
+            aotriton_stream = stream
+
             # Convert FP32 query to BF16 for AOTriton
             f32_to_bf16(
                 scratch.full_query.ptr,
@@ -2381,6 +2387,9 @@ class Qwen35GGUFFullStackRunner:
                 (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1),
                 DType.BF16,
             )
+            if aotriton_bridge is not None:
+                aotriton_bridge.wait_for_inputs(runtime, stream)
+                aotriton_stream = aotriton_bridge.stream
             aotriton_mode = _gguf_aotriton_prefill_mode(scratch.start, rows, end)
             if aotriton_mode == "v2":
                 aotriton_attn_fwd_compact_varlen(
@@ -2395,7 +2404,7 @@ class Qwen35GGUFFullStackRunner:
                     max_seqlen_k=end,
                     sm_scale=cfg.key_length ** -0.5,
                     is_causal=True,
-                    stream=stream,
+                    stream=aotriton_stream,
                     library=aotriton_library,
                     runtime=runtime,
                 )
@@ -2413,11 +2422,13 @@ class Qwen35GGUFFullStackRunner:
                     max_seqlen_k=end,
                     sm_scale=cfg.key_length ** -0.5,
                     is_causal=True,
-                    stream=stream,
+                    stream=aotriton_stream,
                     library=aotriton_library,
                     runtime=runtime,
                 )
 
+            if aotriton_bridge is not None:
+                aotriton_bridge.release_output(runtime, stream)
             qwen35_full_attn_gate_mul_bf16_to_bf16(
                 scratch.full_attn_bf16.ptr,
                 scratch.full_gate.ptr,
@@ -6015,6 +6026,8 @@ _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PR
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
+_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
+_GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS = 512
 _GGUF_TOKEN_EMBEDDING_TENSOR = "token_embd.weight"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -6056,6 +6069,20 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if raw is None:
         return default
     return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
+    if int(query_rows) < _GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS:
+        return False
+    if _env_value(_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV) is not None:
+        return _env_flag(_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV, False)
+    return bool(
+        backend_package_capability(
+            backend,
+            "GGUF_AOTRITON_ISOLATED_PREFILL_STREAM",
+            False,
+        )
+    )
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
@@ -7355,6 +7382,9 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _prefill_aotriton_stream: int = field(default=0, init=False)
+    _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
+    _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
@@ -8238,6 +8268,61 @@ class Qwen35GGUFResidentSession:
             )
         return 2 if tokens > 1 and size == 1 else size
 
+    def _ensure_prefill_aotriton_bridge(self) -> AotritonPrefillStreamBridge:
+        runtime = self.runtime or get_hip_runtime()
+        stream = int(getattr(self, "_prefill_aotriton_stream", 0))
+        input_ready = int(getattr(self, "_prefill_aotriton_input_ready_event", 0))
+        output_ready = int(getattr(self, "_prefill_aotriton_output_ready_event", 0))
+        if stream and input_ready and output_ready:
+            return AotritonPrefillStreamBridge(stream, input_ready, output_ready)
+        if stream or input_ready or output_ready:
+            raise RuntimeError("partial GGUF AOTriton prefill stream bridge state")
+
+        new_stream = runtime.stream_create()
+        new_input_ready = 0
+        new_output_ready = 0
+        try:
+            new_input_ready = runtime.event_create()
+            new_output_ready = runtime.event_create()
+        except Exception:
+            if new_output_ready:
+                runtime.event_destroy(new_output_ready)
+            if new_input_ready:
+                runtime.event_destroy(new_input_ready)
+            if new_stream:
+                runtime.stream_destroy(new_stream)
+            raise
+        self._prefill_aotriton_stream = int(new_stream)
+        self._prefill_aotriton_input_ready_event = int(new_input_ready)
+        self._prefill_aotriton_output_ready_event = int(new_output_ready)
+        return AotritonPrefillStreamBridge(new_stream, new_input_ready, new_output_ready)
+
+    def _release_prefill_aotriton_bridge(self) -> None:
+        runtime = self.runtime or get_hip_runtime()
+        output_ready = int(getattr(self, "_prefill_aotriton_output_ready_event", 0))
+        input_ready = int(getattr(self, "_prefill_aotriton_input_ready_event", 0))
+        stream = int(getattr(self, "_prefill_aotriton_stream", 0))
+        if output_ready:
+            runtime.event_destroy(output_ready)
+        if input_ready:
+            runtime.event_destroy(input_ready)
+        if stream:
+            runtime.stream_destroy(stream)
+        self._prefill_aotriton_output_ready_event = 0
+        self._prefill_aotriton_input_ready_event = 0
+        self._prefill_aotriton_stream = 0
+
+    def _prefill_aotriton_bridge_for_rows(
+        self,
+        query_rows: int,
+    ) -> AotritonPrefillStreamBridge | None:
+        if self.runner is None or not _gguf_aotriton_isolated_prefill_stream_applies(
+            self.runner.backend,
+            query_rows,
+        ):
+            return None
+        return self._ensure_prefill_aotriton_bridge()
+
     def _prefill_scratch_rows(self, capacity: int) -> int:
         capacity = int(capacity)
         if capacity <= 0:
@@ -8538,6 +8623,7 @@ class Qwen35GGUFResidentSession:
                                 sin_table_ptr=self.scratch.sin_table_buf.ptr,
                                 max_positions=int(self.scratch.max_positions),
                                 stream=stream,
+                                aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                 expert_sidecar=None,
                             )
                         else:
@@ -8626,6 +8712,7 @@ class Qwen35GGUFResidentSession:
                                     sin_table_ptr=self.scratch.sin_table_buf.ptr,
                                     max_positions=int(self.scratch.max_positions),
                                     stream=stream,
+                                    aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                     expert_sidecar=expert_sidecar,
                                 )
                             else:
@@ -12544,6 +12631,13 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        if (
+            int(getattr(self, "_prefill_aotriton_stream", 0))
+            or int(getattr(self, "_prefill_aotriton_input_ready_event", 0))
+            or int(getattr(self, "_prefill_aotriton_output_ready_event", 0))
+        ):
+            runtime.device_synchronize()
+            self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
         for graph in tuple(self._decode_graphs):
             graph.close()

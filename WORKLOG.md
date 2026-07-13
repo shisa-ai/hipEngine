@@ -154013,3 +154013,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json`.
   It records exact command templates, family data, caveats, and SHA-256 hashes
   for all six retained trace CSVs.
+
+## 2026-07-14 - Implement GPF-4 as an exact default-off GGUF candidate
+
+- RED added three GGUF-specific requirements for AOTriton queue isolation. The
+  published route failed **3/3**: no GGUF stream policy, no bridge parameter on
+  the full-attention runner, and no resident stream/event lifecycle. GREEN
+  reuses `AotritonPrefillStreamBridge`: all query/K/V preparation stays on the
+  caller stream; an input event gates only AOTriton on one lazy nonblocking
+  stream; an output event gates the existing post-attention BF16 operation;
+  close synchronizes and releases the two events plus stream.
+- The implementation is deliberately default-off in this commit. Explicit
+  `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1` selects it on either
+  HIP backend for testing, while no GGUF backend capability promotes it. This
+  leaves gfx1100 and the published gfx1151 route unchanged pending the clean
+  long-context gate.
+- Fresh-process differential correctness is byte-exact at 512 and 4K repeated
+  token `9707`: sampled IDs match, FP32 logits and hidden seed match, and every
+  one of **82** compared parts matches (30 Conv/GDN pairs plus 10 live K/V
+  pairs). Aggregate SHA-256 is
+  `6659d4f8...5eb20622` at 512 and `24eb7b47...94b7370c` at 4K.
+- A same-resident-session off/on interleave measured flat and is invalid for
+  this candidate: the first same-stream baseline warmup permanently
+  contaminates the caller queue, so later isolated legs cannot undo its
+  queue-local state. Fresh processes are required for every timing leg.
+- Fresh-process focus used one discarded warmup plus three measurements per
+  mode/context, cached builds, no decode, and separate right-sized processes:
+  - 512 off **[800.290, 819.834, 821.048]**, median **819.834 tok/s**; on
+    **[809.859, 829.907, 827.678]**, median **827.678 tok/s (+0.96%)**;
+  - 4K off **[744.011, 743.888, 743.990]**, median **743.990 tok/s**; on
+    **[913.956, 912.357, 911.657]**, median **912.357 tok/s (+22.63%)**.
+  IDs are all `9707`; tracked peak is unchanged at 21.478/22.995 GiB.
+- A candidate 4K trace confirms causality: host prefill **5.475 -> 4.617 s**,
+  kernel sum **5396.575 -> 4543.829 ms (-15.80%)**, and convolution
+  **952.870 -> 88.839 ms (-90.68%)** while AOTriton remains flat
+  (**150.316 -> 148.791 ms**). This removes the selected residual rather than
+  shifting it to attention.
+- Validation: focused candidate/backend tests pass **20/20**, adjacent PARO
+  stream policy/lifecycle tests pass **2/2**, targeted Ruff passes (excluding
+  only the runner's pre-existing F401/F841 findings), and `git diff --check`
+  passes. Compact focus artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`.
+  It is explicitly not a performance claim because the candidate was
+  uncommitted. Next validate a clean detached commit at 128K and repeat clean
+  fresh-process 512/4K before adding the gfx1151 capability.
