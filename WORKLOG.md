@@ -153159,3 +153159,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `8/2` bridge smoke on repeated token 9707 passed at mean/max KL
   `0.00057285/0.00075715` and 100% top-1. This tooling enables the requested
   clean same-weight 128K/16 bridge measurement.
+
+## 2026-07-13 — Measure llama.cpp Q8 KV and same-weight GGUF parity at 128K
+
+- Clean hipEngine `31c12a3a` reran llama.cpp build 9648 (`1ebf790c`, exact
+  library hashes retained) on W7900 with Q4_K_M weights, repeated token 9707,
+  and 128K/16 F16-reference-token matched context. Q8_0 K/V passes the aggregate
+  gate at mean/max KL `0.00520759/0.08749123` and 100% top-1. Position 0 carries
+  the max; the 16 teacher-forced decode rows alone average KL `0.00006487` with
+  max `0.00015978`. A separate F16-vs-F16 repeatability control is exactly zero
+  KL with 100% top-1 across all 17 rows.
+- Exported 16,885,780 bytes of versioned F16 reference logits (SHA-256
+  `f62cfa80705cec8b85f4f942499f02311f477f87ab3b5383faeec48114dfab9a`).
+  The same-weight bridge then ran hipEngine GGUF BF16 KV on the exact same GGUF,
+  prompt, and llama.cpp teacher history from a clean tree.
+- The formal all-position cross-engine gate rejects: mean/max KL
+  `0.26605665/4.51480768`, top-1 100%. The discrepancy is localized to the
+  prompt-final bulk-prefill row (KL `4.51480768`); the 16 teacher-forced decode
+  rows average KL `0.00050971`, max `0.00108810`, and retain 100% top-1. This is
+  a cross-engine baseline, not a cache-only comparison: F16/BF16 storage and
+  implementation arithmetic differ. It also shows that the within-llama Q8
+  result cannot be used as a direct numerical oracle for PARO INT8.
+- Diagnostic wall only: hipEngine prefill `268.386s`, decode `0.505s`; no speed
+  claim. Retained artifact:
+  `benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json`.
+- Expanded GitHub issue #4 with the memory-vs-usability problem, matched-context
+  protocol, ablation transfer gates, llama.cpp calibration, functional blocker,
+  promotion criteria, and current decision: https://github.com/shisa-ai/hipEngine/issues/4
