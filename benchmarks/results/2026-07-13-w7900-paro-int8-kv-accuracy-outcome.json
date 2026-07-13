@@ -1,0 +1,126 @@
+{
+  "bounded_task_quality": {
+    "candidate_score": 0.0,
+    "categories": [
+      "retrieval",
+      "multihop",
+      "aggregation",
+      "long_doc",
+      "code"
+    ],
+    "reference_score": 0.0,
+    "source_artifact": "benchmarks/results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json",
+    "status": "reference_unscorable"
+  },
+  "capacity": {
+    "capacity_gate_under_24gib": true,
+    "decode_tokens": 128,
+    "diagnostic_throughput": {
+      "prefill_tok_s": 631.4567447990488,
+      "warmed_decode_tok_s": 40.00786459602483
+    },
+    "generated_preview_token_ids": [
+      58054,
+      292
+    ],
+    "kv_memory_audit_pass": true,
+    "prefill_block_table_bytes": 16793600,
+    "prefill_block_table_capacity_rows": 4096,
+    "prompt_tokens": 262144,
+    "retained_kv_payload_bytes": 2686976000,
+    "retained_kv_scale_bytes": 20992000,
+    "retained_kv_total_bytes": 2707968000,
+    "sampled_hip_peak_gib": 21.041015625,
+    "tracked_24gib_margin_gib": 1.028652649372816,
+    "tracked_peak_allocated_bytes": 24665296404,
+    "tracked_peak_allocated_gib": 22.971347350627184
+  },
+  "capacity_claim": true,
+  "capacity_delta_vs_2026_07_12": {
+    "decode_percent_delta": -0.1445778893935823,
+    "decode_tok_s_new": 40.00786459602483,
+    "decode_tok_s_old": 40.06579087083473,
+    "interpretation": "0.9858 GiB tracked peak reclaimed; one-shot throughput deltas are diagnostic/noise-level.",
+    "prefill_percent_delta": -0.21807947661339755,
+    "prefill_tok_s_new": 631.4567447990488,
+    "prefill_tok_s_old": 632.8368320502007,
+    "prior_artifact": "benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json",
+    "tracked_peak_bytes_delta": -1058542100,
+    "tracked_peak_bytes_new": 24665296404,
+    "tracked_peak_bytes_old": 25723838504,
+    "tracked_peak_gib_new": 22.971347350627184,
+    "tracked_peak_gib_old": 23.95719150453806,
+    "tracked_peak_percent_delta": -4.115023890526293
+  },
+  "commands": {
+    "capacity": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 262144 --kv-storage int8_per_token_head --json /tmp/hipengine-final-d6504544-capacity-256k-128.json",
+    "quality": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_int8_kv_quality_sweep.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompt-lengths 128K --decode-steps 16 --token-id 9707 --max-layers 40 --comparison-mode matched_context --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-final-d6504544-int8-quality-128k-16.json"
+  },
+  "date": "2026-07-13",
+  "fidelity_search": {
+    "format_artifact": "benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json",
+    "policy_artifact": "benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json",
+    "result": "No clipped, groupwise, K/V-mixed, BF16-layer/head, or sink/recent residual candidate passed both gates at 4K within the reclaimed budget. No runtime candidate was implemented."
+  },
+  "kind": "w7900_paro_int8_kv_accuracy_outcome",
+  "matched_context_quality": {
+    "first_top1_mismatch": {
+      "candidate": 173581,
+      "index": 3,
+      "reference": 471
+    },
+    "max_kl": 4.973818720956827,
+    "mean_kl": 0.8512848774989155,
+    "memory_audit_pass": true,
+    "passed": false,
+    "top1_agreement": 0.4117647058823529,
+    "workload": "128K/16"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "candidate_kv": "int8_per_token_head",
+    "capacity_workload": "256K/128 with 4 warmup decode tokens",
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "prompt_source": "token 9707 repeated",
+    "quality_thresholds": {
+      "kl_mean_max": 0.05,
+      "top1_agreement_min": 0.9
+    },
+    "quality_workload": "128K/16 BF16-reference-token matched context",
+    "quant": "w4_paro",
+    "scale_dtype": "fp16"
+  },
+  "raw_diagnostics": [
+    {
+      "path": "/tmp/hipengine-final-d6504544-capacity-256k-128.json",
+      "sha256": "6d0961924e383e7c549f83b315ef69e255d88302dffe26b98485e1404d5620f6"
+    },
+    {
+      "path": "/tmp/hipengine-final-d6504544-int8-quality-128k-16.json",
+      "sha256": "bdf2c9af79b5ce5520edbdf6f671b478a2c8cb816e055995ae48d5c60b7834b3"
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "backend": "hip_gfx1100",
+    "branch": "kv-int8-accuracy",
+    "device_name": "AMD Radeon Pro W7900",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "d6504544712809e20e099cd4862524b85a5e9136",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "exists": true,
+      "file_count": 18,
+      "path_type": "directory",
+      "sampled_bytes": 16442350,
+      "size_bytes": 20497454388,
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917"
+    },
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "rocm_version": "7.2.4",
+    "source_clean": true,
+    "target_arch": "gfx1100"
+  },
+  "status": "capacity_improved_quality_rejected",
+  "usable_int8_256k_claim": false
+}
