@@ -543,6 +543,10 @@ Only that shape/lifecycle evidence can promote G8.
 
 #### R5-R6: GGUF Prefill And Long-Context Decode
 
+The detailed R5 evidence hierarchy, implementation comparison, exclusions,
+ranked experiments, and exact value-column-tiling design live in
+[`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md).
+
 Do not infer the current prefill bottleneck from the invalid old route. Add a
 clean fused-prefill family profile at 512, 4K, and 128K, including GDN,
 dense/selected MoE, attention, projection, launches, and host wall. If GDN is

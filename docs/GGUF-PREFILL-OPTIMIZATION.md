@@ -1,0 +1,463 @@
+# GGUF Prefill Optimization
+
+Last updated: 2026-07-13.
+
+Status: active evidence and implementation brief for `SOL-R5`. The first code
+candidate is an exact value-column-tiled GDN recurrence. No performance change
+has been implemented or claimed by this document.
+
+Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
+`hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
+replace the separate decode, MTP, concurrency, or long-context memory plans.
+
+## Decision
+
+The current GGUF prefill gap is primarily a linear-attention GDN recurrence
+problem. The production-exact fused kernel launches one 128-thread block per
+value head, keeps the prompt recurrence serial inside that block, and performs
+each 128-element state contraction serially in one thread per value column. In
+the retained W7900 512-token profile, its 30 launches consume **592.336 ms**, or
+**79.51% of traced GPU time** and **72.11% of measured prefill wall**.
+
+The next implementation should therefore:
+
+1. start from the correctness-certified raw-Q/K-plus-scale split path;
+2. split independent value columns into wave-aligned blocks, initially 32 and
+   64 columns per block;
+3. preserve the current token order, eight-wide contraction order, state-update
+   order, and separate post-recurrence RMSNorm+gate;
+4. pass the existing six-case byte-exact GDN matrix; and
+5. beat the fused production path in balanced full-prefill wall at both 512 and
+   4096 rows.
+
+This is a scheduling/layout change, not a math relaxation. A llama.cpp-style
+wave-reduced recurrence is the next diagnostic lane if simple exact tiling is
+insufficient, but it is not promotion-eligible unless it also satisfies the
+current exact state contract or that contract is explicitly changed.
+
+Do not start with AOTriton tuning, generic chunk sweeps, graph capture, compiler
+flags, or another attempt to enable WMMA. Full-attention prefill is only 0.54%
+of the current 512-token GPU profile, WMMA prefill is already enabled, and the
+existing exact split chain is slower than fused.
+
+## Current Gap
+
+The canonical numbers are the current eligible tables in
+[`benchmarks/README.md`](../benchmarks/README.md). GGUF and llama.cpp use the
+same sampled Q4_K_M file fingerprint
+`936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`;
+hipEngine uses BF16 KV and llama.cpp uses F16 KV. PARO uses a different W4
+format, so it is a useful implementation/throughput reference rather than a
+same-quant A/B. Vulkan is at least as fast as llama.cpp HIP at every listed
+prefill shape, so the HIP column below is the conservative same-quant
+comparator.
+
+### W7900 / gfx1100
+
+Clean 2026-07-12 hipEngine `8116c453`, TheRock HIP 7.15; llama.cpp HIP
+`1ebf790cd` build 9648. Values are medians after two discarded hipEngine
+warmups and five measured repetitions per shape.
+
+| Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 644.719 | 2412.320 | 26.7% | 2917.732 | 22.1% |
+| 1K/128 | 676.177 | 2389.670 | 28.3% | 2995.876 | 22.6% |
+| 4K/128 | 677.618 | 2255.080 | 30.0% | 2943.038 | 23.0% |
+| 32K/128 | 628.364 | 1667.640 | 37.7% | 2108.868 | 29.8% |
+| 64K/128 | 572.612 | 1291.820 | 44.3% | 1584.131 | 36.1% |
+| 128K/128 | 484.212 | 891.949 | 54.3% | 1056.252 | 45.8% |
+
+### Radeon 8060S / gfx1151
+
+Clean 2026-07-11 GGUF/llama.cpp refresh at hipEngine `d1231ee0`, TheRock HIP
+7.13; current PARO values are the separately retained HIP 7.15 recovery.
+
+| Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 430.767 | 1061.260 | 40.6% | 1140.101 | 37.8% |
+| 1K/128 | 437.467 | 1043.230 | 41.9% | 1208.343 | 36.2% |
+| 4K/128 | 403.946 | 1009.240 | 40.0% | 1089.031 | 37.1% |
+| 32K/128 | 369.942 | 743.547 | 49.8% | 906.145 | 40.8% |
+| 64K/128 | 334.395 | 573.611 | 58.3% | 716.775 | 46.7% |
+| 128K/128 | 270.601 | 390.441 | 69.3% | 474.641 | 57.0% |
+
+The narrowing ratio at long context does not show that GDN has improved. The
+GDN recurrence grows linearly while attention and other context-dependent work
+grow for every engine, reducing its fraction of total wall.
+
+### Decode Is The Control
+
+Against llama.cpp HIP, GGUF decode is close or faster at short/mid context and
+has a much smaller long-context deficit than prefill:
+
+| GPU | Workload | hipEngine GGUF | llama.cpp HIP | GGUF delta |
+| --- | --- | ---: | ---: | ---: |
+| W7900 / gfx1100 | 512/128 | 89.873 | 80.756 | +11.3% |
+| W7900 / gfx1100 | 4K/128 | 96.551 | 79.768 | +21.0% |
+| W7900 / gfx1100 | 128K/128 | 56.745 | 60.933 | -6.9% |
+| Radeon 8060S / gfx1151 | 512/128 | 49.536 | 50.939 | -2.8% |
+| Radeon 8060S / gfx1151 | 4K/128 | 52.999 | 50.126 | +5.7% |
+| Radeon 8060S / gfx1151 | 128K/128 | 27.862 | 32.114 | -13.2% |
+
+That control makes a model-wide GGUF loader, quant, or HIP runtime explanation
+unlikely. The large failure is specific to bulk prefill execution.
+
+## Evidence Timeline And Validity
+
+The apparent June-to-July regression is real, but the old rate is not a valid
+baseline to restore verbatim.
+
+| Route | Evidence | Correctness status | How to use it |
+| --- | --- | --- | --- |
+| June normalized-Q/K split + K2 recurrence | W7900 512/1K/4K/32K/64K/128K prefill `2109.6/2331.3/2332.8/1799.8/1398.1/971.1 tok/s` | Rejected after the real llama.cpp greeting and token-serial/native state contract exposed a different recurrent result | Opportunity signal only; do not restore or benchmark-game toward it |
+| Fused decode-order recurrence, selected by `937c13d1` | Current production path; July 7 W7900 refresh `654.0/664.6/668.1/635.3/578.7/490.3 tok/s` | Correctness-first baseline | Baseline to beat |
+| Raw-Q/K-plus-scale exact split | [`SOL-G2 exact matrix`](../benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json): 6/6 greeting, 512, 1024/1025, and 4095/4096 cases | Byte-exact sampled token, hidden seed, resident Conv/GDN state; all-layer exact at greeting/512 | Unfused fallback, bisection oracle, and source for a new schedule |
+| Existing exact split wall | [`SOL-G3 interleaved A/B`](../benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json): chain is +5.19% at 512 and +6.70% at 4K | Correct but slower | Retain fused; do not retry the unchanged chain |
+
+The old route proves that substantially more parallel recurrence was possible;
+it does not prove that its normalized-Q/K materialization or reduction tree is
+acceptable. The useful recovery question is how much of that parallelism can
+be recovered while keeping the production arithmetic contract.
+
+## Current Implementation Comparison
+
+### hipEngine GGUF
+
+The production path is in
+[`qwen35_gguf_runner.py`](../hipengine/runtime/qwen35_gguf_runner.py), with GDN
+kernels and registry bindings in
+[`gdn.hip`](../hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip) and
+[`gdn.py`](../hipengine/kernels/hip_gfx1100/linear_attn/gdn.py). The gfx1151
+backend reuses the registered gfx1100 source template under its own backend and
+target-architecture identity.
+
+Thirty linear-attention layers run bulk Q8 projections, convolution, GDN,
+output projection, and MoE. Ten full-attention layers run bulk Q/K/V work,
+RoPE/KV append, AOTriton attention, output projection, and MoE. The relevant
+GDN choices are:
+
+| Path | Launch geometry | Arithmetic | Current role |
+| --- | --- | --- | --- |
+| Fused decode-order | grid `num_v_heads`, block 128 | Serial tokens; one thread owns one value column and serially accumulates all 128 state rows; Q/K normalization and RMSNorm remain in the same head block | Production default |
+| Exact split | prepare grid `tokens × num_v_heads`; recurrence grid `num_v_heads`, block 128; RMSNorm grid `tokens × num_v_heads` | Raw Q/K and scales stay separate; recurrence preserves the fused eight-wide multiplication/accumulation order | Exact fallback; 5.19%-6.70% slower in full wall |
+| Fast K2 split | recurrence grid `num_v_heads × head_v_dim`, block 64 | Two wave32 shards reduce the 128 state rows | PARO path and historical GGUF idea; not GGUF target-exact |
+
+The serial dependency across prompt tokens is real, but value columns are
+independent until RMSNorm. The exact split already creates the synchronization
+boundary needed to schedule those columns across more blocks without changing
+the per-column recurrence.
+
+### PARO
+
+PARO's current implementation in
+[`qwen35_paro.py`](../hipengine/runtime/qwen35_paro.py) uses prepare +
+`qwen35_gdn_prefill_recurrent_k2_f32` + RMSNorm/gate. It assigns an independent
+block to each value column and distributes the 128 state rows over two wave32
+reductions. That is structurally much more parallel than the GGUF fused path,
+but PARO's quant/model contract is different and its reduction order is not an
+oracle for byte-exact GGUF state.
+
+PARO's retained 256-row gfx1151 chunks and isolated AOTriton stream are useful
+scheduling precedents, not direct GDN fixes. They should transfer only after a
+fresh GGUF profile names the same family and shape.
+
+### llama.cpp HIP
+
+The measured llama.cpp HIP binary is `1ebf790cd` build 9648. Its clean GDN
+source file last changed at `e95dae18` and uses grid
+`(H, n_seqs, ceil(S_v / 4))`, block `(physical_wave_size, 4)`: one wave owns a
+value column, each lane keeps a shard of the state rows in registers, and wave
+reductions form the contractions. The token loop remains serial. See
+[`gated_delta_net.cu` at e95dae18](https://github.com/ggerganov/llama.cpp/blob/e95dae18d64ae4471d61a9dc87880a64e0e5c86e/ggml/src/ggml-cuda/gated_delta_net.cu).
+
+This is important structural evidence: llama.cpp does not need a token-parallel
+scan to reach the current reference rates. It exposes state/value-column
+parallelism and uses a different reduction tree. Its source still contains a
+TODO for a chunked prefill kernel, so the current llama.cpp number is not an
+algorithmic ceiling.
+
+The local instrumentation tree defaults fused GDN on and the CUDA/HIP backend
+supports the op, but the retained topline artifact is not a kernel trace. Before
+using this source difference as causal proof, capture a llama.cpp HIP trace and
+confirm the fused GDN kernel is active in the measured prefill phase.
+
+## Current Bottleneck Attribution
+
+The only retained family profile of the production-exact route is
+[`2026-07-07-w7900-gpu0-gguf-q4km-current-gdn-audit.json`](../benchmarks/results/2026-07-07-w7900-gpu0-gguf-q4km-current-gdn-audit.json):
+W7900/gfx1100, hipEngine `b891aa04`, TheRock HIP 7.13, Q4_K_M/BF16 KV,
+512/0, WMMA prefill enabled, cached builds, and one synchronized measurement.
+It measured 623.288 tok/s and 821.450 ms wall.
+
+| Family | Dispatches | GPU ms | GPU share | Whole-wall share |
+| --- | ---: | ---: | ---: | ---: |
+| GDN fused decode-order prefill | 30 | 592.336 | 79.51% | 72.11% |
+| Dense Q8_0 WMMA prefill | 250 | 53.387 | 7.17% | 6.50% |
+| Selected Q4 dual-WMMA MoE | 40 | 39.391 | 5.29% | 4.80% |
+| Selected Q5 WMMA MoE | 37 | 23.691 | 3.18% | 2.88% |
+| Router | 120 | 12.627 | 1.70% | 1.54% |
+| Full-attention prefill | 10 | 4.026 | 0.54% | 0.49% |
+| All traced kernels | 1949 | 744.955 | 100.00% | 90.69% |
+
+The current July 12 W7900 topline uses HIP 7.15 and measures 644.719 tok/s at
+512, so this older profile is a strong route-local diagnosis but not a
+stack-matched candidate baseline. `GPF-M0` below refreshes 512, 4K, and 128K
+before any promotion claim.
+
+Simple whole-wall Amdahl estimates from this profile are steering estimates,
+not performance claims:
+
+| Hypothetical GDN speedup | Predicted whole-prefill speedup |
+| ---: | ---: |
+| 2x | 1.56x |
+| 4x | 2.18x |
+| Infinite / remove all GDN wall | 3.59x |
+
+Even eliminating the measured GDN wall would not quite close the current
+W7900 512 same-quant gap by itself. A large GDN win is necessary, after which a
+new profile should select selected-MoE, dense Q8, or the next actual bucket.
+
+The older June split-route profiles remain useful only as a post-GDN ordering
+hint. At 512 they attributed 27.39% to dense work, 30.41% to selected Q4/Q5
+MoE, 22.66% to GDN, 6.36% to routing, and 1.80% to attention. At 4K the shares
+were 22.51%, 28.99%, 25.69%, 7.03%, and 5.88%. Do not use those percentages to
+select current code without a fresh profile.
+
+## What We Have Ruled Out
+
+| Hypothesis or easy win | Finding | Decision |
+| --- | --- | --- |
+| GGUF/Q4_K_M is inherently this slow | llama.cpp HIP uses the same Q4_K_M file and is 1.44x-3.74x faster across current shapes | Rejected as a sufficient explanation |
+| The whole GGUF runtime is slow | Decode is within +21.0% to -13.2% of llama.cpp HIP at the sampled shapes | Focus on prefill-specific families |
+| WMMA prefill is disabled | The retained command and artifact both report `effective_use_wmma_prefill=true` | No enablement work |
+| Full attention/AOTriton is the 512 bottleneck | Ten full-attention launches are 0.54% of traced GPU time | Revisit only at 4K/128K if a fresh profile activates it |
+| Select the existing exact chain | Balanced full wall loses 5.19% at 512 and 6.70% at 4K | Rejected unchanged; keep as fallback/oracle |
+| Restore the old K2 chain | It changes normalized-Q/K and contraction order and failed target/serial recurrent parity | Invalid under the current contract |
+| Copy PARO's chunk sizes | PARO's wins affect different layer/quant paths; current GGUF GDN remains serial inside each layer launch | No broad threshold sweep |
+| Prefill graph replay or host submission first | Traced kernels account for 90.69% of wall and GDN alone accounts for 72.11% | Kernel geometry first |
+| Blind compiler flags or `__launch_bounds__` | No retained resource/ISA comparison identifies a compiler-only cause; source geometry exposes too few blocks directly | Collect VGPR/scratch/occupancy, then change a named constraint |
+| Token-parallel prefix scan is required | llama.cpp's current faster kernel still loops tokens serially | Recover column/state parallelism first |
+
+## Ranked Work Plan
+
+| Order | ID | Work | Activation / exit |
+| ---: | --- | --- | --- |
+| 0 | `GPF-M0` | Capture current fused family profiles at 512, 4K, and 128K; capture a llama.cpp HIP prefill kernel trace at matching 512/4K | Confirm GDN share and llama fused-GDN dispatch before attributing a candidate win |
+| 1 | `GPF-1` | Value-column-tile the exact split recurrence with 128-thread control and wave-aligned 64/32-thread candidates | Byte-exact G2 matrix; lower recurrent-kernel wall; balanced full prefill wins at both 512 and 4K |
+| 2 | `GPF-1B` | If prepare/materialization erases a GPF-1 kernel win, prepare only Q/K scales, beta, and decay; read raw Q/K/value from `conv_out` in the tiled recurrence | Same arithmetic and G2 gate; reduce prepare + scratch traffic and full wall |
+| 3 | `GPF-2` | Diagnostic llama-style wave-per-column, register-sharded recurrence | Promote only if byte-exact; otherwise requires an explicit numerical-contract decision plus the full model correctness suite |
+| 4 | `GPF-M1` | Reprofile the winning GDN route at 512/4K/128K | Select the next bucket rather than inheriting the June profile |
+| 5 | `GPF-3` | Optimize the selected-MoE and/or dense-Q8 family named by GPF-M1 | Exact family-local A/B and full-wall win; order determined by current profile |
+| 6 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
+| 7 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
+| 8 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
+
+There is no invented minimum full-model percentage. Under the project evidence
+policy, every exact, measured, non-regressive improvement is retainable. The
+512-and-4K requirement prevents selecting a shape-local regression; repetition
+and variance gates decide whether a measured delta is real.
+
+## GPF-1 Design
+
+The existing exact recurrence maps one block to one value head:
+
+```text
+grid  = (num_v_heads)
+block = (128)
+value_idx = threadIdx.x
+```
+
+Change only the value-column mapping:
+
+```text
+grid  = (num_v_heads, ceil(head_v_dim / VALUE_TILE))
+block = (VALUE_TILE)              # first candidates: 64, 32
+value_idx = blockIdx.y * VALUE_TILE + threadIdx.x
+```
+
+Each live thread keeps the current code for every token and every state-row
+term. It reads and updates a disjoint recurrent-state column, so no atomic or
+cross-block recurrence reduction is needed. The existing separate
+RMSNorm+gate kernel runs after all recurrence blocks complete on the stream and
+retains the cross-column normalization boundary.
+
+Why this is the lowest-risk high-impact candidate:
+
+- the total arithmetic and state bytes do not change;
+- the per-column FP operation order does not change;
+- the number of schedulable recurrence blocks grows by 2x at tile 64 or 4x at
+  tile 32;
+- wave32-aligned blocks avoid partial-wave waste;
+- the exact prepare and RMSNorm kernels already exist and are validated; and
+- it directly tests whether coarse one-block-per-head occupancy is the loss.
+
+Expected risks are duplicate/common Q/K reads across column tiles, extra block
+scheduling, and the existing split prepare/RMSNorm/materialization overhead.
+That is why selection is by recurrent-kernel trace plus end-to-end prefill wall,
+not occupancy intuition alone.
+
+If GPF-1 lowers the recurrence kernel but not full wall, GPF-1B should keep the
+same tiled recurrence and remove unnecessary raw-Q/K/value scratch writes and
+reads. It must not replace the exact Q/K scale tree or alter the contraction
+expression.
+
+## Correctness And Promotion Contract
+
+Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
+lineage check. Add the candidate as a registered variant; do not branch on a
+backend or quant string in engine/dispatch code. Keep the exact split chain as
+the required unfused fallback.
+
+### GDN exactness
+
+Extend the existing comparator so `fused`, `chain`, and the named candidate can
+be selected without an untracked source edit. Require:
+
+- 17-token real greeting;
+- repeated token `9707` at 512;
+- 1024 and 1025 around the segment threshold;
+- 4095 and 4096 around the retained 1024-row chunk boundary;
+- exact sampled token, FP32 hidden seed, and all resident Conv/GDN state for all
+  six cases; and
+- all-layer output identity at greeting and 512.
+
+The repository-wide new-kernel floor remains KL <= 0.05 and top-1 >= 90%, but
+that weaker floor does not supersede the stronger current GGUF GDN state
+contract.
+
+### Performance
+
+Use one resident session, reset state before every leg, balance candidate/control
+ordering, discard at least one warmup per context, and collect at least four
+measured repetitions per mode at 512 and 4096. Record tokens and require exact
+timed IDs. Retain an exact improvement if the distribution supports a real win
+and neither primary context regresses; do not apply an arbitrary 5% threshold.
+
+Trace the candidate after a cache-only warmup and record kernel name, dispatch
+count, duration, workgroup size, VGPR/SGPR, LDS, and scratch. A kernel-only win
+does not promote the default if full-prefill wall loses.
+
+After promotion:
+
+1. repeat current profiles at 512, 4K, and 128K;
+2. run the six-shape README sweep with two warmups and five measurements;
+3. validate independently on gfx1100 and gfx1151 before a shared default, or
+   register an architecture-specific default with the other architecture
+   unchanged;
+4. emit the compact result artifact and update `benchmarks/README.md`,
+   `benchmarks/CHANGELOG.md`, and `WORKLOG.md`; and
+5. add any temporary selector/duplicate path to `docs/REFACTOR.md` with its
+   removal condition.
+
+## Reproduction Commands
+
+Use the hardware-local model path and backend:
+
+```bash
+export MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+export BACKEND=hip_gfx1151              # or hip_gfx1100
+export HIPENGINE_BACKEND="$BACKEND"
+export HIPENGINE_HIP_ARCH=gfx1151       # or gfx1100
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+```
+
+Warm and verify the exact current route outside the profiler:
+
+```bash
+python3 scripts/qwen35_gguf_bench.py \
+  --model "$MODEL" --quant gguf_q4_k_m \
+  --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+  --warmup-runs 1 --measured-runs 1 --persistent-session \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/gguf-prefill-512-warm.json
+```
+
+Then run the same command under `rocprofv3 --kernel-trace`, with warmups set to
+zero and cached builds still required:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/gguf-prefill-profile \
+  --output-file gguf-prefill-512 -- \
+  python3 scripts/qwen35_gguf_bench.py \
+    --model "$MODEL" --quant gguf_q4_k_m \
+    --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+    --warmup-runs 0 --measured-runs 1 --persistent-session \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+    --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/gguf-prefill-512-profile.json
+```
+
+Summarize the emitted kernel CSV with:
+
+```bash
+python3 scripts/qwen35_gguf_rocprof_summary.py \
+  --csv /tmp/gguf-prefill-profile/<kernel-trace.csv> \
+  --tokens-prefill 512 --top 40 \
+  --json /tmp/gguf-prefill-512-profile-summary.json
+```
+
+The existing G2 control command is:
+
+```bash
+python3 scripts/gguf_gdn_prefill_compare.py \
+  --model "$MODEL" --backend "$BACKEND" --prompt-kind greeting \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/gpf-g2-greeting.json
+```
+
+Repeat it with `--prompt-kind repeated --prompt-length` at
+`512,1024,1025,4095,4096`; use `--skip-layer-bisect` only for the longer cases
+as documented in [`TESTING.md`](TESTING.md). Extend the driver to name the new
+candidate rather than overloading `chain`.
+
+The existing balanced G3 control is:
+
+```bash
+python3 scripts/gguf_gdn_prefill_ab.py \
+  --model "$MODEL" --backend "$BACKEND" --contexts 512,4096 \
+  --prompt-token-id 9707 --expected-token-id 9707 \
+  --warmups 1 --repetitions 4 --use-wmma-prefill \
+  --correctness-artifact /tmp/gpf-g2-exact-matrix.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/gpf-g3-interleaved-ab.json
+```
+
+The candidate harness must preserve this timing contract and record all three
+named modes until one is selected.
+
+For the retained six-shape result, use the same boundary as the current
+leaderboard:
+
+```bash
+python3 scripts/qwen35_readme_sweep.py \
+  --engine gguf --model "$MODEL" --quant gguf_q4_k_m \
+  --backend "$BACKEND" \
+  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/gpf-readme-sweep.json
+```
+
+## Document Ownership
+
+- [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) owns cross-project ordering;
+  this document expands R5 only.
+- [`GGUF.md`](GGUF.md) owns loader/runtime and correctness history.
+- [`TUNING-gguf.md`](TUNING-gguf.md) is the historical tuning notebook; its
+  June profiles are not current-route selection evidence.
+- [`PREFILL.md`](PREFILL.md) owns the PARO native-prefill design.
+- [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) owns decode/MTP timing
+  boundaries, not AR prefill optimization.
+- [`PARO-GGUF-MTP-TRANSFER.md`](PARO-GGUF-MTP-TRANSFER.md) owns cross-path MTP
+  transfer safety; quant-specific kernels do not transfer by analogy.
+- [`BENCHMARK.md`](BENCHMARK.md) and [`TESTING.md`](TESTING.md) own evidence and
+  promotion gates.
+- [`ROOFLINE.md`](ROOFLINE.md) and
+  [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md) own architecture constraints;
+  measured profiles still select the work.

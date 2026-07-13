@@ -1,5 +1,11 @@
 # GGUF Tuning Plan
 
+> This is the historical tuning notebook. The active correctness-first prefill
+> diagnosis, current toplines, ruled-out ideas, and next implementation gate
+> live in [`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md).
+> Do not select current work from the older split-GDN family percentages here
+> without a fresh production-route profile.
+
 Date: 2026-06-17
 Branch/worktree: `main` / `/home/lhl/hipEngine`
 Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed. The canonical performance target is now `Q4_K_M` to match the local `llama.cpp` rows 1:1; `Q4_K_S` remains a secondary memory/consumer-card diagnostic unless explicitly requested. W7900 rows are comparison references and the 0.8B GGUF fixtures are fast correctness sentinels.
