@@ -153678,3 +153678,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json`.
   Decision is `promote_shared_x`. Backend capability now selects shared-X only
   on gfx1151; gfx1100 remains baseline pending an independent transfer gate.
+
+## 2026-07-13 - Clean selector-unset GPF-3A default-route confirmation
+
+- After promotion commit `431fe1e4`, created clean detached
+  `/tmp/hipengine-gpf3a-default-clean-431fe1e4`. The first cache-only sweep
+  stopped before measurement on its worktree-specific AOTriton-wrapper key;
+  prebuilt that wrapper outside the benchmark process, confirmed the tree was
+  still clean, and reran with `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE`
+  explicitly absent plus `--require-cached-build`.
+- Exact command:
+  `env -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 1K/128 4K/128 --token-id 9707 --warmup-runs 1 --measured-runs 4 --warmup-decode-tokens 1 --backend auto --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --no-graph-replay-decode --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --json /tmp/gpf3a-auto-clean-512-1k-4k.json`.
+- Selector-unset automatic-route medians:
+  - 512/128: **774.653 prefill / 48.881 eager decode tok/s**;
+  - 1K/128: **823.149 / 51.451 tok/s**;
+  - 4K/128: **701.389 / 52.257 tok/s**.
+  Every workload has four stable final IDs `[9707,9707,9707,9707]`. The clean
+  provenance resolves backend `hip_gfx1151` at commit `431fe1e4`; load is
+  45.633 seconds. The 4K-sized resident session reports 22.995 GiB tracked but
+  that is not canonical per-shape memory.
+- The harness correctly labels the run
+  `diagnostic_retained_pending_rollup_gate` with `performance_claim=false`
+  because it has four, not five, measured repetitions and one max-context
+  session. Compact route-confirmation artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json`;
+  full local sha256
+  `7a7d0dcdc2077afb1d539328000f8f509028e339a5501d30ca4329f5829bf57e`.

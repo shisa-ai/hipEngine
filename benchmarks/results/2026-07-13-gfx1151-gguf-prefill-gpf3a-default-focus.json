@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained_pending_rollup_gate",
+  "performance_claim": false,
+  "mode": "qwen35_readme_persistent_resident_sweep",
+  "engine": "gguf",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workloads": [
+    "512/128",
+    "1K/128",
+    "4K/128"
+  ],
+  "prompt_source": "repeated_token_id",
+  "warmup_decode_tokens": 1,
+  "warmup_runs": 1,
+  "measured_runs": 4,
+  "max_sequence_length": 4226,
+  "persistent_session_load_seconds": 45.63340757400147,
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 4,
+        "median": 774.6528539092074,
+        "min": 774.0944631079309,
+        "max": 774.7998210579451,
+        "mean": 774.5499979960726,
+        "stdev": 0.31150441347673175
+      },
+      "decode_tok_s": {
+        "count": 4,
+        "median": 48.880619434158525,
+        "min": 48.841736962223585,
+        "max": 48.88594602456458,
+        "mean": 48.872230463776305,
+        "stdev": 0.02058501067786401
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 4,
+        "median": 22.99488216638565,
+        "min": 22.99488216638565,
+        "max": 22.99488216638565,
+        "mean": 22.99488216638565,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "count": 4,
+        "median": 23.456436157226562,
+        "min": 23.456436157226562,
+        "max": 23.456436157226562,
+        "mean": 23.456436157226562,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 4,
+        "median": 823.1489471528557,
+        "min": 819.8558604195011,
+        "max": 824.2002243017324,
+        "mean": 822.5884947567363,
+        "stdev": 2.010360767327024
+      },
+      "decode_tok_s": {
+        "count": 4,
+        "median": 51.45079694428033,
+        "min": 51.35084926114557,
+        "max": 51.461629151896986,
+        "mean": 51.4285180754008,
+        "stdev": 0.05217114311469073
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 4,
+        "median": 22.99488216638565,
+        "min": 22.99488216638565,
+        "max": 22.99488216638565,
+        "mean": 22.99488216638565,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "count": 4,
+        "median": 23.456436157226562,
+        "min": 23.456436157226562,
+        "max": 23.456436157226562,
+        "mean": 23.456436157226562,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 4,
+        "median": 701.3886048826869,
+        "min": 700.1142985291505,
+        "max": 702.0298255030154,
+        "mean": 701.230333449385,
+        "stdev": 0.8032460108628439
+      },
+      "decode_tok_s": {
+        "count": 4,
+        "median": 52.25676680473555,
+        "min": 52.24093012203838,
+        "max": 52.28310858923565,
+        "mean": 52.259393080186285,
+        "stdev": 0.0174850217862143
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 4,
+        "median": 22.99488216638565,
+        "min": 22.99488216638565,
+        "max": 22.99488216638565,
+        "mean": 22.99488216638565,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "count": 4,
+        "median": 23.51632308959961,
+        "min": 23.51632308959961,
+        "max": 23.51632308959961,
+        "mean": 23.51632308959961,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "extra": {
+    "backend": "hip_gfx1151",
+    "requested_backend": "auto",
+    "target_arch": "gfx1151",
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "kv_storage_dtype": "bf16",
+    "prefill_chunk_sizes_session": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025
+    }
+  },
+  "notes": [
+    "The model/session is loaded once for the largest requested shape and reset between repetitions.",
+    "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
+    "Discarded repetitions warm the same kernels through eager submission. Measured repetitions capture a fresh state-bound graph after reset/prefill/warmup; graph capture is excluded from decode throughput."
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-13T10:33:49.562352+00:00",
+    "repo_root": "/tmp/hipengine-gpf3a-default-clean-431fe1e4",
+    "hipengine_commit": "431fe1e4803d0f0ee71964bb1fb3fddcbbff54a6",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--workloads",
+      "512/128",
+      "1K/128",
+      "4K/128",
+      "--token-id",
+      "9707",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "4",
+      "--warmup-decode-tokens",
+      "1",
+      "--backend",
+      "auto",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--no-graph-replay-decode",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--json",
+      "/tmp/gpf3a-auto-clean-512-1k-4k.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 4,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  }
+}
