@@ -22,10 +22,12 @@ from hipengine.kernels.hip_gfx1100.norm import (
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
@@ -35,8 +37,7 @@ from hipengine.kernels.registry import resolve
 def test_auto_backend_selects_supported_hip_arches() -> None:
     assert select_backend("auto", detected_arches=["gfx1100"]).backend == "hip_gfx1100"
     assert (
-        select_backend("auto", detected_arches=["gfx1151:sramecc+:xnack-"]).backend
-        == "hip_gfx1151"
+        select_backend("auto", detected_arches=["gfx1151:sramecc+:xnack-"]).backend == "hip_gfx1151"
     )
 
 
@@ -80,18 +81,36 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32"
-    assert backend_package_capability(
-        "hip_gfx1151",
-        "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
-    ) == 128
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "GGUF_GDN_PREFILL_AUTO_MODE",
-    ) == "fused"
-    assert backend_package_capability(
-        "hip_gfx1151",
-        "GGUF_GDN_PREFILL_AUTO_MODE",
-    ) == "chain_lds32"
+    assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+        )
+        == 128
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_GDN_PREFILL_AUTO_MODE",
+        )
+        == "fused"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_GDN_PREFILL_AUTO_MODE",
+        )
+        == "chain_lds32"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+        )
+        == "baseline"
+    )
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
         resolve(

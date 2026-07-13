@@ -341,7 +341,7 @@ select current code without a fresh profile.
 | 4 | `GPF-2C` | **Rejected:** register-resident exact ordered-wave recurrence | Byte-exact, but focused 512/1K/4K prefill loses 12.98%-14.58% and recurrence loses 16.86% |
 | 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate; keep gfx1100 fused pending transfer and run right-sized final rollup after active candidates settle |
 | 6 | `GPF-M1` | **Default profile complete:** exact GDN 221.873 ms, dense Q8T16 156.474 ms, Q4T16 selected 116.075 ms, Q5T16 selected 56.181 ms at 512 | These measured families select GPF-3A and its successors |
-| 7 | `GPF-3A` | **Replay gate passed:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Exact BF16/FP16 fixture; real Q4 replay -15.31%; require clean full-model 512/1K/4K and decode non-regression before promotion |
+| 7 | `GPF-3A` | **Replay gate passed; scoped selector implemented:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Exact BF16/FP16 fixture; real Q4 replay -15.31%; `auto` remains baseline on both backends while explicit `shared_x` runs the clean full-model 512/1K/4K and decode gate |
 | 8 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
 | 9 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
 | 10 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
