@@ -1,9 +1,9 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-12**
+Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`8116c4531fa79bb94690042023da8c9360648052`
+`31d4204df2669257a5da0bcd49079a9f8a5e8d8b`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -111,6 +111,19 @@ same-session repetitions per mode/context, the exact chain is slower than fused:
 valid retained negative result (`performance_claim=true`): fused remains the
 default, and the exact split remains a diagnostic/unfused fallback.
 
+The follow-on GPF-2B candidate performance gate is retained in
+[`2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json`](results/2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json).
+At clean detached `31d4204d` on TheRock HIP 7.15 and TuneD
+`accelerator-performance`, one warmup plus four balanced same-session
+repetitions move 512 prefill **1212.462 -> 535.136 ms** (**422.281 -> 956.765
+tok/s, 2.266x**) and 4096 prefill **9977.239 -> 4848.216 ms** (**410.534 ->
+844.847 tok/s, 2.058x**). All 16 timed final IDs are `9707`; the linked
+six-case project gate has KL at most `5.39e-5` and 100% top-1. Because the
+candidate changes recurrent-state bits, this is a retained candidate
+performance result rather than a default/topline replacement. The public GGUF
+column remains the fused route until multi-prompt generated-trajectory/decode
+and explicit numerical-contract gates pass.
+
 SOL-G4 is accepted on gfx1151 in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
 At clean detached `5f4c6561`, the exact repacked/GEMV eager route measures
@@ -189,6 +202,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO 4K-128K AOTriton queue isolation | 2026-07-12 | clean same-commit control/candidate `01e2cec5`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained at 4K/32K/64K/128K**: event-linked isolated AOTriton queue improves matched prefill by **13.32%-23.03%**, leaves decode within **-0.16%..+0.12%**, holds tracked peak unchanged, and matches final hidden plus all 30 Conv/GDN and 10 K/V families at every retained shape. The 1K 256-query negative control does not enter isolation and is unchanged. | Yes, PARO column | Validate separately on gfx1100 before transfer; 512/1K remain on the proven-safe caller-stream route. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-12 | clean detached hipEngine `3ce60e56`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: the repeated external and production token stream matches; four hidden/layer/30-Conv-GDN/10-KV transitions are finite and byte-exact. `performance_claim=false`. | Diagnostic link only | Rerun after eager math/state/KV, model, compiler/runtime, or device changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2B register-resident GDN candidate | 2026-07-13 | clean detached hipEngine `31d4204d`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained candidate performance gate**: balanced same-session 512/4K prefill improves **422.281 -> 956.765 tok/s (2.266x)** and **410.534 -> 844.847 tok/s (2.058x)** with exact timed IDs. Six-case KL/top-1 passes, but recurrent state is not byte-exact; default/topline remains fused pending trajectory/decode and contract gates. | Diagnostic link only | Run the multi-prompt generated-trajectory/decode gate and record the numerical-contract decision; after promotion, run the full six-shape sweep and gfx1100 transfer gate. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q8T16 dual-split wave/block indexing | 2026-07-12 | clean scalar `8184355c` and promoted `e20cdc13`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained**: clean p512/d128 eager **20.5342 -> 20.4709 ms/token** (-0.308%); marked dual-split leaf **4245.4 -> 4188.2 us/token** (-1.349%); graph route **20.5736 -> 20.5324 ms/token** (-0.200%); every token/state gate exact. | Yes, named repeated-token protocol | Rerun after Q8T16 indexing/layout, compiler, graph policy, or gfx1151 launch geometry changes; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 historical; 2026-07-12 refresh | clean detached hipEngine `7f611fe3` on HIP 7.13; clean `8184355c`/`e20cdc13` on HIP 7.15; exact Q4_K_M fingerprint retained | **Historical retained / current speed-policy stale**: all 128 graph launches remain byte-exact. HIP 7.13 measured +0.112% over eager; both current HIP 7.15 reruns reject at -0.246%/-0.293%. | Current table reports exact diagnostic wall, not a graph-over-eager win | Run a scoped balanced current-stack A/B; restore eager default if graph does not reproduce a win. Validate separately on gfx1100 before any admission. |
