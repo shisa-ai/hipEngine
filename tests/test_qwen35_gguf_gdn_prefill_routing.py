@@ -123,6 +123,14 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
     )
     assert plan.has_chain_wave32_tree
+    assert plan.auto_mode == "fused"
+
+
+def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
+    plan = qgr._resolve_gguf_gdn_prefill_plan("hip_gfx1151")
+
+    assert plan.auto_mode == "chain_lds32"
+    assert plan.has_exact_chain_lds32
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
@@ -153,6 +161,63 @@ def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
     assert fused_args[1] == scratch.linear_z.ptr
     assert fused_args[8] == scratch.recurrent_bf16.ptr
     assert fused_args[10] == 64
+
+
+def test_run_gdn_prefill_auto_uses_arch_scoped_lds32_default() -> None:
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare=_recorder(calls, "exact_prepare"),
+        exact_recurrent_lds32=_recorder(calls, "exact_lds32"),
+        exact_recurrent_segments_lds32=_recorder(calls, "exact_segments_lds32"),
+        auto_mode="chain_lds32",
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare",
+        "exact_lds32",
+        "rmsnorm_gate",
+    ]
+
+
+def test_run_gdn_prefill_auto_falls_back_to_fused_when_preferred_mode_missing() -> None:
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        auto_mode="chain_lds32",
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == ["fused_decode_order"]
 
 
 def test_run_gdn_prefill_explicit_chain_overrides_available_fused(
@@ -341,6 +406,9 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
         recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
         rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
         fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare=_recorder(calls, "exact_prepare"),
+        exact_recurrent_lds32=_recorder(calls, "exact_lds32"),
+        auto_mode="chain_lds32",
     )
 
     runner._run_gdn_prefill(

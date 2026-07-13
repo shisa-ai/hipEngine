@@ -1519,17 +1519,28 @@ class Qwen35GGUFFullStackRunner:
         keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``.
         ``HIPENGINE_GGUF_GDN_PREFILL_MODE`` selects the fused route, the
         128-column exact chain, or its registered value-tiled/wave diagnostic
-        schedules; ``auto`` preserves the correctness-certified fused-first
-        fallback. The raw-scale chains keep raw Q/K and normalization scales
-        separate so their recurrent kernels preserve fused decode-order
-        arithmetic. Whether the matching single-sequence or segment-aware
-        recurrence runs is controlled by
+        schedules; ``auto`` resolves the architecture-scoped backend-package
+        policy and falls back to the correctness-certified fused route when
+        that preferred schedule is unavailable. The raw-scale chains keep raw
+        Q/K and normalization scales separate so their recurrent kernels
+        preserve fused decode-order arithmetic. Whether the matching single-
+        sequence or segment-aware recurrence runs is controlled by
         ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
         per-quant/per-backend branch.
         """
 
         plan = self._gdn_prefill_plan()
-        mode = _gguf_gdn_prefill_mode()
+        requested_mode = _gguf_gdn_prefill_mode()
+        mode = plan.auto_mode if requested_mode == "auto" else requested_mode
+        if requested_mode == "auto" and not _gguf_gdn_prefill_plan_has_mode(
+            plan, mode
+        ):
+            if plan.has_fused:
+                mode = "fused"
+            elif plan.has_chain:
+                mode = "chain"
+            else:
+                mode = "auto"
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
         if mode == "chain_tile64":
@@ -1550,53 +1561,53 @@ class Qwen35GGUFFullStackRunner:
         elif mode == "chain_wave32_tree":
             exact_recurrent = plan.recurrent_wave32_tree
             exact_recurrent_segments = plan.recurrent_segments_wave32_tree
-        if mode == "fused" and not plan.has_fused:
+        if requested_mode == "fused" and not plan.has_fused:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'fused' is unavailable; "
                 "the fused decode-order kernel is not registered"
             )
-        if mode == "chain" and not plan.has_chain:
+        if requested_mode == "chain" and not plan.has_chain:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain' is unavailable; "
                 "the prepare, recurrent, and RMSNorm-gate kernels must all be registered"
             )
-        if mode == "chain_tile64" and not plan.has_exact_chain_tile64:
+        if requested_mode == "chain_tile64" and not plan.has_exact_chain_tile64:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_tile64' is unavailable; "
                 "the exact prepare, tile64 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
-        if mode == "chain_tile32" and not plan.has_exact_chain_tile32:
+        if requested_mode == "chain_tile32" and not plan.has_exact_chain_tile32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_tile32' is unavailable; "
                 "the exact prepare, tile32 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
-        if mode == "chain_lds64" and not plan.has_exact_chain_lds64:
+        if requested_mode == "chain_lds64" and not plan.has_exact_chain_lds64:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_lds64' is unavailable; "
                 "the exact prepare, LDS64 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
-        if mode == "chain_lds32" and not plan.has_exact_chain_lds32:
+        if requested_mode == "chain_lds32" and not plan.has_exact_chain_lds32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_lds32' is unavailable; "
                 "the exact prepare, LDS32 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
-        if mode == "chain_wave32" and not plan.has_exact_chain_wave32:
+        if requested_mode == "chain_wave32" and not plan.has_exact_chain_wave32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_wave32' is unavailable; "
                 "the exact prepare, wave32 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
-        if mode == "chain_wave32_tree" and not plan.has_chain_wave32_tree:
+        if requested_mode == "chain_wave32_tree" and not plan.has_chain_wave32_tree:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_wave32_tree' is unavailable; "
                 "the exact prepare, tree-reduced wave32 recurrent, and "
                 "RMSNorm-gate kernels must all be registered"
             )
-        use_fused = plan.has_fused and mode in {"auto", "fused"}
+        use_fused = plan.has_fused and mode == "fused"
         use_chain = mode in {
             "chain",
             "chain_tile64",
@@ -1607,9 +1618,6 @@ class Qwen35GGUFFullStackRunner:
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
         if use_fused:
-            # Keep auto on the established fused route until the exact split
-            # chain clears the complete SOL-G2 context/boundary matrix and the
-            # same-run SOL-G3 wall gate selects a default.
             plan.fused_decode_order(
                 scratch.conv_out.ptr,
                 scratch.linear_z.ptr,
@@ -13802,10 +13810,11 @@ class _GGUFGDNPrefillPlan:
     The segment-aware members are optional and only consulted when the runtime
     decides the prefill row count meets the threshold. For the current
     single-sequence prefill they are called with ``segments=1``; the same ABI
-    also supports future packed segments. ``auto`` remains fused-first;
-    explicit diagnostic selections fail closed when their required members
-    are not registered. When present, the raw-scale exact members supersede the
-    legacy normalized-Q/K k2 members for explicit ``chain`` dispatch.
+    also supports future packed segments. ``auto_mode`` comes from backend-
+    package capability metadata; explicit diagnostic selections fail closed
+    when their required members are not registered. When present, the raw-
+    scale exact members supersede the legacy normalized-Q/K k2 members for
+    explicit ``chain`` dispatch.
     """
 
     prepare: object | None
@@ -13828,6 +13837,7 @@ class _GGUFGDNPrefillPlan:
     exact_recurrent_segments_wave32: object | None = None
     recurrent_wave32_tree: object | None = None
     recurrent_segments_wave32_tree: object | None = None
+    auto_mode: str = "fused"
 
     @property
     def has_chain(self) -> bool:
@@ -13896,6 +13906,39 @@ class _GGUFGDNPrefillPlan:
             and self.recurrent_wave32_tree is not None
             and self.rmsnorm_gate is not None
         )
+
+
+def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> bool:
+    """Return whether *plan* contains the complete named GDN prefill route."""
+
+    return {
+        "fused": plan.has_fused,
+        "chain": plan.has_chain,
+        "chain_tile64": plan.has_exact_chain_tile64,
+        "chain_tile32": plan.has_exact_chain_tile32,
+        "chain_lds64": plan.has_exact_chain_lds64,
+        "chain_lds32": plan.has_exact_chain_lds32,
+        "chain_wave32": plan.has_exact_chain_wave32,
+        "chain_wave32_tree": plan.has_chain_wave32_tree,
+    }.get(str(mode), False)
+
+
+def _gguf_gdn_prefill_backend_auto_mode(backend: str) -> str:
+    """Resolve and validate one backend package's automatic GDN policy."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_GDN_PREFILL_AUTO_MODE",
+        "fused",
+    )
+    mode = str(raw).strip().lower()
+    if mode == "auto" or mode not in _GGUF_GDN_PREFILL_MODES:
+        choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES - {"auto"}))
+        raise RuntimeError(
+            "backend GGUF GDN prefill automatic mode must be one of "
+            f"{choices}, got {mode!r} for {backend!r}"
+        )
+    return mode
 
 
 def _gguf_gdn_prefill_segment_threshold() -> int:
@@ -14043,6 +14086,7 @@ def _resolve_gguf_gdn_prefill_plan(
         recurrent_segments_wave32_tree=_resolve(
             _GDN_PREFILL_RECURRENT_SEGMENTS_WAVE32_TREE_KEY
         ),
+        auto_mode=_gguf_gdn_prefill_backend_auto_mode(backend),
     )
 
 

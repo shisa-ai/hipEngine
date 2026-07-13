@@ -153510,3 +153510,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   GPF-2D is accepted for gfx1151-scoped default promotion. The implementation
   must use registry/plugin policy rather than a backend-string branch, and
   gfx1100 remains fused until separately validated.
+
+## 2026-07-13 - Route gfx1151 auto through accepted GPF-2D policy
+
+- RED added architecture-policy and route tests before implementation. The
+  narrow bundle failed collection because `GGUF_GDN_PREFILL_AUTO_MODE` did not
+  yet exist in the backend packages.
+- GREEN adds backend-package capability metadata: gfx1151 selects
+  `chain_lds32`, while gfx1100 explicitly remains `fused`. The resolved GDN
+  plan carries that policy, so runtime dispatch has no backend/quant string
+  branch. An explicit env selection still overrides package policy; if an
+  automatic preferred route is incomplete, dispatch falls back to fused, then
+  the existing exact chain only when fused is unavailable.
+- Validation:
+  `PYTHONPATH=$PWD python -m pytest -q tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_gdn_prefill_routing.py` passes **51** tests. The
+  expanded GPU-focused bundle covering primitive correctness, routing,
+  compare/A-B/trajectory protocols, and backend policy passes **99** tests on
+  gfx1151 with HIP 7.15 and cached compiler metadata.
+- A clean default-path hardware gate remains before replacing the public GGUF
+  topline. Explicit `fused` and `chain` stay as rollback/oracle routes, and
+  gfx1100 does not inherit this device-specific policy.

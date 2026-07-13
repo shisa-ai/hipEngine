@@ -20,8 +20,12 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
     register_qwen35_rmsnorm_kernels,
 )
+from hipengine.kernels.hip_gfx1100 import (
+    GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+)
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    GGUF_GDN_PREFILL_AUTO_MODE,
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
@@ -74,10 +78,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
 
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
+    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32"
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     ) == 128
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_GDN_PREFILL_AUTO_MODE",
+    ) == "fused"
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_GDN_PREFILL_AUTO_MODE",
+    ) == "chain_lds32"
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
         resolve(
@@ -268,7 +282,8 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert resolved == ["hip_gfx1151"] * 8
+    assert len(resolved) == 20
+    assert set(resolved) == {"hip_gfx1151"}
 
 
 def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(

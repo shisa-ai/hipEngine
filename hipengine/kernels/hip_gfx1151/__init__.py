@@ -25,6 +25,9 @@ TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
+# Clean GPF-2D exactness, balanced-wall, and natural-trajectory/decode gates
+# admit the scalar-exact LDS32 GDN prefill schedule on gfx1151.
+GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32"
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
@@ -67,6 +70,7 @@ register_backend_kernels = register_gfx1151_kernels
 __all__ = [
     "BACKEND",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "GGUF_GDN_PREFILL_AUTO_MODE",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",
