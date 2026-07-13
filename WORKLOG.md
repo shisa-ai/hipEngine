@@ -153771,3 +153771,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json`.
   Next action is a balanced, same-session `chain_lds32` versus
   `chain_lds32_direct` full-prefill wall/decode gate before any policy change.
+
+## 2026-07-13 - Generalize the GDN wall gate for incremental exact candidates
+
+- Added RED coverage showing the interleaved GDN wall harness could not name
+  the current `chain_lds32` default as its timing baseline: argparse rejected
+  `--baseline-mode`, and correctness loading, context summaries, and decisions
+  had hard-coded fused indexing. The focused bundle failed the four new tests
+  for those missing interfaces.
+- Added `--baseline-mode` with historical `fused` default and schema v3 timing
+  metadata. Summaries, paired deltas, provenance, ordering, and rejection
+  decisions now use the named timing baseline. Equal baseline/candidate modes
+  fail closed. A performance rejection retains the actual baseline instead of
+  incorrectly selecting fused.
+- Kept correctness independently anchored: a byte-exact candidate matrix may
+  compare `fused` directly with the candidate even when the performance A/B
+  compares an already-promoted exact baseline with that candidate. The
+  artifact records both `correctness_modes` and timing modes.
+- GREEN: `uv run pytest -q tests/test_gguf_gdn_prefill_ab.py` passes **13/13**;
+  `uvx --offline ruff check --ignore E402` and `git diff --check` pass. Next
+  run `chain_lds32` versus `chain_lds32_direct` in a clean detached worktree.

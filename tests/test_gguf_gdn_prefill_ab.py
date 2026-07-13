@@ -32,6 +32,21 @@ def test_parser_accepts_exact_lds_candidate_modes(mode: str) -> None:
     assert args.candidate_mode == mode
 
 
+def test_parser_accepts_explicit_current_default_baseline() -> None:
+    args = build_parser().parse_args(
+        [
+            "--baseline-mode",
+            "chain_lds32",
+            "--candidate-mode",
+            "chain_lds32_direct",
+            "--json",
+            "/tmp/out.json",
+        ]
+    )
+    assert args.baseline_mode == "chain_lds32"
+    assert args.candidate_mode == "chain_lds32_direct"
+
+
 def test_correctness_gate_requires_passing_context_coverage(tmp_path) -> None:
     path = tmp_path / "correctness.json"
     path.write_text(
@@ -57,6 +72,35 @@ def test_correctness_gate_requires_passing_context_coverage(tmp_path) -> None:
     assert len(gate["sha256"]) == 64
     with pytest.raises(BenchmarkError, match="does not cover"):
         _load_correctness_gate(path, contexts=(512, 1024, 4096))
+
+
+def test_exact_oracle_gate_can_qualify_a_current_default_ab(tmp_path) -> None:
+    path = tmp_path / "direct-correctness.json"
+    path.write_text(
+        json.dumps(
+            {
+                "kind": "hipengine_gguf_gdn_prefill_exact_matrix",
+                "source_revision": "abc123",
+                "classification": {"passed": True, "status": "accepted_exact_matrix"},
+                "protocol": {"modes": ["fused", "chain_lds32_direct"]},
+                "cases": [
+                    {"passed": True, "prompt": {"length": 512}},
+                    {"passed": True, "prompt": {"length": 4096}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    gate = _load_correctness_gate(
+        path,
+        contexts=(512, 4096),
+        baseline_mode="chain_lds32",
+        candidate_mode="chain_lds32_direct",
+    )
+    assert gate["baseline_mode"] == "chain_lds32"
+    assert gate["candidate_mode"] == "chain_lds32_direct"
+    assert gate["correctness_modes"] == ["fused", "chain_lds32_direct"]
+    assert gate["default_promotion_eligible"] is True
 
 
 def test_correctness_gate_accepts_matching_non_exact_project_gate(tmp_path) -> None:
@@ -140,6 +184,38 @@ def test_context_summary_uses_balanced_mode_samples_and_exact_tokens() -> None:
     assert summary["candidate_speedup_vs_baseline"] == pytest.approx(102.0 / 91.0)
 
 
+def test_context_summary_supports_current_default_baseline() -> None:
+    rows = [
+        {
+            "repetition": 0,
+            "order": ["chain_lds32", "chain_lds32_direct"],
+            "modes": {
+                "chain_lds32": {"wall_ms": 100.0, "token_id": 9707},
+                "chain_lds32_direct": {"wall_ms": 90.0, "token_id": 9707},
+            },
+        },
+        {
+            "repetition": 1,
+            "order": ["chain_lds32_direct", "chain_lds32"],
+            "modes": {
+                "chain_lds32_direct": {"wall_ms": 92.0, "token_id": 9707},
+                "chain_lds32": {"wall_ms": 104.0, "token_id": 9707},
+            },
+        },
+    ]
+    summary = _summarize_context(
+        rows,
+        expected_token_id=9707,
+        baseline_mode="chain_lds32",
+        candidate_mode="chain_lds32_direct",
+    )
+    assert summary["baseline_mode"] == "chain_lds32"
+    assert summary["statistics"]["chain_lds32"]["median_ms"] == 102.0
+    assert summary["statistics"]["chain_lds32_direct"]["median_ms"] == 91.0
+    assert summary["paired_candidate_minus_baseline_ms"] == [-10.0, -12.0]
+    assert summary["tokens_exact"] is True
+
+
 def test_promotion_requires_clean_provenance_and_wins_every_context() -> None:
     accepted = _promotion_decision(
         [
@@ -186,6 +262,22 @@ def test_promotion_requires_clean_provenance_and_wins_every_context() -> None:
     )
     assert invalid["measurement_valid"] is False
     assert invalid["status"] == "invalid_measurement"
+
+
+def test_performance_rejection_retains_explicit_baseline() -> None:
+    rejected = _promotion_decision(
+        [{"tokens_exact": True, "candidate_wins": False}],
+        provenance={"dirty": False},
+        correctness_gate={
+            "passed": True,
+            "contract": "byte_exact",
+            "default_promotion_eligible": True,
+        },
+        baseline_mode="chain_lds32",
+        candidate_mode="chain_lds32_direct",
+    )
+    assert rejected["baseline_mode"] == "chain_lds32"
+    assert rejected["selected_default"] == "chain_lds32"
 
 
 def test_project_gate_win_does_not_imply_default_promotion() -> None:

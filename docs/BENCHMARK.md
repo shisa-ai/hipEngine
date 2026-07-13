@@ -55,6 +55,14 @@ writing, and correctness-artifact reads are outside measured regions. The
 result is a full-prefill wall comparison, while the separate cached-only G2
 kernel trace proves the expected exact split kernels executed.
 
+`--baseline-mode` defaults to `fused` so the historical SOL-G3 command and
+artifacts remain reproducible. For an incremental candidate layered on an
+already-promoted exact route, name that shipped route explicitly (for example,
+`--baseline-mode chain_lds32 --candidate-mode chain_lds32_direct`). The linked
+exactness matrix may still compare the candidate directly with `fused`, which
+remains the trusted byte-exact oracle; the artifact records correctness modes
+separately from timing modes. Baseline and candidate must be different.
+
 The 2026-07-11 clean gfx1151 run at `ad773eba` rejects chain promotion:
 `1186.842 -> 1248.436 ms` at 512 (+5.19%) and
 `10187.300 -> 10870.022 ms` at 4K (+6.70%). Fused remains the selected default.

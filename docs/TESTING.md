@@ -166,7 +166,10 @@ Default selection uses `scripts/gguf_gdn_prefill_ab.py`, not comparator wall
 fields. Its contract gate requires unique positive contexts, a passing G2
 artifact that covers each context, balanced even repetitions, exact timed
 tokens, clean provenance, and a win at both 512 and 4096 before returning a
-chain-promotion decision.
+candidate-promotion decision. `--baseline-mode` defaults to `fused`; use an
+explicit already-promoted exact mode for incremental A/Bs. Candidate
+correctness may remain qualified directly against the fused byte-exact oracle,
+and the emitted artifact records correctness and timing mode pairs separately.
 
 ### 2. CPU deterministic bundle
 
