@@ -25,8 +25,9 @@ an explicit exact candidate: it removes GDN Q/K/V scratch materialization and
 the eightfold duplicate Q/K norm work on the production 4-K-head/32-V-head
 shape. A dirty same-worktree screen improves the current default
 **769.378/821.460/702.808 -> 817.004/903.229/755.077 tok/s** at 512/1K/4K
-(**+6.19%/+9.95%/+7.44%**). It is not yet the default; clean full-model
-exactness, interleaved wall, and decode gates remain.
+(**+6.19%/+9.95%/+7.44%**). Its clean six-case full-model matrix is now
+byte-exact across greeting, 512, 1024/1025, and 4095/4096. It is not yet the
+default; interleaved wall and decode gates remain.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -225,7 +226,7 @@ baseline to restore verbatim.
 | `GPF-2C` register-resident ordered wave32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json): `368.702/383.292/354.672 tok/s` at 512/1K/4K, -12.98%/-14.58%/-13.50%; recurrence `928.006 ms` | Plain/segment output and FP32 state byte-exact; 46 focused tests pass; decode within -0.31%..-0.24% | Rejected: ordered shuffles remain slower than fused despite state residency |
 | `GPF-2D` scalar-exact LDS32 residency | [`focus candidate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json): `753.489/799.844/686.840 tok/s` at 512/1K/4K; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json): 6/6; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json): `420.959 -> 753.891` and `408.359 -> 687.831 tok/s` at 512/4K; [`automatic six-shape stress gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json): `751.993/804.420/688.545/589.866/504.730/372.892 tok/s` | Sampled token, hidden seed, resident Conv/GDN state, and required layer outputs byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json): 250/250 exact logits, all timed trajectories exact, decode +0.023%; default stress IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused pending transfer evidence; right-sized publication sweep remains |
 | `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%); [`clean full-model A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json): 512/1K/4K `747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s` (+3.11%/+2.42%/+1.94%); [`automatic focus confirmation`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json): `774.653/823.149/701.389 tok/s` | BF16/FP16 fixture bytes and full-model logits byte-exact; every 128-step measured trajectory identical; aggregate decode wall -0.0031%; automatic IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays baseline pending transfer evidence; final five-run/right-sized rollup remains |
-| `GPF-2E` compact-scale direct-conv LDS32 | [`dirty focus screen`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json): current default `769.378/821.460/702.808 -> 817.004/903.229/755.077 tok/s` at 512/1K/4K (+6.19%/+9.95%/+7.44%) | Plain/segment primitive output and FP32 state byte-exact to materialized LDS32; CPU-reference gate passes; all screen IDs stable | **Explicit candidate only:** run clean six-case full-model exactness, same-session interleaved wall/decode, and natural trajectories before any gfx1151 policy change |
+| `GPF-2E` compact-scale direct-conv LDS32 | [`dirty focus screen`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json): current default `769.378/821.460/702.808 -> 817.004/903.229/755.077 tok/s` at 512/1K/4K (+6.19%/+9.95%/+7.44%) | Plain/segment primitive output and FP32 state byte-exact to materialized LDS32; CPU-reference gate passes; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) passes 6/6 with exact full-model hidden/state/token and required layer outputs | **Explicit candidate only:** run same-session interleaved wall/decode and natural trajectories before any gfx1151 policy change |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -590,9 +591,17 @@ discarded warmup, and three eager-decode measurements. It is intentionally
 
 All control and candidate final IDs are `9707`. These results retain the
 explicit candidate and justify the clean gates; they do not change gfx1151
-`auto`. The next required evidence is the six-case full-model exact matrix,
-then an interleaved same-session current-default/direct wall and decode gate,
-followed by natural trajectories if promotion remains indicated.
+`auto`.
+
+The clean detached `c3a065ee` exact matrix now passes all six required cases:
+greeting, 512, 1024/1025, and 4095/4096. Fused and direct-conv produce the
+same sampled token, FP32 hidden seed, and all 30 resident Conv/GDN state pairs
+in every case; greeting and 512 also match every captured layer final row.
+Both plain and segmented dispatch boundaries are covered. This is a
+correctness-only gate; its diagnostic single-order walls are excluded from
+performance claims. The next required evidence is an interleaved same-session
+current-default/direct wall and decode gate, followed by natural trajectories
+if promotion remains indicated.
 
 ## Correctness And Promotion Contract
 
