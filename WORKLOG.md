@@ -153436,3 +153436,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-13-w7900-paro-int8-kv-external-format-screen.json`
   and updated only the requested KVCACHE workflow/result section plus benchmark
   rollups. `performance_claim=false`; supported INT8 status is unchanged.
+
+## 2026-07-13 — Add a same-weight GGUF KV-format screen
+
+- Added `scripts/qwen35_gguf_kv_format_ablation.py`, a GGUF-only host-emulation
+  diagnostic that resets and reuses one BF16-KV Q4_K_M resident session across
+  a BF16 reference and per-head INT8, raw group32/Q8_0-shaped, Hadamard
+  group32, and KIVI candidates. It reuses the tested representation math and
+  matched-logit/top-k metrics from the PARO screen without adding a native
+  kernel or changing the runtime hot path.
+- Embedded the exact 45-token `mixed_v1` unit used by the PARO S1 screen, so the
+  repeated 512-token prompt reproduces SHA-256
+  `933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8`
+  and 36 distinct IDs without requiring a tokenizer sidecar beside the GGUF.
+- Followed RED/GREEN: the new test initially failed because the script did not
+  exist. Three tests now cover full-attention cache discovery, reset/reuse plus
+  teacher history and post-attention row roundtrip, and exact prompt identity.
+  The combined GGUF/PARO format bundle passes 14 tests; Ruff, `py_compile`,
+  CLI help, and `git diff --check` pass.
+- A live W7900 8/2 group32 smoke exercised all ten physical GGUF BF16 cache
+  pairs and finite full logits. It completed in 73.65 seconds setup-inclusive
+  at mean KL `0.00005884` and 100% top-1. This dirty-tree smoke validates the
+  harness plumbing only; clean 512/8 and 4K/16 measurements follow after the
+  harness commit.
