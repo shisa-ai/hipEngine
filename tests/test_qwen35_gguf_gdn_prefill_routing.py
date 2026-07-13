@@ -23,6 +23,10 @@ import pytest
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -57,6 +61,24 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32
     )
     assert plan.has_exact_chain
+    assert (
+        plan.exact_recurrent_tile64
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32
+    )
+    assert (
+        plan.exact_recurrent_segments_tile64
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32
+    )
+    assert (
+        plan.exact_recurrent_tile32
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32
+    )
+    assert (
+        plan.exact_recurrent_segments_tile32
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32
+    )
+    assert plan.has_exact_chain_tile64
+    assert plan.has_exact_chain_tile32
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
@@ -150,6 +172,84 @@ def test_run_gdn_prefill_explicit_chain_prefers_exact_split(
     ]
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [("chain_tile64", "exact_tile64"), ("chain_tile32", "exact_tile32")],
+)
+def test_run_gdn_prefill_explicit_tiled_chain_selects_registered_variant(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "legacy_prepare"),
+        recurrent=_recorder(calls, "legacy_recurrent"),
+        recurrent_segments=_recorder(calls, "legacy_segments"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare=_recorder(calls, "exact_prepare"),
+        exact_recurrent=_recorder(calls, "exact_recurrent"),
+        exact_recurrent_segments=_recorder(calls, "exact_segments"),
+        exact_recurrent_tile64=_recorder(calls, "exact_tile64"),
+        exact_recurrent_segments_tile64=_recorder(calls, "exact_segments_tile64"),
+        exact_recurrent_tile32=_recorder(calls, "exact_tile32"),
+        exact_recurrent_segments_tile32=_recorder(calls, "exact_segments_tile32"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare",
+        expected,
+        "rmsnorm_gate",
+    ]
+
+
+def test_run_gdn_prefill_tiled_chain_selects_matching_segment_variant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_tile64")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare=_recorder(calls, "exact_prepare"),
+        exact_recurrent_tile64=_recorder(calls, "exact_tile64"),
+        exact_recurrent_segments_tile64=_recorder(calls, "exact_segments_tile64"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=1025,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0002),
+        stream=0,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare",
+        "exact_segments_tile64",
+        "rmsnorm_gate",
+    ]
+
+
 def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -197,6 +297,20 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
                 None,
             ),
             "explicit GGUF GDN prefill mode 'fused' is unavailable",
+        ),
+        (
+            "chain_tile64",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_tile64' is unavailable",
+        ),
+        (
+            "chain_tile32",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_tile32' is unavailable",
         ),
     ],
 )

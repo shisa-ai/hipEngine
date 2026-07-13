@@ -1517,17 +1517,27 @@ class Qwen35GGUFFullStackRunner:
 
         Plugin-style: the kernel chain is resolved via the kernel registry
         keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``.
-        ``HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|fused|chain`` selects the
-        implementation; ``auto`` preserves the correctness-certified
-        fused-first fallback. The exact chain keeps raw Q/K and normalization
-        scales separate so its recurrent kernel preserves fused decode-order
-        arithmetic. Whether its single-sequence or segment-aware recurrence
-        runs is controlled by ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD``
-        (default 1025), not a per-quant/per-backend branch.
+        ``HIPENGINE_GGUF_GDN_PREFILL_MODE`` selects the fused route, the
+        128-column exact chain, or its registered 64/32-column diagnostic
+        schedules; ``auto`` preserves the correctness-certified fused-first
+        fallback. The exact chains keep raw Q/K and normalization scales
+        separate so their recurrent kernels preserve fused decode-order
+        arithmetic. Whether the matching single-sequence or segment-aware
+        recurrence runs is controlled by
+        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
+        per-quant/per-backend branch.
         """
 
         plan = self._gdn_prefill_plan()
         mode = _gguf_gdn_prefill_mode()
+        exact_recurrent = plan.exact_recurrent
+        exact_recurrent_segments = plan.exact_recurrent_segments
+        if mode == "chain_tile64":
+            exact_recurrent = plan.exact_recurrent_tile64
+            exact_recurrent_segments = plan.exact_recurrent_segments_tile64
+        elif mode == "chain_tile32":
+            exact_recurrent = plan.exact_recurrent_tile32
+            exact_recurrent_segments = plan.exact_recurrent_segments_tile32
         if mode == "fused" and not plan.has_fused:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'fused' is unavailable; "
@@ -1538,8 +1548,22 @@ class Qwen35GGUFFullStackRunner:
                 "explicit GGUF GDN prefill mode 'chain' is unavailable; "
                 "the prepare, recurrent, and RMSNorm-gate kernels must all be registered"
             )
+        if mode == "chain_tile64" and not plan.has_exact_chain_tile64:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_tile64' is unavailable; "
+                "the exact prepare, tile64 recurrent, and RMSNorm-gate kernels "
+                "must all be registered"
+            )
+        if mode == "chain_tile32" and not plan.has_exact_chain_tile32:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_tile32' is unavailable; "
+                "the exact prepare, tile32 recurrent, and RMSNorm-gate kernels "
+                "must all be registered"
+            )
         use_fused = plan.has_fused and mode in {"auto", "fused"}
-        use_chain = plan.has_chain and (mode == "chain" or not use_fused)
+        use_chain = mode in {"chain", "chain_tile64", "chain_tile32"} or (
+            plan.has_chain and not use_fused
+        )
         if use_fused:
             # Keep auto on the established fused route until the exact split
             # chain clears the complete SOL-G2 context/boundary matrix and the
@@ -1565,7 +1589,11 @@ class Qwen35GGUFFullStackRunner:
             )
             return
         if use_chain:
-            if plan.has_exact_chain:
+            if (
+                plan.exact_prepare is not None
+                and exact_recurrent is not None
+                and plan.rmsnorm_gate is not None
+            ):
                 plan.exact_prepare(
                     scratch.conv_out.ptr,
                     scratch.linear_alpha.ptr,
@@ -1589,13 +1617,13 @@ class Qwen35GGUFFullStackRunner:
                 )
                 segment_threshold = _gguf_gdn_prefill_segment_threshold()
                 use_exact_segments = (
-                    plan.exact_recurrent_segments is not None
+                    exact_recurrent_segments is not None
                     and rows >= segment_threshold
                     and getattr(scratch, "gdn_cu_seqlens", None) is not None
                     and getattr(scratch, "gdn_state_indices", None) is not None
                 )
                 if use_exact_segments:
-                    plan.exact_recurrent_segments(
+                    exact_recurrent_segments(
                         scratch.prefill_query.ptr,
                         scratch.prefill_key.ptr,
                         scratch.prefill_value.ptr,
@@ -1616,7 +1644,7 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    plan.exact_recurrent(
+                    exact_recurrent(
                         scratch.prefill_query.ptr,
                         scratch.prefill_key.ptr,
                         scratch.prefill_value.ptr,
@@ -13617,9 +13645,35 @@ _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_KEY = KernelKey(
     "gguf_qwen35",
     "f32_decode_order_exact_segments",
 )
+_GDN_PREFILL_EXACT_RECURRENT_TILE64_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_tile64",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE64_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_tile64",
+)
+_GDN_PREFILL_EXACT_RECURRENT_TILE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_tile32",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_tile32",
+)
 _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 1025
 _GGUF_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
-_GGUF_GDN_PREFILL_MODES = frozenset({"auto", "fused", "chain"})
+_GGUF_GDN_PREFILL_MODES = frozenset(
+    {"auto", "fused", "chain", "chain_tile64", "chain_tile32"}
+)
 
 
 @dataclass(frozen=True)
@@ -13662,6 +13716,10 @@ class _GGUFGDNPrefillPlan:
     exact_prepare: object | None = None
     exact_recurrent: object | None = None
     exact_recurrent_segments: object | None = None
+    exact_recurrent_tile64: object | None = None
+    exact_recurrent_segments_tile64: object | None = None
+    exact_recurrent_tile32: object | None = None
+    exact_recurrent_segments_tile32: object | None = None
 
     @property
     def has_chain(self) -> bool:
@@ -13680,6 +13738,22 @@ class _GGUFGDNPrefillPlan:
         return (
             self.exact_prepare is not None
             and self.exact_recurrent is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_exact_chain_tile64(self) -> bool:
+        return (
+            self.exact_prepare is not None
+            and self.exact_recurrent_tile64 is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_exact_chain_tile32(self) -> bool:
+        return (
+            self.exact_prepare is not None
+            and self.exact_recurrent_tile32 is not None
             and self.rmsnorm_gate is not None
         )
 
@@ -13805,6 +13879,14 @@ def _resolve_gguf_gdn_prefill_plan(
         exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
         exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
         exact_recurrent_segments=_resolve(_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_KEY),
+        exact_recurrent_tile64=_resolve(_GDN_PREFILL_EXACT_RECURRENT_TILE64_KEY),
+        exact_recurrent_segments_tile64=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE64_KEY
+        ),
+        exact_recurrent_tile32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_TILE32_KEY),
+        exact_recurrent_segments_tile32=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE32_KEY
+        ),
     )
 
 

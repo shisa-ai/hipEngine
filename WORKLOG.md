@@ -153199,3 +153199,42 @@ graphless decode launch-collapse path without regressing target/serial parity.
   generic loader requires `expected`. The seven canonical root CPU fixtures
   all pass through `scripts/smoke.py --mode cpu-fixtures`; no fixture file or
   checker was changed here.
+
+## 2026-07-13 - Reject GPF-1 exact GGUF GDN value-column tiling
+
+- Established a clean gfx1151/HIP 7.15 control from detached worktree
+  `ddb3f27d`: 512/1K/4K prefill medians are
+  **423.708/448.694/410.023 tok/s**, decode
+  **49.116/51.657/52.505 tok/s**, after two discarded warmups and five measured
+  repetitions. Every timed final token is `9707`. Hardware is Radeon 8060S,
+  kernel `7.1.3-2-cachyos`, TuneD `accelerator-performance`; model fingerprint
+  is `936659d...c89fb`.
+- The first 512 rocprof attempt is invalid because previously lazy GGUF JIT
+  builds inherited rocprof. Replayed the exact command outside the profiler,
+  set `HIPENGINE_COMPILER_VERSION_FILE`, and required cached builds. The valid
+  trace contains no compiler child: total GPU-active **1227.335 ms**; fused
+  exact GDN **794.120 ms / 30** (**64.70%**, 26.471 ms/layer), workgroup 128,
+  96 VGPR, zero scratch/LDS. The required external lineage command could not
+  run because configured read-only parent
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent; this candidate is an
+  in-tree schedule change, not a parent port, so no external-drift claim is
+  made.
+- RED added not-yet-defined tile64/tile32 exact recurrent wrappers and failed
+  collection with `ImportError`. GREEN adds registered plain and segment-aware
+  variants for 64 and 32 value columns per block plus fail-closed
+  `chain_tile64|chain_tile32` diagnostic routing. All six
+  `(tile=128,64,32) x (plain,segments)` primitive cases produce BF16 output and
+  FP32 resident state byte-for-byte identical to fused. Focused correctness and
+  routing command passes **36 tests**.
+- Full 512/128 screen rejects the schedules. Clean fused control
+  **423.708 tok/s**; tile64 **388.300** (**-8.36%**), tile32 **374.206**
+  (**-11.68%**). Decode remains flat at **49.104/49.113 tok/s** and all timed
+  IDs remain `9707`. Cache-clean tile64 profiling shows the recurrence itself
+  worsens **794.120 -> 862.281 ms (+8.58%)** even though VGPRs fall 96 -> 40;
+  separate prepare and RMSNorm+gate add another **26.508 + 11.618 ms**. GPF-1B
+  is therefore skipped: fusion cannot recover a slower recurrence kernel.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json`.
+  `auto` remains fused-first. The next candidate is GPF-2: one wave32 per value
+  column, four state rows per lane, with ordered shuffles first attempted to
+  retain the current serial contraction bits.
