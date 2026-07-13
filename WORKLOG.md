@@ -155372,3 +155372,49 @@ graphless decode launch-collapse path without regressing target/serial parity.
   warning in the CPU-reference SiLU test). The two updated test files pass
   together (`26 passed`), benchmark README synchronization passes, and the
   WORKLOG conflict checker passes.
+## 2026-07-14 - Build ROCmFPX and run the Q4_K_M mtpbench sanity gate
+
+- Built the clean local `/home/lhl/ROCmFPX` `main` revision
+  `6bf20cd688ba0af882d1f68ba50b292edf646ab4` out of tree for gfx1151 with
+  TheRock HIP 7.15 / AMD clang 23. Exact build command:
+  `env BUILD_DIR=/tmp/rocmfpx-build-gfx1151 JOBS=8
+  CMAKE_HIP_ARCHITECTURES=gfx1151 HSA_OVERRIDE_GFX_VERSION=11.5.1
+  scripts/build-strix-rocmfp4-mtp.sh llama-server llama-cli`.
+  `llama-server` reports b117-6bf20cd and exposes both ROCm0 and Vulkan0; the
+  server binary SHA-256 is
+  `9449e08009aca76b4c37b4a3e3b7c2a2ae60222190d1179af9e6157ae23a2bef`.
+- Tested hipEngine's exact existing
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (22,663,387,424 bytes,
+  SHA-256 `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+  not a ROCmFP4 conversion. The ROCm0 CLI smoke loaded cleanly: bounded n16 AR
+  generation was **52.5 tok/s**; a separate unmatched-length n32
+  `draft-mtp n4/p0.55` smoke was **75.4 tok/s** and exited without
+  decode/fallback errors. The server then explicitly logged
+  `draft-mtp`, `n_max=4`, `p_min=0.55`, both target/draft contexts, and live
+  draft/accept counters. It also warned that ROCm0 lacks backend TOP_K support,
+  so this is not a fully backend-resident sampler path.
+- Ran all ten prompts in
+  `benchmarks/prompts/mtpbench-code-general-ja.jsonl` (all four categories and
+  all four category heldouts), sequential c1, fixed 192 tokens, greedy temp 0,
+  top-p 1, ignore-EOS, no prompt cache, thinking off, F16 KV, context 4096,
+  batch/ubatch 512, FlashAttention on. Each mode received one discarded 32-token
+  warmup and one diagnostic full-suite measurement.
+- ROCmFPX AR measured **48.92 client tok/s** and **50.763 weighted
+  generation-only tok/s**. MTP measured **53.36 client tok/s (1.0908x)** and
+  **56.167 weighted generation-only tok/s (1.1064x)**, with **1227/1508 =
+  81.37%** draft acceptance. The gain is category-dependent: code **1.3412x**,
+  general_en **1.0113x**, general_ja **0.9152x**, mixed_ja_en **1.0594x**;
+  heldouts remain aggregate-positive at **1.0707x**.
+- Strict output audit rejects an exact/lossless interpretation for this model:
+  the no-MTP and MTP assistant-message hashes differ on **10/10** prompts. A
+  separate 64-token `code_merge_intervals` replay shares 21 output tokens and
+  then diverges at zero-based token index 21, AR token `4071` versus MTP token
+  `413`. Thus the speed legs execute different recurrent-model trajectories;
+  this result is directionally comparable only to hipEngine's semantic
+  `llama-compat` lane, not its serial-prefix exact/default route.
+- Compact diagnostic artifact:
+  `benchmarks/results/2026-07-14-rocmfpx-q4km-mtpbench-sanity.json`. Raw client
+  JSON and server logs remain under `/tmp` with hashes recorded in the artifact.
+  `performance_claim=false`: one repetition, dynamic clocks, F16-vs-BF16 KV
+  mismatch, and output divergence prevent promotion or a cross-engine speed
+  ratio.
