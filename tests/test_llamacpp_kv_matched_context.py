@@ -95,6 +95,7 @@ def test_run_command_encodes_exact_matched_workload() -> None:
         flash_attn=True,
         kl_threshold=0.05,
         top1_threshold=0.90,
+        reference_logits_bin=Path("/tmp/reference.bin"),
     )
 
     command = _run_command(args, binary=Path("/tmp/harness"), cpp_json=Path("/tmp/result.json"))
@@ -104,3 +105,4 @@ def test_run_command_encodes_exact_matched_workload() -> None:
     assert command[command.index("--ctx-size") + 1] == "131089"
     assert command[command.index("--reference-cache") + 1] == "f16"
     assert command[command.index("--candidate-cache") + 1] == "q8_0"
+    assert command[command.index("--reference-logits-bin") + 1] == "/tmp/reference.bin"

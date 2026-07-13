@@ -30,6 +30,7 @@ using Clock = std::chrono::steady_clock;
 struct Options {
     std::string model;
     std::string json_path;
+    std::string reference_logits_path;
     int32_t prompt_token_id = 9707;
     int32_t prompt_length = 131072;
     int32_t decode_steps = 16;
@@ -78,7 +79,8 @@ struct CompareResult {
         "[--prompt-token-id 9707] [--prompt-length 131072] [--decode-steps 16] "
         "[--ctx-size N] [--batch-size 4096] [--ubatch-size 512] "
         "[--n-gpu-layers 99] [--threads 16] [--reference-cache f16] "
-        "[--candidate-cache q8_0] [--flash-attn on|off]");
+        "[--candidate-cache q8_0] [--flash-attn on|off] "
+        "[--reference-logits-bin PATH]");
 }
 
 int32_t parse_i32(const std::string & text, const std::string & name) {
@@ -123,6 +125,7 @@ Options parse_args(int argc, char ** argv) {
         const std::string value = argv[++i];
         if (arg == "--model") options.model = value;
         else if (arg == "--json") options.json_path = value;
+        else if (arg == "--reference-logits-bin") options.reference_logits_path = value;
         else if (arg == "--prompt-token-id") options.prompt_token_id = parse_i32(value, arg);
         else if (arg == "--prompt-length") options.prompt_length = parse_i32(value, arg);
         else if (arg == "--decode-steps") options.decode_steps = parse_i32(value, arg);
@@ -385,6 +388,26 @@ void write_run_json(std::ostream & out, const RunResult & run) {
     out << '}';
 }
 
+void write_logits_binary(const std::string & path, const RunResult & run) {
+    if (path.empty()) return;
+    std::ofstream out(path, std::ios::binary);
+    if (!out) throw std::runtime_error("failed to open reference logits output: " + path);
+    const char magic[8] = {'H', 'K', 'V', 'L', 'O', 'G', '1', '\0'};
+    const uint32_t schema = 1;
+    const uint32_t rows = static_cast<uint32_t>(run.logits.size());
+    const uint32_t columns = static_cast<uint32_t>(run.n_vocab);
+    out.write(magic, sizeof(magic));
+    out.write(reinterpret_cast<const char *>(&schema), sizeof(schema));
+    out.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+    out.write(reinterpret_cast<const char *>(&columns), sizeof(columns));
+    for (const auto & row : run.logits) {
+        if (row.size() != columns) throw std::runtime_error("reference logit row size mismatch");
+        out.write(reinterpret_cast<const char *>(row.data()),
+                  static_cast<std::streamsize>(row.size() * sizeof(float)));
+    }
+    if (!out) throw std::runtime_error("failed while writing reference logits output: " + path);
+}
+
 void write_json(
         const Options & options,
         const RunResult & reference,
@@ -412,7 +435,15 @@ void write_json(
         << "\"threads\":" << options.threads << ','
         << "\"flash_attn\":" << (options.flash_attn ? "true" : "false") << ','
         << "\"model_load_seconds\":" << model_load_seconds << ','
-        << "\"quality_thresholds\":{\"kl_mean_max\":" << options.kl_threshold
+        << "\"reference_logits_bin\":";
+    if (options.reference_logits_path.empty()) {
+        out << "null,";
+    } else {
+        out << "{\"path\":\"" << json_escape(options.reference_logits_path)
+            << "\",\"schema\":1,\"rows\":" << reference.logits.size()
+            << ",\"columns\":" << reference.n_vocab << "},";
+    }
+    out << "\"quality_thresholds\":{\"kl_mean_max\":" << options.kl_threshold
         << ",\"top1_agreement_min\":" << options.top1_threshold << "},"
         << "\"reference\":";
     write_run_json(out, reference);
@@ -479,6 +510,7 @@ int main(int argc, char ** argv) {
         std::cerr << "running Q8_0 candidate with reference-token forcing..." << std::endl;
         RunResult candidate = run_context(model.get(), options, options.candidate_cache, &forced_inputs);
         CompareResult comparison = compare_logits(reference, candidate);
+        write_logits_binary(options.reference_logits_path, reference);
         write_json(options, reference, candidate, comparison, model_load_seconds);
 
         model.reset();
