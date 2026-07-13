@@ -15,11 +15,15 @@ from scripts.gguf_gdn_prefill_compare import (
 )
 
 
-def test_parser_accepts_named_gdn_candidate_mode() -> None:
+@pytest.mark.parametrize(
+    "mode",
+    ("chain_wave32_tree", "chain_lds32", "chain_lds64"),
+)
+def test_parser_accepts_named_gdn_candidate_mode(mode: str) -> None:
     args = build_parser().parse_args(
-        ["--candidate-mode", "chain_wave32_tree", "--json", "/tmp/out.json"]
+        ["--candidate-mode", mode, "--json", "/tmp/out.json"]
     )
-    assert args.candidate_mode == "chain_wave32_tree"
+    assert args.candidate_mode == mode
 
 
 def test_array_comparison_reports_exact_and_numeric_drift() -> None:

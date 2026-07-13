@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_candidate",
+  "status": "candidate_focus_gate_passed_pending_clean_promotion",
+  "performance_claim": false,
+  "candidate": "GPF-2D scalar-exact LDS32-resident GDN prefill",
+  "conclusion": "Keeping one scalar-exact value column per thread and its 128-row recurrent state in a 16 KiB LDS tile removes per-token global state traffic without changing arithmetic. The exact candidate wins all three focused prefill shapes with flat decode; clean full-model state, balanced-wall, and natural-trajectory gates remain before default promotion.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "control_commit": "ddb3f27d1ab169518c24ccbbe126bf0bac3029dc",
+    "candidate_base_commit": "28fe2adf4fba42e89612f734ff55b369fc4a7ac6",
+    "candidate_dirty": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workloads": ["512/128", "1K/128", "4K/128"],
+    "prompt_source": "repeated token 9707",
+    "control": "clean detached worktree; two discarded warmups; five measured repetitions",
+    "candidate": "one discarded warmup; three measured repetitions per workload",
+    "common_flags": [
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode=bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode"
+    ],
+    "selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32",
+    "default_changed": false
+  },
+  "correctness": {
+    "change_scope": "One thread preserves the scalar 0..127 contraction/update order for one value column; a wave-aligned block retains the column tile's FP32 recurrent state in row-major LDS across the serial token loop.",
+    "red": "The focused LDS wrapper test failed collection before the four new registered plain/segment tile32/tile64 wrappers existed.",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_gguf_gdn_prefill_ab.py tests/test_gguf_gdn_prefill_compare.py tests/test_gguf_gdn_trajectory_gate.py",
+    "focused_result": "79 passed",
+    "exact_matrix": "plain and segment LDS32/LDS64 recurrence output plus FP32 resident state are byte-exact to fused in the primitive production-shape fixtures",
+    "timed_final_token_ids": {
+      "512/128": [9707, 9707, 9707],
+      "1K/128": [9707, 9707, 9707],
+      "4K/128": [9707, 9707, 9707]
+    },
+    "promotion_pending": [
+      "clean six-case full-model exact-state matrix",
+      "clean balanced same-session 512/4096 wall gate",
+      "ten-prompt natural greedy-trajectory and decode non-regression gate"
+    ]
+  },
+  "measurements": {
+    "512/128": {
+      "control_prefill_tok_s": 423.70846235388416,
+      "candidate_prefill_tok_s": 753.4887733122565,
+      "prefill_delta_pct": 77.8318915620188,
+      "control_decode_tok_s": 49.11579674450292,
+      "candidate_decode_tok_s": 49.06894710910448,
+      "decode_delta_pct": -0.09538608452623887,
+      "candidate_range": [753.118062839465, 754.3680803401976]
+    },
+    "1K/128": {
+      "control_prefill_tok_s": 448.6940367628607,
+      "candidate_prefill_tok_s": 799.844014808437,
+      "prefill_delta_pct": 78.26045128189713,
+      "control_decode_tok_s": 51.657443106756936,
+      "candidate_decode_tok_s": 51.67400563253782,
+      "decode_delta_pct": 0.032062225276341394,
+      "candidate_range": [799.7192304582094, 800.6892933979578]
+    },
+    "4K/128": {
+      "control_prefill_tok_s": 410.02287664315725,
+      "candidate_prefill_tok_s": 686.8401760143989,
+      "prefill_delta_pct": 67.51264749848474,
+      "control_decode_tok_s": 52.50465089682453,
+      "candidate_decode_tok_s": 52.521833711905785,
+      "decode_delta_pct": 0.03272627241159842,
+      "candidate_range": [685.4231239765335, 689.1130645272126]
+    },
+    "sources": {
+      "control": "/tmp/gpf-m0-baseline-512-1k-4k.json (sha256 9dc28fa4a0d2b259ea4bd470988adf80fb88a7b2222b9b4a2a6f155425dfe499)",
+      "candidate_512": "/tmp/gpf-2d-no-unroll-lds32-screen-512.json (sha256 370250e582837a7e91a074dbef713a4937d3e7d1196ac7ef57ba677e336b2188)",
+      "candidate_1k_4k": "/tmp/gpf-2d-no-unroll-lds32-screen-1k-4k.json (sha256 41f753d1673ccafde11d567762bce0731fdc0956936bf7c2a82c19d5ed8cfa5b)"
+    }
+  },
+  "profile": {
+    "cache_clean": true,
+    "tokens": 512,
+    "total_kernel_ms": 692.56416,
+    "total_kernel_delta_vs_fused_pct": -43.571709435484195,
+    "recurrent_ms": 221.873052,
+    "recurrent_dispatches": 30,
+    "recurrent_share_pct": 32.036461719301215,
+    "recurrent_delta_vs_fused_pct": -72.06051327255327,
+    "prepare_ms": 28.245811,
+    "rmsnorm_gate_ms": 9.518502,
+    "workgroup_size": 32,
+    "vgpr_count": 64,
+    "scratch_bytes": 0,
+    "lds_bytes": 16384,
+    "forced_unroll_rejection": {
+      "candidate_512_prefill_tok_s": 401.731893,
+      "recurrent_ms": 819.549572,
+      "vgpr_count": 96,
+      "scratch_bytes_per_thread": 1880,
+      "conclusion": "Forced 128-row unrolling caused compiler-generated private scratch; pragma unroll 1 preserves order and removes the spill."
+    },
+    "source": "/tmp/gpf-2d-no-unroll-rocprof-512-lds32-summary.json (sha256 9e1450f760cb8ab25fd3daf4fde55076326d32c612b8aee8293148ec996871f4)"
+  },
+  "lineage": {
+    "external_check": "python3 scripts/check_lineage.py --kind kernel --diff stat could not run because the configured read-only parent /home/lhl/amd-gpu-tuning/nano-vllm-amd is absent",
+    "port": false,
+    "reason": "In-tree exact state-lifetime/layout schedule; no external source copied"
+  },
+  "next_action": "Commit the exact candidate, then run the six-case full-model byte-exact matrix, clean balanced 512/4096 A/B, and natural trajectory/decode gate before changing auto."
+}

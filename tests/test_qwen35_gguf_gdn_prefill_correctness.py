@@ -59,7 +59,11 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
@@ -833,6 +837,7 @@ def _run_exact_split_chain(
     value_tile: int = 128,
     wave32: bool = False,
     wave32_tree: bool = False,
+    lds_tile: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -897,6 +902,15 @@ def _run_exact_split_chain(
             recurrent_segments = (
                 qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
             )
+        if lds_tile is not None:
+            recurrent = {
+                64: qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
+                32: qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+            }[lds_tile]
+            recurrent_segments = {
+                64: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
+                32: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
+            }[lds_tile]
         if use_segments:
             recurrent_segments(
                 query_raw.ptr,
@@ -1097,6 +1111,42 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments_tile32",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_lds64",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_lds32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_lds64",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_lds32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32
     )
     assert (
         resolve(
@@ -1526,6 +1576,34 @@ def test_gdn_prefill_wave32_chain_is_bit_exact_to_decode_order(
     )
     np.testing.assert_array_equal(out_wave, out_fused)
     np.testing.assert_array_equal(state_wave, state_fused)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+@pytest.mark.parametrize("lds_tile", [64, 32])
+def test_gdn_prefill_lds_resident_chain_is_bit_exact_to_decode_order(
+    use_segments: bool,
+    lds_tile: int,
+) -> None:
+    """LDS state residency must retain the scalar fused recurrence contract."""
+
+    inputs = _GDNInputs(
+        tokens=17,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=31,
+    )
+    out_fused, state_fused = _run_decode_order_bf16(inputs, _RMS_EPS)
+    out_lds, state_lds = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        lds_tile=lds_tile,
+    )
+    np.testing.assert_array_equal(out_lds, out_fused)
+    np.testing.assert_array_equal(state_lds, state_fused)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

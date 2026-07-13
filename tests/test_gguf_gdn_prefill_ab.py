@@ -10,6 +10,7 @@ from scripts.gguf_gdn_prefill_ab import (
     _parse_contexts,
     _promotion_decision,
     _summarize_context,
+    build_parser,
 )
 
 
@@ -19,6 +20,14 @@ def test_parse_contexts_requires_unique_positive_integers() -> None:
         _parse_contexts("512,0")
     with pytest.raises(BenchmarkError, match="duplicates"):
         _parse_contexts("512,512")
+
+
+@pytest.mark.parametrize("mode", ("chain_lds32", "chain_lds64"))
+def test_parser_accepts_exact_lds_candidate_modes(mode: str) -> None:
+    args = build_parser().parse_args(
+        ["--candidate-mode", mode, "--json", "/tmp/out.json"]
+    )
+    assert args.candidate_mode == mode
 
 
 def test_correctness_gate_requires_passing_context_coverage(tmp_path) -> None:

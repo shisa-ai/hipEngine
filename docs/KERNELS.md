@@ -299,6 +299,19 @@ exact candidate should retain one scalar thread per value column and keep a
 32- or 64-column recurrent-state tile in LDS across the token loop; see
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json`.
 
+GPF-2D adds scalar-exact LDS-resident tile32/tile64 variants, each with plain
+and segment-aware registry entries. One thread continues to own one value
+column and preserves the fused 0..127 contraction/update order; a row-major
+128xvalue FP32 LDS tile keeps state resident across the complete serial token
+loop. The tile32 production candidate uses workgroup 32 and 16 KiB LDS. Do not
+force-unroll the 128-row loops: that build generated 1,880 bytes/thread scratch
+and lost the fused wall. Rolled loops use 64 VGPR, zero scratch, and reduce the
+gfx1151 512 recurrence to `221.873 ms / 30`; focused prefill reaches
+`753.489/799.844/686.840 tok/s` at 512/1K/4K versus fused
+`423.708/448.694/410.023`. Keep `chain_lds32` explicit until the clean six-case
+state, balanced-wall, and natural-trajectory gates finish; see
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

@@ -7,7 +7,16 @@ from scripts.gguf_gdn_trajectory_gate import (
     _classify_gate,
     _compare_trajectories,
     _summarize_decode_measurements,
+    build_parser,
 )
+
+
+def test_parser_accepts_exact_lds_candidate_modes() -> None:
+    for mode in ("chain_lds32", "chain_lds64"):
+        args = build_parser().parse_args(
+            ["--candidate-mode", mode, "--json", "/tmp/out.json"]
+        )
+        assert args.candidate_mode == mode
 
 
 def _step(token_id: int, logits: list[float]) -> dict[str, object]:
