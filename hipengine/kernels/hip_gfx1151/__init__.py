@@ -31,9 +31,6 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct"
 # Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
 # selected-dual Q4T16 prefill schedule on gfx1151.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
-# Clean GPF-4 exact-state and fresh-process 512/4K plus 128K screen evidence
-# admits event-linked GGUF AOTriton queue isolation on gfx1151.
-GGUF_AOTRITON_ISOLATED_PREFILL_STREAM = True
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
@@ -75,7 +72,6 @@ register_backend_kernels = register_gfx1151_kernels
 
 __all__ = [
     "BACKEND",
-    "GGUF_AOTRITON_ISOLATED_PREFILL_STREAM",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",

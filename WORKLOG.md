@@ -154090,3 +154090,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`.
   Next commit the package policy and run the clean automatic six-shape 1+3
   publication sweep.
+
+## 2026-07-14 - Reject GPF-4 default at final stability gate
+
+- Ran the final automatic route from clean detached promotion commit
+  `5515b802`, one right-sized fresh process per workload, one discarded warmup
+  plus three measured runs, 128 graph-replay decode tokens, and cached builds.
+  512/1K/4K/64K are stable and produce token `9707`; medians are
+  **827.899/917.385/912.249/625.752 prefill tok/s** and
+  **49.034/51.623/52.407/37.292 decode tok/s**.
+- The attractive medians are **not retainable**. The 32K measured prefill
+  samples are **[294.254, 760.991, 761.465] tok/s**. That outlier satisfies the
+  documented variance trigger, so the required replacement escalated to a
+  fresh 1+5 process. It failed to complete even its warmup after **481 s**
+  process wall, versus approximately 43 s on the fast candidate route, and was
+  bounded/stopped.
+- The 128K warmup and measured run 1 complete at **439.698/439.448 tok/s**
+  (run-1 decode **27.731 tok/s**, token `9707`, peak **25.493 GiB**). Measured
+  run 2 then remains GPU-active for at least **1200 s**, versus approximately
+  298 s normally. Stopped it rather than converting the publication protocol
+  into an unbounded lifecycle soak.
+- Ran an immediate same-host, fresh-process, explicit same-stream 32K control.
+  It completes normally in **51.040 s / 642.003 tok/s**, token `9707`, peak
+  **23.559 GiB**. The final blocker is therefore candidate-route stability,
+  not a generally wedged host/GPU.
+- Decision: reject GPF-4 as a default, remove the provisional gfx1151 package
+  capability, retain explicit `=1` only for diagnostics, keep gfx1100
+  unchanged, and preserve the published GPF-2E benchmark row. No partial fast
+  row is published. RED requires the automatic gfx1151 policy to be false and
+  fails against the provisional capability; GREEN removes the capability and
+  passes the focused policy/backend suite **20/20**.
+- Final rejection artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`.
+  GPF-5 residual profiling is next.
