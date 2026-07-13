@@ -153465,3 +153465,48 @@ graphless decode launch-collapse path without regressing target/serial parity.
   It has `performance_claim=false`; `auto` remains fused. Next: commit this
   exact candidate, then run the clean six-case full-model state matrix,
   balanced 512/4096 wall gate, and ten-prompt natural trajectory/decode gate.
+
+## 2026-07-13 - GPF-2D passes clean exactness and balanced-wall gates
+
+- Ran the six-case full-model matrix from clean detached `a6f389d2` on gfx1151
+  with HIP 7.15 and cached-only builds. Fused and `chain_lds32` are byte-exact
+  at the 17-token greeting and repeated-token 512/1024/1025/4095/4096 cases:
+  sampled token, FP32 hidden seed, and all 30 resident Conv/GDN state families
+  match in every case; greeting and 512 also match every captured layer final
+  row. Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json`
+  (sha256 `8326c6799050258d6f5efed439533c1b3bbe1139866c43ab0909e3be9e2634a6`).
+- Ran one warmup plus four balanced same-session repetitions per mode/context
+  from the same clean revision. At 512, fused **1216.271 ms / 420.959 tok/s**
+  becomes LDS32 **679.143 ms / 753.891 tok/s** (**1.791x**, -44.16% wall).
+  At 4096, fused **10030.400 ms / 408.359 tok/s** becomes LDS32
+  **5954.951 ms / 687.831 tok/s** (**1.684x**, -40.63% wall). All 16 timed
+  final IDs are `9707`, ranges are tight, provenance is clean, and the driver
+  selects `chain_lds32`. Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json`;
+  full local artifact `/tmp/gpf2d-clean-a6f389d2-balanced-ab.json` (sha256
+  `086f484283fdfb1ac3d79b6bf75dcb3486fc7abb5b0d50c3395671b1608436cd`).
+- `auto` remains fused while the complete ten-prompt natural trajectory and
+  balanced 128-transition decode gate runs. A shared gfx1100/gfx1151 default
+  is not implied by gfx1151 evidence; promotion must be architecture-scoped
+  unless gfx1100 receives an independent transfer gate.
+
+## 2026-07-13 - GPF-2D passes natural trajectories and decode non-regression
+
+- From the same clean detached `a6f389d2`, ran all ten prompts in
+  `mtpbench-code-general-ja.jsonl` across `code`, `general_en`, `general_ja`,
+  and `mixed_ja_en`. Fused and `chain_lds32` match all **250/250** prefill-plus-
+  24-decode logit transitions exactly: every token matches, KL mean/max are
+  both **0.0**, and minimum top-1 agreement is **1.0**.
+- Two balanced production graph-decode windows per mode/prompt preserve every
+  128-token trajectory. The sum of per-prompt median walls is
+  **23956.787 ms fused vs 23951.381 ms LDS32**; weighted decode is
+  **53.4295 -> 53.4416 tok/s (+0.0226%)**. This clears the predeclared no-
+  tolerance decode non-regression rule rather than relying on a noise band.
+- Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json`.
+  Full local artifact `/tmp/gpf2d-clean-a6f389d2-trajectory-decode-gate.json`
+  is sha256 `a5200ad59d45634ac44665acdfde3244e1cf3816bcc95e38240e963735c3572e`.
+  GPF-2D is accepted for gfx1151-scoped default promotion. The implementation
+  must use registry/plugin policy rather than a backend-string branch, and
+  gfx1100 remains fused until separately validated.

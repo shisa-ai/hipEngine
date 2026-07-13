@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_gguf_gdn_prefill_exact_matrix",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "created_at": "2026-07-13T08:13:04.482416+00:00",
+  "source_revision": "a6f389d2715f91581784bcf95af5b93ea598d628",
+  "protocol": {
+    "driver": "scripts/gguf_gdn_prefill_compare.py",
+    "modes": ["fused", "chain_lds32"],
+    "contexts": [17, 512, 1024, 1025, 4095, 4096],
+    "comparison": "exact sampled token, FP32 hidden seed, and resident Conv/GDN state; greeting and p512 also compare every captured layer final row",
+    "segment_threshold": 1025,
+    "timing": "single-order diagnostic wall only; excluded from performance claims",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "classification": {
+    "passed": true,
+    "status": "accepted_exact_matrix",
+    "cases_passed": 6,
+    "cases_total": 6,
+    "conclusion": "The scalar-exact LDS32 candidate matches fused tokens, hidden state, resident Conv/GDN state, and the required layer outputs across the short, 512, segment-threshold, 4K, and chunk-boundary cases on gfx1151."
+  },
+  "cases": [
+    {
+      "prompt": {"kind": "greeting", "length": 17, "sha256_i64": "01f2799757d02964394b6a7d6d2842051a57c3ef983b129d25fc2cbd0ed6ad9d"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9419,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": true,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-greeting.json", "sha256": "a086ff9c52be9e00d7062255499a6f823ba3932c87cfda352d0bf77b533f7bc8"}
+    },
+    {
+      "prompt": {"kind": "repeated", "token_id": 9707, "length": 512, "sha256_i64": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9707,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": true,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-p512.json", "sha256": "c73494bafd777e9901d343b04cf34ce03713a75db62bd903887dbd51f688e796"}
+    },
+    {
+      "prompt": {"kind": "repeated", "token_id": 9707, "length": 1024, "sha256_i64": "b6c252784df8e5f73bed050467f6dc90f6e2716a5bb1492df30ed0f92a13606e"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9707,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": null,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-p1024.json", "sha256": "ea8088c4eacc385d371ce0e5ef29d21267b0680f687c6d7a48b369a999353b33"}
+    },
+    {
+      "prompt": {"kind": "repeated", "token_id": 9707, "length": 1025, "sha256_i64": "69243f553f2a7110eb59575abf10690fac71a1d5d0f23d644f7864d7e90e7d4a"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9707,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": null,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-p1025.json", "sha256": "823cc77a5ef63d38768b5095278594a2584411838e3c4bf63aa11c481a176532"}
+    },
+    {
+      "prompt": {"kind": "repeated", "token_id": 9707, "length": 4095, "sha256_i64": "1cafab49997ddb29a588b3ab89d3dbbc94f8b0a42963893e391dab20650ba8f9"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9707,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": null,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-p4095.json", "sha256": "e5e393c93abec2a5ac9d1f75a4ae45b90583174dff26e08d30ea502b0afc797a"}
+    },
+    {
+      "prompt": {"kind": "repeated", "token_id": 9707, "length": 4096, "sha256_i64": "181484d2e8533a0f8b1f5c8486f35552ce7a32a9bcda66e5f389f6b4030c5093"},
+      "passed": true,
+      "classification": "fused_candidate_exact",
+      "sampled_token": 9707,
+      "hidden_seed_exact": true,
+      "resident_state_exact": true,
+      "all_layer_outputs_exact": null,
+      "child": {"path": "/tmp/gpf2d-clean-a6f389d2-p4096.json", "sha256": "8138536ddf1b54a6f08f6c3aed0f0a8f9fd3edeb64b08d5190c051731c6fd06a"}
+    }
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-13T08:13:04.482416+00:00",
+    "repo_root": "/tmp/hipengine-gpf2d-clean",
+    "hipengine_commit": "a6f389d2715f91581784bcf95af5b93ea598d628",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "gguf_gdn_prefill_fused_chain_compare",
+    "timing_protocol": "correctness_only_single_order_diagnostic_wall",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": {"enabled": false, "kind": null, "command": null},
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "explicit fused/chain_lds32 sweep",
+      "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": null
+    },
+    "command": [
+      "six invocations of scripts/gguf_gdn_prefill_compare.py",
+      "--candidate-mode=chain_lds32",
+      "--require-cached-build",
+      "contexts=17,512,1024,1025,4095,4096"
+    ]
+  }
+}
