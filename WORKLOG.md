@@ -153747,3 +153747,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json`.
   Next commit the explicit candidate, then run the clean six-case full-model
   matrix and balanced current-default/direct wall+decode gate before promotion.
+
+## 2026-07-13 - GPF-2E passes clean six-case full-model exact matrix
+
+- Created clean detached `/tmp/hipengine-gpf2e-clean-c3a065ee` at candidate
+  commit `c3a065eef3d588b4e3ced25b83d2118c9cad938a`, prebuilt only its
+  worktree-keyed cache outside the retained runs, and required cached builds
+  for every retained comparison. Provenance is clean and resolves
+  `hip_gfx1151` on Radeon 8060S, TheRock HIP 7.15, BF16 KV, and the retained
+  Q4_K_M fingerprint.
+- Ran six invocations of `scripts/gguf_gdn_prefill_compare.py` with
+  `--candidate-mode chain_lds32_direct --require-cached-build`: greeting,
+  repeated token `9707` at 512, 1024, 1025, 4095, and 4096. Greeting and 512
+  included all-layer final-row bisection; the remaining boundary cases used
+  the production hidden/state comparator.
+- All **6/6** cases are byte-exact between fused and direct-conv for the
+  sampled token, FP32 hidden seed, and every resident Conv/GDN state pair.
+  Greeting and 512 also match every captured layer final row. The matrix
+  covers both sides of the 1025-row segmented dispatch threshold and the
+  4095/4096 chunk boundary. This is correctness-only evidence; single-order
+  diagnostic walls are excluded from performance claims.
+- Retained compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json`.
+  Next action is a balanced, same-session `chain_lds32` versus
+  `chain_lds32_direct` full-prefill wall/decode gate before any policy change.
