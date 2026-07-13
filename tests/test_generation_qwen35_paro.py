@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -574,6 +575,51 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
         ("graph_replay", 2),
         ("graph_read", 2),
         ("graph_close",),
+    ]
+
+
+def test_qwen35_paro_generator_uses_eager_decode_when_graph_is_unvalidated(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def greedy_decode_graph_eligible(self):
+            return False
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def capture_decode_graph(self, **kwargs):  # pragma: no cover - policy must bypass graph capture
+            raise AssertionError(f"unexpected graph capture: {kwargs}")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(token_id + 1, chr(ord("A") + token_id - 99)) if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    out = generator.generate(_request(max_tokens=3))
+
+    assert out == ["ABC"]
+    assert calls == [
+        ("init", runner, 4096),
+        ("prefill_native", (10, 11), True),
+        ("step", 100, 2, True),
+        ("step", 101, 3, True),
     ]
 
 
@@ -1957,6 +2003,103 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         telemetry[0].timing["batch_decode_ms"]
     )
     assert batch_generation["batch_id"] == telemetry[0].batch_id
+
+
+def test_qwen35_paro_generator_uses_exact_hybrid_c2_without_native_profile(monkeypatch) -> None:
+    calls = []
+    token_rows = {"alpha": [10, 11], "beta": [20]}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        block_size = 256
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.max_sequence_length = max_sequence_length
+            self.max_batch_size = kwargs["max_batch_size"]
+
+        def prefill_native_packed(self, slab, *, sample: bool = True):
+            calls.append(("packed_prefill", slab.request_ids, slab.physical_slot_ids))
+            return (_result(100, "A"), _result(101, "B"))
+
+        def step_batch_native(
+            self,
+            token_ids,
+            *,
+            positions,
+            slots,
+            sample: bool = True,
+            exact_hybrid: bool = False,
+        ):
+            calls.append(
+                (
+                    "decode",
+                    tuple(token_ids),
+                    tuple(positions),
+                    tuple(slots),
+                    bool(exact_hybrid),
+                )
+            )
+            return (_result(200, "C"), _result(201, "D"))
+
+        def step_batch_serial(self, *args, **kwargs):
+            raise AssertionError("exact c2 hybrid must not enter the serial bridge")
+
+        def batch_execution_metadata(self, *, scheduler_owned: bool = False, native_decode: bool = False):
+            return SimpleNamespace(
+                native_compact_prefill=True,
+                native_caware_decode=False,
+                throughput_claim_eligible=False,
+                to_json_dict=lambda: {
+                    "path": "scheduler_exact_hybrid_c2",
+                    "exact_hybrid_c2": True,
+                    "native_compact_prefill": True,
+                    "native_caware_decode": False,
+                    "throughput_claim_eligible": False,
+                },
+            )
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    monkeypatch.setattr(qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy: None)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = SimpleNamespace(target_arch="gfx1151")
+
+    out = generator.generate(_request(prompts=("alpha", "beta"), max_tokens=2, ignore_eos=True))
+
+    assert out == ["AC", "BD"]
+    assert calls == [
+        ("packed_prefill", (0, 1), (0, 1)),
+        ("decode", (100, 101), (2, 1), (0, 1), True),
+    ]
+    assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_exact_hybrid_decode"
+    assert generator.last_batch_generation["exact_hybrid_c2"] is True
+    assert generator.last_batch_generation["serial_decode_fallback"] is False
+    assert generator.last_batch_generation["native_compact_prefill"] is True
+    assert generator.last_batch_generation["native_caware_decode"] is False
+    assert generator.last_batch_generation["throughput_claim_eligible"] is False
+
+
+def test_qwen35_paro_exact_hybrid_route_is_scoped_to_validated_architecture() -> None:
+    kv_policy = SimpleNamespace(storage_dtype=SimpleNamespace(value="bf16"))
+    common = {
+        "model_path": Path("/tmp/model"),
+        "prompts": ((10, 11), (20, 21)),
+        "max_tokens": 8,
+        "kv_policy": kv_policy,
+    }
+
+    assert qwen35._exact_hybrid_c2_route_blockers(**common, target_arch="gfx1151") == ()
+    assert qwen35._exact_hybrid_c2_route_blockers(**common, target_arch="gfx1100") == (
+        "exact PARO c2 hybrid is currently certified only on gfx1151",
+    )
 
 
 def test_qwen35_paro_generator_partitions_unsupported_native_width(monkeypatch) -> None:

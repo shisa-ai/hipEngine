@@ -1737,6 +1737,17 @@ class Qwen35ParoResidentSession:
 
         return self._native_batch_width_profile
 
+    def greedy_decode_graph_eligible(self) -> bool:
+        """Return whether greedy c=1 graph replay is correctness-certified.
+
+        gfx1100 retains the validated graph path. The 2026-07-13 gfx1151
+        graph/eager fixture gate rejected graph replay, so unvalidated targets
+        use the numerically canonical eager resident step path.
+        """
+
+        target_arch = str(self.target_arch).split(":", 1)[0]
+        return target_arch == "gfx1100"
+
     def __enter__(self) -> "Qwen35ParoResidentSession":
         return self
 
@@ -1863,6 +1874,7 @@ class Qwen35ParoResidentSession:
         slots: list[int] | tuple[int, ...] | None = None,
         sample: bool = True,
         device_resident: bool = False,
+        exact_hybrid: bool = False,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run one decode token per active row through native c-aware layer kernels.
 
@@ -1881,7 +1893,9 @@ class Qwen35ParoResidentSession:
 
         if self.closed:
             raise RuntimeError("session is closed")
-        if not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+        if exact_hybrid and str(self.target_arch).split(":", 1)[0] != "gfx1151":
+            raise NotImplementedError("exact PARO c2 hybrid is currently certified only on gfx1151")
+        if not exact_hybrid and not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
             raise NotImplementedError(
                 "native c>N decode is experimental and currently blocked on generated-token equality; "
                 "set HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 for diagnostics"
@@ -1895,6 +1909,8 @@ class Qwen35ParoResidentSession:
         if not tokens:
             raise ValueError("token_ids must be non-empty")
         rows = len(tokens)
+        if exact_hybrid and rows != 2:
+            raise ValueError("exact PARO hybrid decode requires exactly two active rows")
         if rows > self.max_batch_size:
             raise ValueError("token_ids exceed max_batch_size")
         slot_ids = tuple(range(rows)) if slots is None else tuple(int(slot) for slot in slots)
@@ -1909,6 +1925,8 @@ class Qwen35ParoResidentSession:
         for position in pos:
             self._check_position(position)
         if device_resident:
+            if exact_hybrid:
+                raise NotImplementedError("exact PARO hybrid decode is not graph-capture/device-resident")
             if not sample:
                 raise NotImplementedError("device-resident native c>N decode requires sampling")
             # Seed the device next-token buffer with this step's input tokens,
@@ -1933,7 +1951,21 @@ class Qwen35ParoResidentSession:
             return self._read_batch_next_tokens(rows=rows)
         self._set_batch_token_embeddings(tokens, stream=0)
         self._set_batch_positions(pos, slots=slot_ids, stream=0)
-        hidden = self._run_layers_batch_decode(rows=rows, positions=pos, slots=slot_ids, stream=0)
+        if exact_hybrid:
+            hidden = self._run_layers_batch_decode(
+                rows=rows,
+                positions=pos,
+                slots=slot_ids,
+                stream=0,
+                exact_hybrid_c2=True,
+            )
+        else:
+            hidden = self._run_layers_batch_decode(
+                rows=rows,
+                positions=pos,
+                slots=slot_ids,
+                stream=0,
+            )
         if not sample:
             self.runtime.device_synchronize()
             return tuple(None for _ in tokens)
@@ -2238,14 +2270,23 @@ class Qwen35ParoResidentSession:
                 projection_rows = decode_rows
         projection_dispatch = None
         if native_decode:
-            blockers.extend(
-                [
-                    "native c>N decode currently supports compact physical-slot-ordered rows; "
-                    "full-attention batch context is native only for BF16 KV and context < 1024",
-                    "native c>N decode is experimental and blocked until generated-token equality passes",
-                ]
+            exact_hybrid_c2 = bool(
+                isinstance(decode_execution, dict) and decode_execution.get("exact_hybrid_c2", False)
             )
-            path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
+            if exact_hybrid_c2:
+                blockers.append(
+                    "exact c2 hybrid is generated-token certified but is not fully native c-aware decode"
+                )
+                path = "scheduler_exact_hybrid_c2" if scheduler_owned else "exact_hybrid_c2"
+            else:
+                blockers.extend(
+                    [
+                        "native c>N decode currently supports compact physical-slot-ordered rows; "
+                        "full-attention batch context is native only for BF16 KV and context < 1024",
+                        "native c>N decode is experimental and blocked until generated-token equality passes",
+                    ]
+                )
+                path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
             full_attention_path = (
                 decode_execution.get("full_attention_decode_path")
                 if isinstance(decode_execution, dict)
@@ -2261,7 +2302,11 @@ class Qwen35ParoResidentSession:
                 if isinstance(decode_execution, dict) and isinstance(decode_execution.get("blockers"), list)
                 else []
             )
-            if full_attention_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
+            if exact_hybrid_c2:
+                row_execution = "exact_c2_hybrid_selected_moe_row_local_pre_o"
+                native_caware_decode = False
+                blockers.extend(decode_blockers)
+            elif full_attention_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
                 row_execution = "native_linear_batch_with_per_row_full_attention_fallback"
                 native_caware_decode = False
                 blockers.append("full-attention decode used a per-row fallback, so this is not native c-aware decode")
@@ -5174,11 +5219,14 @@ class Qwen35ParoResidentSession:
         positions: tuple[int, ...],
         slots: tuple[int, ...],
         stream: int = 0,
+        exact_hybrid_c2: bool = False,
     ) -> Tensor:
         if rows <= 0:
             raise ValueError("rows must be positive")
         if len(positions) != rows or len(slots) != rows:
             raise ValueError("positions and slots must match rows")
+        if exact_hybrid_c2 and rows != 2:
+            raise ValueError("exact PARO hybrid layer decode requires rows=2")
         hidden = Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.batch_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         cu_seqlens, state_indices, temp_buffers = self._batch_decode_segment_metadata(rows=rows, slots=slots)
@@ -5196,7 +5244,8 @@ class Qwen35ParoResidentSession:
             (not dense_mlp)
             and rows > 1
             and (
-                _env_flag(force_selected_c1_moe_env)
+                exact_hybrid_c2
+                or _env_flag(force_selected_c1_moe_env)
                 or (
                     _retained_batch_defaults_enabled()
                     and _env_is_blank(force_selected_c1_moe_env)
@@ -5278,6 +5327,12 @@ class Qwen35ParoResidentSession:
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
         )
         force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(rows)
+        if exact_hybrid_c2:
+            # The generated-token-green c2 split requires the row-aware GEMV
+            # linear-output reduction. The generic auto path can select a
+            # different reduction order and diverges after several steps.
+            force_selected_c1_linear_out = False
+            force_batch_gemv_linear_out = True
         linear_attention_projection_path = (
             "selected_c1_forced"
             if force_selected_c1_linear_projections
@@ -5341,8 +5396,11 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PREQKV_APPEND_CONTEXT_BATCH_GATE_O_POST_MOE"
         )
-        force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe = rows > 1 and _env_flag(
-            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PREQKV_APPEND_CONTEXT_GATE_BATCH_O_POST_MOE"
+        force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe = rows > 1 and (
+            exact_hybrid_c2
+            or _env_flag(
+                "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PREQKV_APPEND_CONTEXT_GATE_BATCH_O_POST_MOE"
+            )
         )
         force_per_row_full_attention_persistent_scratch = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH"
@@ -5502,7 +5560,11 @@ class Qwen35ParoResidentSession:
         full_attention_scratch_decode_path = (
             "persistent_c1_scratch_fallback"
             if force_per_row_full_attention_persistent_scratch
-            else "per_row_preqkv_append_context_gate_batch_o_post_moe_fallback"
+            else (
+                "per_row_preqkv_append_context_gate_batch_o_post_moe_exact_hybrid"
+                if exact_hybrid_c2
+                else "per_row_preqkv_append_context_gate_batch_o_post_moe_fallback"
+            )
             if force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe
             else "per_row_preqkv_append_context_batch_gate_o_post_moe_fallback"
             if force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe
@@ -6822,7 +6884,11 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe:
                 decode_blockers.append("full-attention pre-QKV/append/context forced to per-row diagnostic path with batch gate/O/post/MoE")
             if force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe:
-                decode_blockers.append("full-attention pre-QKV/append/context/gate forced to per-row diagnostic path with batch O/post/MoE")
+                decode_blockers.append(
+                    "exact c2 hybrid uses row-local full-attention pre-O work with batch O/post/MoE"
+                    if exact_hybrid_c2
+                    else "full-attention pre-QKV/append/context/gate forced to per-row diagnostic path with batch O/post/MoE"
+                )
             if force_per_row_full_attention_persistent_scratch:
                 decode_blockers.append("full-attention layer forced to persistent c1 scratch diagnostic path")
             if force_per_row_full_attention_skip_batch_setup:
@@ -6941,6 +7007,8 @@ class Qwen35ParoResidentSession:
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
             }
+            if exact_hybrid_c2:
+                self.last_batch_decode_execution["exact_hybrid_c2"] = True
             if row_chunked_linear_attention_layers:
                 self.last_batch_decode_execution["linear_attention_decode_path"] = "native_batch_row_chunks"
                 self.last_batch_decode_execution["linear_attention_row_chunk_size"] = int(linear_row_chunk_size)
