@@ -341,7 +341,7 @@ select current code without a fresh profile.
 | 4 | `GPF-2C` | **Rejected:** register-resident exact ordered-wave recurrence | Byte-exact, but focused 512/1K/4K prefill loses 12.98%-14.58% and recurrence loses 16.86% |
 | 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate; keep gfx1100 fused pending transfer and run right-sized final rollup after active candidates settle |
 | 6 | `GPF-M1` | **Default profile complete:** exact GDN 221.873 ms, dense Q8T16 156.474 ms, Q4T16 selected 116.075 ms, Q5T16 selected 56.181 ms at 512 | These measured families select GPF-3A and its successors |
-| 7 | `GPF-3A` | **Replay gate passed; scoped selector implemented:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Exact BF16/FP16 fixture; real Q4 replay -15.31%; `auto` remains baseline on both backends while explicit `shared_x` runs the clean full-model 512/1K/4K and decode gate |
+| 7 | `GPF-3A` | **Replay gate passed; scoped selector and full-model gate implemented:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Exact BF16/FP16 fixture; real Q4 replay -15.31%; `auto` remains baseline on both backends while `scripts/gguf_q4_t16_prefill_ab.py` gates explicit `shared_x` at 512/1K/4K |
 | 8 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
 | 9 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
 | 10 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
@@ -515,6 +515,19 @@ and all selected gate/up+down pairs fall **176.410 -> 158.535 ms (-10.13%)**.
 The sampled token and routing are identical. This is family-local evidence,
 not a full-model promotion: the production alias remains unchanged until a
 clean balanced 512/1K/4K prefill and decode gate passes.
+
+The executable full-model gate is
+[`scripts/gguf_q4_t16_prefill_ab.py`](../scripts/gguf_q4_t16_prefill_ab.py).
+It first requires the BF16 and FP16 byte-exact kernel fixture artifact, then
+compares baseline and `shared_x` full-model prefill logits byte-for-byte at
+512/1K/4K. In one resident session it discards at least one balanced warmup and
+records at least four balanced measurements per mode and shape. Prefill wall is
+synchronized around the production call. The following 128 graph-replay decode
+steps are timed separately with graph capture and token readback excluded, and
+every prefill sample plus decoded ID must match across every leg. Promotion
+requires a lower candidate median prefill wall at all three shapes and no
+increase in the sum of the three median decode walls. There is no percentage
+threshold or full-model dilution rule.
 
 ## Correctness And Promotion Contract
 
