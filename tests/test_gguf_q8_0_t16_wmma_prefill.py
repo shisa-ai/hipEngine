@@ -29,6 +29,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     _default_tiles,
+    _two_wave_prefill_applies,
     build_gguf_q8_0_t16_prefill,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_f32_out,
@@ -36,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_f32_bf16_out,
     gguf_q8_0_t16_wmma_prefill_f32_f32_out,
     gguf_q8_0_t16_wmma_prefill_f32_fp16_out,
+    gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_fp16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_fp16_f32_out,
     gguf_q8_0_t16_wmma_prefill_fp16_fp16_out,
@@ -109,6 +111,19 @@ def test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy() -> None:
     assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
 
 
+def test_gpf5a_two_wave_policy_is_explicit_and_shape_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", raising=False)
+    assert _two_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", "1")
+    assert _two_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192) is True
+    assert _two_wave_prefill_applies(tile_m=64, tile_n=32, out_features=4096) is True
+    assert _two_wave_prefill_applies(tile_m=16, tile_n=32, out_features=512) is False
+    assert _two_wave_prefill_applies(tile_m=32, tile_n=16, out_features=8192) is False
+
+
 def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
     assert (
         resolve(
@@ -128,6 +143,15 @@ def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q8_0_t16_v1",
+            variant="wmma_prefill_2wave_bf16_bf16_out",
+        )
+        is gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out
     )
 
     artifact = plan_gguf_q8_0_t16_prefill_build(compiler_version="test-compiler")
@@ -214,6 +238,7 @@ def _run_q8_0_t16_wmma_prefill_gpu(
     out_dtype: str,
     tile: tuple[int, int] | None = None,
     seed: int = 0,
+    wrapper_override: Any | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     activation = _make_activation(rows, in_features, seed=seed)
     qweight = make_q8_0_weight(out_features, in_features)
@@ -228,7 +253,7 @@ def _run_q8_0_t16_wmma_prefill_gpu(
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
-    wrapper = _ALL_DTYPE_WRAPPERS[(in_dtype, out_dtype)]
+    wrapper = wrapper_override or _ALL_DTYPE_WRAPPERS[(in_dtype, out_dtype)]
 
     bufs = []
     try:
@@ -319,6 +344,32 @@ def test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_refere
         tile=tile,
     )
     np.testing.assert_allclose(actual, reference, **_TOLERANCES[("bf16", "f32")])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(("rows", "out_features"), [(17, 64), (32, 80), (33, 128)])
+def test_gpf5a_two_wave_q8_t16_prefill_is_bit_exact_to_32x32(
+    rows: int,
+    out_features: int,
+) -> None:
+    baseline, _ = _run_q8_0_t16_wmma_prefill_gpu(
+        rows=rows,
+        in_features=256,
+        out_features=out_features,
+        in_dtype="bf16",
+        out_dtype="bf16",
+        tile=(32, 32),
+    )
+    candidate, _ = _run_q8_0_t16_wmma_prefill_gpu(
+        rows=rows,
+        in_features=256,
+        out_features=out_features,
+        in_dtype="bf16",
+        out_dtype="bf16",
+        tile=(64, 32),
+        wrapper_override=gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(candidate, baseline)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

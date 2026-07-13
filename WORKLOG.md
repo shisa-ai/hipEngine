@@ -154149,3 +154149,39 @@ graphless decode launch-collapse path without regressing target/serial parity.
   GPF-5A is a new in-tree schedule over the catalogued T16 body.
 - Selection artifact:
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`.
+
+## 2026-07-14 - Implement GPF-5A two-wave Q8T16 prefill candidate
+
+- RED added a registered/callable `wmma_prefill_2wave_bf16_bf16_out` contract
+  and tail-shape exact fixtures; collection failed because no candidate symbol
+  existed. GREEN adds a 64-thread block with two independent production-order
+  32-column waves. Wave 0 converts one BF16 activation tile into 1 KiB LDS;
+  both waves copy it before overwrite and preserve the existing K/WMMA/FP32
+  accumulation/store order. An explicit default-off
+  `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=1` selector covers BF16/BF16,
+  TN32, default TM32/TM64, output width >=2048 only.
+- All **79** Q8T16 prefill tests pass. Candidate outputs are byte-exact to the
+  production `32x32` body at tail rows 17/33 and output widths 64/80/128.
+  Separate full-model off/on processes at 512/4K also match token `9707`, FP32
+  logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs:
+  **82/82 compared parts per context**.
+- Cached `rocprofv3 --kernel-trace` confirms
+  `gguf_q8_0_t16_prefill_wmma_2wave_kernel<32>` ran with workgroup 64,
+  **80 VGPR**, 128 SGPR, **zero scratch**, and **1024 B LDS**. This improves on
+  the production `32x32` body's 104 VGPR while retaining two 32-column waves.
+- Interleaved cycling-pool 2048x8192 microbench:
+  - 1K rows: production `32x32` **2.008 ms**, one-wave `64x32` 2.204 ms,
+    GPF-5A **1.683 ms (-16.17%)**;
+  - 4K rows: production `32x32` **8.004 ms**, one-wave `64x32` 8.192 ms,
+    GPF-5A **6.692 ms (-16.39%)**.
+  All micro outputs are byte-exact.
+- Dirty fresh-process full-model prefill-only 1+3 focus:
+  - 512 off **[799.659, 820.817, 820.888]**, median **820.817 tok/s**; on
+    **[868.530, 893.840, 894.143]**, median **893.840 (+8.90%)**;
+  - 4K off **[747.177, 747.794, 746.618]**, median **747.177 tok/s**; on
+    **[766.416, 764.368, 764.858]**, median **764.858 (+2.37%)**.
+  All IDs are `9707`; peak is unchanged at 21.478/22.995 GiB.
+- Candidate artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json`.
+  It is not a performance claim while the candidate is uncommitted. Next commit
+  default-off and repeat exact/focus gates from a clean detached commit.
