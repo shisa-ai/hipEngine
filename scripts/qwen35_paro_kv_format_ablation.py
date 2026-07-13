@@ -75,6 +75,7 @@ class FormatSpec:
     strategy: str = "groupwise"
     chunk_size: int = 0
     residual_tokens: int = 0
+    sink_tokens: int = 0
     hadamard_group_size: int = 0
 
     def __post_init__(self) -> None:
@@ -88,8 +89,8 @@ class FormatSpec:
             raise ValueError("clip ratios must be in (0, 1]")
         if self.strategy in {"kivi", "kvarn"} and self.chunk_size <= 0:
             raise ValueError(f"{self.strategy} requires a positive chunk_size")
-        if self.residual_tokens < 0:
-            raise ValueError("residual_tokens must be non-negative")
+        if self.residual_tokens < 0 or self.sink_tokens < 0:
+            raise ValueError("residual_tokens and sink_tokens must be non-negative")
         if self.strategy in {"hadamard_groupwise", "kvarn"} and self.hadamard_group_size <= 0:
             raise ValueError(f"{self.strategy} requires a positive hadamard_group_size")
 
@@ -105,6 +106,7 @@ class FormatSpec:
             "v_clip_ratio": self.v_clip_ratio if self.v_mode == "int8" else None,
             "chunk_size": self.chunk_size or None,
             "residual_tokens": self.residual_tokens or None,
+            "sink_tokens": self.sink_tokens or None,
             "hadamard_group_size": self.hadamard_group_size or None,
         }
 
@@ -232,37 +234,112 @@ def _kivi_roundtrip_pair(
     return key_out, value_out
 
 
+def _variance_imbalance(tile: np.ndarray) -> float:
+    column_std = np.std(tile, axis=0, ddof=1)
+    row_std = np.std(tile, axis=1, ddof=1)
+    return float(
+        np.max(column_std) / max(float(np.min(column_std)), 1e-8)
+        + np.max(row_std) / max(float(np.min(row_std)), 1e-8)
+    )
+
+
+def _variance_normalize(
+    tile: np.ndarray,
+    *,
+    iterations: int = 8,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Best-so-far log-domain row/column variance normalization.
+
+    This NumPy screen follows the algorithm and constants in
+    huawei-csl/KVarN@7586257f ``kvarn/sinkhorn.py`` without introducing a
+    Torch/runtime dependency.
+    """
+
+    source = np.asarray(tile, dtype=np.float32)
+    if source.ndim != 2 or min(source.shape) < 2:
+        raise ValueError("variance normalization expects a 2D tile with both axes >= 2")
+    if int(iterations) <= 0:
+        raise ValueError("variance normalization iterations must be positive")
+    log_column_scale = np.zeros((1, source.shape[1]), dtype=np.float32)
+    log_row_scale = np.zeros((source.shape[0], 1), dtype=np.float32)
+    current = source.copy()
+    best_imbalance = _variance_imbalance(current)
+    best_column_scale = np.ones_like(log_column_scale)
+    best_row_scale = np.ones_like(log_row_scale)
+    for _ in range(int(iterations)):
+        column_std = np.clip(np.std(current, axis=0, ddof=1, keepdims=True), 1e-3, 1e3)
+        log_column_scale = np.clip(log_column_scale + np.log(column_std), -0.3, 10.0)
+        current = source / np.exp(log_column_scale) / np.exp(log_row_scale)
+        row_std = np.clip(np.std(current, axis=1, ddof=1, keepdims=True), 1e-3, 1e3)
+        log_row_scale = np.clip(log_row_scale + np.log(row_std), -0.3, 10.0)
+        current = source / np.exp(log_column_scale) / np.exp(log_row_scale)
+        imbalance = _variance_imbalance(current)
+        if imbalance <= best_imbalance:
+            best_imbalance = imbalance
+            best_column_scale = np.exp(log_column_scale).astype(np.float32)
+            best_row_scale = np.exp(log_row_scale).astype(np.float32)
+    balanced = source / best_column_scale / best_row_scale
+    return (
+        np.ascontiguousarray(balanced, dtype=np.float32),
+        best_column_scale,
+        best_row_scale,
+    )
+
+
+def _kvarn_affine_reconstruct(
+    balanced: np.ndarray,
+    column_scale: np.ndarray,
+    row_scale: np.ndarray,
+    *,
+    scale_dtype: str,
+) -> np.ndarray:
+    if scale_dtype not in {"fp16", "fp32"}:
+        raise ValueError("scale_dtype must be fp16 or fp32")
+    scale_type = np.float16 if scale_dtype == "fp16" else np.float32
+    minimum = np.min(balanced, axis=1, keepdims=True)
+    maximum = np.max(balanced, axis=1, keepdims=True)
+    float_scale = (maximum - minimum) / np.float32(255.0)
+    safe_scale = np.where(float_scale > 0.0, float_scale, np.float32(1.0))
+    codes = np.clip(np.rint((balanced - minimum) / safe_scale), 0.0, 255.0)
+    codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
+    absorbed_scale = (row_scale * float_scale).astype(scale_type).astype(np.float32)
+    absorbed_minimum = (row_scale * minimum).astype(scale_type).astype(np.float32)
+    stored_column_scale = column_scale.astype(scale_type).astype(np.float32)
+    return np.ascontiguousarray(
+        (codes * absorbed_scale + absorbed_minimum) * stored_column_scale,
+        dtype=np.float32,
+    )
+
+
 def _kvarn_chunk_roundtrip(
     values: np.ndarray,
     *,
+    component: str,
     hadamard_group_size: int,
     scale_dtype: str,
+    sinkhorn_iterations: int = 8,
 ) -> np.ndarray:
     source = np.asarray(values, dtype=np.float32)
     if source.ndim != 3:
         raise ValueError("KVarN-inspired quantization expects [tokens, heads, channels]")
-    scale_type = np.float16 if scale_dtype == "fp16" else np.float32
-    if scale_dtype not in {"fp16", "fp32"}:
-        raise ValueError("scale_dtype must be fp16 or fp32")
+    if component not in {"key", "value"}:
+        raise ValueError("KVarN component must be key or value")
     rotated = _normalized_hadamard(source, group_size=hadamard_group_size)
-    row_rms = np.sqrt(np.mean(np.square(rotated, dtype=np.float64), axis=-1, keepdims=True)).astype(np.float32)
-    safe_row_rms = np.where(row_rms > 0.0, row_rms, np.float32(1.0))
-    row_normalized = rotated / safe_row_rms
-    channel_rms = np.sqrt(np.mean(np.square(row_normalized, dtype=np.float64), axis=0, keepdims=True)).astype(np.float32)
-    safe_channel_rms = np.where(channel_rms > 0.0, channel_rms, np.float32(1.0))
-    normalized = row_normalized / safe_channel_rms
-    minimum = np.min(normalized, axis=(0, 2), keepdims=True)
-    maximum = np.max(normalized, axis=(0, 2), keepdims=True)
-    float_scale = (maximum - minimum) / np.float32(255.0)
-    safe_scale = np.where(float_scale > 0.0, float_scale, np.float32(1.0))
-    codes = np.clip(np.rint((normalized - minimum) / safe_scale), 0.0, 255.0)
-    codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
-    reconstructed = (
-        codes * float_scale.astype(scale_type).astype(np.float32)
-        + minimum.astype(scale_type).astype(np.float32)
-    )
-    reconstructed *= channel_rms.astype(scale_type).astype(np.float32)
-    reconstructed *= row_rms.astype(scale_type).astype(np.float32)
+    reconstructed = np.empty_like(rotated)
+    for head in range(rotated.shape[1]):
+        token_channel = rotated[:, head, :]
+        tile = token_channel.T if component == "key" else token_channel
+        balanced, column_scale, row_scale = _variance_normalize(
+            tile,
+            iterations=sinkhorn_iterations,
+        )
+        restored = _kvarn_affine_reconstruct(
+            balanced,
+            column_scale,
+            row_scale,
+            scale_dtype=scale_dtype,
+        )
+        reconstructed[:, head, :] = restored.T if component == "key" else restored
     return _normalized_hadamard(reconstructed, group_size=hadamard_group_size)
 
 
@@ -275,14 +352,21 @@ def _kvarn_roundtrip_pair(
 ) -> tuple[np.ndarray, np.ndarray]:
     key_out = np.asarray(key, dtype=np.float32).copy()
     value_out = np.asarray(value, dtype=np.float32).copy()
-    for chunk in _chunk_slices(key_out.shape[0], spec.chunk_size):
+    quantized_rows = max(0, key_out.shape[0] - int(spec.sink_tokens))
+    for relative_chunk in _chunk_slices(quantized_rows, spec.chunk_size):
+        chunk = slice(
+            int(spec.sink_tokens) + int(relative_chunk.start or 0),
+            int(spec.sink_tokens) + int(relative_chunk.stop or 0),
+        )
         key_out[chunk] = _kvarn_chunk_roundtrip(
             key_out[chunk],
+            component="key",
             hadamard_group_size=spec.hadamard_group_size,
             scale_dtype=scale_dtype,
         )
         value_out[chunk] = _kvarn_chunk_roundtrip(
             value_out[chunk],
+            component="value",
             hadamard_group_size=spec.hadamard_group_size,
             scale_dtype=scale_dtype,
         )
@@ -356,6 +440,7 @@ def _candidate_catalog(head_dim: int) -> dict[str, FormatSpec]:
             strategy="kvarn",
             chunk_size=128,
             residual_tokens=127,
+            sink_tokens=128,
             hadamard_group_size=h,
         ),
         "key_group16": FormatSpec("key_group16", k_group_size=16, v_group_size=h),
@@ -441,14 +526,21 @@ def _format_memory_bytes(
             2 * int(spec.residual_tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2
         )
     elif spec.strategy == "kvarn":
-        chunks = math.ceil(int(tokens) / int(spec.chunk_size))
+        quantized_tokens = max(0, int(tokens) - int(spec.sink_tokens))
+        chunks = math.ceil(quantized_tokens / int(spec.chunk_size))
         payload_bytes = 2 * elements
-        row_scales = 2 * int(tokens) * int(full_layers) * int(num_kv_heads) * scale_bytes
-        channel_scales = 2 * chunks * int(full_layers) * int(num_kv_heads) * int(head_dim) * scale_bytes
-        affine_parameters = 2 * chunks * int(full_layers) * int(num_kv_heads) * 2 * scale_bytes
-        metadata_bytes = row_scales + channel_scales + affine_parameters
+        # Per tile: K stores 2*D + T metadata values; V stores D + 2*T.
+        metadata_values_per_tile = 3 * (int(head_dim) + int(spec.chunk_size))
+        metadata_bytes = (
+            chunks * int(full_layers) * int(num_kv_heads) * metadata_values_per_tile * scale_bytes
+        )
         residual_bytes = (
-            2 * int(spec.residual_tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2
+            2
+            * (int(spec.sink_tokens) + int(spec.residual_tokens))
+            * int(full_layers)
+            * int(num_kv_heads)
+            * int(head_dim)
+            * 2
         )
     else:  # pragma: no cover - guarded by FormatSpec
         raise ValueError(f"unsupported strategy {spec.strategy!r}")

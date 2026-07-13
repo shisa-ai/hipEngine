@@ -153377,3 +153377,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_qwen35_paro_kv_format_ablation.py
   tests/test_qwen35_paro_kv_policy_ablation.py` (19 passed), targeted Ruff,
   `py_compile`, and `git diff --check` all pass.
+
+## 2026-07-13 — Correct the KVarN screen against the official source
+
+- Ran the clean `b868710a` W7900 fast profile on the fixed 512/8 mixed prompt
+  (36 distinct tokens; token SHA-256
+  `933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8`).
+  Setup-inclusive harness/shell wall time was `29.883/30 s`, well below the
+  600-second S1 budget. The initial rows were:
+  - baseline: mean/max KL `0.36841/1.20200`, top-1/top-5/top-10
+    `66.67/71.11/77.78%`;
+  - Hadamard group32: `0.13342/0.45135`, `77.78/84.44/84.44%`;
+  - KIVI-style INT8: `0.16667/0.60739`, `88.89/86.67/88.89%`;
+  - initial one-pass KVarN-inspired row: `0.36283/1.49168`,
+    `66.67/75.56/80.00%`.
+  All failed the KL/top-1 promotion gate; Hadamard had best mean KL while KIVI
+  had best decision fidelity. Artifact source:
+  `/tmp/hipengine-int8-fast-screen-20260713/screen.json`, SHA-256
+  `27eb3c712565b22f564d3ec0e3e10fde9fc485307bc0d00563f7f7ed1167817b`.
+- Before transferring a winner, inspected the official KVarN implementation
+  read-only through `gh` at `huawei-csl/KVarN@7586257f`. The production method
+  is materially more specific than the initial one-pass approximation: eight
+  best-so-far log-domain alternating variance-normalization passes, K tiles in
+  channel-by-token orientation, V tiles in token-by-channel orientation,
+  per-row asymmetric RTN, and a permanent 128-token BF16 sink.
+- Corrected the INT8 emulation and memory projection to those source-aligned
+  semantics while retaining an incomplete BF16 tail. The screen remains INT8
+  and does not claim equivalence to KVarN's shipped K4/V2 preset. Added RED/GREEN
+  fixtures for exact Sinkhorn reconstruction/imbalance improvement and permanent
+  sink preservation; the targeted 21-test bundle, Ruff, `py_compile`, and
+  `git diff --check` pass. The first KVarN number is superseded pending the clean
+  rerun; the baseline/Hadamard/KIVI rows remain valid.
