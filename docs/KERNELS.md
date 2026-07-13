@@ -308,9 +308,16 @@ force-unroll the 128-row loops: that build generated 1,880 bytes/thread scratch
 and lost the fused wall. Rolled loops use 64 VGPR, zero scratch, and reduce the
 gfx1151 512 recurrence to `221.873 ms / 30`; focused prefill reaches
 `753.489/799.844/686.840 tok/s` at 512/1K/4K versus fused
-`423.708/448.694/410.023`. Keep `chain_lds32` explicit until the clean six-case
-state, balanced-wall, and natural-trajectory gates finish; see
-`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`.
+`423.708/448.694/410.023`. The clean six-case state matrix, balanced 512/4K
+wall, and ten-prompt trajectory/decode gates all pass. Backend-package
+capability metadata therefore selects `chain_lds32` for gfx1151 `auto`, while
+gfx1100 retains fused pending an independent transfer gate. Explicit `fused`
+and exact `chain` remain rollback/oracle routes; a missing automatic candidate
+falls back to fused. See
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`,
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json`,
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json`, and
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json`.
 
 ## DFlash / MTP lineage map
 
