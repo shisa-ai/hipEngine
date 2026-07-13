@@ -153531,3 +153531,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and prompt-source exclusivity. Both tests, Ruff, `py_compile`, and
   `git diff --check` pass. Clean native repeated/mixed 4K/16 measurements follow
   after this harness commit.
+
+## 2026-07-13 — Attribute the GGUF Q8 gap to prompt and K/V arithmetic
+
+- Clean W7900 `a344d32a` ran llama.cpp build 9648 on identical Q4_K_M weights
+  at 4K/16. Native full Q8_0 passes repeated token 9707 at mean/max KL
+  `0.00000619/0.00003186`, 100% top-1, but rejects the exact 36-ID `mixed_v1`
+  prompt at `0.075654/1.26009`, 94.12% top-1. Mixed F16/F16 is exactly zero,
+  and a second mixed full-Q8 run reproduces every per-position KL, top-1, and
+  reference rank exactly. The old 128K repeated-token pass remains mechanically
+  valid but is now a saturation control, not representative Q8 fidelity
+  evidence.
+- Native llama.cpp mixed K-only Q8 reaches mean/max KL `0.096682/1.56852`; V-only
+  Q8 is worse at `0.243219/3.99543`; full Q8 improves to `0.075654`. All three
+  flip the same `decode_3` boundary, and full K+V being better than either
+  component proves material non-additive error cancellation. The source audit
+  found no F16 shadow: FP32 K/V write directly to Q8_0; K uses Q8_1-query INT8
+  dot/FP32 scaled accumulation; V dequantizes and accumulates through FP16 on
+  RDNA3.
+- hipEngine host reconstruction shows the same protocol effect. Per-head,
+  group32, and Hadamard group32 all pass repeated 4K/16 near `0.000002` mean KL
+  with 100% top-1, versus mixed means `0.12779/0.28106/0.25180`. Native llama.cpp
+  group32 is 73.08% lower than host group32 on mixed input but still fails the
+  KL gate by 1.51x.
+- Clean `cb6211d2` native hipEngine per-head INT8, with all ten full-attention
+  layers INT8/FP16-scale, no BF16 primary layer, and zero persistent mirrors,
+  passes repeated 4K/16 at mean/max KL `0.00000235/0.00000638`. It rejects
+  exact mixed input at `0.19038/2.99555`, 88.24% top-1; an exact rerun
+  reproduces aggregate metrics and reference/candidate top-1 arrays. Native
+  mixed mean KL is 48.98% worse than BF16 reconstruction, so direct INT8
+  arithmetic is not a universal fidelity repair.
+- Decision: do not implement native group32 or Hadamard from these rows. Retain
+  per-head/group32/Hadamard as screen controls; next test V-preserving or
+  asymmetric K/V layouts across multiple fixed mixed/natural prompts. Published
+  compact evidence at
+  `benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`;
+  timing remains diagnostic and `performance_claim=false`.
+- Updated only benchmark/benchmark-report sections (`benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, root README memory benchmark, and
+  `docs/KVCACHE.md`). Retitled GitHub issue #4 to emphasize fidelity-safe rather
+  than merely memory-fit INT8 KV, replaced its obsolete repeated-Q8 premise,
+  and posted the full mixed/native attribution in issue comment
+  `#issuecomment-4959445980`.

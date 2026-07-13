@@ -3,10 +3,10 @@
 _Status: K1 dense per-token/per-head INT8 K/V is implemented and physically fits
 256K under the 24 GiB portability target, but it is **not quality-admitted** for
 the current Qwen3.6 W4-PARO model. The final clean 128K/16 matched-context gate
-rejects at mean/max KL `0.85128/4.97382` and `41.18%` top-1. llama.cpp Q8_0 K/V
-passes the protocol-matched comparison against its own F16 reference, showing
-that eight-bit K/V can be accurate but not that hipEngine's present format is.
-K2 compact DMS remains planned. Last updated: 2026-07-13._
+rejects at mean/max KL `0.85128/4.97382` and `41.18%` top-1. The former llama.cpp
+Q8_0 128K/16 pass is now classified as a repeated-token saturation control:
+native Q8_0 fails exact mixed 4K/16 at mean/max KL `0.07565/1.26009` despite
+`94.12%` top-1. K2 compact DMS remains planned. Last updated: 2026-07-13._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -23,7 +23,7 @@ long-context evidence controls the support decision.
 | Does current Qwen3.6 PARO INT8 pass the repository fidelity gate? | **No.** Matched 128K/16 mean/max KL is `0.85128/4.97382`, top-1 is `41.18%`. |
 | Did clipping, groupwise scales, mixed K/V precision, BF16 layers/heads, or sink/recent residuals solve it? | **No.** Some pass at 512; none pass both gates at 4K within the memory budget. |
 | Does high KL change a bounded functional answer? | **Sometimes.** At 4K, INT8 flips one of two BF16-qualified restricted-choice tasks; at 32K it retains all three qualified tasks. Evidence is partial, not broad quality validation. |
-| Does llama.cpp Q8_0 behave the same way? | **No.** On identical Q4_K_M weights, Q8_0-vs-F16 passes 128K/16 at mean/max KL `0.00521/0.08749`, 100% top-1. Its quantizer, weights, and engine differ from PARO. |
+| Does llama.cpp Q8_0 establish representative eight-bit fidelity? | **No.** It passes repeated-token 128K/16, but exact mixed 4K/16 rejects at `0.07565/1.26009` mean/max KL and `94.12%` top-1. Prompt content dominates the former comparison. |
 | Product status | BF16 K/V remains supported. INT8 is an explicit approximate/capacity diagnostic, not a default or supported 256K route. |
 
 The retained implementation and memory reduction are still valuable. The
@@ -363,10 +363,10 @@ mixed at 128/1 and 512/1, but passed 4K/1 (`0.001260`, 100% top-1) and 4K/16
 | 512 | `0.90970 / 13.89132` | `83.92%` | Reject |
 | 4K | `1.42488 / 23.20883` | `84.56%` | Reject |
 
-Those rows do not contradict the July 13 llama.cpp Q8_0 128K/16 pass. The old
-run used a different llama.cpp build, corpus-position metric, and context
-protocol. The exact teacher-forced C-API harness in the next section is the
-current comparison.
+Those rows use a different llama.cpp build, corpus-position metric, and context
+protocol, so their absolute KL is not directly comparable. They are now
+qualitatively consistent with the exact mixed-prompt C-API rejection below; the
+repeated-token 128K pass is retained only as a saturation control.
 
 Current GGUF conclusion: pure/coarse INT8 remains diagnostic, while the
 quality-passing prefix-eight hybrid saves too little and exceeds the target
@@ -387,38 +387,51 @@ GGUF accuracy artifacts:
 
 ## Comparative calibration
 
-### Protocol-matched summary
+### Repeated-token historical calibration
 
-| 128K/16 comparison | Weight identity within row | Mean / max KL | Top-1 | Verdict |
+| Repeated 128K/16 comparison | Weight identity within row | Mean / max KL | Top-1 | Current interpretation |
 | --- | --- | ---: | ---: | --- |
 | llama.cpp F16 K/V vs F16 K/V repeatability | Identical Q4_K_M | `0 / 0` | `100%` | Deterministic control |
-| llama.cpp Q8_0 K/V vs F16 K/V | Identical Q4_K_M | **`0.00521 / 0.08749`** | **`100%`** | Pass |
-| hipEngine GGUF BF16 K/V vs llama.cpp F16 K/V | Same exact Q4_K_M file | `0.26606 / 4.51481` | `100%` | Reject all-position mean; prompt-final dominated |
-| hipEngine PARO INT8 K/V vs BF16 K/V | Identical W4-PARO | **`0.85128 / 4.97382`** | **`41.18%`** | Reject |
+| llama.cpp Q8_0 K/V vs F16 K/V | Identical Q4_K_M | `0.00521 / 0.08749` | `100%` | Saturation control; not representative fidelity evidence |
+| hipEngine GGUF BF16 K/V vs llama.cpp F16 K/V | Same exact Q4_K_M file | `0.26606 / 4.51481` | `100%` | Cross-engine prompt-final rejection |
+| hipEngine PARO INT8 K/V vs BF16 K/V | Identical W4-PARO | `0.85128 / 4.97382` | `41.18%` | Reject |
 
-Relative to the separately normalized PARO row, llama.cpp Q8_0 has 163.47x
-lower mean KL and +58.82 top-1 percentage points. This is useful context, not a
-direct implementation A/B.
+The old llama.cpp row remains mechanically valid: its 16 decode-only positions
+average KL `0.00006487`, and F16/F16 is exactly zero. It no longer establishes
+that Q8_0 is accurate on representative context because every prompt and every
+teacher token is the same ID `9707`.
 
-### llama.cpp Q8_0 versus F16
+### Exact mixed-prompt llama.cpp Q8_0 isolation
 
-The public-C-API harness loads one model and creates sequential F16 and Q8_0 K/V
-contexts. It retains only 17 full-logit rows rather than a context-by-vocabulary
-file and forces the Q8_0 run with F16 reference tokens.
+The public-C-API harness now accepts exact token IDs and independent candidate K
+and V cache types. On identical Q4_K_M weights and exact `mixed_v1` 4K/16
+teacher history, F16/F16 remains exactly zero, but all native Q8 rows fail mean
+KL:
 
-- Aggregate mean/max KL: `0.00520759/0.08749123`.
-- Top-1: 17/17 (`100%`); reference token rank is 1 at every position.
-- Prompt-final KL: `0.08749123`.
-- Sixteen decode-only rows: mean/max KL `0.00006487/0.00015978`, 100% top-1.
-- F16/F16 repeatability: exactly zero KL on all 17 rows.
+| llama.cpp candidate K / V | Mean / max KL | Top-1 | Verdict |
+| --- | ---: | ---: | --- |
+| F16 / F16 control | `0 / 0` | `100%` | Deterministic control |
+| **Q8_0 / Q8_0** | **`0.075654 / 1.26009`** | **`94.12%`** | Reject KL (1.51x limit) |
+| Q8_0 / F16 | `0.096682 / 1.56852` | `94.12%` | Reject KL |
+| F16 / Q8_0 | `0.243219 / 3.99543` | `94.12%` | Reject KL; largest isolated sensitivity |
 
-This establishes that the protocol is deterministic and that an eight-bit K/V
-format can pass on this model/engine. It does **not** prove that simply copying
-llama.cpp Q8_0 packing into PARO will pass: Q8_0 block quantization, dequant
-math, Q4_K_M weights, and llama.cpp attention differ.
+The repeated 4K/16 full-Q8 control is `0.00000619/0.00003186`, 100% top-1:
+mixed input raises mean KL 12,227x. All mixed Q8 rows flip the same `decode_3`
+boundary. A second full-Q8 run reproduces every per-position KL, top-1, and
+reference rank exactly.
 
-Artifact:
-[`2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`](../benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json).
+Source audit explains the arithmetic but not a hidden F16 cache. Q8_0 stores 32
+signed INT8 values plus one FP16 scale, written directly from FP32 K/V. Q8 K
+attention quantizes the scaled FP32 query to Q8_1 block32 and uses INT8 `dp4a`
+with FP32 scaled accumulation. On RDNA3, Q8 V dequantizes to FP16 and the
+softmax-weight/V accumulation uses FP16 before FP32 output. V-only Q8 is worse
+than K-only, while full Q8 is better than either, so K/V errors interact and
+partially cancel rather than add.
+
+Artifacts:
+[`2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`](../benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json)
+and
+[`2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`](../benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json).
 
 ### Same-weight hipEngine GGUF bridge
 
@@ -485,14 +498,17 @@ Artifact:
    logit quality remains poor.
 5. **More granular quantization is not monotonic.** group64/group32 improve some
    metrics; group16 regresses.
-6. **K precision appears more sensitive than V in the bounded format screen,**
-   but BF16 K alone is too expensive and still fails KL.
+6. **K/V sensitivity depends on representation and arithmetic.** Earlier host
+   screens made K look more sensitive; native llama.cpp mixed isolation makes
+   V-only Q8 substantially worse, and full K+V Q8 shows partial error
+   cancellation. One-sided RMSE is not a universal format rule.
 7. **Layer/residual fixes do not transfer reliably.** Short-context passes fail
    at 4K, and 4K/8 near-passes degrade over 16 steps.
 8. **High KL is a risk signal, not a task-failure count.** One qualified 4K
    answer flips; three qualified 32K answers survive despite substantial KL.
-9. **Eight-bit K/V can be accurate.** llama.cpp Q8_0 proves feasibility for a
-   different quantizer/model path, not correctness of hipEngine's current one.
+9. **Repeated-token eight-bit passes do not establish representative quality.**
+   llama.cpp Q8_0, hipEngine native per-head INT8, and every host reconstruction
+   are near-exact on repeated token 9707 but fail the exact mixed 4K transfer.
 10. **Cross-engine prompt-final math is not yet aligned.** Decode-only parity is
     much closer than aggregate parity on the same GGUF.
 11. **GGUF and PARO sensitivity differ.** GGUF can pass with only two late
@@ -509,8 +525,12 @@ Artifact:
   differ.
 - “PARO accuracy transfers to GGUF, or vice versa.” The retained evidence shows
   materially different layer/format sensitivity.
-- “group32/group64 should be implemented because a 512 probe improved.” Neither
-  transferred through the gate within budget.
+- “group32/group64 should be implemented because a 512 or repeated-token probe
+  improved.” Neither transferred through the mixed gate; native llama.cpp Q8_0
+  also rejects there.
+- “Direct integer-dot attention necessarily repairs host-reconstruction KL.” It
+  helps native llama.cpp group32 relative to host group32, but native hipEngine
+  per-head is 48.98% worse than its reconstruction row on the same mixed prompt.
 - “The five-task functional probe proves broad quality.” It is partial,
   restricted-choice evidence only.
 
@@ -643,16 +663,41 @@ The dominant failure is the BF16-matched `decode_3` row. Hadamard retains 16/17
 top-1 decisions; the other formats also miss `decode_4`. Reversing candidate
 order reproduces all per-position KL values and candidate top-1 IDs exactly,
 ruling out reset/order contamination. This host emulation reconstructs BF16 and
-does not reproduce llama.cpp's direct Q8_0 integer-dot attention, so it proves
-that block32 scaling alone is insufficient under this mixed protocol—not that
-the native llama.cpp result is wrong. No native kernel, 128K gate, or task
-benchmark follows. Compact evidence:
+does not reproduce llama.cpp's direct Q8_0 attention, so this first result
+isolates block32 geometry only. Compact evidence:
 [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json).
 
-AQUA-style cross-layer residual prediction remains the next representation
-screen if these local transforms do not pass transfer. It requires fitting and
-auditing per-layer predictors and therefore is not mixed into the first
-sub-10-minute candidate set.
+### Prompt and native-arithmetic isolation
+
+The follow-up holds model weights, context shape, teacher forcing, and token IDs
+fixed while changing prompt profile and arithmetic. Repeated token 9707 makes
+all three hipEngine host representations pass 4K/16:
+
+| Host representation | Repeated mean / max KL | Top-1 | Mixed mean KL |
+| --- | ---: | ---: | ---: |
+| Per-token/head | `0.00000233 / 0.00000933` | `100%` | `0.12779` |
+| Group32 | **`0.00000169 / 0.00000531`** | `100%` | `0.28106` |
+| Hadamard group32 | `0.00000193 / 0.00000801` | `100%` | `0.25180` |
+
+The existing native per-head path supplies a same-engine arithmetic control.
+With all ten full-attention layers INT8, FP16 scales, zero BF16 primary layers,
+and zero persistent BF16 mirrors, repeated 4K/16 passes at mean/max KL
+`0.00000235/0.00000638`. Exact mixed 4K/16 rejects at
+`0.19038/2.99555`, `88.24%` top-1, and reproduces exactly. Native direct INT8 is
+therefore **48.98% worse** than the `0.12779` BF16-reconstruction row for this
+per-head format; direct arithmetic is not a universal fidelity repair.
+
+Native llama.cpp full-Q8 improves over hipEngine host group32 on mixed input
+(`0.07565` versus `0.28106`, 73.08% lower mean KL), but still rejects. The
+primary attribution is prompt sensitivity, not one hidden F16 cache or one
+magic integer-dot operation. No group32 or Hadamard native kernel advances from
+this result. Retain per-head/group32/Hadamard as screen controls and prioritize
+V-preserving or asymmetric K/V variants across multiple mixed/natural prompt
+families. AQUA-style cross-layer residual prediction remains a later candidate
+because it requires fitted per-layer predictors.
+
+Compact evidence:
+[`2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`](../benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json).
 
 ## Phase K1 — Dense paged INT8 K/V
 
@@ -748,7 +793,7 @@ python3 scripts/qwen35_paro_bench.py \
   --require-cached-build --attn-aotriton-min-tokens 512 \
   --kv-storage int8_per_token_head --json /tmp/hipengine-final-capacity-256k-128.json
 
-# llama.cpp Q8_0-vs-F16 protocol match
+# Historical repeated-token llama.cpp Q8_0-vs-F16 saturation control
 HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_kv_matched_context.py \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --prompt-token-id 9707 --prompt-length 131072 --decode-steps 16 \
@@ -757,6 +802,39 @@ HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_kv_matched_context.py \
   --candidate-cache q8_0 --flash-attn \
   --reference-logits-bin /tmp/llamacpp-f16-reference.bin \
   --json /tmp/llamacpp-q8-vs-f16-export.json
+
+# Exact mixed_v1 4K token file used by native arithmetic isolation
+python3 - <<'PY'
+from pathlib import Path
+from scripts.qwen35_gguf_kv_format_ablation import _fixed_mixed_prompt_tokens
+p = Path('/tmp/mixed-v1-4096.tokens')
+p.write_text('\n'.join(map(str, _fixed_mixed_prompt_tokens(4096))) + '\n')
+PY
+
+# Current mixed llama.cpp full-Q8 gate; use --candidate-cache-k/v for K/V-only
+HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_kv_matched_context.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-token-file /tmp/mixed-v1-4096.tokens \
+  --prompt-length 4096 --decode-steps 16 --ctx-size 4113 \
+  --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 \
+  --reference-cache f16 --candidate-cache q8_0 --flash-attn \
+  --json /tmp/llamacpp-mixed-q8-vs-f16-4k16.json
+
+# Current pure native hipEngine per-head INT8 mixed gate, no BF16 mirror
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt \
+HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt \
+PYTHONPATH=$PWD \
+python3 scripts/qwen35_gguf_int8_kv_correctness.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-token-file /tmp/mixed-v1-4096.tokens \
+  --prompt-lengths 4K --decode-steps 16 --max-sequence-length 131202 \
+  --kv-scale-dtype fp16 \
+  --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt \
+  --require-cached-build --require-no-bf16-mirror \
+  --json /tmp/hipengine-native-perhead-mixed-4k16.json
 
 # Same-weight hipEngine GGUF bridge
 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD \
@@ -789,6 +867,7 @@ python3 scripts/qwen35_paro_kv_functional_mc.py \
 | Mixed layer/head/residual policy transfer | [`2026-07-13-w7900-paro-kv-policy-ablation.json`](../benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json) |
 | Bounded 4K/32K functional choices | [`2026-07-13-w7900-paro-int8-kv-functional-mc.json`](../benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json) |
 | llama.cpp Q8_0-vs-F16 + repeatability | [`2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`](../benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json) |
+| Repeated/mixed prompt + native K/V arithmetic isolation | [`2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`](../benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json) |
 | Same-weight hipEngine/llama.cpp GGUF bridge | [`2026-07-13-w7900-gguf-llamacpp-matched-parity.json`](../benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json) |
 | Same-weight hipEngine GGUF Hadamard/KIVI screen | [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json) |
 | July 12 independent rollout and FP32-scale control | [`2026-07-12-w7900-v030-paro-context-capacity.json`](../benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json) |
@@ -978,17 +1057,20 @@ These are deliberately after dense INT8 and DMS:
 9. [x] Replace the unscorable free-generation smoke with reference-qualified
    4K/32K restricted-choice diagnostics; retain the one observed 4K regression
    and the 3/3 qualified 32K non-regression as partial evidence.
-10. [ ] Resolve hipEngine-GGUF versus llama.cpp prompt-final prefill parity on
+10. [x] Add exact mixed-token llama.cpp/native-hipEngine controls plus Q8 K-only
+    and V-only isolation; reclassify repeated-token Q8 passes as saturation
+    controls after mixed 4K rejection.
+11. [ ] Resolve hipEngine-GGUF versus llama.cpp prompt-final prefill parity on
     natural and repeated prompts before using cross-engine logits as an oracle.
-11. [ ] Establish a broader, scorable BF16 natural-prompt baseline for PARO;
+12. [ ] Establish a broader, scorable BF16 natural-prompt baseline for PARO;
     current restricted-choice coverage is only 2/5 at 4K and 3/5 at 32K.
-12. [ ] Investigate a materially different native representation only after
-    localization. An exact Q8_0-style block contract is a research comparator;
-    the current group32/group64 emulations are not promotable.
-13. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
+13. [ ] Screen V-preserving/asymmetric K/V candidates—including Hadamard or
+    finer-group K with higher-precision V—across multiple fixed mixed/natural
+    prompts before implementing another native storage contract.
+14. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
     capacity work; do not confuse this with a fidelity fix.
-14. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
+15. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
     matching DMS retrofit before any DMS quality claim.
-15. [ ] Port DMS streaming pack/compact decode and combine DMS with a
+16. [ ] Port DMS streaming pack/compact decode and combine DMS with a
     quality-admitted storage dtype; do not assume current dense INT8 is that
     dtype.

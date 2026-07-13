@@ -1,0 +1,539 @@
+{
+  "attribution": [
+    "Prompt content is dominant: repeated token 9707 makes native llama.cpp Q8_0, native hipEngine per-head INT8, and all three host reconstructions near-exact; the same paths reject on mixed_v1.",
+    "llama.cpp direct Q8_0 arithmetic helps relative to hipEngine host group32 on mixed_v1 (0.07565 vs 0.28106 mean KL), but still misses the KL gate by 1.51x and flips decode_3.",
+    "V is the larger isolated llama.cpp sensitivity (V-only Q8 mean KL 0.24322 vs K-only 0.09668), while full Q8 improves to 0.07565; K/V errors interact and partially cancel, so component errors are not additive.",
+    "Direct INT8 arithmetic is not universally a fidelity fix: native hipEngine per-head mixed mean KL is 48.98% worse than its BF16-reconstruction screen, while repeated rows are nearly identical."
+  ],
+  "commands": {
+    "hipengine_host_repeated": "python3 scripts/qwen35_gguf_kv_format_ablation.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --prompt-length 4096 --decode-steps 16 --sample-tokens 512 --prompt-profile repeated_token --token-id 9707 --candidates baseline_max,group32,hadamard_group32 --scale-dtype fp16 --wall-time-budget-seconds 600 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-q8-isolation-20260713/hipengine-host-repeated-4k16.json",
+    "hipengine_native_environment": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt PYTHONPATH=$PWD",
+    "hipengine_native_mixed": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 16 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.9 --prompt-token-file /tmp/hipengine-q8-isolation-20260713/mixed-v1-4096.tokens --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-q8-isolation-20260713/hipengine-native-perhead-mixed-4k16.json",
+    "hipengine_native_repeated": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 16 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-q8-isolation-20260713/hipengine-native-perhead-repeated-4k16.json",
+    "llamacpp_mixed_f16_control": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-steps 16 --ctx-size 4113 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --flash-attn --prompt-token-file /tmp/hipengine-q8-isolation-20260713/mixed-v1-4096.tokens --candidate-cache f16 --json /tmp/hipengine-q8-isolation-20260713/llama-mixed-f16-control.json",
+    "llamacpp_mixed_f16_k_q8_v": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-steps 16 --ctx-size 4113 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --flash-attn --prompt-token-file /tmp/hipengine-q8-isolation-20260713/mixed-v1-4096.tokens --candidate-cache q8_0 --candidate-cache-k f16 --candidate-cache-v q8_0 --json /tmp/hipengine-q8-isolation-20260713/llama-mixed-k-f16-v-q8.json",
+    "llamacpp_mixed_full_q8": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-steps 16 --ctx-size 4113 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --flash-attn --prompt-token-file /tmp/hipengine-q8-isolation-20260713/mixed-v1-4096.tokens --candidate-cache q8_0 --json /tmp/hipengine-q8-isolation-20260713/llama-mixed-full-q8.json",
+    "llamacpp_mixed_q8_k_f16_v": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-steps 16 --ctx-size 4113 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --flash-attn --prompt-token-file /tmp/hipengine-q8-isolation-20260713/mixed-v1-4096.tokens --candidate-cache q8_0 --candidate-cache-k q8_0 --candidate-cache-v f16 --json /tmp/hipengine-q8-isolation-20260713/llama-mixed-k-q8-v-f16.json",
+    "llamacpp_repeated_full_q8": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-steps 16 --ctx-size 4113 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --flash-attn --prompt-token-id 9707 --candidate-cache q8_0 --json /tmp/hipengine-q8-isolation-20260713/llama-repeated-full-q8.json"
+  },
+  "date": "2026-07-13",
+  "decision": {
+    "historical_128k_repeated_q8_row": "Mechanically valid repeated-token saturation control, but superseded as evidence that Q8_0 is accurate on representative context.",
+    "implement_native_group32_now": false,
+    "implement_native_hadamard_now": false,
+    "next_research": "Retain per-head, group32, and Hadamard as screen controls; prioritize V-preserving/asymmetric K/V variants and require multiple mixed/natural prompt families before native-kernel promotion.",
+    "promote_int8_kv": false
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "device_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "rocm_version": "7.2.4"
+  },
+  "hipengine_host_reconstruction": {
+    "mixed_4k16": {
+      "baseline_max": {
+        "max_kl": 2.030394355145924,
+        "mean_kl": 0.12779129642632414,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706
+      },
+      "group32": {
+        "max_kl": 4.3992388664450806,
+        "mean_kl": 0.2810587766302132,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706
+      },
+      "hadamard_group32": {
+        "max_kl": 4.095334999841801,
+        "mean_kl": 0.2518021460363545,
+        "passed": false,
+        "top1_agreement": 0.9411764705882353
+      }
+    },
+    "mixed_source_artifact": "benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json",
+    "repeated_4k16": {
+      "baseline_max": {
+        "first_top1_mismatch": null,
+        "max_kl": 9.330913166705902e-06,
+        "mean_kl": 2.331067892064927e-06,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "group32": {
+        "first_top1_mismatch": null,
+        "max_kl": 5.305823471203272e-06,
+        "mean_kl": 1.6918369083726467e-06,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "hadamard_group32": {
+        "first_top1_mismatch": null,
+        "max_kl": 8.013024211500747e-06,
+        "mean_kl": 1.927508020599312e-06,
+        "passed": true,
+        "top1_agreement": 1.0
+      }
+    },
+    "semantics": "Candidate values are QDQ-reconstructed into BF16 cache after prefill and after each current row has attended."
+  },
+  "hipengine_native_perhead_int8": {
+    "arithmetic_comparison": {
+      "mixed_native_mean_kl_vs_host_reconstruction_percent": 48.98022930013744,
+      "repeated_native_mean_kl_vs_host_reconstruction_percent": 0.6183289786713786
+    },
+    "mixed_4k16": {
+      "bf16_primary_layer_count": 0,
+      "first_top1_mismatch_index": 4,
+      "int8_layer_count": 10,
+      "max_kl": 2.9955482868672516,
+      "mean_kl": 0.19038376644155605,
+      "mirror_cache_count": 0,
+      "passed": false,
+      "scale_dtype": "fp16",
+      "top1_agreement": 0.8823529411764706,
+      "top1_mismatch_count": 2
+    },
+    "mixed_repeat_exact": {
+      "candidate_top1_exact": true,
+      "metrics_exact": true,
+      "reference_top1_exact": true
+    },
+    "repeated_4k16": {
+      "bf16_primary_layer_count": 0,
+      "first_top1_mismatch_index": null,
+      "int8_layer_count": 10,
+      "max_kl": 6.377405977146607e-06,
+      "mean_kl": 2.345481560354069e-06,
+      "mirror_cache_count": 0,
+      "passed": true,
+      "scale_dtype": "fp16",
+      "top1_agreement": 1.0,
+      "top1_mismatch_count": 0
+    },
+    "semantics": "Pure 10/10 full-attention-layer native per-token/head INT8 with FP16 scales, no BF16 primary layer and no persistent BF16 mirror; transient exact-prefill oracle released before decode."
+  },
+  "kind": "w7900_gguf_q8_kv_protocol_arithmetic_isolation",
+  "llamacpp_native_q8_0": {
+    "mixed_f16_k_q8_v": {
+      "candidate_k": "f16",
+      "candidate_reference_top1_rank": [
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "candidate_v": "q8_0",
+      "first_top1_mismatch": {
+        "candidate": 30523,
+        "index": 4,
+        "reference": 271
+      },
+      "max_kl": 3.9954291562085937,
+      "mean_kl": 0.24321880229977139,
+      "passed": false,
+      "per_position_kl": [
+        1.2639941671996671e-05,
+        3.968964138283303e-06,
+        1.1342332777875181e-05,
+        0.04671262791139098,
+        3.9954291562085937,
+        0.09143222697131392,
+        5.044885429583412e-05,
+        0.0009445201743611239,
+        2.985542339410325e-07,
+        3.7673793058914115e-05,
+        2.961618348160675e-07,
+        1.3395555940472711e-06,
+        1.4109261937268563e-06,
+        5.088204487055285e-05,
+        4.275897407805134e-06,
+        1.781592212966727e-08,
+        2.6512988454206306e-05
+      ],
+      "top1_agreement": 0.9411764705882353
+    },
+    "mixed_f16_repeatability": {
+      "candidate_k": "f16",
+      "candidate_reference_top1_rank": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "candidate_v": "f16",
+      "first_top1_mismatch": null,
+      "max_kl": 0,
+      "mean_kl": 0,
+      "passed": true,
+      "per_position_kl": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "top1_agreement": 1
+    },
+    "mixed_full_q8": {
+      "candidate_k": "q8_0",
+      "candidate_reference_top1_rank": [
+        1,
+        1,
+        1,
+        1,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "candidate_v": "q8_0",
+      "first_top1_mismatch": {
+        "candidate": 30523,
+        "index": 4,
+        "reference": 271
+      },
+      "max_kl": 1.2600915374184785,
+      "mean_kl": 0.07565399774436768,
+      "passed": false,
+      "per_position_kl": [
+        6.948517808663337e-06,
+        1.0971459794170811e-05,
+        2.8068329867612907e-06,
+        0.0011950971097717264,
+        1.2600915374184785,
+        0.021594406259309473,
+        0.0011992273509797,
+        0.0017909813026442253,
+        4.6074640259595186e-07,
+        3.433744254234235e-06,
+        7.710214508270338e-08,
+        6.4038082969622125e-06,
+        1.5780332668939082e-05,
+        0.00015971732029026537,
+        1.0259723905453097e-05,
+        1.305277397676382e-07,
+        2.9722096773954296e-05
+      ],
+      "top1_agreement": 0.9411764705882353
+    },
+    "mixed_full_q8_repeat": {
+      "all_per_position_kl_top1_and_ranks_exact": true,
+      "mean_kl": 0.07565399774436768
+    },
+    "mixed_q8_k_f16_v": {
+      "candidate_k": "q8_0",
+      "candidate_reference_top1_rank": [
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "candidate_v": "f16",
+      "first_top1_mismatch": {
+        "candidate": 81726,
+        "index": 4,
+        "reference": 271
+      },
+      "max_kl": 1.5685241189778507,
+      "mean_kl": 0.09668204021148646,
+      "passed": false,
+      "per_position_kl": [
+        2.507041830602957e-05,
+        2.0358949790640174e-05,
+        2.7778197428369955e-05,
+        0.025897305510391634,
+        1.5685241189778507,
+        0.0465261479734816,
+        0.00021864369225785624,
+        0.0021729487649715788,
+        2.8465573490202184e-07,
+        4.093532700992197e-05,
+        7.691002239998974e-07,
+        4.462267648713262e-05,
+        4.536953015638908e-06,
+        8.008904668129534e-05,
+        5.130881783567162e-06,
+        2.9888039867078175e-07,
+        5.643589456384208e-06
+      ],
+      "top1_agreement": 0.9411764705882353
+    },
+    "protocol_effect": {
+      "mixed_mean_kl_over_gate_factor": 1.5130799548873535,
+      "mixed_over_repeated_mean_kl_factor": 12227.454782286268,
+      "top1_percentage_point_change": -5.882352941176472
+    },
+    "repeated_full_q8": {
+      "candidate_k": "q8_0",
+      "candidate_reference_top1_rank": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "candidate_v": "q8_0",
+      "first_top1_mismatch": null,
+      "max_kl": 3.185661715588269e-05,
+      "mean_kl": 6.1872236774873625e-06,
+      "passed": true,
+      "per_position_kl": [
+        2.0836492923552178e-07,
+        3.185661715588269e-05,
+        1.1170347320122239e-05,
+        4.3831294219356516e-06,
+        6.39422155038502e-06,
+        1.681900844710637e-06,
+        1.2937519660270106e-06,
+        2.8396337570209127e-06,
+        1.2739602451298416e-06,
+        1.976935210882456e-06,
+        7.714869254515999e-07,
+        7.2534907247860575e-06,
+        2.043734456020919e-05,
+        9.12203681159643e-06,
+        2.0050171542406175e-06,
+        1.618057903166658e-06,
+        8.965060365026373e-07
+      ],
+      "top1_agreement": 1
+    }
+  },
+  "model": {
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "name": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "GGUF Q4_K_M"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "decode_steps": 16,
+    "mixed_prompt": {
+      "distinct_tokens": 36,
+      "profile": "mixed_v1 English/Japanese/code/math/tool-token unit repeated to 4K",
+      "token_ids_int32_le_sha256": "57d710dc8349ed5dcbbd06f9d772b996449cd8a66ffade4d26c1c8df0a951eee"
+    },
+    "positions": 17,
+    "prompt_tokens": 4096,
+    "quality_gate": {
+      "both_required": true,
+      "mean_kl_max": 0.05,
+      "top1_agreement_min": 0.9
+    },
+    "repeated_prompt": {
+      "distinct_tokens": 1,
+      "token_id": 9707,
+      "token_ids_int32_le_sha256": "e107a7f776fc05c1133305e6cc9c2312fc228be5ed314a82016dd037567e2411"
+    },
+    "teacher": "within-engine F16/BF16 reference seed and generated tokens"
+  },
+  "provenance": {
+    "hipengine_clean_for_all_measurements": true,
+    "hipengine_llamacpp_harness_commit": "a344d32abe93cb9d59639d9363fab69e8be3f706",
+    "hipengine_native_harness_commit": "cb6211d21c8c32283a217d8d8420c048df09acf3",
+    "libraries": {
+      "libggml-base.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-base.so.0.15.1",
+        "sha256": "3cfe8c3fd73e0225e95c8ae36fc8266cfed832ff7b00eb4c535b58cd3c201240"
+      },
+      "libggml-cpu.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-cpu.so.0.15.1",
+        "sha256": "9f4d51c726b27cb7723b11814d2047ddb2cee3333f395cbd359b887d9c16a444"
+      },
+      "libggml-hip.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-hip.so.0.15.1",
+        "sha256": "d9c112ab1ea923f0d7460a45449a6b87f260bc1a3bc1dbb76f0de83f50f7009b"
+      },
+      "libggml.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml.so.0.15.1",
+        "sha256": "7391556b6a916ac347cf5ae22b435b32a7e2ab099c02452de856a98b89d646df"
+      },
+      "libllama.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libllama.so.0.0.9648",
+        "sha256": "103d3f8f1f7969d9a1c9d8a2218f0bab7d7f6d64287740d8f4fed110dd09256e"
+      }
+    },
+    "llamacpp_build": {
+      "binary": "/tmp/hipengine-llamacpp-kv-matched/6e99cdb7eec3aa5d/llamacpp-kv-matched-context",
+      "binary_sha256": "cad5211974c42e39f4354df5cf223f5edaa1329336b5e5d7cd9af85a5c7469f1",
+      "command": "g++ -std=c++17 -O2 -Wall -Wextra -Werror /home/lhl/hipEngine-main/scripts/llamacpp_kv_matched_context.cpp -I/home/lhl/llama.cpp/llama.cpp-hip/include -I/home/lhl/llama.cpp/llama.cpp-hip/ggml/include -L/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin -Wl,-rpath,/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin -Wl,--allow-shlib-undefined -lllama -lggml -lggml-base -ldl -pthread -o /tmp/hipengine-llamacpp-kv-matched/6e99cdb7eec3aa5d/llamacpp-kv-matched-context",
+      "compiler": "g++",
+      "cpp_source": "scripts/llamacpp_kv_matched_context.cpp",
+      "cpp_source_sha256": "61a04252934fe939ba43186e1e552410b2e648c3293154a6e79eec5414438e61",
+      "key": "6e99cdb7eec3aa5d"
+    },
+    "llamacpp_source_state": {
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "dirty": true,
+      "status_porcelain": [
+        " M common/speculative.cpp",
+        " M common/speculative.h",
+        " M src/llama-context.cpp",
+        " M src/llama-context.h",
+        " M src/llama-ext.h",
+        " M src/llama-graph.cpp",
+        " M src/llama-graph.h",
+        " M src/models/qwen35.cpp",
+        " M src/models/qwen35moe.cpp",
+        " M tools/server/server-context.cpp"
+      ]
+    }
+  },
+  "raw_diagnostics": [
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-repeated-full-q8.json",
+      "sha256": "2d74e58578f52d18ddd3abe3424493b12237a526bbe5e3df4628cfb8e8ef0213",
+      "size_bytes": 9637
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-mixed-f16-control.json",
+      "sha256": "8fc3c74ba06a67cba5dd7e0e837e71ee332627fa2316e231364c701ed46526ed",
+      "size_bytes": 9556
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-mixed-full-q8.json",
+      "sha256": "04244a73a8668198c89292598d5f39a390425389f592fd7620fe7d5d4a108037",
+      "size_bytes": 10056
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-mixed-k-q8-v-f16.json",
+      "sha256": "783fa8c79f13bdfb39162092a9bd5e8abb8ebbd2c4534ae397104b2f3c4524be",
+      "size_bytes": 10112
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-mixed-k-f16-v-q8.json",
+      "sha256": "b7c1a9c3927e6b8a55d4a3be1fd142986dec3cc559989b04451a9c35b0afd707",
+      "size_bytes": 10116
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/llama-mixed-full-q8-repeat.json",
+      "sha256": "4f3fa2f949e3c5de27a6d75083e061298aaabd0c97d6a1e7cda3003a6c4a5267",
+      "size_bytes": 10062
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/hipengine-host-repeated-4k16.json",
+      "sha256": "3eb0ea6ef887047410e75689061803aff7425423653d930e00e4e5292f12dfec",
+      "size_bytes": 27947
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/hipengine-native-perhead-repeated-4k16.json",
+      "sha256": "2f04fc708eec5d22da6927c812e7a24e7ab7dbf5344d910de8e81c02eae8d64e",
+      "size_bytes": 4400
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/hipengine-native-perhead-mixed-4k16.json",
+      "sha256": "df3323d995963c730890d27a3e5069b1527ae97827aaf790347eddec8ed4a339",
+      "size_bytes": 5038
+    },
+    {
+      "path": "/tmp/hipengine-q8-isolation-20260713/hipengine-native-perhead-mixed-4k16-repeat.json",
+      "sha256": "f144399c313354e7613dee8aa0f482cf3ffab7381dbd7a0f5589b487b31e06f7",
+      "size_bytes": 5044
+    }
+  ],
+  "related_artifacts": [
+    "benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json",
+    "benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json"
+  ],
+  "schema": 1,
+  "source_audit": {
+    "key_attention": "Scaled FP32 query is quantized to Q8_1 block32; Q8_0 K x Q8_1 Q uses INT8 dp4a with FP32 scaled accumulation.",
+    "llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "measured_build": "9648 (1ebf790cd)",
+    "persistent_storage": "Q8_0 is 32 signed INT8 values plus one FP16 scale; no persistent F16 K/V shadow.",
+    "source_paths": [
+      "ggml/src/ggml-cuda/cpy-utils.cuh:137-152",
+      "ggml/src/ggml-cuda/set-rows.cu:1-120,300-308",
+      "ggml/src/ggml-cuda/fattn-common.cuh:304-366,585-618",
+      "ggml/src/ggml-cuda/fattn-vec.cuh:96-102,140-203,266-377",
+      "ggml/src/ggml-cuda/common.cuh:743-750"
+    ],
+    "value_attention": "On RDNA3, Q8_0 V dequantizes to FP16 and softmax-weight/V accumulation uses half2 before FP32 output.",
+    "write_path": "FP32 K/V source activations -> codes from unrounded FP32 max-abs/127 scale -> stored FP16 scale."
+  },
+  "status": "rejected_correctness"
+}
