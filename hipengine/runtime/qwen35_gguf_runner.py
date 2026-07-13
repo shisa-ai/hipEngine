@@ -13535,6 +13535,19 @@ _COMPACT_MOE_Q4_DUAL_KEYS = {
         "selected_dual_wmma_prefill_compact_bf16_bf16_out",
     ),
 }
+_COMPACT_MOE_Q4_DUAL_MODE_KEYS = {
+    ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"): {
+        "baseline": _COMPACT_MOE_Q4_DUAL_KEYS[
+            ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")
+        ],
+        "shared_x": KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
+            "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
+        ),
+    },
+}
 _COMPACT_MOE_Q4_DUAL_DS4_KEYS = {
     ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"): KernelKey(
         "hip_gfx1100",
@@ -13782,6 +13795,12 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain_wave32_tree",
     }
 )
+_GGUF_Q4_T16_SELECTED_PREFILL_MODE_ENV = (
+    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE"
+)
+_GGUF_Q4_T16_SELECTED_PREFILL_MODES = frozenset(
+    {"auto", "baseline", "shared_x"}
+)
 
 
 @dataclass(frozen=True)
@@ -13936,6 +13955,46 @@ def _gguf_gdn_prefill_backend_auto_mode(backend: str) -> str:
         choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES - {"auto"}))
         raise RuntimeError(
             "backend GGUF GDN prefill automatic mode must be one of "
+            f"{choices}, got {mode!r} for {backend!r}"
+        )
+    return mode
+
+
+def _gguf_q4_t16_selected_prefill_requested_mode() -> str:
+    """Return and validate the process-level Q4T16 schedule request."""
+
+    mode = os.environ.get(
+        _GGUF_Q4_T16_SELECTED_PREFILL_MODE_ENV, "auto"
+    ).strip().lower()
+    if not mode:
+        mode = "auto"
+    if mode not in _GGUF_Q4_T16_SELECTED_PREFILL_MODES:
+        choices = "|".join(sorted(_GGUF_Q4_T16_SELECTED_PREFILL_MODES))
+        raise ValueError(
+            "Q4 T16 selected prefill mode "
+            f"{_GGUF_Q4_T16_SELECTED_PREFILL_MODE_ENV} must be one of "
+            f"{choices}, got {mode!r}"
+        )
+    return mode
+
+
+def _gguf_q4_t16_selected_prefill_mode(backend: str) -> str:
+    """Resolve the fail-closed Q4T16 selected-prefill schedule."""
+
+    mode = _gguf_q4_t16_selected_prefill_requested_mode()
+    if mode == "auto":
+        raw = backend_package_capability(
+            backend,
+            "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+            "baseline",
+        )
+        mode = str(raw).strip().lower()
+    if mode == "auto" or mode not in _GGUF_Q4_T16_SELECTED_PREFILL_MODES:
+        choices = "|".join(
+            sorted(_GGUF_Q4_T16_SELECTED_PREFILL_MODES - {"auto"})
+        )
+        raise RuntimeError(
+            "backend Q4 T16 selected prefill automatic mode must be one of "
             f"{choices}, got {mode!r} for {backend!r}"
         )
     return mode
@@ -15131,7 +15190,26 @@ def _resolve_compact_moe_wmma_kernels(
     gate_up_pair = (gate_weight.spec.quant_key, up_weight.spec.quant_key)
     ds4_gate_up_key = _COMPACT_MOE_Q4_DUAL_DS4_KEYS.get(gate_up_pair)
     use_ds4_gate_up = _gguf_t16_ds4_prefill_enabled() and ds4_gate_up_key is not None
-    gate_up_key = ds4_gate_up_key if use_ds4_gate_up else _COMPACT_MOE_Q4_DUAL_KEYS.get(gate_up_pair)
+    mode_keys = _COMPACT_MOE_Q4_DUAL_MODE_KEYS.get(gate_up_pair)
+    selected_requested_mode = None
+    selected_mode = None
+    if mode_keys is not None:
+        selected_requested_mode = _gguf_q4_t16_selected_prefill_requested_mode()
+        selected_mode = _gguf_q4_t16_selected_prefill_mode(backend)
+        selected_gate_up_key = mode_keys.get(selected_mode)
+        if selected_gate_up_key is None:
+            raise RuntimeError(
+                "the selected Q4 T16 prefill mode has no registered key: "
+                f"{selected_mode!r}"
+            )
+        if use_ds4_gate_up and selected_mode != "baseline":
+            raise RuntimeError(
+                "Q4 T16 shared-X and DS4 selected-prefill diagnostics are "
+                "mutually exclusive"
+            )
+    else:
+        selected_gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get(gate_up_pair)
+    gate_up_key = ds4_gate_up_key if use_ds4_gate_up else selected_gate_up_key
     down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
     if gate_up_key is None or down_key is None:
         return None
@@ -15142,7 +15220,23 @@ def _resolve_compact_moe_wmma_kernels(
         load_backend_kernel_package(backend)
         resolved = _resolve_compact_moe_required_keys(required, backend=backend)
     if any(fn is None for fn in resolved):
-        return None
+        if selected_requested_mode not in {None, "auto"}:
+            raise RuntimeError(
+                "explicit Q4 T16 selected prefill mode is unavailable: "
+                f"{selected_requested_mode!r} on {backend!r}"
+            )
+        if mode_keys is None or selected_mode == "baseline":
+            return None
+        gate_up_key = mode_keys["baseline"]
+        required = (
+            *_COMPACT_MOE_SCHEDULER_KEYS,
+            *_COMPACT_MOE_FUSED_KEYS,
+            gate_up_key,
+            down_key,
+        )
+        resolved = _resolve_compact_moe_required_keys(required, backend=backend)
+        if any(fn is None for fn in resolved):
+            return None
     return _CompactMoeWmmaPlan(
         gate_up_fn=resolved[-2],
         down_fn=resolved[-1],

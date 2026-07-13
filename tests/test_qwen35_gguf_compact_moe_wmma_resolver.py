@@ -21,11 +21,13 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen35_gguf_runner as qgr
 
 
-def _fake_weight(quant_key: str) -> object:
-    return SimpleNamespace(spec=SimpleNamespace(quant_key=quant_key))
+def _fake_weight(quant_key: str, *, backend: str = "hip_gfx1100") -> object:
+    return SimpleNamespace(spec=SimpleNamespace(quant_key=quant_key), backend=backend)
 
 
-def test_raw_q4_q5_resolves_returns_plan_with_raw_allocations(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_raw_q4_q5_resolves_returns_plan_with_raw_allocations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     gate = _fake_weight("gguf_q4_k")
     up = _fake_weight("gguf_q4_k")
     down = _fake_weight("gguf_q5_k")
@@ -90,6 +92,82 @@ def test_t16_q4_dispatch_key_points_to_registered_t16_alias() -> None:
     assert key.layer == "moe_linear"
     assert key.quant == "gguf_q4_k_t16_v1"
     assert key.variant == "selected_dual_wmma_prefill_compact_bf16_bf16_out"
+
+
+def test_t16_q4_explicit_shared_x_mode_resolves_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "shared_x")
+    resolved_variants: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        resolved_variants.append(variant)
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    plan = qgr._resolve_compact_moe_wmma_kernels(
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q5_k_t16_v1", backend="hip_gfx1151"),
+    )
+
+    assert plan is not None
+    assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
+
+
+def test_t16_q4_invalid_explicit_mode_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "unknown")
+    with pytest.raises(ValueError, match="Q4 T16 selected prefill mode"):
+        qgr._resolve_compact_moe_wmma_kernels(
+            _fake_weight("gguf_q4_k_t16_v1"),
+            _fake_weight("gguf_q4_k_t16_v1"),
+            _fake_weight("gguf_q5_k_t16_v1"),
+        )
+
+
+def test_t16_q4_missing_explicit_shared_x_kernel_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "shared_x")
+    monkeypatch.setattr(qgr, "_ensure_compact_moe_wmma_registered", lambda: None)
+    monkeypatch.setattr(qgr, "load_backend_kernel_package", lambda backend: None)
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        if "shared_x" in variant:
+            return None
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    with pytest.raises(RuntimeError, match="explicit Q4 T16 selected prefill mode"):
+        qgr._resolve_compact_moe_wmma_kernels(
+            _fake_weight("gguf_q4_k_t16_v1"),
+            _fake_weight("gguf_q4_k_t16_v1"),
+            _fake_weight("gguf_q5_k_t16_v1"),
+        )
+
+
+def test_raw_q4_resolver_ignores_t16_only_selector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "shared_x")
+    variants: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        variants.append(variant)
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    plan = qgr._resolve_compact_moe_wmma_kernels(
+        _fake_weight("gguf_q4_k"),
+        _fake_weight("gguf_q4_k"),
+        _fake_weight("gguf_q5_k"),
+    )
+
+    assert plan is not None
+    assert "selected_dual_wmma_prefill_compact_bf16_bf16_out" in variants
+    assert not any("shared_x" in variant for variant in variants)
 
 
 def test_missing_down_key_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:

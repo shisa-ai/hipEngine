@@ -153602,3 +153602,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   unchanged. Next add a fail-closed registry/capability selector and run a clean
   full-model balanced 512/1K/4K prefill plus decode non-regression gate before
   any gfx1151 default promotion.
+
+## 2026-07-13 - Add fail-closed GPF-3A full-model selector
+
+- RED extended backend capability and compact-WMMA resolver coverage; collection
+  failed because the new capability did not exist. GREEN adds
+  `GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE=baseline` to both gfx1100 and gfx1151
+  backend packages and the diagnostic env
+  `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=auto|baseline|shared_x`.
+- Runtime resolves the T16 gate/up variant from a pair-keyed mode table and
+  backend capability, not a backend/quant string branch. Raw Q4 ignores the
+  T16-only selector. Explicit modes fail closed if their registry key is
+  unavailable; automatic non-baseline policy falls back to baseline if a future
+  preferred variant cannot resolve. Shared-X and the accuracy-traded DS4
+  diagnostic fail on conflict rather than silently overriding one another.
+- Validation:
+  `PYTHONPATH=$PWD uv run pytest -q tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_compact_moe_wmma_resolver.py` passes **28/28** tests,
+  covering both package capabilities, explicit shared-X resolution, invalid and
+  missing explicit variants, and raw-Q4 isolation. Production `auto` behavior
+  is unchanged on both devices. The expanded bundle adds compact-MoE routing
+  and GPU candidate exactness and passes **49/49**. Ruff passes all non-unused
+  rules and formatting on changed files; the unfiltered large-runner check only
+  reports its pre-existing unused imports/local, which this unit leaves alone.
+  Next: commit the selector, then build a balanced full-model A/B harness.
