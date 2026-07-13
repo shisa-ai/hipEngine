@@ -455,6 +455,82 @@ __global__ void qwen35_write_paged_kv_int8_block_kernel(
   }
 }
 
+__device__ inline float normalized_hadamard_group32(float value) {
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+#pragma unroll
+  for (int mask = 1; mask < 32; mask <<= 1) {
+    const float peer = __shfl_xor(value, mask, 32);
+    value = (lane & mask) ? (peer - value) : (value + peer);
+  }
+  return value * 0.1767766952966369f;
+}
+
+template <typename scale_t>
+__global__ void qwen35_write_paged_kv_int8_hadamard_group32_kernel(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    scale_t* k_scale,
+    scale_t* v_scale,
+    const int32_t* block_table,
+    const int64_t* position_ptr,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int row_major_cache) {
+  constexpr int64_t group_dim = 32;
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t group = static_cast<int64_t>(blockIdx.z);
+  const int64_t lane = static_cast<int64_t>(threadIdx.x);
+  const int64_t groups = head_dim / group_dim;
+  if (head >= num_kv_heads || row >= rows || group >= groups || lane >= group_dim ||
+      (head_dim % group_dim) != 0) {
+    return;
+  }
+
+  const int64_t position = position_ptr[row];
+  if (position < 0) {
+    return;
+  }
+  const int64_t logical_block = position / block_size;
+  if (logical_block >= block_table_len) {
+    return;
+  }
+  const int64_t block_offset = position - logical_block * block_size;
+  const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+  if (physical_block < 0) {
+    return;
+  }
+  const int64_t cache_block = row_major_cache ? row * block_table_len + physical_block : physical_block;
+  const int64_t input_base = (row * num_kv_heads + head) * head_dim + group * group_dim;
+  const int64_t cache_base =
+      ((cache_block * block_size + block_offset) * num_kv_heads + head) * head_dim + group * group_dim;
+  const int64_t scale_offset =
+      ((cache_block * block_size + block_offset) * num_kv_heads + head) * groups + group;
+
+  const float transformed_key = normalized_hadamard_group32(key[input_base + lane]);
+  const float transformed_value = normalized_hadamard_group32(value[input_base + lane]);
+  float key_max = fabsf(transformed_key);
+  float value_max = fabsf(transformed_value);
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    key_max = fmaxf(key_max, __shfl_down(key_max, offset, 32));
+    value_max = fmaxf(value_max, __shfl_down(value_max, offset, 32));
+  }
+  const float key_scale = __shfl(key_max, 0, 32) / 127.0f;
+  const float value_scale = __shfl(value_max, 0, 32) / 127.0f;
+  if (lane == 0) {
+    store_int8_scale(k_scale, scale_offset, key_scale);
+    store_int8_scale(v_scale, scale_offset, value_scale);
+  }
+  key_cache[cache_base + lane] = quantize_int8_per_token_head_value(transformed_key, key_scale);
+  value_cache[cache_base + lane] = quantize_int8_per_token_head_value(transformed_value, value_scale);
+}
+
 bool valid_kv_shape(int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim) {
   return block_size > 0 && block_table_len > 0 && num_kv_heads > 0 && head_dim > 0;
 }
@@ -580,6 +656,53 @@ int launch_qwen35_write_paged_kv_int8_block16(
       dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(rows), static_cast<unsigned int>(scale_blocks)),
       dim3(threads),
       shared_bytes,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      row_major_cache);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scale_t>
+int launch_qwen35_write_paged_kv_int8_hadamard_group32(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    scale_t* k_scale,
+    scale_t* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int row_major_cache,
+    hipStream_t stream) {
+  constexpr int64_t group_dim = 32;
+  if (!valid_kv_batch_shape(rows, block_size, block_table_len, num_kv_heads, head_dim) ||
+      (head_dim % group_dim) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t groups = head_dim / group_dim;
+  hipLaunchKernelGGL(
+      (qwen35_write_paged_kv_int8_hadamard_group32_kernel<scale_t>),
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(rows),
+           static_cast<unsigned int>(groups)),
+      dim3(32),
+      0,
       stream,
       key,
       value,
@@ -1258,6 +1381,39 @@ extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_prompt_sp
       0,
       stream);
 }
+
+#define DEFINE_HADAMARD_GROUP32_WRITER(SUFFIX, SCALE_T)                                      \
+extern "C" int hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_##SUFFIX##_spans( \
+    const float* key, const float* value, int8_t* key_cache, int8_t* value_cache,             \
+    SCALE_T* k_scale, SCALE_T* v_scale, const int32_t* base_offsets, const int64_t* live_counts,\
+    int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim,       \
+    hipStream_t stream) {                                                                       \
+  return launch_qwen35_write_paged_kv_int8_hadamard_group32<SCALE_T>(                           \
+      key, value, key_cache, value_cache, k_scale, v_scale, base_offsets, live_counts, 1,       \
+      block_size, block_table_len, num_kv_heads, head_dim, 0, stream);                          \
+}                                                                                               \
+extern "C" int hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_##SUFFIX##_batch_spans(\
+    const float* key, const float* value, int8_t* key_cache, int8_t* value_cache,             \
+    SCALE_T* k_scale, SCALE_T* v_scale, const int32_t* base_offsets, const int64_t* live_counts,\
+    int64_t rows, int64_t block_size, int64_t block_table_len, int64_t num_kv_heads,           \
+    int64_t head_dim, hipStream_t stream) {                                                     \
+  return launch_qwen35_write_paged_kv_int8_hadamard_group32<SCALE_T>(                           \
+      key, value, key_cache, value_cache, k_scale, v_scale, base_offsets, live_counts, rows,    \
+      block_size, block_table_len, num_kv_heads, head_dim, 1, stream);                          \
+}                                                                                               \
+extern "C" int hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_##SUFFIX##_prompt_spans(\
+    const float* key, const float* value, int8_t* key_cache, int8_t* value_cache,             \
+    SCALE_T* k_scale, SCALE_T* v_scale, const int32_t* base_offsets, const int64_t* live_counts,\
+    int64_t rows, int64_t block_size, int64_t block_table_len, int64_t num_kv_heads,           \
+    int64_t head_dim, hipStream_t stream) {                                                     \
+  return launch_qwen35_write_paged_kv_int8_hadamard_group32<SCALE_T>(                           \
+      key, value, key_cache, value_cache, k_scale, v_scale, base_offsets, live_counts, rows,    \
+      block_size, block_table_len, num_kv_heads, head_dim, 0, stream);                          \
+}
+
+DEFINE_HADAMARD_GROUP32_WRITER(f32, float)
+DEFINE_HADAMARD_GROUP32_WRITER(fp16, half_t)
+#undef DEFINE_HADAMARD_GROUP32_WRITER
 
 extern "C" int hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_spans(
     const float* key,

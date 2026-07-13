@@ -43,6 +43,16 @@ __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
 }
 
+__device__ inline float normalized_hadamard_group32(float value) {
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+#pragma unroll
+  for (int mask = 1; mask < 32; mask <<= 1) {
+    const float peer = __shfl_xor(value, mask, 32);
+    value = (lane & mask) ? (peer - value) : (value + peer);
+  }
+  return value * 0.1767766952966369f;
+}
+
 __device__ __forceinline__ void qwen35_full_attn_decode_impl(
     const float* query,
     const uint16_t* key_cache,
@@ -1686,8 +1696,8 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 }
 
-template <typename scale_t>
-__global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel(
+template <typename scale_t, int64_t quant_group_dim, bool use_hadamard>
+__global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const int8_t* __restrict__ key_cache,
     const int8_t* __restrict__ value_cache,
@@ -1738,7 +1748,11 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel(
   const int64_t tid = static_cast<int64_t>(threadIdx.x);
 
   if (tid < head_dim) {
-    q_shared[tid] = bf16_bits_to_float(float_to_bf16_bits(q[tid]));
+    float q_value = bf16_bits_to_float(float_to_bf16_bits(q[tid]));
+    if constexpr (use_hadamard) {
+      q_value = normalized_hadamard_group32(q_value);
+    }
+    q_shared[tid] = q_value;
   }
   __syncthreads();
 
@@ -1757,13 +1771,14 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel(
       valid_token = physical_block >= 0;
     }
     const int64_t token_offset = (physical_block * block_size + block_offset);
-    const int64_t scale_offset = (token_offset * num_kv_heads + kv_head);
-    const float key_s = valid_token ? scalar_to_float_qwen35(k_scale[scale_offset]) : 0.0f;
+    constexpr int64_t scale_groups = 256 / quant_group_dim;
+    const int64_t scale_base = (token_offset * num_kv_heads + kv_head) * scale_groups;
     const int64_t k_offset = (token_offset * num_kv_heads + kv_head) * head_dim;
 
     float local_dot = 0.0f;
     if (valid_token) {
       for (int64_t dim = tid; dim < head_dim; dim += blockDim.x) {
+        const float key_s = scalar_to_float_qwen35(k_scale[scale_base + (dim / quant_group_dim)]);
         local_dot += q_shared[dim] * (static_cast<float>(key_cache[k_offset + dim]) * key_s);
       }
     }
@@ -1783,7 +1798,9 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel(
     const float token_weight = (score <= -3.0e38f) ? 0.0f : expf(score - new_m);
     if (tid < head_dim) {
       const int64_t v_offset = k_offset + tid;
-      const float value_s = valid_token ? scalar_to_float_qwen35(v_scale[scale_offset]) : 0.0f;
+      const float value_s = valid_token
+          ? scalar_to_float_qwen35(v_scale[scale_base + (tid / quant_group_dim)])
+          : 0.0f;
       const float value = valid_token ? (static_cast<float>(value_cache[v_offset]) * value_s) : 0.0f;
       out_acc = out_acc * old_weight + token_weight * value;
     }
@@ -1792,6 +1809,9 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel(
     __syncthreads();
   }
 
+  if constexpr (use_hadamard) {
+    out_acc = normalized_hadamard_group32(out_acc);
+  }
   if (tid < head_dim) {
     const float inv_l = 1.0f / fmaxf(l, 1.0e-20f);
     const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + tid * gate_stride2;
@@ -2557,12 +2577,18 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel
   }
 }
 
-template <typename scale_t, int64_t q_per_kv, int64_t num_q_heads, int64_t num_kv_heads>
-__global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block16_kernel(
+template <
+    typename scale_t,
+    int64_t q_per_kv,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t quant_group_dim,
+    bool use_hadamard>
+__global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel(
     const float* __restrict__ query,         // [1, num_q_heads, 256]
     const int8_t* __restrict__ key_cache,    // [num_blocks, 256, num_kv_heads, 256]
     const int8_t* __restrict__ value_cache,
-    const scale_t* __restrict__ k_scale,     // [num_blocks, 256, num_kv_heads, 16]
+    const scale_t* __restrict__ k_scale,     // [num_blocks, 256, num_kv_heads, scale_groups]
     const scale_t* __restrict__ v_scale,
     const int32_t* __restrict__ block_table,
     const int64_t* __restrict__ context_len_ptr,
@@ -2615,7 +2641,11 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block1
   int32_t* split_meta = token_offsets + chunk_size;
 
   for (int64_t h = 0; h < q_per_kv; ++h) {
-    q_shared[h * head_dim + threadIdx.x] = query[(q_base + h) * head_dim + threadIdx.x];
+    float q_value = query[(q_base + h) * head_dim + threadIdx.x];
+    if constexpr (use_hadamard) {
+      q_value = normalized_hadamard_group32(q_value);
+    }
+    q_shared[h * head_dim + threadIdx.x] = q_value;
   }
   if (threadIdx.x == 0) {
     const int64_t start_block = token_start >> 8;
@@ -2656,14 +2686,15 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block1
       const int64_t physical_block = static_cast<int64_t>(block_table[logical_block]);
       token_offset = (physical_block << 8) + block_offset;
     }
-    const int64_t scale_base = (token_offset * num_kv_heads + kv_head) << 4;
+    constexpr int64_t scale_groups = head_dim / quant_group_dim;
+    const int64_t scale_base = (token_offset * num_kv_heads + kv_head) * scale_groups;
     const int64_t k_offset = (token_offset * num_kv_heads + kv_head) * head_dim;
     float acc[q_per_kv];
     for (int64_t h = 0; h < q_per_kv; ++h) {
       acc[h] = 0.0f;
     }
     for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
-      const float key_s = scalar_to_float_qwen35(k_scale[scale_base + (dim >> 4)]);
+      const float key_s = scalar_to_float_qwen35(k_scale[scale_base + (dim / quant_group_dim)]);
       const float k0 = static_cast<float>(key_cache[k_offset + dim + 0]) * key_s;
       const float k1 = static_cast<float>(key_cache[k_offset + dim + 1]) * key_s;
       const float k2 = static_cast<float>(key_cache[k_offset + dim + 2]) * key_s;
@@ -2769,7 +2800,9 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block1
       for (int64_t lt = 0; lt < chunk_len; ++lt) {
         const int64_t local_token_offset = token_start + lt - contiguous_token_base;
         const int64_t token_offset = (base_physical_block << 8) + local_token_offset;
-        const int64_t scale_offset = ((token_offset * num_kv_heads + kv_head) << 4) + (dim >> 4);
+        constexpr int64_t scale_groups = head_dim / quant_group_dim;
+        const int64_t scale_offset =
+            (token_offset * num_kv_heads + kv_head) * scale_groups + (dim / quant_group_dim);
         const float v = static_cast<float>(value_cache[v_base + local_token_offset * v_stride]) * scalar_to_float_qwen35(v_scale[scale_offset]);
         for (int64_t h = 0; h < q_per_kv; ++h) {
           acc[h] += scores[h * chunk_size + lt] * v;
@@ -2779,11 +2812,18 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block1
       for (int64_t lt = 0; lt < chunk_len; ++lt) {
         const int64_t token_offset = static_cast<int64_t>(token_offsets[lt]);
         const int64_t v_offset = (token_offset * num_kv_heads + kv_head) * head_dim + dim;
-        const int64_t scale_offset = ((token_offset * num_kv_heads + kv_head) << 4) + (dim >> 4);
+        constexpr int64_t scale_groups = head_dim / quant_group_dim;
+        const int64_t scale_offset =
+            (token_offset * num_kv_heads + kv_head) * scale_groups + (dim / quant_group_dim);
         const float v = static_cast<float>(value_cache[v_offset]) * scalar_to_float_qwen35(v_scale[scale_offset]);
         for (int64_t h = 0; h < q_per_kv; ++h) {
           acc[h] += scores[h * chunk_size + lt] * v;
         }
+      }
+    }
+    if constexpr (use_hadamard) {
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        acc[h] = normalized_hadamard_group32(acc[h]);
       }
     }
     for (int64_t h = 0; h < q_per_kv; ++h) {
@@ -3316,7 +3356,65 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_block16(
       static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
   hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_block16_kernel<scale_t, 8, 16, 2>),
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 16, false>),
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      partial_out,
+      partial_m,
+      partial_l,
+      chunk_size,
+      num_splits,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scale_t>
+int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_hadamard_group32(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const scale_t* k_scale,
+    const scale_t* v_scale,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (!valid_qwen35_gqa_split_shape(
+          chunk_size,
+          num_splits,
+          block_size,
+          block_table_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t q_per_kv = 8;
+  const size_t shared_bytes =
+      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
+      static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 32, true>),
       dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
       dim3(threads),
       shared_bytes,
@@ -3814,7 +3912,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scale_t>
+template <typename scale_t, int64_t quant_group_dim = 256, bool use_hadamard = false>
 int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
     const float* query,
     const int8_t* key_cache,
@@ -3845,7 +3943,7 @@ int launch_qwen35_paged_full_attn_prefill_gqa_gate_int8(
   const int threads = 256;
   const size_t shared = static_cast<size_t>(threads + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel<scale_t>),
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernel<scale_t, quant_group_dim, use_hadamard>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared,
@@ -3964,6 +4062,24 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16
       scale,
       stream);
 }
+
+#define DEFINE_HADAMARD_GROUP32_PREFILL(SUFFIX, SCALE_T)                                      \
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_##SUFFIX##_spans(\
+    const float* query, const int8_t* key_cache, const int8_t* value_cache,                    \
+    const SCALE_T* k_scale, const SCALE_T* v_scale, const half_t* gate, half_t* out,           \
+    const int32_t* block_tables, const int64_t* context_counts, const int64_t* row_positions,  \
+    int64_t rows, int64_t max_context_len, int64_t block_size, int64_t block_table_len,        \
+    int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, int64_t gate_stride1,         \
+    int64_t gate_stride2, float scale, hipStream_t stream) {                                   \
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_int8<SCALE_T, 32, true>(               \
+      query, key_cache, value_cache, k_scale, v_scale, gate, out, block_tables,                \
+      context_counts, row_positions, rows, max_context_len, block_size, block_table_len,       \
+      num_q_heads, num_kv_heads, head_dim, gate_stride1, gate_stride2, scale, stream);          \
+}
+
+DEFINE_HADAMARD_GROUP32_PREFILL(f32, float)
+DEFINE_HADAMARD_GROUP32_PREFILL(fp16, half_t)
+#undef DEFINE_HADAMARD_GROUP32_PREFILL
 
 extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
     const float* query,
@@ -4570,6 +4686,24 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_
       scale,
       stream);
 }
+
+#define DEFINE_HADAMARD_GROUP32_ATTN(SUFFIX, SCALE_T)                                         \
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_hadamard_group32_scale_##SUFFIX##_spans(\
+    const float* query, const int8_t* key_cache, const int8_t* value_cache,                    \
+    const SCALE_T* k_scale, const SCALE_T* v_scale, float* partial_out, float* partial_m,       \
+    float* partial_l, const int32_t* base_offsets, const int64_t* live_counts,                 \
+    int64_t chunk_size, int64_t num_splits, int64_t block_size, int64_t block_table_len,       \
+    int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, float scale,                  \
+    hipStream_t stream) {                                                                        \
+  return launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_hadamard_group32<SCALE_T>(\
+      query, key_cache, value_cache, k_scale, v_scale, partial_out, partial_m, partial_l,       \
+      base_offsets, live_counts, chunk_size, num_splits, block_size, block_table_len,           \
+      num_q_heads, num_kv_heads, head_dim, scale, stream);                                      \
+}
+
+DEFINE_HADAMARD_GROUP32_ATTN(f32, float)
+DEFINE_HADAMARD_GROUP32_ATTN(fp16, half_t)
+#undef DEFINE_HADAMARD_GROUP32_ATTN
 
 extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_f32_spans(
     const float* query,

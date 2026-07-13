@@ -1214,6 +1214,86 @@ def write_paged_kv_int8_block16(
     )
 
 
+def quantize_kv_int8_hadamard_group32(
+    key: ArrayLike,
+    value: ArrayLike,
+    *,
+    scale_dtype: str | np.dtype | type = np.float32,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Transform 32-channel groups, then quantize K/V with one scale per group."""
+
+    k = np.asarray(key, dtype=np.float32)
+    v = np.asarray(value, dtype=np.float32)
+    if k.shape != v.shape:
+        raise ValueError("key and value must have the same shape")
+    if k.ndim not in {3, 4}:
+        raise ValueError("key/value must have shape [tokens, Hkv, D] or [blocks, block, Hkv, D]")
+    transformed_k = _normalized_hadamard(k, group_size=32)
+    transformed_v = _normalized_hadamard(v, group_size=32)
+    qk, ks = _quantize_int8_blocks(transformed_k, 32, scale_dtype)
+    qv, vs = _quantize_int8_blocks(transformed_v, 32, scale_dtype)
+    return qk, qv, ks, vs
+
+
+def write_paged_kv_int8_hadamard_group32(
+    key: ArrayLike,
+    value: ArrayLike,
+    positions: ArrayLike,
+    block_table: ArrayLike,
+    *,
+    block_size: int,
+    cache_blocks: int | None = None,
+    scale_dtype: str | np.dtype | type = np.float32,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Reference paged append for normalized-Hadamard group32 INT8 K/V rows."""
+
+    k_rows = np.asarray(key, dtype=np.float32)
+    v_rows = np.asarray(value, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64)
+    table = np.asarray(block_table, dtype=np.int64).reshape(-1)
+    if k_rows.shape != v_rows.shape:
+        raise ValueError("key and value must have the same shape")
+    if k_rows.ndim != 3:
+        raise ValueError("key/value rows must have shape [rows, Hkv, D]")
+    if pos.shape != (k_rows.shape[0],):
+        raise ValueError("positions must have shape [rows]")
+    block = int(block_size)
+    if block <= 0:
+        raise ValueError("block_size must be positive")
+    if table.size == 0:
+        raise ValueError("block_table must not be empty")
+    if np.any(table < 0):
+        raise ValueError("block_table must not contain negative physical blocks")
+    inferred_blocks = int(np.max(table)) + 1
+    blocks = inferred_blocks if cache_blocks is None else int(cache_blocks)
+    if blocks < inferred_blocks or blocks <= 0:
+        raise ValueError("cache_blocks must cover the block_table physical blocks")
+
+    qk, qv, ks, vs = quantize_kv_int8_hadamard_group32(
+        k_rows,
+        v_rows,
+        scale_dtype=scale_dtype,
+    )
+    scale_blocks = int(ks.shape[-1])
+    key_cache = np.zeros((blocks, block, k_rows.shape[1], k_rows.shape[2]), dtype=np.int8)
+    value_cache = np.zeros_like(key_cache)
+    k_scale = np.zeros((blocks, block, k_rows.shape[1], scale_blocks), dtype=np.dtype(scale_dtype))
+    v_scale = np.zeros_like(k_scale)
+    for row, position in enumerate(pos):
+        if position < 0:
+            raise ValueError("positions must be non-negative")
+        logical_block = int(position) // block
+        block_offset = int(position) % block
+        if logical_block >= table.size:
+            raise ValueError("position exceeds block_table length")
+        physical_block = int(table[logical_block])
+        key_cache[physical_block, block_offset] = qk[row]
+        value_cache[physical_block, block_offset] = qv[row]
+        k_scale[physical_block, block_offset] = ks[row]
+        v_scale[physical_block, block_offset] = vs[row]
+    return key_cache, value_cache, k_scale, v_scale
+
+
 def quantize_kv_int8_key_bf16_value(
     key: ArrayLike,
     value: ArrayLike,
@@ -1421,6 +1501,60 @@ def dequantize_kv_int8_block16(
         k_scale,
         v_scale,
         quant_block_dim=16,
+    )
+
+
+def dequantize_kv_int8_hadamard_group32(
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    k_scale: ArrayLike,
+    v_scale: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Dequantize group32 INT8 K/V and apply the self-inverse normalized transform."""
+
+    transformed_key, transformed_value = dequantize_kv_int8_block(
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        quant_block_dim=32,
+    )
+    return (
+        _normalized_hadamard(transformed_key, group_size=32),
+        _normalized_hadamard(transformed_value, group_size=32),
+    )
+
+
+def paged_attn_decode_int8_hadamard_group32(
+    query: ArrayLike,
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    k_scale: ArrayLike,
+    v_scale: ArrayLike,
+    live_counts: ArrayLike,
+    *,
+    block_table: ArrayLike | None = None,
+    block_size: int | None = None,
+    scale: float | None = None,
+    output_dtype: str | np.dtype | type | None = np.float32,
+) -> np.ndarray:
+    """Reference paged GQA decode over Hadamard-group32 INT8 K/V."""
+
+    key, value = dequantize_kv_int8_hadamard_group32(
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+    )
+    return _paged_attn_decode_dequantized_gqa(
+        query,
+        key,
+        value,
+        live_counts,
+        block_table=block_table,
+        block_size=block_size,
+        scale=scale,
+        output_dtype=output_dtype,
     )
 
 
@@ -1866,6 +2000,16 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("cpu_reference", "paged_attn_decode", "int8_hadamard_group32"),
+        paged_attn_decode_int8_hadamard_group32,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "kv_dequant", "int8_hadamard_group32"),
+        dequantize_kv_int8_hadamard_group32,
+        replace=replace,
+    )
+    register(
         KernelKey("cpu_reference", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         full_attn_prefill,
         replace=replace,
@@ -2066,6 +2210,28 @@ def _quantize_int8_rows(value: np.ndarray, scale_dtype: str | np.dtype | type) -
     quantized = np.clip(quantized, -127.0, 127.0).astype(np.int8)
     quantized = np.where(scale[..., None] > 0.0, quantized, 0).astype(np.int8)
     return quantized, scale.astype(scale_np_dtype)
+
+
+def _normalized_hadamard(value: ArrayLike, *, group_size: int) -> np.ndarray:
+    """Apply a normalized Walsh-Hadamard transform to last-axis groups."""
+
+    source = np.asarray(value, dtype=np.float32)
+    size = int(group_size)
+    if size <= 0 or size & (size - 1):
+        raise ValueError("Hadamard group_size must be a positive power of two")
+    if source.ndim < 1 or source.shape[-1] % size:
+        raise ValueError("Hadamard group_size must divide the last dimension")
+    transformed = source.reshape(*source.shape[:-1], source.shape[-1] // size, size).copy()
+    width = 1
+    while width < size:
+        for start in range(0, size, 2 * width):
+            left = transformed[..., start : start + width].copy()
+            right = transformed[..., start + width : start + 2 * width].copy()
+            transformed[..., start : start + width] = left + right
+            transformed[..., start + width : start + 2 * width] = left - right
+        width *= 2
+    transformed *= np.float32(1.0 / np.sqrt(size))
+    return np.ascontiguousarray(transformed.reshape(source.shape), dtype=np.float32)
 
 
 def _quantize_int8_blocks(

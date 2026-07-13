@@ -153742,3 +153742,68 @@ graphless decode launch-collapse path without regressing target/serial parity.
   gate is a native PARO implementation with an unfused BF16 fallback, CPU
   reference and profiler proof, this full multi-prompt suite, native speed, and
   physical RX 7900 XTX 256 Ki capacity validation.
+
+## 2026-07-13 — Start native tail-four Hadamard-group32 mixed K/V implementation
+
+- User approved implementing the screened layout for both GGUF and PARO and
+  measuring its performance cost. The exact target remains BF16 K/V for
+  full-attention indices `0..5` (model layers `3,7,11,15,19,23`) and normalized
+  Walsh-Hadamard-group32 symmetric INT8 K/V with FP16 per-token/head/group scales
+  for indices `6..9` (layers `27,31,35,39`). BF16 remains the registered
+  fallback and no supported/default status changes before native fidelity and
+  performance gates pass.
+- Pre-edit audit: `git status -sb` was clean on branch `kv-int8-accuracy`; both
+  W7900 and RX 7900 XTX enumerate as gfx1100; `libamdhip64.so` loads. Ran
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`: the existing
+  attention writer/decode family is already landed in-tree; reported parent
+  drift is in Qwen expert/PARO weight-kernel sources and does not contain this
+  net-new K/V codec. No parent kernel will be copied.
+- Integration decision: represent this as a fixed-page policy layout, not a
+  model-weight quant branch. Per-layer `KVLiveSpans` remain authoritative:
+  preserved layers carry BF16 spans with no scale metadata; compressed layers
+  carry INT8 spans with `granularity="hadamard_group32"`. Dispatch maps that
+  metadata to dedicated `int8_hadamard_group32` writer/attention registry keys.
+  The policy exposes the four-layer tail selection so GGUF and PARO share the
+  same layout contract instead of separate environment-variable branches.
+- Kernel design: the writer applies normalized 32-wide FWHT, computes one FP16
+  max-abs scale per transformed group, and stores INT8. Decode transforms each
+  query group in wave32 registers, performs attention in transformed K space,
+  and applies the self-inverse normalized FWHT to each split's accumulated V
+  before the existing split reduction/gate. Because the inverse is linear, the
+  standard split reduction stays an exact unfused fallback boundary. Oracle is
+  the NumPy host-screen representation; required gates are CPU round-trip and
+  attention fixtures, HIP primitive accuracy, profiler-visible writer/decode
+  names, native GGUF/PARO multi-prompt KL/top-1, and matched BF16-vs-mixed
+  prefill/decode/memory measurements.
+
+## 2026-07-14 — Land shared Hadamard-group32 KV primitives
+
+- Added the shared `tail4_hadamard_group32` policy contract. It resolves to a
+  fixed layer layout (six preserved BF16 full-attention layers, four quantized
+  tail layers), exposes per-layer storage/granularity selection, and dispatches
+  `KVLiveSpans.scale_metadata.granularity="hadamard_group32"` through dedicated
+  `int8_hadamard_group32` writer, prefill, and decode registry keys. The normal
+  BF16 policy and CPU dequantize+attention chain remain unfused fallbacks.
+- Added the CPU oracle and raw-pointer gfx1100 kernels. The writer performs a
+  normalized wave32 FWHT and groupwise max-abs quantization. Decode transforms
+  Q in registers, consumes transformed K/V, and applies the self-inverse FWHT
+  to each split's V accumulator before the existing reduction. The streaming
+  causal prefill body uses the same groupwise template and inverses the output
+  before FP16 gate/output.
+- RED/GREEN: the new test initially failed collection on the missing CPU codec.
+  Final focused gate:
+  `python3 -m pytest tests/test_kv_hadamard_group32.py tests/test_kv_dispatch.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q`
+  -> `43 passed`; Ruff and `py_compile` pass. The HIP fixture compares native
+  prompt writer payload/scales exactly to NumPy and native split-K attention to
+  the CPU dequantized oracle within `atol=rtol=2e-4`.
+- Built both changed HIP families successfully. Cached W7900 profiler command
+  used `HIP_VISIBLE_DEVICES=0`, the precomputed compiler-version file, and a
+  direct single-test function invocation (the first unpinned pytest profiler
+  attempt hung during tool initialization and was terminated without a kernel
+  trace). Retained trace:
+  `/tmp/hipengine-hadamard-kv-rocprof/hadamard-kv_kernel_trace.csv`.
+  It records the FP16-scale Hadamard writer at `6760 ns` (16 VGPR, no scratch),
+  groupwise `<...,32,true>` decode context at `18760 ns` (88 VGPR, no scratch),
+  and unchanged split reducer at `1600 ns`. These are primitive execution proof,
+  not an end-to-end performance claim. Runner integration and native fidelity
+  remain next.
