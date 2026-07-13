@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
 )
 from hipengine.kernels.hip_gfx1151 import (
+    GGUF_AOTRITON_ISOLATED_PREFILL_STREAM,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
@@ -78,11 +79,27 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_gfx1151_kernels()
 
     assert TARGET_ARCH == "gfx1151"
+    assert GGUF_AOTRITON_ISOLATED_PREFILL_STREAM is True
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_AOTRITON_ISOLATED_PREFILL_STREAM",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_AOTRITON_ISOLATED_PREFILL_STREAM",
+            False,
+        )
+        is False
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",

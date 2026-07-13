@@ -885,15 +885,17 @@ should be boring.
   same-stream; its 4K/4096-query result directly validates the scoped gfx1100
   default. Retained evidence:
   `benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`.
-- GPF-4 extends the same explicit selector to a default-off GGUF candidate.
-  Fresh-process 512/4K focus is byte-exact across logits, hidden, all 30
-  Conv/GDN pairs, and all 10 live K/V pairs; wall changes by **+0.96%/+22.63%**
-  and the 4K convolution bucket falls **952.870 -> 88.839 ms (-90.68%)**. A
-  same-process interleave is invalid because one baseline launch permanently
-  contaminates the caller queue for later legs. Keep GGUF package capability
-  unset until clean detached 128K and fresh-process promotion gates pass.
-  Evidence:
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`.
+- GPF-4 extends the same selector to GGUF and is now default-on through the
+  **gfx1151-only** package capability. Clean detached 512/4K is byte-exact
+  across logits, hidden, all 30 Conv/GDN pairs, and all 10 live K/V pairs;
+  wall changes by **+0.17%/+20.76%**. The clean 128K screen reaches
+  **432.403 tok/s**, +10.05%-11.64% versus both baseline references, with
+  unchanged 25.493 GiB peak. A same-process interleave remains invalid because
+  one baseline launch permanently contaminates the caller queue for later
+  legs. `=0` is the rollback; gfx1100 remains same-stream. Evidence:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`
+  and
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`.
 - Remove when: the ROCr/AOTriton queue-scratch issue is fixed upstream or the
   rollback has survived one release cycle. Then remove the opt-out and its
   duplicate same-stream routes; keep one proven scheduling policy shared by

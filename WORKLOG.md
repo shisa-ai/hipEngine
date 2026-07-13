@@ -154057,3 +154057,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   It is explicitly not a performance claim because the candidate was
   uncommitted. Next validate a clean detached commit at 128K and repeat clean
   fresh-process 512/4K before adding the gfx1151 capability.
+
+## 2026-07-14 - Promote GPF-4 in gfx1151 package policy
+
+- Validated detached clean candidate commit `006306ac` in
+  `/tmp/hipengine-gpf4-clean-006306ac`. Its worktree stayed clean. The first
+  cache-only attempt found a worktree-specific AOTriton wrapper cache miss;
+  rebuilt that wrapper outside profiling, discarded the compile-contaminated
+  timing, then required the cached artifact for every retained gate.
+- Repeated the fresh-process 1+3 focus with separate right-sized processes:
+  - 512 off **[801.186, 822.203, 822.364]**, median **822.203 tok/s**; on
+    **[804.049, 823.614, 825.261]**, median **823.614 (+0.17%)**;
+  - 4K off **[748.216, 747.566, 747.721]**, median **747.721 tok/s**; on
+    **[903.327, 902.928, 902.628]**, median **902.928 (+20.76%)**.
+  All measured IDs are `9707`; tracked peak is identical at 21.478/22.995 GiB.
+- Clean fresh-process correctness reproduces the candidate hashes exactly:
+  sampled IDs, FP32 logits/hidden, all 30 Conv/GDN pairs, and all 10 live K/V
+  pairs match byte-for-byte at 512 and 4K (**82/82 parts per context**).
+  Aggregate hashes remain `6659d4f8...5eb20622` and
+  `24eb7b47...94b7370c`.
+- The clean 128K no-warmup candidate screen completes in **303.125 s** at
+  **432.403 tok/s** with token `9707` and unchanged **25.493 GiB** tracked
+  peak. That is +11.64% versus the published 387.334 tok/s baseline and
+  +10.05% versus GPF-M2's sampled 392.904 tok/s baseline. This one-pass screen
+  is not the final public row; the automatic-route 1+3 rollup follows.
+- RED changed policy tests to require a gfx1151-only automatic capability and
+  failed because it did not exist. GREEN adds
+  `GGUF_AOTRITON_ISOLATED_PREFILL_STREAM=True` only to the gfx1151 package;
+  gfx1100 remains false/same-stream, and explicit `=0` remains the rollback.
+  Focused policy/backend tests pass **20/20** and targeted Ruff passes.
+- Compact promotion evidence:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`.
+  Next commit the package policy and run the clean automatic six-shape 1+3
+  publication sweep.

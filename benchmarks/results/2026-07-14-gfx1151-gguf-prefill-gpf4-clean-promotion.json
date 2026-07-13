@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf4_clean_promotion",
+  "status": "promote_gfx1151_capability_pending_final_rollup",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_commit": "006306acca31a5cf3cb437ccc72e038d700f8fdc",
+  "candidate": {
+    "id": "GPF-4",
+    "selector": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1",
+    "promoted_capability": "hip_gfx1151.GGUF_AOTRITON_ISOLATED_PREFILL_STREAM=true",
+    "gfx1100_default": "unchanged / false"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "correctness": {
+    "protocol": "Clean detached candidate commit; separate fresh off/on processes; repeated token 9707; exact FP32 logits, FP32 hidden seed, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs.",
+    "contexts": {
+      "512": {
+        "token_ids": [9707, 9707],
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_sha256": "6659d4f8a4130a3b5b0aa8a12dfbbb0ee74edcd9d74989a4d02cbf4b5eb20622"
+      },
+      "4096": {
+        "token_ids": [9707, 9707],
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_sha256": "24eb7b4730ce6f775b2294a8e30a246ee77026eab05f29bb3faebd4694b7370c"
+      }
+    },
+    "local_artifacts": {
+      "off": {"path": "/tmp/gpf4-clean-exact-off.json", "sha256": "9d22061859d43a6a70a53288f51b691dbbad59486340a55aaee9962b2cb596f0"},
+      "on": {"path": "/tmp/gpf4-clean-exact-on.json", "sha256": "1475754b8fe655bde8d8c4be3d444505320ab7ce20220eb93fbd1842a782faf7"}
+    }
+  },
+  "clean_fresh_process_focus": {
+    "protocol": "One discarded warmup plus three measured prefill-only runs in a clean fresh process per context/mode; 512 order off/on, 4K order on/off; cached builds; no decode.",
+    "512": {
+      "off_tok_s_samples": [801.1862263146301, 822.2026102756394, 822.3641731263921],
+      "on_tok_s_samples": [804.0486702385558, 823.6136294740435, 825.2606694670735],
+      "off_median_tok_s": 822.2026102756394,
+      "on_median_tok_s": 823.6136294740435,
+      "candidate_delta_percent": 0.171614536462128,
+      "tracked_peak_gib_off_on": [21.477776296436787, 21.477776296436787],
+      "tokens_exact": true,
+      "off_artifact_sha256": "b3e6ded06ba42f5ca127d325bdfb0f20f8116433c3129f7f8c5c1ccd32f02f82",
+      "on_artifact_sha256": "fcf12c66c807c104e6e408ab85eaf221569909ca10c483deba3e65f81cdf7f32"
+    },
+    "4096": {
+      "off_tok_s_samples": [748.2162606554319, 747.5663320281104, 747.7207235656307],
+      "on_tok_s_samples": [903.3267605067053, 902.9282092287827, 902.6284114052896],
+      "off_median_tok_s": 747.7207235656307,
+      "on_median_tok_s": 902.9282092287827,
+      "candidate_delta_percent": 20.757413934312186,
+      "tracked_peak_gib_off_on": [22.99488216638565, 22.99488216638565],
+      "tokens_exact": true,
+      "off_artifact_sha256": "36f965a68b2428059a3a86652a25f86b36fca53359ae1ded9e0db2819dabbbc7",
+      "on_artifact_sha256": "3149049de6bf12f9db9895c20f1d9c36ed049e0fa4b53bce21b10e030e1b4f85"
+    }
+  },
+  "clean_128k_screen": {
+    "protocol": "No warmup, one candidate prefill-only run at the clean detached commit; screening evidence only, followed by the required final 1+3 automatic-route rollup.",
+    "prefill_seconds": 303.1248913949821,
+    "prefill_tok_s": 432.402629150005,
+    "generated_preview_token_ids": [9707],
+    "tracked_peak_gib": 25.492501735687256,
+    "versus_published_gpf2e_387_334_tok_s_percent": 11.635598514461677,
+    "versus_gpf_m2_sampled_baseline_392_904_tok_s_percent": 10.052914911339506,
+    "artifact_sha256": "7a20929ffa1059dd00ee7b94debe197a7361a7f77cdf3cfffed07ff0690dcb1d"
+  },
+  "decision": {
+    "promote": true,
+    "reason": "Clean 512 is non-regressive, clean 4K improves 20.76%, the 128K screen improves 10.05%-11.63% against both available clean baseline references, memory is unchanged, and the full internal state/logit gate is byte-exact.",
+    "next": "Enable only the gfx1151 backend package capability, commit, then run the final automatic-route one-warmup/three-measurement six-shape publication sweep."
+  },
+  "caveat": "This compact artifact records the promotion decision but is not the final public performance claim; the automatic-route final rollup owns retained topline values."
+}
