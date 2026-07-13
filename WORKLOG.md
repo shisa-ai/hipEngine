@@ -153250,3 +153250,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   updated the platform index/detailed benchmark section, root benchmark export,
   and reverse-chronological changelog. GitHub issue #4 now includes the completed
   bridge and functional findings: https://github.com/shisa-ai/hipEngine/issues/4
+
+## 2026-07-13 — Rewrite KVCACHE around current accuracy evidence
+
+- Replaced the stale June 24 `docs/KVCACHE.md` status/baseline with a
+  comprehensive architecture, capacity, and accuracy report. The document now
+  explicitly supersedes the old inference that a Qwen3.5 short E2E fixture made
+  current Qwen3.6 256K INT8 correctness-passing.
+- Consolidated all current evidence: independent-rollout FP16/FP32 scale
+  rejection; 512/4K/32K/128K matched-context rows; clipping/group16/32/64 and
+  K/V-mixed reconstruction; BF16 layer/head and sink/recent transfer; clean
+  128K/16 outcome; 4K/32K bounded functional choices; llama.cpp Q8_0/F16 plus
+  F16 repeatability; and the same-Q4_K_M cross-engine bridge. Also folded in the
+  June GGUF pure/hybrid, prefix-depth, block16, key-only, non-contiguous-mask,
+  host-QDQ, and generated-corpus accuracy sequence with protocol caveats.
+- Reconciled capacity versus support: final 256K tracked/sampled peaks remain
+  `22.971/21.041 GiB`, retained INT8 K/V is `2.708 GB`, and no-shadow passes,
+  while fidelity remains rejected at KL `0.85128/4.97382`, top-1 `41.18%`.
+- Preserved the `KVLiveSpans`, K1 kernel/policy, and K2 FastDMS architecture,
+  but changed DMS bring-up to BF16-first semantics; current rejected dense INT8
+  is no longer assumed to be a quality-safe DMS storage dtype.
+- Added canonical commands, an artifact index, supported/unsupported
+  conclusions, promotion gates, and an updated punchlist. Local-link validation
+  found every target present; mechanical assertions rechecked headline values
+  against the retained JSON artifacts; `git diff --check` passed.
