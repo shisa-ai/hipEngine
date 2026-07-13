@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "date": "2026-07-13",
+  "title": "W7900 PARO INT8 KV external-format fast screen and transfer",
+  "status": "rejected_at_4k_transfer",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "vram_total_bytes": 48301604864,
+    "device_index": 0,
+    "toolchain": "TheRock HIP 7.15.0-0000000"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "weight_format": "W4-PARO packed",
+    "kv_reference": "BF16",
+    "candidate_storage_bits": 8,
+    "full_attention_layers": 10,
+    "kv_heads": 2,
+    "head_dim": 256
+  },
+  "provenance": {
+    "hipengine_commit": "d0b56364e2060c3e0eaba2f49962641b7a2285b5",
+    "hipengine_dirty": false,
+    "external_references": [
+      {
+        "repo": "/home/lhl/amd-gpu-tuning/reference/kvcache-quantization-research",
+        "commit": "a0bb333",
+        "use": "KIVI, Hadamard, AQUA, and evaluation-ladder review"
+      },
+      {
+        "repo": "https://github.com/huawei-csl/KVarN",
+        "commit": "7586257f1c632e63187bfacbbe21ccb51540f7b3",
+        "use": "source-aligned eight-pass log-domain variance normalization, K/V RTN axes, and 128-token BF16 sink"
+      }
+    ]
+  },
+  "protocol": {
+    "comparison": "BF16-reference-token matched context",
+    "primary_metric": "mean KL(BF16 || candidate)",
+    "supporting_metrics": [
+      "maximum per-position KL",
+      "top-1 agreement",
+      "top-5 set overlap",
+      "top-10 set overlap",
+      "BF16 top-1 rank under candidate logits"
+    ],
+    "gate": {
+      "mean_kl_max": 0.05,
+      "top1_agreement_min": 0.9,
+      "both_required": true
+    },
+    "emulation_limit": "The BF16 cache is replaced by host-reconstructed BF16 before decode; the current row is round-tripped after its own attention. Results rank representations and are not native-kernel evidence.",
+    "target_context_memory_tokens": 262144,
+    "extra_memory_budget_bytes": 1073741824
+  },
+  "s1_fast_screen": {
+    "workload": {
+      "prompt_tokens": 512,
+      "decode_steps": 8,
+      "positions_scored": 9,
+      "prompt_profile": "mixed_v1",
+      "distinct_prompt_tokens": 36,
+      "prompt_token_sha256": "933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8"
+    },
+    "elapsed_seconds": 28.778252062009415,
+    "shell_wall_seconds": 29,
+    "budget_seconds": 600,
+    "budget_passed": true,
+    "source_json_sha256": "c2a3043f33a6104f5250a0509f2f3826b1bc197f1e09dd2b6128e1a7335ea88a",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_kv_format_ablation.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --fast-accuracy-screen --json /tmp/hipengine-int8-fast-screen-source-aligned-20260713/screen.json",
+    "candidates": [
+      {
+        "name": "baseline_max",
+        "representation": "symmetric INT8 per token/head",
+        "mean_kl": 0.36840596044654395,
+        "max_kl": 1.2020029791172007,
+        "top1_agreement": 0.6666666666666666,
+        "top5_overlap": 0.7111111111111111,
+        "top10_overlap": 0.7777777777777778,
+        "max_reference_top1_rank": 31,
+        "key_normalized_rmse": 0.009031149449520114,
+        "value_normalized_rmse": 0.01237289753065573,
+        "projected_256k_bytes": 2705326080,
+        "extra_bytes_over_baseline": 0,
+        "gate_passed": false
+      },
+      {
+        "name": "hadamard_group32",
+        "representation": "normalized Hadamard rotation plus symmetric group32 INT8",
+        "mean_kl": 0.1334213370814538,
+        "max_kl": 0.4513468834709467,
+        "top1_agreement": 0.7777777777777778,
+        "top5_overlap": 0.8444444444444444,
+        "top10_overlap": 0.8444444444444446,
+        "max_reference_top1_rank": 4,
+        "key_normalized_rmse": 0.0052889984421007775,
+        "value_normalized_rmse": 0.0053700816267735416,
+        "projected_256k_bytes": 2852126720,
+        "extra_bytes_over_baseline": 146800640,
+        "mean_kl_reduction_vs_baseline_percent": 63.78415351376668,
+        "gate_passed": false
+      },
+      {
+        "name": "kivi_int8",
+        "representation": "128-token affine K-per-channel chunks, V per token/group32, incomplete BF16 tail",
+        "mean_kl": 0.16666585519294405,
+        "max_kl": 0.6073912725818844,
+        "top1_agreement": 0.8888888888888888,
+        "top5_overlap": 0.8666666666666667,
+        "top10_overlap": 0.8888888888888888,
+        "max_reference_top1_rank": 2,
+        "key_normalized_rmse": 0.0041690755346393635,
+        "value_normalized_rmse": 0.005129499840422725,
+        "projected_256k_bytes": 2896670720,
+        "extra_bytes_over_baseline": 191344640,
+        "mean_kl_reduction_vs_baseline_percent": 54.76027179611079,
+        "gate_passed": false
+      },
+      {
+        "name": "kvarn_int8",
+        "representation": "full-head Hadamard, eight-pass best-so-far variance normalization, K-per-channel/V-per-token affine INT8, 128-token BF16 sink and incomplete tail",
+        "mean_kl": 0.27125208492205066,
+        "max_kl": 1.2501660553764549,
+        "top1_agreement": 0.8888888888888888,
+        "top5_overlap": 0.7777777777777778,
+        "top10_overlap": 0.7999999999999999,
+        "max_reference_top1_rank": 5,
+        "key_normalized_rmse": 0.003613021877986494,
+        "value_normalized_rmse": 0.005016075333905249,
+        "projected_256k_bytes": 2783902720,
+        "extra_bytes_over_baseline": 78576640,
+        "mean_kl_reduction_vs_baseline_percent": 26.37141793437145,
+        "gate_passed": false
+      }
+    ],
+    "winner": {
+      "name": "hadamard_group32",
+      "reason": "Lowest mean KL among candidates within the 1 GiB extra-byte budget; top-1/top-k also improve over baseline.",
+      "advanced_to_s2": true
+    }
+  },
+  "s2_transfer": {
+    "candidate": "hadamard_group32",
+    "workload": {
+      "prompt_tokens": 4096,
+      "decode_steps": 16,
+      "positions_scored": 17,
+      "prompt_profile": "mixed_v1",
+      "distinct_prompt_tokens": 36,
+      "prompt_token_sha256": "57d710dc8349ed5dcbbd06f9d772b996449cd8a66ffade4d26c1c8df0a951eee"
+    },
+    "elapsed_seconds": 29.17284229998768,
+    "shell_wall_seconds": 30,
+    "source_json_sha256": "451ce1c20d5bf7db5a0e4fd6d32dcf7366c1dd31b056416aa72f09a05b2f3a56",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3 scripts/qwen35_paro_kv_format_ablation.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 4096 --decode-steps 16 --sample-tokens 512 --prompt-profile mixed_v1 --candidates hadamard_group32 --no-run-runtime-int8-baseline --wall-time-budget-seconds 600 --json /tmp/hipengine-int8-hadamard-transfer-4k16-20260713/transfer.json",
+    "mean_kl": 0.15511954903472852,
+    "max_kl": 1.1426662768891347,
+    "top1_agreement": 0.9411764705882353,
+    "top5_overlap": 0.8823529411764706,
+    "top10_overlap": 0.8470588235294118,
+    "max_reference_top1_rank": 2,
+    "projected_256k_bytes": 2852126720,
+    "extra_bytes_over_baseline": 146800640,
+    "kl_gate_passed": false,
+    "top1_gate_passed": true,
+    "overall_gate_passed": false
+  },
+  "decision": {
+    "summary": "Hadamard group32 materially improves the fast screen and passes 4K/16 top-1, but its 0.15512 mean KL is 3.10x the allowed threshold. Reject native implementation and stop before 128K or task benchmarks.",
+    "native_kernel_implemented": false,
+    "run_128k_gate": false,
+    "run_task_benchmarks": false,
+    "supported_int8_status_changed": false,
+    "next_representation_candidate": "AQUA-style cross-layer residual prediction if INT8 quality work continues"
+  },
+  "validation": {
+    "tests": "python3 -m pytest -q tests/test_qwen35_paro_kv_format_ablation.py tests/test_qwen35_paro_int8_kv_quality_sweep.py tests/test_qwen35_paro_kv_policy_ablation.py",
+    "tests_passed": 21,
+    "ruff": "passed",
+    "py_compile": "passed",
+    "finite_logits": true
+  }
+}

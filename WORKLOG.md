@@ -153408,3 +153408,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   sink preservation; the targeted 21-test bundle, Ruff, `py_compile`, and
   `git diff --check` pass. The first KVarN number is superseded pending the clean
   rerun; the baseline/Hadamard/KIVI rows remain valid.
+
+## 2026-07-13 — Reject external INT8 formats at the 4K transfer gate
+
+- Re-ran the clean source-aligned S1 screen at `d0b56364`. Harness/shell wall is
+  `28.778/29 s`; prompt token hash and the unchanged baseline/Hadamard/KIVI rows
+  reproduce exactly. Source-aligned KVarN improves the superseded approximation
+  from mean/max KL `0.36283/1.49168` to `0.27125/1.25017`, top-1 from `66.67%`
+  to `88.89%`, top-5 from `75.56%` to `77.78%`, and top-10 remains `80.00%`.
+  Its projected 256K storage is `2.593 GiB`, `0.073 GiB` above the native-format
+  baseline including the permanent BF16 sink and incomplete tail.
+- Final S1 ranking on the primary metric is Hadamard group32 `0.13342` mean KL,
+  KIVI `0.16667`, KVarN `0.27125`, baseline `0.36841`. Hadamard reduces mean KL
+  by `63.78%` and improves every top-k guard over baseline, so it alone advanced
+  to S2 despite KIVI's stronger `88.89%` top-1.
+- Clean Hadamard 4K/16 transfer at the same `d0b56364` completes in
+  harness/shell `29.173/30 s`: mean/max KL `0.15512/1.14267`, top-1 `94.12%`,
+  top-5/top-10 overlap `88.24/84.71%`, and max BF16-top-1 candidate rank `2`.
+  Top-1 passes, but mean KL is 3.10x the `0.05` threshold, so the combined gate
+  rejects. No native HIP format, 128K run, or downstream task benchmark is
+  justified from this row.
+- Raw clean JSON SHA-256 values are
+  `c2a3043f33a6104f5250a0509f2f3826b1bc197f1e09dd2b6128e1a7335ea88a`
+  (S1) and
+  `451ce1c20d5bf7db5a0e4fd6d32dcf7366c1dd31b056416aa72f09a05b2f3a56`
+  (S2). Published compact evidence as
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-external-format-screen.json`
+  and updated only the requested KVCACHE workflow/result section plus benchmark
+  rollups. `performance_claim=false`; supported INT8 status is unchanged.
