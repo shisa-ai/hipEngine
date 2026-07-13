@@ -63,6 +63,11 @@ exactness matrix may still compare the candidate directly with `fused`, which
 remains the trusted byte-exact oracle; the artifact records correctness modes
 separately from timing modes. Baseline and candidate must be different.
 
+The same rule applies to `scripts/gguf_gdn_trajectory_gate.py`: fused remains
+its default baseline, while an incremental gate names the shipped exact route
+with `--baseline-mode`. Natural correctness trajectories and paired decode
+walls then use that same explicit pair, and equal modes fail closed.
+
 The 2026-07-11 clean gfx1151 run at `ad773eba` rejects chain promotion:
 `1186.842 -> 1248.436 ms` at 512 (+5.19%) and
 `10187.300 -> 10870.022 ms` at 4K (+6.70%). Fused remains the selected default.

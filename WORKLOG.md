@@ -153791,3 +153791,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - GREEN: `uv run pytest -q tests/test_gguf_gdn_prefill_ab.py` passes **13/13**;
   `uvx --offline ruff check --ignore E402` and `git diff --check` pass. Next
   run `chain_lds32` versus `chain_lds32_direct` in a clean detached worktree.
+
+## 2026-07-13 - Generalize the GDN trajectory/decode gate baseline
+
+- Added RED tests for an explicit `chain_lds32` trajectory/decode control.
+  Argparse rejected `--baseline-mode`, while decode summaries and the aggregate
+  no-regression decision had fused-only indexing; the three new tests failed
+  on those missing interfaces.
+- Added `--baseline-mode` with historical fused default and schema v2 metadata.
+  Natural own-token logits, timed decode trajectories, paired walls, aggregate
+  weighted decode, workload/protocol metadata, and provenance now use the same
+  named baseline/candidate pair. Equal modes fail closed.
+- GREEN: `uv run pytest -q tests/test_gguf_gdn_trajectory_gate.py` passes
+  **9/9**. This lets the GPF-2E gate measure the actual shipped materialized
+  LDS32 route against direct-conv without relying on transitive decode timing.

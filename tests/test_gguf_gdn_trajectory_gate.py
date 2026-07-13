@@ -19,6 +19,21 @@ def test_parser_accepts_exact_lds_candidate_modes() -> None:
         assert args.candidate_mode == mode
 
 
+def test_parser_accepts_explicit_current_default_baseline() -> None:
+    args = build_parser().parse_args(
+        [
+            "--baseline-mode",
+            "chain_lds32",
+            "--candidate-mode",
+            "chain_lds32_direct",
+            "--json",
+            "/tmp/out.json",
+        ]
+    )
+    assert args.baseline_mode == "chain_lds32"
+    assert args.candidate_mode == "chain_lds32_direct"
+
+
 def _step(token_id: int, logits: list[float]) -> dict[str, object]:
     return {
         "token_id": token_id,
@@ -112,6 +127,44 @@ def test_decode_summary_rejects_a_token_divergence_even_when_faster() -> None:
     assert summary["candidate_wins"] is True
 
 
+def test_decode_summary_supports_current_default_baseline() -> None:
+    measurements = [
+        {
+            "repetition": 0,
+            "order": ["chain_lds32", "chain_lds32_direct"],
+            "modes": {
+                "chain_lds32": {"wall_ms": 200.0, "token_ids": [1, 2, 3]},
+                "chain_lds32_direct": {
+                    "wall_ms": 198.0,
+                    "token_ids": [1, 2, 3],
+                },
+            },
+        },
+        {
+            "repetition": 1,
+            "order": ["chain_lds32_direct", "chain_lds32"],
+            "modes": {
+                "chain_lds32_direct": {
+                    "wall_ms": 202.0,
+                    "token_ids": [1, 2, 3],
+                },
+                "chain_lds32": {"wall_ms": 204.0, "token_ids": [1, 2, 3]},
+            },
+        },
+    ]
+    summary = _summarize_decode_measurements(
+        measurements,
+        decode_steps=128,
+        baseline_mode="chain_lds32",
+        candidate_mode="chain_lds32_direct",
+    )
+    assert summary["baseline_mode"] == "chain_lds32"
+    assert summary["statistics"]["chain_lds32"]["median_ms"] == 202.0
+    assert summary["statistics"]["chain_lds32_direct"]["median_ms"] == 200.0
+    assert summary["paired_candidate_minus_baseline_ms"] == [-2.0, -2.0]
+    assert summary["trajectories_exact"] is True
+
+
 def test_aggregate_gate_has_no_decode_regression_allowance() -> None:
     prompt = {
         "correctness": {
@@ -144,6 +197,39 @@ def test_aggregate_gate_has_no_decode_regression_allowance() -> None:
     assert summary["correctness_passed"] is True
     assert summary["decode_non_regressive"] is False
     assert summary["passed"] is False
+
+
+def test_aggregate_gate_supports_current_default_baseline() -> None:
+    prompt = {
+        "correctness": {
+            "passed": True,
+            "transitions": [
+                {
+                    "passed": True,
+                    "kl_mean": 0.0,
+                    "kl_max": 0.0,
+                    "top1_agreement": 1.0,
+                }
+            ],
+        },
+        "decode_performance": {
+            "trajectories_exact": True,
+            "statistics": {
+                "chain_lds32": {"median_ms": 100.0},
+                "chain_lds32_direct": {"median_ms": 99.0},
+            },
+            "paired_candidate_minus_baseline_ms": [-1.0],
+        },
+    }
+    summary = _aggregate_gate(
+        [prompt],
+        baseline_mode="chain_lds32",
+        candidate_mode="chain_lds32_direct",
+        decode_steps=128,
+    )
+    assert summary["baseline_mode"] == "chain_lds32"
+    assert summary["decode_non_regressive"] is True
+    assert summary["passed"] is True
 
 
 def test_clean_trajectory_divergence_is_a_correctness_rejection() -> None:
