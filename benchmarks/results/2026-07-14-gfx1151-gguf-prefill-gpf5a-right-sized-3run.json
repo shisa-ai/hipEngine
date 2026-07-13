@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_gpf5a_right_sized_partial_refresh",
+  "status": "accepted_topline_partial_refresh",
+  "performance_claim": true,
+  "performance_claim_scope": "gfx1151 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV right-sized 512-64K prefill refresh; the unchanged production-wrapper 128K row is carried forward",
+  "candidate": "gfx1151 GPF-5A two-wave dense Q8T16 prefill through 65536 prompt tokens",
+  "conclusion": "The scoped automatic route retains stable 1+3 medians of 889.904/919.598/762.940/648.948/546.296 tok/s at 512/1K/4K/32K/64K, improving the prior retained row by 1.01%-8.57% with exact IDs and unchanged tracked memory. Two-wave regresses at 128K in a stable same-commit A/B, so final package policy restores the production wrapper above 65536 tokens. A final scoped 128K retry reproduced the production route once before the known later-pass lifecycle stall; it does not replace the accepted 387.334 tok/s row.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "refreshed_measurement_commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5",
+    "final_scoped_policy_commit": "6418b278048bf082698c708e017a88484a6aba88",
+    "carried_128k_measurement_commit": "28b45d382884760a402165387ab037505c0a3425",
+    "all_measurement_worktrees_clean": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "decode_tokens": 128,
+    "decode": "each measured repetition captures, replays, and closes a fresh state-bound graph; capture excluded from decode throughput",
+    "prompt": "repeated token 9707",
+    "build": "hermetic TheRock environment; lazy artifacts prebuilt outside retained runs; cached builds required",
+    "refreshed_selectors": "automatic gfx1151 package route with explicit GPF selectors absent",
+    "command_template": "env -i <TheRock gfx1151 environment> HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=/tmp/hipengine-gpf5a-final-e9baf563 <therock-python> scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <one-shape> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <component.json>",
+    "scope_note": "At e9baf563 the automatic wrapper selects two-wave at all six shapes. The stable same-commit 128K rejection led to 6418b278, whose request-scoped ceiling leaves the measured 512-64K route byte-for-byte unchanged and restores production at 128K."
+  },
+  "source_components": {
+    "512/128": {"sha256": "56072e66a9f66006d882a7d87764ad129f54cfc3efc3889d4b67ce8341cb9c81", "commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5"},
+    "1K/128": {"sha256": "72adadb61aa4218dfd3c79658124151f215e8c5cd38be490428e9c241ec772f5", "commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5"},
+    "4K/128": {"sha256": "8685441db9b4cc7e379afbc033beed90b05f4b3d476270f681d6e7ee497c56ee", "commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5"},
+    "32K/128": {"sha256": "463182d6c33e15e84bb07ea26e653c967f05a426733c45edeaed37ab4244fed7", "commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5"},
+    "64K/128": {"sha256": "4b3e6809e40a64ffcffe04686e4ebe1823a2af1852ddb0c3da73f13e79027ded", "commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5"},
+    "128K/128": {
+      "artifact": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json",
+      "artifact_sha256": "235193e14807f24ebd1bcbfaa6845da5beca66582670822c38bf2d5c116142ac",
+      "commit": "28b45d382884760a402165387ab037505c0a3425",
+      "source_sha256": "7c4562d4989c2ed45c2292d8d2b0a85df432f6063aaad04d1c915aa250efaed4",
+      "carried_forward": true
+    }
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "route": "GPF-5A two-wave Q8T16",
+      "prefill_tok_s": {"samples": [889.9044784968376, 889.1578050848117, 890.727560887415], "median": 889.9044784968376, "stdev": 0.7851877785719016, "stdev_over_median_percent": 0.0882328157172761},
+      "decode_tok_s": {"samples": [48.97878478022974, 48.967984650523626, 48.967046991629886], "median": 48.967984650523626, "stdev": 0.006523006554811431, "stdev_over_median_percent": 0.01332096185163642},
+      "tracked_peak_allocated_gib": 21.477776296436787,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "1K/128": {
+      "route": "GPF-5A two-wave Q8T16",
+      "prefill_tok_s": {"samples": [919.4066839263853, 919.5975734334044, 919.7721865948936], "median": 919.5975734334044, "stdev": 0.18281172498042123, "stdev_over_median_percent": 0.01987953538175143},
+      "decode_tok_s": {"samples": [51.46474624457579, 51.502291816331066, 51.49366165834136], "median": 51.49366165834136, "stdev": 0.019664904180594068, "stdev_over_median_percent": 0.03818898005558435},
+      "tracked_peak_allocated_gib": 21.710381522774696,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "4K/128": {
+      "route": "GPF-5A two-wave Q8T16",
+      "prefill_tok_s": {"samples": [762.9398616907979, 764.0051549033254, 762.7675516099966], "median": 762.9398616907979, "stdev": 0.6703484546936809, "stdev_over_median_percent": 0.0878638656011603},
+      "decode_tok_s": {"samples": [52.364186161574814, 52.351098123029054, 52.33285934958], "median": 52.351098123029054, "stdev": 0.01573382110645652, "stdev_over_median_percent": 0.03005442420611855},
+      "tracked_peak_allocated_gib": 22.99488216638565,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "32K/128": {
+      "route": "GPF-5A two-wave Q8T16",
+      "prefill_tok_s": {"samples": [648.9481399622979, 648.9372769565492, 649.1004661358288], "median": 648.9481399622979, "stdev": 0.09124324291914503, "stdev_over_median_percent": 0.014060174812188539},
+      "decode_tok_s": {"samples": [43.4911797000296, 43.50095039807043, 43.4827147015517], "median": 43.4911797000296, "stdev": 0.009125635749169594, "stdev_over_median_percent": 0.020982727560189367},
+      "tracked_peak_allocated_gib": 23.558860778808594,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "64K/128": {
+      "route": "GPF-5A two-wave Q8T16",
+      "prefill_tok_s": {"samples": [546.2957196267395, 545.5192117393518, 546.3078019426185], "median": 546.2957196267395, "stdev": 0.45184528882876224, "stdev_over_median_percent": 0.08271075034918611},
+      "decode_tok_s": {"samples": [37.154882012857286, 37.1392648518187, 37.14912466350692], "median": 37.14912466350692, "stdev": 0.007897876053876013, "stdev_over_median_percent": 0.021259925032996577},
+      "tracked_peak_allocated_gib": 24.203407764434814,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "128K/128": {
+      "route": "production Q8T16 wrapper; unchanged carried-forward accepted row",
+      "prefill_tok_s": {"samples": [387.334156, 387.091608, 387.439471], "median": 387.334156, "stdev": 0.17838602724523023, "stdev_over_median_percent": 0.04605481455274247},
+      "decode_tok_s": {"samples": [27.761825, 27.745448, 27.753382], "median": 27.753382, "stdev": 0.008189818211251748, "stdev_over_median_percent": 0.0295092620108488},
+      "tracked_peak_allocated_gib": 25.492502,
+      "per_run_token_ids_serialized": false,
+      "carried_forward": true
+    }
+  },
+  "descriptive_comparison_to_prior_topline": {
+    "warning": "The percentages compare separately retained production sweeps, not a same-session causal A/B. The clean focused A/B and same-commit 128K scope gate provide causal evidence.",
+    "prior_artifact": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json",
+    "prefill_percent": {
+      "512/128": 8.57250807172576,
+      "1K/128": 2.9478276780333212,
+      "4K/128": 1.4132851671264213,
+      "32K/128": 1.3829911930719696,
+      "64K/128": 1.006901653814829,
+      "128K/128": 0.0
+    },
+    "decode_percent": {
+      "512/128": -0.20220311647102251,
+      "1K/128": -0.29171827188149146,
+      "4K/128": -0.28000647408733537,
+      "32K/128": -0.13518489101370657,
+      "64K/128": -0.4182451622027683,
+      "128K/128": 0.0
+    },
+    "tracked_memory_delta_gib": {
+      "512/128": 0.0,
+      "1K/128": 0.0,
+      "4K/128": 0.0,
+      "32K/128": 0.0,
+      "64K/128": 0.0,
+      "128K/128": 0.0
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "refreshed_components": "all 15 measured final IDs at 512-64K are 9707 with finite logits",
+    "candidate_kernel": "tail rows/output widths are byte-exact to production 32x32; full-model separate-process 512/4K compares FP32 logits/hidden, 30 Conv/GDN state pairs, and 10 live BF16 K/V pairs byte-for-byte (82/82 parts per context)",
+    "clean_focus": "clean detached candidate reproduces 82/82 exact state parts at 512/4K and stable 1+5 4K speedup",
+    "carried_128k": "the final scoped route uses the unchanged production wrapper. The accepted prior row links the stronger clean six-case state and 250/250 natural-logit trajectory gates and makes no unobserved per-run-ID claim.",
+    "scope_gate": "candidate and same-commit production-control 128K runs both return three stable 9707 IDs with identical tracked memory"
+  },
+  "variance_gate": {
+    "threshold": "sample stdev <= 5% of median",
+    "passed": true,
+    "largest_refreshed_prefill_stdev_over_median_percent": 0.0882328157172761,
+    "largest_refreshed_decode_stdev_over_median_percent": 0.03818898005558435,
+    "escalation": "No refreshed publication component triggered escalation. The earlier clean 4K A/B baseline outlier was replaced by fresh 1+5 legs before promotion."
+  },
+  "same_commit_128k_scope_gate": {
+    "artifact": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-128k-scope.json",
+    "candidate_prefill_samples": [382.1716043329906, 381.90052754345476, 382.04119117195387],
+    "candidate_prefill_median": 382.04119117195387,
+    "production_control_prefill_samples": [392.2185238284957, 392.2022505848, 392.6907326538137],
+    "production_control_prefill_median": 392.2185238284957,
+    "candidate_delta_percent": -2.5948118302010714,
+    "tokens_exact": true,
+    "memory_delta_gib": 0.0,
+    "decision": "enable GPF-5A through 65536 tokens and restore production above that ceiling"
+  },
+  "final_scoped_128k_retry": {
+    "status": "bounded lifecycle diagnostic; not a replacement performance row",
+    "commit": "6418b278048bf082698c708e017a88484a6aba88",
+    "route": "automatic scoped production wrapper",
+    "warmup": {"prefill_tok_s": 386.09816, "decode_tok_s": 27.633927, "tracked_peak_gib": 25.492502},
+    "measured_run_1": {"prefill_tok_s": 385.474071, "decode_tok_s": 27.734892, "tracked_peak_gib": 25.492502},
+    "measured_run_2": "GPU-active with no completed durable line for at least 12 additional minutes; bounded and stopped",
+    "log_sha256": "b9477789976340c339fe5ed685d19d5cb60590ec7a6c965d8d57204dcce1a449",
+    "interpretation": "The completed sample confirms final automatic routing and is within 0.48% of the carried-forward median, but one sample cannot replace the accepted 1+3 row. The later-pass no-progress behavior matches the separately documented 128K lifecycle diagnostic and is not treated as a performance rejection."
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-13T18:08:26.557597+00:00",
+    "repo_root": "/tmp/hipengine-gpf5a-final-e9baf563",
+    "hipengine_commit": "e9baf563d10d6b635ddd9a2612a872e73a18ebc5",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine", "gguf",
+      "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant", "gguf_q4_k_m",
+      "--backend", "hip_gfx1151",
+      "--workloads", "512/128",
+      "--warmup-runs", "1",
+      "--measured-runs", "3",
+      "--warmup-decode-tokens", "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode", "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--compiler-version-file", "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json", "/tmp/gpf5a-final-components/512-128.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {"enabled": false, "reason": "topline host-wall sweep"}
+  },
+  "provenance_note": "The embedded canonical block is the exact clean 512 component provenance. The other four refreshed source components embed equivalent clean provenance at the same revision and are bound above by SHA-256. The carried 128K row is bound to its previously accepted artifact and is explicitly not represented as a new e9baf563 measurement."
+}

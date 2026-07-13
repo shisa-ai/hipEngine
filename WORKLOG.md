@@ -154244,3 +154244,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-128k-scope.json`.
   Next commit the ceiling, rerun clean automatic 128K only, then merge it with
   the already-valid automatic 512-64K components.
+
+## 2026-07-14 - Publish scoped GPF-5A right-sized rollup
+
+- Validated final scoped commit `6418b278` from clean detached worktree
+  `/tmp/hipengine-gpf5a-scoped-final-6418b278`. Automatic 128K selects the
+  production Q8T16 wrapper as intended: warmup is **386.098 tok/s**, measured
+  run 1 is **385.474 tok/s**, decode is **27.735 tok/s**, and tracked peak is
+  **25.493 GiB**.
+- Measured run 2 then remained GPU-active without a completed durable line for
+  at least 12 additional minutes, reproducing the known later-pass 128K
+  lifecycle behavior. Bounded/stopped the process; GPU returned idle and no
+  benchmark process remains. This one completed sample confirms final routing
+  but cannot replace the accepted 1+3 row.
+- Published the already-valid clean `e9baf563` automatic 512-64K components:
+  prefill **889.904/919.598/762.940/648.948/546.296 tok/s**, decode
+  **48.968/51.494/52.351/43.491/37.149 tok/s**, and unchanged tracked peaks
+  **21.478/21.710/22.995/23.559/24.203 GiB**. All 15 measured IDs are `9707`;
+  largest prefill/decode stdev over median is **0.088%/0.038%**.
+- Versus the prior retained row, refreshed prefill improves
+  **+8.57%/+2.95%/+1.41%/+1.38%/+1.01%** at 512/1K/4K/32K/64K. Decode is an
+  unchanged path and its separately measured medians vary by
+  **-0.42%..-0.14%**. At 128K the final route is the byte-for-byte unchanged
+  production wrapper, so the accepted **387.334 prefill / 27.753 decode tok/s
+  / 25.493 GiB** row carries forward rather than publishing either the slower
+  candidate or one incomplete retry.
+- Added compact retained artifact
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json`
+  with clean source-component hashes, canonical provenance, same-commit 128K
+  scope evidence, carry-forward provenance, and the bounded retry diagnostic.
+  Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, root `README.md`,
+  `docs/GGUF-PREFILL-OPTIMIZATION.md`, `docs/KERNELS.md`, and
+  `docs/REFACTOR.md`.
+- Validation:
+  `/home/lhl/miniforge3/envs/therock/bin/python3.12 -m pytest
+  tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_aotriton_stream.py -q` passes **101/101**;
+  `python3 scripts/sync_benchmark_readme.py --check`, compact-artifact
+  JSON/provenance/source-component assertions, and `git diff --check` all pass.
