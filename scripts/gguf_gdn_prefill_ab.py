@@ -38,6 +38,8 @@ CANDIDATE_MODES = (
     "chain_tile32",
     "chain_wave32",
     "chain_wave32_tree",
+    "chain_lds64",
+    "chain_lds32",
 )
 SUPPORTED_MODES = (BASELINE_MODE, *CANDIDATE_MODES)
 

@@ -1538,6 +1538,12 @@ class Qwen35GGUFFullStackRunner:
         elif mode == "chain_tile32":
             exact_recurrent = plan.exact_recurrent_tile32
             exact_recurrent_segments = plan.exact_recurrent_segments_tile32
+        elif mode == "chain_lds64":
+            exact_recurrent = plan.exact_recurrent_lds64
+            exact_recurrent_segments = plan.exact_recurrent_segments_lds64
+        elif mode == "chain_lds32":
+            exact_recurrent = plan.exact_recurrent_lds32
+            exact_recurrent_segments = plan.exact_recurrent_segments_lds32
         elif mode == "chain_wave32":
             exact_recurrent = plan.exact_recurrent_wave32
             exact_recurrent_segments = plan.exact_recurrent_segments_wave32
@@ -1566,6 +1572,18 @@ class Qwen35GGUFFullStackRunner:
                 "the exact prepare, tile32 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
+        if mode == "chain_lds64" and not plan.has_exact_chain_lds64:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_lds64' is unavailable; "
+                "the exact prepare, LDS64 recurrent, and RMSNorm-gate kernels "
+                "must all be registered"
+            )
+        if mode == "chain_lds32" and not plan.has_exact_chain_lds32:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_lds32' is unavailable; "
+                "the exact prepare, LDS32 recurrent, and RMSNorm-gate kernels "
+                "must all be registered"
+            )
         if mode == "chain_wave32" and not plan.has_exact_chain_wave32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_wave32' is unavailable; "
@@ -1583,6 +1601,8 @@ class Qwen35GGUFFullStackRunner:
             "chain",
             "chain_tile64",
             "chain_tile32",
+            "chain_lds64",
+            "chain_lds32",
             "chain_wave32",
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
@@ -13691,6 +13711,30 @@ _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE32_KEY = KernelKey(
     "gguf_qwen35",
     "f32_decode_order_exact_segments_tile32",
 )
+_GDN_PREFILL_EXACT_RECURRENT_LDS64_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_lds64",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS64_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_lds64",
+)
+_GDN_PREFILL_EXACT_RECURRENT_LDS32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_lds32",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_lds32",
+)
 _GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -13724,6 +13768,8 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain",
         "chain_tile64",
         "chain_tile32",
+        "chain_lds64",
+        "chain_lds32",
         "chain_wave32",
         "chain_wave32_tree",
     }
@@ -13774,6 +13820,10 @@ class _GGUFGDNPrefillPlan:
     exact_recurrent_segments_tile64: object | None = None
     exact_recurrent_tile32: object | None = None
     exact_recurrent_segments_tile32: object | None = None
+    exact_recurrent_lds64: object | None = None
+    exact_recurrent_segments_lds64: object | None = None
+    exact_recurrent_lds32: object | None = None
+    exact_recurrent_segments_lds32: object | None = None
     exact_recurrent_wave32: object | None = None
     exact_recurrent_segments_wave32: object | None = None
     recurrent_wave32_tree: object | None = None
@@ -13812,6 +13862,22 @@ class _GGUFGDNPrefillPlan:
         return (
             self.exact_prepare is not None
             and self.exact_recurrent_tile32 is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_exact_chain_lds64(self) -> bool:
+        return (
+            self.exact_prepare is not None
+            and self.exact_recurrent_lds64 is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_exact_chain_lds32(self) -> bool:
+        return (
+            self.exact_prepare is not None
+            and self.exact_recurrent_lds32 is not None
             and self.rmsnorm_gate is not None
         )
 
@@ -13960,6 +14026,14 @@ def _resolve_gguf_gdn_prefill_plan(
         exact_recurrent_tile32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_TILE32_KEY),
         exact_recurrent_segments_tile32=_resolve(
             _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_TILE32_KEY
+        ),
+        exact_recurrent_lds64=_resolve(_GDN_PREFILL_EXACT_RECURRENT_LDS64_KEY),
+        exact_recurrent_segments_lds64=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS64_KEY
+        ),
+        exact_recurrent_lds32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_LDS32_KEY),
+        exact_recurrent_segments_lds32=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_KEY
         ),
         exact_recurrent_wave32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY),
         exact_recurrent_segments_wave32=_resolve(

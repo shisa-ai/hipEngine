@@ -153416,3 +153416,52 @@ graphless decode launch-collapse path without regressing target/serial parity.
   thread per value column while retaining a 32- or 64-column recurrent-state
   tile in LDS across the token loop, avoiding both per-token global state
   traffic and ordered cross-lane reconstruction.
+
+## 2026-07-13 - GPF-2D scalar-exact LDS32 passes the focus gate
+
+- Kernel preflight reread `docs/KERNELS.md`; the required lineage command still
+  cannot inspect the configured read-only parent because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. This is an in-tree exact
+  state-lifetime/layout schedule and copies no external source.
+- RED added four missing `(tile32|tile64) x (plain|segments)` wrappers and
+  failed collection with the expected import error. GREEN adds registered
+  raw-pointer HIP variants, Python wrappers, fail-closed runner plans/modes,
+  and promotion-harness choices for `chain_lds32`/`chain_lds64`. One thread
+  preserves one value column's scalar 0..127 contraction/update order while a
+  row-major 128xvalue FP32 LDS tile retains state across the token loop.
+- The initial forced-unroll build was a measured rejection. LDS32 produced
+  **401.732 tok/s** at 512 and a cache-clean trace showed recurrence
+  **819.550 ms / 30**, 96 VGPR, **1,880 bytes/thread scratch**, and 16 KiB LDS.
+  Replacing the four 128-row loop hints with `#pragma unroll 1` preserves
+  iteration order, removes all scratch, and lowers VGPR use to 64.
+- Focused validation passes **79 tests**:
+  `HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD
+  uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py
+  tests/test_qwen35_gguf_gdn_prefill_routing.py
+  tests/test_gguf_gdn_prefill_ab.py tests/test_gguf_gdn_prefill_compare.py
+  tests/test_gguf_gdn_trajectory_gate.py`. Plain and segmented LDS32/LDS64
+  output plus FP32 state are byte-for-byte identical to fused in the primitive
+  production-shape fixtures.
+- Against clean fused M0 **423.708/448.694/410.023 tok/s**, one discarded
+  warmup plus three measured repetitions produce
+  **753.489/799.844/686.840 tok/s** at 512/1K/4K
+  (**+77.83%/+78.26%/+67.51%**). Decode is
+  **49.069/51.674/52.522 tok/s** (-0.10%/+0.03%/+0.03%), every final ID is
+  `9707`, and the measured prefill ranges are tight. Full local artifacts:
+  `/tmp/gpf-2d-no-unroll-lds32-screen-512.json` (sha256
+  `370250e582837a7e91a074dbef713a4937d3e7d1196ac7ef57ba677e336b2188`)
+  and `/tmp/gpf-2d-no-unroll-lds32-screen-1k-4k.json` (sha256
+  `41f753d1673ccafde11d567762bce0731fdc0956936bf7c2a82c19d5ed8cfa5b`).
+- Cache-clean 512 trace records the expected
+  `qwen35_gdn_prefill_recurrent_decode_order_exact_lds_kernel<32>`:
+  recurrence **221.873 ms / 30**, **72.06% below fused**, and 32.04% of
+  **692.564 ms** total kernels. It uses workgroup 32, 64 VGPR, zero scratch,
+  and 16 KiB LDS; prepare/gate add **28.246/9.519 ms**. Summary:
+  `/tmp/gpf-2d-no-unroll-rocprof-512-lds32-summary.json` (sha256
+  `9e1450f760cb8ab25fd3daf4fde55076326d32c612b8aee8293148ec996871f4`).
+- Compact dirty-tree focus artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`.
+  It has `performance_claim=false`; `auto` remains fused. Next: commit this
+  exact candidate, then run the clean six-case full-model state matrix,
+  balanced 512/4096 wall gate, and ten-prompt natural trajectory/decode gate.

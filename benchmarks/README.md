@@ -147,6 +147,19 @@ fused control. Decode is within -0.31%..-0.24%. A cache-clean trace attributes
 therefore fixes global state traffic but not the ordered cross-lane cost;
 `auto` remains fused.
 
+The next exact schedule passes its focused candidate gate in
+[`2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`](results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json).
+GPF-2D assigns one scalar-exact value column to each thread and retains its
+128-row FP32 state in a 16 KiB LDS tile across the token loop. Plain/segment
+tile32/tile64 fixtures are byte-exact. After rejecting a forced-unroll build
+that spilled 1,880 bytes/thread, the rolled LDS32 kernel uses 64 VGPR and zero
+scratch; its cache-clean 512 recurrence is **221.873 ms / 30**, 72.06% below
+fused. Focused 512/1K/4K prefill improves **423.708/448.694/410.023 ->
+753.489/799.844/686.840 tok/s** (**+77.83%/+78.26%/+67.51%**) with decode
+−0.10%/+0.03%/+0.03%. This dirty-tree focus artifact is not a retained topline
+or default change; `auto` remains fused until the clean six-case state,
+balanced-wall, and natural-trajectory/decode gates complete.
+
 SOL-G4 is accepted on gfx1151 in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
 At clean detached `5f4c6561`, the exact repacked/GEMV eager route measures
