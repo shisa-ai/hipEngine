@@ -1,0 +1,313 @@
+{
+  "schema": "hipengine.external_engine_sanity.v1",
+  "date": "2026-07-14",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "summary": {
+    "verdict": "ROCmFPX builds and runs the hipEngine Q4_K_M GGUF with real draft-MTP activity. Under the matched server protocol, n4/p0.55 improves full-suite client throughput by 9.08% and weighted server decode by 10.64%, but it is category-negative for general_ja and does not preserve the no-MTP response trajectory on any of the ten prompts.",
+    "ar_client_generated_tok_s": 48.92,
+    "mtp_client_generated_tok_s": 53.36,
+    "client_speedup": 1.0907604251839738,
+    "ar_weighted_decode_tok_s": 50.763134681308145,
+    "mtp_weighted_decode_tok_s": 56.16663988591059,
+    "weighted_decode_speedup": 1.106445459653462,
+    "draft_tokens": 1508,
+    "accepted_draft_tokens": 1227,
+    "draft_acceptance": 0.8137,
+    "response_message_hash_matches": 0,
+    "response_message_hash_total": 10
+  },
+  "rocmfpx_source": {
+    "path": "/home/lhl/ROCmFPX",
+    "revision": "6bf20cd688ba0af882d1f68ba50b292edf646ab4",
+    "branch": "main",
+    "clean": true,
+    "reported_version": "117 (6bf20cd)",
+    "build_command": "env BUILD_DIR=/tmp/rocmfpx-build-gfx1151 JOBS=8 CMAKE_HIP_ARCHITECTURES=gfx1151 HSA_OVERRIDE_GFX_VERSION=11.5.1 scripts/build-strix-rocmfp4-mtp.sh llama-server llama-cli",
+    "build_dir": "/tmp/rocmfpx-build-gfx1151",
+    "cmake_build_type": "Release",
+    "ggml_hip_force_mmq": true,
+    "llama_server_sha256": "9449e08009aca76b4c37b4a3e3b7c2a2ae60222190d1179af9e6157ae23a2bef",
+    "llama_cli_sha256": "181cb578a962986a058c8d059f5efa3b7bf6cfb2e3bee4a4cccc2f88fc6d29a8"
+  },
+  "harness": {
+    "repo_revision": "2332756e32c04f61103be3aa5f0f72d00290ed3a",
+    "script": "scripts/mtp-bench.py",
+    "capture_wrapper": "/tmp/rocmfpx_mtpbench_capture.py",
+    "capture_wrapper_sha256": "ccc712911997af2b4c47f2105905b305b76b4f8c80aaf80274d7619e853647fb",
+    "note": "The temporary wrapper only adds a SHA-256 over each response choice message; request construction, timing extraction, prompt selection, and aggregation remain scripts/mtp-bench.py. The hipEngine worktree had unrelated pre-existing untracked benchmark files, so this is diagnostic provenance even though the external ROCmFPX checkout was clean."
+  },
+  "environment": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "ROCm0",
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96",
+    "kernel_driver": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "clock_policy": "dynamic; power_dpm_force_performance_level=auto",
+    "runtime_env": {
+      "HSA_OVERRIDE_GFX_VERSION": "11.5.1",
+      "GGML_HIP_ENABLE_UNIFIED_MEMORY": "1"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "Q4_K_M",
+    "kv_cache": "f16",
+    "note": "This tests ROCmFPX code with hipEngine's existing GGUF. It does not test a ROCmFP4-converted model."
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": {
+      "code": 4,
+      "general_en": 2,
+      "general_ja": 2,
+      "mixed_ja_en": 2
+    },
+    "splits": {
+      "train": 6,
+      "heldout": 4
+    },
+    "concurrency": 1,
+    "max_tokens": 192,
+    "fixed_horizon": true,
+    "ignore_eos": true,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 42,
+    "cache_prompt": false,
+    "enable_thinking": false,
+    "context_tokens": 4096,
+    "batch_tokens": 512,
+    "ubatch_tokens": 512,
+    "flash_attention": true,
+    "warmups_per_mode": 1,
+    "measured_repetitions_per_mode": 1,
+    "timing_scopes": [
+      "client sequential makespan including prompt and HTTP",
+      "server-reported generation-only eval timing"
+    ]
+  },
+  "server_commands": {
+    "ar": "env HSA_OVERRIDE_GFX_VERSION=11.5.1 GGML_HIP_ENABLE_UNIFIED_MEMORY=1 /tmp/rocmfpx-build-gfx1151/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -dev ROCm0 -ngl 999 -fa on -c 4096 -b 512 -ub 512 -np 1 -ctk f16 -ctv f16 --host 127.0.0.1 --port 8097 --metrics --jinja --reasoning off",
+    "mtp": "env HSA_OVERRIDE_GFX_VERSION=11.5.1 GGML_HIP_ENABLE_UNIFIED_MEMORY=1 /tmp/rocmfpx-build-gfx1151/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -dev ROCm0 -ngl 999 -fa on -c 4096 -b 512 -ub 512 -np 1 -ctk f16 -ctv f16 --host 127.0.0.1 --port 8097 --metrics --jinja --reasoning off --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0.55",
+    "client_common": "python3 /tmp/rocmfpx_mtpbench_capture.py --url http://127.0.0.1:8097 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 192 --temperature 0 --top-p 1 --ignore-eos --no-cache-prompt --extra-payload '{\"chat_template_kwargs\":{\"enable_thinking\":false}}'"
+  },
+  "raw_evidence": {
+    "ar_result_path": "/tmp/rocmfpx-no-mtp-full.json",
+    "ar_result_sha256": "f8be15532653985a90fd12060262d6c1ac88f440963c42ea96b913fd4dab6484",
+    "mtp_result_path": "/tmp/rocmfpx-mtp-n4-p055-full.json",
+    "mtp_result_sha256": "5fe34f43c39ac7100ce2556ccb4ff4ae6c23280a9f8e91d5369a22ba80e27f59",
+    "ar_server_log_path": "/tmp/vstack-pi-bg/bg-4-1783975740663.log",
+    "ar_server_log_sha256": "b37e74d6b3d127f30cfef8d046374236511504e295644bdcf35ceb93ed6591ca",
+    "mtp_server_log_path": "/tmp/vstack-pi-bg/bg-5-1783975825240.log",
+    "mtp_server_log_sha256": "029b56dfdc1086b101749009c1ce6e1b16dbf4f0cb045b882e278dc0acd04fe8",
+    "single_prompt_ar_response_sha256": "4aebd00a8611155ca36c7788812c9b31a0ae75c54fdd28f61a9ba4042a5d237b",
+    "single_prompt_mtp_response_sha256": "0d585c1854e3780b54bd9c74677db4bf8d2f5d8005dded7b6399a533008bb3"
+  },
+  "aggregate": {
+    "ar": {
+      "generated_tokens": 1920,
+      "client_wall_s": 39.25,
+      "client_generated_tok_s": 48.92,
+      "weighted_decode_tok_s": 50.763134681308145
+    },
+    "mtp": {
+      "generated_tokens": 1920,
+      "client_wall_s": 35.98,
+      "client_generated_tok_s": 53.36,
+      "weighted_decode_tok_s": 56.16663988591059,
+      "draft_tokens": 1508,
+      "accepted_draft_tokens": 1227,
+      "draft_acceptance": 0.8137
+    }
+  },
+  "category_rollup": {
+    "code": {
+      "ar_weighted_decode_tok_s": 51.018089572111045,
+      "mtp_weighted_decode_tok_s": 68.42365238545626,
+      "speedup": 1.3411645351546042,
+      "draft_acceptance": 0.8837209302325582
+    },
+    "general_en": {
+      "ar_weighted_decode_tok_s": 50.64499555731069,
+      "mtp_weighted_decode_tok_s": 51.216876220226474,
+      "speedup": 1.0112919481307612,
+      "draft_acceptance": 0.7907801418439716
+    },
+    "general_ja": {
+      "ar_weighted_decode_tok_s": 50.674999506660086,
+      "mtp_weighted_decode_tok_s": 46.37999137559292,
+      "speedup": 0.9152440419757146,
+      "draft_acceptance": 0.718978102189781
+    },
+    "mixed_ja_en": {
+      "ar_weighted_decode_tok_s": 50.46424650748043,
+      "mtp_weighted_decode_tok_s": 53.46072866194558,
+      "speedup": 1.059378319539973,
+      "draft_acceptance": 0.7719869706840391
+    }
+  },
+  "split_rollup": {
+    "train": {
+      "prompts": 6,
+      "ar_weighted_decode_tok_s": 50.89816522544164,
+      "mtp_weighted_decode_tok_s": 57.60534854741394,
+      "speedup": 1.131776524600924,
+      "draft_acceptance": 0.8141304347826087
+    },
+    "heldout": {
+      "prompts": 4,
+      "ar_weighted_decode_tok_s": 50.561926902838486,
+      "mtp_weighted_decode_tok_s": 54.13845669130426,
+      "speedup": 1.0707356306918159,
+      "draft_acceptance": 0.8129251700680272
+    }
+  },
+  "output_audit": {
+    "full_suite_response_message_hash_matches": 0,
+    "full_suite_prompts": 10,
+    "interpretation": "At greedy temperature zero, the API assistant-message trajectory differs between no-MTP and draft-MTP for every prompt. This prevents treating the measured MTP speedup as an exact/lossless replacement for this recurrent-model AR route.",
+    "focused_prompt": "code_merge_intervals",
+    "focused_max_tokens": 64,
+    "common_output_token_prefix_length": 21,
+    "first_divergence_token_index_zero_based": 21,
+    "ar_token_id": 4071,
+    "mtp_token_id": 413,
+    "ar_prefix_escaped": "```python\\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\\n    \\\"\\\"\\\"\\n    Merge overlapping closed integer intervals.",
+    "mtp_prefix_escaped": "```python\\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\\n    if not intervals:\\n        return []",
+    "note": "Prefix fields use escaped newlines for compact display. The focused token IDs were obtained by POSTing each 64-token assistant content to the same model server's /tokenize endpoint with add_special=false."
+  },
+  "per_prompt": [
+    {
+      "name": "code_merge_intervals",
+      "category": "code",
+      "split": "train",
+      "ar_decode_tok_s": 51.81,
+      "mtp_decode_tok_s": 67.0,
+      "draft_n": 170,
+      "accepted": 140,
+      "acceptance": 0.8235,
+      "response_match": false
+    },
+    {
+      "name": "code_topological_sort",
+      "category": "code",
+      "split": "train",
+      "ar_decode_tok_s": 50.99,
+      "mtp_decode_tok_s": 70.62,
+      "draft_n": 164,
+      "accepted": 143,
+      "acceptance": 0.872,
+      "response_match": false
+    },
+    {
+      "name": "code_lru_cache",
+      "category": "code",
+      "split": "train",
+      "ar_decode_tok_s": 50.62,
+      "mtp_decode_tok_s": 69.92,
+      "draft_n": 156,
+      "accepted": 145,
+      "acceptance": 0.9295,
+      "response_match": false
+    },
+    {
+      "name": "code_markdown_table",
+      "category": "code",
+      "split": "heldout",
+      "ar_decode_tok_s": 50.67,
+      "mtp_decode_tok_s": 66.35,
+      "draft_n": 155,
+      "accepted": 142,
+      "acceptance": 0.9161,
+      "response_match": false
+    },
+    {
+      "name": "general_en_plan",
+      "category": "general_en",
+      "split": "train",
+      "ar_decode_tok_s": 50.66,
+      "mtp_decode_tok_s": 51.62,
+      "draft_n": 143,
+      "accepted": 112,
+      "acceptance": 0.7832,
+      "response_match": false
+    },
+    {
+      "name": "general_en_explain",
+      "category": "general_en",
+      "split": "heldout",
+      "ar_decode_tok_s": 50.63,
+      "mtp_decode_tok_s": 50.82,
+      "draft_n": 139,
+      "accepted": 111,
+      "acceptance": 0.7986,
+      "response_match": false
+    },
+    {
+      "name": "general_ja_plan",
+      "category": "general_ja",
+      "split": "train",
+      "ar_decode_tok_s": 50.67,
+      "mtp_decode_tok_s": 46.4,
+      "draft_n": 130,
+      "accepted": 98,
+      "acceptance": 0.7538,
+      "response_match": false
+    },
+    {
+      "name": "general_ja_explain",
+      "category": "general_ja",
+      "split": "heldout",
+      "ar_decode_tok_s": 50.68,
+      "mtp_decode_tok_s": 46.36,
+      "draft_n": 144,
+      "accepted": 99,
+      "acceptance": 0.6875,
+      "response_match": false
+    },
+    {
+      "name": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "split": "train",
+      "ar_decode_tok_s": 50.66,
+      "mtp_decode_tok_s": 50.39,
+      "draft_n": 157,
+      "accepted": 111,
+      "acceptance": 0.707,
+      "response_match": false
+    },
+    {
+      "name": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "split": "heldout",
+      "ar_decode_tok_s": 50.27,
+      "mtp_decode_tok_s": 56.93,
+      "draft_n": 150,
+      "accepted": 126,
+      "acceptance": 0.84,
+      "response_match": false
+    }
+  ],
+  "unmatched_hipengine_reference": {
+    "source": "benchmarks/README.md current gfx1151 GGUF MTP row",
+    "exact_b5": "51.81 MTP vs 54.14 AR tok/s (0.9571x)",
+    "llama_compat": "69.50 MTP vs 54.40 AR tok/s (1.2776x)",
+    "warning": "These are different timing boundaries and verifier protocols. Because ROCmFPX changes every measured response trajectory, only the semantic-compatibility lane is directionally relevant; no direct speed ratio is reported."
+  },
+  "limitations": [
+    "One measured full-suite repetition per mode; this is a sanity diagnostic, not a retained performance row.",
+    "Dynamic clocks were used under TuneD accelerator-performance.",
+    "ROCmFPX reported that ROCm0 lacks backend TOP_K support, so draft sampling did not use the fully backend-resident path.",
+    "F16 KV was used, while current hipEngine GGUF evidence commonly uses BF16 KV.",
+    "The server protocol includes HTTP and prompt evaluation in client makespan; server generation timing is reported separately.",
+    "This tests Q4_K_M, not ROCmFP4, so it does not reproduce ROCmFPX's custom-quant headline.",
+    "The no-MTP and MTP output trajectories differ, so their timing legs execute different continuations."
+  ]
+}
