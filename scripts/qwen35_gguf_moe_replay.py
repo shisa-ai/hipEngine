@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import statistics
 import subprocess
@@ -45,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
 )
 import hipengine.runtime.qwen35_gguf_runner as qgr
 from hipengine.loading.gguf import GGUFReader
@@ -56,6 +56,14 @@ DEFAULT_REFERENCE_ARTIFACT = Path(
     "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c1-wmma-tile-sweep-blocked.json"
 )
 THRESHOLDS = (16, 32, 64, 128)
+
+
+def _selected_down_tile_shape(quant: str) -> tuple[int, int]:
+    """Return the reporting tile shape for raw or resident T16 kernels."""
+
+    if quant.endswith("_t16_v1"):
+        return (16, 16)
+    return selected_wmma_prefill_compact_default_tiles(quant)
 
 
 def _read_compiler_version(path: Path | None) -> str | None:
@@ -242,7 +250,13 @@ def _install_replay_helper(recorder: ReplayRecorder):
         top_k: int,
         stream: int,
         runtime: HipRuntime,
+        gpu_stage_recorder: Any | None = None,
+        stage_prefix: str = "target_block_ffn_moe_compact_wmma",
     ) -> bool:
+        # Keep the diagnostic monkeypatch call-compatible with the production
+        # helper.  Replay timing owns its synchronization and does not emit the
+        # production stage markers.
+        _ = (gpu_stage_recorder, stage_prefix)
         if not qgr.gguf_wmma_prefill_enabled(None):
             return False
         if not qgr._scratch_has_compact_moe_fields(scratch):
@@ -250,10 +264,11 @@ def _install_replay_helper(recorder: ReplayRecorder):
         cfg = runner.weights.config if runner.weights is not None else None
         if cfg is None:
             return False
-        kernels = qgr._resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
-        if kernels is None:
+        plan = qgr._resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
+        if plan is None:
             return False
-        gate_up_fn, down_fn = kernels
+        gate_up_fn = plan.gate_up_fn
+        down_fn = plan.down_fn
         num_experts = int(cfg.expert_count)
         hidden_size = int(runner.hidden_size)
         expert_ffn = int(cfg.expert_feed_forward_length)
@@ -336,7 +351,7 @@ def _install_replay_helper(recorder: ReplayRecorder):
         padding_rows = int(wmma_total_rows - compact_rows)
 
         gate_tile_m, gate_tile_n = selected_dual_wmma_prefill_compact_default_tiles()
-        down_tile_m, down_tile_n = selected_wmma_prefill_compact_default_tiles(down_weight.spec.quant_key)
+        down_tile_m, down_tile_n = _selected_down_tile_shape(down_weight.spec.quant_key)
         use_hot_q4 = int(getattr(recorder, "q4_hot_fulltile_threshold", 0)) > 0
         hot_threshold = int(getattr(recorder, "q4_hot_fulltile_threshold", 0))
         layer_order = len(recorder.records)
@@ -346,6 +361,11 @@ def _install_replay_helper(recorder: ReplayRecorder):
         tile16_bufs = []
         tile16_materialized_bytes = 0
         use_tile16_wmma = int(getattr(recorder, "q4_tile16_wmma_layers", 0)) > layer_order
+        use_t16_shared_x = bool(getattr(recorder, "q4_t16_shared_x", False))
+        if use_t16_shared_x and gate_weight.spec.quant_key != "gguf_q4_k_t16_v1":
+            raise RuntimeError(
+                "--q4-t16-shared-x requires resident gguf_q4_k_t16_v1 expert weights"
+            )
         use_tile16_materialize = use_tile16_wmma or int(getattr(recorder, "q4_tile16_materialize_layers", 0)) > layer_order
         if use_sidemeta_q4:
             reader = getattr(recorder, "q4_sidemeta_reader")
@@ -366,6 +386,25 @@ def _install_replay_helper(recorder: ReplayRecorder):
                 tile16_bufs.append(buf)
 
         def launch_gate_up() -> None:
+            if use_t16_shared_x:
+                gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_expert_start_compact.ptr,
+                    scratch.moe_expert_start_wmma.ptr,
+                    scratch.moe_tile_expert.ptr,
+                    gate_weight.allocation(plan.gate_allocation).tensor.ptr,
+                    up_weight.allocation(plan.up_allocation).tensor.ptr,
+                    scratch.ffn_gate_up.ptr,
+                    selected_rows,
+                    hidden_size,
+                    expert_ffn,
+                    expert_ffn,
+                    num_experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             if use_tile16_wmma:
                 gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
                     scratch.moe_down_out.ptr,
@@ -431,8 +470,8 @@ def _install_replay_helper(recorder: ReplayRecorder):
                 scratch.moe_expert_start_compact.ptr,
                 scratch.moe_expert_start_wmma.ptr,
                 scratch.moe_tile_expert.ptr,
-                gate_weight.allocation("raw").tensor.ptr,
-                up_weight.allocation("raw").tensor.ptr,
+                gate_weight.allocation(plan.gate_allocation).tensor.ptr,
+                up_weight.allocation(plan.up_allocation).tensor.ptr,
                 scratch.ffn_gate_up.ptr,
                 selected_rows,
                 hidden_size,
@@ -468,7 +507,7 @@ def _install_replay_helper(recorder: ReplayRecorder):
                 scratch.moe_expert_start_compact.ptr,
                 scratch.moe_expert_start_wmma.ptr,
                 scratch.moe_tile_expert.ptr,
-                down_weight.allocation("raw").tensor.ptr,
+                down_weight.allocation(plan.down_allocation).tensor.ptr,
                 scratch.moe_down_out.ptr,
                 selected_rows,
                 expert_ffn,
@@ -606,6 +645,7 @@ def _install_replay_helper(recorder: ReplayRecorder):
                     "sidemeta": bool(use_sidemeta_q4),
                     "tile16_materialized": bool(use_tile16_materialize),
                     "tile16_wmma": bool(use_tile16_wmma),
+                    "t16_shared_x": bool(use_t16_shared_x),
                     "tile16_materialized_bytes": tile16_materialized_bytes,
                 },
                 "down": {"tile_m": int(down_tile_m), "tile_n": int(down_tile_n), "q5_opt": use_q5_opt},
@@ -649,6 +689,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     recorder.q4_sidemeta_reader = GGUFReader(args.model) if args.q4_sidemeta_layers else None
     recorder.q4_tile16_materialize_layers = int(args.q4_tile16_materialize_layers)
     recorder.q4_tile16_wmma_layers = int(args.q4_tile16_wmma_layers)
+    recorder.q4_t16_shared_x = bool(args.q4_t16_shared_x)
     recorder.q4_tile16_reader = GGUFReader(args.model) if (args.q4_tile16_materialize_layers or args.q4_tile16_wmma_layers) else None
     recorder.q5_opt = bool(args.q5_opt)
     original = _install_replay_helper(recorder)
@@ -702,6 +743,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "q4_sidemeta_layers": int(args.q4_sidemeta_layers),
         "q4_tile16_materialize_layers": int(args.q4_tile16_materialize_layers),
         "q4_tile16_wmma_layers": int(args.q4_tile16_wmma_layers),
+        "q4_t16_shared_x": bool(args.q4_t16_shared_x),
         "q5_opt": bool(args.q5_opt),
         "git_commit": _git_commit(),
         "git_status": _git_status(),
@@ -762,6 +804,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Use the P9.C14 Q4T16 selected-dual WMMA prototype for gate+up in the first N MoE layers.",
+    )
+    parser.add_argument(
+        "--q4-t16-shared-x",
+        action="store_true",
+        help="Replay the GPF-3A Q4T16 candidate that shares each activation tile across 32 output columns.",
     )
     parser.add_argument("--json", type=Path, required=True)
     return parser.parse_args()

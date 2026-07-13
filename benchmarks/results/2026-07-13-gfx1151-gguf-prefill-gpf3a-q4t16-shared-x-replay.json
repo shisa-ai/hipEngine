@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_q4t16_shared_activation_candidate_replay_compact",
+  "status": "candidate_replay_passed_pending_full_model_gate",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "GPF-3A Q4T16 compact32 shared-X dual WMMA",
+  "conclusion": "Sharing each compact activation fragment across the existing two independent 16-column WMMA accumulators is byte-exact and reduces the real 40-layer Q4 selected gate/up replay by 15.31%. Production dispatch remains unchanged pending a clean full-model prefill/decode gate.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "base_commit": "5f08278380c05edf333d1e4d438e532a351d27d3",
+    "hipengine_dirty_candidate": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "resident_gate_up_quant": "gguf_q4_k_t16_v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "change": {
+    "baseline": "two serial 16-column halves, each reloading the same compact 16-row activation fragment",
+    "candidate": "two independent float8 WMMA accumulators live together; one activation load feeds both output halves",
+    "arithmetic_contract": "each output accumulator retains the baseline K iteration and WMMA order"
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD uv run pytest -q tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_qwen35_gguf_moe_replay.py",
+    "tests_passed": 18,
+    "bf16_raw_bytes_exact": true,
+    "fp16_raw_bytes_exact": true,
+    "fixtures": ["uneven expert rows", "empty experts", "multiple K blocks"]
+  },
+  "rocprof_fixture": {
+    "baseline_duration_ns": 44725,
+    "candidate_duration_ns": 33343,
+    "candidate_delta_percent": -25.448854108440464,
+    "baseline_vgpr": 48,
+    "candidate_vgpr": 56,
+    "candidate_sgpr": 128,
+    "candidate_lds_bytes": 0,
+    "candidate_scratch_bytes": 0,
+    "candidate_workgroup_x": 32,
+    "candidate_kernel": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<unsigned short>"
+  },
+  "replay_protocol": {
+    "prompt": "512 repetitions of token 9707",
+    "layers": 40,
+    "warmup_launches_per_layer": 1,
+    "measured_launches_per_sample": 5,
+    "sample_groups": 3,
+    "same_routing": true,
+    "sample_token_control": 9707,
+    "sample_token_candidate": 9707,
+    "total_compact_rows": 163840,
+    "total_wmma_rows": 197712,
+    "padding_percent": 20.673828125000004
+  },
+  "measurements": {
+    "q4_gate_up_total_ms": {
+      "control": 114.63348171673718,
+      "candidate": 97.08237572534318,
+      "delta_percent": -15.310628036897034
+    },
+    "all_selected_moe_kernel_pairs_total_ms": {
+      "control": 176.4095358414731,
+      "candidate": 158.53475640372685,
+      "delta_percent": -10.13254717353208
+    },
+    "q5_down_total_ms": {
+      "control": 57.03959779154198,
+      "candidate": 56.78961474720079
+    },
+    "q6_down_total_ms": {
+      "control": 4.736456333193928,
+      "candidate": 4.662765931182851
+    }
+  },
+  "decision": {
+    "retain_explicit_candidate": true,
+    "production_default_changed": false,
+    "next": "Run a clean full-model balanced 512/1K/4K prefill A/B plus decode non-regression gate through a fail-closed registry selector."
+  },
+  "sources": {
+    "control_local_artifact": "/tmp/gpf3a-control-replay.json",
+    "control_sha256": "2ae2a6e0782b9f0155b9a1fa3add8dd9395da4c80ba90134f1071150f46424f1",
+    "candidate_local_artifact": "/tmp/gpf3a-shared-x-replay.json",
+    "candidate_sha256": "bb8fa62c85127a0f4384f3dab43143077c83ef91557994ecc595bb131810cb87",
+    "trace_local_artifact": "/tmp/gpf3a-shared-x-trace/gpf3a_kernel_trace.csv",
+    "control_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD .venv/bin/python scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --token-id 9707 --warmup-iters 1 --replay-iters 5 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf3a-control-replay.json",
+    "candidate_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD .venv/bin/python scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --token-id 9707 --warmup-iters 1 --replay-iters 5 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --q4-t16-shared-x --json /tmp/gpf3a-shared-x-replay.json"
+  }
+}

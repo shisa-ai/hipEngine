@@ -153531,3 +153531,74 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - A clean default-path hardware gate remains before replacing the public GGUF
   topline. Explicit `fused` and `chain` stay as rollback/oracle routes, and
   gfx1100 does not inherit this device-specific policy.
+
+## 2026-07-13 - GPF-3A Q4T16 shared-activation candidate started
+
+- The accepted LDS32 profile moves the next 512-token buckets to exact GDN
+  recurrence **221.873 ms**, dense Q8T16 WMMA **156.474 ms**, Q4T16 selected
+  dual WMMA **116.075 ms**, and Q5T16 selected-down WMMA **56.181 ms** out of
+  **692.564 ms** traced kernels. This activates `GPF-3` on the largest
+  non-GDN family rather than a broad threshold sweep.
+- Source inspection found a concrete redundant operation in the production
+  Q4T16 32-column kernel: the two serial 16-column halves reload the same
+  compact 16-row activation fragment. GPF-3A keeps two independent WMMA
+  accumulators live and shares that activation load while preserving each
+  accumulator's K/WMMA order.
+- Required lineage preflight was attempted and remains blocked because the
+  configured read-only parent `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is
+  absent. This candidate is an in-tree schedule change and copies no parent
+  source. RED failed collection on the intentionally missing shared-X wrapper;
+  the explicit candidate kernel/wrappers and replay switch are now implemented
+  but remain uncompiled/unmeasured while the clean six-shape default-route GPU
+  sweep is running.
+
+## 2026-07-13 - GPF-2D clean default six-shape stress gate completes
+
+- Clean detached `5f082783` with no explicit GDN mode completed one max-128K
+  resident session across 512/1K/4K/32K/64K/128K, two discarded plus five
+  measured repetitions each. Median prefill is **751.993/804.420/688.545/
+  589.866/504.730/372.892 tok/s** and decode is **49.059/51.620/52.479/
+  43.573/37.295/27.776 tok/s**. Every measured final ID is `9707`; each
+  prefill range is below 0.35% of its median.
+- Accounted load plus warmup/measured wall is **3999.712 seconds (66.66 min)**.
+  The session was sized once for 128K, so its **25.493 GiB** tracked peak is
+  valid only for the max-context stress gate and must not replace right-sized
+  short-context memory rows. This is a clean default/long-context diagnostic,
+  not the final canonical per-shape README rollup.
+- Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json`.
+  Full local artifact `/tmp/gpf2d-default-clean-full-six-shape.json` is sha256
+  `1f6a637e614c3e10602f6fb75fc95f4cc172e1afd64b6fb1581f216a3e2371d4`.
+
+## 2026-07-13 - GPF-3A shared-X passes exact fixture and real-model replay
+
+- Compiled the explicit Q4T16 compact32 shared-X kernel on gfx1151/HIP 7.15.
+  The final targeted Q4T16 plus replay bundles pass **18/18** tests. Candidate versus
+  baseline output is raw-byte exact for BF16 and FP16 across uneven/empty
+  experts and multiple K blocks.
+- `rocprofv3` confirms the candidate kernel executed. On the exact tiny fixture,
+  baseline is **44.725 us** at 48 VGPR and candidate is **33.343 us**
+  (**-25.45%**) at 56 VGPR; both use zero LDS and zero scratch, candidate SGPR
+  is 128 and workgroup size is 32.
+- The first real-model replay attempt correctly exposed three stale harness
+  assumptions introduced after the old P9 tooling: the runtime helper now
+  accepts `gpu_stage_recorder`/`stage_prefix`, the resolver returns a
+  `_CompactMoeWmmaPlan`, and resident T16 down kernels use a fixed 16x16 tile
+  not recognized by the raw-layout reporting helper. Added RED/GREEN CPU tests
+  for the keyword interface and layout-aware tile report, then updated replay
+  to use plan callables and `raw`/`tiles` allocation names. **5/5** replay CPU
+  tests and ruff pass.
+- Identical 512-token real Qwen3.6-35B routing replays cover all 40 MoE layers,
+  163,840 compact rows, and 197,712 WMMA rows. Q4 gate/up falls
+  **114.633 -> 97.082 ms (-15.31%)**; all selected gate/up + down pairs fall
+  **176.410 -> 158.535 ms (-10.13%)**. Routing and sampled token `9707` are
+  identical; Q5/Q6 down timings remain effectively unchanged.
+- Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json`.
+  Control/candidate local artifacts are `/tmp/gpf3a-{control,shared-x}-replay.json`
+  with sha256 `2ae2a6e0782b9f0155b9a1fa3add8dd9395da4c80ba90134f1071150f46424f1`
+  and `bb8fa62c85127a0f4384f3dab43143077c83ef91557994ecc595bb131810cb87`.
+- Decision: retain the candidate explicitly but leave production dispatch
+  unchanged. Next add a fail-closed registry/capability selector and run a clean
+  full-model balanced 512/1K/4K prefill plus decode non-regression gate before
+  any gfx1151 default promotion.

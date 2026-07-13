@@ -10,7 +10,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     build_gguf_q4_k_t16_selected_prefill,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out,
     plan_gguf_q4_k_t16_selected_prefill_build,
 )
 from hipengine.kernels.registry import resolve
@@ -45,6 +47,15 @@ def test_gguf_q4_k_t16_selected_wmma_registry_and_build_plan(monkeypatch: pytest
             variant="selected_dual_wmma_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
+        )
+        is gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out
     )
     assert (
         resolve(
@@ -141,16 +152,29 @@ def _q8_1_ds4_selected_reference(fixture) -> np.ndarray:
     return ref
 
 
-def _run_t16_selected_dual_gpu(fixture, dtype: str) -> np.ndarray:
+def _run_t16_selected_dual_gpu(
+    fixture,
+    dtype: str,
+    *,
+    shared_x: bool = False,
+    raw_bits: bool = False,
+) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     library = build_gguf_q4_k_t16_selected_prefill(load=True)
-    wrapper = (
-        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
-        if dtype == "bf16"
-        else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out
-    )
+    if dtype == "bf16":
+        wrapper = (
+            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out
+            if shared_x
+            else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
+        )
+    else:
+        wrapper = (
+            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out
+            if shared_x
+            else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out
+        )
     out_dtype = np.uint16 if dtype == "bf16" else np.float16
     host_out = np.zeros(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
@@ -204,6 +228,8 @@ def _run_t16_selected_dual_gpu(fixture, dtype: str) -> np.ndarray:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
+    if raw_bits:
+        return host_out.view(np.uint16).copy()
     return _decode_output(host_out, dtype)
 
 
@@ -288,6 +314,22 @@ def test_p9_c14_q4_k_t16_selected_wmma_bf16_matches_cpu_selected_reference(
     )
     actual = _run_t16_selected_dual_gpu(fixture, "bf16")
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("dtype", ["bf16", "fp16"])
+def test_q4_k_t16_shared_x_candidate_matches_baseline_bytes(dtype: str) -> None:
+    fixture = _build_compact_fixture(
+        counts=[0, 16, 17, 31],
+        in_features=512,
+        out_features_a=48,
+        out_features_b=64,
+        dtype=dtype,
+        seed=17,
+    )
+    baseline = _run_t16_selected_dual_gpu(fixture, dtype, raw_bits=True)
+    candidate = _run_t16_selected_dual_gpu(fixture, dtype, shared_x=True, raw_bits=True)
+    np.testing.assert_array_equal(candidate, baseline)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

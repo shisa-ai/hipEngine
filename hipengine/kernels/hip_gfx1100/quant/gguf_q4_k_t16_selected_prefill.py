@@ -20,6 +20,12 @@ _SOURCE = Path(__file__).with_name("gguf_q4_k_t16_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_t16_selected_prefill.so"
 _SYMBOL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"
 _SYMBOL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out"
+_SYMBOL_SHARED_X_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out"
+)
+_SYMBOL_SHARED_X_FP16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out"
+)
 _SYMBOL_Q8_1_DS4_WMMA32_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out"
 _ENV_LAUNCH_BOUNDS = "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS"
 _Q4_K_BLOCK = 256
@@ -117,6 +123,48 @@ def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the GPF-3A Q4T16 candidate with one shared activation load."""
+
+    _launch(
+        _SYMBOL_SHARED_X_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out(
     x_q8_ds4_ptr: int,
     expert_start_compact_ptr: int,
@@ -182,6 +230,48 @@ def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out(
 
     _launch(
         _SYMBOL_FP16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the FP16 GPF-3A shared-activation candidate."""
+
+    _launch(
+        _SYMBOL_SHARED_X_FP16,
         x_ptr,
         expert_start_compact_ptr,
         expert_start_wmma_ptr,
@@ -326,6 +416,26 @@ def register_gguf_q4_k_t16_selected_prefill_kernels(*, replace: bool = True) -> 
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k_t16_v1",
+            "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
+            "selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out",
+        ),
+        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
             "selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
         ),
         gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
@@ -363,6 +473,8 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out",
     "plan_gguf_q4_k_t16_selected_prefill_build",
     "register_gguf_q4_k_t16_selected_prefill_kernels",
 ]
