@@ -1,0 +1,261 @@
+{
+  "commands": {
+    "f16_repeatability": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-token-id 9707 --prompt-length 131072 --decode-steps 16 --ctx-size 131089 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --candidate-cache f16 --flash-attn --kl-threshold 0.05 --top1-threshold 0.90 --json /tmp/hipengine-llamacpp-kv-matched/llamacpp-f16-repeatability-128k-16.json",
+    "q8_vs_f16": "python3 scripts/llamacpp_kv_matched_context.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-token-id 9707 --prompt-length 131072 --decode-steps 16 --ctx-size 131089 --batch-size 4096 --ubatch-size 512 --n-gpu-layers 99 --threads 16 --reference-cache f16 --candidate-cache q8_0 --flash-attn --reference-logits-bin /tmp/hipengine-llamacpp-kv-matched/llamacpp-f16-reference-128k-16.bin --json /tmp/hipengine-llamacpp-kv-matched/llamacpp-q8-vs-f16-128k-16-export.json"
+  },
+  "date": "2026-07-13",
+  "interpretation": [
+    "llama.cpp Q8_0 KV passes the same aggregate 128K/16 matched-context thresholds used for hipEngine INT8 fidelity.",
+    "The deterministic F16-vs-F16 control is exactly zero KL, so measured Q8_0 drift is not run-to-run noise in this harness.",
+    "The same-weight bridge localizes a large cross-engine discrepancy to the prompt-final bulk-prefill row; its 16 teacher-forced decode rows remain close and top-1 identical.",
+    "The 163.47x mean-KL and 58.82-point top-1 differences versus PARO are qualified context, not a direct cache-format A/B."
+  ],
+  "kind": "w7900_llamacpp_q8_kv_matched_quality",
+  "performance_claim": false,
+  "protocol": {
+    "batch_size": 4096,
+    "candidate_kv": "q8_0",
+    "decode_steps": 16,
+    "flash_attn": true,
+    "model": "Qwen3.6-35B-A3B UD-Q4_K_M",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_weights_identical_between_legs": true,
+    "positions": 17,
+    "prompt_source": "token 9707 repeated",
+    "prompt_tokens": 131072,
+    "quality_thresholds": {
+      "kl_mean_max": 0.05,
+      "top1_agreement_min": 0.9
+    },
+    "quant": "Q4_K_M",
+    "reference_kv": "f16",
+    "teacher": "F16-reference seed and generated tokens",
+    "ubatch_size": 512
+  },
+  "qualified_comparison_to_paro": {
+    "artifact": "benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json",
+    "caveat": "Protocol shape and reference-token semantics match, but model weight quantization, cache quantizer, and engine arithmetic differ; this is not an isolated implementation A/B.",
+    "llamacpp_mean_kl_is_lower_by_factor": 163.4698948916083,
+    "llamacpp_top1_percentage_point_advantage": 58.82352941176471,
+    "paro_max_kl": 4.973818720956827,
+    "paro_mean_kl": 0.8512848774989155,
+    "paro_reference_candidate": "W4-PARO BF16 KV vs per-token/head INT8 KV with FP16 scales",
+    "paro_top1_agreement": 0.4117647058823529
+  },
+  "quality": {
+    "candidate_reference_top1_rank": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "candidate_top1": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "first_top1_mismatch": null,
+    "max_kl": 0.08749122976912845,
+    "mean_kl": 0.00520759420603638,
+    "passed": true,
+    "per_position_kl": [
+      0.08749122976912845,
+      8.287123030562849e-05,
+      9.512528148784037e-05,
+      0.00015978334437668254,
+      4.335992735482594e-05,
+      8.991707049300572e-05,
+      5.874634202909109e-05,
+      0.00011197847187480955,
+      7.643727472501293e-06,
+      6.643044688274928e-06,
+      2.3909026396554114e-06,
+      6.145604344549425e-05,
+      7.833084639049995e-06,
+      2.2548030115215658e-05,
+      0.00014949456003080077,
+      9.803867486452077e-05,
+      4.004199767261363e-05
+    ],
+    "prompt_final": {
+      "kl": 0.08749122976912845,
+      "top1_match": true
+    },
+    "reference_top1": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "teacher_forced_decode_only": {
+      "max_kl": 0.00015978334437668254,
+      "mean_kl": 6.486698334312565e-05,
+      "top1_agreement": 1.0
+    },
+    "top1_agreement": 1
+  },
+  "raw_diagnostics": [
+    {
+      "path": "/tmp/hipengine-llamacpp-kv-matched/llamacpp-q8-vs-f16-128k-16-export.json",
+      "sha256": "aa1f9a2cfd3e727297db7a2f19ec15c311469958a552b1bec1afef62c713be7f"
+    },
+    {
+      "path": "/tmp/hipengine-llamacpp-kv-matched/llamacpp-f16-repeatability-128k-16.json",
+      "sha256": "15e48dc6761b37965a7cd51fe9df8d4baaae52569067ca1fb4b3e3f295ad5b47"
+    }
+  ],
+  "repeatability_control": {
+    "candidate_kv": "f16",
+    "max_kl": 0,
+    "mean_kl": 0,
+    "per_position_kl": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "reference_kv": "f16",
+    "top1_agreement": 1
+  },
+  "same_weight_cross_engine_bridge": {
+    "all_positions": {
+      "max_kl": 4.514807679285519,
+      "mean_kl": 0.2660566522876092,
+      "passed": false,
+      "top1_agreement": 1.0
+    },
+    "artifact": "benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json",
+    "candidate": "hipEngine GGUF BF16 KV",
+    "prompt_final": {
+      "kl": 4.514807679285519,
+      "top1_match": true
+    },
+    "reference": "llama.cpp F16 KV",
+    "teacher_forced_decode_only": {
+      "max_kl": 0.001088100519632335,
+      "mean_kl": 0.0005097131002399235,
+      "top1_agreement": 1.0
+    }
+  },
+  "schema": 1,
+  "source": {
+    "build": {
+      "binary": "/tmp/hipengine-llamacpp-kv-matched/7a8bf657d2111422/llamacpp-kv-matched-context",
+      "binary_sha256": "2c0c2a9dae2c17b75e3f12ea02fce7241e937c8a832e98115b5f9e5fde2012c4",
+      "command": "g++ -std=c++17 -O2 -Wall -Wextra -Werror /home/lhl/hipEngine-main/scripts/llamacpp_kv_matched_context.cpp -I/home/lhl/llama.cpp/llama.cpp-hip/include -I/home/lhl/llama.cpp/llama.cpp-hip/ggml/include -L/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin -Wl,-rpath,/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin -Wl,--allow-shlib-undefined -lllama -lggml -lggml-base -ldl -pthread -o /tmp/hipengine-llamacpp-kv-matched/7a8bf657d2111422/llamacpp-kv-matched-context",
+      "compiler": "g++",
+      "cpp_source": "scripts/llamacpp_kv_matched_context.cpp",
+      "cpp_source_sha256": "c13c32857e7544f80d1da1aef3083b6acff489f7b4c3a664bd35daeb11407713",
+      "key": "7a8bf657d2111422"
+    },
+    "hipengine": {
+      "commit": "31c12a3a6609d48fe9c07c04b975dde4fa9f58bd",
+      "dirty": false,
+      "status_porcelain": []
+    },
+    "libraries": {
+      "libggml-base.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-base.so.0.15.1",
+        "sha256": "3cfe8c3fd73e0225e95c8ae36fc8266cfed832ff7b00eb4c535b58cd3c201240"
+      },
+      "libggml-cpu.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-cpu.so.0.15.1",
+        "sha256": "9f4d51c726b27cb7723b11814d2047ddb2cee3333f395cbd359b887d9c16a444"
+      },
+      "libggml-hip.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml-hip.so.0.15.1",
+        "sha256": "d9c112ab1ea923f0d7460a45449a6b87f260bc1a3bc1dbb76f0de83f50f7009b"
+      },
+      "libggml.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libggml.so.0.15.1",
+        "sha256": "7391556b6a916ac347cf5ae22b435b32a7e2ab099c02452de856a98b89d646df"
+      },
+      "libllama.so.0": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/libllama.so.0.0.9648",
+        "sha256": "103d3f8f1f7969d9a1c9d8a2218f0bab7d7f6d64287740d8f4fed110dd09256e"
+      }
+    },
+    "llama_completion_version": "version: 9648 (1ebf790cd)\nbuilt with GNU 16.1.1 for Linux x86_64",
+    "llama_cpp": {
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "dirty": true,
+      "status_porcelain": [
+        " M common/speculative.cpp",
+        " M common/speculative.h",
+        " M src/llama-context.cpp",
+        " M src/llama-context.h",
+        " M src/llama-ext.h",
+        " M src/llama-graph.cpp",
+        " M src/llama-graph.h",
+        " M src/models/qwen35.cpp",
+        " M src/models/qwen35moe.cpp",
+        " M tools/server/server-context.cpp"
+      ]
+    },
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    }
+  },
+  "status": "accepted"
+}

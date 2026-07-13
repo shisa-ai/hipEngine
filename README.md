@@ -103,11 +103,29 @@ The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
 bytes across ten full-attention layers and no BF16 K/V shadow. Its final
 BF16-reference-token matched 128K/16 gate rejects at mean/max KL
 `0.85128/4.97382` and 41.18% top-1 agreement. Format and mixed-policy screens
-did not find a candidate that transferred through 4K; the five-category task
-reference is itself unscorable. Memory was measured once; timing is diagnostic.
+did not find a candidate that transferred through 4K.
+
+A protocol-matched llama.cpp Q8_0-vs-F16 KV run on identical Q4_K_M weights
+passes 128K/16 at mean/max KL `0.00521/0.08749` and 100% top-1; its F16/F16
+control is exactly zero. This is contextual rather than a direct A/B because
+llama.cpp Q8_0 and hipEngine per-token/head INT8 use different quantizers and
+the PARO weights differ. The same-weight hipEngine-GGUF-BF16 vs
+llama.cpp-F16 bridge preserves 100% top-1: its all-position mean KL `0.26606`
+is caused by a `4.51481` prompt-final row, while the 16 teacher-forced decode
+rows average KL `0.000510`.
+
+The original five-category free-generation reference is unscorable. In the
+replacement restricted-choice diagnostic, INT8 flips one of two
+BF16-qualified 4K answers (multihop `D -> C`) but retains all three qualified
+32K answers. This shows that large KL can change a bounded functional decision
+without implying every answer changes; it remains partial evidence, not support
+for 256K INT8. Memory was measured once; timing is diagnostic.
 
 See the
 [`capacity/fidelity outcome`](benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json),
+[llama.cpp Q8_0 comparison](benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[same-weight GGUF bridge](benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json),
+[bounded functional check](benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json),
 [format screen](benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json),
 and [policy screen](benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json).
 
