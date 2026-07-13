@@ -80,7 +80,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
-    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32"
+    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert (
@@ -102,7 +102,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "chain_lds32"
+        == "chain_lds32_direct"
     )
     assert (
         backend_package_capability(
@@ -301,7 +301,7 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert len(resolved) == 20
+    assert len(resolved) == 23
     assert set(resolved) == {"hip_gfx1151"}
 
 

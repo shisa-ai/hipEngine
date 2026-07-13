@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_gdn_prefill_trajectory_decode_gate_compact",
+  "status": "accepted_project_trajectory_and_decode_nonregression",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "candidate": "GPF-2E compact-scale direct-conv scalar-exact LDS32 GDN prefill",
+  "conclusion": "chain_lds32_direct passes every current-default natural-prompt trajectory logit/token gate and does not regress balanced aggregate decode wall.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "5501aeb940f8c369b77d9cd9a4759610313409a6",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "workload": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "baseline_mode": "chain_lds32",
+    "candidate_mode": "chain_lds32_direct",
+    "correctness_decode_steps": 24,
+    "performance_decode_steps": 128,
+    "performance_repetitions_per_mode_prompt": 2,
+    "bulk_attention_mode": "bulk",
+    "graph_replay_decode": true,
+    "decode_repack": true,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true
+  },
+  "protocol": {
+    "correctness": "own-token greedy current-default/candidate trajectories; logits compared at prefill sample and every decoded transition",
+    "correctness_rule": "every token exact, KL <= 0.05, and top-1 agreement >= 0.90 at every transition",
+    "performance": "same-session balanced mode order; synchronized production decode wall including graph capture/instantiate/close",
+    "decode_nonregression_rule": "candidate sum of per-prompt median walls must not exceed baseline; no percentage allowance",
+    "build": "cached-only from a clean detached worktree"
+  },
+  "summary": {
+    "passed": true,
+    "measurement_valid": true,
+    "performance_comparison_valid": true,
+    "prompts_total": 10,
+    "correctness_transitions_total": 250,
+    "correctness_transitions_passed": 250,
+    "trajectory_tokens_exact": true,
+    "kl_mean_max": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement_min": 1.0,
+    "decode_steps_total_per_mode": 1280,
+    "decode_non_regressive": true,
+    "baseline_decode_median_wall_sum_ms": 24002.317534,
+    "candidate_decode_median_wall_sum_ms": 23984.243454,
+    "baseline_decode_tok_s_weighted": 53.32818375504122,
+    "candidate_decode_tok_s_weighted": 53.368370882948426,
+    "candidate_decode_speedup": 1.0007535814100064,
+    "candidate_decode_wall_delta_percent": -0.07530139526901794,
+    "paired_candidate_minus_baseline_median_ms": -0.6658449999999903
+  },
+  "prompts": [
+    {"id": "code_merge_intervals", "category": "code", "prompt_tokens": 40, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "code_topological_sort", "category": "code", "prompt_tokens": 50, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "code_lru_cache", "category": "code", "prompt_tokens": 47, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "code_markdown_table", "category": "code", "prompt_tokens": 52, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "general_en_plan", "category": "general_en", "prompt_tokens": 39, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "general_en_explain", "category": "general_en", "prompt_tokens": 40, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "general_ja_plan", "category": "general_ja", "prompt_tokens": 43, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "general_ja_explain", "category": "general_ja", "prompt_tokens": 43, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "mixed_ja_en_translate", "category": "mixed_ja_en", "prompt_tokens": 64, "correctness_transitions_passed": 25, "trajectories_exact": true},
+    {"id": "mixed_ja_en_review", "category": "mixed_ja_en", "prompt_tokens": 71, "correctness_transitions_passed": 25, "trajectories_exact": true}
+  ],
+  "decision": {
+    "candidate_gate_passed": true,
+    "eligible_for_gfx1151_default": true,
+    "eligible_for_shared_gfx1100_gfx1151_default": false,
+    "reason_shared_default_blocked": "No independent gfx1100 transfer gate has been run for GPF-2E.",
+    "next": "Promote through the gfx1151 backend capability; keep gfx1100 unchanged."
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf2e-clean-5501aeb9-trajectory-decode-gate.json",
+    "full_local_artifact_sha256": "5dd1ca07c18743c3a2bbfdaec01ecc48ddc0fc208ee069928dc9ecf4f3d535b7",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_gdn_trajectory_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend auto --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --baseline-mode chain_lds32 --candidate-mode chain_lds32_direct --correctness-decode-steps 24 --performance-decode-steps 128 --performance-repetitions 2 --kl-threshold 0.05 --top1-threshold 0.90 --bulk-attention-mode bulk --graph-replay-decode --decode-repack --use-wmma-prefill --use-gemv-decode --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf2e-clean-5501aeb9-trajectory-decode-gate.json"
+  }
+}

@@ -145,7 +145,7 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
 def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     plan = qgr._resolve_gguf_gdn_prefill_plan("hip_gfx1151")
 
-    assert plan.auto_mode == "chain_lds32"
+    assert plan.auto_mode == "chain_lds32_direct"
     assert plan.has_exact_chain_lds32
     assert plan.has_exact_chain_lds32_direct
 
@@ -310,6 +310,43 @@ def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
             1,
         )
         assert recurrent_args[11:15] == (4, 32, 128, 128)
+
+
+def test_run_gdn_prefill_gfx1151_auto_uses_compact_direct_lds32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare_compact=_recorder(calls, "exact_prepare_compact"),
+        exact_recurrent_lds32_direct=_recorder(calls, "exact_lds32_direct"),
+        exact_recurrent_segments_lds32_direct=_recorder(
+            calls, "exact_segments_lds32_direct"
+        ),
+        auto_mode="chain_lds32_direct",
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0004),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare_compact",
+        "exact_lds32_direct",
+        "rmsnorm_gate",
+    ]
 
 
 def test_run_gdn_prefill_explicit_chain_overrides_available_fused(
