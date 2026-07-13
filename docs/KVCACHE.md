@@ -593,6 +593,29 @@ The first externally informed S1 candidate set is deliberately bounded:
 | KIVI-style INT8 | Chunked per-channel K plus per-token/group V with an unquantized incomplete residual block | Tests the established K/V asymmetry under online-feasible chunk semantics. |
 | KVarN-informed INT8 | Full-head Hadamard rotation; eight-pass best-so-far log-domain variance normalization; K-per-channel/V-per-token affine INT8 tiles; 128-token BF16 sink and incomplete tail | Tests KVarN's error-accumulation mechanism at eight bits. This is a source-aligned representation emulation, not a native kernel or the official 4-bit-key/2-bit-value preset. |
 
+### Current S1/S2 outcome
+
+The clean W7900 screen at `d0b56364` completed in **28.78 seconds** including
+model/session setup, well inside the 600-second budget. It used one fixed
+512-token mixed English/Japanese/code/math/tool-token prompt (36 distinct token
+IDs), scored the prompt-final row plus eight BF16-teacher-forced decode rows,
+and projected storage at 256K:
+
+| S1 candidate | Mean / max KL | Top-1 | Top-5 / top-10 overlap | Extra bytes vs baseline at 256K | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Per-token/head max-abs baseline | `0.36841 / 1.20200` | `66.67%` | `71.11% / 77.78%` | 0 | Reject; anchor |
+| **Hadamard group32** | **`0.13342 / 0.45135`** | `77.78%` | `84.44% / 84.44%` | `0.137 GiB` | Lowest mean KL; advance only this row |
+| KIVI-style INT8 | `0.16667 / 0.60739` | **`88.89%`** | **`86.67% / 88.89%`** | `0.178 GiB` | Best S1 decision fidelity, but higher primary KL |
+| KVarN-informed INT8 | `0.27125 / 1.25017` | **`88.89%`** | `77.78% / 80.00%` | `0.073 GiB` | Better than baseline mean KL; no gate pass |
+
+Hadamard group32 then transferred to the separate 4K/16 emulation in 29.17
+seconds. Top-1 **passes** at `94.12%`, but mean/max KL is
+**`0.15512/1.14267`**, so mean KL is 3.10x the `0.05` limit. The combined gate
+therefore rejects. No native HIP kernel, 128K gate, or downstream task benchmark
+was run; doing so after an S2 numerical rejection would add cost without a
+promotion path. Compact evidence:
+[`2026-07-13-w7900-paro-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-paro-int8-kv-external-format-screen.json).
+
 AQUA-style cross-layer residual prediction remains the next representation
 screen if these local transforms do not pass transfer. It requires fitting and
 auditing per-layer predictors and therefore is not mixed into the first
