@@ -84,6 +84,52 @@ def test_compact_owned_summary_preserves_prefill_block_table_accounting() -> Non
     assert summary["prefill_block_table_capacity_rows"] == 4
 
 
+def test_kv_memory_audit_allows_declared_bf16_prefix_in_mixed_layout() -> None:
+    summary = {
+        "kv_storage_layout": "tail4_hadamard_group32",
+        "full_attention_layers": [
+            {
+                "layer_id": 23,
+                "storage_dtype": "bf16",
+                "payload_dtype": "bf16",
+                "scale_metadata": None,
+            },
+            {
+                "layer_id": 27,
+                "storage_dtype": "int8_per_token_head",
+                "payload_dtype": "int8",
+                "scale_metadata": {"scale_bytes": 128},
+            },
+        ],
+    }
+
+    audit = sweep._kv_memory_audit(summary, "int8_per_token_head")
+
+    assert audit["passed"] is True
+    assert audit["preserved_bf16_kv_layers"] == [23]
+    assert audit["persistent_bf16_kv_layers"] == []
+    assert audit["missing_int8_scale_layers"] == []
+
+
+def test_kv_memory_audit_rejects_bf16_payload_for_quantized_layer() -> None:
+    summary = {
+        "kv_storage_layout": "tail4_hadamard_group32",
+        "full_attention_layers": [
+            {
+                "layer_id": 27,
+                "storage_dtype": "int8_per_token_head",
+                "payload_dtype": "bf16",
+                "scale_metadata": {"scale_bytes": 128},
+            },
+        ],
+    }
+
+    audit = sweep._kv_memory_audit(summary, "int8_per_token_head")
+
+    assert audit["passed"] is False
+    assert audit["persistent_bf16_kv_layers"] == [27]
+
+
 def test_run_case_uses_reference_teacher_forced_inputs(monkeypatch) -> None:
     class FakeResult:
         def __init__(self, token_id: int) -> None:

@@ -256,6 +256,7 @@ def _compact_owned_summary(summary: dict[str, Any]) -> dict[str, Any]:
             summary.get("full_attention_kv_payload_bytes_per_element", 0.0)
         ),
         "kv_storage_dtype": summary.get("kv_storage_dtype"),
+        "kv_storage_layout": summary.get("kv_storage_layout", "uniform"),
         "kv_scale_dtype": summary.get("kv_scale_dtype"),
         "kv_scale_granularity": summary.get("kv_scale_granularity"),
         "prefill_block_table_bytes": int(summary.get("prefill_block_table_bytes", 0)),
@@ -297,21 +298,41 @@ def _first_mismatch(a: list[int], b: list[int]) -> dict[str, int] | None:
 def _kv_memory_audit(summary: dict[str, Any], storage_dtype: str) -> dict[str, Any]:
     full_layers = list(summary.get("full_attention_layers", ()))
     if storage_dtype != "int8_per_token_head":
-        return {"required": False, "passed": True, "persistent_bf16_kv_layers": []}
+        return {
+            "required": False,
+            "passed": True,
+            "persistent_bf16_kv_layers": [],
+            "preserved_bf16_kv_layers": [],
+        }
+    layout = str(summary.get("kv_storage_layout", "uniform"))
+    preserved_bf16 = [
+        int(layer.get("layer_id", -1))
+        for layer in full_layers
+        if layer.get("storage_dtype") == "bf16" and layer.get("payload_dtype") == "bf16"
+    ]
     persistent_bf16 = [
         int(layer.get("layer_id", -1))
         for layer in full_layers
-        if layer.get("storage_dtype") == "bf16" or layer.get("payload_dtype") == "bf16"
+        if layer.get("storage_dtype") == "int8_per_token_head" and layer.get("payload_dtype") == "bf16"
     ]
+    unexpected_preserved = preserved_bf16 if layout == "uniform" else []
     missing_scales = [
         int(layer.get("layer_id", -1))
         for layer in full_layers
-        if not layer.get("scale_metadata") or int(layer.get("scale_metadata", {}).get("scale_bytes", 0)) <= 0
+        if layer.get("storage_dtype") == "int8_per_token_head"
+        and (
+            not layer.get("scale_metadata")
+            or int(layer.get("scale_metadata", {}).get("scale_bytes", 0)) <= 0
+        )
     ]
+    passed = not persistent_bf16 and not unexpected_preserved and not missing_scales
     return {
         "required": True,
-        "passed": not persistent_bf16 and not missing_scales,
+        "passed": passed,
+        "kv_storage_layout": layout,
         "persistent_bf16_kv_layers": persistent_bf16,
+        "preserved_bf16_kv_layers": preserved_bf16,
+        "unexpected_preserved_bf16_kv_layers": unexpected_preserved,
         "missing_int8_scale_layers": missing_scales,
         "full_attention_kv_payload_bytes": int(summary.get("full_attention_kv_payload_bytes", 0)),
         "full_attention_kv_scale_bytes": int(summary.get("full_attention_kv_scale_bytes", 0)),
