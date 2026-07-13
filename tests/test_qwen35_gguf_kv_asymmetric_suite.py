@@ -62,16 +62,77 @@ def test_aggregate_candidates_requires_every_prompt_gate_and_reports_scopes() ->
         },
     ]
 
-    rows = suite._aggregate_candidates(prompt_results, extra_budget_bytes=32)
+    capacity_model = {
+        "device_capacity_bytes": 1_000,
+        "anchor_peak_bytes": 800,
+        "anchor_kv_bytes": 200,
+        "minimum_headroom_bytes": 100,
+    }
+    rows = suite._aggregate_candidates(
+        prompt_results,
+        extra_budget_bytes=32,
+        bf16_target_bytes=500,
+        capacity_model=capacity_model,
+    )
     by_name = {row["name"]: row for row in rows}
 
     assert by_name["good"]["transfer_eligible"]
+    assert by_name["good"]["capacity_projection"]["projected_margin_bytes"] == 280
+    assert by_name["good"]["saved_bytes_vs_bf16"] == 380
     assert by_name["good"]["scopes"]["natural_full"]["prompt_count"] == 2
     assert by_name["good"]["scopes"]["heldout"]["all_prompt_gates_passed"]
     assert by_name["good"]["scopes"]["mixed_v1"]["mean_kl"] == 0.015
     assert not by_name["heldout_fail"]["transfer_eligible"]
     assert not by_name["heldout_fail"]["scopes"]["heldout"]["all_prompt_gates_passed"]
     assert by_name["heldout_fail"]["first_failed_prompt"] == "heldout_a"
+
+
+def test_capacity_projection_requires_operational_headroom() -> None:
+    model = {
+        "device_capacity_bytes": 1_000,
+        "anchor_peak_bytes": 800,
+        "anchor_kv_bytes": 200,
+        "minimum_headroom_bytes": 100,
+    }
+
+    passing = suite._capacity_projection(300, capacity_model=model)
+    failing = suite._capacity_projection(301, capacity_model=model)
+
+    assert passing["projected_peak_bytes"] == 900
+    assert passing["projected_margin_bytes"] == 100
+    assert passing["operational_margin_passed"]
+    assert not failing["operational_margin_passed"]
+
+
+def test_default_matrix_includes_controls_and_capacity_qualified_mild_formats() -> None:
+    candidates = suite._parse_candidates(suite.DEFAULT_CANDIDATES, head_dim=256)
+    expected = {
+        "baseline_max",
+        "key_int8_value_bf16",
+        "key_group32_value_bf16",
+        "key_hadamard_group32_value_bf16",
+        "key_fp8_e4m3_value_bf16",
+        "tail4_int8_per_head",
+        "tail4_group32",
+        "tail4_hadamard_group32",
+        "tail4_fp8_e4m3",
+    }
+
+    assert {candidate.name for candidate in candidates} == expected
+    for candidate in candidates:
+        memory = suite._format_memory_bytes(
+            candidate,
+            tokens=suite.DEFAULT_TARGET_CONTEXT_TOKENS,
+            full_layers=10,
+            num_kv_heads=2,
+            head_dim=256,
+            scale_dtype="fp16",
+        )
+        projection = suite._capacity_projection(
+            memory["total_bytes"],
+            capacity_model=suite.CAPACITY_MODEL,
+        )
+        assert projection["operational_margin_passed"]
 
 
 def test_compact_prompt_result_drops_resident_arrays() -> None:

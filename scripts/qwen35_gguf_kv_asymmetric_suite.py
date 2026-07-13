@@ -50,18 +50,30 @@ from scripts.qwen35_gguf_kv_format_ablation import (
     _run_candidate_screen,
 )
 from scripts.qwen35_paro_kv_format_ablation import (
+    _candidate_catalog,
     _compact_run,
+    _format_memory_bytes,
     _git_provenance,
     _parse_candidates,
 )
 
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 DEFAULT_CANDIDATES = (
-    "baseline_max,group32,hadamard_group32,"
-    "key_int8_value_bf16,key_group32_value_bf16,key_group16_value_bf16,"
-    "key_hadamard_group32_value_bf16,key_bf16_value_int8,"
-    "key_bf16_value_group32,key_group32_value_group16,key_group16_value_group32"
+    "baseline_max,key_int8_value_bf16,key_group32_value_bf16,"
+    "key_hadamard_group32_value_bf16,key_fp8_e4m3_value_bf16,"
+    "tail4_int8_per_head,tail4_group32,tail4_hadamard_group32,tail4_fp8_e4m3"
 )
+DEFAULT_TARGET_CONTEXT_TOKENS = 262400
+CAPACITY_MODEL = {
+    "target_runtime": "hipEngine Qwen3.6-35B-A3B W4-PARO on RX 7900 XTX low-memory profile",
+    "device_capacity_bytes": 25_753_026_560,
+    "anchor_peak_bytes": 25_364_897_792,
+    "anchor_kv_bytes": 4_367_319_040,
+    "minimum_headroom_bytes": 256 * 1024**2,
+    "anchor_prompt_tokens": 212_992,
+    "anchor_retained_rows": 213_248,
+    "source_artifact": "benchmarks/results/2026-07-13-gfx1100-paro-bf16-context-frontier.json",
+}
 NATURAL_PROFILE = "natural_corpus_v1"
 MIXED_PROFILE = "mixed_v1"
 
@@ -264,13 +276,44 @@ def _scope_summary(entries: Sequence[tuple[dict[str, Any], dict[str, Any]]]) -> 
     }
 
 
+def _capacity_projection(
+    kv_bytes: int,
+    *,
+    capacity_model: dict[str, Any],
+) -> dict[str, Any]:
+    device_capacity = int(capacity_model["device_capacity_bytes"])
+    anchor_peak = int(capacity_model["anchor_peak_bytes"])
+    anchor_kv = int(capacity_model["anchor_kv_bytes"])
+    minimum_headroom = int(capacity_model["minimum_headroom_bytes"])
+    if min(device_capacity, anchor_peak, anchor_kv, minimum_headroom) < 0:
+        raise ValueError("capacity model byte values must be non-negative")
+    non_kv_peak = anchor_peak - anchor_kv
+    if non_kv_peak < 0:
+        raise ValueError("capacity model anchor KV cannot exceed anchor peak")
+    projected_peak = non_kv_peak + int(kv_bytes)
+    projected_margin = device_capacity - projected_peak
+    return {
+        "anchor_non_kv_peak_bytes": int(non_kv_peak),
+        "projected_peak_bytes": int(projected_peak),
+        "projected_peak_gib": float(projected_peak / 1024**3),
+        "projected_margin_bytes": int(projected_margin),
+        "projected_margin_gib": float(projected_margin / 1024**3),
+        "minimum_headroom_bytes": int(minimum_headroom),
+        "operational_margin_passed": bool(projected_margin >= minimum_headroom),
+    }
+
+
 def _aggregate_candidates(
     prompt_results: Sequence[dict[str, Any]],
     *,
     extra_budget_bytes: int,
+    bf16_target_bytes: int,
+    capacity_model: dict[str, Any],
 ) -> list[dict[str, Any]]:
     if not prompt_results:
         raise ValueError("expected at least one prompt result")
+    if int(bf16_target_bytes) <= 0:
+        raise ValueError("bf16_target_bytes must be positive")
     candidate_names = [str(row["name"]) for row in prompt_results[0]["candidates"]]
     if not candidate_names:
         raise ValueError("expected at least one candidate result")
@@ -304,6 +347,11 @@ def _aggregate_candidates(
             None,
         )
         first = entries[0][1]
+        memory_bytes = next(iter(memory_values))
+        capacity_projection = _capacity_projection(
+            memory_bytes,
+            capacity_model=capacity_model,
+        )
         summaries.append(
             {
                 "name": name,
@@ -318,9 +366,13 @@ def _aggregate_candidates(
                         "k_clip_ratio",
                         "v_clip_ratio",
                         "hadamard_group_size",
+                        "quantized_tail_layers",
                     )
                 },
                 "target_context_memory": first["target_context_memory"],
+                "saved_bytes_vs_bf16": int(bf16_target_bytes - memory_bytes),
+                "reduction_vs_bf16": float(1.0 - memory_bytes / int(bf16_target_bytes)),
+                "capacity_projection": capacity_projection,
                 "extra_bytes_over_baseline": next(iter(extra_values)),
                 "within_extra_memory_budget": bool(next(iter(extra_values)) <= int(extra_budget_bytes)),
                 "all_prompt_gates_passed": bool(all_passed),
@@ -330,7 +382,7 @@ def _aggregate_candidates(
                     and natural
                     and heldout
                     and mixed
-                    and next(iter(extra_values)) <= int(extra_budget_bytes)
+                    and capacity_projection["operational_margin_passed"]
                 ),
                 "scopes": {
                     "all": _scope_summary(entries),
@@ -434,9 +486,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         layout = _cache_layout(session)
     gc.collect()
 
+    bf16_target_memory = _format_memory_bytes(
+        _candidate_catalog(layout.head_dim)["bf16"],
+        tokens=int(args.target_context_tokens),
+        full_layers=len(layout.full_layer_ids),
+        num_kv_heads=int(layout.num_kv_heads),
+        head_dim=int(layout.head_dim),
+        scale_dtype=args.scale_dtype,
+    )
     candidate_summary = _aggregate_candidates(
         prompt_results,
         extra_budget_bytes=extra_budget_bytes,
+        bf16_target_bytes=int(bf16_target_memory["total_bytes"]),
+        capacity_model=CAPACITY_MODEL,
     )
     elapsed_seconds = float(time.perf_counter() - started)
     provenance = collect_artifact_provenance(
@@ -492,12 +554,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "quality_thresholds": {
             "kl_mean_max_per_prompt": float(args.kl_threshold),
             "top1_agreement_min_per_prompt": float(args.top1_threshold),
-            "transfer_rule": "every natural full/train/heldout/category row and mixed_v1 must pass",
+            "transfer_rule": (
+                "every natural full/train/heldout/category row and mixed_v1 must pass, and the "
+                "physical-card projection must retain at least 0.25 GiB headroom"
+            ),
         },
         "target_memory": {
-            "context_tokens": int(args.target_context_tokens),
-            "extra_budget_bytes": extra_budget_bytes,
-            "baseline": prompt_results[0]["baseline_memory"],
+            "retained_rows": int(args.target_context_tokens),
+            "nominal_prompt_tokens": max(0, int(args.target_context_tokens) - 256),
+            "capacity_guard_rows": 256,
+            "bf16_reference": bf16_target_memory,
+            "extra_budget_bytes_diagnostic_only": extra_budget_bytes,
+            "int8_per_head_baseline": prompt_results[0]["baseline_memory"],
+            "capacity_model": CAPACITY_MODEL,
+            "maximum_kv_bytes_for_operational_margin": int(
+                CAPACITY_MODEL["device_capacity_bytes"]
+                - CAPACITY_MODEL["minimum_headroom_bytes"]
+                - (CAPACITY_MODEL["anchor_peak_bytes"] - CAPACITY_MODEL["anchor_kv_bytes"])
+            ),
         },
         "prompt_results": prompt_results,
         "candidate_summary": candidate_summary,
@@ -510,7 +584,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "Host emulation only; no native storage, throughput, or support claim.",
             "All prompt/candidate comparisons use identical weights and per-prompt teacher-forced history.",
-            "BF16 components are copied exactly; Hadamard is applied only to quantized components.",
+            "BF16 components and BF16-prefix layers are copied exactly; Hadamard touches only quantized components.",
+            "FP8 rows emulate raw OCP E4M3FN storage; RDNA3 software-conversion performance is not represented.",
+            "The capacity projection reuses the measured W4-PARO 208 Ki physical-card non-KV peak; it is not a GGUF memory claim.",
+            "Tail-four selection is fixed by full-attention layer order and is independent of prompt content.",
             "The current decode row attends in BF16 and is round-tripped immediately afterward.",
         ],
     }
@@ -526,8 +603,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--include-mixed-v1", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidates", default=DEFAULT_CANDIDATES)
     parser.add_argument("--scale-dtype", choices=("fp16", "fp32"), default="fp16")
-    parser.add_argument("--target-context-tokens", type=int, default=262144)
-    parser.add_argument("--extra-budget-gib", type=float, default=1.5)
+    parser.add_argument("--target-context-tokens", type=int, default=DEFAULT_TARGET_CONTEXT_TOKENS)
+    parser.add_argument("--extra-budget-gib", type=float, default=1.75)
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)
     parser.add_argument("--wall-time-budget-seconds", type=float, default=1200.0)

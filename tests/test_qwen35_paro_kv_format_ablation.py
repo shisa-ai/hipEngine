@@ -5,8 +5,11 @@ import numpy as np
 from scripts import qwen35_paro_kv_format_ablation as ablation
 from scripts.qwen35_paro_kv_format_ablation import (
     FormatSpec,
+    _aggregate_reconstruction,
     _distribution_summary,
     _format_memory_bytes,
+    _format_quantizes_layer,
+    _fp8_e4m3fn_quantize_dequantize,
     _normalized_hadamard,
     _parse_candidates,
     _quantize_dequantize,
@@ -39,6 +42,22 @@ def test_quantize_dequantize_uses_float_scale_for_codes_and_rounded_scale_for_re
     expected = codes * float_scale.astype(np.float16).astype(np.float32)
 
     np.testing.assert_array_equal(restored, expected)
+
+
+def test_fp8_e4m3fn_roundtrip_handles_ties_subnormals_and_saturation() -> None:
+    values = np.asarray(
+        [0.0, -0.0, 2**-9, 1.0, 1.0625, 1.1875, 448.0, 500.0, -500.0],
+        dtype=np.float32,
+    )
+
+    restored = _fp8_e4m3fn_quantize_dequantize(values)
+
+    expected = np.asarray(
+        [0.0, -0.0, 2**-9, 1.0, 1.0, 1.25, 448.0, 448.0, -448.0],
+        dtype=np.float32,
+    )
+    np.testing.assert_array_equal(restored, expected)
+    assert np.signbit(restored[1])
 
 
 def test_normalized_hadamard_is_an_involution() -> None:
@@ -231,9 +250,58 @@ def test_format_memory_estimate_accounts_for_group_scales_and_mixed_value() -> N
     assert key_only_bytes["scale_bytes"] == baseline_bytes["scale_bytes"] // 2
 
 
+def test_tail_four_mixed_formats_hit_the_mild_256k_memory_target() -> None:
+    catalog = ablation._candidate_catalog(256)
+    fp8 = catalog["tail4_fp8_e4m3"]
+    per_head = catalog["tail4_int8_per_head"]
+    group32 = catalog["tail4_group32"]
+    kwargs = {
+        "tokens": 262144,
+        "full_layers": 10,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "scale_dtype": "fp16",
+    }
+
+    assert [_format_quantizes_layer(fp8, index, 10) for index in range(10)] == [
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        True,
+        True,
+        True,
+        True,
+    ]
+    assert _format_memory_bytes(fp8, **kwargs)["total_bytes"] == 4 * 1024**3
+    assert _format_memory_bytes(per_head, **kwargs)["total_bytes"] == int(4.0078125 * 1024**3)
+    assert _format_memory_bytes(group32, **kwargs)["total_bytes"] == int(4.0625 * 1024**3)
+
+
+def test_tail_four_reconstruction_preserves_the_first_six_layers() -> None:
+    keys = [np.full((2, 1, 8), index + 0.125, dtype=np.float32) for index in range(10)]
+    values = [np.full((2, 1, 8), index + 0.25, dtype=np.float32) for index in range(10)]
+    spec = FormatSpec(
+        "tail4",
+        k_group_size=8,
+        v_group_size=8,
+        quantized_tail_layers=4,
+    )
+
+    summary = _aggregate_reconstruction(keys, values, spec, scale_dtype="fp16")
+
+    assert summary["preserved_bf16_layers"] == 6
+    assert summary["quantized_layers"] == 4
+    assert summary["key"]["normalized_rmse"] > 0.0
+    assert summary["value"]["normalized_rmse"] > 0.0
+
+
 def test_parse_candidates_and_recommendation_respect_budget() -> None:
     candidates = _parse_candidates(
-        "baseline_max,group32,hadamard_group32,kivi_int8,kvarn_int8,key_int8_value_bf16",
+        "baseline_max,group32,hadamard_group32,kivi_int8,kvarn_int8,key_int8_value_bf16,"
+        "key_fp8_e4m3_value_bf16,tail4_fp8_e4m3,tail4_int8_per_head,tail4_group32",
         head_dim=256,
     )
     assert [candidate.name for candidate in candidates] == [
@@ -243,6 +311,10 @@ def test_parse_candidates_and_recommendation_respect_budget() -> None:
         "kivi_int8",
         "kvarn_int8",
         "key_int8_value_bf16",
+        "key_fp8_e4m3_value_bf16",
+        "tail4_fp8_e4m3",
+        "tail4_int8_per_head",
+        "tail4_group32",
     ]
 
     rows = [
