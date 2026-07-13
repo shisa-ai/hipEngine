@@ -155418,3 +155418,52 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `performance_claim=false`: one repetition, dynamic clocks, F16-vs-BF16 KV
   mismatch, and output divergence prevent promotion or a cross-engine speed
   ratio.
+
+## 2026-07-14 - Complete the post-GPF-5A llama.cpp HIP parity audit
+
+- Profiled clean detached hipEngine commit `2332756e` at 512 and 4K after
+  prebuilding worktree-local AOTriton wrappers outside `rocprofv3`; every
+  retained profiler run used `--require-cached-build`. The first attempt failed
+  before measurement on the missing detached-worktree wrapper and contributed
+  no data. The successful prefill-only one-pass traces contain
+  **568.953/5235.029 ms** over **2009/5495** dispatches.
+- Reconciled those profiles with the retained matched local llama.cpp HIP
+  512/4K traces and the public six-shape wall table. At 4K, exact GDN is
+  **1700.469 vs 330.488 ms (5.15x)**, linear-attention convolution is
+  **954.438 vs 32.980 ms (28.94x)**, and dense Q8 is
+  **749.444 vs 531.345 ms (1.41x)**. hipEngine is already faster in selected
+  Q4 (**622.997 vs 1173.527 ms**), selected Q5
+  (**391.637 vs 585.011 ms**), and full attention
+  (**147.762 vs 204.083 ms**). llama.cpp launches 3.24x as many kernels, so a
+  wholesale backend/graph port is not selected.
+- The wall comparison is shape-specific: hipEngine reaches **75.60%** of
+  llama.cpp prefill at 4K but **99.20%** at 128K. Decode stays within
+  **-5.54% to +4.44%** through 64K and trails **13.58%** at 128K. This is a
+  family-selection audit, not a strict kernel A/B: hipEngine uses BF16 KV and
+  repeated token `9707`; llama.cpp uses F16 KV and its own synthetic workload,
+  and the repetition/allocator scopes differ.
+- Audited llama.cpp measured build `1ebf790c` against upstream base
+  `6e9007ae6` and hipEngine `2332756e`. The performance-relevant GDN,
+  SSM-convolution, MMQ, top-k MoE, dispatch/fusion, FlashAttention, and AR model
+  regions are byte-identical between the measured local llama.cpp head and the
+  immutable upstream lines cited in the analysis.
+- Decision: start with `LCP-1`, a separately registered exact same-stream
+  long-token convolution candidate using llama.cpp's 32-token by 128-channel
+  shared-memory schedule. It is independent of rejected GPF-4 queue isolation
+  and must pass primitive output/final-state bytes, 512/4K 82-part state,
+  same-stream trace, and fresh 1+3 wall gates. Do not directly port llama.cpp's
+  GDN wave-reduction tree: the analogous hipEngine register/tree path failed
+  7/10 exact natural trajectories. Ranked follow-ups are bounded 128K decode
+  attribution, exact chunked/prefix GDN, dense-Q8 shared-layout screening,
+  matrix-oriented router logits, and bulk-scratch liveness planning.
+- Published source-backed analysis `docs/LLAMACPP-HIP-PARITY.md` and compact
+  non-performance artifact
+  `benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json`.
+  Updated the GGUF optimization handoff/document ownership to point future work
+  at the parity audit. No new topline benchmark was run or published.
+- Validation: both new documents were read end-to-end; `python3 -m json.tool`
+  passes the artifact; all **33** immutable source links resolve to valid commit
+  line ranges; all seven claimed llama.cpp backend files are byte-identical
+  across measured head/upstream base; recomputed six-shape wall deltas and every
+  family ratio/share match the serialized values; the focused trace-summary
+  suite passes **25/25**; local links and `git diff --check` pass.
