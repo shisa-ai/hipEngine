@@ -153857,3 +153857,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   variants already added at the candidate commit.
 - Next run a clean selector-unset 512/1K/4K confirmation at the promotion
   commit, then the final five-run right-sized 512/1K/4K/32K/64K/128K sweep.
+
+## 2026-07-13 - GPF-2E automatic gfx1151 route passes clean focus confirmation
+
+- Used clean detached `/tmp/hipengine-gpf2e-clean-b8949477` at promotion
+  commit `b8949477e32baf09a456551f4cba31ef1fa8858f`. Both
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE` and
+  `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE` were explicitly unset. A
+  discarded non-cache-only `512/1` run built only worktree-keyed artifacts;
+  the retained command required cached builds and left the worktree clean.
+- Ran Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV with the explicit gfx1151 backend,
+  repeated token `9707`, bulk attention, WMMA prefill, GEMV/decode repack,
+  eager decode, one discarded warmup, and four measured runs per shape in one
+  max-4K resident session. Medians are **821.755/897.160/750.896 prefill
+  tok/s** and **48.818/51.393/52.213 eager decode tok/s** at 512/1K/4K.
+  All 12 final IDs are `9707`; the measured command took about 135.8 seconds.
+- This reproduces the explicit `chain_lds32_direct` A/B through backend policy,
+  so the automatic route is settled. The focus remains
+  `performance_claim=false`: it has four repetitions and max-4K memory scope,
+  whereas publication requires two warmups plus five fresh-graph measurements
+  in a separate right-sized process for each of all six shapes.
+- Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-default-focus.json`.
+  Full local artifact
+  `/tmp/gpf2e-auto-clean-b8949477-focus-512-1k-4k.json` is sha256
+  `816c48eb23f461a9fbb0bc6291d1efd51b1da22b839df0790530b5bcfa1dedd3`.

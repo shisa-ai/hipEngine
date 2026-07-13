@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_default_focus_confirmation",
+  "status": "diagnostic_retained_pending_rollup_gate",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "GPF-2E compact-scale direct-conv scalar-exact LDS32 GDN prefill",
+  "conclusion": "The selector-unset gfx1151 backend policy reproduces the promoted direct-conv route at 821.755/897.160/750.896 prefill tok/s with stable final IDs. This one-session four-run focus is not the final right-sized publication rollup.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "b8949477e32baf09a456551f4cba31ef1fa8858f",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "workload": {
+    "shapes": ["512/128", "1K/128", "4K/128"],
+    "prompt": "repeated token 9707",
+    "backend": "hip_gfx1151",
+    "gdn_prefill_selector": null,
+    "q4_t16_prefill_selector": null,
+    "bulk_attention_mode": "bulk",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "graph_replay_decode": false
+  },
+  "protocol": {
+    "session": "one resident max-4K session shared by all three shapes",
+    "warmups_per_shape": 1,
+    "measured_repetitions_per_shape": 4,
+    "timing": "separate synchronized production prefill and eager decode wall",
+    "state_reset": "production session reset before every repetition",
+    "build": "worktree-keyed lazy artifacts prebuilt outside the measurement; measured command required cached builds",
+    "accounted_wall_seconds": 135.8
+  },
+  "measurements": {
+    "512/128": {
+      "prefill_tok_s_median": 821.7548976646812,
+      "prefill_tok_s_min": 820.4641199182988,
+      "prefill_tok_s_max": 822.3377698911446,
+      "decode_tok_s_median": 48.81830995430724,
+      "final_token_ids": [9707, 9707, 9707, 9707],
+      "final_token_ids_stable": true
+    },
+    "1K/128": {
+      "prefill_tok_s_median": 897.1597983570446,
+      "prefill_tok_s_min": 893.4928839960457,
+      "prefill_tok_s_max": 898.0933848393785,
+      "decode_tok_s_median": 51.392938156287755,
+      "final_token_ids": [9707, 9707, 9707, 9707],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 750.8958296950934,
+      "prefill_tok_s_min": 750.6861277606934,
+      "prefill_tok_s_max": 751.5172600033053,
+      "decode_tok_s_median": 52.212896166728015,
+      "final_token_ids": [9707, 9707, 9707, 9707],
+      "final_token_ids_stable": true
+    }
+  },
+  "decision": {
+    "clean_provenance": true,
+    "cached_build_required": true,
+    "selectors_unset": true,
+    "all_final_ids_stable": true,
+    "automatic_route_confirmed": true,
+    "eligible_for_publication_rollup": false,
+    "reason_publication_blocked": "Focus run uses four repetitions in one max-4K session and eager decode; the publication protocol requires five measured fresh-graph runs in one right-sized process per shape."
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf2e-auto-clean-b8949477-focus-512-1k-4k.json",
+    "full_local_artifact_sha256": "816c48eb23f461a9fbb0bc6291d1efd51b1da22b839df0790530b5bcfa1dedd3",
+    "command": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 1K/128 4K/128 --token-id 9707 --warmup-runs 1 --measured-runs 4 --warmup-decode-tokens 1 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --no-graph-replay-decode --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --json /tmp/gpf2e-auto-clean-b8949477-focus-512-1k-4k.json"
+  }
+}

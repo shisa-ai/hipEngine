@@ -27,8 +27,10 @@ improves 512/1K/4K prefill **776.428/825.319/700.824 ->
 823.093/889.209/744.577 tok/s** (**+6.01%/+7.74%/+6.24%**). The six-case
 full-model matrix and all 250 natural logit transitions are byte-exact; every
 timed decode trajectory matches and weighted decode is **+0.075%**. GPF-2E is
-now the gfx1151-scoped automatic route; gfx1100 remains fused. The final clean
-selector-unset focus confirmation and right-sized six-shape rollup remain.
+now the gfx1151-scoped automatic route; gfx1100 remains fused. A clean
+selector-unset focus confirmation at `b8949477` reproduces
+**821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. The final
+right-sized six-shape rollup remains.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -229,7 +231,7 @@ baseline to restore verbatim.
 | `GPF-2C` register-resident ordered wave32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json): `368.702/383.292/354.672 tok/s` at 512/1K/4K, -12.98%/-14.58%/-13.50%; recurrence `928.006 ms` | Plain/segment output and FP32 state byte-exact; 46 focused tests pass; decode within -0.31%..-0.24% | Rejected: ordered shuffles remain slower than fused despite state residency |
 | `GPF-2D` scalar-exact LDS32 residency | [`focus candidate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json): `753.489/799.844/686.840 tok/s` at 512/1K/4K; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json): 6/6; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json): `420.959 -> 753.891` and `408.359 -> 687.831 tok/s` at 512/4K; [`automatic six-shape stress gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json): `751.993/804.420/688.545/589.866/504.730/372.892 tok/s` | Sampled token, hidden seed, resident Conv/GDN state, and required layer outputs byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json): 250/250 exact logits, all timed trajectories exact, decode +0.023%; default stress IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused pending transfer evidence; right-sized publication sweep remains |
 | `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%); [`clean full-model A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json): 512/1K/4K `747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s` (+3.11%/+2.42%/+1.94%); [`automatic focus confirmation`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json): `774.653/823.149/701.389 tok/s` | BF16/FP16 fixture bytes and full-model logits byte-exact; every 128-step measured trajectory identical; aggregate decode wall -0.0031%; automatic IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays baseline pending transfer evidence; final five-run/right-sized rollup remains |
-| `GPF-2E` compact-scale direct-conv LDS32 | [`clean balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json): current default `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at 512/1K/4K (+6.01%/+7.74%/+6.24%) | Plain/segment primitive and [`six-case full-model matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) are byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json) passes 250/250 exact logits and all timed trajectories with decode +0.075% | **Promoted on gfx1151** through backend capability; gfx1100 stays fused; run selector-unset confirmation then final right-sized rollup |
+| `GPF-2E` compact-scale direct-conv LDS32 | [`clean balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json): current default `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at 512/1K/4K (+6.01%/+7.74%/+6.24%); [`automatic focus`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-default-focus.json): `821.755/897.160/750.896 tok/s` | Plain/segment primitive and [`six-case full-model matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) are byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json) passes 250/250 exact logits and all timed trajectories with decode +0.075%; automatic focus IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused; final right-sized rollup remains |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -623,8 +625,12 @@ tok/s (+0.075%)**. This satisfies the predeclared promotion contract.
 
 gfx1151 backend capability now selects `chain_lds32_direct`; gfx1100 remains
 fused pending independent evidence. Materialized LDS32 remains as an explicit
-rollback/bisection route through one release window. Next run the clean
-selector-unset focus confirmation, then the final right-sized six-shape sweep.
+rollback/bisection route through one release window. A clean selector-unset
+focus at promotion commit `b8949477` reproduces **821.755/897.160/750.896
+tok/s** at 512/1K/4K and all 12 final IDs remain `9707`. It took about 2.3
+minutes. Because it uses four measurements and one max-4K eager session, it is
+a policy confirmation rather than the final five-run/right-sized fresh-graph
+rollup. The automatic route is settled; run that final six-shape sweep next.
 
 ## Correctness And Promotion Contract
 
