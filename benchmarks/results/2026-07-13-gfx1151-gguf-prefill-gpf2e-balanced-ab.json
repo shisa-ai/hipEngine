@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_balanced_ab",
+  "status": "candidate_performance_gate_passed",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "candidate": "GPF-2E compact-scale direct-conv scalar-exact LDS32 GDN prefill",
+  "conclusion": "The byte-exact direct-conv candidate wins clean balanced same-session 512/1024/4096 prefill wall by 1.060x/1.077x/1.062x and preserves every timed final token.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "ffbcc4d9db87f34d01d2b06e970754c0cdf3ba16",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "workload": {
+    "contexts": [512, 1024, 4096],
+    "decode_tokens": 0,
+    "prompt": "repeated token 9707",
+    "bulk_attention_mode": "bulk",
+    "baseline_mode": "chain_lds32",
+    "candidate_mode": "chain_lds32_direct",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true
+  },
+  "protocol": {
+    "session": "one resident session shared by both modes and contexts",
+    "ordering": "balanced baseline-candidate / candidate-baseline",
+    "warmups_per_mode_context": 1,
+    "measured_repetitions_per_mode_context": 4,
+    "timing": "synchronized perf_counter_ns around production session.prefill",
+    "state_reset": "production prefill reset before every prompt",
+    "build": "lazy artifacts prebuilt outside the measurement; measured command required cached builds"
+  },
+  "correctness_gate": {
+    "artifact": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json",
+    "artifact_sha256": "671442ca3c704752d1c778f1f2ac0063f6310950225f4225d3d2f1e24f54cced",
+    "correctness_modes": ["fused", "chain_lds32_direct"],
+    "contract": "byte_exact",
+    "covered_contexts": [17, 512, 1024, 1025, 4095, 4096],
+    "sampled_tokens_identical": true,
+    "hidden_seed_exact": true,
+    "resident_state_exact": true,
+    "all_required_layer_outputs_exact": true,
+    "default_promotion_eligible": true
+  },
+  "measurements": {
+    "512": {
+      "baseline_wall_ms": [660.660339, 659.486906, 659.178537, 659.373704],
+      "candidate_wall_ms": [622.144906, 621.942246, 621.6945, 622.966258],
+      "baseline_median_ms": 659.430305,
+      "candidate_median_ms": 622.043576,
+      "baseline_prefill_tok_s": 776.4277682081961,
+      "candidate_prefill_tok_s": 823.0934612207939,
+      "candidate_speedup": 1.060103070656902,
+      "candidate_wall_delta_percent": -5.669549718373945,
+      "paired_candidate_minus_baseline_median_ms": -37.51434850000004,
+      "timed_token_ids_exact": true,
+      "timed_token_id": 9707
+    },
+    "1024": {
+      "baseline_wall_ms": [1240.858862, 1240.737975, 1240.725571, 1239.658658],
+      "candidate_wall_ms": [1150.451107, 1152.346686, 1150.824107, 1152.771262],
+      "baseline_median_ms": 1240.731773,
+      "candidate_median_ms": 1151.5853965000001,
+      "baseline_prefill_tok_s": 825.3193980227022,
+      "candidate_prefill_tok_s": 889.2089141736524,
+      "candidate_speedup": 1.077411867822344,
+      "candidate_wall_delta_percent": -7.1849837684458056,
+      "paired_candidate_minus_baseline_median_ms": -89.14637649999997,
+      "timed_token_ids_exact": true,
+      "timed_token_id": 9707
+    },
+    "4096": {
+      "baseline_wall_ms": [5833.891244, 5842.431168, 5846.671164, 5848.693805],
+      "candidate_wall_ms": [5507.551039, 5490.939808, 5495.456551, 5506.764604],
+      "baseline_median_ms": 5844.551166,
+      "candidate_median_ms": 5501.1105775,
+      "baseline_prefill_tok_s": 700.8237046204687,
+      "candidate_prefill_tok_s": 744.5769253853906,
+      "candidate_speedup": 1.0624311370697948,
+      "candidate_wall_delta_percent": -5.876252576894637,
+      "paired_candidate_minus_baseline_median_ms": -346.571907,
+      "timed_token_ids_exact": true,
+      "timed_token_id": 9707
+    }
+  },
+  "decision": {
+    "measurement_valid": true,
+    "clean_provenance": true,
+    "candidate_wins_all_contexts": true,
+    "performance_gate_passed": true,
+    "correctness_contract": "byte_exact",
+    "eligible_for_gfx1151_default": true,
+    "eligible_for_shared_gfx1100_gfx1151_default": false,
+    "reason_shared_default_blocked": "No independent gfx1100 transfer gate has been run for GPF-2E."
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf2e-clean-ffbcc4d9-balanced-ab-512-1k-4k.json",
+    "full_local_artifact_sha256": "24ca66c895e8e5062acc0d5c3a974ec50dec368ba5fc39ca501e2f1d7cc5a966",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_gdn_prefill_ab.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend auto --contexts 512,1024,4096 --baseline-mode chain_lds32 --candidate-mode chain_lds32_direct --prompt-token-id 9707 --expected-token-id 9707 --warmups 1 --repetitions 4 --use-wmma-prefill --correctness-artifact benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf2e-clean-ffbcc4d9-balanced-ab-512-1k-4k.json"
+  }
+}

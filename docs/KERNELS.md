@@ -310,17 +310,18 @@ gfx1151 512 recurrence to `221.873 ms / 30`; focused prefill reaches
 `753.489/799.844/686.840 tok/s` at 512/1K/4K versus fused
 `423.708/448.694/410.023`. The clean six-case state matrix, balanced 512/4K
 wall, and ten-prompt trajectory/decode gates all pass. Backend-package
-capability metadata therefore selects `chain_lds32` for gfx1151 `auto`, while
-gfx1100 retains fused pending an independent transfer gate. Explicit `fused`
-and exact `chain` remain rollback/oracle routes; a missing automatic candidate
-falls back to fused. See
+capability metadata initially selected `chain_lds32` for gfx1151 `auto`; GPF-2E
+below supersedes that policy after an incremental exact gate. gfx1100 retains
+fused pending an independent transfer gate. Explicit `fused` and exact `chain`
+remain rollback/oracle routes; a missing automatic candidate falls back to
+fused. See
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json`,
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json`,
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json`, and
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json`.
 
-GPF-2E adds an explicit compact-scale/direct-conv refinement without changing
-the GPF-2D default. The registered prepare variant
+GPF-2E adds a compact-scale/direct-conv refinement to the GPF-2D schedule. The
+registered prepare variant
 `f32_bf16_compact_scales` writes beta/decay as `[token,v_head]` and Q/K scales
 as `[token,k_head]`; it does not materialize Q/K/V. Registered plain/segment
 `f32_decode_order_exact[_segments]_lds32_direct` recurrence variants read the
@@ -329,11 +330,15 @@ retain the same scalar recurrence in a 16 KiB LDS tile. Do not substitute the
 compact scale ABI into a materialized recurrence: their scale indexing differs.
 Plain and segmented production-head fixtures are byte-exact to materialized
 LDS32 and pass the CPU-reference gate. A cached trace records workgroup 32,
-64 VGPR, zero scratch, and both direct kernel names. The dirty focus screen is
-`769.378/821.460/702.808 -> 817.004/903.229/755.077 tok/s` at 512/1K/4K;
-keep `chain_lds32_direct` explicit until clean full-model and balanced gates
-complete. See
-`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json`.
+64 VGPR, zero scratch, and both direct kernel names. The clean current-default
+A/B is `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at
+512/1K/4K; the six-case state matrix and 250/250 natural transitions are exact,
+and aggregate decode is +0.075%. Backend capability therefore selects
+`chain_lds32_direct` for gfx1151 `auto`; gfx1100 remains fused. Materialized
+`chain_lds32` stays as an explicit rollback/bisection route. See
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json`,
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json`, and
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json`.
 
 ## DFlash / MTP lineage map
 

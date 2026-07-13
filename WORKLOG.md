@@ -153805,3 +153805,55 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - GREEN: `uv run pytest -q tests/test_gguf_gdn_trajectory_gate.py` passes
   **9/9**. This lets the GPF-2E gate measure the actual shipped materialized
   LDS32 route against direct-conv without relying on transitive decode timing.
+
+## 2026-07-13 - GPF-2E passes clean balanced wall and trajectory/decode gates
+
+- Created clean detached `/tmp/hipengine-gpf2e-clean-ffbcc4d9` at
+  `ffbcc4d9db87f34d01d2b06e970754c0cdf3ba16`. A discarded non-cache-only
+  512 run built only worktree-keyed artifacts; the retained command required
+  cached builds and left the worktree clean.
+- Retained balanced command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_gdn_prefill_ab.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend auto --contexts 512,1024,4096 --baseline-mode chain_lds32 --candidate-mode chain_lds32_direct --prompt-token-id 9707 --expected-token-id 9707 --warmups 1 --repetitions 4 --use-wmma-prefill --correctness-artifact benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf2e-clean-ffbcc4d9-balanced-ab-512-1k-4k.json`.
+- Clean current-default -> direct-conv medians:
+  - 512: **776.428 -> 823.093 tok/s (+6.01%)**, wall
+    `659.430 -> 622.044 ms`;
+  - 1K: **825.319 -> 889.209 tok/s (+7.74%)**, wall
+    `1240.732 -> 1151.585 ms`;
+  - 4K: **700.824 -> 744.577 tok/s (+6.24%)**, wall
+    `5844.551 -> 5501.111 ms`.
+  Every one of the 12 paired measurements favors direct-conv and all 24 timed
+  IDs are `9707`. `performance_claim=true`; the retained command took about
+  2.5 minutes. Full artifact sha256:
+  `24ca66c895e8e5062acc0d5c3a974ec50dec368ba5fc39ca501e2f1d7cc5a966`.
+- Created clean detached `/tmp/hipengine-gpf2e-clean-5501aeb9` at
+  `5501aeb940f8c369b77d9cd9a4759610313409a6`, discarded a one-prompt cache
+  warmup, then ran the full ten-prompt/four-category trajectory/decode gate
+  with explicit `--baseline-mode chain_lds32 --candidate-mode
+  chain_lds32_direct`, 24 correctness decode steps, two balanced 128-step
+  performance repetitions, graph replay, decode repack, and cached builds.
+- All **250/250** logit transitions pass with exact IDs, `KL=0`, and top-1
+  100%; every timed 128-token trajectory is exact. Aggregate median decode is
+  **24002.318 -> 23984.243 ms**, or **53.3282 -> 53.3684 tok/s (+0.075%)**.
+  The no-allowance aggregate rule passes. Full artifact sha256:
+  `5dd1ca07c18743c3a2bbfdaec01ecc48ddc0fc208ee069928dc9ecf4f3d535b7`.
+- Retained compact artifacts:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json`
+  and
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json`.
+
+## 2026-07-13 - Promote GPF-2E direct-conv automatically on gfx1151
+
+- RED changed the gfx1151 package/default expectations to
+  `chain_lds32_direct`; backend capability and resolved-plan tests failed on
+  the old `chain_lds32` value. Added an automatic-route execution test that
+  requires compact prepare plus direct LDS32 recurrence.
+- GREEN changes only `hipengine.kernels.hip_gfx1151` capability metadata.
+  gfx1100 remains fused. Materialized LDS32 stays explicitly selectable as a
+  rollback/bisection route, and missing preferred kernels retain the existing
+  fused fallback.
+- The combined backend, routing, wall/trajectory harness, comparator, and GDN
+  correctness bundle passes **114/114** tests. The policy unit also corrects
+  the backend-plan registry-key count from 20 to 23 for the three GPF-2E
+  variants already added at the candidate commit.
+- Next run a clean selector-unset 512/1K/4K confirmation at the promotion
+  commit, then the final five-run right-sized 512/1K/4K/32K/64K/128K sweep.
