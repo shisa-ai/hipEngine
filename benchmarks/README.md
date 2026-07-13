@@ -1,9 +1,9 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-12**
+Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`8116c4531fa79bb94690042023da8c9360648052`
+`d6504544712809e20e099cd4862524b85a5e9136`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -178,7 +178,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: 128K BF16 is **22.124 GiB** tracked; 256K INT8 is **23.957 GiB** with no BF16 shadow. The required Qwen3.6 128K/128 rollout rejects both FP16- and FP32-scale INT8, so 256K is allocation evidence only, not a usable route. | Current diagnostic table | Rerun after INT8 KV write/decode math, scale policy, attention accumulation, or model changes; require the Qwen3.6 long-rollout gate before support. |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean measured hipEngine `d6504544`; TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: compact chunk-local prefill metadata lowers 256K INT8 tracked peak **23.957 -> 22.971 GiB (-0.986 GiB)** with no BF16 shadow. Final matched-context 128K/16 remains rejected at KL **0.85128**, top-1 **41.18%**; no clipped, groupwise, mixed-layer/head, or residual candidate transferred through the 4K gate. Allocation evidence only, not a usable route. | Current diagnostic table | Rerun only after a materially different KV representation/model or a validated BF16 semantic-task baseline; require matched-context and bounded-task quality before support. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
@@ -554,41 +554,47 @@ links without publishing their numeric rows as current results. Their removed
 tables remain recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### W7900 PARO context capacity, 2026-07-12
+### W7900 PARO context capacity and INT8 fidelity, 2026-07-13
 
-**Status: current capacity measurement; INT8 quality rejected.** Clean detached
-hipEngine `8116c453` (rebased-equivalent reachable `8708304f`; runtime and
-benchmark code identical) on W7900/gfx1100 and TheRock HIP 7.15 used the current
-Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 generated tokens, four
-warmup tokens, current chunk autotuning, and graph decode. The physical layout
-and 24 GiB portability gates pass, but the required Qwen3.6 long-rollout gate
-does not. Therefore 256K INT8 is an allocation-capacity result, not a usable or
-supported route.
+**Status: current capacity measurement; INT8 quality rejected.** Clean
+hipEngine `d6504544` on W7900/gfx1100 and TheRock HIP 7.15 used the current
+Qwen3.6 packed PARO snapshot and repeated token `9707`. The retained metadata
+change replaces the persistent prompt-rows-by-blocks table with a chunk-local
+4,096-row table while preserving `KVLiveSpans`. The physical layout and 24 GiB
+portability gates pass, but matched-context and bounded task quality do not.
+Therefore 256K INT8 remains allocation evidence, not a usable route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
 | Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Quality status |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| PARO BF16 KV | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
-| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **23.957 GiB** | 0.043 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 128K/128 rollout |
+| PARO BF16 KV (2026-07-12 reference) | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
+| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **22.971 GiB** | 1.029 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 matched-context and task gates |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
-The capacity rows are one run each because memory needs one high-water
-measurement, not five performance repetitions. Timings are diagnostic only.
-The INT8 row retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
-bytes across ten full-attention layers, with no persistent BF16 K/V shadow.
+The clean 256K/128 row retains 2,686,976,000 payload bytes plus 20,992,000
+FP16 scale bytes across ten full-attention layers. The compact table is
+16,793,600 bytes (`4,096 x 1,025` INT32 entries). Tracked peak falls
+**25,723,838,504 -> 24,665,296,404 bytes** (**23.957 -> 22.971 GiB**, -0.986
+GiB / -4.12%), increasing the 24 GiB margin from 0.043 to 1.029 GiB. One-shot
+diagnostic throughput is effectively flat within run variance: prefill
+632.837 -> 631.457 tok/s and decode 40.066 -> 40.008 tok/s.
 
-The matched Qwen3.6 BF16-vs-INT8 128K/128 quality run is finite and passes the
-layout audit, but diverges at generated index 2. FP16 scales measure mean/max KL
-**3.7646/10.0796** and **3.88%** top-1 agreement; an FP32-scale follow-up also
-rejects at **3.6300/10.0198 KL** and **7.75%** top-1. This supersedes the old
-Qwen3.5-fixture implication. Do not describe 256K INT8 as supported until a
-current Qwen3.6 long-rollout gate passes.
+The final BF16-reference-token matched 128K/16 gate is finite and passes the
+no-shadow audit, but rejects at mean/max KL **0.85128/4.97382** and **41.18%**
+top-1 agreement. This is the intrinsic comparison; the older 128K/128
+independent-rollout KL/top-1 headline includes cascade after histories diverge.
+Clipping, group16/32/64, K/V mixed formats, selective BF16 layers/heads, and
+sink/recent residual windows all failed to clear both gates at 4K within the
+reclaimed budget. The five-category task smoke remains
+`reference_unscorable` because BF16 itself scored 0/5. Do not describe 256K
+INT8 as supported.
 
-Artifact:
-[`2026-07-12-w7900-v030-paro-context-capacity.json`](results/2026-07-12-w7900-v030-paro-context-capacity.json).
-Quality diagnostics:
-[FP16 scales](results/2026-07-12-w7900-v030-paro-int8-kv-128k-quality.json)
-and [FP32 scales](results/2026-07-12-w7900-v030-paro-int8-kv-fp32scale-128k-quality.json).
+Outcome artifact:
+[`2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`](results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json).
+Detailed diagnostics:
+[matched baseline](results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json),
+[format screen](results/2026-07-13-w7900-paro-kv-format-ablation.json), and
+[policy screen](results/2026-07-13-w7900-paro-kv-policy-ablation.json).
 
 ### W7900 PARO gfx1151 transfer gate, 2026-07-12
 

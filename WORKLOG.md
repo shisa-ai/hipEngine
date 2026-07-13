@@ -153096,3 +153096,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   complexity for a path that already fails the bounded 4K matched-context gate.
   Keep explicit INT8 KV diagnostic/approximate only. Artifact:
   `benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json`.
+
+## 2026-07-13 — Finalize PARO INT8 KV capacity/quality outcome
+
+- Final clean `d6504544` W7900 matched-context `128K/16` rerun reproduces the
+  baseline rejection exactly: mean/max KL `0.8512849/4.9738187`, top-1
+  `41.176%`, first mismatch at logit position 3, and no-shadow memory audit
+  passed. The compact prefill table is `8,404,992` bytes at 128K; retained INT8
+  KV is `1,355,304,960` bytes.
+- Final clean `d6504544` W7900 `256K/128` capacity run passed allocation and
+  no-shadow audits with unchanged preview IDs `[58054,292]`. The reusable table
+  is `4,096 x 1,025` entries (`16,793,600` bytes). Tracked peak is
+  `24,665,296,404` bytes (`22.971347 GiB`, 1.028653 GiB below 24 GiB), sampled
+  HIP peak `21.041016 GiB`, and retained KV `2,707,968,000` bytes.
+- Against the July 12 row, tracked peak improves
+  `25,723,838,504 -> 24,665,296,404` bytes (`-1,058,542,100`, `-0.98584 GiB`,
+  `-4.115%`). One-shot diagnostic throughput is flat/noise-level:
+  prefill `632.837 -> 631.457 tok/s` (`-0.218%`) and decode
+  `40.066 -> 40.008 tok/s` (`-0.145%`). This is a capacity/memory claim, not a
+  speed claim.
+- Final focused gate: `ruff` passed and 172 tests passed across format/policy,
+  matched-quality, resident layout, E2E KV fixture, memory audit, and primitive
+  accuracy coverage. Benchmark README/export and changelog now publish the
+  memory win while keeping `usable_int8_256k_claim=false`.
+- Outcome artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`.

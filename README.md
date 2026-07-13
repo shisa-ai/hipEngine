@@ -86,30 +86,30 @@ isolated experiment with its own gates (see
 
 ## Memory Usage
 
-The clean 2026-07-12 W7900 run measured hipEngine `8116c453`
-(rebased-equivalent reachable `8708304f`; runtime and benchmark code identical)
-against the current Qwen3.6 packed PARO model under the 24 GiB portability gate. Both physical
-capacity/layout rows pass, but the required Qwen3.6 long-rollout quality gate
-rejects INT8 KV. Accordingly, 256K INT8 is reported as allocation capacity—not
-as a supported or usable route.
+The clean 2026-07-13 W7900 run measured hipEngine `d6504544` against the
+current Qwen3.6 packed PARO model under the 24 GiB portability gate. Compact
+chunk-local prefill metadata reclaims 0.986 GiB at 256K. The physical
+capacity/layout gate passes, but matched-context and bounded task quality reject
+INT8 KV. Accordingly, 256K INT8 is allocation capacity—not a supported route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
 | Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Quality status |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| PARO BF16 KV | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
-| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **23.957 GiB** | 0.043 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 128K/128 rollout |
+| PARO BF16 KV (2026-07-12 reference) | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
+| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **22.971 GiB** | 1.029 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 matched-context and task gates |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
-bytes across ten full-attention layers and no BF16 K/V shadow. Its matched
-128K/128 BF16 comparison diverges at generated index 2, with mean/max KL
-`3.7646/10.0796` and 3.88% top-1 agreement. FP32 scales also reject. Memory was
-measured once per row; the reported timing fields are diagnostic only.
+bytes across ten full-attention layers and no BF16 K/V shadow. Its final
+BF16-reference-token matched 128K/16 gate rejects at mean/max KL
+`0.85128/4.97382` and 41.18% top-1 agreement. Format and mixed-policy screens
+did not find a candidate that transferred through 4K; the five-category task
+reference is itself unscorable. Memory was measured once; timing is diagnostic.
 
 See the
-[`capacity summary`](benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json),
-[FP16-scale quality gate](benchmarks/results/2026-07-12-w7900-v030-paro-int8-kv-128k-quality.json),
-and [FP32-scale follow-up](benchmarks/results/2026-07-12-w7900-v030-paro-int8-kv-fp32scale-128k-quality.json).
+[`capacity/fidelity outcome`](benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json),
+[format screen](benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json),
+and [policy screen](benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json).
 
 ### llama.cpp configuration note
 

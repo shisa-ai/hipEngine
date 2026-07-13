@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-13
+
+- [gfx1100 PARO INT8 KV capacity/fidelity outcome] Qwen3.6-35B-A3B W4 PARO 256K/128 tracked peak **23.957 -> 22.971 GiB (-4.12%, -0.986 GiB)** after replacing the persistent prompt-rows-by-blocks table with a reusable 4,096-row chunk-local table; retained KV stays 2.708 GB, no-shadow audit passes, and one-shot prefill/decode are noise-level **632.837 -> 631.457 / 40.066 -> 40.008 tok/s**. Final matched 128K/16 remains rejected at KL **0.85128**, top-1 **41.18%**; clipped, groupwise, K/V-mixed, BF16 layer/head, and sink/recent candidates also fail the 4K transfer gate, while the five-category BF16 task reference is unscorable. Capacity is retained; usable INT8 is not. `benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`.
+
 ## 2026-07-12
 
 - [gfx1100 four-engine topline refresh] Radeon Pro W7900/gfx1100 Qwen3.6-35B six-shape matrix: stale `performance_claim=false` revision `b4edca09` -> **accepted clean measured `8116c453` topline** (rebased-equivalent reachable `8708304f`; runtime/benchmark code identical) after a W7900-local four-step oracle, right-sized PARO/GGUF graph sessions, two warmups plus five measured medians, five-sample llama.cpp controls, and corrected DRM `card1` whole-device VRAM scope. Endpoint changes include PARO 512/128 prefill **2796.853 -> 2917.732 tok/s (+4.32%)** and decode **112.207 -> 115.599 (+3.02%)**; production-graph GGUF decode changes **35.838 -> 89.873 (+150.78%)** at 512 and **35.426 -> 56.745 tok/s (+60.18%)** at 128K. `benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json`.
