@@ -153274,3 +153274,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   conclusions, promotion gates, and an updated punchlist. Local-link validation
   found every target present; mechanical assertions rechecked headline values
   against the retained JSON artifacts; `git diff --check` passed.
+
+## 2026-07-13 — Direct 220 Ki PARO BF16 capacity rejection
+
+- Replaced the retained-KV-only projection with a clean direct W7900/gfx1100
+  run at exactly 225,280 prompt tokens (220 Ki), 4 warmup decode tokens, and 128
+  measured decode tokens on hipEngine `bec5428d` and the current Qwen3.6 W4-PARO
+  fingerprint `995a8c67...d917`. Exact command:
+  `env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 225280 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-220ki-20260713/paro-220ki-bf16.json`.
+- The run completes without a segfault, emits finite logits, and passes the BF16
+  layout audit, retaining `4,618,977,280` K/V bytes. It nevertheless fails the
+  24 GiB tracked gate: peak `25,866,320,852` bytes (`24.089889 GiB`), or
+  `96,517,076` bytes (`0.089889 GiB`) over.
+- An approximately 1 Hz `rocm-smi` monitor covering the final 82 seconds of
+  prefill observes at least `26,663,366,656` bytes (`24.832195 GiB`) whole-device
+  use. Because monitoring began after process launch this is a lower bound; the
+  benchmark's phase-boundary HIP sample (`22.750 GiB`) is coarser and cannot be
+  used to claim physical 24 GB fit. Raw/monitor SHA-256 values are
+  `2f395e0d...e0c9` / `bbe7c5bd...25b3`.
+- Published the compact capacity-rejection artifact and updated only benchmark
+  rollups/exports plus this handoff. Single-run 716.869 prefill / 45.301 decode
+  tok/s values remain diagnostic (`performance_claim=false`). Next action is a
+  fully monitored lower-context sweep to locate a realistic BF16 frontier.

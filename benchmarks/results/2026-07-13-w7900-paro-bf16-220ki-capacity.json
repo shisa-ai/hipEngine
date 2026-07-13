@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "kind": "w7900_paro_bf16_220ki_context_capacity",
+  "date": "2026-07-13",
+  "status": "execution_passed_24gib_capacity_rejected",
+  "performance_claim": false,
+  "capacity_claim": false,
+  "fit_under_24gib_claim": false,
+  "execution_completed": true,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "physical_vram_bytes": 48301604864,
+    "portability_gate_bytes": 25769803776,
+    "portability_gate_gib": 24.0
+  },
+  "source": {
+    "hipengine_commit": "bec5428de754e078e22002d05bb66227c73d3c98",
+    "branch": "kv-int8-accuracy",
+    "source_clean": true,
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "rocm_version": "7.2.4",
+    "hipcc_version_reported_by_provenance": "HIP version: 7.2.53211-3d9ef42",
+    "cached_compiler_version_file": "/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt",
+    "cached_compiler_version_file_sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7",
+    "cached_compiler_version": "HIP version: 7.15.0-0000000",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18
+    }
+  },
+  "protocol": {
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "quant": "w4_paro",
+    "kv_storage_dtype": "bf16",
+    "prompt_source": "token 9707 repeated",
+    "prompt_tokens": 225280,
+    "context_label": "220 Ki tokens",
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "max_layers": 40,
+    "graph_replay_decode": true,
+    "require_cached_build": true,
+    "capacity_primary_scope": "hipEngine tracked allocator high-water",
+    "capacity_auxiliary_scope": "whole-device VRAM observed by rocm-smi during the final prefill interval",
+    "command": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 225280 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-220ki-20260713/paro-220ki-bf16.json"
+  },
+  "result": {
+    "tracked_peak_allocated_bytes": 25866320852,
+    "tracked_peak_allocated_gib": 24.089888531714678,
+    "tracked_24gib_margin_bytes": -96517076,
+    "tracked_24gib_margin_gib": -0.08988853171467781,
+    "tracked_24gib_gate_passed": false,
+    "phase_sampled_hip_peak_bytes": 24427626496,
+    "phase_sampled_hip_peak_gib": 22.75,
+    "observed_device_peak": {
+      "method": "rocm-smi --showmeminfo vram approximately once per second",
+      "sampling_window_utc": {
+        "first": "2026-07-13T06:33:03Z",
+        "last": "2026-07-13T06:34:25Z"
+      },
+      "samples": 77,
+      "full_run_continuous": false,
+      "lower_bound": true,
+      "bytes": 26663366656,
+      "gib": 24.832195281982422,
+      "24gib_margin_bytes": -893562880,
+      "24gib_margin_gib": -0.8321952819824219,
+      "24gib_gate_passed": false
+    },
+    "retained_kv_payload_bytes": 4618977280,
+    "retained_kv_scale_bytes": 0,
+    "retained_kv_total_bytes": 4618977280,
+    "retained_kv_total_gb": 4.61897728,
+    "kv_memory_audit_passed": true,
+    "persistent_bf16_shadow_exists": false,
+    "finite_generated_logits": true,
+    "generated_preview_token_ids": [
+      64717,
+      4821
+    ],
+    "diagnostic_throughput": {
+      "prefill_tok_s": 716.8693626144287,
+      "warmed_decode_tok_s": 45.301421485867536
+    }
+  },
+  "comparison_to_128ki_reference": {
+    "reference_artifact": "benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json",
+    "reference_prompt_tokens": 131072,
+    "reference_tracked_peak_bytes": 23755366440,
+    "reference_tracked_peak_gib": 22.123909033834934,
+    "reference_retained_kv_bytes": 2689597440,
+    "tracked_peak_delta_bytes": 2110954412,
+    "tracked_peak_delta_gib": 1.9659794978797436,
+    "retained_kv_delta_bytes": 1929379840,
+    "interpretation": "The direct 220 Ki run supersedes the retained-KV-only projection. It completes and passes the BF16 layout audit, but tracked high-water exceeds 24 GiB by 96,517,076 bytes; a partial approximately 1 Hz whole-device monitor observes at least 24.832 GiB. Therefore 220 Ki is not admitted for a physical 24 GiB envelope."
+  },
+  "raw_diagnostics": [
+    {
+      "path": "/tmp/hipengine-bf16-220ki-20260713/paro-220ki-bf16.json",
+      "sha256": "2f395e0de6194c5d696fb35ef212110339434bcdfaa5d63616f95ad032e5e0c9"
+    },
+    {
+      "path": "/tmp/hipengine-bf16-220ki-20260713/rocm-smi-vram.tsv",
+      "sha256": "bbe7c5bd8d81fdf2b2921acff08157091ddb2556ae0fbcbf4e2e7c8ac81a25b3"
+    }
+  ],
+  "notes": [
+    "This is a capacity and execution result, not a performance claim; throughput is a single-run diagnostic.",
+    "The whole-device monitor began during the run rather than at process launch, so 24.832 GiB is a measured lower bound, not a claimed full-run maximum.",
+    "The run completed on the 48 GB W7900 without a segfault or non-finite logits; that does not make it fit a 24 GB card."
+  ]
+}

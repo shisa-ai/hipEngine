@@ -93,9 +93,10 @@ capacity/layout gate passes, but matched-context and bounded task quality reject
 INT8 KV. Accordingly, 256K INT8 is allocation capacity—not a supported route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
-| Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Quality status |
+| Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Capacity / quality status |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | PARO BF16 KV (2026-07-12 reference) | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
+| PARO BF16 KV | 220 Ki (225,280)/128 | **24.090 GiB** | **-0.090 GiB** | 4.619 GB | Passed | **Rejected** by 24 GiB capacity gate; whole-device observation is at least 24.832 GiB |
 | PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **22.971 GiB** | 1.029 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 matched-context and task gates |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
