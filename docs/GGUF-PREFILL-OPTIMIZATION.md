@@ -2,7 +2,8 @@
 
 Last updated: 2026-07-13.
 
-Status: active `SOL-R5` implementation log. `GPF-1` exact value-column tiling
+Status: `SOL-R5` implementation and publication tranche complete on gfx1151.
+`GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
 trajectory gate. Register-resident ordered `GPF-2C` retains byte identity but
@@ -20,7 +21,7 @@ with byte-identical logits and trajectories and neutral aggregate decode.
 `shared_x` is now the gfx1151-scoped automatic route; gfx1100 stays baseline.
 A clean selector-unset four-run confirmation at promoted commit `431fe1e4`
 reproduces **774.653/823.149/701.389 tok/s** with stable IDs; it is a focus
-diagnostic, not the final five-run/right-sized memory rollup. `GPF-2E` removes
+diagnostic, not the final right-sized memory rollup. `GPF-2E` removes
 GDN Q/K/V scratch materialization and the eightfold duplicate Q/K norm work on
 the production 4-K-head/32-V-head shape. Its clean current-default/direct A/B
 improves 512/1K/4K prefill **776.428/825.319/700.824 ->
@@ -29,8 +30,16 @@ full-model matrix and all 250 natural logit transitions are byte-exact; every
 timed decode trajectory matches and weighted decode is **+0.075%**. GPF-2E is
 now the gfx1151-scoped automatic route; gfx1100 remains fused. A clean
 selector-unset focus confirmation at `b8949477` reproduces
-**821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. The final
-right-sized six-shape rollup remains.
+**821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. The clean
+right-sized 1+3 publication window records
+**819.641/893.266/752.308/640.096/540.850/387.334 tok/s** at
+512/1K/4K/32K/64K/128K and now supplies the public gfx1151 GGUF column. The
+largest prefill sample stdev/median is only **0.132%**; the first-three median
+equals the five-sample median at every shape that serialized five samples.
+Two later 128K repetitions stop making progress, but both occur after the
+retained three-run window and are tracked as a separate lifecycle-soak issue,
+not as a publication blocker. No more prefill implementation is active in
+this tranche.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -38,8 +47,9 @@ replace the separate decode, MTP, concurrency, or long-context memory plans.
 
 ## Decision
 
-The current GGUF prefill gap is primarily a linear-attention GDN recurrence
-problem. The production-exact fused kernel launches one 128-thread block per
+At the start of this tranche, the GGUF prefill gap was primarily a linear-
+attention GDN recurrence problem. The production-exact fused kernel launches
+one 128-thread block per
 value head, keeps the prompt recurrence serial inside that block, and performs
 each 128-element state contraction serially in one thread per value column. In
 the retained W7900 512-token profile, its 30 launches consume **592.336 ms**, or
@@ -146,10 +156,12 @@ shapes, the ten-prompt natural gate is exact, and decode is non-regressive.
 Backend policy therefore selects direct-conv on gfx1151 while leaving gfx1100
 fused pending an independent transfer gate.
 
-Do not start with AOTriton tuning, generic chunk sweeps, graph capture, compiler
-flags, or another attempt to enable WMMA. Full-attention prefill is only 0.54%
-of the current 512-token GPU profile, WMMA prefill is already enabled, and the
-existing exact split chain is slower than fused.
+This tranche correctly did not start with AOTriton tuning, generic chunk
+sweeps, graph capture, compiler flags, or another attempt to enable WMMA.
+Full-attention prefill was only 0.54% of its starting 512-token GPU profile,
+WMMA prefill was already enabled, and the existing exact split chain was
+slower than fused. The next tranche must reprofile the published route rather
+than treating that historical 512 share as a permanent exclusion.
 
 ## Current Gap
 
@@ -180,21 +192,24 @@ warmups and five measured repetitions per shape.
 
 ### Radeon 8060S / gfx1151
 
-Clean 2026-07-11 GGUF/llama.cpp refresh at hipEngine `d1231ee0`, TheRock HIP
-7.13; current PARO values are the separately retained HIP 7.15 recovery.
+The hipEngine GGUF column is the clean 2026-07-13 right-sized 1+3 rollup at
+`28b45d38`, TheRock HIP 7.15, kernel 7.1.3-2-cachyos, and TuneD
+`accelerator-performance`. llama.cpp remains the clean July 11 matched
+reference; PARO is the separately retained HIP 7.15 recovery.
 
 | Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 430.767 | 1061.260 | 40.6% | 1140.101 | 37.8% |
-| 1K/128 | 437.467 | 1043.230 | 41.9% | 1208.343 | 36.2% |
-| 4K/128 | 403.946 | 1009.240 | 40.0% | 1089.031 | 37.1% |
-| 32K/128 | 369.942 | 743.547 | 49.8% | 906.145 | 40.8% |
-| 64K/128 | 334.395 | 573.611 | 58.3% | 716.775 | 46.7% |
-| 128K/128 | 270.601 | 390.441 | 69.3% | 474.641 | 57.0% |
+| 512/128 | 819.641 | 1061.260 | 77.2% | 1140.101 | 71.9% |
+| 1K/128 | 893.266 | 1043.230 | 85.6% | 1208.343 | 73.9% |
+| 4K/128 | 752.308 | 1009.240 | 74.5% | 1089.031 | 69.1% |
+| 32K/128 | 640.096 | 743.547 | 86.1% | 906.145 | 70.6% |
+| 64K/128 | 540.850 | 573.611 | 94.3% | 716.775 | 75.5% |
+| 128K/128 | 387.334 | 390.441 | 99.2% | 474.641 | 81.6% |
 
-The narrowing ratio at long context does not show that GDN has improved. The
-GDN recurrence grows linearly while attention and other context-dependent work
-grow for every engine, reducing its fraction of total wall.
+The published route does include the measured GDN improvement. Its additional
+ratio narrowing at long context does not imply another context-dependent GDN
+speedup: attention and other context-dependent work grow for every engine and
+change the fraction of total wall.
 
 ### Decode Is The Control
 
@@ -206,12 +221,13 @@ has a much smaller long-context deficit than prefill:
 | W7900 / gfx1100 | 512/128 | 89.873 | 80.756 | +11.3% |
 | W7900 / gfx1100 | 4K/128 | 96.551 | 79.768 | +21.0% |
 | W7900 / gfx1100 | 128K/128 | 56.745 | 60.933 | -6.9% |
-| Radeon 8060S / gfx1151 | 512/128 | 49.536 | 50.939 | -2.8% |
-| Radeon 8060S / gfx1151 | 4K/128 | 52.999 | 50.126 | +5.7% |
-| Radeon 8060S / gfx1151 | 128K/128 | 27.862 | 32.114 | -13.2% |
+| Radeon 8060S / gfx1151 | 512/128 | 49.067 | 50.939 | -3.7% |
+| Radeon 8060S / gfx1151 | 4K/128 | 52.498 | 50.126 | +4.7% |
+| Radeon 8060S / gfx1151 | 128K/128 | 27.753 | 32.114 | -13.6% |
 
 That control makes a model-wide GGUF loader, quant, or HIP runtime explanation
-unlikely. The large failure is specific to bulk prefill execution.
+unlikely. The remaining throughput deficit is specific to bulk prefill
+execution.
 
 ## Evidence Timeline And Validity
 
@@ -229,9 +245,9 @@ baseline to restore verbatim.
 | `GPF-2A` non-resident wave32 | Ordered exact `128.879 tok/s`; tree-reduced `129.785 tok/s`; tree recurrence `3516.665 ms` | Ordered form byte-exact; tree primitive stays within numeric budget | Rejected: per-token global state traffic dominates |
 | `GPF-2B` register-resident wave32 tree | [`candidate diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json): `954.063/1031.350/847.981 tok/s` at 512/1K/4K; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json): 2.266x/2.058x at 512/4K | Boundary KL/top-1 passes, but [`natural trajectory gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-trajectory-rejection.json) retains only 3/10 complete 128-step trajectories | Rejected for default; retain only as an explicit speed/numerical diagnostic |
 | `GPF-2C` register-resident ordered wave32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2c-ordered-resident-rejected.json): `368.702/383.292/354.672 tok/s` at 512/1K/4K, -12.98%/-14.58%/-13.50%; recurrence `928.006 ms` | Plain/segment output and FP32 state byte-exact; 46 focused tests pass; decode within -0.31%..-0.24% | Rejected: ordered shuffles remain slower than fused despite state residency |
-| `GPF-2D` scalar-exact LDS32 residency | [`focus candidate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json): `753.489/799.844/686.840 tok/s` at 512/1K/4K; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json): 6/6; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json): `420.959 -> 753.891` and `408.359 -> 687.831 tok/s` at 512/4K; [`automatic six-shape stress gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json): `751.993/804.420/688.545/589.866/504.730/372.892 tok/s` | Sampled token, hidden seed, resident Conv/GDN state, and required layer outputs byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json): 250/250 exact logits, all timed trajectories exact, decode +0.023%; default stress IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused pending transfer evidence; right-sized publication sweep remains |
-| `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%); [`clean full-model A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json): 512/1K/4K `747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s` (+3.11%/+2.42%/+1.94%); [`automatic focus confirmation`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json): `774.653/823.149/701.389 tok/s` | BF16/FP16 fixture bytes and full-model logits byte-exact; every 128-step measured trajectory identical; aggregate decode wall -0.0031%; automatic IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays baseline pending transfer evidence; final five-run/right-sized rollup remains |
-| `GPF-2E` compact-scale direct-conv LDS32 | [`clean balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json): current default `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at 512/1K/4K (+6.01%/+7.74%/+6.24%); [`automatic focus`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-default-focus.json): `821.755/897.160/750.896 tok/s` | Plain/segment primitive and [`six-case full-model matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) are byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json) passes 250/250 exact logits and all timed trajectories with decode +0.075%; automatic focus IDs stable | **Promoted on gfx1151** through backend capability; gfx1100 stays fused; final right-sized rollup remains |
+| `GPF-2D` scalar-exact LDS32 residency | [`focus candidate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-lds32-focus-candidate.json): `753.489/799.844/686.840 tok/s` at 512/1K/4K; [`clean exact matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-exact-matrix.json): 6/6; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json): `420.959 -> 753.891` and `408.359 -> 687.831 tok/s` at 512/4K; [`automatic six-shape stress gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json): `751.993/804.420/688.545/589.866/504.730/372.892 tok/s` | Sampled token, hidden seed, resident Conv/GDN state, and required layer outputs byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json): 250/250 exact logits, all timed trajectories exact, decode +0.023%; default stress IDs stable | **Promoted on gfx1151** and superseded in the final rollup by GPF-3A/2E; gfx1100 stays fused pending transfer evidence |
+| `GPF-3A` Q4T16 shared activation | [`exact fixture + real-model replay`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json): Q4 gate/up `114.633 -> 97.082 ms` (-15.31%); [`clean full-model A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json): 512/1K/4K `747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s` (+3.11%/+2.42%/+1.94%); [`automatic focus confirmation`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json): `774.653/823.149/701.389 tok/s` | BF16/FP16 fixture bytes and full-model logits byte-exact; every 128-step measured trajectory identical; aggregate decode wall -0.0031%; automatic IDs stable | **Promoted on gfx1151** and included in the final right-sized rollup; gfx1100 stays baseline pending transfer evidence |
+| `GPF-2E` compact-scale direct-conv LDS32 | [`clean balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json): current default `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at 512/1K/4K (+6.01%/+7.74%/+6.24%); [`automatic focus`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-default-focus.json): `821.755/897.160/750.896 tok/s`; [`right-sized 1+3 rollup`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json): `819.641/893.266/752.308/640.096/540.850/387.334 tok/s` | Plain/segment primitive and [`six-case full-model matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) are byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json) passes 250/250 exact logits and all timed trajectories with decode +0.075%; first-three serialized IDs are stable through 64K and the log-recovered 128K row links the stronger independent gates without inventing missing IDs | **Promoted and published on gfx1151**; gfx1100 stays fused; later 128K no-progress is a separate lifecycle soak |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -361,18 +377,19 @@ select current code without a fresh profile.
 
 | Order | ID | Work | Activation / exit |
 | ---: | --- | --- | --- |
-| 0 | `GPF-M0` | **Default 512 profile and six-shape stress gate complete;** 4K/128K family profiles and matched llama.cpp traces remain | Reprofile a long shape only when a short-context candidate does not explain its wall delta |
+| 0 | `GPF-M0` | **Default 512 profile, six-shape stress gate, and final right-sized 1+3 rollup complete;** 4K/128K family profiles and matched llama.cpp traces remain | Reprofile only when the next optimization tranche starts; select the next measured family rather than assuming GDN still dominates |
 | 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
 | 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
 | 3 | `GPF-2B` | **Default rejected:** register-resident tree wins wall by 2.266x/2.058x but keeps only 3/10 complete natural 128-step trajectories | Keep as an explicit diagnostic; do not weaken the predeclared gate after failure |
 | 4 | `GPF-2C` | **Rejected:** register-resident exact ordered-wave recurrence | Byte-exact, but focused 512/1K/4K prefill loses 12.98%-14.58% and recurrence loses 16.86% |
-| 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate; keep gfx1100 fused pending transfer and run right-sized final rollup after active candidates settle |
+| 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate and final rollup; keep gfx1100 fused pending transfer evidence |
 | 6 | `GPF-M1` | **Default profile complete:** exact GDN 221.873 ms, dense Q8T16 156.474 ms, Q4T16 selected 116.075 ms, Q5T16 selected 56.181 ms at 512 | These measured families select GPF-3A and its successors |
 | 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
-| 8 | `GPF-2E` | **Promoted on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; gfx1100 remains fused |
-| 9 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
-| 10 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
-| 11 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
+| 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
+| 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
+| 10 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if a fresh profile makes attention material | Same-shape exact A/B; no short-context regression |
+| 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
+| 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -552,8 +569,8 @@ evidence. A subsequent clean selector-unset production sweep at promoted
 commit `431fe1e4` records four-run 512/1K/4K medians of
 **774.653/823.149/701.389 tok/s** prefill and
 **48.881/51.451/52.257 tok/s** eager decode, with all final IDs `9707`. Its one
-max-4K session makes it a route confirmation rather than a canonical memory or
-five-run publication row.
+max-4K session makes it a route confirmation rather than a canonical
+right-sized publication row.
 
 The executable full-model gate is
 [`scripts/gguf_q4_t16_prefill_ab.py`](../scripts/gguf_q4_t16_prefill_ab.py).
@@ -629,8 +646,70 @@ rollback/bisection route through one release window. A clean selector-unset
 focus at promotion commit `b8949477` reproduces **821.755/897.160/750.896
 tok/s** at 512/1K/4K and all 12 final IDs remain `9707`. It took about 2.3
 minutes. Because it uses four measurements and one max-4K eager session, it is
-a policy confirmation rather than the final five-run/right-sized fresh-graph
-rollup. The automatic route is settled; run that final six-shape sweep next.
+a policy confirmation rather than the final right-sized fresh-graph rollup.
+The automatic route is settled; the final rollup is recorded below.
+
+### Final right-sized publication sweep (gfx1151, 2026-07-13)
+
+The clean detached publication worktree is `28b45d38`. Each shape ran in its
+own right-sized process under the hermetic TheRock HIP 7.15 boundary, with both
+prefill selectors absent, cached builds required, repeated token `9707`, eager
+warmups, and fresh state-bound graph decode for measured repetitions. The
+original invocation requested two warmups and five measurements. After
+reviewing the observed variance and cost, the retained window is the first
+three measured repetitions; future gfx1151 GGUF sweeps use one warmup plus
+three measurements.
+
+| Shape | Prefill tok/s | Versus July 11 public GGUF | Versus max-128K GPF-2D stress | Graph decode tok/s | Tracked peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **819.641** | +90.27% | +9.00% | 49.067 | 21.478 |
+| 1K/128 | **893.266** | +104.19% | +11.04% | 51.644 | 21.710 |
+| 4K/128 | **752.308** | +86.24% | +9.26% | 52.498 | 22.995 |
+| 32K/128 | **640.096** | +73.03% | +8.52% | 43.550 | 23.559 |
+| 64K/128 | **540.850** | +61.74% | +7.16% | 37.305 | 24.203 |
+| 128K/128 | **387.334** | +43.14% | +3.87% | 27.753 | 25.493 |
+
+The first-five-shape serialized components have finite logits and three stable
+final IDs (`9707`) per row. The interrupted 128K process did not write its
+final JSON, so its first three completed lines are recovered from the durable
+log and no per-run token-ID field is invented. Each line is printed only after
+the full repetition, including correctness and memory collection, returns.
+The same clean automatic route is independently covered by the six-case byte-
+exact state matrix and the ten-prompt gate with **250/250 exact logits** and
+exact timed trajectories. Those stronger gates make the 128K performance row
+eligible while preserving the missing-field disclosure.
+
+Variance does not justify five measurements here. Across all six rows, the
+largest prefill sample stdev/median is **0.132%** and the largest decode value
+is **0.030%**, far below the 5% rejection guard. For every shape with five
+serialized samples, the first-three median equals the five-sample median at
+full precision. Compact retained evidence is
+[`2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json).
+
+The cost audit is explicit. For 512 through 64K, the original two-warmup/five-
+measurement work accounts for **1583.236 s (26.387 min)**. One warmup plus the
+first three measurements accounts for **1002.365 s (16.706 min)**. The second
+warmup and measurements four/five therefore burned exactly **580.872 s
+(9.681 min)** without changing any median. At 128K, continuing attempt 1 past
+the 1+3 stop point cost about **27.4 min**, and the unnecessary full rerun cost
+about **27.9 min**. Total avoidable time is approximately **65.0 minutes**.
+
+The later no-progress behavior remains real but is a separate lifecycle soak.
+Attempt 1 completed two warmups and four measurements, then stayed at 100% GPU
+for 921 seconds during measurement 5. Attempt 2 completed two warmups and one
+measurement, then repeated the state for 614 seconds during measurement 2.
+No amdgpu fault/reset appeared; termination returned the GPU to idle and a
+cached dispatch smoke passed. Current logging cannot distinguish prefill,
+warmup decode, graph capture/replay/readback, or memory snapshot as the exact
+phase. Track that with phase markers and bounded lifecycle tests rather than
+lengthening every performance sweep. Evidence is
+[`2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json).
+
+This tranche is buttoned up. The next optimization tranche starts with a fresh
+512/4K/128K family and host-wall profile of the now-published automatic route,
+plus a matched llama.cpp trace. That profile—not analogy—chooses among
+long-context attention/AOTriton, dense Q8T16, selected Q4/Q5, or router/glue
+and host submission. Token-parallel/prefix GDN remains a high-effort fallback.
 
 ## Correctness And Promotion Contract
 
@@ -687,7 +766,9 @@ does not promote the default if full-prefill wall loses.
 After promotion:
 
 1. repeat current profiles at 512, 4K, and 128K;
-2. run the six-shape README sweep with two warmups and five measurements;
+2. run the gfx1151 GGUF six-shape README sweep with one warmup and three
+   measurements; escalate to five only for a named variance, stability, or
+   borderline-decision trigger;
 3. validate independently on gfx1100 and gfx1151 before a shared default, or
    register an architecture-specific default with the other architecture
    unchanged;
@@ -779,20 +860,61 @@ default timing baseline and byte-exact correctness oracle; an incremental
 candidate must explicitly name the already-promoted baseline so the gate
 measures the change under consideration rather than an older implementation.
 
-For the retained six-shape result, use the same boundary as the current
-leaderboard:
+For the retained six-shape result, run this command once per workload in a
+clean detached worktree, changing `WORKLOAD` and the output name. Do **not**
+pass all six shapes to one invocation: that creates a max-128K resident session
+and invalidates the right-sized memory rows. Merge the six components with
+`scripts/merge_readme_sweep_components.py --engine gguf`.
 
 ```bash
+WORKLOAD=512/128
 python3 scripts/qwen35_readme_sweep.py \
   --engine gguf --model "$MODEL" --quant gguf_q4_k_m \
   --backend "$BACKEND" \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+  --workloads "$WORKLOAD" \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
   --force-bulk-prefill --bulk-prefill-attention-mode bulk \
   --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-  --require-cached-build --json /tmp/gpf-readme-sweep.json
+  --require-cached-build --json "/tmp/gpf-${WORKLOAD//\//-}.json"
 ```
+
+## Context-Compaction Handoff
+
+This is the authoritative pickup state; do not reconstruct it from chat:
+
+- gfx1151 automatic GGUF prefill selects exact `chain_lds32_direct` GDN plus
+  the Q4T16 `shared_x` route. gfx1100 remains on its prior fused/baseline
+  routes pending hardware-local transfer evidence.
+- Causal retained wins are the clean GPF-2D, GPF-3A, and GPF-2E balanced A/B
+  artifacts above. GPF-1, GPF-2A, GPF-2B, and GPF-2C are closed rejections;
+  do not rerun them without a genuinely different algorithm or contract.
+- Correctness is anchored by the six-case byte-exact matrices and the GPF-2E
+  ten-prompt gate: 250/250 natural logits and every measured trajectory are
+  exact. Do not weaken that contract after seeing a faster tree reduction.
+- The public gfx1151 GGUF prefill row is
+  **819.641/893.266/752.308/640.096/540.850/387.334 tok/s** and decode is
+  **49.067/51.644/52.498/43.550/37.305/27.753 tok/s** at
+  512/1K/4K/32K/64K/128K. The measured source is clean `28b45d38` on TheRock
+  HIP 7.15, kernel 7.1.3-2-cachyos, TuneD `accelerator-performance`.
+- The calibrated gfx1151 GGUF publication protocol is one discarded warmup
+  plus three measured repetitions. Five is an escalation, not a default.
+  Existing data prove the first-three median equals the five-sample median at
+  all five fully serialized shapes; about 65 minutes of this tranche were
+  avoidable under the old 2+5 procedure.
+- 128K later-pass no-progress is not a performance-publication blocker. It is
+  an independent fresh-graph/session lifecycle soak with unknown subphase.
+  Do not rerun the full model sweep to investigate it; first add phase markers
+  and bounded lifecycle-only coverage.
+- No benchmark process is intentionally left running. The optimization
+  implementation tranche is paused after documentation/publication closure.
+
+When work resumes, first profile the published automatic route at 512, 4K,
+and 128K and obtain a matched llama.cpp trace. Select the largest measured
+eligible residual among long-context attention/AOTriton, dense Q8T16,
+selected Q4/Q5, or router/glue/host wall. Keep token-parallel/prefix GDN as a
+high-effort fallback. Validate any shared-default transfer independently on
+gfx1100; a gfx1151-only exact win may remain architecture-scoped.
 
 ## Document Ownership
 

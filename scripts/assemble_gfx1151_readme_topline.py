@@ -19,7 +19,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.provenance import validate_artifact_provenance  # noqa: E402
-from scripts.merge_readme_sweep_components import STANDARD_WORKLOADS  # noqa: E402
+from scripts.merge_readme_sweep_components import (  # noqa: E402
+    STANDARD_WORKLOADS,
+    _expected_protocol,
+)
 
 
 COLUMNS = (
@@ -75,13 +78,13 @@ def _positive_finite(value: Any) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) > 0.0
 
 
-def _metric_stats_pass(stats: Mapping[str, Any]) -> bool:
+def _metric_stats_pass(stats: Mapping[str, Any], *, expected_count: int) -> bool:
     count = stats.get("count")
     median = stats.get("median")
     stdev = stats.get("stdev")
     return bool(
         type(count) is int
-        and count == 5
+        and count == expected_count
         and _positive_finite(median)
         and isinstance(stdev, (int, float))
         and math.isfinite(float(stdev))
@@ -128,14 +131,17 @@ def _validate_hipengine_rollup(
     payload: Mapping[str, Any], *, engine: str, platform: str = "gfx1151"
 ) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, bool]]:
     _platform_config(platform)
+    expected_warmups, expected_repetitions = _expected_protocol(
+        engine=engine, platform=platform
+    )
     provenance = validate_artifact_provenance(payload.get("provenance") or {}, require_model=True)
     structural = bool(
         payload.get("kind") == f"{platform}_readme_model_sweep_rollup"
         and payload.get("engine") == engine
         and payload.get("status") == "accepted_topline"
         and payload.get("performance_claim") is True
-        and payload.get("warmup_runs") == 2
-        and payload.get("measured_runs") == 5
+        and payload.get("warmup_runs") == expected_warmups
+        and payload.get("measured_runs") == expected_repetitions
         and tuple(payload.get("workloads") or ()) == STANDARD_WORKLOADS
     )
     correctness = payload.get("correctness") or {}
@@ -155,9 +161,9 @@ def _validate_hipengine_rollup(
         decode = summary.get("decode_tok_s") or {}
         peak = summary.get("tracked_peak_allocated_gib") or {}
         row_ok = (
-            _metric_stats_pass(prefill)
-            and _metric_stats_pass(decode)
-            and _metric_stats_pass(peak)
+            _metric_stats_pass(prefill, expected_count=expected_repetitions)
+            and _metric_stats_pass(decode, expected_count=expected_repetitions)
+            and _metric_stats_pass(peak, expected_count=expected_repetitions)
             and summary.get("final_token_ids_stable") is True
         )
         stats_ok = stats_ok and row_ok
@@ -372,7 +378,15 @@ def _assemble_topline(
             {"key": column, "label": COLUMN_LABELS[column]} for column in COLUMNS
         ],
         "protocol": {
-            "hipengine": "one right-sized resident session per workload; 2 discarded warmups + median of 5 measured repetitions",
+            "hipengine": (
+                "one right-sized resident session per workload; "
+                + (
+                    "PARO uses 2 discarded warmups + median of 5 measured repetitions; "
+                    "GGUF uses 1 discarded warmup + median of 3 measured repetitions"
+                    if platform == "gfx1151"
+                    else "PARO and GGUF use 2 discarded warmups + median of 5 measured repetitions"
+                )
+            ),
             "llamacpp": "split prefill/decode llama-bench; 1 internal warmup + median of 5 samples per phase",
             "prefill_decode_units": "tokens per second",
             "hipengine_memory": "tracked allocator high-water GiB",

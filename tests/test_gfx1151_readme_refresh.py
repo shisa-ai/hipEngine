@@ -157,7 +157,7 @@ def test_paro_sweep_uses_fresh_measured_graphs() -> None:
     assert _measured_graph_replay_requested(requested=True, measured=True) is True
 
 
-def _provenance() -> dict[str, object]:
+def _provenance(*, warmups: int = 2, repetitions: int = 5) -> dict[str, object]:
     return {
         "kind": "hipengine_artifact_provenance",
         "schema_version": 1,
@@ -192,8 +192,8 @@ def _provenance() -> dict[str, object]:
         "hipcc_version": "HIP 7.13",
         "build_profile": "readme_resident_sweep",
         "timing_protocol": "test",
-        "warmups": 2,
-        "repetitions": 5,
+        "warmups": warmups,
+        "repetitions": repetitions,
         "profiler": {"enabled": False},
     }
 
@@ -320,6 +320,66 @@ def test_component_rollup_can_target_gfx1100(tmp_path: Path) -> None:
     assert output["performance_claim"] is True
 
 
+def test_component_rollup_accepts_gfx1151_gguf_calibrated_three_run_protocol(
+    tmp_path: Path,
+) -> None:
+    components = []
+    provenance = _provenance(warmups=1, repetitions=3)
+    provenance.update(
+        {
+            "model_path": "/model.gguf",
+            "model_revision": None,
+            "quant": "gguf_q4_k_m",
+        }
+    )
+    for index, workload in enumerate(STANDARD_WORKLOADS, start=1):
+        runs = [
+            {
+                "measured": True,
+                "correctness_sanity": {
+                    "finite_final_logits": True,
+                    "final_token_id": index,
+                },
+            }
+            for _ in range(3)
+        ]
+        payload = {
+            "engine": "gguf",
+            "model": "/model.gguf",
+            "quant": "gguf_q4_k_m",
+            "workloads": [workload],
+            "provenance": provenance,
+            "summary_by_workload": {
+                workload: {
+                    "prefill_tok_s": {"count": 3, "median": 100.0, "stdev": 1.0},
+                    "decode_tok_s": {"count": 3, "median": 50.0, "stdev": 0.1},
+                    "final_token_ids": [index] * 3,
+                    "final_token_ids_stable": True,
+                }
+            },
+            "runs_by_workload": {workload: runs},
+            "max_sequence_length": index * 1024,
+            "persistent_session_load_seconds": 1.0,
+            "persistent_session_memory": {"summary": {"peak": index}},
+            "extra": {"backend": "hip_gfx1151", "target_arch": "gfx1151"},
+        }
+        path = tmp_path / f"gguf-{index}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        components.append((path, payload))
+
+    output = _merge_component_payloads(
+        components,
+        engine="gguf",
+        provenance=provenance,
+        platform="gfx1151",
+    )
+
+    assert output["status"] == "accepted_topline"
+    assert output["warmup_runs"] == 1
+    assert output["measured_runs"] == 3
+    assert output["performance_claim"] is True
+
+
 def test_component_rollup_accepts_paro_and_gguf_finite_logit_keys() -> None:
     assert _finite_final_logit_passed({"finite_final_logit": True}) is True
     assert _finite_final_logit_passed({"finite_final_logits": True}) is True
@@ -352,6 +412,7 @@ def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     assert "--backend hip_gfx1151" in text
     assert "512/128 1K/128 4K/128 32K/128 64K/128 128K/128" in text
     assert "--warmup-runs 2 --measured-runs 5" in text
+    assert "--warmup-runs 1 --measured-runs 3" in text
     assert "--memory-domain gtt" in text
     assert "merge_readme_sweep_components.py" in text
     assert "assemble_gfx1151_readme_topline.py" in text
@@ -373,8 +434,13 @@ def test_gfx1151_readme_refresh_wrapper_encodes_retained_contract() -> None:
     assert "all" in result.stdout
 
 
-def _fake_hipengine_rollup(*, engine: str, quant: str) -> dict[str, object]:
-    provenance = _provenance()
+def _fake_hipengine_rollup(
+    *, engine: str, quant: str, platform: str = "gfx1151"
+) -> dict[str, object]:
+    warmups, repetitions = (
+        (1, 3) if engine == "gguf" and platform == "gfx1151" else (2, 5)
+    )
+    provenance = _provenance(warmups=warmups, repetitions=repetitions)
     provenance["quant"] = quant
     if engine == "gguf":
         provenance["model_path"] = "/model.gguf"
@@ -389,20 +455,20 @@ def _fake_hipengine_rollup(*, engine: str, quant: str) -> dict[str, object]:
         }
     return {
         "schema": 1,
-        "kind": "gfx1151_readme_model_sweep_rollup",
+        "kind": f"{platform}_readme_model_sweep_rollup",
         "status": "accepted_topline",
         "performance_claim": True,
         "engine": engine,
         "quant": quant,
         "workloads": list(STANDARD_WORKLOADS),
-        "warmup_runs": 2,
-        "measured_runs": 5,
+        "warmup_runs": warmups,
+        "measured_runs": repetitions,
         "summary_by_workload": {
             workload: {
-                "prefill_tok_s": {"count": 5, "median": 1000.0 + index, "stdev": 1.0},
-                "decode_tok_s": {"count": 5, "median": 60.0 + index, "stdev": 0.1},
+                "prefill_tok_s": {"count": repetitions, "median": 1000.0 + index, "stdev": 1.0},
+                "decode_tok_s": {"count": repetitions, "median": 60.0 + index, "stdev": 0.1},
                 "tracked_peak_allocated_gib": {
-                    "count": 5,
+                    "count": repetitions,
                     "median": 20.0 + index,
                     "stdev": 0.0,
                 },
@@ -556,8 +622,8 @@ def test_topline_assembler_promotes_only_complete_stable_four_engine_matrix(
 
 def test_topline_assembler_promotes_gfx1100_vram_matrix(tmp_path: Path) -> None:
     sources = {
-        "hipengine_paro": (tmp_path / "paro.json", _fake_hipengine_rollup(engine="paro", quant="w4_paro")),
-        "hipengine_gguf": (tmp_path / "gguf.json", _fake_hipengine_rollup(engine="gguf", quant="gguf_q4_k_m")),
+        "hipengine_paro": (tmp_path / "paro.json", _fake_hipengine_rollup(engine="paro", quant="w4_paro", platform="gfx1100")),
+        "hipengine_gguf": (tmp_path / "gguf.json", _fake_hipengine_rollup(engine="gguf", quant="gguf_q4_k_m", platform="gfx1100")),
         "llamacpp_hip": (tmp_path / "llama-hip.json", _fake_llamacpp_artifact(backend="hip")),
         "llamacpp_vulkan": (tmp_path / "llama-vulkan.json", _fake_llamacpp_artifact(backend="vulkan")),
     }

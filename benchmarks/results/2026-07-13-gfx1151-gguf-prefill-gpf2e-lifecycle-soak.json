@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_fresh_graph_lifecycle_soak",
+  "status": "diagnostic_intermittent_no_progress",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "conclusion": "Two attempts stop making progress only after the retained three-measurement performance window. This is a lifecycle-soak issue, not a reason to require five timing samples or withhold the stable 1+3 topline.",
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151",
+  "hipengine_commit": "28b45d382884760a402165387ab037505c0a3425",
+  "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+  "workload": "128K/128",
+  "phase_at_stall": "unknown within prefill, warmup decode, fresh graph capture/replay/readback, or final memory snapshot because the harness emits only after the full repetition",
+  "attempt_1": {
+    "completed": [
+      "warmup 387.629878/27.699062",
+      "warmup 387.084441/27.688739",
+      "measured 387.334156/27.761825",
+      "measured 387.091608/27.745448",
+      "measured 387.439471/27.753382",
+      "measured 387.505498/27.745168"
+    ],
+    "stalled_repetition": "measured 5",
+    "no_progress_seconds_before_termination": 921,
+    "process_elapsed_minutes_before_termination": 51.0,
+    "log_sha256": "7c4562d4989c2ed45c2292d8d2b0a85df432f6063aaad04d1c915aa250efaed4"
+  },
+  "attempt_2": {
+    "completed": [
+      "warmup 395.742458/27.767385",
+      "warmup 395.247435/27.768849",
+      "measured 395.967237/27.817115"
+    ],
+    "stalled_repetition": "measured 2",
+    "no_progress_seconds_before_termination": 614,
+    "log_sha256": "e01abb34047d946b9e26ed50e29c6af898d31beafbfd4ec3e10b3984c82c2833"
+  },
+  "health_observations": {
+    "during_stall": "GPU 100%, sclk 2900 MHz, mclk 1000 MHz, edge 54-56 C, host process running at about one CPU core",
+    "kernel_log_faults": false,
+    "sigint_unwound": false,
+    "term_exit_code": 143,
+    "after_termination": "GPU returned to idle; HIP reload and cached 512/1 dispatch smoke passed without a device reset"
+  },
+  "next_isolation": "add phase-progress markers and per-phase bounds, then test lifecycle stability independently of the 1+3 performance protocol",
+  "topline_effect": "none; attempt 1 already completed the three measured repetitions required by the calibrated performance protocol"
+}

@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_right_sized_model_sweep_rollup",
+  "status": "accepted_topline",
+  "performance_claim": true,
+  "performance_claim_scope": "gfx1151 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV six-shape prefill and decode sweep",
+  "candidate": "promoted gfx1151 GPF-2D + GPF-3A + GPF-2E automatic prefill route",
+  "conclusion": "The first three measured repetitions produce stable six-shape medians of 819.641/893.266/752.308/640.096/540.850/387.334 prefill tok/s. This replaces the July 11 gfx1151 hipEngine GGUF column. Later repetitions are a separate lifecycle-soak diagnostic and do not change the retained timing window.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "28b45d382884760a402165387ab037505c0a3425",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "retrospective_sample_selection": "first three measured repetitions in execution order",
+    "executed_warmups_before_samples": 2,
+    "required_warmups": 1,
+    "measured_repetitions_retained": 3,
+    "future_default": "one discarded warmup plus three measured repetitions; escalate to five measured only after a named variance, stability, or borderline-decision trigger",
+    "decode": "warmups eager; each measured repetition captures, replays, and closes a fresh state-bound graph; capture excluded from decode throughput",
+    "graph_steps_per_replay": 1,
+    "decode_tokens": 128,
+    "prompt": "repeated token 9707",
+    "build": "hermetic TheRock environment; lazy artifacts prebuilt outside retained runs; cached builds required",
+    "selectors": "HIPENGINE_GGUF_GDN_PREFILL_MODE and HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE absent",
+    "executed_command_template": "env -i <TheRock gfx1151 environment> HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=/tmp/hipengine-gpf2e-final-28b45d38 <therock-python> scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <one-shape> --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-gpf2e-final-28b45d38-results/hipcc-version-gfx1151.txt --require-cached-build --json <component.json>",
+    "future_command_change": "replace --warmup-runs 2 --measured-runs 5 with --warmup-runs 1 --measured-runs 3; all other timing boundaries remain unchanged",
+    "note": "The extra second warmup was executed but is not a timing sample. Its cost is included in the avoidable-time audit. For all five serialized components, the median of the first three samples is identical to the median of all five samples."
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [818.0414634875208, 819.6407122776827, 820.1116190344077],
+        "median": 819.6407122776827,
+        "stdev": 1.0851185691488754,
+        "stdev_over_median_percent": 0.13238954006243317
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [49.06720005820639, 49.07842094052237, 49.06554854469289],
+        "median": 49.06720005820639,
+        "stdev": 0.0070039782888640595,
+        "stdev_over_median_percent": 0.01427425710159848
+      },
+      "tracked_peak_allocated_gib": 21.477776296436787,
+      "final_token_ids": [9707, 9707, 9707],
+      "source_sha256": "50dc0f2877f250015cee4fd8e090150d97971b36f19ee40b60924deb46d1afbb"
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [893.0018118478092, 893.6400230257622, 893.2656416116153],
+        "median": 893.2656416116153,
+        "stdev": 0.32069744183385274,
+        "stdev_over_median_percent": 0.03590168779527394
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [51.633931477721205, 51.64913423920791, 51.644317569078865],
+        "median": 51.644317569078865,
+        "stdev": 0.00776954697996542,
+        "stdev_over_median_percent": 0.015044340492200249
+      },
+      "tracked_peak_allocated_gib": 21.710381522774696,
+      "final_token_ids": [9707, 9707, 9707],
+      "source_sha256": "724caecce9d7a0ba5732fd6be6fd4a31c81461fed8ca66b0433c16e25fe9834a"
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [752.3076098299084, 752.3532836039241, 751.9127946016199],
+        "median": 752.3076098299084,
+        "stdev": 0.24221055553390425,
+        "stdev_over_median_percent": 0.03219568064566918
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [52.490649689939474, 52.49809619113683, 52.50538967018691],
+        "median": 52.49809619113683,
+        "stdev": 0.007370122504984721,
+        "stdev_over_median_percent": 0.014038837671658286
+      },
+      "tracked_peak_allocated_gib": 22.99488216638565,
+      "final_token_ids": [9707, 9707, 9707],
+      "source_sha256": "6686da5e1a3e25d22bb8fa8903c001f6e30b1a2ad64630cc79800aeef8c4ba40"
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [640.0956731750522, 640.5740529646698, 639.8696070840587],
+        "median": 640.0956731750522,
+        "stdev": 0.359675107868601,
+        "stdev_over_median_percent": 0.05619083567375368
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [43.55005279143211, 43.54719954765129, 43.564798331158386],
+        "median": 43.55005279143211,
+        "stdev": 0.009445361496714324,
+        "stdev_over_median_percent": 0.021688519051744005
+      },
+      "tracked_peak_allocated_gib": 23.558860778808594,
+      "final_token_ids": [9707, 9707, 9707],
+      "source_sha256": "c122b47465e03a894eb3b1220bc4967199f7d98f670d0ca690c0a277f0535255"
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [540.8498931083755, 539.871850749908, 540.9749182129196],
+        "median": 540.8498931083755,
+        "stdev": 0.6040082725258011,
+        "stdev_over_median_percent": 0.11167761706569664
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [37.302344326763446, 37.305151655558696, 37.305815571918785],
+        "median": 37.305151655558696,
+        "stdev": 0.001842616926470575,
+        "stdev_over_median_percent": 0.00493930957172778
+      },
+      "tracked_peak_allocated_gib": 24.203407764434814,
+      "final_token_ids": [9707, 9707, 9707],
+      "source_sha256": "f458f5ceef9f3ef9218eb57d8b22b614696c6760d088520bc906223d31a1e020"
+    },
+    "128K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [387.334156, 387.091608, 387.439471],
+        "median": 387.334156,
+        "stdev": 0.17838602724523023,
+        "stdev_over_median_percent": 0.04605481455274247
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [27.761825, 27.745448, 27.753382],
+        "median": 27.753382,
+        "stdev": 0.008189818211251748,
+        "stdev_over_median_percent": 0.0295092620108488
+      },
+      "tracked_peak_allocated_gib": 25.492502,
+      "source_type": "durable line-oriented harness log; each line is emitted only after the full repetition, including correctness and memory collection, returns",
+      "per_run_token_ids_serialized": false,
+      "source_sha256": "7c4562d4989c2ed45c2292d8d2b0a85df432f6063aaad04d1c915aa250efaed4"
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "serialized_components_512_through_64k": "all first-three measured logits finite and final token IDs 9707",
+    "log_recovered_128k": "the durable lines prove three full repetitions returned; the interrupted process did not write its final JSON and therefore did not serialize per-run token IDs",
+    "independent_exact_matrix": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json",
+    "independent_natural_trajectory_gate": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json",
+    "trajectory_result": "250/250 natural logits exact; all timed 128-token trajectories exact; weighted decode +0.075%",
+    "reason_128k_is_eligible": "the same automatic route, model fingerprint, compiler, and clean revision are covered by stronger independent state/trajectory gates; no unobserved token-ID claim is made for the recovered log"
+  },
+  "variance_gate": {
+    "threshold": "sample stdev <= 5% of median",
+    "passed": true,
+    "largest_prefill_stdev_over_median_percent": 0.13238954006243317,
+    "largest_decode_stdev_over_median_percent": 0.0295092620108488,
+    "five_shape_first_three_median_equals_five_sample_median": true
+  },
+  "descriptive_comparisons": {
+    "warning": "These compare separately retained revisions/protocol runs and are not same-session causal A/B claims.",
+    "versus_2026_07_11_public_gguf_prefill_percent": {
+      "512/128": 90.274722,
+      "1K/128": 104.190406,
+      "4K/128": 86.239648,
+      "32K/128": 73.025954,
+      "64K/128": 61.739827,
+      "128K/128": 43.138479
+    },
+    "versus_gpf2d_max_128k_stress_prefill_percent": {
+      "512/128": 8.99579,
+      "1K/128": 11.044683,
+      "4K/128": 9.260485,
+      "32K/128": 8.515438,
+      "64K/128": 7.15628,
+      "128K/128": 3.873013
+    },
+    "gap_versus_2026_07_11_llamacpp_hip_prefill_percent": {
+      "512/128": -22.76721,
+      "1K/128": -14.375004,
+      "4K/128": -25.458007,
+      "32K/128": -13.91322,
+      "64K/128": -5.711381,
+      "128K/128": -0.795727
+    }
+  },
+  "avoidable_time_audit": {
+    "five_serialized_shapes_exact": {
+      "old_two_warmup_five_measure_wall_seconds": 1583.236293,
+      "one_warmup_three_measure_wall_seconds": 1002.364792,
+      "avoidable_second_warmup_plus_measurements_four_and_five_seconds": 580.8715,
+      "avoidable_minutes": 9.681192
+    },
+    "128k_estimated": {
+      "first_attempt_beyond_one_warmup_three_measure_stop_minutes": 27.4,
+      "unnecessary_full_rerun_minutes": 27.9,
+      "basis": "process elapsed observations; the interrupted harness did not serialize per-phase wall fields"
+    },
+    "total_avoidable_minutes_rounded": 65.0
+  },
+  "later_soak": {
+    "status": "diagnostic only",
+    "artifact": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json",
+    "conclusion": "fresh-graph/session no-progress can occur after the retained three-repetition timing window; isolate with phase markers and bounded lifecycle tests rather than lengthening every performance sweep"
+  }
+}

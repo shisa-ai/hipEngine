@@ -30,6 +30,12 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         "20260711-d1231ee0-summary.json"
     )
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    gguf_rollup = json.loads(
+        (
+            results_dir
+            / "2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json"
+        ).read_text(encoding="utf-8")
+    )
     paro_recovery = json.loads(
         (results_dir / "2026-07-12-gfx1151-paro-prefill-recovery.json").read_text(
             encoding="utf-8"
@@ -58,6 +64,18 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     assert artifact["assembly"]["dirty"] is False
     assert artifact["gates"]["all_passed"] is True
     assert all(artifact["gates"].values())
+    assert gguf_rollup["status"] == "accepted_topline"
+    assert gguf_rollup["performance_claim"] is True
+    assert gguf_rollup["software"]["hipengine_commit"].startswith("28b45d38")
+    assert gguf_rollup["protocol"]["required_warmups"] == 1
+    assert gguf_rollup["protocol"]["measured_repetitions_retained"] == 3
+    assert gguf_rollup["variance_gate"]["passed"] is True
+    assert (
+        gguf_rollup["summary_by_workload"]["128K/128"][
+            "per_run_token_ids_serialized"
+        ]
+        is False
+    )
     assert paro_recovery["status"] == "accepted"
     assert paro_recovery["performance_claim"] is True
     assert paro_recovery["correctness_claim"] is True
@@ -122,6 +140,13 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert table_header in root_readme
         for row in rows:
             paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
+            gguf_summary = gguf_rollup["summary_by_workload"][row["workload"]]
+            if table_key == "prefill_tok_s":
+                gguf_value = gguf_summary["prefill_tok_s"]["median"]
+            elif table_key == "decode_tok_s":
+                gguf_value = gguf_summary["decode_tok_s"]["median"]
+            else:
+                gguf_value = gguf_summary["tracked_peak_allocated_gib"]
             if row["workload"] == "4K/128":
                 isolated = paro_isolation["performance"]["candidate_isolated_stream"]
                 isolation_keys = {
@@ -147,13 +172,13 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
                     paro_value = isolated["tracked_peak_allocated_gib"]
             published_row = (
                 f"| {row['workload']} | {paro_value:.3f} | "
-                f"{row['hipengine_gguf']:.3f} | {row['llamacpp_hip']:.3f} | "
+                f"{gguf_value:.3f} | {row['llamacpp_hip']:.3f} | "
                 f"{row['llamacpp_vulkan']:.3f} |"
             )
             assert published_row in canonical_values
             assert published_row in root_values
 
-    assert "The 1K follow-up shared a max-32K session" in canonical
+    assert "The PARO 1K follow-up shared a max-32K session" in canonical
     assert "does not replace the existing right-sized 1K row" in canonical
 
     for name, component in artifact["components"].items():
@@ -165,6 +190,8 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
 
     for correctness_path in artifact["linked_correctness"].values():
         assert (repo_root / correctness_path).is_file()
+    for key in ("independent_exact_matrix", "independent_natural_trajectory_gate"):
+        assert (repo_root / gguf_rollup["correctness"][key]).is_file()
 
 
 def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:

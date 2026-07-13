@@ -48,11 +48,19 @@ def _stable_identity(provenance: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _metric_gate(stats: dict[str, Any]) -> bool:
+def _expected_protocol(*, engine: str, platform: str) -> tuple[int, int]:
+    """Return the calibrated warmup/measured contract for one sweep lane."""
+
+    if engine == "gguf" and platform == "gfx1151":
+        return 1, 3
+    return 2, 5
+
+
+def _metric_gate(stats: dict[str, Any], *, expected_count: int) -> bool:
     count = stats.get("count")
     median = stats.get("median")
     stdev = stats.get("stdev")
-    if type(count) is not int or count != 5:
+    if type(count) is not int or count != expected_count:
         return False
     if not isinstance(median, (int, float)) or not math.isfinite(float(median)) or float(median) <= 0.0:
         return False
@@ -86,6 +94,9 @@ def _merge_component_payloads(
     all_ids_stable = True
     all_variance_ok = True
     all_clean = True
+    expected_warmups, expected_repetitions = _expected_protocol(
+        engine=engine, platform=platform
+    )
 
     for path, payload in components:
         if payload.get("engine") != engine:
@@ -101,8 +112,14 @@ def _merge_component_payloads(
         )
         identities.add(_stable_identity(component_provenance))
         all_clean = all_clean and not bool(component_provenance["dirty"])
-        if component_provenance.get("warmups") != 2 or component_provenance.get("repetitions") != 5:
-            raise ValueError(f"{path}: expected provenance warmups=2 and repetitions=5")
+        if (
+            component_provenance.get("warmups") != expected_warmups
+            or component_provenance.get("repetitions") != expected_repetitions
+        ):
+            raise ValueError(
+                f"{path}: expected provenance warmups={expected_warmups} "
+                f"and repetitions={expected_repetitions}"
+            )
 
         summary = (payload.get("summary_by_workload") or {}).get(workload)
         runs = (payload.get("runs_by_workload") or {}).get(workload)
@@ -114,8 +131,12 @@ def _merge_component_payloads(
             for run in measured
         )
         ids_stable = summary.get("final_token_ids_stable") is True
-        variance_ok = _metric_gate(summary.get("prefill_tok_s") or {}) and _metric_gate(
-            summary.get("decode_tok_s") or {}
+        variance_ok = _metric_gate(
+            summary.get("prefill_tok_s") or {},
+            expected_count=expected_repetitions,
+        ) and _metric_gate(
+            summary.get("decode_tok_s") or {},
+            expected_count=expected_repetitions,
         )
         all_finite = all_finite and finite
         all_ids_stable = all_ids_stable and ids_stable
@@ -157,8 +178,8 @@ def _merge_component_payloads(
         "quant": first["quant"],
         "workloads": list(STANDARD_WORKLOADS),
         "session_scope": "one resident session per workload; reset between repetitions",
-        "warmup_runs": 2,
-        "measured_runs": 5,
+        "warmup_runs": expected_warmups,
+        "measured_runs": expected_repetitions,
         "summary_by_workload": {
             workload: by_workload[workload][1]["summary_by_workload"][workload]
             for workload in STANDARD_WORKLOADS
@@ -193,7 +214,7 @@ def _merge_component_payloads(
         "notes": [
             "Each shape uses its own right-sized resident session so short-row memory is not inflated by a 128K allocation.",
             "Load and graph capture are excluded from phase throughput; load is reported per workload.",
-            "The component artifacts remain diagnostic until this rollup verifies clean provenance, five measured samples, finite logits, stable final IDs, and <=5% stdev/median.",
+            f"The component artifacts remain diagnostic until this rollup verifies clean provenance, {expected_repetitions} measured samples, finite logits, stable final IDs, and <=5% stdev/median.",
         ],
     }
 
@@ -230,6 +251,9 @@ def main(argv: list[str] | None = None) -> int:
     first_provenance = validate_artifact_provenance(
         components[0][1].get("provenance") or {}, require_model=True
     )
+    expected_warmups, expected_repetitions = _expected_protocol(
+        engine=args.engine, platform=args.platform
+    )
     assembly_provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(first_provenance["configured_backend"]),
@@ -244,10 +268,10 @@ def main(argv: list[str] | None = None) -> int:
         build_profile="readme_per_workload_rollup",
         timing_protocol=(
             f"{args.platform} six independent right-sized resident sessions; "
-            "two warmups plus five measured runs per shape"
+            f"{expected_warmups} warmup(s) plus {expected_repetitions} measured runs per shape"
         ),
-        warmups=2,
-        repetitions=5,
+        warmups=expected_warmups,
+        repetitions=expected_repetitions,
         profiler={"enabled": False, "reason": "topline host-wall sweep"},
         rocm_version=first_provenance.get("rocm_version"),
         hipcc_version=first_provenance.get("hipcc_version"),

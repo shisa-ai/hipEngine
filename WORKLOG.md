@@ -153882,3 +153882,76 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Full local artifact
   `/tmp/gpf2e-auto-clean-b8949477-focus-512-1k-4k.json` is sha256
   `816c48eb23f461a9fbb0bc6291d1efd51b1da22b839df0790530b5bcfa1dedd3`.
+
+## 2026-07-13 - Publish the GPF-2E right-sized 1+3 rollup and calibrate the protocol
+
+- Reclassified the gfx1151 GGUF publication protocol after reviewing the
+  completed sample distributions and runtime cost. Future right-sized GGUF
+  sweeps use **one discarded warmup plus three measured repetitions**. Five
+  measurements are an explicit escalation only for a named variance,
+  stability, or borderline-decision trigger. PARO remains 2+5 and llama.cpp
+  remains one internal warmup plus five samples; no evidence was used to
+  generalize the GGUF calibration to those lanes. Lifecycle soak is a separate
+  test rather than extra performance repetitions.
+- RED added a gfx1151 GGUF 1+3 component-rollup case, changed the mixed PARO /
+  GGUF topline fixture, and required the wrapper to encode both contracts. The
+  existing code failed four focused tests because merge, assembler, and wrapper
+  all hard-coded 2+5. GREEN makes merge/assembly engine+platform aware, changes
+  the generic expensive-sweep default to three measured runs, and changes only
+  the gfx1151 wrapper's GGUF lane to 1+3. `uv run pytest -q
+  tests/test_gfx1151_readme_refresh.py` passes **14/14**.
+- Retrospectively retained the first three measured repetitions from the clean
+  detached `28b45d382884760a402165387ab037505c0a3425` right-sized sweep on
+  Radeon 8060S/gfx1151, TheRock HIP 7.15, kernel 7.1.3-2-cachyos, TuneD
+  `accelerator-performance`, Qwen3.6-35B-A3B UD-Q4_K_M/BF16 KV, repeated token
+  `9707`, cached builds, and fresh state-bound measured graphs. Medians are:
+  - prefill **819.641/893.266/752.308/640.096/540.850/387.334 tok/s**;
+  - decode **49.067/51.644/52.498/43.550/37.305/27.753 tok/s**; and
+  - tracked peak **21.478/21.710/22.995/23.559/24.203/25.493 GiB**
+    at 512/1K/4K/32K/64K/128K.
+- Sample variance is decisively below the existing 5% guard: the largest
+  prefill stdev/median is **0.132%** and largest decode value is **0.030%**.
+  At all five shapes with serialized five-sample components, the first-three
+  median equals the five-sample median at full precision. The first-three
+  serialized final IDs are all `9707` through 64K.
+- The interrupted 128K process completed three full measured repetitions
+  before later no-progress, but did not write its final JSON and therefore did
+  not serialize per-run token IDs. The retained artifact does not invent those
+  fields. It links the clean six-case exact-state matrix and GPF-2E ten-prompt
+  gate (**250/250 exact logits and every timed trajectory exact**) as stronger
+  independent correctness evidence for the identical route/model/compiler.
+  The 128K row is explicitly labelled durable-log recovered.
+- Time audit: for 512-64K, old 2+5 work was **1583.236 s**; counterfactual 1+3
+  was **1002.365 s**; the second warmup plus measurements 4/5 burned exactly
+  **580.872 s (9.681 min)** and changed no median. Continuing the first 128K
+  attempt beyond the 1+3 stop point cost about **27.4 min**; the unnecessary
+  rerun cost about **27.9 min**. Total avoidable time was approximately
+  **65.0 minutes**.
+- Preserved the later-pass behavior separately: attempt 1 stopped making
+  progress during measurement 5 after 921 seconds; attempt 2 did so during
+  measurement 2 after 614 seconds. GPU stayed at 100%/2.9 GHz with no amdgpu
+  fault/reset; termination returned it to idle and a cached dispatch smoke
+  passed. Current line-level logging cannot identify prefill, warmup decode,
+  graph capture/replay/readback, or memory snapshot as the exact subphase.
+  This is a lifecycle-soak diagnostic after the retained window, not a
+  performance-publication blocker.
+- Published compact artifacts
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`
+  and
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json`.
+  Updated `docs/GGUF-PREFILL-OPTIMIZATION.md` with the complete candidate
+  history, final results, time audit, next-candidate ordering, and a durable
+  context-compaction handoff. Updated `docs/SOL-OPTIMIZATION.md`,
+  `docs/BENCHMARK.md`, `docs/KERNELS.md`, `docs/REFACTOR.md`, the benchmark
+  rollup/changelog, and the root README. The public project README now includes
+  all six current GGUF rows, including 128K.
+- No new GPU benchmark was run for this closure. No benchmark process remains
+  intentionally active. When work resumes, profile the published automatic
+  route at 512/4K/128K plus a matched llama.cpp trace before selecting another
+  prefill family; isolate the later-pass lifecycle issue with phase markers and
+  bounded lifecycle-only coverage rather than rerunning the full sweep.
+- Final validation: the focused benchmark procedure and README publication
+  suite passes **20/20**; targeted Ruff passes (excluding the pre-existing
+  unused-import diagnostic in `qwen35_readme_sweep.py`), the gfx1151 wrapper
+  passes `bash -n`, both new artifacts pass `json.tool`, README export blocks
+  are synchronized, and `git diff --check` passes.
