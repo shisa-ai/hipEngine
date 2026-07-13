@@ -153459,3 +153459,33 @@ graphless decode launch-collapse path without regressing target/serial parity.
   at mean KL `0.00005884` and 100% top-1. This dirty-tree smoke validates the
   harness plumbing only; clean 512/8 and 4K/16 measurements follow after the
   harness commit.
+
+## 2026-07-13 — Reject same-weight GGUF INT8 formats at 4K transfer
+
+- Clean `f0d9ac25` on W7900 ran the exact fixed `mixed_v1` 512/8 prompt used by
+  the PARO screen (36 distinct IDs, SHA-256 `933b5f11...0a5f8`) against the same
+  Q4_K_M model fingerprint as the llama.cpp Q8_0 calibration. Setup-inclusive
+  wall was 81.923 seconds, inside the 600-second budget. Every representation
+  passes S1: per-head mean/max KL `0.0001646/0.0005551`, plain group32
+  `0.0000812/0.0003984`, Hadamard group32 `0.0000974/0.0003191`, and KIVI
+  `0.0001753/0.0012793`; all retain 100% top-1. Plain group32 is the S1 KL
+  winner, improving the per-head anchor by 50.67% without a Hadamard transform.
+- Transferred all four rows—not only the S1 winner—to 4K/16 because the user
+  requested a direct Hadamard/KIVI comparison and raw group32 isolates Q8_0
+  block geometry. All reject the combined gate. Per-head is lowest mean/max KL
+  at `0.12779/2.03039` but only 88.24% top-1; group32 is
+  `0.28106/4.39924`, 88.24%; Hadamard is `0.25180/4.09533` and passes top-1 at
+  94.12%; KIVI is `0.33306/5.43878`, 88.24%. Transfer wall was 114.907 seconds.
+- The dominant failure is `decode_3`. Hadamard preserves 16/17 top-1 rows; the
+  other formats also miss `decode_4`. A second clean 4K/16 run in reverse
+  candidate order reproduces every per-position KL value and candidate top-1
+  exactly (115.417 seconds), ruling out reset/order contamination.
+- This host emulation reconstructs BF16 cache values and therefore does not
+  reproduce llama.cpp's direct Q8_0 integer-dot attention. The result establishes
+  that 32-value scale granularity alone is insufficient under the mixed GGUF
+  protocol; it does not invalidate llama.cpp's repeated-token native-Q8 row.
+  Stop before native kernels, 128K, or tasks. Source JSON SHA-256 values are
+  `84bc69c9...15ac` (S1), `fe2312ce...cf9d` (S2), and `28f79095...c5aa`
+  (reverse). Published compact evidence at
+  `benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`;
+  `performance_claim=false` and supported-cache status is unchanged.

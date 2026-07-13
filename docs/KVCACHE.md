@@ -616,6 +616,39 @@ was run; doing so after an S2 numerical rejection would add cost without a
 promotion path. Compact evidence:
 [`2026-07-13-w7900-paro-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-paro-int8-kv-external-format-screen.json).
 
+### Same-weight GGUF Hadamard/KIVI isolation
+
+A clean `f0d9ac25` W7900 screen repeats the same fixed mixed-prompt ladder on
+hipEngine GGUF with the exact Q4_K_M file used by the llama.cpp calibration. It
+adds a raw group32 row to isolate llama.cpp Q8_0's 32-value scale geometry from
+Hadamard rotation. Every row passes 512/8, with plain group32 lowest on mean KL:
+
+| GGUF representation | 512/8 mean / max KL | Top-1 | Top-5 / top-10 |
+| --- | ---: | ---: | ---: |
+| Per-token/head max-abs | `0.0001646 / 0.0005551` | `100%` | `100% / 97.78%` |
+| **Plain group32 / Q8_0 geometry** | **`0.0000812 / 0.0003984`** | `100%` | `95.56% / 97.78%` |
+| Hadamard group32 | `0.0000974 / 0.0003191` | `100%` | `95.56% / 97.78%` |
+| KIVI-style INT8 | `0.0001753 / 0.0012793` | `100%` | `97.78% / 97.78%` |
+
+The complete four-row 4K/16 transfer then rejects every candidate:
+
+| GGUF representation | 4K/16 mean / max KL | Top-1 | Top-5 / top-10 | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| **Per-token/head max-abs** | **`0.12779 / 2.03039`** | `88.24%` | `90.59% / 91.18%` | Lowest KL; reject both gates |
+| Plain group32 / Q8_0 geometry | `0.28106 / 4.39924` | `88.24%` | `91.76% / 91.18%` | Reject |
+| Hadamard group32 | `0.25180 / 4.09533` | **`94.12%`** | `91.76% / 90.59%` | Top-1 pass; reject KL |
+| KIVI-style INT8 | `0.33306 / 5.43878` | `88.24%` | **`94.12% / 92.94%`** | Reject |
+
+The dominant failure is the BF16-matched `decode_3` row. Hadamard retains 16/17
+top-1 decisions; the other formats also miss `decode_4`. Reversing candidate
+order reproduces all per-position KL values and candidate top-1 IDs exactly,
+ruling out reset/order contamination. This host emulation reconstructs BF16 and
+does not reproduce llama.cpp's direct Q8_0 integer-dot attention, so it proves
+that block32 scaling alone is insufficient under this mixed protocol—not that
+the native llama.cpp result is wrong. No native kernel, 128K gate, or task
+benchmark follows. Compact evidence:
+[`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json).
+
 AQUA-style cross-layer residual prediction remains the next representation
 screen if these local transforms do not pass transfer. It requires fitting and
 auditing per-layer predictors and therefore is not mixed into the first
@@ -757,6 +790,7 @@ python3 scripts/qwen35_paro_kv_functional_mc.py \
 | Bounded 4K/32K functional choices | [`2026-07-13-w7900-paro-int8-kv-functional-mc.json`](../benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json) |
 | llama.cpp Q8_0-vs-F16 + repeatability | [`2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`](../benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json) |
 | Same-weight hipEngine/llama.cpp GGUF bridge | [`2026-07-13-w7900-gguf-llamacpp-matched-parity.json`](../benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json) |
+| Same-weight hipEngine GGUF Hadamard/KIVI screen | [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json) |
 | July 12 independent rollout and FP32-scale control | [`2026-07-12-w7900-v030-paro-context-capacity.json`](../benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json) |
 
 Format/policy development tools:
@@ -765,6 +799,7 @@ Format/policy development tools:
 - `scripts/qwen35_paro_kv_format_ablation.py`
 - `scripts/qwen35_paro_kv_policy_ablation.py`
 - `scripts/qwen35_paro_kv_functional_mc.py`
+- `scripts/qwen35_gguf_kv_format_ablation.py`
 - `scripts/qwen35_gguf_int8_kv_correctness.py`
 - `scripts/qwen35_gguf_q8_format_sweep.py`
 - `scripts/llamacpp_kv_matched_context.py` and companion C++ harness
