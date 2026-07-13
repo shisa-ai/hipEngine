@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import numpy as np
 
+from scripts import qwen35_paro_kv_format_ablation as ablation
 from scripts.qwen35_paro_kv_format_ablation import (
     FormatSpec,
     _distribution_summary,
     _format_memory_bytes,
+    _normalized_hadamard,
     _parse_candidates,
     _quantize_dequantize,
     _reconstruction_summary,
+    _roundtrip_pair,
     _select_recommendation,
 )
 
@@ -35,6 +38,103 @@ def test_quantize_dequantize_uses_float_scale_for_codes_and_rounded_scale_for_re
     expected = codes * float_scale.astype(np.float16).astype(np.float32)
 
     np.testing.assert_array_equal(restored, expected)
+
+
+def test_normalized_hadamard_is_an_involution() -> None:
+    values = np.arange(32, dtype=np.float32).reshape(2, 2, 8) / 7.0
+
+    rotated = _normalized_hadamard(values, group_size=8)
+    restored = _normalized_hadamard(rotated, group_size=8)
+
+    np.testing.assert_allclose(restored, values, rtol=1e-6, atol=1e-6)
+    assert not np.array_equal(rotated, values)
+
+
+def test_kivi_roundtrip_keeps_incomplete_chunk_unquantized() -> None:
+    key = np.linspace(-3.0, 5.0, 40, dtype=np.float32).reshape(5, 1, 8)
+    value = np.square(key, dtype=np.float32) - 1.25
+    spec = FormatSpec(
+        "kivi_test",
+        strategy="kivi",
+        v_group_size=4,
+        chunk_size=4,
+        residual_tokens=3,
+    )
+
+    key_out, value_out = _roundtrip_pair(key, value, spec, scale_dtype="fp16")
+
+    assert np.any(key_out[:4] != key[:4])
+    assert np.any(value_out[:4] != value[:4])
+    np.testing.assert_array_equal(key_out[4:], key[4:])
+    np.testing.assert_array_equal(value_out[4:], value[4:])
+
+
+def test_kvarn_roundtrip_is_finite_deterministic_and_zero_safe() -> None:
+    rng = np.random.default_rng(7)
+    key = rng.normal(size=(8, 2, 8)).astype(np.float32)
+    value = np.zeros_like(key)
+    spec = FormatSpec(
+        "kvarn_test",
+        strategy="kvarn",
+        chunk_size=4,
+        residual_tokens=3,
+        hadamard_group_size=8,
+    )
+
+    first = _roundtrip_pair(key, value, spec, scale_dtype="fp16")
+    second = _roundtrip_pair(key, value, spec, scale_dtype="fp16")
+
+    assert all(np.isfinite(item).all() for item in first)
+    np.testing.assert_array_equal(first[0], second[0])
+    np.testing.assert_array_equal(first[1], value)
+
+
+def test_run_loaded_session_resets_and_reuses_resident_weights(monkeypatch) -> None:
+    class FakeResult:
+        def __init__(self, token_id: int) -> None:
+            self.token_id = token_id
+
+    class FakeSession:
+        full_caches: dict[int, object] = {}
+
+        def __init__(self) -> None:
+            self.reset_count = 0
+            self.positions: list[int] = []
+
+        def reset(self) -> None:
+            self.reset_count += 1
+
+        def _resolve_prefill_config_for_length(self, prompt_length: int) -> None:
+            assert prompt_length == 3
+
+        def prefill_native(self, prompt_tokens, *, sample: bool):
+            assert prompt_tokens == [1, 2, 3]
+            assert sample
+            return FakeResult(7)
+
+        def step(self, token_id: int, *, position: int, sample: bool):
+            assert sample
+            self.positions.append(position)
+            return FakeResult(token_id + 100)
+
+    session = FakeSession()
+    monkeypatch.setattr(ablation, "_read_logits", lambda _session: np.asarray([0.0, 1.0], dtype=np.float32))
+
+    result, captured, full_layers = ablation._run_loaded_session(
+        session,
+        prompt_tokens=[1, 2, 3],
+        prompt_length=3,
+        decode_steps=2,
+        forced_input_ids=[7, 8],
+        scale_dtype="fp16",
+    )
+
+    assert session.reset_count == 1
+    assert session.positions == [3, 4]
+    assert result["generated_token_ids"] == [107, 108]
+    assert result["elapsed_seconds"] >= 0.0
+    assert captured is None
+    assert full_layers == 0
 
 
 def test_distribution_and_reconstruction_summaries_are_finite() -> None:
@@ -90,10 +190,16 @@ def test_format_memory_estimate_accounts_for_group_scales_and_mixed_value() -> N
 
 
 def test_parse_candidates_and_recommendation_respect_budget() -> None:
-    candidates = _parse_candidates("baseline_max,group32,key_int8_value_bf16", head_dim=256)
+    candidates = _parse_candidates(
+        "baseline_max,group32,hadamard_group32,kivi_int8,kvarn_int8,key_int8_value_bf16",
+        head_dim=256,
+    )
     assert [candidate.name for candidate in candidates] == [
         "baseline_max",
         "group32",
+        "hadamard_group32",
+        "kivi_int8",
+        "kvarn_int8",
         "key_int8_value_bf16",
     ]
 
