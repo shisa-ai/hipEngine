@@ -153856,3 +153856,59 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: `11` focused quality-sweep/fixture tests pass, including positive
   mixed-layout and negative quantized-layer-shadow cases; `py_compile`, fatal
   Ruff checks, and `git diff --check` pass.
+
+## 2026-07-14 — Native tail-four mixed-KV transfer outcome
+
+- Added `scripts/qwen35_native_mixed_kv_suite.py`, which compares native BF16
+  and `tail4_hadamard_group32` sessions on all ten committed natural/category
+  prompts plus `mixed_v1`. Candidate decode is teacher-forced with BF16 tokens;
+  every prompt independently requires mean KL <= 0.05 and top-1 >= 90%, and the
+  audit requires six BF16 plus four packed INT8 full-attention layers with no
+  persistent BF16 shadow.
+- Directly attending the packed cache during prefill is rejected at 512/8:
+  GGUF reaches aggregate mean/max KL `1.49476/23.96165` and `85.86%` top-1;
+  PARO reaches `0.02802/0.19413` and `85.86%`. The retained explicit layout now
+  uses a temporary BF16 attention oracle while writing only packed tail-layer
+  K/V, then releases the oracle before decode. GGUF's chunk-outer scheduler uses
+  layer-local temporary caches; PARO's layer-outer path reuses one workspace.
+  The direct streaming route remains only an explicit diagnostic.
+- With the BF16 prefill oracle, native GGUF passes all 11 prompts at both 512/8
+  (`0.00015686/0.0043299`, 100% top-1) and 4K/16
+  (`0.00006564/0.0016805`, 100%). Native PARO does not transfer: 512/8 fails
+  `code_merge_intervals` on one of nine top-1 positions; 4K/16 fails
+  `code_lru_cache` and `general_en_explain`, with aggregate mean/max KL
+  `0.02187/0.69728`, `92.51%` aggregate top-1, and worst prompt top-1 `58.82%`.
+  FP32 scales reproduce the same PARO 512/8 mismatch, so scale rounding is not
+  the blocker. The policy stays explicit and supported/default status is
+  unchanged.
+- A bounded native GGUF `mixed_v1` transfer at 128K/16 also passes: mean/max KL
+  `0.00003239/0.00051852`, 100% top-1 across all 17 positions, with
+  `2,185,297,920` retained K/V bytes, zero BF16 shadow, and no surviving oracle
+  buffer. This is one long-context control, not a substitute for the full
+  11-prompt gate already run at 4K.
+- Physical RX 7900 XTX request-scratch probe at 262,144 prompt rows plus 128
+  decode rows confirms the remaining capacity conflict. Mixed resident state
+  allocates `4,366,336,000` K/V bytes and leaves `1.418 GiB` free, but the
+  quality-preserving shared BF16 oracle plus prefill scratch raises tracked peak
+  to `23.469 GiB` and then returns clean `HIP error 2: out of memory`. Forcing
+  direct streaming removes the 0.5 GiB oracle and passes the same allocation
+  probe at `23.290 GiB` tracked peak, but that path is correctness-rejected.
+  No GPU segfault occurred.
+- Matched XTX 512/128 performance is split by engine. PARO graph decode median
+  changes `134.653 -> 129.116 tok/s` (`-4.11%`); prefill is
+  `2394.609 -> 2384.937 tok/s` (`-0.40%`). GGUF eager three-run medians are
+  effectively flat: prefill `647.643 -> 647.994` (`+0.05%`) and decode
+  `60.942 -> 61.092 tok/s` (`+0.25%`). GGUF graph capture initially rejected
+  non-BF16 KV, so the graph key now includes storage layout and scale-buffer
+  identities and admits only BF16 or the validated tail-four Hadamard layout.
+  The mixed graph smoke is finite, keeps final ID `9707`, and measures
+  `105.013 tok/s` versus the one-sample BF16 graph control `102.349`; this is
+  no-regression evidence, not a retained +2.60% speed claim.
+- RED/GREEN for graph admission first failed import on the missing layout helper;
+  the final focused bundle passes `186` tests. Full targeted Ruff for new files,
+  fatal-name Ruff for the large runners, `py_compile`, and `git diff --check`
+  pass. The split native outcome, exact commands, raw hashes, and diagnostic
+  performance/capacity rows are retained in
+  `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`;
+  `benchmarks/README.md` and `benchmarks/CHANGELOG.md` carry the explicit-only
+  decision.

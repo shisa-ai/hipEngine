@@ -167,10 +167,12 @@ def test_gguf_int8_hybrid_prefill_uses_bf16_primary_when_layer_has_no_scale_meta
     assert layer_scratch.retained_append_spans is None
 
 
-def test_gguf_tail4_hadamard_prefill_uses_packed_cache_without_bf16_oracle() -> None:
+def test_gguf_tail4_hadamard_prefill_uses_bf16_attention_oracle_and_packed_retention() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
     session.int8_kv_value_bf16 = False
+    oracle_key = _Buffer(0x5100, 64)
+    oracle_value = _Buffer(0x6200, 64)
     retained_key = _Buffer(0x7000, 16)
     retained_value = _Buffer(0x8000, 16)
     metadata = _hadamard_group32_scale_metadata()
@@ -179,37 +181,23 @@ def test_gguf_tail4_hadamard_prefill_uses_packed_cache_without_bf16_oracle() -> 
         (),
         {
             "full_cache": lambda self, layer_id: (retained_key, retained_value),
+            "full_bf16_mirror_cache": lambda self, layer_id: None,
             "full_scale_metadata": lambda self, layer_id: metadata,
         },
     )()
-    session._int8_prefill_oracle_cache_for_layer = lambda layer_id: (_ for _ in ()).throw(
-        AssertionError("Hadamard prefill must not allocate a BF16 oracle cache")
-    )
-    append_spans = _bf16_append_spans()
-    bulk = _BulkScratch(
-        key_cache=None,
-        value_cache=None,
-        append_spans=append_spans,
-        prefill_spans=KVLiveSpans.paged_uniform(
-            block_table=append_spans.base_offsets,
-            live_counts=append_spans.live_counts,
-            max_live_count=256,
-            storage_dtype=DType.BF16,
-            span_role="prefill",
-        ),
-    )
+    session._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
+    bulk = _BulkScratch(key_cache=None, value_cache=None, append_spans=_bf16_append_spans())
 
     layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 27)
 
-    assert layer_scratch.key_cache is retained_key
-    assert layer_scratch.value_cache is retained_value
-    assert layer_scratch.retained_key_cache is None
-    assert layer_scratch.retained_value_cache is None
-    assert layer_scratch.append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
-    assert layer_scratch.append_spans.scale_metadata is metadata
-    assert layer_scratch.prefill_spans is not None
-    assert layer_scratch.prefill_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
-    assert layer_scratch.prefill_spans.scale_metadata is metadata
+    assert layer_scratch.key_cache is oracle_key
+    assert layer_scratch.value_cache is oracle_value
+    assert layer_scratch.retained_key_cache is retained_key
+    assert layer_scratch.retained_value_cache is retained_value
+    assert layer_scratch.append_spans.storage_dtype is DType.BF16
+    assert layer_scratch.retained_append_spans is not None
+    assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert layer_scratch.retained_append_spans.scale_metadata is metadata
 
 
 def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> None:
