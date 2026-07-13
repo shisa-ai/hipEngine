@@ -114,8 +114,25 @@ def classify_kernel(name: str) -> str:
         return "llama_mmvq"
     if "mul_mat_vec_f" in lower or "mul_mat_f" in lower:
         return "llama_mmvf"
-    if "quantize_q8_1" in lower:
+    if "mul_mat_q<" in lower:
+        quant_type_buckets = {
+            "(ggml_type)12,": "llama_mmq_q4_k",
+            "(ggml_type)13,": "llama_mmq_q5_k",
+            "(ggml_type)8,": "llama_mmq_q8_0",
+            "(ggml_type)14,": "llama_mmq_q6_k",
+        }
+        return next(
+            (bucket for signature, bucket in quant_type_buckets.items() if signature in lower),
+            "llama_mmq_other",
+        )
+    if "quantize_q8_1" in lower or "quantize_mmq_q8_1" in lower:
         return "llama_quantize_q8_1"
+    if "mm_ids_helper" in lower:
+        return "llama_moe_scheduler"
+    if "ssm_conv" in lower:
+        return "llama_linear_attn_conv"
+    if lower.startswith("cijk_"):
+        return "llama_rocblas_gemm"
     if "k_argsort" in lower or "top_k" in lower or "argsort" in lower:
         return "llama_topk_argsort"
     if "gated_delta_net" in lower:

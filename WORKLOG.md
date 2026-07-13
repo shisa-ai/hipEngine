@@ -153955,3 +153955,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   unused-import diagnostic in `qwen35_readme_sweep.py`), the gfx1151 wrapper
   passes `bash -n`, both new artifacts pass `json.tool`, README export blocks
   are synchronized, and `git diff --check` passes.
+
+## 2026-07-14 - Expand llama.cpp trace buckets for the next GGUF tranche
+
+- Extended `scripts/llamacpp_kernel_trace_summary.py` so matched prefill traces
+  separate raw Q4_K/Q5_K/Q8_0/Q6_K MMQ, rocBLAS GEMM, MoE scheduler,
+  linear-attention convolution, and both q8_1 quantizer names instead of
+  leaving the dominant prefill matmuls in `other`. Added one classification
+  fixture for every new signature.
+- Validation: `python3.12 -m pytest -q
+  tests/test_llamacpp_kernel_trace_summary.py` passes **25/25**;
+  `uvx --from ruff==0.11.12 ruff check` passes the helper and test; and
+  `git diff --check` passes.
+- This is profiling instrumentation, not a performance claim. Matched
+  512/4K/128K llama.cpp traces were collected separately from local
+  `llama.cpp-hip@1ebf790c` with Qwen3.6-35B-A3B UD-Q4_K_M, F16 KV,
+  flash attention, no warmup, and one traced prefill-only repetition. Their
+  family evidence will be recorded with the hipEngine profile-selection
+  artifact after the current-route 128K profile is available.
