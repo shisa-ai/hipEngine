@@ -13,12 +13,12 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
-def test_gguf_aotriton_isolated_stream_policy_is_opt_in_before_promotion(
+def test_gguf_aotriton_isolated_stream_policy_is_default_on_only_for_gfx1151(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", raising=False)
     assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1151", 511) is False
-    assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1151", 512) is False
+    assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1151", 512) is True
     assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1100", 4096) is False
 
     monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "0")

@@ -387,7 +387,7 @@ select current code without a fresh profile.
 | 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
-| 10 | `GPF-4` | **Candidate implemented, default-off:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | 512/4K are byte-exact across logits/hidden/all state/KV; dirty focus is +0.96%/+22.63% and 4K convolution falls 90.68%; clean detached 128K plus promotion gate remains |
+| 10 | `GPF-4` | **Promoted on gfx1151:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Clean 512/4K is byte-exact and +0.17%/+20.76%; clean 128K screen is +10.05%-11.64%; gfx1100 stays same-stream pending local transfer evidence; final automatic six-shape rollup remains |
 | 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
@@ -755,11 +755,11 @@ only AOTriton's high-scratch launch on one lazy nonblocking stream, and an
 output-ready event gates the existing post-attention BF16 gate on the caller
 stream. Session close synchronizes and releases both events and the stream.
 
-The candidate remains default-off in this implementation commit. Explicit
+The implementation first landed default-off at `006306ac`. Explicit
 `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1` selects it on either HIP
-backend for testing; no backend package capability promotes it yet. This
-preserves gfx1100 and the published gfx1151 default until clean long-context
-evidence exists.
+backend for testing, while `=0` remains the rollback. Clean promotion evidence
+now enables the gfx1151 backend package capability only; gfx1100 remains
+same-stream pending hardware-local transfer evidence.
 
 Fresh-process differential correctness at repeated token `9707` is exact:
 
@@ -789,8 +789,23 @@ mechanism rather than merely shifting time to attention.
 
 Compact focus evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json).
-Next commit the default-off candidate, then run clean detached 128K and fresh-
-process 512/4K confirmation before adding the gfx1151 backend capability.
+
+The clean detached `006306ac` promotion gate reproduces every exact hash and
+uses fresh processes for each timing leg:
+
+| Context | Same-stream off tok/s | Isolated on tok/s | Delta | Decision |
+| ---: | ---: | ---: | ---: | --- |
+| 512 | 822.203 | 823.614 | **+0.17%** | Non-regressive |
+| 4K | 747.721 | 902.928 | **+20.76%** | Retain |
+| 128K screen | published 387.334 / sampled 392.904 | 432.403 | **+11.64% / +10.05%** | Promote, then confirm with final 1+3 |
+
+The 128K screen is one no-warmup candidate run, not the final public row. It
+completed in **303.125 s**, produced token `9707`, and held tracked peak at
+**25.493 GiB**. Clean 512/4K exactness again compares all 82 parts with zero
+mismatches. This is sufficient to promote the architecture-scoped capability;
+the final automatic-route six-shape 1+3 sweep owns publication. Promotion
+evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json).
 
 ## Correctness And Promotion Contract
 
@@ -987,25 +1002,19 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   an independent fresh-graph/session lifecycle soak with unknown subphase.
   Do not rerun the full model sweep to investigate it; first add phase markers
   and bounded lifecycle-only coverage.
-- GPF-M2's fresh traces select GPF-4. The default-off implementation is exact
-  at 512/4K across FP32 logits/hidden plus all Conv/GDN/live-KV parts. Dirty
-  fresh-process focus improves **+0.96%/+22.63%**, and 4K convolution falls
-  **952.870 -> 88.839 ms (-90.68%)**. Clean detached 128K and promotion gates
-  remain; this is scheduling-only queue isolation, not another GDN rewrite.
-- No benchmark process is intentionally left running. The optimization
-  implementation tranche is active at GPF-4.
+- GPF-4 is promoted in gfx1151 package metadata. Clean detached 512/4K is
+  byte-exact and **+0.17%/+20.76%**; the clean 128K screen reaches
+  **432.403 tok/s**, +10.05%-11.64% versus both baseline references, with
+  unchanged 25.493 GiB tracked peak. gfx1100 stays same-stream.
+- No benchmark process is intentionally left running. The final automatic
+  six-shape 1+3 publication sweep is next.
 
-The required fresh profile is complete: 512/4K use full hipEngine and matched
-llama.cpp traces, 128K uses a bounded hipEngine family sample plus a complete
-llama.cpp trace. It selects GPF-4's GGUF AOTriton queue isolation because the
-4K convolution residual is 28.89x llama.cpp and remains 17.68% of the bounded
-128K sample. The
-default-off candidate is now implemented, 512/4K byte-exact, and strongly
-positive in dirty focus. Next validate it from a clean detached commit at 128K
-and repeat fresh-process 512/4K before adding the gfx1151 package capability.
-Keep token-parallel/prefix GDN as the high-effort fallback. Validate any
-shared-default transfer independently on gfx1100; a gfx1151-only exact win may
-remain architecture-scoped.
+The required profile, exactness, clean fresh-process focus, and 128K screen are
+complete. GPF-4 removes the measured queue-cliff residual and is now the
+architecture-scoped gfx1151 automatic route. Next run the clean automatic
+512/1K/4K/32K/64K/128K 1+3 rollup, publish retained rows, and keep gfx1100
+unchanged until a hardware-local transfer gate passes. Token-parallel/prefix
+GDN remains the high-effort fallback after this scheduling win.
 
 ## Document Ownership
 
