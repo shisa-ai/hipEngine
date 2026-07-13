@@ -153206,3 +153206,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   512, BF16 qualifies 1/5 and INT8 regresses that code row; at 4K, BF16
   qualifies 2/5, INT8 retains aggregation and regresses multihop. Clean 4K/32K
   publication runs remain next; these smokes are not retained evidence.
+
+## 2026-07-13 — Run clean bounded PARO INT8 functional checks
+
+- Clean `2743798f` W7900 runs used the committed five-category restricted-choice
+  suite at 4K and 32K. Each INT8 row was scored only if BF16 chose the known
+  answer first; both policies consumed the identical fixed assistant prefix.
+- At 4K, BF16 qualifies 2/5. INT8 retains aggregation (`C -> C`, expected-choice
+  margin `3.7216 -> 3.8446`) but regresses multihop (`D -> C`, margin
+  `+0.3036 -> -0.2385`). The regressed row's full-distribution KL is `0.42265`.
+  This is direct bounded evidence that cache-induced distribution drift can
+  change a functional decision.
+- At 32K, BF16 qualifies 3/5 and INT8 retains all three: multihop `D -> D`,
+  aggregation `C -> C`, and long-document `A -> A`. Their full-logit KL values
+  are `0.45807`, `0.03534`, and `0.21307`; margins narrow for multihop and
+  especially long-document (`0.6973 -> 0.1024`) but do not flip. High KL is
+  therefore not equivalent to every answer changing.
+- The outcome stays `partially_scorable`: BF16 fails 3/5 at 4K and 2/5 at 32K.
+  This is a five-task restricted-choice diagnostic, not a free-generation or
+  broad long-context quality claim. It cannot override the strict 128K/16
+  matched-context rejection or promote INT8.
+- Both no-shadow audits pass: no persistent BF16 full-attention K/V layers and
+  no missing INT8 scales. Raw SHA-256 values are `303f1638...5099` (4K) and
+  `0cf4e790...2f94` (32K). Retained compact artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json`.
