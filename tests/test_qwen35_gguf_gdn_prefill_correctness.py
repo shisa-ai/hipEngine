@@ -59,9 +59,11 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
@@ -81,6 +83,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
+    qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
     qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
@@ -838,6 +841,7 @@ def _run_exact_split_chain(
     wave32: bool = False,
     wave32_tree: bool = False,
     lds_tile: int | None = None,
+    direct_conv_lds32: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -863,25 +867,43 @@ def _run_exact_split_chain(
     cu = _to_device(np.asarray([0, inputs.tokens], dtype=np.int32))
     state_indices = _to_device(np.asarray([0], dtype=np.int64))
     try:
-        qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16(
-            conv_out.ptr,
-            a.ptr,
-            b.ptr,
-            dt_bias.ptr,
-            a_log.ptr,
-            query_raw.ptr,
-            key_raw.ptr,
-            value.ptr,
-            beta.ptr,
-            decay.ptr,
-            query_scale.ptr,
-            key_scale.ptr,
-            inputs.tokens,
-            inputs.num_k_heads,
-            inputs.num_v_heads,
-            inputs.head_k_dim,
-            inputs.head_v_dim,
-        )
+        if direct_conv_lds32:
+            qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16(
+                conv_out.ptr,
+                a.ptr,
+                b.ptr,
+                dt_bias.ptr,
+                a_log.ptr,
+                beta.ptr,
+                decay.ptr,
+                query_scale.ptr,
+                key_scale.ptr,
+                inputs.tokens,
+                inputs.num_k_heads,
+                inputs.num_v_heads,
+                inputs.head_k_dim,
+                inputs.head_v_dim,
+            )
+        else:
+            qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16(
+                conv_out.ptr,
+                a.ptr,
+                b.ptr,
+                dt_bias.ptr,
+                a_log.ptr,
+                query_raw.ptr,
+                key_raw.ptr,
+                value.ptr,
+                beta.ptr,
+                decay.ptr,
+                query_scale.ptr,
+                key_scale.ptr,
+                inputs.tokens,
+                inputs.num_k_heads,
+                inputs.num_v_heads,
+                inputs.head_k_dim,
+                inputs.head_v_dim,
+            )
         recurrent = {
             128: qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
             64: qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
@@ -911,41 +933,81 @@ def _run_exact_split_chain(
                 64: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
                 32: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
             }[lds_tile]
+        if direct_conv_lds32:
+            recurrent = qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32
+            recurrent_segments = (
+                qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
+            )
         if use_segments:
-            recurrent_segments(
-                query_raw.ptr,
-                key_raw.ptr,
-                value.ptr,
-                beta.ptr,
-                decay.ptr,
-                query_scale.ptr,
-                key_scale.ptr,
-                state.ptr,
-                recurrent_out.ptr,
-                cu.ptr,
-                state_indices.ptr,
-                inputs.tokens,
-                1,
-                inputs.num_v_heads,
-                inputs.head_k_dim,
-                inputs.head_v_dim,
-            )
+            if direct_conv_lds32:
+                recurrent_segments(
+                    conv_out.ptr,
+                    beta.ptr,
+                    decay.ptr,
+                    query_scale.ptr,
+                    key_scale.ptr,
+                    state.ptr,
+                    recurrent_out.ptr,
+                    cu.ptr,
+                    state_indices.ptr,
+                    inputs.tokens,
+                    1,
+                    inputs.num_k_heads,
+                    inputs.num_v_heads,
+                    inputs.head_k_dim,
+                    inputs.head_v_dim,
+                )
+            else:
+                recurrent_segments(
+                    query_raw.ptr,
+                    key_raw.ptr,
+                    value.ptr,
+                    beta.ptr,
+                    decay.ptr,
+                    query_scale.ptr,
+                    key_scale.ptr,
+                    state.ptr,
+                    recurrent_out.ptr,
+                    cu.ptr,
+                    state_indices.ptr,
+                    inputs.tokens,
+                    1,
+                    inputs.num_v_heads,
+                    inputs.head_k_dim,
+                    inputs.head_v_dim,
+                )
         else:
-            recurrent(
-                query_raw.ptr,
-                key_raw.ptr,
-                value.ptr,
-                beta.ptr,
-                decay.ptr,
-                query_scale.ptr,
-                key_scale.ptr,
-                state.ptr,
-                recurrent_out.ptr,
-                inputs.tokens,
-                inputs.num_v_heads,
-                inputs.head_k_dim,
-                inputs.head_v_dim,
-            )
+            if direct_conv_lds32:
+                recurrent(
+                    conv_out.ptr,
+                    beta.ptr,
+                    decay.ptr,
+                    query_scale.ptr,
+                    key_scale.ptr,
+                    state.ptr,
+                    recurrent_out.ptr,
+                    inputs.tokens,
+                    inputs.num_k_heads,
+                    inputs.num_v_heads,
+                    inputs.head_k_dim,
+                    inputs.head_v_dim,
+                )
+            else:
+                recurrent(
+                    query_raw.ptr,
+                    key_raw.ptr,
+                    value.ptr,
+                    beta.ptr,
+                    decay.ptr,
+                    query_scale.ptr,
+                    key_scale.ptr,
+                    state.ptr,
+                    recurrent_out.ptr,
+                    inputs.tokens,
+                    inputs.num_v_heads,
+                    inputs.head_k_dim,
+                    inputs.head_v_dim,
+                )
         qwen35_gdn_prefill_rmsnorm_gate_bf16(
             recurrent_out.ptr,
             gate.ptr,
@@ -1061,6 +1123,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="linear_attn_prefill_prepare",
+            quant="gguf_qwen35",
+            variant="f32_bf16_compact_scales",
+        )
+        is qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="gdn_prefill_recurrent",
             quant="gguf_qwen35",
             variant="f32_decode_order_exact",
@@ -1135,6 +1206,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             backend="hip_gfx1100",
             layer="gdn_prefill_recurrent",
             quant="gguf_qwen35",
+            variant="f32_decode_order_exact_lds32_direct",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
             variant="f32_decode_order_exact_segments_lds64",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32
@@ -1147,6 +1227,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments_lds32",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_lds32_direct",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
     )
     assert (
         resolve(
@@ -1604,6 +1693,40 @@ def test_gdn_prefill_lds_resident_chain_is_bit_exact_to_decode_order(
     )
     np.testing.assert_array_equal(out_lds, out_fused)
     np.testing.assert_array_equal(state_lds, state_fused)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_direct_conv_lds32_is_bit_exact_to_materialized_chain(
+    use_segments: bool,
+) -> None:
+    """Compact scales plus direct conv reads must retain every exact output bit."""
+
+    inputs = _GDNInputs(
+        tokens=17,
+        num_k_heads=4,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=37,
+    )
+    out_materialized, state_materialized = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        lds_tile=32,
+    )
+    out_direct, state_direct = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        direct_conv_lds32=True,
+    )
+    out_cpu, state_cpu = _cpu_full_chain(inputs, _RMS_EPS)
+    np.testing.assert_array_equal(out_direct, out_materialized)
+    np.testing.assert_array_equal(state_direct, state_materialized)
+    _assert_output_close(out_direct, out_cpu, label="direct LDS32 vs CPU")
+    _assert_state_close(state_direct, state_cpu, label="direct LDS32 vs CPU")
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

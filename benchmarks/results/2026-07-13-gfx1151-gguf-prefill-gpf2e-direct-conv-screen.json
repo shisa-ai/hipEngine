@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_candidate",
+  "status": "candidate_focus_screen_passed_pending_clean_promotion",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "GPF-2E compact-scale direct-conv LDS32 GDN prefill",
+  "conclusion": "The explicit candidate removes Q/K/V scratch materialization, computes each shared Q/K norm once per K head, and reads canonical conv_out directly from the scalar-exact LDS32 recurrence. Separate same-worktree screens improve all three focus shapes; clean full-model exactness, interleaved wall, and decode gates remain before promotion.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "base_commit": "dfa4d7b3b12c4211911621745c3d18b9f722be6f",
+    "candidate_dirty": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "baseline": "raw-scale prepare copies Q/K/V into three prompt-sized FP32 scratch arrays and recomputes identical Q/K norms for every V head sharing a K head",
+    "candidate": "compact prepare stores beta/decay per V head and scales per K head; direct LDS32 recurrence reads raw Q/K/V from conv_out",
+    "production_shape": "4 K heads, 32 V heads, head_k_dim=head_v_dim=128",
+    "arithmetic_contract": "the eight-wide norm tree, scalar 0..127 contraction/update order, token order, and RMSNorm-gate remain unchanged",
+    "selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct",
+    "default_changed": false
+  },
+  "correctness": {
+    "red": "Both correctness and routing modules failed collection on the three intentionally missing compact-prepare/direct-recurrence entry points.",
+    "command": "uv run pytest -q tests/test_gguf_gdn_prefill_ab.py tests/test_gguf_gdn_prefill_compare.py tests/test_gguf_gdn_trajectory_gate.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_gdn_prefill_correctness.py",
+    "tests_passed": 89,
+    "primitive_contract": "plain and segment direct LDS32 outputs plus FP32 final state are byte-identical to the materialized LDS32 chain on the shared-head fixture; both remain within the CPU-reference correctness gate",
+    "timed_final_ids": {
+      "control": {
+        "512/128": [9707, 9707, 9707],
+        "1K/128": [9707, 9707, 9707],
+        "4K/128": [9707, 9707, 9707]
+      },
+      "candidate": {
+        "512/128": [9707, 9707, 9707],
+        "1K/128": [9707, 9707, 9707],
+        "4K/128": [9707, 9707, 9707]
+      }
+    }
+  },
+  "protocol": {
+    "session_scope": "separate control and candidate max-4K resident sessions from the same dirty worktree",
+    "workloads": ["512/128", "1K/128", "4K/128"],
+    "prompt_source": "repeated token 9707",
+    "warmups": 1,
+    "measured_repetitions": 3,
+    "decode": "128 eager transitions; graph disabled",
+    "timing_eligibility": "diagnostic screen only; not interleaved and provenance is dirty"
+  },
+  "measurements": {
+    "512/128": {
+      "control_prefill_tok_s": 769.3779000203178,
+      "candidate_prefill_tok_s": 817.0041855588325,
+      "prefill_delta_percent": 6.190233113955701,
+      "candidate_range_tok_s": [816.8260655664515, 817.8194644949759],
+      "control_decode_tok_s": 48.872844275538405,
+      "candidate_decode_tok_s": 48.80222153179374,
+      "decode_delta_percent": -0.14450303597332015
+    },
+    "1K/128": {
+      "control_prefill_tok_s": 821.4603150911425,
+      "candidate_prefill_tok_s": 903.228726926686,
+      "prefill_delta_percent": 9.954030685763705,
+      "candidate_range_tok_s": [898.4730593536649, 904.0601458545617],
+      "control_decode_tok_s": 51.46320922179269,
+      "candidate_decode_tok_s": 51.37446600131098,
+      "decode_delta_percent": -0.1724401214453053
+    },
+    "4K/128": {
+      "control_prefill_tok_s": 702.8083581641205,
+      "candidate_prefill_tok_s": 755.0771319968592,
+      "prefill_delta_percent": 7.437130367839595,
+      "candidate_range_tok_s": [754.9006379191359, 755.693278031735],
+      "control_decode_tok_s": 52.280642468854474,
+      "candidate_decode_tok_s": 52.22403906032813,
+      "decode_delta_percent": -0.10826838740565226
+    }
+  },
+  "kernel_trace": {
+    "command": "rocprofv3 --kernel-trace -d /tmp/hipengine-gpf2e-direct-rocprof-20260713 -o gpf2e -f csv -- uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_direct_conv_lds32_is_bit_exact_to_materialized_chain",
+    "candidate_kernels_observed": [
+      "qwen35_linear_attn_prefill_prepare_compact_scales_kernel<unsigned short>",
+      "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_kernel",
+      "qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_kernel"
+    ],
+    "direct_recurrence_vgpr": 64,
+    "direct_recurrence_lds_bytes": 16384,
+    "direct_recurrence_scratch_bytes": 0,
+    "workgroup_size": 32,
+    "note": "The 17-token fixture trace proves dispatch and plausible resources; it is not used as a latency claim."
+  },
+  "sources": {
+    "control_local": "/tmp/gpf2e-default-dirty-control-512-1k-4k.json",
+    "control_sha256": "a8438aada8ce3132a722226c781ded53adae08932ff89b5d6a9dee9e6aee30bf",
+    "candidate_local": "/tmp/gpf2e-direct-dirty-screen-512-1k-4k.json",
+    "candidate_sha256": "d7f34c38b3eecac709da58459ac603e2387ab855cbf3f99504c6aa90461e4d90",
+    "trace_local": "/tmp/hipengine-gpf2e-direct-rocprof-20260713/gpf2e_kernel_trace.csv"
+  },
+  "lineage": {
+    "external_check": "python3 scripts/check_lineage.py --kind kernel --diff stat could not inspect the configured read-only parent because /home/lhl/amd-gpu-tuning/nano-vllm-amd is absent",
+    "port": false,
+    "reason": "original in-tree exact dataflow/schedule change; no external source copied"
+  },
+  "next_action": "Commit the explicit candidate, run the clean six-case full-model exact matrix, then a balanced same-session chain_lds32 versus chain_lds32_direct prefill/decode gate before changing gfx1151 auto."
+}

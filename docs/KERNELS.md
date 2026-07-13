@@ -319,6 +319,22 @@ falls back to fused. See
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-balanced-ab.json`, and
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json`.
 
+GPF-2E adds an explicit compact-scale/direct-conv refinement without changing
+the GPF-2D default. The registered prepare variant
+`f32_bf16_compact_scales` writes beta/decay as `[token,v_head]` and Q/K scales
+as `[token,k_head]`; it does not materialize Q/K/V. Registered plain/segment
+`f32_decode_order_exact[_segments]_lds32_direct` recurrence variants read the
+canonical raw Q/K/V slices from `conv_out`, map `v_head % num_k_heads`, and
+retain the same scalar recurrence in a 16 KiB LDS tile. Do not substitute the
+compact scale ABI into a materialized recurrence: their scale indexing differs.
+Plain and segmented production-head fixtures are byte-exact to materialized
+LDS32 and pass the CPU-reference gate. A cached trace records workgroup 32,
+64 VGPR, zero scratch, and both direct kernel names. The dirty focus screen is
+`769.378/821.460/702.808 -> 817.004/903.229/755.077 tok/s` at 512/1K/4K;
+keep `chain_lds32_direct` explicit until clean full-model and balanced gates
+complete. See
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

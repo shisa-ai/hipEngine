@@ -22,9 +22,11 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
@@ -40,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
+    qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
     qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
@@ -63,6 +66,10 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert plan.rmsnorm_gate is qwen35_gdn_prefill_rmsnorm_gate_bf16
     assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
     assert plan.exact_prepare is qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16
+    assert (
+        plan.exact_prepare_compact
+        is qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16
+    )
     assert plan.exact_recurrent is qwen35_gdn_prefill_recurrent_decode_order_exact_f32
     assert (
         plan.exact_recurrent_segments
@@ -106,6 +113,15 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert plan.has_exact_chain_lds64
     assert plan.has_exact_chain_lds32
     assert (
+        plan.exact_recurrent_lds32_direct
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32
+    )
+    assert (
+        plan.exact_recurrent_segments_lds32_direct
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
+    )
+    assert plan.has_exact_chain_lds32_direct
+    assert (
         plan.exact_recurrent_wave32
         is qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
     )
@@ -131,6 +147,7 @@ def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
 
     assert plan.auto_mode == "chain_lds32"
     assert plan.has_exact_chain_lds32
+    assert plan.has_exact_chain_lds32_direct
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
@@ -218,6 +235,81 @@ def test_run_gdn_prefill_auto_falls_back_to_fused_when_preferred_mode_missing() 
     )
 
     assert [name for name, _ in calls] == ["fused_decode_order"]
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected_recurrent"),
+    [(64, "exact_lds32_direct"), (1025, "exact_segments_lds32_direct")],
+)
+def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: int,
+    expected_recurrent: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare_compact=_recorder(calls, "exact_prepare_compact"),
+        exact_recurrent_lds32_direct=_recorder(calls, "exact_lds32_direct"),
+        exact_recurrent_segments_lds32_direct=_recorder(
+            calls, "exact_segments_lds32_direct"
+        ),
+    )
+    scratch = _make_scratch()
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=scratch,
+        cfg=_make_cfg(),
+        rows=rows,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0003),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare_compact",
+        expected_recurrent,
+        "rmsnorm_gate",
+    ]
+    prepare_args = calls[0][1]
+    assert prepare_args[:9] == (
+        scratch.conv_out.ptr,
+        scratch.linear_alpha.ptr,
+        scratch.linear_beta.ptr,
+        0xA001,
+        0xA002,
+        scratch.prefill_beta.ptr,
+        scratch.prefill_decay.ptr,
+        scratch.prefill_query_scale.ptr,
+        scratch.prefill_key_scale.ptr,
+    )
+    recurrent_args = calls[1][1]
+    assert recurrent_args[:7] == (
+        scratch.conv_out.ptr,
+        scratch.prefill_beta.ptr,
+        scratch.prefill_decay.ptr,
+        scratch.prefill_query_scale.ptr,
+        scratch.prefill_key_scale.ptr,
+        0xDEAD0003,
+        scratch.recurrent_out.ptr,
+    )
+    if rows == 64:
+        assert recurrent_args[7:12] == (64, 4, 32, 128, 128)
+    else:
+        assert recurrent_args[7:11] == (
+            scratch.gdn_cu_seqlens.ptr,
+            scratch.gdn_state_indices.ptr,
+            1025,
+            1,
+        )
+        assert recurrent_args[11:15] == (4, 32, 128, 128)
 
 
 def test_run_gdn_prefill_explicit_chain_overrides_available_fused(
@@ -472,6 +564,13 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
                 None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
             ),
             "explicit GGUF GDN prefill mode 'chain_lds32' is unavailable",
+        ),
+        (
+            "chain_lds32_direct",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_lds32_direct' is unavailable",
         ),
         (
             "chain_wave32",

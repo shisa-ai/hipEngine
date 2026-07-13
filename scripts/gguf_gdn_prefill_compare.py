@@ -594,6 +594,7 @@ def build_parser() -> argparse.ArgumentParser:
             "chain_wave32_tree",
             "chain_lds64",
             "chain_lds32",
+            "chain_lds32_direct",
         ),
         default="chain",
         help="Named registered GDN route compared against fused (default: chain).",
