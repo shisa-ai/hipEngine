@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`2743798ffedc408db7a9607e385b8460b24f82a1`
+`5a49b16daef0f55f81b4624109586493b3311bdc`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -178,7 +178,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean BF16 capacity probe `bec5428d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: direct 220 Ki BF16 execution completes, but tracked peak is **24.090 GiB** and an in-prefill whole-device monitor observes **at least 24.832 GiB**, so it fails the 24 GiB envelope. Compact 256K INT8 fits at **22.971 GiB** tracked with no BF16 shadow, but matched-context 128K/16 remains rejected at KL **0.85128**, top-1 **41.18%**; bounded tasks are only partially scorable. Neither route admits supported capacity above the measured 128K BF16 reference. | Current diagnostic table | Measure a lower BF16 frontier directly; rerun INT8 only after a materially different KV representation/model, with matched-context and broader task quality before support. |
+| Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains quality-rejected at KL 0.85128 / top-1 41.18%. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV fidelity and same-weight GGUF bridge | 2026-07-13 | clean harness `31c12a3a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Accepted quality diagnostic for the named protocol**: Q8_0-vs-F16 KV on identical Q4_K_M weights passes 128K/16 at mean/max KL **0.00521/0.08749**, top-1 **100%**; F16/F16 control is exactly zero. Same-weight hipEngine BF16-vs-llama F16 rejects all-position mean KL at **0.26606** because prompt-final KL is **4.51481**, while its 16 decode rows average **0.000510** and preserve 100% top-1. No performance claim. | Current diagnostic table | Rerun after llama.cpp/hipEngine GGUF prefill math, cache types, model/build, or protocol changes. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
@@ -555,37 +555,55 @@ links without publishing their numeric rows as current results. Their removed
 tables remain recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### W7900 PARO context capacity and INT8 fidelity, 2026-07-13
+### gfx1100 PARO context capacity and INT8 fidelity, 2026-07-13
 
-**Status: current direct capacity measurements; 220 Ki BF16 exceeds the 24 GiB
-envelope and 256K INT8 quality is rejected.** Clean hipEngine `bec5428d`
-directly tested 225,280 BF16 prompt tokens plus 128 decode tokens on
-W7900/gfx1100; clean `d6504544` supplies the compact 256K INT8 row. Both use the
-current Qwen3.6 packed PARO snapshot and repeated token `9707`. The BF16 run
-completes with finite logits and a passing layout audit, but fails capacity.
-The INT8 route passes its tracked/layout gates, but fails matched-context and
-bounded task quality. Neither result admits supported capacity above the
-measured 128K BF16 reference.
+**Status: 208 Ki BF16 is the recommended safe cap on a physical 24 GB card;
+220 Ki is a validated edge, and 256K INT8 remains quality-rejected.** Clean
+hipEngine `5a49b16d` ran profile-aware BF16 sweeps on the W7900 and directly on
+this host's 25,753,026,560-byte (23.984 GiB) RX 7900 XTX. Every retained row
+uses the current Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 decode
+tokens, full-run approximately 1 Hz whole-device monitoring, finite-output
+checks, and a passing BF16 layout audit. Clean `d6504544` supplies the separate
+compact 256K INT8 row.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
-| Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Capacity / quality status |
-| --- | ---: | ---: | ---: | ---: | --- | --- |
-| PARO BF16 KV (2026-07-12 reference) | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
-| PARO BF16 KV | 220 Ki (225,280)/128 | **24.090 GiB** | **-0.090 GiB** | 4.619 GB | Passed | **Rejected** by 24 GiB capacity gate; whole-device observation is at least 24.832 GiB |
-| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **22.971 GiB** | 1.029 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 matched-context and task gates |
+| Route / profile | Hardware | Context/decode | Tracked peak | Observed device peak | Device/card margin | Capacity / quality status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| PARO BF16 KV reference | W7900, default chunks | 128K/128 | **22.124 GiB** | 21.107 GiB phase sample | n/a | Reference path |
+| PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | **208 Ki (212,992)/128** | **23.082 GiB** | **23.623 GiB** | **+0.361 GiB** | **Recommended practical safe cap** |
+| PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | 220 Ki (225,280)/128 | 23.369 GiB | **23.908 GiB** | **+0.076 GiB (~78 MiB)** | Physical pass, but **edge only—not safe cap** |
+| PARO BF16 KV, default 48 GB-card profile | W7900 | 220 Ki (225,280)/128 | 24.090 GiB | at least 24.832 GiB | at most -0.848 GiB vs 24 GB card | Rejected for this larger-chunk profile |
+| PARO INT8 per-token/head KV, FP16 scales | W7900 | 256K/128 | **22.971 GiB** | 21.041 GiB phase sample | +1.029 GiB tracked | **Rejected** by Qwen3.6 matched-context and task gates |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
-The clean 220 Ki BF16 run retains 4,618,977,280 bytes and reaches tracked
-high-water **25,866,320,852 bytes (24.090 GiB)**, exceeding the gate by
-**96,517,076 bytes (0.090 GiB)**. A separate approximately 1 Hz `rocm-smi`
-monitor over the final 82 seconds of prefill observes **at least 26,663,366,656
-bytes (24.832 GiB)** of whole-device use. Because that monitor began during the
-run, this is a lower bound rather than a full-run maximum; the raw benchmark's
-22.750 GiB phase-boundary sample is coarser and does not override the in-prefill
-observation. The run does not segfault, its generated logits are finite, and
-its BF16 layout audit passes, but it does **not** fit the 24 GiB portability
-envelope. The retained-KV-only projection is superseded. Single-run prefill and
-decode diagnostics are 716.869 and 45.301 tok/s; no performance claim is made.
+The physical-card result differs from the earlier W7900 220 Ki rejection
+because the runtime is card-aware. W7900's 48 GB total selects
+`1024/1024/4096/1024/1024` prefill chunks; a 24 GB card automatically selects
+all-`768` via `low_memory_full_context_24gb`. The earlier W7900 result remains a
+valid rejection of its default larger-chunk profile, but it cannot by itself
+predict behavior under the actual low-memory profile.
+
+The clean profile-aware sweep is:
+
+| Hardware / prefill profile | Context | Tracked peak | Full-run device peak | Margin vs physical 24 GB bytes | Interpretation |
+| --- | ---: | ---: | ---: | ---: | --- |
+| W7900 default `1024/4096` | 176 Ki | 23.033 GiB | 23.779 GiB | +0.205 GiB | Fits byte envelope, limited margin |
+| W7900 default `1024/4096` | 184 Ki | 23.226 GiB | 23.971 GiB | +0.013 GiB | Not safe |
+| W7900 default `1024/4096` | 200 Ki | 23.610 GiB | 24.356 GiB | -0.371 GiB | Does not model a fitting 24 GB route |
+| RX 7900 XTX automatic all-`768` | 176 Ki | 22.315 GiB | 22.857 GiB | +1.127 GiB | Direct physical-card pass |
+| RX 7900 XTX automatic all-`768` | **208 Ki** | **23.082 GiB** | **23.623 GiB** | **+0.361 GiB** | **Recommended safe cap** |
+| RX 7900 XTX automatic all-`768` | 220 Ki | 23.369 GiB | 23.908 GiB | +0.076 GiB | Direct pass, edge only |
+| W7900 manual all-`768` screen | 232 Ki | 23.657 GiB | 24.163 GiB | -0.178 GiB | Rejected without risking physical-card OOM |
+
+For this report, “safe” requires a directly tested point with at least 0.25 GiB
+of observed whole-device headroom. Thus **208 Ki (212,992 tokens)** is the
+practical cap; ordinary 200K or 200 Ki requests are below it. **220 Ki is the
+largest physically validated point**, but only about 78 MiB remains, so it
+should not be the configured maximum. The exact mathematical frontier is not
+claimed: 209-219 Ki were not tested. No row segfaulted; the 232 Ki physical-card
+run was intentionally skipped after its same-profile W7900 screen exceeded the
+target byte capacity. Throughput is single-run/concurrent diagnostic data only,
+not a performance claim.
 
 The clean 256K/128 INT8 row retains 2,686,976,000 payload bytes plus 20,992,000
 FP16 scale bytes across ten full-attention layers. The compact table is
@@ -628,7 +646,8 @@ KL can change a real decision but does not imply every answer changes. This is
 not a full/free-generation quality claim and does not make 256K INT8 supported.
 
 Capacity and outcome artifacts:
-[BF16 220 Ki direct capacity](results/2026-07-13-w7900-paro-bf16-220ki-capacity.json) and
+[profile-aware BF16 frontier](results/2026-07-13-gfx1100-paro-bf16-context-frontier.json),
+[W7900 default-profile 220 Ki diagnostic](results/2026-07-13-w7900-paro-bf16-220ki-capacity.json), and
 [INT8 accuracy outcome](results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json).
 Detailed diagnostics:
 [llama.cpp Q8_0 matched quality](results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),

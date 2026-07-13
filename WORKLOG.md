@@ -153296,3 +153296,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   rollups/exports plus this handoff. Single-run 716.869 prefill / 45.301 decode
   tok/s values remain diagnostic (`performance_claim=false`). Next action is a
   fully monitored lower-context sweep to locate a realistic BF16 frontier.
+
+## 2026-07-13 — Establish profile-aware BF16 safe context frontier
+
+- The W7900-only 220 Ki result was not sufficient to answer physical 24 GB fit:
+  prefill chunk auto-tuning keys off total VRAM. The 48 GB W7900 selects
+  `1024/1024/4096/1024/1024`, while the 25,753,026,560-byte RX 7900 XTX selects
+  all-`768` through `low_memory_full_context_24gb`. Ran a clean, full-child
+  approximately 1 Hz `rocm-smi` capacity sweep on hipEngine `5a49b16d`; all
+  retained rows had finite logits and passing BF16 K/V layout audits.
+- W7900 default-profile screens were: 176 Ki tracked/device
+  `23.033/23.779 GiB` (+0.205 GiB versus the 24 GB card bytes); 184 Ki
+  `23.226/23.971` (+0.013 GiB, not safe); and 200 Ki `23.610/24.356`
+  (-0.371 GiB). These prove that tracked-only or W7900-default observations do
+  not model the runtime's actual low-memory route.
+- Direct physical 24 GB results with automatic all-768 chunks were: 176 Ki
+  tracked/device `22.315/22.857 GiB` (+1.127 GiB); **208 Ki**
+  `23.082/23.623 GiB` (**+0.361 GiB / 388,128,768 bytes**); and **220 Ki**
+  `23.369/23.908 GiB` (**+0.076 GiB / 81,764,352 bytes**). The 220 Ki run exits
+  cleanly, but ~78 MiB is an edge rather than an operational margin.
+- A clean W7900 screen at 232 Ki with the same manual all-768 profile reaches
+  tracked/device `23.657/24.163 GiB`, 0.178 GiB above the physical-card byte
+  limit. We did not risk the corresponding XTX OOM run. No tested run
+  segfaulted.
+- Recommendation: use **208 Ki (212,992 tokens)** as the practical safe BF16
+  cap under the current 24 GB low-memory profile; 200K/200 Ki are below it.
+  220 Ki is the largest directly validated physical pass but is edge-only. This
+  report defines safe as at least 0.25 GiB directly observed headroom; it does
+  not claim the exact 209-219 Ki frontier.
+- Exact recommended-cap command:
+  `env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 212992 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-frontier-20260713/208ki-xtx-clean/paro-212992-bf16.json`.
+- Published `benchmarks/results/2026-07-13-gfx1100-paro-bf16-context-frontier.json`
+  and updated only benchmark rollups/exports plus this handoff. Several runs
+  overlapped on independent GPUs, so all throughput remains diagnostic and
+  `performance_claim=false`.

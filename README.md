@@ -86,18 +86,22 @@ isolated experiment with its own gates (see
 
 ## Memory Usage
 
-The clean 2026-07-13 W7900 run measured hipEngine `d6504544` against the
-current Qwen3.6 packed PARO model under the 24 GiB portability gate. Compact
-chunk-local prefill metadata reclaims 0.986 GiB at 256K. The physical
-capacity/layout gate passes, but matched-context and bounded task quality reject
-INT8 KV. Accordingly, 256K INT8 is allocation capacity—not a supported route.
+The clean 2026-07-13 profile-aware BF16 frontier (`5a49b16d`) directly tests
+the current Qwen3.6 packed PARO model on a physical 24 GB gfx1100 card. The
+automatic low-memory prefill profile makes **208 Ki the recommended safe BF16
+cap** with 0.361 GiB observed headroom; 220 Ki completes but leaves only about
+78 MiB and is edge-only. Separately, compact 256K INT8 (`d6504544`) fits its
+tracked layout gate, but matched-context and bounded task quality reject it.
+Accordingly, 256K INT8 remains allocation capacity—not a supported route.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
-| Route | Context/decode | Tracked peak | 24 GiB margin | Retained KV | Layout audit | Capacity / quality status |
-| --- | ---: | ---: | ---: | ---: | --- | --- |
-| PARO BF16 KV (2026-07-12 reference) | 128K/128 | **22.124 GiB** | 1.876 GiB | 2.690 GB | Passed | Reference path |
-| PARO BF16 KV | 220 Ki (225,280)/128 | **24.090 GiB** | **-0.090 GiB** | 4.619 GB | Passed | **Rejected** by 24 GiB capacity gate; whole-device observation is at least 24.832 GiB |
-| PARO INT8 per-token/head KV, FP16 scales | 256K/128 | **22.971 GiB** | 1.029 GiB | 2.708 GB | Passed; no BF16 shadow | **Rejected** by Qwen3.6 matched-context and task gates |
+| Route / profile | Hardware | Context/decode | Tracked peak | Observed device peak | Device/card margin | Capacity / quality status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| PARO BF16 KV reference | W7900, default chunks | 128K/128 | **22.124 GiB** | 21.107 GiB phase sample | n/a | Reference path |
+| PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | **208 Ki (212,992)/128** | **23.082 GiB** | **23.623 GiB** | **+0.361 GiB** | **Recommended practical safe cap** |
+| PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | 220 Ki (225,280)/128 | 23.369 GiB | **23.908 GiB** | **+0.076 GiB (~78 MiB)** | Physical pass, but **edge only—not safe cap** |
+| PARO BF16 KV, default 48 GB-card profile | W7900 | 220 Ki (225,280)/128 | 24.090 GiB | at least 24.832 GiB | at most -0.848 GiB vs 24 GB card | Rejected for this larger-chunk profile |
+| PARO INT8 per-token/head KV, FP16 scales | W7900 | 256K/128 | **22.971 GiB** | 21.041 GiB phase sample | +1.029 GiB tracked | **Rejected** by Qwen3.6 matched-context and task gates |
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
