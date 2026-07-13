@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_family_selection_profile",
+  "status": "profile_complete_candidate_selected",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "profiled_commit": "81e2f4b8a983df086a6c8ba2b9bea908abd22842",
+  "selected_candidate": {
+    "id": "GPF-4",
+    "family": "AOTriton queue scheduling / downstream linear-attention convolution",
+    "reason": "The full 4K hipEngine trace attributes 952.870301 ms (17.657%) to linear-attention convolution versus 32.980 ms (0.884%) in matched llama.cpp, a 28.89x duration gap. The bounded 128K sample keeps convolution at 7337.238 ms (17.675%), while llama.cpp's complete 128K trace attributes 1088.971 ms (0.338%). The identical gfx1151 AOTriton 4096-query image reports 2560 bytes of scratch, matching the already-isolated PARO queue-cliff mechanism. GDN remains larger but is the documented high-effort fallback; attention core, selected Q4/Q5, and router are not the largest eligible residual.",
+    "required_gate": "Implement GGUF-only use of the existing isolated AOTriton stream policy, then run exact state/logit and balanced 512/4K/128K off/on gates before promotion."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "llama_cpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llama_cpp_worktree_note": "Local read-only comparison checkout was ahead of origin with unrelated modifications; the traced binary is identified by this checkout commit and exact command."
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "GGUF UD-Q4_K_M",
+    "kv_dtype": "bf16 for hipEngine; f16 K/V requested for llama.cpp"
+  },
+  "protocol": {
+    "purpose": "Family selection only; no throughput retention or publication claim.",
+    "hipengine": "No warmup, one measured prefill-only run, cached builds, automatic published GPF-2D/3A/2E route, bulk attention, WMMA prefill, eager/no-decode. 512 and 4K are complete rocprofv3 kernel traces. The complete 128K trace made no forward progress under rocprofv3 for approximately 15 minutes and was terminated; the retained 128K run uses --collection-period 30:60:1, so its family shares describe a bounded 60-second prefill sample rather than the whole request.",
+    "llama_cpp": "No warmup, one prefill-only repetition under rocprofv3, -ngl 99 -fa 1 -ctk f16 -ctv f16 -n 0 -d 0 on ROCm0.",
+    "hipengine_command_template": "/tmp/hipengine-gpf-next-81e2f4b8/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --prompt-length <N> --require-cached-build --json <OUT>",
+    "llama_cpp_command_template": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 --no-warmup -o json -p <N> -n 0 -d 0 -dev ROCm0"
+  },
+  "hipengine_profiles": {
+    "512": {
+      "coverage": "complete",
+      "host_prefill_seconds": 0.6890505730116274,
+      "diagnostic_prefill_tok_s": 743.0514102356899,
+      "total_kernel_ms": 619.556295,
+      "total_dispatches": 2009,
+      "families": {
+        "gdn_prefill_recurrent": {"ms": 206.898973, "share": 0.3339470112, "dispatches": 30},
+        "dense_q8_0_wmma_prefill": {"ms": 158.981924, "share": 0.2566060990, "dispatches": 250},
+        "moe_q4_k_selected_dual_wmma_prefill": {"ms": 96.385765, "share": 0.1555722471, "dispatches": 40},
+        "moe_q5_k_selected_wmma_prefill": {"ms": 56.298019, "share": 0.0908682866, "dispatches": 37},
+        "router": {"ms": 30.172885, "share": 0.0487007964, "dispatches": 120},
+        "linear_attn_conv": {"ms": 13.570798, "share": 0.0219040596, "dispatches": 60},
+        "full_attention_prefill": {"ms": 4.699743, "share": 0.0075856593, "dispatches": 10}
+      },
+      "trace_sha256": "db455227f857c8ae8f9ee18095c6e12532a11e759ab5c5c4a95cacdfd1e688ea"
+    },
+    "4096": {
+      "coverage": "complete",
+      "host_prefill_seconds": 5.47497376499814,
+      "diagnostic_prefill_tok_s": 748.1314387634133,
+      "total_kernel_ms": 5396.574786,
+      "total_dispatches": 5495,
+      "families": {
+        "gdn_prefill_recurrent": {"ms": 1771.481257, "share": 0.3282602998, "dispatches": 120},
+        "linear_attn_conv": {"ms": 952.870301, "share": 0.1765694610, "dispatches": 240},
+        "dense_q8_0_wmma_prefill": {"ms": 844.669713, "share": 0.1565195974, "dispatches": 790},
+        "moe_q4_k_selected_dual_wmma_prefill": {"ms": 620.629608, "share": 0.1150043560, "dispatches": 130},
+        "moe_q5_k_selected_wmma_prefill": {"ms": 391.398113, "share": 0.0725271359, "dispatches": 121},
+        "router": {"ms": 242.085792, "share": 0.0448591563, "dispatches": 390},
+        "full_attention_prefill": {"ms": 150.315612, "share": 0.0278538921, "dispatches": 10}
+      },
+      "aotriton_attn_fwd_scratch_bytes": 2560,
+      "trace_sha256": "8b6f0af4292ba5fc7c5e4069f7a58b91f5fefbcc50f786d20ac731e5a28dba33"
+    },
+    "131072": {
+      "coverage": "bounded_sample_collection_period_30_60_1",
+      "host_prefill_seconds": 333.59777880201,
+      "diagnostic_prefill_tok_s": 392.90429471891395,
+      "sample_total_kernel_ms": 41511.026597,
+      "sample_total_dispatches": 10258,
+      "sample_families": {
+        "gdn_prefill_recurrent": {"ms": 12158.943, "share": 0.29291, "dispatches": 201},
+        "linear_attn_conv": {"ms": 7337.238, "share": 0.17675, "dispatches": 402},
+        "full_attention_prefill": {"ms": 5695.609, "share": 0.13721, "dispatches": 66},
+        "dense_q8_0_wmma_prefill": {"ms": 5133.161, "share": 0.12366, "dispatches": 1665},
+        "moe_q4_k_selected_dual_wmma_prefill": {"ms": 3845.752, "share": 0.09264, "dispatches": 266},
+        "moe_q5_k_selected_wmma_prefill": {"ms": 2542.025, "share": 0.06124, "dispatches": 248},
+        "router": {"ms": 1683.082, "share": 0.04055, "dispatches": 801}
+      },
+      "trace_sha256": "a217e3d48ba5c24c06672b653e113f00207aee5ea88c6c5d2b070ee1c7ec8e8a"
+    }
+  },
+  "llama_cpp_profiles": {
+    "512": {
+      "coverage": "complete",
+      "wall_seconds": 0.547395765,
+      "diagnostic_prefill_tok_s": 935.33789,
+      "total_kernel_ms": 448.372739,
+      "total_dispatches": 2490,
+      "families": {
+        "mmq_q4_k": {"ms": 141.703928, "share": 0.3160404629},
+        "mmq_q5_k": {"ms": 70.94718, "share": 0.1582325905},
+        "mmq_q8_0": {"ms": 66.859122, "share": 0.1491150469},
+        "gdn": {"ms": 44.179996, "share": 0.0985340815},
+        "linear_attn_conv": {"ms": 4.260073, "share": 0.0095011865},
+        "flash_attn": {"ms": 6.137267, "share": 0.0136878683}
+      },
+      "trace_sha256": "f9e0a2f8e42937e676b507da71b0a767e4d23f48a92c8c5dc8047b4a79226124"
+    },
+    "4096": {
+      "coverage": "complete",
+      "wall_seconds": 3.858026345,
+      "diagnostic_prefill_tok_s": 1061.682745,
+      "total_kernel_ms": 3732.515865,
+      "total_dispatches": 17789,
+      "families": {
+        "mmq_q4_k": {"ms": 1173.527432, "share": 0.3144065489},
+        "mmq_q5_k": {"ms": 585.01137, "share": 0.1567337933},
+        "mmq_q8_0": {"ms": 531.344578, "share": 0.1423556114},
+        "gdn": {"ms": 330.48762, "share": 0.0885428574},
+        "flash_attn": {"ms": 204.083457, "share": 0.0546771841},
+        "linear_attn_conv": {"ms": 32.980473, "share": 0.0088359900}
+      },
+      "trace_sha256": "39aaccae4546be7c43ced8b1e7c401a26545b78669d9a4fabfde8433d5b1e160"
+    },
+    "131072": {
+      "coverage": "complete",
+      "wall_seconds": 324.137069576,
+      "diagnostic_prefill_tok_s": 404.372139,
+      "total_kernel_ms": 322358.176486,
+      "total_dispatches": 559917,
+      "families": {
+        "flash_attn": {"ms": 208121.191051, "share": 0.6456209466},
+        "mmq_q4_k": {"ms": 36479.807919, "share": 0.1131654494},
+        "mmq_q5_k": {"ms": 18195.281449, "share": 0.0564442995},
+        "mmq_q8_0": {"ms": 16942.774264, "share": 0.0525588476},
+        "gdn": {"ms": 12784.758676, "share": 0.0396601036},
+        "linear_attn_conv": {"ms": 1088.970576, "share": 0.0033781385}
+      },
+      "trace_sha256": "7d1982ea89273c06c736a01968abc18e9774282d911a31bce24a669d2b1bbfc0"
+    }
+  },
+  "caveats": [
+    "Kernel-duration sums can double count overlapping queues and are selection evidence, not host-wall decomposition.",
+    "The hipEngine 128K family distribution is a bounded sample; do not compare its absolute family milliseconds with llama.cpp's complete 128K trace.",
+    "The one-pass diagnostic throughput values are profiler-affected and do not replace the published 1+3 benchmark rows.",
+    "The sampled hipEngine 128K run completed in 333.598 seconds of host prefill, confirming that bounded collection avoids the full-trace no-progress behavior."
+  ]
+}
