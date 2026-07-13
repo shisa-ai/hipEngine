@@ -885,18 +885,18 @@ should be boring.
   same-stream; its 4K/4096-query result directly validates the scoped gfx1100
   default. Retained evidence:
   `benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`.
-- GPF-4 extends the same selector to GGUF and is now default-on through the
-  **gfx1151-only** package capability. Clean detached 512/4K is byte-exact
-  across logits, hidden, all 30 Conv/GDN pairs, and all 10 live K/V pairs;
-  wall changes by **+0.17%/+20.76%**. The clean 128K screen reaches
-  **432.403 tok/s**, +10.05%-11.64% versus both baseline references, with
-  unchanged 25.493 GiB peak. A same-process interleave remains invalid because
-  one baseline launch permanently contaminates the caller queue for later
-  legs. `=0` is the rollback; gfx1100 remains same-stream. Evidence:
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`
+- GPF-4 extends the same selector to GGUF but is **default-off on both
+  backends** after the final stability gate rejected its provisional gfx1151
+  capability. Clean focus is byte-exact and often fast, but automatic-route
+  32K collapses once to 294.254 tok/s, its fresh 1+5 replacement fails to
+  finish the warmup after 481 s, and 128K measured run 2 stays GPU-active past
+  1200 s. A same-stream 32K control immediately completes normally. Keep `=1`
+  only as a diagnostic; do not remove the same-stream GGUF route. Evidence:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`,
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`,
   and
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`.
-- Remove when: the ROCr/AOTriton queue-scratch issue is fixed upstream or the
-  rollback has survived one release cycle. Then remove the opt-out and its
-  duplicate same-stream routes; keep one proven scheduling policy shared by
-  PARO and GGUF.
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`.
+- Remove when: either upstream removes the queue-scratch cliff so isolation is
+  unnecessary, or a replacement isolation design passes the full stability
+  gate and survives one release cycle. Then delete the rejected duplicate
+  route and selector; keep only the proven scheduling policy.

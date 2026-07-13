@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf4_final_stability_gate",
+  "status": "rejected_default_disabled",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_commit": "5515b802",
+  "candidate": {
+    "id": "GPF-4",
+    "selector": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1",
+    "implementation_commit": "006306ac",
+    "temporary_promotion_commit": "5515b802",
+    "final_policy": "default-off on gfx1151 and gfx1100; explicit diagnostic only"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workloads": ["512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128"],
+    "process_policy": "one clean detached fresh process and right-sized session per workload",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "variance_escalation_runs": 5,
+    "decode_tokens": 128,
+    "decode_graph_mode": "replay",
+    "build_policy": "prebuilt outside timing then require_cached_build",
+    "automatic_route": true
+  },
+  "completed_components": {
+    "512": {
+      "prefill_tok_s_samples": [827.6220167210972, 828.035765600554, 827.898911359312],
+      "prefill_median_tok_s": 827.898911359312,
+      "decode_tok_s_samples": [49.033763055753994, 49.043514115012115, 49.03408399594047],
+      "decode_median_tok_s": 49.03408399594047,
+      "tracked_peak_gib": 21.477776296436787,
+      "final_token_ids": [9707, 9707, 9707],
+      "local_artifact_sha256": "1c2d043ea7c5c99c4b650d1a43fd5ef81025ca4ed5ce85019756f4fccf033835"
+    },
+    "1024": {
+      "prefill_tok_s_samples": [917.7001520736128, 917.3846330301595, 917.3258443226248],
+      "prefill_median_tok_s": 917.3846330301595,
+      "decode_tok_s_samples": [51.61581675131333, 51.630856607458554, 51.622925837754714],
+      "decode_median_tok_s": 51.622925837754714,
+      "tracked_peak_gib": 21.710381522774696,
+      "final_token_ids": [9707, 9707, 9707],
+      "local_artifact_sha256": "2a1790ddc2505619e20d2f1550f7174dc0b4df896079da94771f98ba15c3d3c6"
+    },
+    "4096": {
+      "prefill_tok_s_samples": [912.400480436287, 912.2487398191106, 911.8495070247833],
+      "prefill_median_tok_s": 912.2487398191106,
+      "decode_tok_s_samples": [52.402019897871675, 52.4103198817991, 52.40727278143756],
+      "decode_median_tok_s": 52.40727278143756,
+      "tracked_peak_gib": 22.99488216638565,
+      "final_token_ids": [9707, 9707, 9707],
+      "local_artifact_sha256": "06681521da3f3bd3803176bd1fe90ed0961409991c5876235b33e0ec0f8bf29f"
+    },
+    "32768": {
+      "prefill_tok_s_samples": [294.2536311367974, 760.9909901712424, 761.4648089154678],
+      "prefill_median_tok_s": 760.9909901712424,
+      "decode_tok_s_samples": [43.58226181007644, 43.579187381005184, 43.56599443650088],
+      "decode_median_tok_s": 43.579187381005184,
+      "tracked_peak_gib": 23.558860778808594,
+      "final_token_ids": [9707, 9707, 9707],
+      "variance_trigger": "one measured prefill collapsed to 294.254 tok/s between two stable approximately 761 tok/s runs",
+      "local_artifact_sha256": "6ba0c60b454eeb2e4f354f6a82c568e654ba8ce2995b0d1196610e15cbb83a0b"
+    },
+    "65536": {
+      "prefill_tok_s_samples": [625.8546146599463, 625.7523454017526, 625.3158253177746],
+      "prefill_median_tok_s": 625.7523454017526,
+      "decode_tok_s_samples": [37.29839695201083, 37.29174220412498, 37.29154419716902],
+      "decode_median_tok_s": 37.29174220412498,
+      "tracked_peak_gib": 24.203407764434814,
+      "final_token_ids": [9707, 9707, 9707],
+      "local_artifact_sha256": "b73839b47b84676a113754baf86ddf875a9bacdf86f1732b520109ef50f20fde"
+    }
+  },
+  "stability_failures": {
+    "128k_primary": {
+      "warmup_prefill_tok_s": 439.698411,
+      "measured_run_1_prefill_tok_s": 439.448407,
+      "measured_run_1_decode_tok_s": 27.730887,
+      "measured_run_1_final_token_id": 9707,
+      "measured_run_2": "no completion after at least 1200 seconds of GPU-active prefill; expected approximately 298 seconds",
+      "action": "bounded stop before an unplanned lifecycle soak",
+      "local_log_sha256": "0cbf906dbc2b7d8098fbd54a1879ebed2c66c4a76213256f236a5a9ab42a6558"
+    },
+    "32k_variance_escalation": {
+      "trigger": "primary 1+3 component contained a 294.254 tok/s outlier",
+      "protocol": "fresh 1+5 replacement attempt",
+      "result": "warmup did not complete after 481 seconds process wall; normal candidate prefill is approximately 43 seconds",
+      "action": "bounded stop",
+      "local_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "same_host_baseline_control": {
+      "selector": "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=0",
+      "context": 32768,
+      "prefill_seconds": 51.0402680739935,
+      "prefill_tok_s": 642.0028976434049,
+      "generated_preview_token_ids": [9707],
+      "tracked_peak_gib": 23.558860778808594,
+      "local_artifact_sha256": "78f548b2b94a031d8d09972ccfe04cd832cfcfd64e0f764d0c178fda2630d863"
+    }
+  },
+  "correctness": {
+    "result": "pass",
+    "evidence": "The pre-promotion clean gate is byte-exact for all 82 compared parts at 512 and 4K; every completed final-sweep measured run produces token 9707.",
+    "source_artifact": "2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json"
+  },
+  "decision": {
+    "retain_implementation": true,
+    "promote_default": false,
+    "publish_performance_rows": false,
+    "reason": "The final required automatic-route stability gate exposed severe intermittent GPU-active prefill stalls at 32K and 128K; a same-host same-stream control completed normally immediately afterward.",
+    "action": "Remove the gfx1151 capability, keep explicit opt-in for diagnostics, preserve the published GPF-2E topline, and move optimization selection to GPF-5."
+  }
+}

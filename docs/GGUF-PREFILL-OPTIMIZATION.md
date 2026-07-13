@@ -387,7 +387,7 @@ select current code without a fresh profile.
 | 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
-| 10 | `GPF-4` | **Promoted on gfx1151:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Clean 512/4K is byte-exact and +0.17%/+20.76%; clean 128K screen is +10.05%-11.64%; gfx1100 stays same-stream pending local transfer evidence; final automatic six-shape rollup remains |
+| 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
 | 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
@@ -757,9 +757,9 @@ stream. Session close synchronizes and releases both events and the stream.
 
 The implementation first landed default-off at `006306ac`. Explicit
 `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1` selects it on either HIP
-backend for testing, while `=0` remains the rollback. Clean promotion evidence
-now enables the gfx1151 backend package capability only; gfx1100 remains
-same-stream pending hardware-local transfer evidence.
+backend for testing. Clean promotion-screen evidence briefly admitted a
+provisional gfx1151 package capability, but the final stability gate below
+removed it. Both backends now remain same-stream by default.
 
 Fresh-process differential correctness at repeated token `9707` is exact:
 
@@ -802,10 +802,27 @@ uses fresh processes for each timing leg:
 The 128K screen is one no-warmup candidate run, not the final public row. It
 completed in **303.125 s**, produced token `9707`, and held tracked peak at
 **25.493 GiB**. Clean 512/4K exactness again compares all 82 parts with zero
-mismatches. This is sufficient to promote the architecture-scoped capability;
-the final automatic-route six-shape 1+3 sweep owns publication. Promotion
-evidence is
+mismatches. This was sufficient for a provisional architecture-scoped
+promotion attempt; the final automatic-route six-shape 1+3 sweep still owned
+publication. Promotion-screen evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json).
+
+The final gate **rejects the default**. Clean automatic-route 512/1K/4K/64K
+components are stable and fast, but 32K contains one measured collapse to
+**294.254 tok/s** between two approximately 761 tok/s runs. That satisfies the
+documented variance trigger. Its fresh 1+5 replacement then failed to finish
+even the warmup after 481 s process wall, versus approximately 43 s normally.
+At 128K the warmup and measured run 1 were stable at **439.698/439.448 tok/s**,
+but measured run 2 remained GPU-active for at least **1200 s**, versus roughly
+298 s normally. Both attempts were bounded rather than converted into
+unplanned lifecycle soaks. An explicit same-stream 32K control immediately
+completed in **51.040 s / 642.003 tok/s**, isolating the instability to the
+candidate route rather than the host.
+
+Therefore `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1` remains an
+explicit diagnostic only, no gfx1151 capability is exported, the published
+GPF-2E row remains canonical, and GPF-5 is next. Final rejection evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json).
 
 ## Correctness And Promotion Contract
 
@@ -1002,19 +1019,19 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   an independent fresh-graph/session lifecycle soak with unknown subphase.
   Do not rerun the full model sweep to investigate it; first add phase markers
   and bounded lifecycle-only coverage.
-- GPF-4 is promoted in gfx1151 package metadata. Clean detached 512/4K is
-  byte-exact and **+0.17%/+20.76%**; the clean 128K screen reaches
-  **432.403 tok/s**, +10.05%-11.64% versus both baseline references, with
-  unchanged 25.493 GiB tracked peak. gfx1100 stays same-stream.
-- No benchmark process is intentionally left running. The final automatic
-  six-shape 1+3 publication sweep is next.
+- GPF-4 is rejected as a default after its final stability gate. It is exact
+  and often fast, but automatic-route 32K includes a **294.254 tok/s** collapse,
+  the 1+5 replacement stalls before warmup completion, and 128K measured run 2
+  remains GPU-active beyond **1200 s**. A same-stream control is healthy.
+- No benchmark process is intentionally left running. The published GPF-2E
+  row remains canonical; GPF-5 profile-driven selection is next.
 
-The required profile, exactness, clean fresh-process focus, and 128K screen are
-complete. GPF-4 removes the measured queue-cliff residual and is now the
-architecture-scoped gfx1151 automatic route. Next run the clean automatic
-512/1K/4K/32K/64K/128K 1+3 rollup, publish retained rows, and keep gfx1100
-unchanged until a hardware-local transfer gate passes. Token-parallel/prefix
-GDN remains the high-effort fallback after this scheduling win.
+The required profile and GPF-4 disposition are complete. Keep the isolated
+stream implementation explicit/default-off for diagnostics, keep both backend
+package capabilities unset, and do not publish its attractive fast samples.
+Proceed to GPF-5 by measuring remaining dense Q8T16, selected Q4/Q5,
+router/glue, and host-wall buckets. Token-parallel/prefix GDN remains the
+high-effort fallback if the new largest eligible residual justifies it.
 
 ## Document Ownership
 
