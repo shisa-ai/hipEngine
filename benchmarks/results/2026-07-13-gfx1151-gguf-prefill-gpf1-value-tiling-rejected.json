@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_candidate",
+  "status": "rejected",
+  "performance_claim": false,
+  "candidate": "GPF-1 exact split value-column tiling",
+  "conclusion": "Both exact tiled split schedules regress full prefill, and tile64 also makes the recurrence kernel itself slower; GPF-1B fusion cannot recover that kernel loss.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "control_commit": "ddb3f27d1ab169518c24ccbbe126bf0bac3029dc",
+    "candidate_base_commit": "bd8b8958e7fc4be8af7463854babb3f42f04d937",
+    "candidate_dirty": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "512/128",
+    "prompt_source": "repeated token 9707",
+    "control": "clean detached worktree; two discarded warmups; five measured repetitions",
+    "candidates": "one discarded warmup; three measured repetitions per schedule",
+    "common_flags": [
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode=bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode"
+    ],
+    "candidate_selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_tile64|chain_tile32"
+  },
+  "correctness": {
+    "red": "ImportError for the not-yet-implemented tile32/tile64 exact wrappers",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python -m pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py -q",
+    "focused_result": "36 passed",
+    "exact_matrix": "six recurrence cases: value tiles 128/64/32 times plain/segments; candidate output and FP32 resident state byte-exact to fused",
+    "timed_final_token_ids": {
+      "tile64": [9707, 9707, 9707],
+      "tile32": [9707, 9707, 9707]
+    }
+  },
+  "measurements": {
+    "control": {
+      "prefill_tok_s_median": 423.70846235388416,
+      "prefill_tok_s_min": 423.3607351162837,
+      "prefill_tok_s_max": 423.79996398612394,
+      "decode_tok_s_median": 49.11579674450292,
+      "source": "/tmp/gpf-m0-baseline-512-1k-4k.json"
+    },
+    "tile64": {
+      "prefill_tok_s_median": 388.3003429082691,
+      "prefill_tok_s_min": 387.80399105914825,
+      "prefill_tok_s_max": 388.3731580756842,
+      "prefill_delta_pct": -8.356717552655802,
+      "decode_tok_s_median": 49.10432067574683,
+      "source": "/tmp/gpf-1-tile64-screen-512.json"
+    },
+    "tile32": {
+      "prefill_tok_s_median": 374.20562696399224,
+      "prefill_tok_s_min": 374.1120866140077,
+      "prefill_tok_s_max": 374.8068643852142,
+      "prefill_delta_pct": -11.683230284074044,
+      "decode_tok_s_median": 49.11259441164726,
+      "source": "/tmp/gpf-1-tile32-screen-512.json"
+    }
+  },
+  "profiles": {
+    "control_fused": {
+      "total_kernel_ms": 1227.334861,
+      "gdn_ms": 794.119829,
+      "gdn_share_pct": 64.70278440172165,
+      "gdn_dispatches": 30,
+      "gdn_avg_ms": 26.470660966666664,
+      "workgroup_size": 128,
+      "vgpr_count": 96,
+      "scratch_bytes": 0,
+      "lds_bytes": 0,
+      "source": "/tmp/gpf-m0-rocprof-512-prebuilt-summary.json"
+    },
+    "tile64_split": {
+      "total_kernel_ms": 1336.309512,
+      "gdn_recurrent_ms": 862.280817,
+      "gdn_recurrent_delta_pct": 8.583211942438474,
+      "gdn_recurrent_dispatches": 30,
+      "gdn_recurrent_avg_ms": 28.7426939,
+      "prepare_ms": 26.507578,
+      "rmsnorm_gate_ms": 11.617597,
+      "workgroup_size": 64,
+      "vgpr_count": 40,
+      "scratch_bytes": 0,
+      "lds_bytes": 0,
+      "source": "/tmp/gpf-1-rocprof-512-tile64-summary.json"
+    },
+    "profile_cache_clean": true,
+    "invalid_profile_excluded": "/tmp/gpf-m0-rocprof-512-clean contained profiled JIT compiler children and is not evidence"
+  },
+  "next_action": "Proceed to GPF-2 wave-per-value-column state-row sharding; do not spend a GPF-1B fusion pass on the rejected tile geometry."
+}

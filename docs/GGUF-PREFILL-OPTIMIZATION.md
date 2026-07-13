@@ -2,9 +2,9 @@
 
 Last updated: 2026-07-13.
 
-Status: active evidence and implementation brief for `SOL-R5`. The first code
-candidate is an exact value-column-tiled GDN recurrence. No performance change
-has been implemented or claimed by this document.
+Status: active `SOL-R5` implementation log. `GPF-1` exact value-column tiling
+is byte-exact but rejected on performance; `GPF-2` wave-per-value-column state
+sharding is the active candidate. No default performance change is claimed.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -19,7 +19,7 @@ each 128-element state contraction serially in one thread per value column. In
 the retained W7900 512-token profile, its 30 launches consume **592.336 ms**, or
 **79.51% of traced GPU time** and **72.11% of measured prefill wall**.
 
-The next implementation should therefore:
+The first implementation therefore:
 
 1. start from the correctness-certified raw-Q/K-plus-scale split path;
 2. split independent value columns into wave-aligned blocks, initially 32 and
@@ -34,6 +34,19 @@ This is a scheduling/layout change, not a math relaxation. A llama.cpp-style
 wave-reduced recurrence is the next diagnostic lane if simple exact tiling is
 insufficient, but it is not promotion-eligible unless it also satisfies the
 current exact state contract or that contract is explicitly changed.
+
+`GPF-1` answered that question negatively on gfx1151. At 512/128, tile64
+measured **388.300 tok/s** and tile32 **374.206 tok/s** versus the clean fused
+control's **423.708 tok/s** (-8.36% and -11.68%). The cache-clean tile64 trace
+also showed the recurrence itself regressing **794.120 -> 862.281 ms**, before
+its additional **26.508 ms** prepare and **11.618 ms** RMSNorm+gate work. This
+rules out `GPF-1B`: fusion can remove the latter overhead, but cannot recover a
+recurrence kernel that is already 8.58% slower.
+
+The active next step is `GPF-2`: map one wave32 to one value column and shard
+the 128 state rows four-per-lane. Its first form must reconstruct the current
+serial contraction order with ordered lane shuffles, so performance and
+byte-exactness are measured rather than traded against one another.
 
 Do not start with AOTriton tuning, generic chunk sweeps, graph capture, compiler
 flags, or another attempt to enable WMMA. Full-attention prefill is only 0.54%
@@ -113,6 +126,8 @@ baseline to restore verbatim.
 | Fused decode-order recurrence, selected by `937c13d1` | Current production path; July 7 W7900 refresh `654.0/664.6/668.1/635.3/578.7/490.3 tok/s` | Correctness-first baseline | Baseline to beat |
 | Raw-Q/K-plus-scale exact split | [`SOL-G2 exact matrix`](../benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json): 6/6 greeting, 512, 1024/1025, and 4095/4096 cases | Byte-exact sampled token, hidden seed, resident Conv/GDN state; all-layer exact at greeting/512 | Unfused fallback, bisection oracle, and source for a new schedule |
 | Existing exact split wall | [`SOL-G3 interleaved A/B`](../benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json): chain is +5.19% at 512 and +6.70% at 4K | Correct but slower | Retain fused; do not retry the unchanged chain |
+| Current gfx1151 fused M0 | HIP 7.15 clean control at 512/1K/4K: `423.708/448.694/410.023 tok/s`; cache-clean 512 trace: GDN `794.120/1227.335 ms`, 64.70% GPU-active | Five measured repetitions; timed token `9707` exact | Current same-session denominator |
+| `GPF-1` tile64/tile32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json): `388.300/374.206 tok/s` at 512, -8.36%/-11.68%; tile64 recurrence `862.281 ms` | Six primitive tile/segment cases byte-exact; 36 focused tests pass; decode flat | Rejected; keep only as short-lived diagnostic while GPF-2 is developed |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -242,10 +257,10 @@ select current code without a fresh profile.
 
 | Order | ID | Work | Activation / exit |
 | ---: | --- | --- | --- |
-| 0 | `GPF-M0` | Capture current fused family profiles at 512, 4K, and 128K; capture a llama.cpp HIP prefill kernel trace at matching 512/4K | Confirm GDN share and llama fused-GDN dispatch before attributing a candidate win |
-| 1 | `GPF-1` | Value-column-tile the exact split recurrence with 128-thread control and wave-aligned 64/32-thread candidates | Byte-exact G2 matrix; lower recurrent-kernel wall; balanced full prefill wins at both 512 and 4K |
-| 2 | `GPF-1B` | If prepare/materialization erases a GPF-1 kernel win, prepare only Q/K scales, beta, and decay; read raw Q/K/value from `conv_out` in the tiled recurrence | Same arithmetic and G2 gate; reduce prepare + scratch traffic and full wall |
-| 3 | `GPF-2` | Diagnostic llama-style wave-per-column, register-sharded recurrence | Promote only if byte-exact; otherwise requires an explicit numerical-contract decision plus the full model correctness suite |
+| 0 | `GPF-M0` | **In progress:** clean gfx1151 512 fused trace captured; 4K/128K and matched llama.cpp traces remain | Confirm GDN share and llama fused-GDN dispatch before attributing a candidate win |
+| 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
+| 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
+| 3 | `GPF-2` | **Active:** wave-per-value-column, state-row-sharded recurrence; ordered-shuffle exact form first | Promote only if byte-exact; otherwise requires an explicit numerical-contract decision plus the full model correctness suite |
 | 4 | `GPF-M1` | Reprofile the winning GDN route at 512/4K/128K | Select the next bucket rather than inheriting the June profile |
 | 5 | `GPF-3` | Optimize the selected-MoE and/or dense-Q8 family named by GPF-M1 | Exact family-local A/B and full-wall win; order determined by current profile |
 | 6 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
@@ -300,6 +315,24 @@ If GPF-1 lowers the recurrence kernel but not full wall, GPF-1B should keep the
 same tiled recurrence and remove unnecessary raw-Q/K/value scratch writes and
 reads. It must not replace the exact Q/K scale tree or alter the contraction
 expression.
+
+### GPF-1 result (gfx1151, 2026-07-13)
+
+All `(value_tile=128,64,32) x (plain,segments)` primitive cases preserved the
+fused BF16 output and FP32 recurrent state byte-for-byte. The performance
+hypothesis failed:
+
+| Route | 512/128 prefill | Delta vs fused | Decode | GDN recurrence trace |
+| --- | ---: | ---: | ---: | ---: |
+| Fused control | 423.708 tok/s | control | 49.116 tok/s | 794.120 ms / 30 |
+| Exact split tile64 | 388.300 tok/s | -8.36% | 49.104 tok/s | 862.281 ms / 30 |
+| Exact split tile32 | 374.206 tok/s | -11.68% | 49.113 tok/s | not traced after wall rejection |
+
+Tile64 lowers reported VGPRs from 96 to 40, but it does not add total waves:
+the same 4,096 work-items become 64 two-wave blocks instead of 32 four-wave
+blocks. It also gives up useful same-block sharing/locality. Occupancy intuition
+was therefore insufficient, and the measured kernel result rejects both
+`GPF-1` and its materialization-only `GPF-1B` follow-up.
 
 ## Correctness And Promotion Contract
 

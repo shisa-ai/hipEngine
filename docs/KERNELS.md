@@ -253,6 +253,23 @@ The Qwen3.5/PARO resident generation and benchmark harness accept `backend="hip_
 
 `w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. Lowp output wrappers now cover both BF16 and parent-parity FP16 activation streams. The FP16 `w8a16_shared_gate_up_silu_fp16` prefill helper adapts parent `w8a16_shared_gate_up_bulk4_kernel` to the raw-pointer lowp-output path, computing four shared-expert intermediate columns per block and writing the existing `shared_intermediate` scratch. `w8a16_shared_gate_up_silu_fp16_token_tiled` is a hipEngine prefill variant that preserves W8A16 storage while sharing gate/up weights across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy shared experts only when `tokens >= 1024`, with the original helper retained as fallback/opt-out. `w8a16_shared_gate_sigmoid_fp32` precomputes the shared-expert sigmoid once per token in the router shared-gate column after top-k/routing weights are materialized. The FP16 `w8a16_shared_down_combine_residual_fp16` helper consumes that precomputed gate while fusing grouped-prefill shared down projection with selected-output/shared-gate/residual combine; its default tile computes eight hidden rows per block, preserving the already-rounded `selected_out` ABI and exact per-row accumulation order. `w8a16_shared_down_combine_residual_fp16_token_tiled` shares the same fused tail while reusing down rows across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy prefill `tokens >= 2`, with the original helper retained as fallback/opt-out. c=1 and non-grouped paths keep the unfused gate/up/down/combine fallbacks. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the direct synthetic c=1 decode vertical smoke; `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` drives the same staged fixture through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` and validates the normalized prepared-weight/runtime-workspace path.
 
+### Current GGUF GDN scheduling diagnostics
+
+GPF-1 adds registered `gguf_qwen35 / gdn_prefill_recurrent` variants
+`f32_decode_order_exact_tile64`, `f32_decode_order_exact_segments_tile64`,
+`f32_decode_order_exact_tile32`, and
+`f32_decode_order_exact_segments_tile32` in
+`hipengine/kernels/hip_gfx1100/linear_attn/gdn.{hip,py}`. The wrappers are
+`qwen35_gdn_prefill_recurrent_decode_order_exact_{tile64,tile32}_f32(...)`
+plus segment-aware peers. gfx1151 RED/GREEN extends fused-state identity across
+`(128,64,32) x (plain,segments)`; all six cases are byte-exact for BF16 output
+and FP32 recurrent state, and the focused correctness/routing bundle passes 36
+tests. A cache-clean 512 trace confirms tile64 ran with workgroup 64, 40 VGPR,
+and no scratch/LDS, but recurrence regressed `794.120 -> 862.281 ms`; full
+512/128 prefill regressed `423.708 -> 388.300 tok/s`, with tile32 at
+`374.206 tok/s`. These are rejected, short-lived geometry controls; see
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

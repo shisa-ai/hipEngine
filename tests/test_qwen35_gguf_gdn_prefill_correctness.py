@@ -60,6 +60,10 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
@@ -818,7 +822,11 @@ def _run_chain(
 
 
 def _run_exact_split_chain(
-    inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    use_segments: bool,
+    value_tile: int = 128,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -863,8 +871,18 @@ def _run_exact_split_chain(
             inputs.head_k_dim,
             inputs.head_v_dim,
         )
+        recurrent = {
+            128: qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
+            64: qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
+            32: qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
+        }[value_tile]
+        recurrent_segments = {
+            128: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+            64: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
+            32: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
+        }[value_tile]
         if use_segments:
-            qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
+            recurrent_segments(
                 query_raw.ptr,
                 key_raw.ptr,
                 value.ptr,
@@ -883,7 +901,7 @@ def _run_exact_split_chain(
                 inputs.head_v_dim,
             )
         else:
-            qwen35_gdn_prefill_recurrent_decode_order_exact_f32(
+            recurrent(
                 query_raw.ptr,
                 key_raw.ptr,
                 value.ptr,
@@ -1027,6 +1045,42 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_tile64",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_tile32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_tile64",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_tile32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32
     )
     assert (
         resolve(
@@ -1370,8 +1424,10 @@ def test_gdn_prefill_chain_matches_decode_order_within_drift_budget() -> None:
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("use_segments", [False, True])
+@pytest.mark.parametrize("value_tile", [128, 64, 32])
 def test_gdn_prefill_chain_is_bit_exact_to_decode_order(
     use_segments: bool,
+    value_tile: int,
 ) -> None:
     """Resident prefill state must not depend on the selected GDN scheduler."""
 
@@ -1388,6 +1444,7 @@ def test_gdn_prefill_chain_is_bit_exact_to_decode_order(
         inputs,
         _RMS_EPS,
         use_segments=use_segments,
+        value_tile=value_tile,
     )
     np.testing.assert_array_equal(state_chain, state_fused)
     np.testing.assert_array_equal(out_chain, out_fused)
