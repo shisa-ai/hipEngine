@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-14
+
+- [retained gfx1151 GGUF GPF-5A right-sized partial refresh] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV GPF-2D/3A/2E -> scoped two-wave dense Q8T16 through 64K: prefill **819.641/893.266/752.308/640.096/540.850 -> 889.904/919.598/762.940/648.948/546.296 tok/s** (**+8.57%/+2.95%/+1.41%/+1.38%/+1.01%**) with exact IDs and unchanged tracked memory. Same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**, so final policy restores production above 65,536 tokens and carries forward the accepted **387.334 tok/s** row. A scoped final retry completed one 385.474 tok/s sample before the known later-pass lifecycle stall and does not replace the accepted 1+3 window. `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json`.
+
 ## 2026-07-13
 
 - [retained gfx1151 GGUF right-sized rollup] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV July 11 public -> GPF-2D/3A/2E automatic route: six-shape prefill **430.767/437.467/403.946/369.942/334.395/270.601 -> 819.641/893.266/752.308/640.096/540.850/387.334 tok/s** (**+61.74% to +104.19%, +43.14% at 128K**). Decode is **49.067/51.644/52.498/43.550/37.305/27.753 tok/s** and tracked peak remains **21.478-25.493 GiB**. Clean `28b45d38`; six-case state and 250/250 natural-logit gates are exact. The log-recovered 128K row discloses that the interrupted process did not serialize per-run IDs and links those independent gates. `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`.

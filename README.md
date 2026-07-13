@@ -201,42 +201,47 @@ and [W7900 correctness oracle](benchmarks/results/2026-07-12-w7900-v030-gguf-eag
 
 > Thanks to Framework for sending a dedicated Framework Desktop Strix Halo motherboard for this profiling and tuning work.
 
-**Status: retained.** GGUF is the clean 2026-07-13 right-sized 1+3 rollup at
-`28b45d38`; llama.cpp remains the clean 2026-07-11 matched reference. PARO
-512/1K are the clean 2026-07-12 exact recovery at `9944e481`;
-4K and 32K-128K are the clean scoped AOTriton queue-isolation refresh at
-`01e2cec5`, all with TheRock HIP 7.15 and TuneD `accelerator-performance`.
-PARO uses two discarded warmups plus five measurements; GGUF uses the
-calibrated one warmup plus three measurements; llama.cpp uses one internal
-warmup plus five samples per split phase. GGUF sample stdev/median is at most
-0.132%. The 128K number is recovered from three completed durable log lines;
-the interrupted process did not serialize per-run IDs, so the row links the
-stronger clean state and 250/250 trajectory gates without inventing them. Bold
-marks the best raw value per row, but PARO is W4 PARO rather than Q4_K_M and
-memory scopes differ, so the emphasis is descriptive rather than a controlled
-same-quant/backend win.
+**Status: retained.** GGUF 512-64K is the clean 2026-07-14 automatic GPF-5A
+1+3 refresh at `e9baf563`; final policy `6418b278` keeps that route through
+65,536 prompt tokens and restores the production wrapper above it. The
+unchanged accepted `28b45d38` 128K row carries forward. llama.cpp remains the
+clean 2026-07-11 matched reference. PARO 512/1K are the clean 2026-07-12 exact
+recovery at `9944e481`; 4K and 32K-128K are the clean scoped AOTriton
+queue-isolation refresh at `01e2cec5`, all with TheRock HIP 7.15 and TuneD
+`accelerator-performance`. PARO uses two discarded warmups plus five
+measurements; GGUF uses one warmup plus three measurements; llama.cpp uses one
+internal warmup plus five samples per split phase. Refreshed GGUF
+prefill/decode sample stdev over median is at most 0.088%/0.038%, and all 15
+IDs are `9707`. Same-commit 128K rejects two-wave at -2.59%; a final scoped
+production-route retry completed one 385.474 tok/s measurement before the
+known later-pass lifecycle stall, so it confirms routing but does not replace
+the accepted 1+3 row. That carried row was recovered from durable log lines
+without serialized per-run IDs and links stronger clean state and 250/250
+trajectory gates without inventing them. Bold marks the best raw value per
+row, but PARO is W4 PARO rather than Q4_K_M and memory scopes differ, so the
+emphasis is descriptive rather than a controlled same-quant/backend win.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **1140.101** | 819.641 | 1061.260 | 1067.770 |
-| 1K/128 | **1208.343** | 893.266 | 1043.230 | 1069.870 |
-| 4K/128 | **1089.031** | 752.308 | 1009.240 | 1016.580 |
-| 32K/128 | **906.145** | 640.096 | 743.547 | 814.923 |
-| 64K/128 | **716.775** | 540.850 | 573.611 | 660.974 |
+| 512/128 | **1140.101** | 889.904 | 1061.260 | 1067.770 |
+| 1K/128 | **1208.343** | 919.598 | 1043.230 | 1069.870 |
+| 4K/128 | **1089.031** | 762.940 | 1009.240 | 1016.580 |
+| 32K/128 | **906.145** | 648.948 | 743.547 | 814.923 |
+| 64K/128 | **716.775** | 546.296 | 573.611 | 660.974 |
 | 128K/128 | 474.641 | 387.334 | 390.441 | **476.788** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **66.767** | 49.067 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 51.644 | 50.818 | **62.136** |
-| 4K/128 | **62.715** | 52.498 | 50.126 | 60.097 |
-| 32K/128 | 50.342 | 43.550 | 44.240 | **51.319** |
-| 64K/128 | 42.094 | 37.305 | 39.326 | **44.422** |
+| 512/128 | **66.767** | 48.968 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 51.494 | 50.818 | **62.136** |
+| 4K/128 | **62.715** | 52.351 | 50.126 | 60.097 |
+| 32K/128 | 50.342 | 43.491 | 44.240 | **51.319** |
+| 64K/128 | 42.094 | 37.149 | 39.326 | **44.422** |
 | 128K/128 | 30.386 | 27.753 | 32.114 | **34.948** |
 
 #### Peak memory GiB
@@ -256,7 +261,8 @@ high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
 sampled every 10 ms. Use them for within-column context growth, not small
 cross-column allocator comparisons. Row sources: [`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
 [`PARO 4K-128K AOTriton queue isolation`](benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
-[`hipEngine GGUF right-sized 1+3 rollup`](benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json),
+[`hipEngine GGUF GPF-5A right-sized 1+3 partial refresh`](benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json),
+[`prior GPF-2E rollup carrying the unchanged 128K row`](benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json),
 [`accepted July 11 matched summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
 [`July 11 PARO reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
 [`July 11 hipEngine GGUF reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
