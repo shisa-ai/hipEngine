@@ -153330,3 +153330,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and updated only benchmark rollups/exports plus this handoff. Several runs
   overlapped on independent GPUs, so all throughput remains diagnostic and
   `performance_claim=false`.
+
+## 2026-07-13 — Define the INT8 accuracy optimization loop
+
+- Added a dedicated `docs/KVCACHE.md` workflow for representation research.
+  Matched-context mean KL is the primary inner-loop metric; maximum KL, top-1,
+  top-5/top-10 overlap, and BF16-top-1 candidate rank are supporting guards.
+  Downstream task benchmarks remain milestone/promotion evidence rather than a
+  tax on every quantizer hypothesis.
+- Locked the escalation ladder to host reconstruction, a fixed `512/8` S1
+  candidate set with a total wall-time target of at most 10 minutes, winner-only
+  `4K/16` transfer, clean native `128K/16`, and then functional/task gates.
+  Existing KL `<= 0.05` and top-1 `>= 90%` promotion requirements are unchanged.
+- Added a table of harness roles and claim boundaries plus the first bounded
+  external-research-informed screen: current baseline, Hadamard group32,
+  KIVI-style asymmetric chunked INT8, and KVarN-inspired dual-axis INT8.
+  AQUA residual prediction remains the next screen rather than inflating the
+  first fast candidate set.
+- Reviewed the clean read-only research mirror at
+  `/home/lhl/amd-gpu-tuning/reference/kvcache-quantization-research@a0bb333`;
+  the requested `/home/lhl/github/shisa-ai/kvcache-quantization-research` path
+  is not present on this host. Re-read `docs/KVCACHE.md` end to end and
+  `git diff --check` passed.

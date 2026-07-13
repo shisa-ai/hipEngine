@@ -514,6 +514,84 @@ Artifact:
 - “The five-task functional probe proves broad quality.” It is partial,
   restricted-choice evidence only.
 
+## INT8 accuracy optimization workflow
+
+The development loop optimizes **matched-context logit fidelity first**. Every
+candidate consumes the same model weights, prompt, positions, and teacher-forced
+token history as the unquantized BF16 K/V reference. Under that contract, lower
+KL is direct evidence that the candidate output distribution is closer to the
+unquantized cache; higher top-1/top-k agreement is supporting evidence that fewer
+decision boundaries move. Downstream task benchmarks remain necessary for
+promotion, but running them for every representation hypothesis would reduce
+iteration velocity without improving the local optimization signal.
+
+### Metric policy
+
+| Metric | Development use | Direction / interpretation |
+| --- | --- | --- |
+| Mean `KL(BF16 || candidate)` | Primary representation-ranking metric | Lower is better; compare only identical matched contexts. |
+| Maximum per-position KL | Tail-risk guard | Lower is better; prevents a good mean from hiding one catastrophic step. |
+| Top-1 agreement | Greedy-decision fidelity and repository correctness gate | Higher is better; final gate remains at least `90%`. |
+| Top-k overlap (`k=5`, `k=10`) | Near-boundary stability | Higher is better; distinguishes a small rank swap from loss of the reference candidate set. |
+| BF16 top-1 rank under candidate logits | Decision-boundary diagnostic | Lower is better; rank `1` is exact top-1 retention. |
+| K/V reconstruction error | Mechanism/debugging metric only | Useful for localization, but never overrides worse model-logit fidelity. |
+| Task accuracy / executable outcome | Milestone and promotion evidence | Required before support/default claims; not part of every inner-loop screen. |
+
+Top-1 is discrete and can move non-monotonically when logits are close, so mean
+KL is the primary optimization metric while top-1/top-k are guards. A candidate
+with lower KL but worse top-1 is not promoted automatically; it is retained only
+as a diagnostic or transferred to the next numerical stage for resolution. No
+metric from a free-running candidate rollout is used to rank cache formats,
+because token-history cascade would confound the cache error being measured.
+
+### Escalation ladder and wall-time budget
+
+| Stage | Workload | When it runs | Intended wall time | Decision |
+| --- | --- | --- | ---: | --- |
+| S0: host reconstruction | Captured K/V tensors; no new model session | Every math/layout edit | Seconds | Reject non-finite, shape-invalid, or clearly dominated formats. |
+| S1: fast numerical screen | Fixed small prompt mix, `512/8`, BF16-matched teacher forcing | Every credible format hypothesis | **At most 10 minutes total** for the candidate set | Rank by mean KL, then top-1/top-k and memory fit. Diagnostic only. |
+| S2: transfer | Winning candidate only, `4K/16` | After a material S1 improvement | Minutes, run separately | Reject short-context overfit or decode-step accumulation. |
+| S3: full numerical gate | Winning native candidate, clean `128K/16` | Before any quality/capacity promotion | Full benchmark wall time allowed | Require KL `<= 0.05`, top-1 `>= 90%`, finite logits, and intended-kernel evidence. |
+| S4: functional/task gate | Bounded natural suite, then broader long-context/reasoning/code/agentic tasks | At milestones and before support/default status | Separate scheduled run | Measure user-visible impact; report BF16 and candidate absolute scores plus paired deltas. |
+
+The S1 prompt mix is fixed before candidate measurement and contains more than a
+single repeated-token prompt when practical. It is a screening fixture, not a
+benchmark to tune against. Any S1 winner must transfer through S2 and S3 on
+held-out shapes; prompt-specific or 512-only improvements are rejected.
+
+### Harness and benchmark notes
+
+| Harness / evidence | Fast-loop role | Claim boundary |
+| --- | --- | --- |
+| `scripts/qwen35_paro_kv_format_ablation.py` | Primary S0/S1 emulation screen; load the runner once, compare several formats, and emit KL/top-1/top-k plus 256K memory projections. | Ranks representations only; reconstructed BF16 cache and current-row semantics are not a native production result. |
+| `scripts/qwen35_paro_int8_kv_quality_sweep.py` | S2/S3 native matched-context transfer and final numerical gate. | Correctness evidence for the named model/context/history; not downstream task accuracy. |
+| `scripts/qwen35_paro_kv_functional_mc.py` | Small milestone smoke after a candidate survives numerical transfer. `--limit`/category selection may be used for developer sanity, while the full retained row remains canonical. | Restricted-choice evidence only; never a broad natural-task claim. |
+| RULER/NoLiMa/HELMET-RAG-style length subsets | Later long-context retrieval/reasoning coverage. | Run for finalist/promoted formats, not each quantizer edit. |
+| MATH/HumanEval/IFEval/BFCL-Memory-style subsets | Reasoning, executable code, instruction, and agentic/tool-call coverage. | Required to characterize real-world impact; score against ground truth rather than BF16 text equality. |
+
+The external research pack was reviewed read-only at
+`/home/lhl/amd-gpu-tuning/reference/kvcache-quantization-research@a0bb333`
+(the user-named `/home/lhl/github/shisa-ai/kvcache-quantization-research` path was
+not present on this host). It reinforces K/V-asymmetric treatment, chunked
+KIVI-style keys, Hadamard rotation, cross-layer AQUA residual prediction, and a
+cheap-before-expensive eval ladder. hipEngine screens those ideas in its own
+NumPy/BF16 reconstruction harness before considering native HIP work; external
+Torch/HF cache code is reference material, not a runtime dependency.
+
+The first externally informed S1 candidate set is deliberately bounded:
+
+| Candidate | Screened representation | Why it is included |
+| --- | --- | --- |
+| Current baseline | Symmetric INT8 per token/head with one scale | Native-format anchor. |
+| Hadamard group32 | Deterministic orthogonal channel rotation, group32 INT8, inverse reconstruction | Tests whether spreading channel outliers improves the already-promising group32 geometry. |
+| KIVI-style INT8 | Chunked per-channel K plus per-token/group V with an unquantized incomplete residual block | Tests the established K/V asymmetry under online-feasible chunk semantics. |
+| KVarN-inspired INT8 | Hadamard rotation plus two-axis variance normalization and asymmetric chunk quantization | Targets the token-magnitude/tail errors associated with autoregressive accumulation. This is an emulation screen, not a claim of paper-faithful production KVarN. |
+
+AQUA-style cross-layer residual prediction remains the next representation
+screen if these local transforms do not pass transfer. It requires fitting and
+auditing per-layer predictors and therefore is not mixed into the first
+sub-10-minute candidate set.
+
 ## Phase K1 — Dense paged INT8 K/V
 
 ### Implementation status
