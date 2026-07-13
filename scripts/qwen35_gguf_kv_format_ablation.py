@@ -47,6 +47,7 @@ from scripts.qwen35_paro_kv_format_ablation import (
     _compact_run,
     _distribution_summary,
     _format_memory_bytes,
+    _format_quantizes_layer,
     _git_provenance,
     _parse_candidates,
     _roundtrip_pair,
@@ -212,7 +213,9 @@ def _roundtrip_session_cache(
     shape = (int(rows), layout.num_kv_heads, layout.head_dim)
     offset_bytes = int(start) * row_bytes
     nbytes = int(rows) * row_bytes
-    for layer_id in layout.full_layer_ids:
+    for layer_position, layer_id in enumerate(layout.full_layer_ids):
+        if not _format_quantizes_layer(spec, layer_position, len(layout.full_layer_ids)):
+            continue
         key_buf, value_buf = scratch.full_cache(layer_id)
         key_bits = np.empty(shape, dtype=np.uint16)
         value_bits = np.empty(shape, dtype=np.uint16)

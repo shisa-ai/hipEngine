@@ -153645,3 +153645,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   fidelity comparison, then (4) attention-aware OSCAR-style calibration only
   if the simpler rows fail. Full AQUA/HIGGS remains a later, more aggressive
   compression tier rather than the 208 Ki-to-256 Ki bridge.
+
+## 2026-07-13 — Add mild-compression INT8/FP8 host candidates
+
+- Extended the format screen with a saturating OCP E4M3FN host codec and fixed
+  tail-layer precision. E4M3FN uses exact finite-value rounding-to-nearest-even,
+  including subnormals and signed zero, with saturation at +/-448. A 500,000
+  sample finite-range cross-check against Torch float8 conversion had zero
+  bitwise mismatches. This is a representation emulator, not a Torch runtime
+  dependency or RDNA3 speed claim.
+- Added input-agnostic candidates for all-layer FP8-K/BF16-V and for only the
+  final four of ten full-attention layers: per-head INT8 K/V, group32 INT8 K/V,
+  Hadamard-group32 INT8 K/V, and FP8 K/V. The first six full-attention layers
+  remain bit-exact BF16 in every tail-four row. Existing all-layer V-preserving
+  INT8 controls stay in the matrix.
+- Rebased the suite's target memory accounting on exact 256 Ki capacity rows:
+  262,144 prompt rows plus 256 decode/guard rows. Projected retained K/V and
+  inferred whole-device margin from the measured physical 208 Ki W4-PARO
+  non-KV peak are: BF16 `5.004883 GiB` / `-0.576027 GiB`; FP8-K/BF16-V
+  `3.753662` / `0.675194`; tail-four FP8 `4.003906` / `0.424950`; tail-four
+  per-head INT8 `4.011726` / `0.417130`; and tail-four group32/Hadamard
+  `4.066467` / `0.362389`. These are projections for the W4-PARO capacity
+  target, not measured GGUF memory rows. The gate requires at least 0.25 GiB.
+- Updated the 11-prompt default matrix to nine focused rows: one all-INT8 anchor,
+  three all-layer V-preserving INT8 controls, FP8-K/BF16-V, and the four
+  tail-layer candidates. The old arbitrary `+1.5 GiB over INT8` limit remains
+  diagnostic only; transfer eligibility now requires every natural/heldout/
+  category/mixed prompt quality gate plus the physical-card margin projection.
+- RED/GREEN: tests first failed on the missing layer/FP8 helpers. The final
+  30-test bundle passes across PARO/GGUF format and quality helpers. Ruff,
+  `py_compile`, suite CLI help, `git diff --check`, and the independent 500K
+  E4M3FN bitwise cross-check pass. No GPU measurement or native format was
+  attempted in this design unit.

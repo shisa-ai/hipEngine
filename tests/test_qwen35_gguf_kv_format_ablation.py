@@ -110,6 +110,12 @@ def test_asymmetric_candidate_catalog_covers_v_preserving_and_reverse_controls()
     assert catalog["key_bf16_value_group32"].v_group_size == 32
     assert catalog["key_group32_value_group16"].v_group_size == 16
     assert catalog["key_group16_value_group32"].k_group_size == 16
+    assert catalog["key_fp8_e4m3_value_bf16"].k_mode == "fp8_e4m3"
+    assert catalog["key_fp8_e4m3_value_bf16"].v_mode == "bf16"
+    assert catalog["tail4_fp8_e4m3"].quantized_tail_layers == 4
+    assert catalog["tail4_int8_per_head"].k_group_size == 256
+    assert catalog["tail4_group32"].k_group_size == 32
+    assert catalog["tail4_hadamard_group32"].strategy == "hadamard_groupwise"
 
 
 def test_hadamard_asymmetric_roundtrip_keeps_bf16_component_exact() -> None:

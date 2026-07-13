@@ -77,10 +77,12 @@ class FormatSpec:
     residual_tokens: int = 0
     sink_tokens: int = 0
     hadamard_group_size: int = 0
+    quantized_tail_layers: int | None = None
 
     def __post_init__(self) -> None:
-        if self.k_mode not in {"int8", "bf16"} or self.v_mode not in {"int8", "bf16"}:
-            raise ValueError("K/V modes must be int8 or bf16")
+        supported_modes = {"int8", "bf16", "fp8_e4m3"}
+        if self.k_mode not in supported_modes or self.v_mode not in supported_modes:
+            raise ValueError("K/V modes must be int8, bf16, or fp8_e4m3")
         if self.strategy not in {"groupwise", "hadamard_groupwise", "kivi", "kvarn"}:
             raise ValueError(f"unsupported format strategy {self.strategy!r}")
         if self.k_group_size <= 0 or self.v_group_size <= 0:
@@ -93,6 +95,8 @@ class FormatSpec:
             raise ValueError("residual_tokens and sink_tokens must be non-negative")
         if self.strategy in {"hadamard_groupwise", "kvarn"} and self.hadamard_group_size <= 0:
             raise ValueError(f"{self.strategy} requires a positive hadamard_group_size")
+        if self.quantized_tail_layers is not None and int(self.quantized_tail_layers) <= 0:
+            raise ValueError("quantized_tail_layers must be positive when set")
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -108,11 +112,48 @@ class FormatSpec:
             "residual_tokens": self.residual_tokens or None,
             "sink_tokens": self.sink_tokens or None,
             "hadamard_group_size": self.hadamard_group_size or None,
+            "quantized_tail_layers": self.quantized_tail_layers,
         }
 
 
 def _bf16_bits_to_float32(bits: np.ndarray) -> np.ndarray:
     return (np.asarray(bits, dtype=np.uint16).astype(np.uint32) << np.uint32(16)).view(np.float32)
+
+
+def _e4m3fn_positive_values() -> np.ndarray:
+    values: list[float] = []
+    for code in range(127):
+        exponent_field = code >> 3
+        mantissa = code & 7
+        if exponent_field == 0:
+            value = mantissa * 2.0**-9
+        else:
+            value = (1.0 + mantissa / 8.0) * 2.0 ** (exponent_field - 7)
+        values.append(value)
+    return np.asarray(values, dtype=np.float32)
+
+
+_E4M3FN_POSITIVE_VALUES = _e4m3fn_positive_values()
+
+
+def _fp8_e4m3fn_quantize_dequantize(values: np.ndarray) -> np.ndarray:
+    """Round finite values to OCP E4M3FN with saturation and ties-to-even."""
+
+    source = np.asarray(values, dtype=np.float32)
+    if not np.isfinite(source).all():
+        raise ValueError("FP8 E4M3FN emulation requires finite values")
+    magnitude = np.minimum(np.abs(source), _E4M3FN_POSITIVE_VALUES[-1])
+    upper = np.searchsorted(_E4M3FN_POSITIVE_VALUES, magnitude, side="left")
+    upper = np.clip(upper, 0, len(_E4M3FN_POSITIVE_VALUES) - 1)
+    lower = np.maximum(upper - 1, 0)
+    lower_distance = magnitude - _E4M3FN_POSITIVE_VALUES[lower]
+    upper_distance = _E4M3FN_POSITIVE_VALUES[upper] - magnitude
+    choose_upper = (upper_distance < lower_distance) | (
+        (upper_distance == lower_distance) & ((upper & 1) == 0)
+    )
+    codes = np.where(choose_upper, upper, lower)
+    restored = np.copysign(_E4M3FN_POSITIVE_VALUES[codes], source)
+    return np.ascontiguousarray(restored, dtype=np.float32)
 
 
 def _quantize_dequantize(
@@ -414,6 +455,7 @@ def _reconstruction_summary(reference: np.ndarray, candidate: np.ndarray) -> dic
 def _candidate_catalog(head_dim: int) -> dict[str, FormatSpec]:
     h = int(head_dim)
     return {
+        "bf16": FormatSpec("bf16", k_mode="bf16", v_mode="bf16", k_group_size=h, v_group_size=h),
         "baseline_max": FormatSpec("baseline_max", k_group_size=h, v_group_size=h),
         "calibrated_clip": FormatSpec("calibrated_clip", k_group_size=h, v_group_size=h),
         "clip_99": FormatSpec("clip_99", k_group_size=h, v_group_size=h, k_clip_ratio=0.99, v_clip_ratio=0.99),
@@ -475,6 +517,41 @@ def _candidate_catalog(head_dim: int) -> dict[str, FormatSpec]:
         "key_bf16_value_group32": FormatSpec(
             "key_bf16_value_group32", k_mode="bf16", v_mode="int8", k_group_size=h, v_group_size=32
         ),
+        "key_fp8_e4m3_value_bf16": FormatSpec(
+            "key_fp8_e4m3_value_bf16",
+            k_mode="fp8_e4m3",
+            v_mode="bf16",
+            k_group_size=h,
+            v_group_size=h,
+        ),
+        "tail4_fp8_e4m3": FormatSpec(
+            "tail4_fp8_e4m3",
+            k_mode="fp8_e4m3",
+            v_mode="fp8_e4m3",
+            k_group_size=h,
+            v_group_size=h,
+            quantized_tail_layers=4,
+        ),
+        "tail4_int8_per_head": FormatSpec(
+            "tail4_int8_per_head",
+            k_group_size=h,
+            v_group_size=h,
+            quantized_tail_layers=4,
+        ),
+        "tail4_group32": FormatSpec(
+            "tail4_group32",
+            k_group_size=32,
+            v_group_size=32,
+            quantized_tail_layers=4,
+        ),
+        "tail4_hadamard_group32": FormatSpec(
+            "tail4_hadamard_group32",
+            k_group_size=32,
+            v_group_size=32,
+            strategy="hadamard_groupwise",
+            hadamard_group_size=32,
+            quantized_tail_layers=4,
+        ),
     }
 
 
@@ -499,12 +576,33 @@ def _parse_candidates(text: str, *, head_dim: int) -> list[FormatSpec]:
     return candidates
 
 
+def _format_quantized_layer_count(spec: FormatSpec, full_layers: int) -> int:
+    layers = int(full_layers)
+    if layers < 0:
+        raise ValueError("full_layers must be non-negative")
+    if spec.k_mode == "bf16" and spec.v_mode == "bf16":
+        return 0
+    if spec.quantized_tail_layers is None:
+        return layers
+    return min(layers, int(spec.quantized_tail_layers))
+
+
+def _format_quantizes_layer(spec: FormatSpec, layer_position: int, full_layers: int) -> bool:
+    layers = int(full_layers)
+    position = int(layer_position)
+    if not (0 <= position < layers):
+        raise ValueError("layer_position must identify a full-attention layer")
+    return position >= layers - _format_quantized_layer_count(spec, layers)
+
+
 def _component_memory_bytes(
     *, mode: str, tokens: int, full_layers: int, num_kv_heads: int, head_dim: int, group_size: int, scale_bytes: int
 ) -> tuple[int, int]:
     elements = int(tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim)
     if mode == "bf16":
         return 2 * elements, 0
+    if mode == "fp8_e4m3":
+        return elements, 0
     groups = int(head_dim) // int(group_size)
     scales = int(tokens) * int(full_layers) * int(num_kv_heads) * groups
     return elements, scales * int(scale_bytes)
@@ -520,13 +618,18 @@ def _format_memory_bytes(
     scale_dtype: str,
 ) -> dict[str, int]:
     scale_bytes = 2 if scale_dtype == "fp16" else 4
-    elements = int(tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim)
+    quantized_layers = _format_quantized_layer_count(spec, full_layers)
+    preserved_bf16_layers = int(full_layers) - quantized_layers
+    elements = int(tokens) * quantized_layers * int(num_kv_heads) * int(head_dim)
+    preserved_payload_bytes = (
+        int(tokens) * preserved_bf16_layers * int(num_kv_heads) * int(head_dim) * 2 * 2
+    )
     residual_bytes = 0
     if spec.strategy in {"groupwise", "hadamard_groupwise"}:
         kp, ks = _component_memory_bytes(
             mode=spec.k_mode,
             tokens=tokens,
-            full_layers=full_layers,
+            full_layers=quantized_layers,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
             group_size=spec.k_group_size,
@@ -535,37 +638,35 @@ def _format_memory_bytes(
         vp, vs = _component_memory_bytes(
             mode=spec.v_mode,
             tokens=tokens,
-            full_layers=full_layers,
+            full_layers=quantized_layers,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
             group_size=spec.v_group_size,
             scale_bytes=scale_bytes,
         )
-        payload_bytes = kp + vp
+        payload_bytes = preserved_payload_bytes + kp + vp
         metadata_bytes = ks + vs
     elif spec.strategy == "kivi":
         chunks = math.ceil(int(tokens) / int(spec.chunk_size))
-        payload_bytes = 2 * elements
-        key_metadata = chunks * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2 * scale_bytes
+        payload_bytes = preserved_payload_bytes + 2 * elements
+        key_metadata = chunks * quantized_layers * int(num_kv_heads) * int(head_dim) * 2 * scale_bytes
         value_groups = int(head_dim) // int(spec.v_group_size)
-        value_metadata = int(tokens) * int(full_layers) * int(num_kv_heads) * value_groups * 2 * scale_bytes
+        value_metadata = int(tokens) * quantized_layers * int(num_kv_heads) * value_groups * 2 * scale_bytes
         metadata_bytes = key_metadata + value_metadata
         residual_bytes = (
-            2 * int(spec.residual_tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2
+            2 * int(spec.residual_tokens) * quantized_layers * int(num_kv_heads) * int(head_dim) * 2
         )
     elif spec.strategy == "kvarn":
         quantized_tokens = max(0, int(tokens) - int(spec.sink_tokens))
         chunks = math.ceil(quantized_tokens / int(spec.chunk_size))
-        payload_bytes = 2 * elements
+        payload_bytes = preserved_payload_bytes + 2 * elements
         # Per tile: K stores 2*D + T metadata values; V stores D + 2*T.
         metadata_values_per_tile = 3 * (int(head_dim) + int(spec.chunk_size))
-        metadata_bytes = (
-            chunks * int(full_layers) * int(num_kv_heads) * metadata_values_per_tile * scale_bytes
-        )
+        metadata_bytes = chunks * quantized_layers * int(num_kv_heads) * metadata_values_per_tile * scale_bytes
         residual_bytes = (
             2
             * (int(spec.sink_tokens) + int(spec.residual_tokens))
-            * int(full_layers)
+            * quantized_layers
             * int(num_kv_heads)
             * int(head_dim)
             * 2
@@ -577,12 +678,16 @@ def _format_memory_bytes(
         "scale_bytes": int(metadata_bytes),
         "residual_bytes": int(residual_bytes),
         "total_bytes": int(payload_bytes + metadata_bytes + residual_bytes),
+        "quantized_layers": int(quantized_layers),
+        "preserved_bf16_layers": int(preserved_bf16_layers),
     }
 
 
 def _roundtrip_component(values: np.ndarray, *, mode: str, group_size: int, clip_ratio: float, scale_dtype: str) -> np.ndarray:
     if mode == "bf16":
         return np.asarray(values, dtype=np.float32).copy()
+    if mode == "fp8_e4m3":
+        return _fp8_e4m3fn_quantize_dequantize(values)
     return _quantize_dequantize(values, group_size=group_size, clip_ratio=clip_ratio, scale_dtype=scale_dtype)
 
 
@@ -683,7 +788,10 @@ def _roundtrip_session_cache(
     shape = (int(rows), int(session.config.num_key_value_heads), int(session.config.head_dim))
     offset_bytes = int(start) * row_bytes
     nbytes = int(rows) * row_bytes
-    for layer_id in sorted(session.full_caches):
+    full_layer_ids = sorted(session.full_caches)
+    for layer_position, layer_id in enumerate(full_layer_ids):
+        if not _format_quantizes_layer(spec, layer_position, len(full_layer_ids)):
+            continue
         key_tensor, value_tensor, key_buf, value_buf = session.full_caches[layer_id]
         if key_tensor.dtype.value != "bf16" or value_tensor.dtype.value != "bf16":
             raise ValueError("format emulation requires a BF16 resident cache")
@@ -815,17 +923,24 @@ def _compact_run(run: dict[str, Any]) -> dict[str, Any]:
 def _aggregate_reconstruction(
     keys: Sequence[np.ndarray], values: Sequence[np.ndarray], spec: FormatSpec, *, scale_dtype: str
 ) -> dict[str, Any]:
+    if len(keys) != len(values):
+        raise ValueError("K/V reconstruction layer counts must match")
     restored = [
         _roundtrip_pair(key, value, spec, scale_dtype=scale_dtype)
-        for key, value in zip(keys, values, strict=True)
+        if _format_quantizes_layer(spec, layer_position, len(keys))
+        else (np.asarray(key, dtype=np.float32).copy(), np.asarray(value, dtype=np.float32).copy())
+        for layer_position, (key, value) in enumerate(zip(keys, values, strict=True))
     ]
     key_ref = np.concatenate([item.reshape(-1, item.shape[-1]) for item in keys], axis=0)
     value_ref = np.concatenate([item.reshape(-1, item.shape[-1]) for item in values], axis=0)
     key_out = np.concatenate([item[0].reshape(-1, item[0].shape[-1]) for item in restored], axis=0)
     value_out = np.concatenate([item[1].reshape(-1, item[1].shape[-1]) for item in restored], axis=0)
+    quantized_layers = _format_quantized_layer_count(spec, len(keys))
     return {
         "key": _reconstruction_summary(key_ref, key_out),
         "value": _reconstruction_summary(value_ref, value_out),
+        "quantized_layers": int(quantized_layers),
+        "preserved_bf16_layers": int(len(keys) - quantized_layers),
     }
 
 
