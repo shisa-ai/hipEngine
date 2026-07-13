@@ -126,15 +126,17 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     return tile_m, tile_n
 
 
-def _two_wave_prefill_applies(*, tile_m: int, tile_n: int, out_features: int) -> bool:
-    """Return whether the explicit GPF-5A diagnostic covers this tile."""
+def _two_wave_prefill_applies(
+    *,
+    tile_m: int,
+    tile_n: int,
+    out_features: int,
+    default: bool = False,
+) -> bool:
+    """Return whether the GPF-5A policy covers this tile."""
 
-    enabled = os.environ.get(_TWO_WAVE_ENV, "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
+    enabled = default if not raw else raw in {"1", "true", "yes", "on"}
     return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
 
 
@@ -142,7 +144,7 @@ def _symbol_for_variant(variant: str) -> str:
     return f"hipengine_gguf_q8_0_t16_{variant}"
 
 
-def _make_wrapper(variant: str):
+def _make_wrapper(variant: str, *, two_wave_default: bool = False):
     symbol = _symbol_for_variant(variant)
 
     def wrapper(
@@ -169,6 +171,7 @@ def _make_wrapper(variant: str):
             tile_m=resolved_tile_m,
             tile_n=resolved_tile_n,
             out_features=out_features,
+            default=two_wave_default,
         ):
             selected_symbol = _symbol_for_variant(_TWO_WAVE_VARIANT)
             resolved_tile_m = 64
@@ -194,6 +197,17 @@ def _make_wrapper(variant: str):
 
 
 _WRAPPER_CACHE: dict[str, object] = {variant: _make_wrapper(variant) for variant in _VARIANTS}
+
+gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out = _make_wrapper(
+    "wmma_prefill_bf16_bf16_out",
+    two_wave_default=True,
+)
+gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__ = (
+    "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out"
+)
+gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__qualname__ = (
+    gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__
+)
 
 
 def gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
@@ -360,4 +374,5 @@ __all__ = [
     "plan_gguf_q8_0_t16_prefill_build",
     "register_gguf_q8_0_t16_prefill_kernels",
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
+    "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

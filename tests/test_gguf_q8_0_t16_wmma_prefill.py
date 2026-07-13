@@ -116,6 +116,26 @@ def test_gpf5a_two_wave_policy_is_explicit_and_shape_scoped(
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", raising=False)
     assert _two_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192) is False
+    assert (
+        _two_wave_prefill_applies(
+            tile_m=32,
+            tile_n=32,
+            out_features=8192,
+            default=True,
+        )
+        is True
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", "0")
+    assert (
+        _two_wave_prefill_applies(
+            tile_m=32,
+            tile_n=32,
+            out_features=8192,
+            default=True,
+        )
+        is False
+    )
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", "1")
     assert _two_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192) is True

@@ -388,7 +388,7 @@ select current code without a fresh profile.
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
-| 11 | `GPF-5` | **GPF-5A candidate positive, default-off:** two exact 32-column Q8T16 waves share one activation tile | 80 VGPR/1 KiB LDS/zero scratch; real-shape micro -16.17%/-16.39%; dirty fresh-process 512/4K +8.90%/+2.37%; clean detached gate remains |
+| 11 | `GPF-5` | **GPF-5A promoted on gfx1151:** two exact 32-column Q8T16 waves share one activation tile | Clean 512 +8.35%; variance-escalated stable 4K +2.54%; 82/82 state parts exact; gfx1100 unchanged; final automatic six-shape rollup remains |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
 There is no invented minimum full-model percentage. Under the project evidence
@@ -869,8 +869,23 @@ pairs: **82/82 parts are byte-exact** at both 512 and 4K. This dirty-worktree
 focus is implementation evidence, not a retained performance claim. Candidate
 evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json).
-Next commit it default-off and repeat exact/focus gates from the clean detached
-commit before package-capability promotion.
+The clean detached `4a1fff53` gate reproduces exactness and the speedup. At 512,
+default **819.333** becomes **887.760 tok/s (+8.35%)**. The primary 4K baseline
+leg contains one severe 25.015 tok/s outlier, satisfying the documented
+variance trigger; the required fresh 1+5 replacement is stable:
+
+| Context | Default samples tok/s | GPF-5A samples tok/s | Median delta |
+| ---: | --- | --- | ---: |
+| 4K | 747.651, 747.693, 745.914, 748.162, 746.572 | 765.959, 766.906, 766.606, 767.686, 766.537 | **+2.54%** |
+
+Clean 512/4K differential state remains 82/82 parts byte-exact and memory is
+unchanged. The gfx1151 backend therefore overrides only the two BF16/BF16
+Q8T16 prefill registry aliases with an automatic wrapper; gfx1100 still maps
+to production. The auto wrapper selects GPF-5A only for default TM32/TM64,
+TN32, output width >=2048 shapes. Explicit `=0` is the rollback and `=1`
+remains the cross-backend diagnostic. Clean evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json).
+The final automatic-route six-shape 1+3 sweep owns publication.
 
 Selection evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json).
@@ -1077,18 +1092,17 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   and often fast, but automatic-route 32K includes a **294.254 tok/s** collapse,
   the 1+5 replacement stalls before warmup completion, and 128K measured run 2
   remains GPU-active beyond **1200 s**. A same-stream control is healthy.
-- GPF-5A is implemented default-off. It is byte-exact, profiles at 80 VGPR /
-  1 KiB LDS / zero scratch, improves real-shape micros by 16.17%-16.39%, and
-  improves dirty fresh-process 512/4K prefill by **8.90%/2.37%** with unchanged
-  memory. Clean detached validation remains.
-- No benchmark process is intentionally left running. The published GPF-2E
-  row remains canonical until GPF-5A passes its clean gate.
+- GPF-5A is promoted in gfx1151 registry metadata. It is byte-exact, profiles
+  at 80 VGPR / 1 KiB LDS / zero scratch, and clean focus improves 512 by
+  **8.35%** and variance-escalated stable 4K by **2.54%** with unchanged memory.
+- No benchmark process is intentionally left running. The final automatic
+  six-shape 1+3 publication sweep is next.
 
-Keep GPF-4 explicit/default-off. Commit GPF-5A as a callable default-off
-candidate, then repeat 512/4K exact state and fresh-process 1+3 from the clean
-detached commit. Only clean evidence may add a gfx1151 package capability;
-gfx1100 remains unchanged pending hardware-local transfer. Token-parallel/
-prefix GDN remains the high-effort fallback.
+Keep GPF-4 explicit/default-off. GPF-5A now owns the gfx1151 BF16/BF16 Q8T16
+prefill aliases through a shape-scoped automatic wrapper; gfx1100 stays on the
+production wrapper. Next run the clean automatic 512/1K/4K/32K/64K/128K 1+3
+rollup and publish only after its normal correctness/stability gates.
+Token-parallel/prefix GDN remains the high-effort fallback.
 
 ## Document Ownership
 
