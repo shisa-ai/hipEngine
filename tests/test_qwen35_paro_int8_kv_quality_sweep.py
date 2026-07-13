@@ -37,6 +37,20 @@ def test_compare_logits_reports_reference_token_fidelity() -> None:
     assert comparison["candidate_reference_top1_logprob_delta"][0] < 0.0
 
 
+def test_compare_logits_reports_topk_overlap() -> None:
+    reference = [np.arange(12, dtype=np.float32)]
+    candidate_row = np.arange(12, dtype=np.float32)
+    candidate_row[0] = 20.0
+
+    comparison = sweep._compare_logits(reference, [candidate_row])
+
+    assert comparison["topk_overlap"]["5"]["per_position"] == [0.8]
+    assert comparison["topk_overlap"]["5"]["mean"] == 0.8
+    assert comparison["topk_overlap"]["5"]["exact_agreement"] == 0.0
+    assert comparison["topk_overlap"]["10"]["per_position"] == [0.9]
+    assert comparison["topk_overlap"]["10"]["mean"] == 0.9
+
+
 def test_free_running_diagnostics_separates_rollout_cascade() -> None:
     reference = _run_payload(
         [10, 11, 12],

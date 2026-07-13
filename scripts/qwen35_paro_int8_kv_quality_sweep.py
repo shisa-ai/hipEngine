@@ -105,6 +105,47 @@ def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -
     return float(np.sum(p * (log_p - log_q)))
 
 
+def _topk_indices(logits: np.ndarray, k: int) -> list[int]:
+    values = np.asarray(logits)
+    if values.ndim != 1:
+        raise ValueError("top-k logits must be one-dimensional")
+    effective_k = min(int(k), int(values.size))
+    if effective_k <= 0:
+        return []
+    # Stable full ordering makes membership deterministic when the cutoff has
+    # equal logits; the scored row count is tiny relative to model execution.
+    return [int(index) for index in np.argsort(-values, kind="stable")[:effective_k]]
+
+
+def _topk_overlap(
+    reference_logits: Sequence[np.ndarray],
+    candidate_logits: Sequence[np.ndarray],
+    *,
+    k: int,
+) -> dict[str, Any]:
+    overlaps: list[float] = []
+    exact: list[bool] = []
+    effective_k: int | None = None
+    for reference, candidate in zip(reference_logits, candidate_logits, strict=True):
+        if np.asarray(reference).shape != np.asarray(candidate).shape:
+            raise ValueError("reference/candidate logit row shape mismatch")
+        reference_ids = set(_topk_indices(reference, k))
+        candidate_ids = set(_topk_indices(candidate, k))
+        row_k = len(reference_ids)
+        effective_k = row_k if effective_k is None else effective_k
+        if row_k != effective_k:
+            raise ValueError("logit vocabulary size changed between positions")
+        overlaps.append(float(len(reference_ids & candidate_ids) / row_k) if row_k else 1.0)
+        exact.append(reference_ids == candidate_ids)
+    return {
+        "requested_k": int(k),
+        "effective_k": int(effective_k or 0),
+        "per_position": overlaps,
+        "mean": float(np.mean(overlaps)) if overlaps else 1.0,
+        "exact_agreement": float(sum(exact) / len(exact)) if exact else 1.0,
+    }
+
+
 def _compare_logits(reference_logits: Sequence[np.ndarray], candidate_logits: Sequence[np.ndarray]) -> dict[str, Any]:
     if len(reference_logits) != len(candidate_logits):
         raise ValueError("reference/candidate logits length mismatch")
@@ -146,6 +187,10 @@ def _compare_logits(reference_logits: Sequence[np.ndarray], candidate_logits: Se
         "candidate_top1": candidate_top1,
         "top1_matches": top1_matches,
         "top1_agreement": float(sum(top1_matches) / len(top1_matches)) if top1_matches else 1.0,
+        "topk_overlap": {
+            str(k): _topk_overlap(reference_logits, candidate_logits, k=k)
+            for k in (5, 10)
+        },
         "first_top1_mismatch": first_top1_mismatch,
         "reference_top1_logprob": reference_top1_logprob,
         "candidate_reference_top1_logprob": candidate_reference_top1_logprob,

@@ -153352,3 +153352,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the requested `/home/lhl/github/shisa-ai/kvcache-quantization-research` path
   is not present on this host. Re-read `docs/KVCACHE.md` end to end and
   `git diff --check` passed.
+
+## 2026-07-13 — Add the fast external-format numerical screen
+
+- Extended `scripts/qwen35_paro_kv_format_ablation.py` with a fixed
+  `--fast-accuracy-screen`: one mixed English/Japanese/code/math/tool-token
+  512-token prompt, eight BF16-teacher-forced decode rows, one resident-weight
+  session reset/reused across BF16 cases, and the four-candidate
+  baseline/Hadamard/KIVI/KVarN set. The JSON records the
+  prompt-token SHA-256, distinct-token count, total elapsed time, and whether
+  the 600-second development budget was met.
+- Added deterministic NumPy emulations and 256K byte projections for:
+  normalized Walsh-Hadamard group32 + symmetric INT8; KIVI-style 128-token
+  per-channel key chunks + affine group32 values + BF16 incomplete residual;
+  and KVarN-inspired Hadamard/two-axis-RMS/affine INT8 chunks. These are
+  representation screens only and do not add Torch or production kernels.
+- Extended matched-logit reports with top-5/top-10 set overlap and exact-set
+  agreement while preserving mean/max KL, top-1 agreement, and reference-token
+  rank. Candidate prompts are tokenized once and reused exactly for all runs.
+- Followed RED/GREEN: the new Hadamard/KIVI/KVarN and top-k tests initially
+  failed import/output expectations, then passed after implementation.
+  Validation: `python3 -m pytest -q
+  tests/test_qwen35_paro_int8_kv_quality_sweep.py
+  tests/test_qwen35_paro_kv_format_ablation.py
+  tests/test_qwen35_paro_kv_policy_ablation.py` (19 passed), targeted Ruff,
+  `py_compile`, and `git diff --check` all pass.

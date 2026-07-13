@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import math
 import subprocess
@@ -55,6 +56,11 @@ DEFAULT_CANDIDATES = (
     "baseline_max,calibrated_clip,clip_99,group64,group32,group16,"
     "key_group16,value_group16,key_int8_value_bf16,key_bf16_value_int8"
 )
+FAST_ACCURACY_CANDIDATES = "baseline_max,hadamard_group32,kivi_int8,kvarn_int8"
+FAST_SCREEN_PROMPT = (
+    "KV cache fidelity probe. Retrieve the prior fact, solve 17 * 23, explain a Python iterator, "
+    "respond briefly in English and 日本語, and preserve the JSON tool argument {\"limit\": 8}. "
+)
 
 
 @dataclass(frozen=True)
@@ -66,24 +72,40 @@ class FormatSpec:
     v_group_size: int = 256
     k_clip_ratio: float = 1.0
     v_clip_ratio: float = 1.0
+    strategy: str = "groupwise"
+    chunk_size: int = 0
+    residual_tokens: int = 0
+    hadamard_group_size: int = 0
 
     def __post_init__(self) -> None:
         if self.k_mode not in {"int8", "bf16"} or self.v_mode not in {"int8", "bf16"}:
             raise ValueError("K/V modes must be int8 or bf16")
+        if self.strategy not in {"groupwise", "hadamard_groupwise", "kivi", "kvarn"}:
+            raise ValueError(f"unsupported format strategy {self.strategy!r}")
         if self.k_group_size <= 0 or self.v_group_size <= 0:
             raise ValueError("group sizes must be positive")
         if not (0.0 < self.k_clip_ratio <= 1.0) or not (0.0 < self.v_clip_ratio <= 1.0):
             raise ValueError("clip ratios must be in (0, 1]")
+        if self.strategy in {"kivi", "kvarn"} and self.chunk_size <= 0:
+            raise ValueError(f"{self.strategy} requires a positive chunk_size")
+        if self.residual_tokens < 0:
+            raise ValueError("residual_tokens must be non-negative")
+        if self.strategy in {"hadamard_groupwise", "kvarn"} and self.hadamard_group_size <= 0:
+            raise ValueError(f"{self.strategy} requires a positive hadamard_group_size")
 
     def to_json(self) -> dict[str, Any]:
         return {
             "name": self.name,
+            "strategy": self.strategy,
             "k_mode": self.k_mode,
             "v_mode": self.v_mode,
             "k_group_size": self.k_group_size if self.k_mode == "int8" else None,
             "v_group_size": self.v_group_size if self.v_mode == "int8" else None,
             "k_clip_ratio": self.k_clip_ratio if self.k_mode == "int8" else None,
             "v_clip_ratio": self.v_clip_ratio if self.v_mode == "int8" else None,
+            "chunk_size": self.chunk_size or None,
+            "residual_tokens": self.residual_tokens or None,
+            "hadamard_group_size": self.hadamard_group_size or None,
         }
 
 
@@ -116,6 +138,155 @@ def _quantize_dequantize(
     codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
     stored_scale = float_scale.astype(scale_type).astype(np.float32)
     return np.ascontiguousarray((codes * stored_scale).reshape(source.shape), dtype=np.float32)
+
+
+def _normalized_hadamard(values: np.ndarray, *, group_size: int) -> np.ndarray:
+    """Apply a normalized Walsh-Hadamard transform to last-axis groups."""
+
+    source = np.asarray(values, dtype=np.float32)
+    size = int(group_size)
+    if size <= 0 or size & (size - 1):
+        raise ValueError("Hadamard group_size must be a positive power of two")
+    if source.ndim < 1 or source.shape[-1] % size:
+        raise ValueError("Hadamard group_size must divide the last dimension")
+    transformed = source.reshape(*source.shape[:-1], source.shape[-1] // size, size).copy()
+    width = 1
+    while width < size:
+        for start in range(0, size, 2 * width):
+            left = transformed[..., start : start + width].copy()
+            right = transformed[..., start + width : start + 2 * width].copy()
+            transformed[..., start : start + width] = left + right
+            transformed[..., start + width : start + 2 * width] = left - right
+        width *= 2
+    transformed *= np.float32(1.0 / math.sqrt(size))
+    return np.ascontiguousarray(transformed.reshape(source.shape), dtype=np.float32)
+
+
+def _asymmetric_quantize_dequantize(
+    values: np.ndarray,
+    *,
+    group_size: int,
+    scale_dtype: str,
+) -> np.ndarray:
+    """Per-row/group affine UINT8 emulation with rounded scale and minimum."""
+
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim < 1 or source.shape[-1] % int(group_size):
+        raise ValueError("group_size must divide the last dimension")
+    if scale_dtype not in {"fp16", "fp32"}:
+        raise ValueError("scale_dtype must be fp16 or fp32")
+    scale_type = np.float16 if scale_dtype == "fp16" else np.float32
+    grouped = source.reshape(*source.shape[:-1], source.shape[-1] // int(group_size), int(group_size))
+    minimum = np.min(grouped, axis=-1, keepdims=True)
+    maximum = np.max(grouped, axis=-1, keepdims=True)
+    float_scale = (maximum - minimum) / np.float32(255.0)
+    safe_scale = np.where(float_scale > 0.0, float_scale, np.float32(1.0))
+    codes = np.clip(np.rint((grouped - minimum) / safe_scale), 0.0, 255.0)
+    codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
+    stored_scale = float_scale.astype(scale_type).astype(np.float32)
+    stored_minimum = minimum.astype(scale_type).astype(np.float32)
+    return np.ascontiguousarray((codes * stored_scale + stored_minimum).reshape(source.shape), dtype=np.float32)
+
+
+def _channel_chunk_quantize_dequantize(values: np.ndarray, *, scale_dtype: str) -> np.ndarray:
+    """Affine INT8 over the token axis independently for every head/channel."""
+
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim != 3:
+        raise ValueError("channel-chunk quantization expects [tokens, heads, channels]")
+    if scale_dtype not in {"fp16", "fp32"}:
+        raise ValueError("scale_dtype must be fp16 or fp32")
+    scale_type = np.float16 if scale_dtype == "fp16" else np.float32
+    minimum = np.min(source, axis=0, keepdims=True)
+    maximum = np.max(source, axis=0, keepdims=True)
+    float_scale = (maximum - minimum) / np.float32(255.0)
+    safe_scale = np.where(float_scale > 0.0, float_scale, np.float32(1.0))
+    codes = np.clip(np.rint((source - minimum) / safe_scale), 0.0, 255.0)
+    codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
+    stored_scale = float_scale.astype(scale_type).astype(np.float32)
+    stored_minimum = minimum.astype(scale_type).astype(np.float32)
+    return np.ascontiguousarray(codes * stored_scale + stored_minimum, dtype=np.float32)
+
+
+def _chunk_slices(rows: int, chunk_size: int) -> list[slice]:
+    full_rows = int(rows) // int(chunk_size) * int(chunk_size)
+    return [slice(start, start + int(chunk_size)) for start in range(0, full_rows, int(chunk_size))]
+
+
+def _kivi_roundtrip_pair(
+    key: np.ndarray,
+    value: np.ndarray,
+    spec: FormatSpec,
+    *,
+    scale_dtype: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    key_out = np.asarray(key, dtype=np.float32).copy()
+    value_out = np.asarray(value, dtype=np.float32).copy()
+    for chunk in _chunk_slices(key_out.shape[0], spec.chunk_size):
+        key_out[chunk] = _channel_chunk_quantize_dequantize(key_out[chunk], scale_dtype=scale_dtype)
+        value_out[chunk] = _asymmetric_quantize_dequantize(
+            value_out[chunk],
+            group_size=spec.v_group_size,
+            scale_dtype=scale_dtype,
+        )
+    return key_out, value_out
+
+
+def _kvarn_chunk_roundtrip(
+    values: np.ndarray,
+    *,
+    hadamard_group_size: int,
+    scale_dtype: str,
+) -> np.ndarray:
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim != 3:
+        raise ValueError("KVarN-inspired quantization expects [tokens, heads, channels]")
+    scale_type = np.float16 if scale_dtype == "fp16" else np.float32
+    if scale_dtype not in {"fp16", "fp32"}:
+        raise ValueError("scale_dtype must be fp16 or fp32")
+    rotated = _normalized_hadamard(source, group_size=hadamard_group_size)
+    row_rms = np.sqrt(np.mean(np.square(rotated, dtype=np.float64), axis=-1, keepdims=True)).astype(np.float32)
+    safe_row_rms = np.where(row_rms > 0.0, row_rms, np.float32(1.0))
+    row_normalized = rotated / safe_row_rms
+    channel_rms = np.sqrt(np.mean(np.square(row_normalized, dtype=np.float64), axis=0, keepdims=True)).astype(np.float32)
+    safe_channel_rms = np.where(channel_rms > 0.0, channel_rms, np.float32(1.0))
+    normalized = row_normalized / safe_channel_rms
+    minimum = np.min(normalized, axis=(0, 2), keepdims=True)
+    maximum = np.max(normalized, axis=(0, 2), keepdims=True)
+    float_scale = (maximum - minimum) / np.float32(255.0)
+    safe_scale = np.where(float_scale > 0.0, float_scale, np.float32(1.0))
+    codes = np.clip(np.rint((normalized - minimum) / safe_scale), 0.0, 255.0)
+    codes = np.where(float_scale > 0.0, codes, np.float32(0.0))
+    reconstructed = (
+        codes * float_scale.astype(scale_type).astype(np.float32)
+        + minimum.astype(scale_type).astype(np.float32)
+    )
+    reconstructed *= channel_rms.astype(scale_type).astype(np.float32)
+    reconstructed *= row_rms.astype(scale_type).astype(np.float32)
+    return _normalized_hadamard(reconstructed, group_size=hadamard_group_size)
+
+
+def _kvarn_roundtrip_pair(
+    key: np.ndarray,
+    value: np.ndarray,
+    spec: FormatSpec,
+    *,
+    scale_dtype: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    key_out = np.asarray(key, dtype=np.float32).copy()
+    value_out = np.asarray(value, dtype=np.float32).copy()
+    for chunk in _chunk_slices(key_out.shape[0], spec.chunk_size):
+        key_out[chunk] = _kvarn_chunk_roundtrip(
+            key_out[chunk],
+            hadamard_group_size=spec.hadamard_group_size,
+            scale_dtype=scale_dtype,
+        )
+        value_out[chunk] = _kvarn_chunk_roundtrip(
+            value_out[chunk],
+            hadamard_group_size=spec.hadamard_group_size,
+            scale_dtype=scale_dtype,
+        )
+    return key_out, value_out
 
 
 def _percentiles(values: np.ndarray) -> dict[str, float]:
@@ -166,6 +337,27 @@ def _candidate_catalog(head_dim: int) -> dict[str, FormatSpec]:
         "group64": FormatSpec("group64", k_group_size=64, v_group_size=64),
         "group32": FormatSpec("group32", k_group_size=32, v_group_size=32),
         "group16": FormatSpec("group16", k_group_size=16, v_group_size=16),
+        "hadamard_group32": FormatSpec(
+            "hadamard_group32",
+            k_group_size=32,
+            v_group_size=32,
+            strategy="hadamard_groupwise",
+            hadamard_group_size=32,
+        ),
+        "kivi_int8": FormatSpec(
+            "kivi_int8",
+            v_group_size=32,
+            strategy="kivi",
+            chunk_size=128,
+            residual_tokens=127,
+        ),
+        "kvarn_int8": FormatSpec(
+            "kvarn_int8",
+            strategy="kvarn",
+            chunk_size=128,
+            residual_tokens=127,
+            hadamard_group_size=h,
+        ),
         "key_group16": FormatSpec("key_group16", k_group_size=16, v_group_size=h),
         "value_group16": FormatSpec("value_group16", k_group_size=h, v_group_size=16),
         "key_int8_value_bf16": FormatSpec("key_int8_value_bf16", k_mode="int8", v_mode="bf16", k_group_size=h, v_group_size=h),
@@ -186,6 +378,11 @@ def _parse_candidates(text: str, *, head_dim: int) -> list[FormatSpec]:
         for mode, group in ((candidate.k_mode, candidate.k_group_size), (candidate.v_mode, candidate.v_group_size)):
             if mode == "int8" and int(head_dim) % int(group):
                 raise ValueError(f"candidate {candidate.name} group {group} does not divide head_dim {head_dim}")
+        if candidate.hadamard_group_size and int(head_dim) % int(candidate.hadamard_group_size):
+            raise ValueError(
+                f"candidate {candidate.name} Hadamard group {candidate.hadamard_group_size} "
+                f"does not divide head_dim {head_dim}"
+            )
     return candidates
 
 
@@ -210,25 +407,57 @@ def _format_memory_bytes(
     scale_dtype: str,
 ) -> dict[str, int]:
     scale_bytes = 2 if scale_dtype == "fp16" else 4
-    kp, ks = _component_memory_bytes(
-        mode=spec.k_mode,
-        tokens=tokens,
-        full_layers=full_layers,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        group_size=spec.k_group_size,
-        scale_bytes=scale_bytes,
-    )
-    vp, vs = _component_memory_bytes(
-        mode=spec.v_mode,
-        tokens=tokens,
-        full_layers=full_layers,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        group_size=spec.v_group_size,
-        scale_bytes=scale_bytes,
-    )
-    return {"payload_bytes": kp + vp, "scale_bytes": ks + vs, "total_bytes": kp + vp + ks + vs}
+    elements = int(tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim)
+    residual_bytes = 0
+    if spec.strategy in {"groupwise", "hadamard_groupwise"}:
+        kp, ks = _component_memory_bytes(
+            mode=spec.k_mode,
+            tokens=tokens,
+            full_layers=full_layers,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            group_size=spec.k_group_size,
+            scale_bytes=scale_bytes,
+        )
+        vp, vs = _component_memory_bytes(
+            mode=spec.v_mode,
+            tokens=tokens,
+            full_layers=full_layers,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            group_size=spec.v_group_size,
+            scale_bytes=scale_bytes,
+        )
+        payload_bytes = kp + vp
+        metadata_bytes = ks + vs
+    elif spec.strategy == "kivi":
+        chunks = math.ceil(int(tokens) / int(spec.chunk_size))
+        payload_bytes = 2 * elements
+        key_metadata = chunks * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2 * scale_bytes
+        value_groups = int(head_dim) // int(spec.v_group_size)
+        value_metadata = int(tokens) * int(full_layers) * int(num_kv_heads) * value_groups * 2 * scale_bytes
+        metadata_bytes = key_metadata + value_metadata
+        residual_bytes = (
+            2 * int(spec.residual_tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2
+        )
+    elif spec.strategy == "kvarn":
+        chunks = math.ceil(int(tokens) / int(spec.chunk_size))
+        payload_bytes = 2 * elements
+        row_scales = 2 * int(tokens) * int(full_layers) * int(num_kv_heads) * scale_bytes
+        channel_scales = 2 * chunks * int(full_layers) * int(num_kv_heads) * int(head_dim) * scale_bytes
+        affine_parameters = 2 * chunks * int(full_layers) * int(num_kv_heads) * 2 * scale_bytes
+        metadata_bytes = row_scales + channel_scales + affine_parameters
+        residual_bytes = (
+            2 * int(spec.residual_tokens) * int(full_layers) * int(num_kv_heads) * int(head_dim) * 2
+        )
+    else:  # pragma: no cover - guarded by FormatSpec
+        raise ValueError(f"unsupported strategy {spec.strategy!r}")
+    return {
+        "payload_bytes": int(payload_bytes),
+        "scale_bytes": int(metadata_bytes),
+        "residual_bytes": int(residual_bytes),
+        "total_bytes": int(payload_bytes + metadata_bytes + residual_bytes),
+    }
 
 
 def _roundtrip_component(values: np.ndarray, *, mode: str, group_size: int, clip_ratio: float, scale_dtype: str) -> np.ndarray:
@@ -238,6 +467,31 @@ def _roundtrip_component(values: np.ndarray, *, mode: str, group_size: int, clip
 
 
 def _roundtrip_pair(key: np.ndarray, value: np.ndarray, spec: FormatSpec, *, scale_dtype: str) -> tuple[np.ndarray, np.ndarray]:
+    if spec.strategy == "kivi":
+        return _kivi_roundtrip_pair(key, value, spec, scale_dtype=scale_dtype)
+    if spec.strategy == "kvarn":
+        return _kvarn_roundtrip_pair(key, value, spec, scale_dtype=scale_dtype)
+    if spec.strategy == "hadamard_groupwise":
+        key_rotated = _normalized_hadamard(key, group_size=spec.hadamard_group_size)
+        value_rotated = _normalized_hadamard(value, group_size=spec.hadamard_group_size)
+        key_restored = _roundtrip_component(
+            key_rotated,
+            mode=spec.k_mode,
+            group_size=spec.k_group_size,
+            clip_ratio=spec.k_clip_ratio,
+            scale_dtype=scale_dtype,
+        )
+        value_restored = _roundtrip_component(
+            value_rotated,
+            mode=spec.v_mode,
+            group_size=spec.v_group_size,
+            clip_ratio=spec.v_clip_ratio,
+            scale_dtype=scale_dtype,
+        )
+        return (
+            _normalized_hadamard(key_restored, group_size=spec.hadamard_group_size),
+            _normalized_hadamard(value_restored, group_size=spec.hadamard_group_size),
+        )
     return (
         _roundtrip_component(key, mode=spec.k_mode, group_size=spec.k_group_size, clip_ratio=spec.k_clip_ratio, scale_dtype=scale_dtype),
         _roundtrip_component(value, mode=spec.v_mode, group_size=spec.v_group_size, clip_ratio=spec.v_clip_ratio, scale_dtype=scale_dtype),
@@ -316,6 +570,61 @@ def _roundtrip_session_cache(
         copy_host_to_device(DeviceBuffer(value_buf.ptr + offset_bytes, nbytes), host_array_ptr(value_out), nbytes, runtime=session.runtime)
 
 
+def _run_loaded_session(
+    session: Qwen35ParoResidentSession,
+    *,
+    prompt_tokens: Sequence[int],
+    prompt_length: int,
+    decode_steps: int,
+    forced_input_ids: Sequence[int] | None,
+    scale_dtype: str,
+    emulated_spec: FormatSpec | None = None,
+    sample_tokens: int = 0,
+) -> tuple[dict[str, Any], tuple[list[np.ndarray], list[np.ndarray]] | None, int]:
+    """Run one matched case while retaining the session's resident weights."""
+
+    started = time.perf_counter()
+    resolved_prompt_tokens = [int(item) for item in prompt_tokens]
+    if len(resolved_prompt_tokens) != int(prompt_length):
+        raise ValueError("prompt_tokens length must equal prompt_length")
+    if forced_input_ids is not None and len(forced_input_ids) != int(decode_steps):
+        raise ValueError("forced_input_ids must contain exactly decode_steps tokens")
+    session.reset()
+    session._resolve_prefill_config_for_length(int(prompt_length))
+    seed = session.prefill_native(resolved_prompt_tokens, sample=True)
+    if seed is None:
+        raise RuntimeError("native prefill did not produce a seed")
+    logits = [_read_logits(session)]
+    captured = _capture_cache_sample(session, tokens=min(prompt_length, sample_tokens)) if sample_tokens > 0 else None
+    if emulated_spec is not None:
+        _roundtrip_session_cache(session, emulated_spec, start=0, rows=prompt_length, scale_dtype=scale_dtype)
+    generated_ids: list[int] = []
+    current = seed
+    for offset in range(decode_steps):
+        input_id = int(current.token_id) if forced_input_ids is None else int(forced_input_ids[offset])
+        current = session.step(input_id, position=prompt_length + offset, sample=True)
+        if current is None:
+            raise RuntimeError(f"decode did not produce token {offset}")
+        generated_ids.append(int(current.token_id))
+        logits.append(_read_logits(session))
+        if emulated_spec is not None:
+            _roundtrip_session_cache(
+                session,
+                emulated_spec,
+                start=prompt_length + offset,
+                rows=1,
+                scale_dtype=scale_dtype,
+            )
+    result = {
+        "seed_token_id": int(seed.token_id),
+        "generated_token_ids": generated_ids,
+        "logits": logits,
+        "finite_logits": bool(all(np.isfinite(item).all() for item in logits)),
+        "elapsed_seconds": float(time.perf_counter() - started),
+    }
+    return result, captured, len(session.full_caches)
+
+
 def _run_session(
     *,
     runner: Qwen35ParoNextTokenRunner,
@@ -330,10 +639,16 @@ def _run_session(
     storage: str,
     scale_dtype: str,
     forced_input_ids: Sequence[int] | None,
+    prompt_tokens: Sequence[int] | None = None,
     emulated_spec: FormatSpec | None = None,
     sample_tokens: int = 0,
 ) -> tuple[dict[str, Any], tuple[list[np.ndarray], list[np.ndarray]] | None, int]:
     policy = resolve_kv_policy(storage, block_size=256, scale_dtype=scale_dtype)
+    resolved_prompt_tokens = (
+        _prompt_tokens(model, "Hello", token_id, prompt_length)
+        if prompt_tokens is None
+        else [int(item) for item in prompt_tokens]
+    )
     max_sequence_length = int(prompt_length) + int(decode_steps) + 2
     with Qwen35ParoResidentSession(
         runner,
@@ -346,40 +661,18 @@ def _run_session(
         kv_scale_dtype=policy.scale_dtype,
         kv_scale_granularity=policy.scale_granularity,
     ) as session:
-        prompt_tokens = _prompt_tokens(model, "Hello", token_id, prompt_length)
-        seed = session.prefill_native(prompt_tokens, sample=True)
-        if seed is None:
-            raise RuntimeError("native prefill did not produce a seed")
-        logits = [_read_logits(session)]
-        captured = _capture_cache_sample(session, tokens=min(prompt_length, sample_tokens)) if sample_tokens > 0 else None
-        if emulated_spec is not None:
-            _roundtrip_session_cache(session, emulated_spec, start=0, rows=prompt_length, scale_dtype=scale_dtype)
-        generated_ids: list[int] = []
-        current = seed
-        for offset in range(decode_steps):
-            input_id = int(current.token_id) if forced_input_ids is None else int(forced_input_ids[offset])
-            current = session.step(input_id, position=prompt_length + offset, sample=True)
-            if current is None:
-                raise RuntimeError(f"decode did not produce token {offset}")
-            generated_ids.append(int(current.token_id))
-            logits.append(_read_logits(session))
-            if emulated_spec is not None:
-                _roundtrip_session_cache(
-                    session,
-                    emulated_spec,
-                    start=prompt_length + offset,
-                    rows=1,
-                    scale_dtype=scale_dtype,
-                )
-        full_layers = len(session.full_caches)
-        result = {
-            "seed_token_id": int(seed.token_id),
-            "generated_token_ids": generated_ids,
-            "logits": logits,
-            "finite_logits": bool(all(np.isfinite(item).all() for item in logits)),
-        }
+        result = _run_loaded_session(
+            session,
+            prompt_tokens=resolved_prompt_tokens,
+            prompt_length=prompt_length,
+            decode_steps=decode_steps,
+            forced_input_ids=forced_input_ids,
+            scale_dtype=scale_dtype,
+            emulated_spec=emulated_spec,
+            sample_tokens=sample_tokens,
+        )
     gc.collect()
-    return result, captured, full_layers
+    return result
 
 
 def _compact_run(run: dict[str, Any]) -> dict[str, Any]:
@@ -389,9 +682,14 @@ def _compact_run(run: dict[str, Any]) -> dict[str, Any]:
 def _aggregate_reconstruction(
     keys: Sequence[np.ndarray], values: Sequence[np.ndarray], spec: FormatSpec, *, scale_dtype: str
 ) -> dict[str, Any]:
+    restored = [
+        _roundtrip_pair(key, value, spec, scale_dtype=scale_dtype)
+        for key, value in zip(keys, values, strict=True)
+    ]
     key_ref = np.concatenate([item.reshape(-1, item.shape[-1]) for item in keys], axis=0)
     value_ref = np.concatenate([item.reshape(-1, item.shape[-1]) for item in values], axis=0)
-    key_out, value_out = _roundtrip_pair(key_ref, value_ref, spec, scale_dtype=scale_dtype)
+    key_out = np.concatenate([item[0].reshape(-1, item[0].shape[-1]) for item in restored], axis=0)
+    value_out = np.concatenate([item[1].reshape(-1, item[1].shape[-1]) for item in restored], axis=0)
     return {
         "key": _reconstruction_summary(key_ref, key_out),
         "value": _reconstruction_summary(value_ref, value_out),
@@ -430,6 +728,126 @@ def _read_compiler_version(path: Path | None) -> str | None:
     return None if path is None else path.read_text(encoding="utf-8")
 
 
+def _run_bf16_candidate_screen(
+    *,
+    runner: Qwen35ParoNextTokenRunner,
+    args: argparse.Namespace,
+    compiler_version: str | None,
+    prefill_config: PrefillConfig,
+    prompt_tokens: Sequence[int],
+    candidates: Sequence[FormatSpec],
+) -> dict[str, Any]:
+    """Load BF16 model state once, then reset only request state per candidate."""
+
+    policy = resolve_kv_policy("bf16", block_size=256, scale_dtype=args.scale_dtype)
+    max_sequence_length = int(args.prompt_length) + int(args.decode_steps) + 2
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=max_sequence_length,
+        max_layers=args.max_layers,
+        compiler_version=compiler_version,
+        require_cached_build=args.require_cached_build,
+        prefill_config=prefill_config,
+        kv_policy=policy.create_policy(),
+        kv_scale_dtype=policy.scale_dtype,
+        kv_scale_granularity=policy.scale_granularity,
+    ) as session:
+        reference, captured, full_layers = _run_loaded_session(
+            session,
+            prompt_tokens=prompt_tokens,
+            prompt_length=args.prompt_length,
+            decode_steps=args.decode_steps,
+            forced_input_ids=None,
+            scale_dtype=args.scale_dtype,
+            sample_tokens=args.sample_tokens,
+        )
+        if captured is None or not captured[0]:
+            raise RuntimeError("reference cache capture was empty")
+        keys, values = captured
+        calibration = {
+            "key": _calibrate_clip(keys, group_size=int(runner.config.head_dim), scale_dtype=args.scale_dtype),
+            "value": _calibrate_clip(values, group_size=int(runner.config.head_dim), scale_dtype=args.scale_dtype),
+        }
+        calibrated = FormatSpec(
+            "calibrated_clip",
+            k_group_size=int(runner.config.head_dim),
+            v_group_size=int(runner.config.head_dim),
+            k_clip_ratio=float(calibration["key"]["selected_clip_ratio"]),
+            v_clip_ratio=float(calibration["value"]["selected_clip_ratio"]),
+        )
+        resolved_candidates = [calibrated if item.name == "calibrated_clip" else item for item in candidates]
+        forced_ids = (
+            []
+            if int(args.decode_steps) == 0
+            else [
+                int(reference["seed_token_id"]),
+                *[int(item) for item in reference["generated_token_ids"][: args.decode_steps - 1]],
+            ]
+        )
+        baseline_memory = _format_memory_bytes(
+            _candidate_catalog(int(runner.config.head_dim))["baseline_max"],
+            tokens=args.target_context_tokens,
+            full_layers=full_layers,
+            num_kv_heads=int(runner.config.num_key_value_heads),
+            head_dim=int(runner.config.head_dim),
+            scale_dtype=args.scale_dtype,
+        )
+        rows: list[dict[str, Any]] = []
+        for spec in resolved_candidates:
+            candidate_run, _, _ = _run_loaded_session(
+                session,
+                prompt_tokens=prompt_tokens,
+                prompt_length=args.prompt_length,
+                decode_steps=args.decode_steps,
+                forced_input_ids=forced_ids,
+                scale_dtype=args.scale_dtype,
+                emulated_spec=spec,
+            )
+            memory = _format_memory_bytes(
+                spec,
+                tokens=args.target_context_tokens,
+                full_layers=full_layers,
+                num_kv_heads=int(runner.config.num_key_value_heads),
+                head_dim=int(runner.config.head_dim),
+                scale_dtype=args.scale_dtype,
+            )
+            gate = _compare_logits(reference["logits"], candidate_run["logits"])
+            rows.append(
+                {
+                    **spec.to_json(),
+                    "emulation_semantics": (
+                        "BF16 cache replaced by format reconstruction before decode; "
+                        "current row round-tripped after its own attention"
+                    ),
+                    "logit_gate": gate,
+                    "quality_gate_passed": bool(
+                        gate["mean_kl"] <= args.kl_threshold
+                        and gate["top1_agreement"] >= args.top1_threshold
+                    ),
+                    "reconstruction": _aggregate_reconstruction(
+                        keys,
+                        values,
+                        spec,
+                        scale_dtype=args.scale_dtype,
+                    ),
+                    "target_context_memory": memory,
+                    "extra_bytes_over_baseline": int(memory["total_bytes"] - baseline_memory["total_bytes"]),
+                    "candidate": _compact_run(candidate_run),
+                }
+            )
+    gc.collect()
+    return {
+        "reference": reference,
+        "keys": keys,
+        "values": values,
+        "full_layers": full_layers,
+        "calibration": calibration,
+        "baseline_memory": baseline_memory,
+        "rows": rows,
+        "forced_ids": forced_ids,
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
     compiler_version = _read_compiler_version(args.compiler_version_file)
@@ -441,84 +859,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     head_dim = int(runner.config.head_dim)
     candidates = _parse_candidates(args.candidates, head_dim=head_dim)
-    reference, captured, full_layers = _run_session(
+    prompt_text = FAST_SCREEN_PROMPT if args.prompt_profile == "mixed_v1" else "Hello"
+    prompt_token_id = None if args.prompt_profile == "mixed_v1" else args.token_id
+    prompt_tokens = _prompt_tokens(args.model, prompt_text, prompt_token_id, args.prompt_length)
+    prompt_digest = hashlib.sha256(np.asarray(prompt_tokens, dtype=np.int32).tobytes()).hexdigest()
+    screen = _run_bf16_candidate_screen(
         runner=runner,
-        model=args.model,
-        prompt_length=args.prompt_length,
-        decode_steps=args.decode_steps,
-        token_id=args.token_id,
-        max_layers=args.max_layers,
+        args=args,
         compiler_version=compiler_version,
-        require_cached_build=args.require_cached_build,
         prefill_config=prefill_config,
-        storage="bf16",
-        scale_dtype=args.scale_dtype,
-        forced_input_ids=None,
-        sample_tokens=args.sample_tokens,
+        prompt_tokens=prompt_tokens,
+        candidates=candidates,
     )
-    if captured is None or not captured[0]:
-        raise RuntimeError("reference cache capture was empty")
-    keys, values = captured
-    calibration = {
-        "key": _calibrate_clip(keys, group_size=head_dim, scale_dtype=args.scale_dtype),
-        "value": _calibrate_clip(values, group_size=head_dim, scale_dtype=args.scale_dtype),
-    }
-    calibrated = FormatSpec(
-        "calibrated_clip",
-        k_group_size=head_dim,
-        v_group_size=head_dim,
-        k_clip_ratio=float(calibration["key"]["selected_clip_ratio"]),
-        v_clip_ratio=float(calibration["value"]["selected_clip_ratio"]),
-    )
-    candidates = [calibrated if item.name == "calibrated_clip" else item for item in candidates]
-    forced_ids = [int(reference["seed_token_id"]), *[int(item) for item in reference["generated_token_ids"][: max(0, args.decode_steps - 1)]]]
-
-    baseline_memory = _format_memory_bytes(
-        _candidate_catalog(head_dim)["baseline_max"],
-        tokens=args.target_context_tokens,
-        full_layers=full_layers,
-        num_kv_heads=int(runner.config.num_key_value_heads),
-        head_dim=head_dim,
-        scale_dtype=args.scale_dtype,
-    )
-    rows: list[dict[str, Any]] = []
-    for spec in candidates:
-        candidate_run, _, _ = _run_session(
-            runner=runner,
-            model=args.model,
-            prompt_length=args.prompt_length,
-            decode_steps=args.decode_steps,
-            token_id=args.token_id,
-            max_layers=args.max_layers,
-            compiler_version=compiler_version,
-            require_cached_build=args.require_cached_build,
-            prefill_config=prefill_config,
-            storage="bf16",
-            scale_dtype=args.scale_dtype,
-            forced_input_ids=forced_ids,
-            emulated_spec=spec,
-        )
-        memory = _format_memory_bytes(
-            spec,
-            tokens=args.target_context_tokens,
-            full_layers=full_layers,
-            num_kv_heads=int(runner.config.num_key_value_heads),
-            head_dim=head_dim,
-            scale_dtype=args.scale_dtype,
-        )
-        gate = _compare_logits(reference["logits"], candidate_run["logits"])
-        rows.append(
-            {
-                **spec.to_json(),
-                "emulation_semantics": "BF16 cache replaced by format reconstruction before decode; current row round-tripped after its own attention",
-                "logit_gate": gate,
-                "quality_gate_passed": bool(gate["mean_kl"] <= args.kl_threshold and gate["top1_agreement"] >= args.top1_threshold),
-                "reconstruction": _aggregate_reconstruction(keys, values, spec, scale_dtype=args.scale_dtype),
-                "target_context_memory": memory,
-                "extra_bytes_over_baseline": int(memory["total_bytes"] - baseline_memory["total_bytes"]),
-                "candidate": _compact_run(candidate_run),
-            }
-        )
+    reference = screen["reference"]
+    keys = screen["keys"]
+    values = screen["values"]
+    full_layers = int(screen["full_layers"])
+    calibration = screen["calibration"]
+    baseline_memory = screen["baseline_memory"]
+    rows = screen["rows"]
+    forced_ids = screen["forced_ids"]
 
     runtime_int8 = None
     if args.run_runtime_int8_baseline:
@@ -535,6 +895,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             storage="int8_per_token_head",
             scale_dtype=args.scale_dtype,
             forced_input_ids=forced_ids,
+            prompt_tokens=prompt_tokens,
         )
         runtime_int8 = {
             "logit_gate": _compare_logits(reference["logits"], runtime_run["logits"]),
@@ -542,6 +903,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
     extra_budget_bytes = int(float(args.extra_budget_gib) * 1024**3)
     recommendation = _select_recommendation(rows, extra_budget_bytes=extra_budget_bytes)
+    elapsed_seconds = float(time.perf_counter() - started)
     return {
         "schema": 1,
         "status": "diagnostic_complete",
@@ -551,7 +913,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": str(args.model),
         "backend": runner.backend,
         "target_arch": runner.target_arch,
-        "workload": {"prompt_length": int(args.prompt_length), "decode_steps": int(args.decode_steps), "token_id": int(args.token_id)},
+        "workload": {
+            "prompt_length": int(args.prompt_length),
+            "decode_steps": int(args.decode_steps),
+            "prompt_profile": args.prompt_profile,
+            "token_id": None if args.prompt_profile == "mixed_v1" else int(args.token_id),
+            "prompt_token_sha256": prompt_digest,
+            "distinct_prompt_tokens": int(len(set(prompt_tokens))),
+        },
+        "screen_budget": {
+            "profile": "fast_accuracy_v1" if args.fast_accuracy_screen else "custom",
+            "wall_time_budget_seconds": float(args.wall_time_budget_seconds),
+            "elapsed_seconds": elapsed_seconds,
+            "met": bool(elapsed_seconds <= float(args.wall_time_budget_seconds)),
+            "candidate_count": len(rows),
+            "model_setup": "one BF16 resident-weight session reset and reused across reference and emulated candidates",
+        },
         "shape": {
             "max_layers": int(args.max_layers),
             "full_attention_layers": int(full_layers),
@@ -575,11 +952,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "runtime_int8_baseline": runtime_int8,
         "candidates": rows,
         "recommendation": recommendation,
-        "elapsed_seconds": float(time.perf_counter() - started),
+        "elapsed_seconds": elapsed_seconds,
         "notes": [
             "Diagnostic only: emulation ranks formats without production candidate kernels.",
             "The emulated current-token K/V row is BF16 during its own attention and quantized immediately afterward.",
             "A candidate must pass native matched-context, long-context utility, memory, and performance gates before retention.",
+            "KIVI and KVarN rows are NumPy emulations informed by external research, not paper-faithful production implementations.",
         ],
     }
 
@@ -589,6 +967,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-steps", type=int, default=8)
+    parser.add_argument("--fast-accuracy-screen", action="store_true")
+    parser.add_argument("--prompt-profile", choices=("repeated_token", "mixed_v1"), default="repeated_token")
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--sample-tokens", type=int, default=512)
@@ -599,6 +979,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)
     parser.add_argument("--run-runtime-int8-baseline", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--wall-time-budget-seconds", type=float, default=600.0)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--attn-aotriton-min-tokens", type=int, default=512)
@@ -606,11 +987,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shared-expert-format", choices=("auto", "legacy_fp16", "packed_paro_w4"), default="packed_paro_w4")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
+    if args.fast_accuracy_screen:
+        args.prompt_length = 512
+        args.decode_steps = 8
+        args.sample_tokens = 512
+        args.candidates = FAST_ACCURACY_CANDIDATES
+        args.prompt_profile = "mixed_v1"
+        args.run_runtime_int8_baseline = False
+        args.wall_time_budget_seconds = 600.0
     for name in ("prompt_length", "sample_tokens", "target_context_tokens"):
         if int(getattr(args, name)) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
-    if args.decode_steps < 0 or args.extra_budget_gib < 0.0:
-        raise ValueError("decode steps and extra budget must be non-negative")
+    if args.decode_steps < 0 or args.extra_budget_gib < 0.0 or args.wall_time_budget_seconds <= 0.0:
+        raise ValueError("decode steps and extra budget must be non-negative; wall-time budget must be positive")
     payload = run(args)
     text = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     if args.json is not None:
