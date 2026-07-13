@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_fp16_f32_out,
     gguf_q8_0_t16_wmma_prefill_fp16_fp16_out,
     plan_gguf_q8_0_t16_prefill_build,
+    q8_t16_two_wave_prefill_session,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf_t16 import (
@@ -116,6 +117,26 @@ def test_gpf5a_two_wave_policy_is_explicit_and_shape_scoped(
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", raising=False)
     assert _two_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192) is False
+    assert (
+        _two_wave_prefill_applies(
+            tile_m=32,
+            tile_n=32,
+            out_features=8192,
+            default=True,
+        )
+        is True
+    )
+
+    with q8_t16_two_wave_prefill_session(False):
+        assert (
+            _two_wave_prefill_applies(
+                tile_m=32,
+                tile_n=32,
+                out_features=8192,
+                default=True,
+            )
+            is False
+        )
     assert (
         _two_wave_prefill_applies(
             tile_m=32,

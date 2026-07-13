@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf5a_128k_scope_gate",
+  "status": "retain_through_64k_disable_at_128k",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_commit": "e9baf563",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "128K/128",
+    "process_policy": "One clean detached fresh right-sized process per mode",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "decode_tokens": 128,
+    "decode_graph_mode": "replay",
+    "build_policy": "require_cached_build",
+    "candidate_mode": "automatic gfx1151 registry override",
+    "control_mode": "same commit with HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0"
+  },
+  "candidate": {
+    "prefill_tok_s_samples": [382.1716043329906, 381.90052754345476, 382.04119117195387],
+    "prefill_median_tok_s": 382.04119117195387,
+    "decode_tok_s_samples": [27.726824130622813, 27.728612468605075, 27.74356975148318],
+    "decode_median_tok_s": 27.728612468605075,
+    "tracked_peak_gib": 25.492501735687256,
+    "final_token_ids": [9707, 9707, 9707],
+    "local_artifact_sha256": "ce1b4061a336c1453ebe23303139cd7e63350f8a2535b65c8608accdd5003d09"
+  },
+  "same_commit_control": {
+    "prefill_tok_s_samples": [392.2185238284957, 392.2022505848, 392.6907326538137],
+    "prefill_median_tok_s": 392.2185238284957,
+    "decode_tok_s_samples": [27.71693616769485, 27.704082867256307, 27.69831476893991],
+    "decode_median_tok_s": 27.704082867256307,
+    "tracked_peak_gib": 25.492501735687256,
+    "final_token_ids": [9707, 9707, 9707],
+    "local_artifact_sha256": "4350a031845431163bfaf20f78c6fcc1d0366ab1e5a48fa1ef76467828d71b64"
+  },
+  "comparison": {
+    "candidate_prefill_delta_percent": -2.5948118302010714,
+    "candidate_decode_delta_percent": 0.08854146685273179,
+    "control_versus_published_387_334_prefill_percent": 1.2610625012252186,
+    "candidate_versus_published_387_334_prefill_percent": -1.36647152794388,
+    "memory_delta_gib": 0.0,
+    "tokens_exact": true
+  },
+  "shorter_context_final_components": {
+    "512": {"prefill_median_tok_s": 889.9044784968376, "artifact_sha256": "56072e66a9f66006d882a7d87764ad129f54cfc3efc3889d4b67ce8341cb9c81"},
+    "1024": {"prefill_median_tok_s": 919.5975734334044, "artifact_sha256": "72adadb61aa4218dfd3c79658124151f215e8c5cd38be490428e9c241ec772f5"},
+    "4096": {"prefill_median_tok_s": 762.9398616907979, "artifact_sha256": "8685441db9b4cc7e379afbc033beed90b05f4b3d476270f681d6e7ee497c56ee"},
+    "32768": {"prefill_median_tok_s": 648.9481399622979, "artifact_sha256": "463182d6c33e15e84bb07ea26e653c967f05a426733c45edeaed37ab4244fed7"},
+    "65536": {"prefill_median_tok_s": 546.2957196267395, "artifact_sha256": "4b3e6809e40a64ffcffe04686e4ebe1823a2af1852ddb0c3da73f13e79027ded"}
+  },
+  "decision": {
+    "retain_candidate": true,
+    "automatic_max_prompt_tokens": 65536,
+    "disable_at_128k": true,
+    "reason": "The candidate is exact and non-regressive through 64K, but a stable same-commit production-protocol 128K control is 2.59% faster. Scope the backend capability rather than publishing the regression or discarding shorter-context wins.",
+    "mechanism": "The resident prefill request installs a session-scoped Q8T16 policy from backend package metadata. gfx1151 enables two-wave through 65536 prompt tokens; longer prompts use the production wrapper. Explicit env 0/1 remains highest-precedence rollback/diagnostic.",
+    "next": "Commit the 64K ceiling, then rerun automatic 128K only and merge it with the already-valid automatic 512-64K components."
+  }
+}

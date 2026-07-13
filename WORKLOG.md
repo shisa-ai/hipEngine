@@ -154218,3 +154218,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json`.
   Next commit the registry promotion and run the final automatic six-shape 1+3
   publication sweep.
+
+## 2026-07-14 - Scope GPF-5A automatic policy through 64K
+
+- Ran the clean `e9baf563` final automatic-route sweep as six right-sized fresh
+  processes, one warmup plus three measurements and 128 graph-replay decode
+  tokens. 512/1K/4K/32K/64K are stable, exact, and positive versus the prior
+  published row at **889.904/919.598/762.940/648.948/546.296 prefill tok/s**.
+- Automatic GPF-5A 128K is also stable but regresses: prefill samples
+  **[382.172, 381.901, 382.041]**, median **382.041 tok/s**. Ran a same-clean-
+  commit, fresh-process, identical production-protocol explicit-off control:
+  **[392.219, 392.202, 392.691]**, median **392.219 tok/s**. GPF-5A is
+  **-2.59%**. Decode is flat-positive 27.729 vs 27.704 tok/s; token IDs are all
+  `9707`; tracked peak is identical at 25.493 GiB.
+- Decision: retain the exact measured wins through 65,536 prompt tokens and
+  restore the production Q8T16 wrapper above that ceiling. Do not publish the
+  lower candidate 128K row and do not discard the shorter wins. Backend package
+  metadata adds `GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS=65536`; the resident
+  prefill request installs this policy session-locally. Explicit env `0|1` has
+  higher precedence, preserving rollback and cross-backend diagnostics.
+- RED required the request-scoped context and 64K package ceiling and failed
+  because neither existed. GREEN adds/restores the context manager around sync
+  and async resident bulk prefill, plus focused policy/backend tests.
+- Scope artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-128k-scope.json`.
+  Next commit the ceiling, rerun clean automatic 128K only, then merge it with
+  the already-valid automatic 512-64K components.

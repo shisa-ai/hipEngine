@@ -241,6 +241,9 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import bf16_to_float32, dequantize_gguf_data
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    q8_t16_two_wave_prefill_session,
+)
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
@@ -6071,6 +6074,21 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     return raw.lower() not in {"0", "false", "off", "no"}
 
 
+def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> bool:
+    """Resolve the backend package's request-scoped GPF-5A ceiling."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+        0,
+    )
+    try:
+        max_tokens = int(raw)
+    except (TypeError, ValueError):
+        return False
+    return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
+
+
 def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
     if int(query_rows) < _GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS:
         return False
@@ -8449,7 +8467,13 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            with (
+                q8_t16_two_wave_prefill_session(
+                    _gguf_q8_t16_two_wave_prefill_applies(self.runner.backend, len(token_ids))
+                ),
+                wmma_prefill_session(self.use_wmma_prefill),
+                gemv_decode_session(self.use_gemv_decode),
+            ):
                 return self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
@@ -8495,7 +8519,13 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            with (
+                q8_t16_two_wave_prefill_session(
+                    _gguf_q8_t16_two_wave_prefill_applies(self.runner.backend, len(token_ids))
+                ),
+                wmma_prefill_session(self.use_wmma_prefill),
+                gemv_decode_session(self.use_gemv_decode),
+            ):
                 self._run_bulk_prefill_and_sample(
                     token_ids,
                     stream=int(stream),
