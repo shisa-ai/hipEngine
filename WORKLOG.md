@@ -153599,3 +153599,49 @@ graphless decode launch-collapse path without regressing target/serial parity.
   heldout-gated aggregation, resident-array compaction, catalog contracts, and
   bit-exact BF16 preservation. Ruff, `py_compile`, actual 512/4K prompt
   construction against the GGUF tokenizer, and `git diff --check` pass.
+
+## 2026-07-13 — Audit OSCAR, AQUA/HIGGS, and FP8 for the 256 Ki gap
+
+- Reviewed OSCAR arXiv v1 (`2605.17757`) and the pinned local source/artifact
+  audit at `/home/lhl/kvcache-quantization-research@31979ce`. OSCAR's relevant
+  mechanisms are separate query-aware K and score-aware V covariance rotations,
+  Hadamard mixing, bit-reversal group balancing, calibrated clipping, affine
+  grouped INT2, and a mixed token layout with BF16 sink64/recent256. Its central
+  lesson is to minimize downstream attention distortion rather than raw K/V
+  reconstruction MSE. The public implementation differs materially from the
+  paper in its V-covariance proxy, global clip ratios, metadata dtype, and
+  G64/G128 accounting, so its headline BPE and H100 speed cannot be transferred
+  directly.
+- OSCAR's fixed BF16 token windows contribute only about 0.12% of a 256 Ki
+  context and therefore do not bridge this capacity gap by themselves. Its
+  attention-aware rotations remain a credible later calibration technique if
+  mild eight-bit layouts fail, but they require new per-layer artifacts and
+  fused rotate/read math; this is disproportionate before testing selective
+  layer precision. AQUA similarly improves HIGGS by predicting adjacent-layer
+  KV and quantizing residuals, but reconstruction adds a predictor matmul and
+  cross-layer cache dependency. Local HIGGS/AQUA evidence is strong on quality
+  density but its packed serving rows are materially slower; neither is the
+  first choice when only mild compression is required.
+- Corrected the target arithmetic using the physical-card frontier rather than
+  the earlier W7900 default-profile screen. RX 7900 XTX BF16 is directly safe at
+  208 Ki (`23.623 GiB` peak, `0.361 GiB` free) and physically completes 220 Ki
+  edge-only. Reaching 256 Ki with the same >=0.25 GiB operating margin needs
+  only about 16-19% K/V reduction. Keeping six of ten full-attention layers BF16
+  and storing both K/V for the final four at one byte yields 4.000 GiB prompt-KV
+  at 256 Ki; per-head INT8 with FP16 scales is about 4.008 GiB and group32 INT8
+  is 4.063 GiB. Projected from either retained physical anchor, all three keep
+  more than 0.25 GiB whole-device margin.
+- RDNA3 has no native FP8 matrix or conversion instruction. Parent gfx11 evidence
+  estimates software E4M3 conversion at 5-8 ALU operations per element and
+  records an FSR4 gfx1151 microkernel at 3.7x slower than INT8; local FP8 KV
+  quality/speed rows were measured on NVIDIA Blackwell and are quality hints,
+  not W7900 performance evidence. FP8 remains worth one host-emulated fidelity
+  screen because it has outlier-tolerant floating dynamic range and no scale
+  metadata, but it is a storage-codec comparator only. Any surviving native
+  FP8 row must beat BF16/INT8 on W7900 decode and prefill before promotion.
+- Candidate priority: (1) V-preserving K-only group32/per-head INT8 controls,
+  (2) input-agnostic tail-four mixed-layer per-head/group32 INT8 at the minimal
+  18.75-20% reduction, (3) raw E4M3 K-only and tail-four host emulation as a
+  fidelity comparison, then (4) attention-aware OSCAR-style calibration only
+  if the simpler rows fail. Full AQUA/HIGGS remains a later, more aggressive
+  compression tier rather than the 208 Ki-to-256 Ki bridge.
