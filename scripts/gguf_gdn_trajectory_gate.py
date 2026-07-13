@@ -30,7 +30,7 @@ from scripts.gguf_mtp_category_bench import load_prompt_rows, prompt_sha256
 
 
 KIND = "hipengine_gguf_gdn_prefill_trajectory_decode_gate"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 BASELINE_MODE = "fused"
 CANDIDATE_MODES = (
     "chain",
@@ -42,6 +42,7 @@ CANDIDATE_MODES = (
     "chain_lds32",
     "chain_lds32_direct",
 )
+SUPPORTED_MODES = (BASELINE_MODE, *CANDIDATE_MODES)
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 
@@ -52,7 +53,7 @@ class GateError(RuntimeError):
 
 @contextlib.contextmanager
 def _gdn_mode(mode: str) -> Iterator[None]:
-    if mode not in (BASELINE_MODE, *CANDIDATE_MODES):
+    if mode not in SUPPORTED_MODES:
         raise GateError(f"unsupported GDN mode: {mode!r}")
     name = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
     previous = os.environ.get(name)
@@ -148,11 +149,12 @@ def _summarize_decode_measurements(
     measurements: Sequence[Mapping[str, Any]],
     *,
     decode_steps: int,
+    baseline_mode: str = BASELINE_MODE,
     candidate_mode: str,
 ) -> dict[str, Any]:
     if not measurements:
         raise GateError("decode summary requires measured repetitions")
-    modes = (BASELINE_MODE, candidate_mode)
+    modes = (baseline_mode, candidate_mode)
     statistics_by_mode = {
         mode: _mode_statistics(
             [float(row["modes"][mode]["wall_ms"]) for row in measurements]
@@ -161,11 +163,11 @@ def _summarize_decode_measurements(
     }
     paired_delta_ms = [
         float(row["modes"][candidate_mode]["wall_ms"])
-        - float(row["modes"][BASELINE_MODE]["wall_ms"])
+        - float(row["modes"][baseline_mode]["wall_ms"])
         for row in measurements
     ]
     reference_tokens = [
-        int(token) for token in measurements[0]["modes"][BASELINE_MODE]["token_ids"]
+        int(token) for token in measurements[0]["modes"][baseline_mode]["token_ids"]
     ]
     trajectories_exact = all(
         [int(token) for token in row["modes"][mode]["token_ids"]]
@@ -173,9 +175,11 @@ def _summarize_decode_measurements(
         for row in measurements
         for mode in modes
     )
-    baseline_median = float(statistics_by_mode[BASELINE_MODE]["median_ms"])
+    baseline_median = float(statistics_by_mode[baseline_mode]["median_ms"])
     candidate_median = float(statistics_by_mode[candidate_mode]["median_ms"])
     return {
+        "baseline_mode": baseline_mode,
+        "candidate_mode": candidate_mode,
         "measurements": [dict(row) for row in measurements],
         "statistics": statistics_by_mode,
         "paired_candidate_minus_baseline_ms": paired_delta_ms,
@@ -300,6 +304,7 @@ def _run_timed_decode(
 def _aggregate_gate(
     prompts: Sequence[Mapping[str, Any]],
     *,
+    baseline_mode: str = BASELINE_MODE,
     candidate_mode: str,
     decode_steps: int,
 ) -> dict[str, Any]:
@@ -310,7 +315,7 @@ def _aggregate_gate(
         bool(row["decode_performance"]["trajectories_exact"]) for row in prompts
     )
     baseline_total_ms = sum(
-        float(row["decode_performance"]["statistics"][BASELINE_MODE]["median_ms"])
+        float(row["decode_performance"]["statistics"][baseline_mode]["median_ms"])
         for row in prompts
     )
     candidate_total_ms = sum(
@@ -332,6 +337,8 @@ def _aggregate_gate(
         ]
     ]
     return {
+        "baseline_mode": baseline_mode,
+        "candidate_mode": candidate_mode,
         "passed": bool(correctness_passed and trajectories_exact and decode_non_regressive),
         "correctness_passed": correctness_passed,
         "trajectory_tokens_exact": trajectories_exact,
@@ -400,9 +407,14 @@ def _classify_gate(
 
 
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
+    baseline_mode = str(args.baseline_mode)
     candidate_mode = str(args.candidate_mode)
+    if baseline_mode not in SUPPORTED_MODES:
+        raise GateError(f"unsupported baseline mode: {baseline_mode!r}")
     if candidate_mode not in CANDIDATE_MODES:
         raise GateError(f"unsupported candidate mode: {candidate_mode!r}")
+    if baseline_mode == candidate_mode:
+        raise GateError("baseline and candidate modes must differ")
     correctness_steps = int(args.correctness_decode_steps)
     performance_steps = int(args.performance_decode_steps)
     repetitions = int(args.performance_repetitions)
@@ -466,7 +478,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             baseline_trajectory = _run_logits_trajectory(
                 session,
                 prompt_ids=tokens,
-                mode=BASELINE_MODE,
+                mode=baseline_mode,
                 decode_steps=correctness_steps,
                 bulk_attention_mode=str(args.bulk_attention_mode),
             )
@@ -484,7 +496,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 top1_threshold=float(args.top1_threshold),
             )
             measured: list[dict[str, Any]] = []
-            modes = (BASELINE_MODE, candidate_mode)
+            modes = (baseline_mode, candidate_mode)
             for repetition in range(repetitions):
                 order = modes if repetition % 2 == 0 else tuple(reversed(modes))
                 measured_row: dict[str, Any] = {
@@ -505,6 +517,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             decode_performance = _summarize_decode_measurements(
                 measured,
                 decode_steps=performance_steps,
+                baseline_mode=baseline_mode,
                 candidate_mode=candidate_mode,
             )
             prompt_records.append(
@@ -530,6 +543,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     summary = _aggregate_gate(
         prompt_records,
+        baseline_mode=baseline_mode,
         candidate_mode=candidate_mode,
         decode_steps=performance_steps,
     )
@@ -546,7 +560,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIPENGINE_GGUF_GDN_PREFILL_MODE": (
-                f"explicit {BASELINE_MODE} versus {candidate_mode}"
+                f"explicit {baseline_mode} versus {candidate_mode}"
             ),
             "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get(
                 "HIPENGINE_GGUF_DECODE_REPACK"
@@ -583,7 +597,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "prompt_suite": str(args.prompts.resolve()),
             "prompt_count": len(prompt_records),
             "prompt_ids": [record["id"] for record in prompt_records],
-            "baseline_mode": BASELINE_MODE,
+            "baseline_mode": baseline_mode,
             "candidate_mode": candidate_mode,
             "correctness_decode_steps": correctness_steps,
             "performance_decode_steps": performance_steps,
@@ -592,8 +606,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         },
         "protocol": {
             "correctness": (
-                "own-token greedy fused/candidate trajectories; logits compared at "
-                "the prefill sample and every decoded transition"
+                "own-token greedy baseline/candidate trajectories; logits compared "
+                "at the prefill sample and every decoded transition"
             ),
             "performance": (
                 "same-session balanced mode order; synchronized production decode "
@@ -619,6 +633,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", default="auto")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--baseline-mode",
+        choices=SUPPORTED_MODES,
+        default=BASELINE_MODE,
+    )
     parser.add_argument(
         "--candidate-mode",
         choices=CANDIDATE_MODES,

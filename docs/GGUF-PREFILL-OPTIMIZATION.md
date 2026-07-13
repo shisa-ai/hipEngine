@@ -633,13 +633,15 @@ rollback/oracle paths.
 The executable promotion gate is
 [`scripts/gguf_gdn_trajectory_gate.py`](../scripts/gguf_gdn_trajectory_gate.py).
 It uses all prompts in `mtpbench-code-general-ja.jsonl`, covering
-`code/general_en/general_ja/mixed_ja_en`. For each prompt it compares the fused
-and candidate own-token greedy prefill sample plus 24 decoded transitions,
+`code/general_en/general_ja/mixed_ja_en`. For each prompt it compares baseline
+and candidate own-token greedy prefill samples plus 24 decoded transitions,
 requiring exact IDs and the project KL/top-1 thresholds at every transition.
 It then runs two balanced 128-transition production decode windows per mode and
-prompt. Candidate decode passes only when all measured trajectories are exact
-and the sum of per-prompt candidate median walls does not exceed fused; there
-is no percentage regression allowance.
+prompt. `--baseline-mode` defaults to fused for historical gates; incremental
+candidates name the shipped exact route explicitly. Candidate decode passes
+only when all measured trajectories are exact and the sum of per-prompt
+candidate median walls does not exceed baseline; there is no percentage
+regression allowance.
 
 ### Performance
 
