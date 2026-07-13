@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_trajectory_rejection",
+  "status": "rejected_correctness",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "GPF-2B register-resident wave32 tree GDN prefill",
+  "conclusion": "The candidate keeps decode execution wall flat but fails the predeclared natural greedy trajectory contract: only 3/10 prompts retain the complete 128-transition fused trajectory, and 3/10 already flip top-1 within the first 24 transitions. It must not become the default.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "2670ed0434f6a396b901fbe7e5fd04b93dd14afe",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompts": 10,
+    "correctness": "own-token fused/candidate greedy trajectories; prefill sample plus 24 decoded transitions; exact token plus KL <= 0.05 and top-1 >= 90% at every transition",
+    "decode": "two balanced 128-transition production graph windows per mode/prompt; graph capture/instantiate/close included",
+    "build": "cached-only",
+    "provenance": "clean detached worktree"
+  },
+  "correctness": {
+    "short_trajectory_prompts_passed": 7,
+    "short_trajectory_prompts_total": 10,
+    "transitions_passed": 217,
+    "transitions_total": 250,
+    "complete_128_trajectory_prompts_exact": 3,
+    "complete_128_trajectory_prompts_total": 10,
+    "first_divergences": {
+      "code_merge_intervals": null,
+      "code_topological_sort": null,
+      "code_lru_cache": 4,
+      "code_markdown_table": null,
+      "general_en_plan": 27,
+      "general_en_explain": 6,
+      "general_ja_plan": 126,
+      "general_ja_explain": 73,
+      "mixed_ja_en_translate": 101,
+      "mixed_ja_en_review": 18
+    },
+    "early_flip_kl": {
+      "code_lru_cache_transition_4": 0.009221357399799825,
+      "general_en_explain_transition_6": 0.011000580872768685,
+      "mixed_ja_en_review_transition_18": 0.028507283804817388
+    },
+    "interpretation": "The first flips occur with KL below 0.05 but top-1 disagreement. KL values after own-token divergence compare different contexts and are not used to characterize the kernel's local numerical error."
+  },
+  "decode_timing_diagnostic": {
+    "comparable_performance_claim": false,
+    "reason": "Seven prompt pairs execute different generated trajectories.",
+    "fused_decode_median_wall_sum_ms": 24007.708042000002,
+    "candidate_decode_median_wall_sum_ms": 24004.323882999997,
+    "fused_decode_tok_s_weighted": 53.31620985063293,
+    "candidate_decode_tok_s_weighted": 53.323726435240424,
+    "candidate_wall_delta_percent": -0.014096135266575016,
+    "candidate_speedup": 1.00014098122557,
+    "interpretation": "No execution-time regression is visible, consistent with the unchanged decode kernels, but this cannot override the correctness rejection."
+  },
+  "decision": {
+    "default_changed": false,
+    "auto_mode": "fused",
+    "tree_candidate_role": "explicit rejected diagnostic only",
+    "numerical_contract": "Retain the predeclared exact natural greedy trajectory requirement; do not weaken it after observing the candidate failure.",
+    "next_candidate": "GPF-2C register-resident ordered wave32 recurrence, preserving fused contraction order"
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf-2-wave32-tree-trajectory-decode-gate.json",
+    "full_local_artifact_sha256": "31244614c28ef243a808244bec3abc24a77471f84fe72bc1197ccd74434aff53",
+    "raw_classifier_note": "The full artifact incorrectly labels this clean correctness failure invalid_measurement because v1 tied measurement validity to token equality. The driver fix separates clean measurement validity from performance comparability; this compact rollup applies the corrected rejected_correctness classification without changing any measured value."
+  }
+}

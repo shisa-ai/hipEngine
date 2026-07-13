@@ -153341,3 +153341,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_gguf_gdn_trajectory_gate.py` passes all **4** tests; pycompile and
   `git diff --check` pass. The next step is a clean detached-worktree full-suite
   run against `chain_wave32_tree`.
+
+## 2026-07-13 - Reject GPF-2B on natural greedy trajectories
+
+- Ran the complete 10-prompt/four-category gate from clean detached
+  `2670ed04` with HIP 7.15, TuneD `accelerator-performance`, cached-only builds,
+  24 logit-checked transitions and two balanced 128-transition graph windows
+  per mode/prompt. Full local artifact:
+  `/tmp/gpf-2-wave32-tree-trajectory-decode-gate.json` (`sha256
+  31244614c28ef243a808244bec3abc24a77471f84fe72bc1197ccd74434aff53`).
+- Only **7/10** prompts pass all 25 short samples and **3/10** retain the full
+  129-token fused trajectory. First divergences are 4 (`code_lru_cache`), 6
+  (`general_en_explain`), 18 (`mixed_ja_en_review`), then 27/73/101/126 on four
+  more prompts. The first three flips have KL **0.00922/0.01100/0.02851** but
+  top-1 disagreement. KL after own-token divergence is not interpreted because
+  the compared contexts have changed.
+- The decode execution diagnostic is flat: summed per-prompt medians
+  **24007.708 vs 24004.324 ms**, or **53.316 vs 53.324 tok/s (+0.014%)**.
+  It is `performance_claim=false` because seven candidate legs generate
+  different tokens. This is a correctness rejection, not a decode slowdown.
+- Fixed the driver classifier so a clean trajectory failure is
+  `rejected_correctness`, while only the performance comparison becomes
+  invalid when outputs differ. Added the fifth protocol test. Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-trajectory-rejection.json`.
+- Explicit contract decision: do not weaken the predeclared exact natural
+  trajectory gate after seeing the failure. `auto` stays fused and
+  `chain_wave32_tree` remains a rejected diagnostic. Next is GPF-2C: retain
+  exact ordered shuffles while moving four state rows per lane into registers.
