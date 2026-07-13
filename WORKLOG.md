@@ -154123,3 +154123,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Final rejection artifact:
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`.
   GPF-5 residual profiling is next.
+
+## 2026-07-14 - Select dense Q8T16 for GPF-5
+
+- Reused the complete clean GPF-M2 512/4K traces because GPF-4 changed no
+  default kernel body and its capability is now removed; did not spend another
+  full-model profile run recreating identical evidence.
+- After reserving serial exact GDN for high-effort GPF-6 and excluding rejected
+  queue scheduling, dense Q8T16 is the largest eligible family:
+  **158.982 ms / 25.66%** at 512 and **844.670 ms / 15.65%** at 4K, ahead of
+  selected Q4T16 at 96.386/620.630 ms, selected Q5T16 at 56.298/391.398 ms,
+  and router at 30.173/242.086 ms. Matched llama.cpp Q8 MMQ is
+  66.859/531.345 ms; the 2.38x/1.59x ratios are selection evidence only.
+- The 4K Q8 `32x32` body owns **671.736 ms / 380 launches (79.53%)**, reports
+  104 VGPR, and has no scratch. A bounded tile recheck confirms the heuristic
+  is already correct: `rows=1024,in=2048,out=8192` keeps `32x32` fastest at
+  **2.051 ms**, and rows=4096 keeps it narrowly fastest at **8.213 ms** versus
+  **8.254 ms** for `64x32`; all six tile outputs are byte-exact.
+- Selected GPF-5A: keep each proven 32-column wave's WMMA/K order but pair two
+  waves in one 64-column block and share one BF16-to-FP16 activation tile in
+  bounded LDS. Require exact bytes, no scratch, expected 64-thread geometry,
+  and a real-shape micro win before model routing.
+- Required lineage command failed because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. No source is copied;
+  GPF-5A is a new in-tree schedule over the catalogued T16 body.
+- Selection artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`.

@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf5_family_selection",
+  "status": "profile_complete_candidate_selected",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "profiled_commit": "81e2f4b8",
+  "selection_commit": "b42d1460",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "source_profiles": {
+    "purpose": "Reuse the already-collected complete clean GPF-M2 traces after GPF-4 default rejection; no redundant full-model profile rerun.",
+    "512_trace_sha256": "db455227f857c8ae8f9ee18095c6e12532a11e759ab5c5c4a95cacdfd1e688ea",
+    "4096_trace_sha256": "8b6f0af4292ba5fc7c5e4069f7a58b91f5fefbcc50f786d20ac731e5a28dba33",
+    "source_artifact": "2026-07-14-gfx1151-gguf-prefill-next-family-profile.json"
+  },
+  "eligible_family_ranking": {
+    "512": [
+      {"family": "dense_q8_0_wmma_prefill", "ms": 158.981924, "kernel_share": 0.2566060990, "dispatches": 250},
+      {"family": "moe_q4_k_selected_dual_wmma_prefill", "ms": 96.385765, "kernel_share": 0.1555722471, "dispatches": 40},
+      {"family": "moe_q5_k_selected_wmma_prefill", "ms": 56.298019, "kernel_share": 0.0908682866, "dispatches": 37},
+      {"family": "router", "ms": 30.172885, "kernel_share": 0.0487007964, "dispatches": 120}
+    ],
+    "4096": [
+      {"family": "dense_q8_0_wmma_prefill", "ms": 844.669713, "kernel_share": 0.1565195974, "dispatches": 790},
+      {"family": "moe_q4_k_selected_dual_wmma_prefill", "ms": 620.629608, "kernel_share": 0.1150043560, "dispatches": 130},
+      {"family": "moe_q5_k_selected_wmma_prefill", "ms": 391.398113, "kernel_share": 0.0725271359, "dispatches": 121},
+      {"family": "router", "ms": 242.085792, "kernel_share": 0.0448591563, "dispatches": 390}
+    ],
+    "excluded_high_effort": {
+      "family": "gdn_prefill_recurrent",
+      "reason": "Still largest at 33.39%/32.83%, but the plan explicitly reserves token-parallel/prefix GDN for GPF-6 after lower-risk measured residuals. Exact scalar recurrence is serial and prior GPF-1/2B/2C alternatives failed correctness or wall gates."
+    },
+    "rejected_scheduling_residual": {
+      "family": "linear_attn_conv / AOTriton queue scheduling",
+      "reason": "GPF-4 is exact and often fast but fails the required 32K/128K stability gate; do not tune or publish its fast samples."
+    }
+  },
+  "llamacpp_gap": {
+    "512": {"hipengine_dense_q8_ms": 158.981924, "llamacpp_mmq_q8_0_ms": 66.859122, "duration_ratio": 2.377864369801326},
+    "4096": {"hipengine_dense_q8_ms": 844.669713, "llamacpp_mmq_q8_0_ms": 531.344578, "duration_ratio": 1.5896835085423608},
+    "caveat": "Family definitions and launch structures differ; ratios select work and are not equivalent-kernel speed claims."
+  },
+  "dominant_q8_shapes": {
+    "512": [
+      {"tile": "64x32", "ms": 82.943283, "dispatches": 70, "vgpr": 112},
+      {"tile": "32x32", "ms": 42.906797, "dispatches": 80, "vgpr": 104},
+      {"tile": "16x32", "ms": 33.131844, "dispatches": 100, "vgpr": 64}
+    ],
+    "4096": [
+      {"tile": "32x32", "ms": 671.736359, "dispatches": 380, "family_fraction": 0.7952651180, "vgpr": 104},
+      {"tile": "32x16", "ms": 172.933354, "dispatches": 410, "vgpr": 64}
+    ]
+  },
+  "bounded_tile_recheck": {
+    "purpose": "Rule out a stale tile heuristic before changing device code; all variants are byte-exact against 16x16.",
+    "shape_1024x2048x8192": {
+      "default": "32x32",
+      "median_ms_by_tile": {"16x16": 2.1837704182, "16x32": 3.4734246731, "32x16": 2.2039828300, "32x32": 2.0505526066, "64x16": 2.2045435905, "64x32": 2.2701752186},
+      "winner": "32x32",
+      "local_artifact_sha256": "77d94ba85136d875f44104d7a9db88ab285bed2ec59174120646d0ae07b9f922"
+    },
+    "shape_4096x2048x8192": {
+      "default": "32x32",
+      "median_ms_by_tile": {"16x16": 8.6517629623, "16x32": 14.0879621506, "32x16": 9.5127363205, "32x32": 8.2130346298, "64x16": 9.1865606308, "64x32": 8.2535467148},
+      "winner": "32x32",
+      "local_artifact_sha256": "0d839b3040e5d21c07cbcae3f338da57a01a0df521c2bc1b747a016c7660e062"
+    }
+  },
+  "selected_candidate": {
+    "id": "GPF-5A",
+    "family": "dense Q8T16 WMMA prefill",
+    "design": "Two-wave 64-column block whose waves preserve the proven 32x32 WMMA order while sharing one BF16-to-FP16 activation tile through bounded LDS.",
+    "hypothesis": "The dominant 32x32 body is the tile winner but uses 104 VGPR and two independent blocks reload/reconvert the same activation tile. Pairing two unchanged 32-column waves can retain per-wave accumulator pressure while amortizing activation loads/conversions across 64 columns, avoiding the 112-VGPR one-wave 64x32 schedule.",
+    "first_gate": "Add a callable diagnostic wrapper; require byte-exact output vs 32x32 on BF16 fixtures, no scratch, plausible 64-thread/two-wave profiler geometry, and a paired real-shape micro win before any full-model route."
+  },
+  "lineage": {
+    "status": "blocked_reference_checkout_missing",
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "error": "/home/lhl/amd-gpu-tuning/nano-vllm-amd does not exist in this environment",
+    "effect": "No external code is copied. GPF-5A is an in-tree schedule experiment over the existing T16 body; the catalog and current source were read before design."
+  }
+}

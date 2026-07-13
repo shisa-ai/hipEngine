@@ -388,7 +388,7 @@ select current code without a fresh profile.
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
-| 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
+| 11 | `GPF-5` | **Selected:** dense Q8T16 WMMA prefill; first candidate is two 32-column waves sharing one activation tile | Largest eligible family at 25.66%/15.65% of 512/4K traced kernels; existing 32x32 tile remains the measured winner, so change schedule rather than heuristic |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
 There is no invented minimum full-model percentage. Under the project evidence
@@ -824,6 +824,39 @@ explicit diagnostic only, no gfx1151 capability is exported, the published
 GPF-2E row remains canonical, and GPF-5 is next. Final rejection evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json).
 
+## GPF-5: Dense Q8T16 WMMA Prefill
+
+No new full-model profile is needed after GPF-4 rejection: the default route is
+again the already-profiled GPF-M2 route, and GPF-4 did not change any default
+kernel body. Excluding high-effort GPF-6 recurrence and rejected GPF-4 queue
+scheduling, dense Q8T16 is the largest eligible family:
+
+| Context | Dense Q8T16 | Selected Q4T16 | Selected Q5T16 | Router |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | **158.982 ms (25.66%)** | 96.386 ms (15.56%) | 56.298 ms (9.09%) | 30.173 ms (4.87%) |
+| 4K | **844.670 ms (15.65%)** | 620.630 ms (11.50%) | 391.398 ms (7.25%) | 242.086 ms (4.49%) |
+
+The matched llama.cpp Q8 MMQ buckets are 66.859/531.345 ms, making the family
+duration ratios 2.38x/1.59x. These are selection ratios, not equivalent-kernel
+speed claims. At 4K, the Q8T16 `32x32` body owns **671.736 ms / 380 launches
+(79.53% of the family)** and reports 104 VGPR with no scratch.
+
+A bounded six-tile recheck rules out a stale heuristic. On the dominant
+`rows=1024,in=2048,out=8192` shape, `32x32` wins at **2.051 ms** versus
+2.184/2.204/2.205/2.270 ms for `16x16`/`32x16`/`64x16`/`64x32`; at rows 4096
+it narrowly wins **8.213 vs 8.254 ms** over `64x32`. Every tile is byte-exact.
+Therefore GPF-5A does not retune tile dimensions. It pairs two independent,
+order-preserving 32-column waves in one 64-column block and shares one
+BF16-to-FP16 activation tile through bounded LDS. The first gate requires exact
+bytes, no scratch, profiler-confirmed 64-thread/two-wave geometry, and a paired
+real-shape micro win before any model routing.
+
+Selection evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json).
+The external lineage checkout is absent in this environment, so the required
+lineage command cannot resolve it; no external code is copied, and GPF-5A is an
+in-tree schedule experiment over the catalogued T16 body.
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1029,9 +1062,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 The required profile and GPF-4 disposition are complete. Keep the isolated
 stream implementation explicit/default-off for diagnostics, keep both backend
 package capabilities unset, and do not publish its attractive fast samples.
-Proceed to GPF-5 by measuring remaining dense Q8T16, selected Q4/Q5,
-router/glue, and host-wall buckets. Token-parallel/prefix GDN remains the
-high-effort fallback if the new largest eligible residual justifies it.
+GPF-5 reuses the complete fresh traces and selects dense Q8T16 at
+25.66%/15.65% of 512/4K traced kernels. The existing `32x32` tile is already
+the measured real-shape winner. Implement GPF-5A as a callable two-wave
+activation-sharing diagnostic, and do not route it before exact micro/profile
+gates. Token-parallel/prefix GDN remains the high-effort fallback.
 
 ## Document Ownership
 
