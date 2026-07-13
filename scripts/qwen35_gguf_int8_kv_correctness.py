@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import os
 import sys
@@ -97,6 +98,8 @@ def _command(args: argparse.Namespace) -> str:
     ]
     if args.prompt_file is not None:
         parts.append(f"--prompt-file {args.prompt_file}")
+    if args.prompt_token_file is not None:
+        parts.append(f"--prompt-token-file {args.prompt_token_file}")
     if args.prompt_text is not None:
         parts.append(f"--prompt-text {args.prompt_text!r}")
     if args.compiler_version_file is not None:
@@ -279,16 +282,43 @@ def _prompt_tokens_for_length(
     model: Path,
     prompt_file: Path | None,
     prompt_text: str | None,
+    prompt_token_file: Path | None,
     token_id: int,
     prompt_length: int,
 ) -> tuple[list[int], dict[str, Any]]:
-    if prompt_file is not None and prompt_text is not None:
-        raise ValueError("--prompt-file and --prompt-text are mutually exclusive")
-    if prompt_file is None and prompt_text is None:
+    sources = sum(item is not None for item in (prompt_file, prompt_text, prompt_token_file))
+    if sources > 1:
+        raise ValueError("--prompt-file, --prompt-text, and --prompt-token-file are mutually exclusive")
+    if sources == 0:
         return [int(token_id)] * int(prompt_length), {
             "type": "repeated_token",
             "token_id": int(token_id),
             "available_tokens": int(prompt_length),
+        }
+    if prompt_token_file is not None:
+        fields = prompt_token_file.read_text(encoding="utf-8").split()
+        tokens: list[int] = []
+        for index, field in enumerate(fields):
+            try:
+                value = int(field, 10)
+            except ValueError as exc:
+                raise ValueError(f"invalid prompt token at index {index}: {field!r}") from exc
+            if not 0 <= value <= (1 << 31) - 1:
+                raise ValueError(f"prompt token at index {index} is outside signed int32: {value}")
+            tokens.append(value)
+        if len(tokens) < int(prompt_length):
+            raise ValueError(
+                f"{prompt_token_file} contains {len(tokens)} tokens, less than requested {prompt_length}"
+            )
+        selected = tokens[: int(prompt_length)]
+        digest = hashlib.sha256(np.asarray(selected, dtype="<i4").tobytes()).hexdigest()
+        return selected, {
+            "type": "prompt_token_file",
+            "path": str(prompt_token_file),
+            "available_tokens": int(len(tokens)),
+            "distinct_tokens": len(set(selected)),
+            "prefix_token_ids_sample": selected[: min(16, len(selected))],
+            "prompt_token_sha256": digest,
         }
     source_text = prompt_file.read_text(encoding="utf-8") if prompt_file is not None else str(prompt_text)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(model))
@@ -339,6 +369,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 model=args.model,
                 prompt_file=args.prompt_file,
                 prompt_text=args.prompt_text,
+                prompt_token_file=args.prompt_token_file,
                 token_id=int(args.token_id),
                 prompt_length=int(prompt_length),
             )
@@ -433,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--prompt-file", type=Path, help="Tokenize this text file and use its token prefix as the prompt")
     parser.add_argument("--prompt-text", help="Tokenize this text and use its token prefix as the prompt")
+    parser.add_argument(
+        "--prompt-token-file",
+        type=Path,
+        help="Use whitespace-delimited exact token IDs without tokenizer round-tripping",
+    )
     parser.add_argument("--max-sequence-length", type=int, default=0)
     parser.add_argument("--kv-scale-dtype", choices=("fp16", "fp32"), default="fp16")
     parser.add_argument("--kl-threshold", type=float, default=0.05)
