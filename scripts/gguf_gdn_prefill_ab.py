@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeated, interleaved fused-versus-chain GGUF GDN prefill wall gate."""
+"""Repeated, interleaved fused-versus-candidate GGUF GDN prefill wall gate."""
 
 from __future__ import annotations
 
@@ -25,13 +25,21 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 
 
 KIND = "hipengine_gguf_gdn_prefill_interleaved_ab"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_CORRECTNESS_ARTIFACT = (
     REPO_ROOT
     / "benchmarks/results/2026-07-11-sol-g2-gfx1151-gdn-prefill-exact-matrix.json"
 )
-MODES = ("fused", "chain")
+BASELINE_MODE = "fused"
+CANDIDATE_MODES = (
+    "chain",
+    "chain_tile64",
+    "chain_tile32",
+    "chain_wave32",
+    "chain_wave32_tree",
+)
+SUPPORTED_MODES = (BASELINE_MODE, *CANDIDATE_MODES)
 
 
 class BenchmarkError(RuntimeError):
@@ -58,7 +66,29 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load_correctness_gate(path: Path, *, contexts: Sequence[int]) -> dict[str, Any]:
+def _case_context(case: Mapping[str, Any]) -> int | None:
+    prompt = case.get("prompt")
+    if isinstance(prompt, Mapping):
+        try:
+            value = int(prompt.get("length", -1))
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+    if isinstance(prompt, str) and "/" in prompt:
+        try:
+            value = int(prompt.rsplit("/", 1)[1])
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+    return None
+
+
+def _load_correctness_gate(
+    path: Path,
+    *,
+    contexts: Sequence[int],
+    candidate_mode: str = "chain",
+) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
     if not resolved.is_file():
         raise BenchmarkError(f"correctness artifact does not exist: {resolved}")
@@ -67,16 +97,73 @@ def _load_correctness_gate(path: Path, *, contexts: Sequence[int]) -> dict[str, 
     except (OSError, json.JSONDecodeError) as exc:
         raise BenchmarkError(f"could not read correctness artifact: {resolved}") from exc
     classification = artifact.get("classification")
-    if not isinstance(classification, Mapping) or classification.get("passed") is not True:
+    correctness = artifact.get("correctness")
+    if isinstance(classification, Mapping) and classification.get("passed") is True:
+        modes = artifact.get("protocol", {}).get("modes")
+        expected_modes = [BASELINE_MODE, candidate_mode]
+        if modes != expected_modes:
+            raise BenchmarkError(
+                "correctness artifact candidate does not match A/B candidate: "
+                f"{modes!r} != {expected_modes!r}"
+            )
+        cases = artifact.get("cases")
+        if not isinstance(cases, list):
+            raise BenchmarkError("correctness artifact does not contain a case matrix")
+        covered = {
+            context
+            for case in cases
+            if isinstance(case, Mapping) and case.get("passed") is True
+            if (context := _case_context(case)) is not None
+        }
+        contract = "byte_exact"
+        promotion_eligible = True
+        status = classification.get("status")
+        source_revision = artifact.get("source_revision")
+    elif isinstance(correctness, Mapping):
+        project_gate = correctness.get("project_gate")
+        cases = correctness.get("cases")
+        if not isinstance(project_gate, Mapping) or not isinstance(cases, list):
+            raise BenchmarkError("correctness artifact is not an accepted passing gate")
+        try:
+            cases_passed = int(project_gate.get("cases_passed", -1))
+            cases_total = int(project_gate.get("cases_total", -1))
+            kl_threshold = float(project_gate["kl_threshold"])
+            top1_threshold = float(project_gate["top1_threshold"])
+            kl_max = max(float(value) for value in project_gate["kl_mean_range"])
+            top1_min = float(project_gate["top1_agreement_min"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BenchmarkError("project correctness gate is malformed") from exc
+        selector = str(artifact.get("protocol", {}).get("selector", ""))
+        expected_selector = f"HIPENGINE_GGUF_GDN_PREFILL_MODE={candidate_mode}"
+        if selector != expected_selector:
+            raise BenchmarkError(
+                "correctness artifact candidate does not match A/B candidate: "
+                f"{selector!r} != {expected_selector!r}"
+            )
+        project_passed = bool(
+            cases_total > 0
+            and cases_passed == cases_total
+            and project_gate.get("sampled_tokens_identical") is True
+            and math.isfinite(kl_max)
+            and kl_max <= kl_threshold
+            and math.isfinite(top1_min)
+            and top1_min >= top1_threshold
+        )
+        if not project_passed:
+            raise BenchmarkError("correctness artifact project KL/top-1 gate did not pass")
+        covered = {
+            context
+            for case in cases
+            if isinstance(case, Mapping)
+            if (context := _case_context(case)) is not None
+            if float(case.get("kl_mean", math.inf)) <= kl_threshold
+        }
+        contract = "project_kl_top1_non_exact"
+        promotion_eligible = False
+        status = artifact.get("status")
+        source_revision = artifact.get("software", {}).get("candidate_base_commit")
+    else:
         raise BenchmarkError("correctness artifact is not an accepted passing gate")
-    cases = artifact.get("cases")
-    if not isinstance(cases, list):
-        raise BenchmarkError("correctness artifact does not contain a case matrix")
-    covered = {
-        int(case.get("prompt", {}).get("length", -1))
-        for case in cases
-        if isinstance(case, Mapping) and case.get("passed") is True
-    }
     missing = sorted(set(int(context) for context in contexts) - covered)
     if missing:
         raise BenchmarkError(f"correctness artifact does not cover contexts: {missing}")
@@ -84,8 +171,11 @@ def _load_correctness_gate(path: Path, *, contexts: Sequence[int]) -> dict[str, 
         "path": str(resolved),
         "sha256": _sha256(resolved),
         "kind": artifact.get("kind"),
-        "source_revision": artifact.get("source_revision"),
-        "status": classification.get("status"),
+        "source_revision": source_revision,
+        "status": status,
+        "contract": contract,
+        "default_promotion_eligible": promotion_eligible,
+        "candidate_mode": candidate_mode,
         "covered_contexts": sorted(covered),
         "passed": True,
     }
@@ -93,7 +183,7 @@ def _load_correctness_gate(path: Path, *, contexts: Sequence[int]) -> dict[str, 
 
 @contextlib.contextmanager
 def _gdn_mode(mode: str) -> Iterator[None]:
-    if mode not in MODES:
+    if mode not in SUPPORTED_MODES:
         raise BenchmarkError(f"unsupported GDN mode: {mode!r}")
     name = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
     previous = os.environ.get(name)
@@ -147,45 +237,53 @@ def _summarize_context(
     measurements: Sequence[Mapping[str, Any]],
     *,
     expected_token_id: int,
+    candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     if not measurements:
         raise BenchmarkError("a context must contain measured repetitions")
+    modes = (BASELINE_MODE, candidate_mode)
     mode_stats = {
         mode: _mode_statistics(
             [float(row["modes"][mode]["wall_ms"]) for row in measurements]
         )
-        for mode in MODES
+        for mode in modes
     }
-    paired_chain_delta_ms = [
-        float(row["modes"]["chain"]["wall_ms"])
-        - float(row["modes"]["fused"]["wall_ms"])
+    paired_candidate_delta_ms = [
+        float(row["modes"][candidate_mode]["wall_ms"])
+        - float(row["modes"][BASELINE_MODE]["wall_ms"])
         for row in measurements
     ]
     token_ids = {
         mode: [int(row["modes"][mode]["token_id"]) for row in measurements]
-        for mode in MODES
+        for mode in modes
     }
     tokens_exact = all(
-        fused == chain == int(expected_token_id)
-        for fused, chain in zip(token_ids["fused"], token_ids["chain"], strict=True)
+        baseline == candidate == int(expected_token_id)
+        for baseline, candidate in zip(
+            token_ids[BASELINE_MODE], token_ids[candidate_mode], strict=True
+        )
     )
-    fused_median = float(mode_stats["fused"]["median_ms"])
-    chain_median = float(mode_stats["chain"]["median_ms"])
-    chain_speedup = fused_median / chain_median
-    chain_delta_percent = ((chain_median - fused_median) / fused_median) * 100.0
+    baseline_median = float(mode_stats[BASELINE_MODE]["median_ms"])
+    candidate_median = float(mode_stats[candidate_mode]["median_ms"])
+    candidate_speedup = baseline_median / candidate_median
+    candidate_delta_percent = (
+        (candidate_median - baseline_median) / baseline_median
+    ) * 100.0
     return {
+        "baseline_mode": BASELINE_MODE,
+        "candidate_mode": candidate_mode,
         "measurements": [dict(row) for row in measurements],
         "statistics": mode_stats,
-        "paired_chain_minus_fused_ms": paired_chain_delta_ms,
-        "paired_chain_minus_fused_median_ms": float(
-            statistics.median(paired_chain_delta_ms)
+        "paired_candidate_minus_baseline_ms": paired_candidate_delta_ms,
+        "paired_candidate_minus_baseline_median_ms": float(
+            statistics.median(paired_candidate_delta_ms)
         ),
         "token_ids": token_ids,
         "expected_token_id": int(expected_token_id),
         "tokens_exact": tokens_exact,
-        "chain_speedup_vs_fused": float(chain_speedup),
-        "chain_wall_delta_percent": float(chain_delta_percent),
-        "chain_wins": bool(chain_median < fused_median),
+        "candidate_speedup_vs_baseline": float(candidate_speedup),
+        "candidate_wall_delta_percent": float(candidate_delta_percent),
+        "candidate_wins": bool(candidate_median < baseline_median),
     }
 
 
@@ -193,30 +291,45 @@ def _promotion_decision(
     contexts: Sequence[Mapping[str, Any]],
     *,
     provenance: Mapping[str, Any],
-    correctness_gate_passed: bool,
+    correctness_gate: Mapping[str, Any],
+    candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     clean = not bool(provenance.get("dirty"))
+    correctness_gate_passed = correctness_gate.get("passed") is True
+    contract_allows_promotion = bool(
+        correctness_gate.get("default_promotion_eligible")
+    )
     tokens_exact = all(bool(context.get("tokens_exact")) for context in contexts)
-    chain_wins_all = all(bool(context.get("chain_wins")) for context in contexts)
+    candidate_wins_all = all(bool(context.get("candidate_wins")) for context in contexts)
     measurement_valid = bool(clean and correctness_gate_passed and tokens_exact)
     if not measurement_valid:
         status = "invalid_measurement"
         default = "unchanged"
         conclusion = "The G3 measurement is not promotion-eligible."
-    elif chain_wins_all:
-        status = "promote_chain"
-        default = "chain"
-        conclusion = "The exact split chain wins both primary contexts."
+    elif candidate_wins_all and contract_allows_promotion:
+        status = "promote_candidate"
+        default = candidate_mode
+        conclusion = f"The correctness-qualified {candidate_mode} wins every context."
+    elif candidate_wins_all:
+        status = "candidate_wins_pending_correctness_contract"
+        default = "unchanged"
+        conclusion = (
+            f"The {candidate_mode} candidate wins every context, but its current "
+            "correctness artifact is not sufficient by itself for default promotion."
+        )
     else:
-        status = "retain_fused_reject_chain_promotion"
-        default = "fused"
-        conclusion = "The exact split chain does not win both primary contexts."
+        status = "retain_baseline_reject_candidate_performance"
+        default = BASELINE_MODE
+        conclusion = f"The {candidate_mode} candidate does not win every context."
     return {
         "measurement_valid": measurement_valid,
         "clean_provenance": clean,
         "correctness_gate_passed": bool(correctness_gate_passed),
+        "correctness_contract": correctness_gate.get("contract"),
+        "contract_allows_default_promotion": contract_allows_promotion,
         "timed_tokens_exact": tokens_exact,
-        "chain_wins_all_contexts": chain_wins_all,
+        "candidate_mode": candidate_mode,
+        "candidate_wins_all_contexts": candidate_wins_all,
         "status": status,
         "selected_default": default,
         "conclusion": conclusion,
@@ -225,6 +338,10 @@ def _promotion_decision(
 
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     contexts = _parse_contexts(args.contexts)
+    candidate_mode = str(args.candidate_mode)
+    if candidate_mode not in CANDIDATE_MODES:
+        raise BenchmarkError(f"unsupported candidate mode: {candidate_mode!r}")
+    modes = (BASELINE_MODE, candidate_mode)
     repetitions = int(args.repetitions)
     warmups = int(args.warmups)
     if repetitions <= 0 or repetitions % 2:
@@ -237,6 +354,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     correctness_gate = _load_correctness_gate(
         args.correctness_artifact,
         contexts=contexts,
+        candidate_mode=candidate_mode,
     )
     compiler_version = None
     if args.compiler_version_file is not None:
@@ -262,7 +380,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             prompt_ids = [int(args.prompt_token_id)] * int(context)
             warmup_records: list[dict[str, Any]] = []
             for warmup in range(warmups):
-                order = MODES if warmup % 2 == 0 else tuple(reversed(MODES))
+                order = modes if warmup % 2 == 0 else tuple(reversed(modes))
                 row = {"warmup": warmup, "order": list(order), "modes": {}}
                 for mode in order:
                     row["modes"][mode] = _timed_prefill(
@@ -273,7 +391,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 warmup_records.append(row)
             measured: list[dict[str, Any]] = []
             for repetition in range(repetitions):
-                order = MODES if repetition % 2 == 0 else tuple(reversed(MODES))
+                order = modes if repetition % 2 == 0 else tuple(reversed(modes))
                 row = {"repetition": repetition, "order": list(order), "modes": {}}
                 for mode in order:
                     row["modes"][mode] = _timed_prefill(
@@ -285,6 +403,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             summary = _summarize_context(
                 measured,
                 expected_token_id=int(args.expected_token_id),
+                candidate_mode=candidate_mode,
             )
             context_records.append(
                 {
@@ -311,7 +430,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         environment={
             "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            "HIPENGINE_GGUF_GDN_PREFILL_MODE": "interleaved explicit sweep",
+            "HIPENGINE_GGUF_GDN_PREFILL_MODE": (
+                f"interleaved {BASELINE_MODE} versus {candidate_mode}"
+            ),
             "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": os.environ.get(
                 "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
             ),
@@ -330,7 +451,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     decision = _promotion_decision(
         context_records,
         provenance=provenance,
-        correctness_gate_passed=bool(correctness_gate["passed"]),
+        correctness_gate=correctness_gate,
+        candidate_mode=candidate_mode,
     )
     return {
         "kind": KIND,
@@ -348,12 +470,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "bulk_attention_mode": "bulk",
             "use_wmma_prefill": bool(args.use_wmma_prefill),
             "use_gemv_decode": True,
-            "gdn_modes": list(MODES),
+            "gdn_modes": list(modes),
         },
         "protocol": {
             "wall_clock": "time.perf_counter_ns around synchronized session.prefill",
             "session_scope": "one resident model/session shared by both modes and contexts",
-            "ordering": "balanced fused-chain / chain-fused by measured repetition",
+            "ordering": (
+                f"balanced {BASELINE_MODE}-{candidate_mode} / "
+                f"{candidate_mode}-{BASELINE_MODE} by measured repetition"
+            ),
             "warmups_per_context": warmups,
             "measured_repetitions_per_mode_context": repetitions,
             "state_reset": "production session.prefill reset before every measured prompt",
@@ -372,6 +497,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--contexts", default="512,4096")
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--expected-token-id", type=int, default=9707)
+    parser.add_argument(
+        "--candidate-mode",
+        choices=CANDIDATE_MODES,
+        default="chain",
+        help="explicit GDN prefill implementation to compare against fused",
+    )
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=4)
     parser.add_argument(

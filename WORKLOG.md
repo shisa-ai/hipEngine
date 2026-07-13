@@ -153282,3 +153282,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Updated `docs/GGUF-PREFILL-OPTIMIZATION.md`, `docs/KERNELS.md`,
   `docs/REFACTOR.md`, and `benchmarks/CHANGELOG.md`. No topline/default claim
   is made yet.
+
+## 2026-07-13 - Generalize the GGUF GDN balanced A/B gate
+
+- Updated `scripts/gguf_gdn_prefill_ab.py` from a hard-coded fused-versus-chain
+  protocol to an explicit `--candidate-mode` gate covering all registered GPF
+  diagnostics, including `chain_wave32_tree`. Schema v2 records generic
+  baseline/candidate paired walls and validates that the supplied correctness
+  artifact names the same candidate.
+- The loader now accepts either the byte-exact G2 matrix or the compact GPF-2B
+  project KL/top-1 artifact. A project-gate win is deliberately classified as
+  `candidate_wins_pending_correctness_contract`; it cannot silently imply
+  default promotion while the generated-trajectory and numerical-contract
+  gates remain open.
+- Focused harness validation:
+  `PYTHONPATH=$PWD uv run --extra dev python -m pytest -q
+  tests/test_gguf_gdn_prefill_ab.py` passes all **6** tests; pycompile and
+  `git diff --check` pass. The next command is a clean detached-worktree,
+  balanced 512/4096 fused-versus-`chain_wave32_tree` A/B.
