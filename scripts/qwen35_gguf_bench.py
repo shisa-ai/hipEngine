@@ -1116,6 +1116,10 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     full_attn_kv_scales = _sum_buffers(
         tuple(getattr(scratch, "full_k_scale_caches", ())) + tuple(getattr(scratch, "full_v_scale_caches", ()))
     )
+    full_attn_bf16_mirrors = _sum_buffers(
+        tuple(getattr(scratch, "full_bf16_mirror_key_caches", ()))
+        + tuple(getattr(scratch, "full_bf16_mirror_value_caches", ()))
+    )
     linear_state = _sum_buffers(tuple(getattr(scratch, "layer_conv_states", ())) + tuple(getattr(scratch, "layer_recurrent_states", ())))
     metadata = _sum_named_buffers(
         scratch,
@@ -1130,6 +1134,7 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     named = {
         "full_attention_kv_cache": full_attn_kv,
         "full_attention_kv_scales": full_attn_kv_scales,
+        "full_attention_bf16_mirrors": full_attn_bf16_mirrors,
         "linear_attention_state": linear_state,
         "metadata_tables": metadata,
     }
@@ -1140,6 +1145,7 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
         "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
+        "kv_storage_layout": getattr(scratch, "kv_storage_layout", "uniform"),
         "kv_scale_dtype": getattr(getattr(scratch, "kv_scale_dtype", None), "value", None),
         "kv_scale_granularity": getattr(scratch, "kv_scale_granularity", None),
         "int8_kv_value_bf16": bool(getattr(scratch, "int8_kv_value_bf16", False)),

@@ -93,6 +93,20 @@ def test_int8_prefill_attention_auto_requires_very_long_low_memory_pressure(monk
     assert fragmented_high_memory._prefill_int8_attention_path(262143) == "streaming_direct"
 
 
+def test_tail4_hadamard_prefill_keeps_bf16_aotriton_and_routes_tail_direct(monkeypatch) -> None:
+    session = _session_with_prefill_config(
+        PrefillConfig(attn_aotriton_min_tokens=512),
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+    )
+    session.kv_storage_layout = "tail4_hadamard_group32"
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION", "oracle")
+
+    assert session._prefill_int8_attention_path(512) == "mixed_bf16_tail4_hadamard_direct"
+    assert session._prefill_int8_uses_oracle_attention(512) is False
+    assert session._prefill_use_aotriton_attention_resolved(511) is False
+    assert session._prefill_use_aotriton_attention_resolved(512) is True
+
+
 def test_int8_prefill_attention_env_overrides_auto_gate(monkeypatch) -> None:
     session = _session_with_prefill_config(
         PrefillConfig(attn_aotriton_min_tokens=512),

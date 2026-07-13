@@ -153807,3 +153807,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and unchanged split reducer at `1600 ns`. These are primitive execution proof,
   not an end-to-end performance claim. Runner integration and native fidelity
   remain next.
+
+## 2026-07-14 — Integrate mixed Hadamard KV into GGUF and PARO runners
+
+- Wired the shared fixed-page layout through both resident runners. PARO now
+  allocates BF16 payloads with no scales for full-attention layers
+  `3,7,11,15,19,23` and INT8 payloads plus FP16 `[token,head,group32]` scales
+  for `27,31,35,39`; per-layer `KVLiveSpans` select writer, prefill, and decode
+  routes. Its capacity estimator now accounts for six BF16 and four grouped
+  INT8 layers (`16,640` bytes/token versus `20,480` BF16, exactly `0.8125x`).
+- GGUF uses the same policy selector and allocation shape. The compressed tail
+  bypasses both the short-context BF16 mirror and the bulk-prefill BF16 oracle:
+  it writes Hadamard INT8 directly and invokes the streaming causal INT8
+  attention kernel. Preserved layers retain the existing BF16/AOTriton path.
+  The benchmark scratch breakdown now reports the storage layout and BF16
+  mirror bytes explicitly.
+- Native W7900 integration smokes completed at repeated token `9707`, 512-token
+  prefill, two eager decode tokens. GGUF Q4_K_M completed with finite logits,
+  `12,582,912` payload bytes + `196,608` scale bytes for the 768-row rounded
+  cache; PARO completed with the same `12,779,520` total K/V bytes and its
+  post-prefill memory audit passed with preserved layers
+  `[3,7,11,15,19,23]`, packed layers `[27,31,35,39]`, no missing scales, and no
+  BF16 shadow. These are route/allocation smokes, not retained correctness or
+  speed claims. Raw diagnostics are `/tmp/gguf-tail4-integration-smoke.json`
+  and `/tmp/paro-tail4-integration-smoke.json`.
+- Exact smoke commands used `scripts/qwen35_gguf_bench.py` and
+  `scripts/qwen35_paro_bench.py` with `--prompt-length 512 --decode-tokens 2
+  --no-graph-replay-decode --kv-storage tail4_hadamard_group32
+  --kv-scale-dtype fp16` on `HIP_VISIBLE_DEVICES=0`. The first GGUF cached-only
+  attempt correctly stopped because the changed writer hash was not prebuilt;
+  it was rebuilt outside any profiler. The assembled PARO MTP directory had
+  broken parent-model symlinks, so the smoke used the available packed snapshot
+  `Qwen3.6-35B-A3B-PARO-packed@437eba06...`.
+- Focused validation: `270` tests pass across policy/dispatch/kernel-plan,
+  GGUF/PARO runner layout, capacity, and prefill-policy suites. `py_compile`,
+  fatal-name Ruff (`E9,F821,F822,F823`), and `git diff --check` pass. Native
+  multi-prompt BF16-vs-mixed fidelity is the next gate; matched performance and
+  physical 256 Ki capacity remain unclaimed.
