@@ -9,8 +9,10 @@ whose contiguous 16-column tile slabs have a different best tile balance.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -27,6 +29,7 @@ _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
 
 _TWO_WAVE_VARIANT = "wmma_prefill_2wave_bf16_bf16_out"
 _TWO_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE"
+_two_wave_session_enabled: bool | None = None
 
 _VARIANTS: tuple[str, ...] = (
     "wmma_prefill_bf16_bf16_out",
@@ -126,6 +129,19 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     return tile_m, tile_n
 
 
+@contextlib.contextmanager
+def q8_t16_two_wave_prefill_session(enabled: bool | None) -> Iterator[None]:
+    """Temporarily scope GPF-5A selection to the current prefill request."""
+
+    global _two_wave_session_enabled
+    previous = _two_wave_session_enabled
+    _two_wave_session_enabled = None if enabled is None else bool(enabled)
+    try:
+        yield
+    finally:
+        _two_wave_session_enabled = previous
+
+
 def _two_wave_prefill_applies(
     *,
     tile_m: int,
@@ -136,7 +152,12 @@ def _two_wave_prefill_applies(
     """Return whether the GPF-5A policy covers this tile."""
 
     raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
-    enabled = default if not raw else raw in {"1", "true", "yes", "on"}
+    if raw:
+        enabled = raw in {"1", "true", "yes", "on"}
+    elif _two_wave_session_enabled is not None:
+        enabled = _two_wave_session_enabled
+    else:
+        enabled = default
     return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
 
 
@@ -373,6 +394,7 @@ __all__ = [
     "build_gguf_q8_0_t16_prefill",
     "plan_gguf_q8_0_t16_prefill_build",
     "register_gguf_q8_0_t16_prefill_kernels",
+    "q8_t16_two_wave_prefill_session",
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

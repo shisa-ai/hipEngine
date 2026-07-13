@@ -388,7 +388,7 @@ select current code without a fresh profile.
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
-| 11 | `GPF-5` | **GPF-5A promoted on gfx1151:** two exact 32-column Q8T16 waves share one activation tile | Clean 512 +8.35%; variance-escalated stable 4K +2.54%; 82/82 state parts exact; gfx1100 unchanged; final automatic six-shape rollup remains |
+| 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there; final automatic 128K rerun remains |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
 There is no invented minimum full-model percentage. Under the project evidence
@@ -885,7 +885,20 @@ to production. The auto wrapper selects GPF-5A only for default TM32/TM64,
 TN32, output width >=2048 shapes. Explicit `=0` is the rollback and `=1`
 remains the cross-backend diagnostic. Clean evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json).
-The final automatic-route six-shape 1+3 sweep owns publication.
+
+The final automatic sweep adds one necessary scope gate. GPF-5A is stable and
+positive through 64K, but automatic 128K measures **382.041 tok/s** while the
+same-clean-commit explicit production control measures **392.219 tok/s** under
+the identical 1+3, 128-decode-token protocol: **-2.59%** candidate prefill,
+unchanged token IDs/memory, and +0.09% decode. This is a real, stable long-
+context regression, not grounds to discard shorter exact wins or publish a
+lower row. gfx1151 package metadata therefore sets
+`GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS=65536`; the resident prefill request
+installs that policy session-locally, and explicit env `0|1` retains highest
+precedence. 128K uses the production wrapper. Scope evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf5a-128k-scope.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-128k-scope.json).
+Rerun automatic 128K only, then merge it with the valid 512-64K components for
+publication.
 
 Selection evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json).
@@ -1092,17 +1105,18 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   and often fast, but automatic-route 32K includes a **294.254 tok/s** collapse,
   the 1+5 replacement stalls before warmup completion, and 128K measured run 2
   remains GPU-active beyond **1200 s**. A same-stream control is healthy.
-- GPF-5A is promoted in gfx1151 registry metadata. It is byte-exact, profiles
-  at 80 VGPR / 1 KiB LDS / zero scratch, and clean focus improves 512 by
-  **8.35%** and variance-escalated stable 4K by **2.54%** with unchanged memory.
-- No benchmark process is intentionally left running. The final automatic
-  six-shape 1+3 publication sweep is next.
+- GPF-5A is promoted on gfx1151 through 64K. Final automatic 512-64K medians
+  are **889.904/919.598/762.940/648.948/546.296 tok/s**, all stable/exact.
+  Same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**.
+- No benchmark process is intentionally left running. A clean automatic 128K
+  production-wrapper rerun plus component merge is next.
 
-Keep GPF-4 explicit/default-off. GPF-5A now owns the gfx1151 BF16/BF16 Q8T16
-prefill aliases through a shape-scoped automatic wrapper; gfx1100 stays on the
-production wrapper. Next run the clean automatic 512/1K/4K/32K/64K/128K 1+3
-rollup and publish only after its normal correctness/stability gates.
-Token-parallel/prefix GDN remains the high-effort fallback.
+Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
+prefill aliases only when the request has at most 65,536 prompt tokens;
+request-scoped package policy restores production above that. gfx1100 stays on
+the production wrapper. Rerun automatic 128K at the scoped commit, merge with
+the valid 512-64K components, then publish. Token-parallel/prefix GDN remains
+the high-effort fallback.
 
 ## Document Ownership
 

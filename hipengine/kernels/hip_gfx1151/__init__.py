@@ -37,6 +37,9 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Clean GPF-5A exactness plus 512/4K fresh-process focus admits two-wave
 # activation-sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
+# Same-commit production-protocol 128K A/B rejects two-wave (382.041 vs
+# 392.219 tok/s), so automatic selection is bounded through 64K.
+GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
     (
@@ -100,6 +103,7 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
+    "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",
