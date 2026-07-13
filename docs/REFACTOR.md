@@ -60,8 +60,8 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
 | GGUF compact-WMMA no-read probe | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS` skips the `wmma_total` host scalar read for bounded small selected-row probes by launching compact WMMA with a conservative upper row count. | Default-off rejected diagnostic. Two c=8 natural24 reruns measured **52.05/51.96 tok/s** versus retained **52.18**, and timing attribution shifted into the later LM-head/sample drain rather than producing a wall win. | Remove unless a future compact-WMMA body can consume bounded row counts without extra padded work and beats the retained c=2/c=4/c=8 server rows. |
 | GGUF selected-WMMA launch-bounds tuning | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` remains an R&D build flag for selected-WMMA kernels. | Default unchanged after the 2026-07-05 c>N server probe. `=2` was flat at c=8 (**52.55/52.23 tok/s**); `=4` helped c=8 (**53.22/53.44**) but regressed c=4 (**49.20/49.04** vs retained **49.65**), so no default promotion. | Keep as kernel R&D only; do not promote without a c=2/c=4/c=8 same-protocol rerun that is non-regressive at every concurrency. |
-| GGUF AR server packed decode | `HIPENGINE_GGUF_AR_PACKED_DECODE` is a default-on opt-out around decode-shaped packed resident target passes for c>N GGUF greedy AR serving. | Default-on after the 2026-07-05 natural24 packed-GEMV rerun and c=8 chunk-stream follow-up. It moves c=2/c=4/c=8 AR **44.20/46.69/47.70 -> 50.89/56.79/59.17 tok/s** by using `step_batch_native(..., scatter_state=False)`, `wmma_prefill_session(False)`, deferred packed-state scatter, fused packed linear-state commit, and parallel chunk-stream execution for c>4. This supersedes the older rejected one-token packed-verifier AR experiment. | Remove the env opt-out after server/API validation and one more c=2/c=4/c=8 rerun show no regressions; keep scalar/stream fallback only for unsupported packed shapes. |
-| GGUF AR server packed prefill | `HIPENGINE_GGUF_AR_PACKED_PREFILL` is a default-on opt-out around packed final-row prompt prefill for c>N GGUF greedy AR serving. | Default-on after the 2026-07-05 natural24 final-row prefill rerun. Startup now warms max-active ragged packed AR shapes and packed workspace reuse is capacity-based, fixing the cold first-pass c=2 prefill outlier and moving same-server AR to **65.91/82.41/63.17 tok/s** at c=2/c=4/c=8. The earlier verifier-as-prefill probe sampled/copied every prompt row and was rejected at c=8 **50.56 tok/s**. | Remove the env opt-out after broader server/API validation and one more defaults-on c=2/c=4/c=8 rerun show no regressions; keep serial prefill fallback only for unsupported packed shapes or long-context rows beyond the current packed-layout guard. |
+| GGUF AR server packed decode | `HIPENGINE_GGUF_AR_PACKED_DECODE` is a default-on opt-out around decode-shaped packed resident target passes for c>N GGUF greedy AR serving. | The 2026-07-13 lifecycle repair keeps packed state canonical but runs linear attention through c1-exact per-slot state slices; full attention and MoE/FFN remain batched. Deferred flush now copies the full live KV prefix. Retained-flag steady c4 and sparse c4→c1 are token/Conv/GDN/live-KV byte-exact. The July 5 fused-state-commit throughput rows describe the prior token-only route and are historical, not an exact-state baseline. | Keep the opt-out until per-layer hidden, live cancellation/admission, profiler, and repeated exact-accounting c=1/2/4/8 gates pass. Then keep scalar/stream fallback only for unsupported shapes. |
+| GGUF AR server packed prefill | `HIPENGINE_GGUF_AR_PACKED_PREFILL` is a default-on opt-out around packed final-row prompt prefill for c>N GGUF greedy AR serving. | Packed linear/MoE stays multi-row. Full attention now uses row-span paged prefill below the AOTriton threshold and slot-local c1 math when a long prompt crosses it; the latter forces exact cache reimport before packed decode. Steady c4 and ragged `[512,64,64,64]` are token/Conv/GDN/live-KV exact. The old **65.91/82.41/63.17 tok/s** rows predate state/KV and exact-ID accounting and remain historical diagnostics. | Keep the opt-out until broader API/cancellation coverage and repeated exact-accounting c=1/2/4/8 plus profiler evidence are green; retain fallback for slabs beyond the packed hidden-row guard. |
 | GGUF MTP server packed prefill | `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` is a default-on opt-out around packed prompt prefill for eligible c=2/c=4 GGUF MTP serving batches. | Default-on after the 2026-07-06 steady-state natural24 rerun. The path reuses packed prompt rows and returns FP32 prompt hidden rows for MTP catch-up, moving server MTP **46.75/49.65/52.18 -> 59.94/66.60/54.88 tok/s** at c=2/c=4/c=8. It keeps the four-slot safety cap: c=8's first wave still uses serial prompt open and only the trailing c=2 wave uses packed prefill. Startup now warms hidden-seed packed prefill at widths 2/4 when MTP serving is enabled, moving fresh c=2 to **56.59 tok/s** and warm c=2/c=4 to **59.71/65.57 tok/s**. | Keep the opt-out until one more c=2/c=4/c=8 rerun confirms the default. Do not remove the four-slot cap until c=8 full packed prefill is non-regressive; pool-filling eight startup slots was rejected (**35.25 tok/s** c=8 rerun, **76.5 GiB** used). |
 | GGUF MTP server startup warmup | `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP` is an internal server-scoped env marker set only during startup scratch probing when `--speculative-mtp-serving` is not `off`. | Added after the 2026-07-06 cold-start audit. It lets the GGUF backend warm MTP hidden-seed packed prefill plus one tiny packed verifier at supported widths 2/4 without changing the generic `prepare_request_scratch(...)` hook signature. It removes the worst c=2 first-request MTP cliff but deliberately does not attempt unsupported width-8 packed prefill. | Replace this env handoff with an explicit backend scratch-preparer option if the startup hook grows typed capabilities. Keep it while MTP serving is opt-in/auto and c=2/c=4 cold-start evidence remains positive; remove or narrow it if startup memory/time becomes a production blocker. |
 | GGUF MTP server deferred verifier scatter | `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` is a default-on opt-out around delaying packed target verifier state scatter until after the accept decision. | Default-on after the 2026-07-06 resetfix rerun. It keeps owner-side packed verifier state live and commits only accepted hidden/full-attention KV/linear-state rows, moving retained no-env natural24 MTP **70.06/77.29/76.46 -> 70.53/78.76/79.61 tok/s** at c=2/c=4/c=8 with unchanged economy (`draft=165`, `accepted=141`, accept rate **0.8545**, **250** target rows). Reset now invalidates packed verifier/decode session metadata so startup verifier warmup cannot leave stale packed KV write-position bookkeeping for the first real request. | Remove the env opt-out after one more no-env c=2/c=4/c=8 server rerun plus API tests show no regression. Keep the eager-scatter branch only while it is useful for bisecting packed verifier state lifecycle bugs. |
@@ -728,20 +728,19 @@ should be boring.
   across decode cycles, and scatters back only before stream/scalar fallback or
   a changed chunk layout.
 - Purpose: provide the first useful GGUF AR c>N server backend after fixing
-  default-route request coalescing. The retained path uses decode-shaped GEMV
-  projection (`wmma_prefill_session(False)`) and fused packed linear-state commit.
-- Result: retained on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
-  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
-  window. AR c=2/c=4/c=8 moved **44.20/46.69/47.70 -> 50.89/56.79/59.17
-  tok/s**; the c=8 follow-up streams the two packed decode chunks and reduces
-  `slots_decode_phase_ms` **15752.616 -> 13990.934**. The old one-token
-  packed-verifier AR route remains rejected at
-  **32.12/41.32/41.22 tok/s**, with `target_verify_batch_ms` dominating
-  (**1192/1382/1391 ms mean per request**), because it imported/scattered
-  verifier state and captured linear-state rows every token.
-- Remove when: the packed decode route has one more defaults-on c=2/c=4/c=8
-  server rerun with no regression. Then collapse the env opt-out and keep only
-  unsupported-shape fallback paths.
+  default-route request coalescing while preserving each request's canonical
+  state. The exact route uses c1 per-slot linear-attention state slices and
+  keeps full attention plus MoE/FFN row-batched. Deferred flush copies the full
+  live KV prefix instead of only the last dirty row.
+- Result: retained-flag steady c4 and c4→c3→c2→c1 middle-hole shrink are
+  token/Conv/GDN/live-KV byte-exact against independent c1. The July 5
+  **50.89/56.79/59.17 tok/s** packed-decode rows remain useful history for the
+  prior token-only algorithm, but cannot baseline the repaired path. A single
+  exact-accounting diagnostic measured c1/c2/c4/c8
+  **35.34/51.07/59.23/59.19 generated tok/s**; `performance_claim=false`.
+- Remove when: per-layer hidden, live cancellation/admission, profiler, and
+  repeated exact-accounting c=1/2/4/8 gates pass. Then collapse the opt-out and
+  keep only unsupported-shape fallback paths.
 
 ## `HIPENGINE_GGUF_AR_PACKED_PREFILL` (default-on packed prompt prefill)
 - Added 2026-07-05 after the packed-decode AR route exposed prompt prefill as
@@ -754,16 +753,17 @@ should be boring.
   OpenAI-server AR batches without reusing the MTP verifier result contract.
   The rejected verifier-as-prefill probe sampled/copied all prompt rows and
   measured c=8 **50.56 tok/s**, below the retained packed-decode baseline.
-- Result: retained on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
-  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
-  window. AR first moved **50.89/56.79/59.17 -> 66.15/67.68/61.72 tok/s**; the
-  startup ragged-shape warmup and capacity-based workspace reuse then fixed the
-  cold first-pass c=2 outlier and measured **65.91/82.41/63.17 tok/s**. Retained
-  warm MTP is **59.94/66.60/54.88 tok/s**, so current MTP/AR ratios are
-  **0.910x/0.808x/0.869x**.
-- Remove when: broader server/API validation and another defaults-on c=2/c=4/c=8
-  server rerun show no regression. Then collapse the env opt-out and keep only
-  unsupported-shape or long-context fallback paths.
+- Result: the 2026-07-13 state audit found the old packed full-attention decode
+  reduction first changed BF16 layer output at layer 31, then Conv/GDN state at
+  layer 32 and live KV at layer 35. Packed prefill now uses the span-aware paged
+  prefill reduction below 512 rows; if any slot crosses the AOTriton threshold,
+  full attention runs slot-locally with c1 math while linear/MoE remains packed.
+  Steady c4 and ragged `[512,64,64,64]` are token/Conv/GDN/live-KV exact. The old
+  **65.91/82.41/63.17 tok/s** row predates these gates and exact generated-ID
+  accounting; it is historical rather than a current retained baseline.
+- Remove when: broader server/API cancellation coverage and repeated
+  exact-accounting c=1/2/4/8 plus profiler evidence are green. Keep fallback for
+  total prompt slabs beyond the current packed hidden-row guard.
 
 ## `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH`
 - Added 2026-07-06 as a default-off MTP serving diagnostic after the first

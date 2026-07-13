@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "kind": "gguf_packed_ar_exact_lifecycle",
+  "created_at": "2026-07-13",
+  "status": "passed",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "production_environment": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1"
+  },
+  "oracle": "scripts/gguf_packed_ar_state_oracle.py",
+  "commands": {
+    "steady_c4": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 PYTHONPATH=$PWD /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --rows 4 --prefill-mode packed --prompt-length 16 --decode-steps 4",
+    "shrink_sparse_c4_to_c1": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 PYTHONPATH=$PWD /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --rows 4 --prefill-mode packed --lifecycle shrink_sparse --prompt-length 16 --decode-steps 4",
+    "ragged_aotriton_boundary": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 PYTHONPATH=$PWD /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --rows 4 --prefill-mode packed --prompt-length 512 --alternate-prompt-length 64 --decode-steps 4",
+    "canonical_tokens": "env HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=$PWD /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 10 --backend hip_gfx1151 --quant gguf_q4_k_m --max-new-tokens 8 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --repeat-runs 3 --execute"
+  },
+  "results": {
+    "steady_c4": {
+      "passed": true,
+      "prompt_lengths": [16, 16, 16, 16],
+      "decode_steps": 4,
+      "tokens_exact": true,
+      "packed_prefill_state_exact": true,
+      "deferred_flush_executed": true,
+      "final_linear_state_exact": true,
+      "final_live_kv_exact": true,
+      "packed_token_trajectory": [
+        [9707, 264, 1549, 220],
+        [9707, 6669, 303, 16],
+        [9707, 2020, 279, 15],
+        [9707, 314, 1788, 15],
+        [9707, 3741, 6676, 15]
+      ]
+    },
+    "shrink_sparse_c4_to_c1": {
+      "passed": true,
+      "live_slot_indices": [[0, 1, 2, 3], [0, 2, 3], [0, 3], [3]],
+      "tokens_exact_at_every_boundary": true,
+      "linear_state_exact_at_every_boundary": true,
+      "live_kv_exact_at_every_boundary": true
+    },
+    "ragged_aotriton_boundary": {
+      "passed": true,
+      "prompt_lengths": [512, 64, 64, 64],
+      "decode_steps": 4,
+      "tokens_exact": true,
+      "packed_prefill_state_exact": true,
+      "final_linear_state_exact": true,
+      "final_live_kv_exact": true
+    },
+    "canonical_tokens": {
+      "passed": true,
+      "prompt_count": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "repeat_runs": 3,
+      "max_new_tokens": 8,
+      "backend_chunks": [4, 4, 2],
+      "native_caware_decode": true,
+      "serial_decode_fallback": false
+    }
+  },
+  "state_contract": {
+    "linear_layers": 30,
+    "linear_parts": ["conv_fp32", "recurrent_fp32"],
+    "full_attention_layers": 10,
+    "kv_parts": ["live_key_bf16", "live_value_bf16"],
+    "comparison": "byte_exact_against_independent_c1"
+  },
+  "remaining_blockers": [
+    "per-layer hidden outputs are not yet captured by this packed lifecycle oracle",
+    "c5-c8 are composed from production chunks of at most four rather than one native width",
+    "server cancellation and admission while other rows remain live still need an end-to-end gate",
+    "profiler evidence and repeated exact-accounting scaling measurements are not attached"
+  ]
+}

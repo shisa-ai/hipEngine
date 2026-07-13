@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "kind": "gguf_exact_concurrency_diagnostic",
+  "created_at": "2026-07-13",
+  "status": "diagnostic_only",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "server_command": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 PYTHONPATH=$PWD uv run --isolated --extra dev python -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name llama --speculative-mtp-serving opt_in --generation-batch-window-ms 5 --max-active-requests 8 --host 127.0.0.1 --port 18084 --log-level warning",
+  "client_command_template": "PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --mode server --url http://127.0.0.1:18084 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --top-p 1 --concurrency C --artifact-model-path /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --artifact-configured-backend hip_gfx1151 --artifact-resolved-backend hip_gfx1151 --artifact-target-arch gfx1151 --artifact-device-name 'AMD Radeon 8060S' --artifact-quant gguf_q4_k_m --artifact-kv-dtype bf16 --out /tmp/gguf-server-ar-natural24-cC-exact-state-diagnostic.json",
+  "workload": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "max_new_tokens": 24,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "generation_batch_window_ms": 5,
+    "server_route_cap": 4,
+    "total_exact_generated_tokens_per_run": 240
+  },
+  "measurements": [
+    {
+      "concurrency": 1,
+      "aggregate_generated_tok_s": 35.34,
+      "client_makespan_s": 6.79,
+      "backend_group_rows": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    },
+    {
+      "concurrency": 2,
+      "aggregate_generated_tok_s": 51.07,
+      "client_makespan_s": 4.70,
+      "prefill_batch_ms_total": 1198.532,
+      "decode_batch_ms_total": 3401.985,
+      "backend_group_rows": [2, 2, 2, 2, 2]
+    },
+    {
+      "concurrency": 4,
+      "aggregate_generated_tok_s": 59.23,
+      "client_makespan_s": 4.05,
+      "prefill_batch_ms_total": 952.872,
+      "decode_batch_ms_total": 3017.088,
+      "backend_group_rows": [4, 2, 4]
+    },
+    {
+      "concurrency": 8,
+      "aggregate_generated_tok_s": 59.19,
+      "client_makespan_s": 4.05,
+      "prefill_batch_ms_total": 948.301,
+      "decode_batch_ms_total": 3030.172,
+      "backend_group_rows": [2, 4, 4]
+    }
+  ],
+  "derived": {
+    "c8_over_c1": 1.6749,
+    "peak_observed_concurrency": 4,
+    "peak_observed_generated_tok_s": 59.23
+  },
+  "correctness_evidence": "benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json",
+  "historical_comparison": {
+    "old_c4_predicted_tok_s": 82.46,
+    "old_total_predicted": 274,
+    "current_total_exact_generated": 240,
+    "comparable": false,
+    "reason": "the historical row predates exact generated-ID accounting and used a different numerator"
+  },
+  "blockers": [
+    "one measured sweep only",
+    "no profiler attachment",
+    "worktree was intentionally dirty with the correctness repair under test",
+    "historical predicted-token rows cannot be used as exact-accounting baselines"
+  ]
+}

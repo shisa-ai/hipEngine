@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-13
+
+- [correctness promotion, no performance claim] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV packed AR: generated-token-only c4+c4+c2 evidence -> **byte-exact steady c4, ragged `[512,64,64,64]`, and sparse c4→c3→c2→c1 lifecycle** across all 30 Conv/GDN and 10 live-KV families. The repair uses span-aware packed full-attention prefill below the AOTriton threshold, slot-local c1 full attention above it, c1-exact row-sliced linear decode, and full-live-KV deferred flush. `benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json`.
+- [diagnostic, not retained] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV natural24 exact-accounting AR c1/c2/c4/c8: one warm server sweep measured **35.34/51.07/59.23/59.19 generated tok/s** (1.6749x c1→c8, 240 exact outputs/run). The historical c4 **82.46 predicted tok/s** row used `274` predicted units for the same 240 requested outputs and is explicitly non-comparable; no old→new retained metric is claimed. `benchmarks/results/2026-07-13-gfx1151-gguf-exact-concurrency-diagnostic.json`.
+
 ## 2026-07-12
 
 - [gfx1100 four-engine topline refresh] Radeon Pro W7900/gfx1100 Qwen3.6-35B six-shape matrix: stale `performance_claim=false` revision `b4edca09` -> **accepted clean measured `8116c453` topline** (rebased-equivalent reachable `8708304f`; runtime/benchmark code identical) after a W7900-local four-step oracle, right-sized PARO/GGUF graph sessions, two warmups plus five measured medians, five-sample llama.cpp controls, and corrected DRM `card1` whole-device VRAM scope. Endpoint changes include PARO 512/128 prefill **2796.853 -> 2917.732 tok/s (+4.32%)** and decode **112.207 -> 115.599 (+3.02%)**; production-graph GGUF decode changes **35.838 -> 89.873 (+150.78%)** at 512 and **35.426 -> 56.745 tok/s (+60.18%)** at 128K. `benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json`.

@@ -82,11 +82,14 @@ model loop, and its two production model paths are asymmetric.** PARO now has
 a narrow gfx1151 greedy-BF16 c2 exact hybrid below 1024 context tokens; sampled,
 other-width, other-KV, longer-context, and other-architecture PARO groups still
 use exact width-1 sessions. GGUF has a production packed-prefill/packed-decode
-route: on 2026-07-13 its first executable c>N gate matched independent c1
-generated tokens for all 10 natural prompt-suite rows in three c10 repeats on
-gfx1151. Both multi-row results remain correctness diagnostics rather than
-retained throughput rows and do not yet replace hidden/state/KV,
-ragged/shrinking/sparse-slot, long-context, or server-lifecycle gates.
+route capped at four rows per backend group. Its direct lifecycle oracle now
+matches independent c1 tokens plus all 30 Conv/GDN and 10 live-KV families for
+steady c4, ragged `[512,64,64,64]`, and c4→c3→c2→c1 middle-hole retirement on
+gfx1151 under the retained T16/WMMA/GEMV flags. The public 10-prompt gate also
+remains token-exact for three c10 repeats through c4+c4+c2 chunks. Both model
+paths remain correctness diagnostics rather than retained throughput rows;
+per-layer hidden capture, live server admission/cancellation, profiler, and
+repeated exact-accounting scaling remain open.
 
 What is in place:
 
@@ -110,6 +113,13 @@ What is in place:
   scheduler; artifact/schema gates prevent serial bridges, fallback execution,
   non-native sampler metadata, or incomplete timing/profiler payloads from being
   promoted as accepted retained c>N rows.
+- GGUF's exact packed route preserves c1 reduction/state order at the numerical
+  boundaries that failed the deeper audit. Packed prefill uses the row-span
+  paged full-attention kernel below the AOTriton threshold and slot-local c1
+  full attention when any prompt crosses it. Decode updates each slot's
+  Conv/GDN state through c1-exact row slices while full attention and MoE/FFN
+  stay batched. Deferred group-boundary flush copies the full live packed KV
+  prefix before sparse/shrinking fallback.
 
 What is still not green:
 
@@ -127,11 +137,16 @@ What is still not green:
   schema-2 retained profile.
 - GGUF packed AR is generated-token-green on the full 10-prompt category suite
   for three c10 repeats at eight output tokens, with `native_caware_decode=true`
-  and no serial fallback. Artifact:
-  `benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`.
-  Promotion remains blocked on hidden/Conv/GDN/KV equality, repeated
-  ragged/shrinking/sparse-slot transitions, long-context behavior, server-level
-  cancellation/admission coverage, and retained profiler/scaling evidence.
+  and no serial fallback. The direct c4 lifecycle oracle additionally proves
+  byte-exact packed-prefill and post-flush Conv/GDN/live-KV state, including the
+  p512 AOTriton boundary and sparse shrink to c1. Artifacts:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json`
+  and
+  `benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json`.
+  Promotion remains blocked on per-layer hidden capture, a native group wider
+  than four, live server cancellation/admission, profiler evidence, and
+  repeated exact-accounting scaling. A single diagnostic sweep measured
+  c1/c2/c4/c8 `35.34/51.07/59.23/59.19` generated tok/s; it is not retained.
 - BF16 primitive
   c=2/4/8 KV append/full-attention correctness passes, and generated-token
   equality passed the former batch-shaped reference for the c=2/c=4/c=8
