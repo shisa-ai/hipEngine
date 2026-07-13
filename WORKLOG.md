@@ -153121,3 +153121,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   memory win while keeping `usable_int8_256k_claim=false`.
 - Outcome artifact:
   `benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`.
+
+## 2026-07-13 — Add exact llama.cpp KV matched-context harness
+
+- Added `scripts/llamacpp_kv_matched_context.cpp`, a public-C-API harness that
+  loads one llama.cpp model, runs an F16 K/V reference, then runs a Q8_0 K/V
+  candidate forced with the reference seed/generated tokens. It retains only
+  prompt-final plus decode-step full logits, so 128K/16 needs 17 rows instead of
+  llama-perplexity's roughly context-by-vocabulary logits file. Model weights
+  stay identical Q4_K_M; only K/V cache storage changes.
+- Added `scripts/llamacpp_kv_matched_context.py` to build against an explicit
+  llama.cpp shared-library directory, validate teacher forcing and metric
+  summaries, and record host/external git state plus exact source, binary,
+  library, and model hashes. The measured external build is the gfx1100 build
+  9648 at commit `1ebf790c`; its source tree contains disclosed local MTP
+  instrumentation, while the comparison uses the same libraries for both KV
+  modes and makes no performance claim.
+- Five unit tests cover build/run command identity, workload shape, exact
+  reference-token forcing, and metric consistency. A live W7900 `8/2` smoke
+  passed with mean/max KL `0.0003786/0.0005905` and top-1 `100%`. No RED-first
+  model run was practical because the new external integration harness did not
+  previously exist; malformed-history/summary tests provide the deterministic
+  behavioral RED coverage.
