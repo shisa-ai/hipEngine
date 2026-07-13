@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_candidate",
+  "status": "candidate_gate_passed_pending_promotion",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "GPF-2B register-resident wave32 tree GDN prefill",
+  "conclusion": "Register-resident state removes the dominant GDN bottleneck and passes the project KL/top-1 gate, but changes the stronger byte-exact state contract; auto remains fused pending balanced A/B, multi-prompt generated-trajectory, and explicit contract gates.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "control_commit": "ddb3f27d1ab169518c24ccbbe126bf0bac3029dc",
+    "candidate_base_commit": "e1781cc2446f50f40888fb99eb4a8b6f68b07cd8",
+    "candidate_dirty": true,
+    "llama_source_reference": "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/gated_delta_net.cu (file lineage e95dae18d64ae4471d61a9dc87880a64e0e5c86e)"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompt_source": "repeated token 9707 for timed rows; greeting plus repeated boundary matrix for correctness",
+    "control": "clean detached worktree; two discarded warmups; five measured repetitions",
+    "candidate": "one discarded warmup; three measured repetitions per workload",
+    "common_flags": [
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode=bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode"
+    ],
+    "selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wave32_tree",
+    "default_changed": false
+  },
+  "measurements": {
+    "512/128": {
+      "control_prefill_tok_s": 423.70846235388416,
+      "candidate_prefill_tok_s": 954.0625692833058,
+      "prefill_delta_pct": 125.16958098572655,
+      "control_decode_tok_s": 49.11579674450292,
+      "candidate_decode_tok_s": 49.01998643750268,
+      "decode_delta_pct": -0.19506797026364064,
+      "candidate_range": [951.8908737593476, 954.1352656520519]
+    },
+    "1K/128": {
+      "control_prefill_tok_s": 448.6940367628607,
+      "candidate_prefill_tok_s": 1031.3499826935401,
+      "prefill_delta_pct": 129.85595933797063,
+      "control_decode_tok_s": 51.657443106756936,
+      "candidate_decode_tok_s": 51.5999464167654,
+      "decode_delta_pct": -0.11130251883417495,
+      "candidate_range": [1031.3120530003796, 1032.8818564398885]
+    },
+    "4K/128": {
+      "control_prefill_tok_s": 410.02287664315725,
+      "candidate_prefill_tok_s": 847.9810102222649,
+      "prefill_delta_pct": 106.81309715317724,
+      "control_decode_tok_s": 52.50465089682453,
+      "candidate_decode_tok_s": 52.414065382188944,
+      "decode_delta_pct": -0.17252759804731177,
+      "candidate_range": [847.5800598319836, 848.7368669267432]
+    },
+    "sources": {
+      "control": "/tmp/gpf-m0-baseline-512-1k-4k.json (sha256 9dc28fa4a0d2b259ea4bd470988adf80fb88a7b2222b9b4a2a6f155425dfe499)",
+      "candidate_512": "/tmp/gpf-2-wave32-tree-reg-screen-512.json (sha256 eed98c87488d682cc1d9d0bda9c5483c81d8aad073c27b2840136ad3b1df39e4)",
+      "candidate_1k_4k": "/tmp/gpf-2-wave32-tree-reg-screen-1k-4k.json (sha256 ddb43d266b2754e3a5a2c88ec0842fdb0f2f104912796a2b7a83aae9eedb6924)"
+    }
+  },
+  "correctness": {
+    "project_gate": {
+      "kl_threshold": 0.05,
+      "top1_threshold": 0.9,
+      "cases_passed": 6,
+      "cases_total": 6,
+      "kl_mean_range": [3.476409950258664e-06, 5.3852719021640166e-05],
+      "top1_agreement_min": 1.0,
+      "sampled_tokens_identical": true
+    },
+    "stronger_exact_state_contract": false,
+    "first_divergence": "layer 0 recurrent state",
+    "cases": [
+      {"prompt": "greeting/17", "token": 9419, "kl_mean": 5.3852719021640166e-05, "sha256": "eeafe67698ea174084d391732359e69fc8b2069094936e4e4c2e735c2a30c584"},
+      {"prompt": "repeated/512", "token": 9707, "kl_mean": 2.825073981985912e-05, "sha256": "d17e6f182e7b328ebe07001474404152fdfca3775aa4fba660df2de99ac73632"},
+      {"prompt": "repeated/1024", "token": 9707, "kl_mean": 4.5597679922064515e-06, "sha256": "31a92be214adfd9f82e534d0ca46b48e5b42fab527f3db1ee5da7246cb7489bf"},
+      {"prompt": "repeated/1025", "token": 9707, "kl_mean": 2.5853927624310916e-05, "sha256": "cffac91994ca1c9983082fc8f602be15453254267f8d0a8dc6cc1a2e5eaf8c77"},
+      {"prompt": "repeated/4095", "token": 9707, "kl_mean": 3.476409950258664e-06, "sha256": "de5ddf8d34ba5be7caf9304ac8854480f09069c8ddefc08d39adcfde96aa2f6e"},
+      {"prompt": "repeated/4096", "token": 9707, "kl_mean": 4.469429338574763e-06, "sha256": "775d88378b924b18fccfc1fb86f84baf2a6230aabca9b3cc2e3caad2b7ad02f2"}
+    ],
+    "focused_tests": "46 GDN primitive/routing tests plus 7 comparator tests passed before documentation rollup"
+  },
+  "profiles": {
+    "nonresident_tree": {
+      "total_kernel_ms": 3989.002646,
+      "recurrence_ms": 3516.665336,
+      "recurrence_share_pct": 88.1352339427874,
+      "workgroup_size": 256,
+      "vgpr_count": 32,
+      "summary_sha256": "350e04ec9303a7f0ae93a77813b638c578c089ca154726176ca9fbe3917136c7"
+    },
+    "register_resident_tree": {
+      "total_kernel_ms": 536.166912,
+      "recurrence_ms": 61.410984,
+      "recurrence_share_pct": 11.45370641596026,
+      "workgroup_size": 256,
+      "vgpr_count": 40,
+      "scratch_bytes": 0,
+      "lds_bytes": 0,
+      "dense_q8_wmma_ms": 158.22279,
+      "selected_q4_q5_wmma_ms": 173.022722,
+      "summary_sha256": "5bfc54c40477a6f8eb64b73eec250a944991244aa52599619829275f2035618a"
+    }
+  },
+  "rejected_controls": {
+    "exact_ordered_wave32_prefill_tok_s": 128.87897539419487,
+    "nonresident_tree_prefill_tok_s": 129.7849602012805,
+    "four_wave_128_thread": {
+      "512_prefill_tok_s": 957.7560607197798,
+      "1k_prefill_tok_s": 1012.7650829842106,
+      "4k_prefill_tok_s": 832.4156513040316,
+      "decision": "reject shape-local launch; 1K and 4K regress 1.80% and 1.84%"
+    }
+  },
+  "next_actions": [
+    "Run balanced interleaved fused-versus-candidate A/B at 512 and 4K.",
+    "Run a multi-prompt generated-trajectory and decode non-regression gate.",
+    "Make the numerical-contract decision explicitly before changing auto.",
+    "Profile 4K/128K and optimize dense-Q8/selected-MoE families selected by the 512 profile."
+  ]
+}

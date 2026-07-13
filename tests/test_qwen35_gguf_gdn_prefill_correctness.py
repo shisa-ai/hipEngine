@@ -62,8 +62,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
@@ -827,6 +831,8 @@ def _run_exact_split_chain(
     *,
     use_segments: bool,
     value_tile: int = 128,
+    wave32: bool = False,
+    wave32_tree: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -881,6 +887,16 @@ def _run_exact_split_chain(
             64: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
             32: qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
         }[value_tile]
+        if wave32:
+            recurrent = qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
+            recurrent_segments = (
+                qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32
+            )
+        if wave32_tree:
+            recurrent = qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32
+            recurrent_segments = (
+                qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
+            )
         if use_segments:
             recurrent_segments(
                 query_raw.ptr,
@@ -1081,6 +1097,42 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments_tile32",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_wave32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_wave32",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_wave32_tree",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_segments_wave32_tree",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
     )
     assert (
         resolve(
@@ -1448,3 +1500,55 @@ def test_gdn_prefill_chain_is_bit_exact_to_decode_order(
     )
     np.testing.assert_array_equal(state_chain, state_fused)
     np.testing.assert_array_equal(out_chain, out_fused)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_wave32_chain_is_bit_exact_to_decode_order(
+    use_segments: bool,
+) -> None:
+    """The wave-sharded schedule must retain the production state contract."""
+
+    inputs = _GDNInputs(
+        tokens=17,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=23,
+    )
+    out_fused, state_fused = _run_decode_order_bf16(inputs, _RMS_EPS)
+    out_wave, state_wave = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        wave32=True,
+    )
+    np.testing.assert_array_equal(out_wave, out_fused)
+    np.testing.assert_array_equal(state_wave, state_fused)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_wave32_tree_stays_within_correctness_budget(
+    use_segments: bool,
+) -> None:
+    """Tree reduction may reorder sums but must stay inside the GDN gate."""
+
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=29,
+    )
+    out_fused, state_fused = _run_decode_order_bf16(inputs, _RMS_EPS)
+    out_tree, state_tree = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        wave32_tree=True,
+    )
+    _assert_output_close(out_tree, out_fused, label="wave32 tree vs fused")
+    _assert_state_close(state_tree, state_fused, label="wave32 tree vs fused")

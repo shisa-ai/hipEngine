@@ -25,8 +25,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -79,6 +83,24 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     )
     assert plan.has_exact_chain_tile64
     assert plan.has_exact_chain_tile32
+    assert (
+        plan.exact_recurrent_wave32
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
+    )
+    assert (
+        plan.exact_recurrent_segments_wave32
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32
+    )
+    assert plan.has_exact_chain_wave32
+    assert (
+        plan.recurrent_wave32_tree
+        is qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32
+    )
+    assert (
+        plan.recurrent_segments_wave32_tree
+        is qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
+    )
+    assert plan.has_chain_wave32_tree
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
@@ -174,7 +196,12 @@ def test_run_gdn_prefill_explicit_chain_prefers_exact_split(
 
 @pytest.mark.parametrize(
     ("mode", "expected"),
-    [("chain_tile64", "exact_tile64"), ("chain_tile32", "exact_tile32")],
+    [
+        ("chain_tile64", "exact_tile64"),
+        ("chain_tile32", "exact_tile32"),
+        ("chain_wave32", "exact_wave32"),
+        ("chain_wave32_tree", "wave32_tree"),
+    ],
 )
 def test_run_gdn_prefill_explicit_tiled_chain_selects_registered_variant(
     monkeypatch: pytest.MonkeyPatch,
@@ -197,6 +224,10 @@ def test_run_gdn_prefill_explicit_tiled_chain_selects_registered_variant(
         exact_recurrent_segments_tile64=_recorder(calls, "exact_segments_tile64"),
         exact_recurrent_tile32=_recorder(calls, "exact_tile32"),
         exact_recurrent_segments_tile32=_recorder(calls, "exact_segments_tile32"),
+        exact_recurrent_wave32=_recorder(calls, "exact_wave32"),
+        exact_recurrent_segments_wave32=_recorder(calls, "exact_segments_wave32"),
+        recurrent_wave32_tree=_recorder(calls, "wave32_tree"),
+        recurrent_segments_wave32_tree=_recorder(calls, "segments_wave32_tree"),
     )
 
     runner._run_gdn_prefill(
@@ -216,10 +247,20 @@ def test_run_gdn_prefill_explicit_tiled_chain_selects_registered_variant(
     ]
 
 
-def test_run_gdn_prefill_tiled_chain_selects_matching_segment_variant(
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("chain_tile64", "exact_segments_tile64"),
+        ("chain_wave32", "exact_segments_wave32"),
+        ("chain_wave32_tree", "segments_wave32_tree"),
+    ],
+)
+def test_run_gdn_prefill_candidate_chain_selects_matching_segment_variant(
     monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected: str,
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_tile64")
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
     runner = _new_runner()
     calls: list[tuple[str, object]] = []
     runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
@@ -231,6 +272,10 @@ def test_run_gdn_prefill_tiled_chain_selects_matching_segment_variant(
         exact_prepare=_recorder(calls, "exact_prepare"),
         exact_recurrent_tile64=_recorder(calls, "exact_tile64"),
         exact_recurrent_segments_tile64=_recorder(calls, "exact_segments_tile64"),
+        exact_recurrent_wave32=_recorder(calls, "exact_wave32"),
+        exact_recurrent_segments_wave32=_recorder(calls, "exact_segments_wave32"),
+        recurrent_wave32_tree=_recorder(calls, "wave32_tree"),
+        recurrent_segments_wave32_tree=_recorder(calls, "segments_wave32_tree"),
     )
 
     runner._run_gdn_prefill(
@@ -245,7 +290,7 @@ def test_run_gdn_prefill_tiled_chain_selects_matching_segment_variant(
 
     assert [name for name, _ in calls] == [
         "exact_prepare",
-        "exact_segments_tile64",
+        expected,
         "rmsnorm_gate",
     ]
 
@@ -311,6 +356,20 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
                 None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
             ),
             "explicit GGUF GDN prefill mode 'chain_tile32' is unavailable",
+        ),
+        (
+            "chain_wave32",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_wave32' is unavailable",
+        ),
+        (
+            "chain_wave32_tree",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_wave32_tree' is unavailable",
         ),
     ],
 )

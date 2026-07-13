@@ -35,6 +35,12 @@ _SYMBOL_PREFILL_DECODE_ORDER_EXACT_TILE64 = (
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_TILE32 = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32"
 )
+_SYMBOL_PREFILL_DECODE_ORDER_EXACT_WAVE32 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32"
+)
+_SYMBOL_PREFILL_DECODE_ORDER_WAVE32_TREE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32"
+)
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32"
 )
@@ -43,6 +49,12 @@ _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_TILE64 = (
 )
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_TILE32 = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32"
+)
+_SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_WAVE32 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32"
+)
+_SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_WAVE32_TREE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32"
 )
 _SYMBOL_PREFILL_RMSNORM_GATE = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16"
 _SYMBOL_PREFILL_RMSNORM_GATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16"
@@ -1057,6 +1069,90 @@ def qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32(
     )
 
 
+def qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32(
+    query_raw_ptr: int,
+    key_raw_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the exact recurrence with one wave32 per value column."""
+
+    _qwen35_gdn_prefill_recurrent_decode_order_exact_f32(
+        _SYMBOL_PREFILL_DECODE_ORDER_EXACT_WAVE32,
+        query_raw_ptr,
+        key_raw_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        query_scale_ptr,
+        key_scale_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32(
+    query_raw_ptr: int,
+    key_raw_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the tree-reduced recurrence with one wave32 per value column."""
+
+    _qwen35_gdn_prefill_recurrent_decode_order_exact_f32(
+        _SYMBOL_PREFILL_DECODE_ORDER_WAVE32_TREE,
+        query_raw_ptr,
+        key_raw_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        query_scale_ptr,
+        key_scale_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
     symbol: str,
     query_raw_ptr: int,
@@ -1235,6 +1331,102 @@ def qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32(
 
     _qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
         _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_TILE32,
+        query_raw_ptr,
+        key_raw_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        query_scale_ptr,
+        key_scale_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32(
+    query_raw_ptr: int,
+    key_raw_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the segment-aware exact recurrence with one wave32 per column."""
+
+    _qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
+        _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_WAVE32,
+        query_raw_ptr,
+        key_raw_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        query_scale_ptr,
+        key_scale_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32(
+    query_raw_ptr: int,
+    key_raw_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the segment-aware wave32 tree-reduced recurrence."""
+
+    _qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
+        _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_WAVE32_TREE,
         query_raw_ptr,
         key_raw_ptr,
         value_ptr,
@@ -2036,6 +2228,46 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_decode_order_exact_segments_tile32",
         ),
         qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_decode_order_exact_wave32",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_decode_order_exact_segments_wave32",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_decode_order_wave32_tree",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_decode_order_segments_wave32_tree",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
         replace=replace,
     )
     register(
