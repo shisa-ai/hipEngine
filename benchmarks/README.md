@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`f0d9ac2581c953a0a1c96c10d4aa2a1f3a9828de`
+`cb6211d21c8c32283a217d8d8420c048df09acf3`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -179,8 +179,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
-| Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV fidelity and same-weight GGUF bridge | 2026-07-13 | clean harness `31c12a3a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Accepted quality diagnostic for the named protocol**: Q8_0-vs-F16 KV on identical Q4_K_M weights passes 128K/16 at mean/max KL **0.00521/0.08749**, top-1 **100%**; F16/F16 control is exactly zero. Same-weight hipEngine BF16-vs-llama F16 rejects all-position mean KL at **0.26606** because prompt-final KL is **4.51481**, while its 16 decode rows average **0.000510** and preserve 100% top-1. No performance claim. | Current diagnostic table | Rerun after llama.cpp/hipEngine GGUF prefill math, cache types, model/build, or protocol changes. |
-| Radeon Pro W7900, gfx1100 | hipEngine same-weight GGUF INT8 KV format fidelity | 2026-07-13 | clean `f0d9ac25`; exact Q4_K_M fingerprint; TheRock HIP 7.2.4; forward and reverse candidate orders | **Rejected at 4K transfer**: per-head, group32/Q8_0-shaped, Hadamard group32, and KIVI all pass the fixed mixed 512/8 screen. At 4K/16, per-head has the lowest mean KL at **0.12779** but only **88.24% top-1**; Hadamard has the best top-1 at **94.12%** but mean/max KL **0.25180/4.09533**. Group32 and KIVI reach **0.28106/0.33306 mean KL**. Reverse-order reproduction is per-position exact. Host emulation only; no native or performance claim. | Diagnostic link only | Resume only with a representation/arithmetic change; direct llama.cpp Q8_0 uses a different repeated-token/native-integer protocol. |
+| Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
+| Radeon Pro W7900, gfx1100 | hipEngine same-weight GGUF INT8 KV format fidelity | 2026-07-13 | clean host screen `f0d9ac25`; clean repeated control `a344d32a`; clean native control `cb6211d2`; exact Q4_K_M fingerprint; TheRock HIP 7.2.4 | **Prompt sensitivity dominates and mixed 4K remains rejected**: host per-head/group32/Hadamard all pass repeated 4K/16 near `0.000002` KL, but mixed rows are **0.12779/0.28106/0.25180**. Pure native per-head INT8 likewise moves from **0.000002 KL / 100% top-1** repeated to **0.19038/2.99555 / 88.24% top-1** mixed, reproduced exactly with 0 mirrors and all 10 layers INT8. Direct native arithmetic is **48.98% worse** than BF16 reconstruction for this mixed per-head row, so it is not a general fidelity fix. | Diagnostic link only | Retain per-head/group32/Hadamard as controls; prioritize V-preserving/asymmetric K/V screens and require multi-prompt mixed transfer before native promotion. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
@@ -654,28 +654,39 @@ symmetric group32 has the lowest mean KL:
 The 4K failures are dominated by `decode_3`; Hadamard preserves 16/17 top-1
 rows, while the other formats also miss `decode_4`. A reverse candidate-order
 run reproduces every per-position KL and candidate top-1 exactly, ruling out
-session-reset or ordering contamination. This shows that Q8_0's 32-value scale
-granularity alone does not explain llama.cpp's accepted row: this GGUF screen
-reconstructs BF16 and uses a mixed prompt, whereas llama.cpp uses native direct
-quantized attention and the repeated-token 128K protocol. No row advances to a
-native kernel or 128K gate. Compact evidence:
+session-reset or ordering contamination. Compact evidence:
 [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json).
 
-The protocol-matched llama.cpp calibration makes the scale of that rejection
-clear while preserving important qualifications:
+The exact native follow-up separates prompt content, Q8 K, Q8 V, and host
+reconstruction on the same mixed token IDs:
 
-| 128K/16 comparison | Weight identity within row | Mean / max KL | Top-1 | Gate / interpretation |
-| --- | --- | ---: | ---: | --- |
-| llama.cpp F16 KV vs F16 KV control | Identical Q4_K_M | `0 / 0` | 100% | Deterministic control |
-| llama.cpp Q8_0 KV vs F16 KV | Identical Q4_K_M | **`0.00521 / 0.08749`** | **100%** | Pass; decode-only mean KL `0.0000649` |
-| hipEngine GGUF BF16 KV vs llama.cpp F16 KV | Same exact Q4_K_M file | `0.26606 / 4.51481` | 100% | Reject is localized to prompt-final row; decode-only mean KL `0.000510` |
-| hipEngine PARO INT8 KV vs BF16 KV | Identical W4-PARO | **`0.85128 / 4.97382`** | **41.18%** | Reject; intrinsic long-context drift |
+| Engine / cache arithmetic | Repeated 4K/16 mean KL | Mixed 4K/16 mean / max KL | Mixed top-1 | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| llama.cpp F16/F16 control | — | `0 / 0` | `100%` | Deterministic control |
+| **llama.cpp native Q8_0 K/V** | **`0.00000619`** | **`0.075654 / 1.26009`** | **`94.12%`** | Reject KL |
+| llama.cpp native Q8 K / F16 V | — | `0.096682 / 1.56852` | `94.12%` | Reject KL |
+| llama.cpp native F16 K / Q8 V | — | `0.243219 / 3.99543` | `94.12%` | Reject KL; largest isolated error |
+| hipEngine native per-head INT8 | `0.00000235` | `0.19038 / 2.99555` | `88.24%` | Reject both |
 
-The first, second, and fourth rows are within-engine cache comparisons. The
-third is a cross-engine baseline and does not isolate F16-vs-BF16 storage from
-other arithmetic. Likewise, Q8_0 and per-token/head INT8 are different
-quantizers, and Q4_K_M and W4-PARO are different weight formats; the table is a
-matched protocol comparison, not a direct implementation A/B.
+Mixed input raises llama.cpp full-Q8 mean KL 12,227x. F16/F16 is exactly zero,
+and exact reruns reproduce both llama.cpp full-Q8 and hipEngine native
+per-head results. Q8_0 has no F16 shadow: it writes FP32 K/V to INT8+FP16
+block32 scales, quantizes Q to Q8_1 for integer K dots, and uses FP16 V/softmax
+accumulation on RDNA3. V-only Q8 is worse than K-only, while full Q8 is better
+than either, showing partial K/V error cancellation.
+
+Direct arithmetic is not a universal repair. Native llama.cpp full-Q8 is 73.08%
+lower mean KL than host group32 on mixed input, but still rejects. Native
+hipEngine per-head is 48.98% worse than its host-reconstruction row
+(`0.19038` versus `0.12779`). Therefore no group32/Hadamard native kernel or
+128K gate follows. The prior llama.cpp repeated 128K/16 result
+(`0.00521/0.08749`, 100% top-1) remains mechanically valid only as a saturation
+control; it no longer establishes representative eight-bit fidelity.
+
+The same-weight cross-engine BF16 bridge remains separate: hipEngine GGUF BF16
+versus llama.cpp F16 at repeated 128K/16 rejects aggregate mean/max KL at
+`0.26606/4.51481` because of prompt-final drift, while decode-only mean KL is
+`0.000510` with 100% top-1. It does not isolate cache dtype.
 
 The original free-generation task smoke remains `reference_unscorable` because
 BF16 scored 0/5. A replacement restricted-choice probe provides partial bounded
@@ -690,7 +701,8 @@ Capacity and outcome artifacts:
 [W7900 default-profile 220 Ki diagnostic](results/2026-07-13-w7900-paro-bf16-220ki-capacity.json), and
 [INT8 accuracy outcome](results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json).
 Detailed diagnostics:
-[llama.cpp Q8_0 matched quality](results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[llama.cpp Q8_0 repeated-token matched quality](results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[repeated/mixed prompt and native K/V arithmetic isolation](results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json),
 [same-weight GGUF bridge](results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json),
 [bounded functional check](results/2026-07-13-w7900-paro-int8-kv-functional-mc.json),
 [matched baseline](results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json),

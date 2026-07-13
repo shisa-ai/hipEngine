@@ -110,14 +110,22 @@ BF16-reference-token matched 128K/16 gate rejects at mean/max KL
 `0.85128/4.97382` and 41.18% top-1 agreement. Format and mixed-policy screens
 did not find a candidate that transferred through 4K.
 
-A protocol-matched llama.cpp Q8_0-vs-F16 KV run on identical Q4_K_M weights
-passes 128K/16 at mean/max KL `0.00521/0.08749` and 100% top-1; its F16/F16
-control is exactly zero. This is contextual rather than a direct A/B because
-llama.cpp Q8_0 and hipEngine per-token/head INT8 use different quantizers and
-the PARO weights differ. The same-weight hipEngine-GGUF-BF16 vs
-llama.cpp-F16 bridge preserves 100% top-1: its all-position mean KL `0.26606`
-is caused by a `4.51481` prompt-final row, while the 16 teacher-forced decode
-rows average KL `0.000510`.
+The former llama.cpp Q8_0 pass is now a repeated-token saturation control, not
+representative quality evidence. On identical Q4_K_M weights at exact mixed
+4K/16, native Q8_0 rejects at mean/max KL `0.075654/1.26009` despite 94.12%
+top-1; F16/F16 is exactly zero. K-only and V-only Q8 reach `0.096682` and
+`0.243219` mean KL, while full Q8 benefits from non-additive K/V cancellation.
+The repeated full-Q8 control is only `0.00000619` KL, confirming prompt content
+as the dominant difference.
+
+hipEngine shows the same protocol effect. Host per-head/group32/Hadamard all
+pass repeated 4K/16 near `0.000002` KL but reject mixed at
+`0.12779/0.28106/0.25180`. Pure native per-head INT8 rejects mixed at
+`0.19038/2.99555`, 88.24% top-1, with all ten layers INT8 and no BF16 mirror.
+Direct arithmetic is therefore not a universal fidelity repair. The separate
+same-weight hipEngine-GGUF-BF16 versus llama.cpp-F16 bridge preserves 100%
+top-1; its `0.26606` all-position mean KL is prompt-final dominated, while 16
+decode rows average `0.000510`.
 
 The original five-category free-generation reference is unscorable. In the
 replacement restricted-choice diagnostic, INT8 flips one of two
@@ -128,7 +136,8 @@ for 256K INT8. Memory was measured once; timing is diagnostic.
 
 See the
 [`capacity/fidelity outcome`](benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json),
-[llama.cpp Q8_0 comparison](benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[llama.cpp repeated-token Q8_0 control](benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[repeated/mixed prompt and native arithmetic isolation](benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json),
 [same-weight GGUF bridge](benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json),
 [bounded functional check](benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json),
 [format screen](benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json),
