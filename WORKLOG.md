@@ -153844,3 +153844,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
   fatal-name Ruff (`E9,F821,F822,F823`), and `git diff --check` pass. Native
   multi-prompt BF16-vs-mixed fidelity is the next gate; matched performance and
   physical 256 Ki capacity remain unclaimed.
+
+## 2026-07-14 — Admit declared BF16 prefix in PARO quality audits
+
+- Corrected the script-level PARO K/V memory audit before running native mixed
+  fidelity. Uniform INT8 still rejects any BF16 primary payload, while
+  `tail4_hadamard_group32` now distinguishes the six policy-preserved BF16
+  layers from an invalid BF16 payload on a layer declared INT8; missing scales
+  are checked only on declared INT8 layers. The fixture gate now reuses this
+  single audit implementation.
+- Validation: `11` focused quality-sweep/fixture tests pass, including positive
+  mixed-layout and negative quantized-layer-shadow cases; `py_compile`, fatal
+  Ruff checks, and `git diff --check` pass.
