@@ -377,7 +377,7 @@ select current code without a fresh profile.
 
 | Order | ID | Work | Activation / exit |
 | ---: | --- | --- | --- |
-| 0 | `GPF-M0` | **Default 512 profile, six-shape stress gate, and final right-sized 1+3 rollup complete;** 4K/128K family profiles and matched llama.cpp traces remain | Reprofile only when the next optimization tranche starts; select the next measured family rather than assuming GDN still dominates |
+| 0 | `GPF-M0` | **Complete:** published-route 512/4K full traces, bounded 128K family sample, and matched llama.cpp 512/4K/128K traces | GPF-4 is selected from the measured residual; the full hipEngine 128K trace remains a rocprof lifecycle limitation, not missing selection evidence |
 | 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
 | 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
 | 3 | `GPF-2B` | **Default rejected:** register-resident tree wins wall by 2.266x/2.058x but keeps only 3/10 complete natural 128-step trajectories | Keep as an explicit diagnostic; do not weaken the predeclared gate after failure |
@@ -387,7 +387,7 @@ select current code without a fresh profile.
 | 7 | `GPF-3A` | **Promoted on gfx1151:** share one Q4T16 activation fragment across the existing two 16-column WMMA accumulators | Clean 512/1K/4K full-model prefill +3.11%/+2.42%/+1.94%, exact logits/trajectories, aggregate decode -0.0031%; gfx1100 remains baseline |
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
-| 10 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if a fresh profile makes attention material | Same-shape exact A/B; no short-context regression |
+| 10 | `GPF-4` | **Activated:** apply the existing isolated AOTriton stream policy to GGUF so high-scratch attention does not poison later convolution on the caller queue | Same-shape exact off/on A/B at 512/4K/128K; no short-context regression; retain only if the measured convolution/wall residual falls |
 | 11 | `GPF-5` | Profile remaining dense Q8T16, selected Q4/Q5, router/glue, and host-wall buckets; optimize only the largest eligible family | Exact fixture plus family replay and full wall; do not transfer GPF-3A by analogy |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
@@ -705,11 +705,44 @@ phase. Track that with phase markers and bounded lifecycle tests rather than
 lengthening every performance sweep. Evidence is
 [`2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json).
 
-This tranche is buttoned up. The next optimization tranche starts with a fresh
-512/4K/128K family and host-wall profile of the now-published automatic route,
-plus a matched llama.cpp trace. That profile—not analogy—chooses among
-long-context attention/AOTriton, dense Q8T16, selected Q4/Q5, or router/glue
-and host submission. Token-parallel/prefix GDN remains a high-effort fallback.
+## GPF-M2: Fresh Family Selection
+
+The next tranche began with the required measured profile rather than another
+GDN assumption. At clean published commit `81e2f4b8`, no-warmup one-pass
+prefill-only rocprof runs used the automatic GPF-2D/3A/2E route, cached builds,
+bulk attention, and WMMA prefill. The 512 and 4K traces are complete. A full
+128K trace continued at 100% GPU without completing for approximately 15
+minutes, so it was terminated and replaced with a bounded
+`--collection-period 30:60:1` sample. That sampled process completed normally
+with 333.598 seconds of host prefill. These are family-selection diagnostics,
+not replacements for the published 1+3 throughput rows.
+
+| Family | hipEngine 512 | hipEngine 4K | hipEngine 128K sample | llama.cpp 512 | llama.cpp 4K | llama.cpp 128K |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Exact GDN recurrence | 206.899 ms / 33.39% | 1771.481 ms / 32.83% | 12158.943 ms / 29.29% | 44.180 ms / 9.85% | 330.488 ms / 8.85% | 12784.759 ms / 3.97% |
+| Linear-attention convolution | 13.571 ms / 2.19% | **952.870 ms / 17.66%** | **7337.238 ms / 17.68%** | 4.260 ms / 0.95% | **32.980 ms / 0.88%** | 1088.971 ms / 0.34% |
+| Dense Q8 | 158.982 ms / 25.66% | 844.670 ms / 15.65% | 5133.161 ms / 12.37% | 66.859 ms / 14.91% | 531.345 ms / 14.24% | 16942.774 ms / 5.26% |
+| Selected/raw Q4 | 96.386 ms / 15.56% | 620.630 ms / 11.50% | 3845.752 ms / 9.26% | 141.704 ms / 31.60% | 1173.527 ms / 31.44% | 36479.808 ms / 11.32% |
+| Selected/raw Q5 | 56.298 ms / 9.09% | 391.398 ms / 7.25% | 2542.025 ms / 6.12% | 70.947 ms / 15.82% | 585.011 ms / 15.67% | 18195.281 ms / 5.64% |
+| Full/flash attention | 4.700 ms / 0.76% | 150.316 ms / 2.79% | 5695.609 ms / 13.72% | 6.137 ms / 1.37% | 204.083 ms / 5.47% | 208121.191 ms / 64.56% |
+
+The 128K hipEngine percentages are only the bounded sample and must not be
+compared as absolute milliseconds against llama.cpp's complete trace. Kernel
+sums may also double count overlap across queues. The full 4K comparison is
+nevertheless decisive: hipEngine convolution costs **952.870 ms** versus
+llama.cpp's **32.980 ms**, a **28.89x** gap, while hipEngine's AOTriton core is
+already faster in that trace (**150.316 vs 204.083 ms**). The AOTriton image
+reports the same 2560-byte scratch footprint that triggered PARO's proven
+queue-local downstream convolution cliff. GDN remains the largest raw family,
+but it is the documented high-effort fallback; selected Q4/Q5 and attention
+core are not the largest eligible residual.
+
+GPF-4 is therefore activated: reuse the existing event-linked isolated
+AOTriton stream policy for GGUF, leaving pre/post math on the caller stream.
+Selection evidence is
+[`2026-07-14-gfx1151-gguf-prefill-next-family-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json).
+Promotion still requires exact 512/4K/128K off/on state and logit gates plus a
+balanced full-wall A/B; profile evidence alone does not make the route default.
 
 ## Correctness And Promotion Contract
 
@@ -906,15 +939,22 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   an independent fresh-graph/session lifecycle soak with unknown subphase.
   Do not rerun the full model sweep to investigate it; first add phase markers
   and bounded lifecycle-only coverage.
+- GPF-M2's fresh traces select GPF-4. At 4K, hipEngine convolution is
+  **952.870 ms / 17.66%** versus llama.cpp **32.980 ms / 0.88%**; the bounded
+  128K hipEngine sample keeps convolution at **17.68%**. The candidate is
+  scheduling-only GGUF AOTriton queue isolation, not another GDN rewrite.
 - No benchmark process is intentionally left running. The optimization
-  implementation tranche is paused after documentation/publication closure.
+  implementation tranche is active at GPF-4.
 
-When work resumes, first profile the published automatic route at 512, 4K,
-and 128K and obtain a matched llama.cpp trace. Select the largest measured
-eligible residual among long-context attention/AOTriton, dense Q8T16,
-selected Q4/Q5, or router/glue/host wall. Keep token-parallel/prefix GDN as a
-high-effort fallback. Validate any shared-default transfer independently on
-gfx1100; a gfx1151-only exact win may remain architecture-scoped.
+The required fresh profile is complete: 512/4K use full hipEngine and matched
+llama.cpp traces, 128K uses a bounded hipEngine family sample plus a complete
+llama.cpp trace. It selects GPF-4's GGUF AOTriton queue isolation because the
+4K convolution residual is 28.89x llama.cpp and remains 17.68% of the bounded
+128K sample. Next implement that scheduling-only candidate and run exact
+512/4K/128K off/on state/logit plus balanced wall gates. Keep token-parallel /
+prefix GDN as the high-effort fallback. Validate any shared-default transfer
+independently on gfx1100; a gfx1151-only exact win may remain
+architecture-scoped.
 
 ## Document Ownership
 

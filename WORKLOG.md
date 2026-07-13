@@ -153973,3 +153973,43 @@ graphless decode launch-collapse path without regressing target/serial parity.
   flash attention, no warmup, and one traced prefill-only repetition. Their
   family evidence will be recorded with the hipEngine profile-selection
   artifact after the current-route 128K profile is available.
+
+## 2026-07-14 - GPF-M2 profiles select GGUF AOTriton queue isolation
+
+- Profiled clean published commit `81e2f4b8` on Radeon 8060S/gfx1151 with
+  TheRock HIP 7.15, Qwen3.6-35B-A3B UD-Q4_K_M/BF16 KV, cached builds, bulk
+  attention, WMMA prefill, no warmup, one measured prefill-only run, and no
+  decode. The 512/4K full rocprof traces report **619.556/5396.575 ms** over
+  **2009/5495** dispatches. Their leading families are:
+  - 512: exact GDN **206.899 ms / 33.39%**, dense Q8 **158.982 / 25.66%**,
+    selected Q4 **96.386 / 15.56%**, selected Q5 **56.298 / 9.09%**, and
+    convolution **13.571 / 2.19%**;
+  - 4K: exact GDN **1771.481 ms / 32.83%**, convolution
+    **952.870 / 17.66%**, dense Q8 **844.670 / 15.65%**, selected Q4
+    **620.630 / 11.50%**, and selected Q5 **391.398 / 7.25%**.
+- A complete 128K hipEngine trace stayed at 100% GPU without completing for
+  approximately 15 minutes under rocprof and was terminated. A clean bounded
+  replacement used `rocprofv3 --kernel-trace --collection-period 30:60:1`
+  around the identical command. It completed normally with **333.598 s** host
+  prefill / **392.904 diagnostic tok/s**. Its 60-second sample contains
+  **41.511 s** of kernel duration: exact GDN **29.29%**, convolution
+  **17.68%**, attention **13.72%**, dense Q8 **12.37%**, selected Q4 **9.26%**,
+  and selected Q5 **6.12%**. The percentages are a sample and kernel sums may
+  double-count overlapping queues; this is not a throughput claim.
+- Matched local `llama.cpp-hip@1ebf790c` complete traces used `llama-bench -ngl
+  99 -fa 1 -ctk f16 -ctv f16 -r 1 --no-warmup -o json -p N -n 0 -d 0 -dev
+  ROCm0`. At 512/4K/128K they measure **448.373/3732.516/322358.176 ms** of
+  kernels and **935.338/1061.683/404.372 diagnostic tok/s**. Convolution is
+  **4.260/32.980/1088.971 ms**, only **0.95%/0.88%/0.34%**.
+- The full 4K hipEngine convolution residual is therefore **28.89x** llama.cpp
+  (**952.870 vs 32.980 ms**) while hipEngine's attention core is already faster
+  in that trace (**150.316 vs 204.083 ms**). Its AOTriton image reports the
+  same **2560-byte scratch** footprint as PARO's proven queue-local downstream
+  convolution cliff. GDN remains the larger raw family but is the documented
+  high-effort fallback. GPF-4 is activated to reuse the existing isolated
+  AOTriton stream policy for GGUF, with exact off/on state/logit and balanced
+  512/4K/128K wall gates required before promotion.
+- Compact non-performance artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json`.
+  It records exact command templates, family data, caveats, and SHA-256 hashes
+  for all six retained trace CSVs.
