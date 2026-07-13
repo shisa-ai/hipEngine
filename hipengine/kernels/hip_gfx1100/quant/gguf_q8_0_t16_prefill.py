@@ -10,8 +10,8 @@ whose contiguous 16-column tile slabs have a different best tile balance.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
-from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
@@ -24,6 +24,9 @@ _Q8_0_QK = 32
 _T16_COLS = 16
 
 _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
+
+_TWO_WAVE_VARIANT = "wmma_prefill_2wave_bf16_bf16_out"
+_TWO_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE"
 
 _VARIANTS: tuple[str, ...] = (
     "wmma_prefill_bf16_bf16_out",
@@ -123,6 +126,18 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     return tile_m, tile_n
 
 
+def _two_wave_prefill_applies(*, tile_m: int, tile_n: int, out_features: int) -> bool:
+    """Return whether the explicit GPF-5A diagnostic covers this tile."""
+
+    enabled = os.environ.get(_TWO_WAVE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
+
+
 def _symbol_for_variant(variant: str) -> str:
     return f"hipengine_gguf_q8_0_t16_{variant}"
 
@@ -144,16 +159,29 @@ def _make_wrapper(variant: str):
         library: ctypes.CDLL | None = None,
         runtime: HipRuntime | None = None,
     ) -> None:
+        resolved_tile_m, resolved_tile_n = _default_tiles(rows, in_features, out_features)
+        if tile_m is not None:
+            resolved_tile_m = tile_m
+        if tile_n is not None:
+            resolved_tile_n = tile_n
+        selected_symbol = symbol
+        if variant == "wmma_prefill_bf16_bf16_out" and _two_wave_prefill_applies(
+            tile_m=resolved_tile_m,
+            tile_n=resolved_tile_n,
+            out_features=out_features,
+        ):
+            selected_symbol = _symbol_for_variant(_TWO_WAVE_VARIANT)
+            resolved_tile_m = 64
         _launch(
-            symbol,
+            selected_symbol,
             x_ptr,
             tiles_ptr,
             out_ptr,
             rows,
             in_features,
             out_features,
-            tile_m=tile_m,
-            tile_n=tile_n,
+            tile_m=resolved_tile_m,
+            tile_n=resolved_tile_n,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -166,6 +194,38 @@ def _make_wrapper(variant: str):
 
 
 _WRAPPER_CACHE: dict[str, object] = {variant: _make_wrapper(variant) for variant in _VARIANTS}
+
+
+def gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the GPF-5A two-wave activation-sharing diagnostic."""
+
+    _launch(
+        _symbol_for_variant(_TWO_WAVE_VARIANT),
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        tile_m=64 if tile_m is None else tile_m,
+        tile_n=(32 if rows >= 32 else 16) if tile_n is None else tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def __getattr__(name: str):
@@ -254,6 +314,17 @@ def register_gguf_q8_0_t16_prefill_kernels(*, replace: bool = True) -> None:
     alone.
     """
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q8_0_t16_v1",
+            _TWO_WAVE_VARIANT,
+        ),
+        gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
+        replace=replace,
+    )
+
     for variant in _VARIANTS:
         fn = _WRAPPER_CACHE[variant]
         register(
@@ -288,4 +359,5 @@ __all__ = [
     "build_gguf_q8_0_t16_prefill",
     "plan_gguf_q8_0_t16_prefill_build",
     "register_gguf_q8_0_t16_prefill_kernels",
+    "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

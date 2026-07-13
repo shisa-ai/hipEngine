@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf5a_candidate_focus",
+  "status": "candidate_positive_pending_clean_commit_gate",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "db5d070a",
+  "candidate": {
+    "id": "GPF-5A",
+    "family": "dense Q8T16 WMMA prefill",
+    "selector": "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=1",
+    "default": false,
+    "scope": "BF16 input/output, default 32x32 or 64x32 tiles, output width >=2048"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "kernel": "gguf_q8_0_t16_prefill_wmma_2wave_kernel<32>",
+    "workgroup_threads": 64,
+    "waves_per_block": 2,
+    "output_columns_per_wave": 32,
+    "output_columns_per_block": 64,
+    "activation_sharing": "Wave 0 converts each BF16 activation row once into one bounded FP16 LDS tile; both waves copy their unchanged 32xTN WMMA operands before overwrite.",
+    "math_contract": "Each wave preserves the production 32-column K/block/WMMA/FP32 accumulation and BF16 store order."
+  },
+  "correctness": {
+    "unit": "All 79 Q8T16 prefill tests pass; GPF-5A cases cover tail rows and 64/80/128 output widths byte-for-byte versus production 32x32.",
+    "full_state_protocol": "Separate off/on processes at repeated token 9707; compare FP32 logits, FP32 hidden seed, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs.",
+    "contexts": {
+      "512": {"token_ids": [9707, 9707], "parts_compared": 82, "all_parts_exact": true, "aggregate_sha256": "6659d4f8a4130a3b5b0aa8a12dfbbb0ee74edcd9d74989a4d02cbf4b5eb20622"},
+      "4096": {"token_ids": [9707, 9707], "parts_compared": 82, "all_parts_exact": true, "aggregate_sha256": "24eb7b4730ce6f775b2294a8e30a246ee77026eab05f29bb3faebd4694b7370c"}
+    },
+    "local_artifacts": {
+      "off": {"path": "/tmp/gpf5a-exact-off.json", "sha256": "9d22061859d43a6a70a53288f51b691dbbad59486340a55aaee9962b2cb596f0"},
+      "on": {"path": "/tmp/gpf5a-exact-on.json", "sha256": "1475754b8fe655bde8d8c4be3d444505320ab7ce20220eb93fbd1842a782faf7"}
+    }
+  },
+  "microbench": {
+    "protocol": "Three cycling weight copies, interleaved/rotated baseline32x32, baseline64x32, and candidate two-wave legs; HIP events; candidate bytes exact.",
+    "1024x2048x8192": {
+      "baseline32x32_median_ms": 2.008101463317871,
+      "baseline64x32_median_ms": 2.2038686275482178,
+      "candidate_median_ms": 1.6833912134170532,
+      "candidate_delta_percent": -16.17001211504112,
+      "local_artifact_sha256": "a8f2a730718229a18d6c073b097838773f786c4e6a34ea274cf788a3d17c713b"
+    },
+    "4096x2048x8192": {
+      "baseline32x32_median_ms": 8.003748893737793,
+      "baseline64x32_median_ms": 8.192403793334961,
+      "candidate_median_ms": 6.692026138305664,
+      "candidate_delta_percent": -16.38885443368211,
+      "local_artifact_sha256": "9cef1f855ad77bd05c4653e3ec00c364354175be02f9e57afcef240cbb914fb5"
+    }
+  },
+  "profiler_smoke": {
+    "kernel_name": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_2wave_kernel<32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+    "workgroup_size_x": 64,
+    "grid_size_x": 128,
+    "grid_size_y": 1,
+    "vgpr_count": 80,
+    "sgpr_count": 128,
+    "scratch_size": 0,
+    "lds_block_size": 1024,
+    "duration_ns_observed": [11341, 10821, 11141, 11382],
+    "local_trace_sha256": "db9fde08a4fe96a341f5bf1486484f7d7665e17611b68883556b118d3fefd00e"
+  },
+  "dirty_fresh_process_focus": {
+    "protocol": "One discarded warmup plus three measured prefill-only runs in a fresh process per context/mode; 512 order off/on and 4K order on/off; cached builds; no decode.",
+    "512": {
+      "off_samples_tok_s": [799.6593688761512, 820.8171424069791, 820.887734678003],
+      "on_samples_tok_s": [868.5298068099214, 893.8397087219739, 894.1429848456646],
+      "off_median_tok_s": 820.8171424069791,
+      "on_median_tok_s": 893.8397087219739,
+      "candidate_delta_percent": 8.89632569086729,
+      "tracked_peak_gib_off_on": [21.477776296436787, 21.477776296436787],
+      "final_token_ids_exact": true,
+      "off_artifact_sha256": "49c7da2111362d95aae91e2b46cf259694050b2da832fa0a15f9ebf0fb033dd0",
+      "on_artifact_sha256": "20fdf6e935e675fb5128ab906dcd1155b7b60bdd235c1d536d64b1f9d1134876"
+    },
+    "4096": {
+      "off_samples_tok_s": [747.1769259718073, 747.7941205355858, 746.6180820687838],
+      "on_samples_tok_s": [766.4162622508608, 764.3683884735029, 764.8584306188143],
+      "off_median_tok_s": 747.1769259718073,
+      "on_median_tok_s": 764.8584306188143,
+      "candidate_delta_percent": 2.3664414722135207,
+      "tracked_peak_gib_off_on": [22.99488216638565, 22.99488216638565],
+      "final_token_ids_exact": true,
+      "off_artifact_sha256": "6165d23390de68b4d9670bbfae42d8171185e243faba185d1ca3f7e4f250728b",
+      "on_artifact_sha256": "58d1bdebbcd7c8f79e72e3ee9bb4fc354c3160a2ec18cb9f1736d773d33cd28a"
+    }
+  },
+  "decision": {
+    "commit_default_off": true,
+    "promote_default": false,
+    "reason": "Exactness, resource, micro, and dirty fresh-process focus gates are positive. Clean detached confirmation is required before architecture capability promotion.",
+    "next": "Commit the callable diagnostic and evidence, then repeat clean exact/focus gates from the detached commit."
+  }
+}

@@ -257,6 +257,154 @@ __global__ void gguf_q8_0_t16_prefill_wmma_kernel(
   }
 }
 
+// GPF-5A diagnostic: pair two order-preserving 32-column waves in one block
+// and convert/load each activation tile once through bounded LDS. Each wave
+// keeps the production 32xTN accumulator and K traversal unchanged.
+template <int AWQ_TILE_N>
+__launch_bounds__(64, 4)
+__global__ void gguf_q8_0_t16_prefill_wmma_2wave_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  constexpr int WAVE_TILE_M = 32;
+  constexpr int TM = WAVE_TILE_M / 16;
+  constexpr int TN = AWQ_TILE_N / 16;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int wave_lane = tid & 31;
+  const int lane16 = wave_lane & 15;
+  const int row_start = blockIdx.y * AWQ_TILE_N;
+  const int block_out_start = blockIdx.x * 64;
+  const int out_start = block_out_start + wave * WAVE_TILE_M;
+  if (row_start >= rows || block_out_start >= out_features) return;
+
+  const int blocks_per_row = in_features / Q8_0_QK;
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn) {
+      acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+  }
+
+  __shared__ half16_t activation_tile[AWQ_TILE_N];
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const int g_k_base = blk * Q8_0_QK;
+#pragma unroll
+    for (int kt = 0; kt < K_TILES_PER_BLOCK; ++kt) {
+      const int k_off = kt * K_TILE;
+      if (wave == 0 && wave_lane < AWQ_TILE_N) {
+        const int token = row_start + wave_lane;
+        const int safe = (token < rows) ? token : (rows - 1);
+        activation_tile[wave_lane] = load_act_half16<uint16_t>(
+            x + static_cast<int64_t>(safe) * in_features + g_k_base + k_off);
+      }
+      __syncthreads();
+
+      half16_t b_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        b_reg[tn] = activation_tile[tn * 16 + lane16];
+      }
+      // Every wave has copied the shared tile before wave 0 may overwrite it
+      // for the next K tile.
+      __syncthreads();
+
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+        const int slab_base = out_start + tm * 16;
+        const bool slab_in_range = slab_base < out_features;
+        const uint8_t* tile_ptr = slab_in_range
+            ? q8_t16_tile_ptr(tiles, slab_base / T16_COLS, blk, blocks_per_row)
+            : tiles;
+        const half_t d_h = slab_in_range
+            ? static_cast<half_t>(fp16_bytes_to_float(
+                  tile_ptr + Q8_0_T16_D_OFFSET + lane16 * 2))
+            : static_cast<half_t>(0.0f);
+        const uint8_t* qs_base = tile_ptr + Q8_0_T16_Q_OFFSET;
+        half16_t a_reg;
+        if (slab_in_range) {
+#pragma unroll
+          for (int kk = 0; kk < 16; ++kk) {
+            const int8_t q = static_cast<int8_t>(
+                qs_base[(k_off + kk) * T16_COLS + lane16]);
+            a_reg[kk] = d_h * static_cast<half_t>(static_cast<float>(q));
+          }
+        } else {
+#pragma unroll
+          for (int kk = 0; kk < 16; ++kk) {
+            a_reg[kk] = static_cast<half_t>(0.0f);
+          }
+        }
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_reg, b_reg[tn], acc[tm][tn]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int out_row = row_start + tn * 16 + lane16;
+    if (out_row >= rows) continue;
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int col = out_start + tm * 16 + 2 * j + (wave_lane >> 4);
+        if (col < out_features) {
+          const int64_t idx =
+              static_cast<int64_t>(out_row) * out_features + col;
+          store_output<uint16_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+        }
+      }
+    }
+  }
+}
+
+int launch_gguf_q8_0_t16_prefill_wmma_2wave(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % Q8_0_QK) != 0 ||
+      (out_features % T16_COLS) != 0 ||
+      tile_m != 64 || (tile_n != 16 && tile_n != 32)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 63) / 64),
+      static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
+  if (tile_n == 16) {
+    hipLaunchKernelGGL(
+        (gguf_q8_0_t16_prefill_wmma_2wave_kernel<16>),
+        grid, block, 0, stream, x, tiles, out,
+        static_cast<int>(rows), static_cast<int>(in_features),
+        static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL(
+        (gguf_q8_0_t16_prefill_wmma_2wave_kernel<32>),
+        grid, block, 0, stream, x, tiles, out,
+        static_cast<int>(rows), static_cast<int>(in_features),
+        static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t>
 int launch_gguf_q8_0_t16_prefill_wmma(
     const scalar_t* x,
@@ -331,3 +479,17 @@ HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(fp16, half_t, f32, float)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, bf16, uint16_t)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, fp16, half_t)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, f32, float)
+
+extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_t16_prefill_wmma_2wave(
+      x, tiles, out, rows, in_features, out_features, tile_m, tile_n, stream);
+}

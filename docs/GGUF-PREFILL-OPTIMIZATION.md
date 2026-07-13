@@ -388,7 +388,7 @@ select current code without a fresh profile.
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
-| 11 | `GPF-5` | **Selected:** dense Q8T16 WMMA prefill; first candidate is two 32-column waves sharing one activation tile | Largest eligible family at 25.66%/15.65% of 512/4K traced kernels; existing 32x32 tile remains the measured winner, so change schedule rather than heuristic |
+| 11 | `GPF-5` | **GPF-5A candidate positive, default-off:** two exact 32-column Q8T16 waves share one activation tile | 80 VGPR/1 KiB LDS/zero scratch; real-shape micro -16.17%/-16.39%; dirty fresh-process 512/4K +8.90%/+2.37%; clean detached gate remains |
 | 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
 
 There is no invented minimum full-model percentage. Under the project evidence
@@ -851,6 +851,27 @@ BF16-to-FP16 activation tile through bounded LDS. The first gate requires exact
 bytes, no scratch, profiler-confirmed 64-thread/two-wave geometry, and a paired
 real-shape micro win before any model routing.
 
+The callable/default-off candidate passes that gate. Tail-row/output fixtures
+are byte-exact to production `32x32`; a profiler smoke records **64 threads,
+80 VGPR, 128 SGPR, 1 KiB LDS, and zero scratch**. Interleaved cycling-pool
+microbench medians improve **2.008 -> 1.683 ms (-16.17%)** at 1K rows and
+**8.004 -> 6.692 ms (-16.39%)** at 4K rows on `2048x8192`. Fresh-process
+full-model 1+3 focus is also positive:
+
+| Context | Default tok/s | GPF-5A tok/s | Delta | Peak off/on GiB |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 820.817 | 893.840 | **+8.90%** | 21.478 / 21.478 |
+| 4K | 747.177 | 764.858 | **+2.37%** | 22.995 / 22.995 |
+
+Every timed token is `9707`. Separate-process differential capture compares
+FP32 logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V
+pairs: **82/82 parts are byte-exact** at both 512 and 4K. This dirty-worktree
+focus is implementation evidence, not a retained performance claim. Candidate
+evidence is
+[`2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json).
+Next commit it default-off and repeat exact/focus gates from the clean detached
+commit before package-capability promotion.
+
 Selection evidence is
 [`2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5-family-selection.json).
 The external lineage checkout is absent in this environment, so the required
@@ -1056,17 +1077,18 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   and often fast, but automatic-route 32K includes a **294.254 tok/s** collapse,
   the 1+5 replacement stalls before warmup completion, and 128K measured run 2
   remains GPU-active beyond **1200 s**. A same-stream control is healthy.
+- GPF-5A is implemented default-off. It is byte-exact, profiles at 80 VGPR /
+  1 KiB LDS / zero scratch, improves real-shape micros by 16.17%-16.39%, and
+  improves dirty fresh-process 512/4K prefill by **8.90%/2.37%** with unchanged
+  memory. Clean detached validation remains.
 - No benchmark process is intentionally left running. The published GPF-2E
-  row remains canonical; GPF-5 profile-driven selection is next.
+  row remains canonical until GPF-5A passes its clean gate.
 
-The required profile and GPF-4 disposition are complete. Keep the isolated
-stream implementation explicit/default-off for diagnostics, keep both backend
-package capabilities unset, and do not publish its attractive fast samples.
-GPF-5 reuses the complete fresh traces and selects dense Q8T16 at
-25.66%/15.65% of 512/4K traced kernels. The existing `32x32` tile is already
-the measured real-shape winner. Implement GPF-5A as a callable two-wave
-activation-sharing diagnostic, and do not route it before exact micro/profile
-gates. Token-parallel/prefix GDN remains the high-effort fallback.
+Keep GPF-4 explicit/default-off. Commit GPF-5A as a callable default-off
+candidate, then repeat 512/4K exact state and fresh-process 1+3 from the clean
+detached commit. Only clean evidence may add a gfx1151 package capability;
+gfx1100 remains unchanged pending hardware-local transfer. Token-parallel/
+prefix GDN remains the high-effort fallback.
 
 ## Document Ownership
 
