@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_paro_bf16_context_frontier",
+  "date": "2026-07-13",
+  "status": "208ki_recommended_220ki_edge_validated",
+  "performance_claim": false,
+  "capacity_claim": true,
+  "recommendation": {
+    "practical_safe_context_tokens": 212992,
+    "practical_safe_context_label": "208 Ki tokens",
+    "maximum_physically_validated_context_tokens": 225280,
+    "maximum_physically_validated_context_label": "220 Ki tokens",
+    "exact_frontier_known": false,
+    "untested_interval_tokens": "212993-225279",
+    "basis": "On the physical 24 GB RX 7900 XTX, the current automatic low-memory profile completes 208 Ki/128 at 23.623 GiB whole-device peak with 0.361 GiB free. 220 Ki/128 also completes, but peaks at 23.908 GiB with only 81,764,352 bytes (0.076 GiB, about 78 MiB) free, so it is an edge validation rather than a safe operating recommendation.",
+    "safety_margin_policy": "Recommend the largest directly tested point retaining at least 0.25 GiB of full-run approximately 1 Hz observed whole-device headroom; this is an operational recommendation, not a universal allocation guarantee.",
+    "conservative_200ki_statement": "200 Ki or 200,000 tokens is below the directly validated 208 Ki recommendation and is therefore within the measured context envelope under the same 24 GB low-memory profile."
+  },
+  "hardware": {
+    "capacity_target": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "physical_vram_bytes": 25753026560,
+      "physical_vram_gib": 23.984375
+    },
+    "screening_gpu": {
+      "gpu": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "physical_vram_bytes": 48301604864,
+      "physical_vram_gib": 44.984375
+    }
+  },
+  "source": {
+    "hipengine_commit": "5a49b16daef0f55f81b4624109586493b3311bdc",
+    "branch": "kv-int8-accuracy",
+    "all_retained_rows_source_clean": true,
+    "backend": "hip_gfx1100",
+    "model": "Qwen3.6-35B-A3B-PARO-packed",
+    "quant": "w4_paro",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "rocm_version": "7.2.4",
+    "cached_compiler_version": "HIP version: 7.15.0-0000000",
+    "cached_compiler_version_file": "/tmp/hipengine-w7900-v030/capacity/hipcc-version.txt",
+    "cached_compiler_version_file_sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7"
+  },
+  "protocol": {
+    "prompt_source": "token 9707 repeated",
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "max_layers": 40,
+    "kv_storage_dtype": "bf16",
+    "graph_replay_decode": true,
+    "require_cached_build": true,
+    "device_peak_monitor": "rocm-smi --showmeminfo vram approximately once per second for the complete benchmark child lifetime",
+    "capacity_pass_requirements": [
+      "benchmark exits zero",
+      "generated logits are finite",
+      "BF16 KV layout audit passes",
+      "observed whole-device peak is below the physical target device's 25,753,026,560-byte capacity"
+    ],
+    "safe_recommendation_additional_requirement": "at least 0.25 GiB observed whole-device headroom at a directly tested point"
+  },
+  "key_commands": {
+    "physical_208ki": "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 212992 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-frontier-20260713/208ki-xtx-clean/paro-212992-bf16.json",
+    "physical_220ki": "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 225280 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-frontier-20260713/220ki-xtx-clean/paro-225280-bf16.json",
+    "232ki_low_memory_screen": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 237568 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-frontier-20260713/232ki-lowchunks-clean/paro-237568-bf16.json --prefill-linear-chunk-size 768 --prefill-moe-chunk-size 768 --prefill-full-attn-query-chunk-size 768 --prefill-full-attn-post-chunk-size 768 --prefill-full-attn-rope-chunk-size 768"
+  },
+  "rows": [
+    {
+      "label": "W7900 default 176 Ki screen",
+      "hardware": "AMD Radeon Pro W7900",
+      "prompt_tokens": 180224,
+      "chunk_profile": "1024/1024/4096/1024/1024",
+      "tracked_peak_gib": 23.03346087411046,
+      "observed_device_peak_gib": 23.779399871826172,
+      "margin_vs_physical_24gb_gib": 0.20497512817382812,
+      "retained_kv_bytes": 3696230400,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Would fit the physical byte capacity but with only 0.205 GiB headroom under the W7900 default chunk profile."
+    },
+    {
+      "label": "W7900 default 184 Ki screen",
+      "hardware": "AMD Radeon Pro W7900",
+      "prompt_tokens": 188416,
+      "chunk_profile": "1024/1024/4096/1024/1024",
+      "tracked_peak_gib": 23.2255386300385,
+      "observed_device_peak_gib": 23.970989227294922,
+      "margin_vs_physical_24gb_gib": 0.013385772705078125,
+      "retained_kv_bytes": 3864002560,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Only 14,372,864 bytes below the target card capacity; not safe."
+    },
+    {
+      "label": "W7900 default 200 Ki screen",
+      "hardware": "AMD Radeon Pro W7900",
+      "prompt_tokens": 204800,
+      "chunk_profile": "1024/1024/4096/1024/1024",
+      "tracked_peak_gib": 23.60969414189458,
+      "observed_device_peak_gib": 24.355594635009766,
+      "margin_vs_physical_24gb_gib": -0.3712196350097656,
+      "retained_kv_bytes": 4199546880,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Tracked allocator is below 24 GiB, but default-profile whole-device use is above a physical 24 GB card."
+    },
+    {
+      "label": "Physical 24 GB low-memory 176 Ki",
+      "hardware": "AMD Radeon RX 7900 XTX",
+      "prompt_tokens": 180224,
+      "chunk_profile": "768/768/768/768/768 automatic low_memory_full_context_24gb",
+      "tracked_peak_gib": 22.315131321549416,
+      "observed_device_peak_gib": 22.85735321044922,
+      "margin_vs_physical_24gb_gib": 1.1270217895507812,
+      "retained_kv_bytes": 3696230400,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Direct physical-card pass with substantial margin."
+    },
+    {
+      "label": "Physical 24 GB low-memory 208 Ki",
+      "hardware": "AMD Radeon RX 7900 XTX",
+      "prompt_tokens": 212992,
+      "chunk_profile": "768/768/768/768/768 automatic low_memory_full_context_24gb",
+      "tracked_peak_bytes": 24783806096,
+      "tracked_peak_gib": 23.08171810209751,
+      "observed_device_peak_bytes": 25364897792,
+      "observed_device_peak_gib": 23.622901916503906,
+      "physical_margin_bytes": 388128768,
+      "margin_vs_physical_24gb_gib": 0.36147308349609375,
+      "retained_kv_bytes": 4367319040,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Direct physical-card pass and recommended practical safe cap."
+    },
+    {
+      "label": "Physical 24 GB low-memory 220 Ki",
+      "hardware": "AMD Radeon RX 7900 XTX",
+      "prompt_tokens": 225280,
+      "chunk_profile": "768/768/768/768/768 automatic low_memory_full_context_24gb",
+      "tracked_peak_bytes": 25092530000,
+      "tracked_peak_gib": 23.369239643216133,
+      "observed_device_peak_bytes": 25671262208,
+      "observed_device_peak_gib": 23.908226013183594,
+      "physical_margin_bytes": 81764352,
+      "margin_vs_physical_24gb_gib": 0.07614898681640625,
+      "retained_kv_bytes": 4618977280,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Direct physical-card pass, but only about 78 MiB remains; edge validation, not a safe cap."
+    },
+    {
+      "label": "W7900 manual low-memory 232 Ki screen",
+      "hardware": "AMD Radeon Pro W7900",
+      "prompt_tokens": 237568,
+      "chunk_profile": "768/768/768/768/768 manual",
+      "tracked_peak_gib": 23.656761184334755,
+      "observed_device_peak_gib": 24.162757873535156,
+      "margin_vs_physical_24gb_gib": -0.17838287353515625,
+      "retained_kv_bytes": 4870635520,
+      "layout_audit_passed": true,
+      "finite_generated_logits": true,
+      "interpretation": "Low-memory-profile screen exceeds the target card capacity; 232 Ki is rejected without risking an OOM run on the 24 GB card."
+    }
+  ],
+  "raw_diagnostics": [
+    {
+      "label": "w7900_default_176ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/176ki-clean/paro-180224-bf16.json",
+      "raw_sha256": "1cdb651c537a13b8c0c749f3dbddaf1f10e8ce09baf0d9b43ebe0150e95620d6",
+      "monitor_summary_sha256": "ce9a296edbd753252d94e5b9dde81a2a5feb3302adc03c306a41bd3b50ef9069",
+      "monitor_samples_sha256": "5ef9345173bb14081c8350fcda29522dd91bc0d9d202f05f4da65aef3f3d4f4e"
+    },
+    {
+      "label": "w7900_default_184ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/184ki-clean/paro-188416-bf16.json",
+      "raw_sha256": "10262e06c742e73f7c906d1c2f5ac558808266a247fdc837af9b6bd5273906af",
+      "monitor_summary_sha256": "c9142d966cb105b45452a10495d8c051e2151f349d331b4ac171bd03ae16b77d",
+      "monitor_samples_sha256": "c683cd5174297f58cc92230b566a9e9b4c228b0ce535576ea9eec68e1b0f16da"
+    },
+    {
+      "label": "w7900_default_200ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/200ki-clean/paro-204800-bf16.json",
+      "raw_sha256": "0969a29a4c82dcf79202d4820bb217833b6282eb57562aea2375c92452381bb3",
+      "monitor_summary_sha256": "796de2ec4ce86b8d39010e5b7d6aabc6f93a6cdd3ea623ef26ed014d81dbae53",
+      "monitor_samples_sha256": "fffb4ebfcacbdd6daf61dac531255f287c449124939b5cccf8b687d968b23447"
+    },
+    {
+      "label": "rx7900xtx_lowmem_176ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/176ki-xtx-clean/paro-180224-bf16.json",
+      "raw_sha256": "78730a3ef8385a03e17901759f43914c65ba3e1ed6a711e01729068be3ff0c11",
+      "monitor_summary_sha256": "409fec947febe891fa0fb39cd8cb6df5ad26afd91299b49cabe3956c7d539a0f",
+      "monitor_samples_sha256": "8d8ed5cce2dd44984f1fa8bd28ea3a36996ce6450b628c6ebbf93a3330d80daf"
+    },
+    {
+      "label": "rx7900xtx_lowmem_208ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/208ki-xtx-clean/paro-212992-bf16.json",
+      "raw_sha256": "aa3d1198ae97c71497427031691f4cd1b022305042e42a3cc6cd92018fc4d062",
+      "monitor_summary_sha256": "292f71ef7d2e5024907ad2209ebc86b1a3bdfcfca83b9c9b40cd05bd84005b0a",
+      "monitor_samples_sha256": "76182a45f686b55c58ad1199dd5971e8cffef5303bee646d9f60bcccca40eb59"
+    },
+    {
+      "label": "rx7900xtx_lowmem_220ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/220ki-xtx-clean/paro-225280-bf16.json",
+      "raw_sha256": "f898b6b78358a60576b63450e5840efcd7a3ae7905fdcab71a5ff13dda848794",
+      "monitor_summary_sha256": "8ef35ce07c2a8a3ece7fdc68229e244bf56a7d25c7b686af7db4449689c641c0",
+      "monitor_samples_sha256": "c52ad4646dcfab9f8bbedd54a29560a09680870d104a3f57b5d0999ac197e96b"
+    },
+    {
+      "label": "w7900_manual_lowmem_232ki",
+      "raw_path": "/tmp/hipengine-bf16-frontier-20260713/232ki-lowchunks-clean/paro-237568-bf16.json",
+      "raw_sha256": "92203f20839c5110ab7d5031edb06c7f1765ab4d296506f72282ba1bf5f39ad8",
+      "monitor_summary_sha256": "ba2205ce2e31ebec41918fa98481793337574156b3e626508cfe1472ec4b52fd",
+      "monitor_samples_sha256": "df005a3a3e34c26ef214cdca902be5c2c73711eff2777b2492667c355cbed96a"
+    }
+  ],
+  "notes": [
+    "The W7900 default-profile rows use 1024 linear/MoE/post/RoPE and 4096 full-attention query chunks because the 48 GB device does not trigger the low-memory policy. They must not be used alone to predict actual 24 GB behavior.",
+    "The physical RX 7900 XTX rows automatically select all-768 chunks through low_memory_full_context_24gb. This is why 208 Ki and even 220 Ki can physically complete although the W7900 default 200 Ki and 220 Ki observations exceed the target-card capacity.",
+    "Some independent-GPU runs overlapped in wall time. Capacity is per-device and no other KFD process used the measured GPU; throughput remains diagnostic and is not promoted.",
+    "No tested run segfaulted. The 232 Ki physical-card run was intentionally not attempted because the same 768-row profile already exceeded the target byte capacity in the W7900 screen."
+  ]
+}
