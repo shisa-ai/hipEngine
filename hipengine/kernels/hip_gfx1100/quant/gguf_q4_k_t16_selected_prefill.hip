@@ -322,6 +322,115 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
   }
 }
 
+// GPF-3A diagnostic: keep the two 16-column WMMA accumulators live together
+// so both halves of the existing 32-column output tile consume one activation
+// load.  The baseline kernel places `tm` outside the K loop and therefore
+// reloads the identical compact activation fragment twice.  Each accumulator
+// below sees the same K iteration and WMMA order as baseline; only the shared
+// activation load and independent instruction scheduling change.
+template <typename scalar_t>
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
+__global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows) {
+  const int col_tile = blockIdx.x;
+  const int row_tile = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int lane16 = tid & 15;
+  const int half_id = tid >> 4;
+
+  const int64_t col_start = static_cast<int64_t>(col_tile) * 32;
+  const int64_t out_features_total = out_features_a + out_features_b;
+  if (col_start >= out_features_total) return;
+
+  const int64_t expert_id = tile_expert[row_tile];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t compact_base = expert_start_compact[expert_id];
+  const int64_t expert_count = expert_start_compact[expert_id + 1] - compact_base;
+  const int64_t wmma_base = expert_start_wmma[expert_id];
+  const int64_t row_start_in_wmma = static_cast<int64_t>(row_tile) * 16;
+  const int64_t tile_row_in_expert = row_start_in_wmma - wmma_base;
+  const int64_t local_row = tile_row_in_expert + lane16;
+  const bool valid_row = local_row < expert_count;
+  const int64_t compact_row = valid_row ? (compact_base + local_row) : 0;
+  const int64_t blocks_per_row = in_features / QK_K;
+
+  float8_t acc[2] = {
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+  };
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int64_t g_k_base = blk * QK_K;
+#pragma unroll
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        const int64_t k_base = g_k_base + k_off;
+        const half16_t a_reg = load_compact_row_half16<scalar_t>(
+            x, compact_row, in_features, k_base, valid_row);
+
+#pragma unroll
+        for (int tm = 0; tm < 2; ++tm) {
+          const int64_t global_col_base = col_start + tm * 16;
+          if (global_col_base >= out_features_total) continue;
+
+          const bool use_b = global_col_base >= out_features_a;
+          const int64_t local_col_base =
+              use_b ? (global_col_base - out_features_a) : global_col_base;
+          const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+          const int64_t local_col = local_col_base + lane16;
+          const bool valid_col =
+              (global_col_base + lane16) < out_features_total &&
+              local_col < local_out_features;
+          const int64_t out_tiles = local_out_features / T16_COLS;
+          const int64_t out_tile = local_col_base / T16_COLS;
+          const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+          const uint8_t* __restrict__ tile = valid_col
+              ? q4_t16_tile_ptr(
+                    tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
+              : tiles;
+          half16_t b_reg;
+          load_q4_t16_b_reg(tile, sb, kt, lane16, valid_col, b_reg);
+          acc[tm] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_reg, b_reg, acc[tm]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < 2; ++tm) {
+    const int64_t global_col_base = col_start + tm * 16;
+    const int64_t global_out_col = global_col_base + lane16;
+    if (global_out_col >= out_features_total) continue;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;
+      if (local_out_row < expert_count) {
+        const int64_t compact_out_row = compact_base + local_out_row;
+        if (compact_out_row < compact_rows) {
+          out[compact_out_row * out_features_total + global_out_col] =
+              float_to_scalar<scalar_t>(acc[tm][j]);
+        }
+      }
+    }
+  }
+}
+
 __launch_bounds__(64, 1)
 __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -511,6 +620,66 @@ int launch_selected_dual_t16_compact32(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t>
+int launch_selected_dual_t16_compact32_shared_x(
+    const scalar_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    scalar_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!valid_selected_dual_t16_common(
+          x,
+          expert_start_compact,
+          expert_start_wmma,
+          tile_expert,
+          tiles_a,
+          tiles_b,
+          out,
+          compact_rows,
+          in_features,
+          out_features_a,
+          out_features_b,
+          num_experts,
+          wmma_total_rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t row_tiles = wmma_total_rows / 16;
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_total + 31) / 32),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      (gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_t16_q8_1_ds4_wmma32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* expert_start_compact,
@@ -604,6 +773,38 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16
       stream);
 }
 
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_t16_compact32_shared_x<uint16_t>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out(
     const void* x_q8,
     const int64_t* expert_start_compact,
@@ -652,6 +853,38 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16
     int64_t wmma_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_t16_compact32<half_t>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out(
+    const half_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    half_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_t16_compact32_shared_x<half_t>(
       x,
       expert_start_compact,
       expert_start_wmma,

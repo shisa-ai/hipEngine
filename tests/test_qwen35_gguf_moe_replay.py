@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import pytest
 
 from scripts.qwen35_gguf_moe_replay import (
+    ReplayRecorder,
     _correlate_with_reference,
+    _install_replay_helper,
+    _restore_replay_helper,
+    _selected_down_tile_shape,
     aggregate_records,
     summarize_counts,
 )
+import hipengine.runtime.qwen35_gguf_runner as qgr
 
 
 def test_summarize_counts_records_hot_thresholds() -> None:
@@ -55,3 +62,20 @@ def test_correlate_with_reference_computes_component_and_total_delta() -> None:
     assert corr["selected_moe_replay_ms"] == 62.0
     assert corr["selected_moe_reference_rocprof_ms"] == 77.0
     assert corr["components"]["q4_dual_gate_up"]["delta_pct"] == pytest.approx(-20.0)
+
+
+def test_replay_helper_tracks_runtime_compact_wmma_keyword_interface() -> None:
+    recorder = ReplayRecorder(warmup_iters=0, replay_iters=1, sample_groups=1)
+    original = _install_replay_helper(recorder)
+    try:
+        signature = inspect.signature(qgr._try_run_post_attention_moe_rows_compact_wmma)
+        assert "gpu_stage_recorder" in signature.parameters
+        assert "stage_prefix" in signature.parameters
+    finally:
+        _restore_replay_helper(original)
+
+
+def test_selected_down_tile_shape_covers_resident_t16_layouts() -> None:
+    assert _selected_down_tile_shape("gguf_q5_k_t16_v1") == (16, 16)
+    assert _selected_down_tile_shape("gguf_q6_k_t16_v1") == (16, 16)
+    assert _selected_down_tile_shape("gguf_q5_k") == (16, 16)

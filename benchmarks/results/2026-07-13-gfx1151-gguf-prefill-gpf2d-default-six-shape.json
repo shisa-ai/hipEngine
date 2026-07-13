@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_default_max_context_six_shape_gate_compact",
+  "status": "diagnostic_retained_pending_right_sized_rollup",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate": "promoted gfx1151 GPF-2D automatic GDN route",
+  "conclusion": "The clean automatic route completes the six-shape stress sweep with stable IDs and low five-run variance. This one max-128K resident session validates the default and long-context behavior, but its short-shape memory and session geometry are not the canonical right-sized README protocol.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "5f08278380c05edf333d1e4d438e532a351d27d3",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "session": "one clean resident session sized for 128K and reset between repetitions",
+    "prompt": "repeated token 9707",
+    "warmups_per_shape": 2,
+    "measured_repetitions_per_shape": 5,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "bulk_attention_mode": "bulk",
+    "graph_replay_decode": true,
+    "build": "cached-only clean detached worktree",
+    "accounted_wall_seconds_including_load": 3999.711982731067,
+    "accounted_wall_minutes_including_load": 66.66186637885112
+  },
+  "measurements": {
+    "512/128": {
+      "prefill_tok_s": {"median": 751.9933077147106, "min": 751.1590361981307, "max": 753.7390524780029},
+      "decode_tok_s": {"median": 49.059049688452994, "min": 49.04992748698628, "max": 49.06761245538289},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    },
+    "1K/128": {
+      "prefill_tok_s": {"median": 804.4201239355419, "min": 803.8602139812153, "max": 805.1134674827412},
+      "decode_tok_s": {"median": 51.62031981694824, "min": 51.61489374996252, "max": 51.63912486516381},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    },
+    "4K/128": {
+      "prefill_tok_s": {"median": 688.5450860283445, "min": 687.4356054431441, "max": 689.0280939691983},
+      "decode_tok_s": {"median": 52.479226014383165, "min": 52.45686946673743, "max": 52.47997211935958},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    },
+    "32K/128": {
+      "prefill_tok_s": {"median": 589.8662165280527, "min": 589.5447081819862, "max": 590.1939750930735},
+      "decode_tok_s": {"median": 43.57272422692969, "min": 43.56547127770828, "max": 43.59850553317435},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    },
+    "64K/128": {
+      "prefill_tok_s": {"median": 504.7301182901173, "min": 504.16502997666055, "max": 504.85925291081884},
+      "decode_tok_s": {"median": 37.29459053339243, "min": 37.28347169066573, "max": 37.30624124864749},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    },
+    "128K/128": {
+      "prefill_tok_s": {"median": 372.89233760229297, "min": 372.66271700820596, "max": 373.4021133561117},
+      "decode_tok_s": {"median": 27.77551774992092, "min": 27.767323663678923, "max": 27.77864937504627},
+      "final_ids": [9707, 9707, 9707, 9707, 9707]
+    }
+  },
+  "memory_caveat": {
+    "tracked_peak_gib": 25.492501735687256,
+    "valid_for": "128K resident session only",
+    "not_valid_for": "canonical short-shape memory rows"
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf2d-default-clean-full-six-shape.json",
+    "full_local_artifact_sha256": "1f6a637e614c3e10602f6fb75fc95f4cc172e1afd64b6fb1581f216a3e2371d4",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=$PWD .venv/bin/python scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf2d-default-clean-full-six-shape.json"
+  }
+}

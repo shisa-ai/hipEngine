@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`2670ed0434f6a396b901fbe7e5fd04b93dd14afe`
+`5f08278380c05edf333d1e4d438e532a351d27d3`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -167,8 +167,21 @@ and the required layer outputs. A clean balanced
 [`trajectory/decode gate`](results/2026-07-13-gfx1151-gguf-prefill-gpf2d-trajectory-decode-gate.json)
 passes all **250/250** checked logits with `KL=0`, preserves every timed token,
 and moves weighted decode **53.4295 -> 53.4416 tok/s (+0.023%)**. GPF-2D is
-accepted for a gfx1151-scoped default; `auto` still reports fused until that
-implementation change and its default-path gate land.
+now the gfx1151-scoped automatic route; gfx1100 remains fused. Its clean
+[`six-shape max-context stress gate`](results/2026-07-13-gfx1151-gguf-prefill-gpf2d-default-six-shape.json)
+records **751.993/804.420/688.545/589.866/504.730/372.892 tok/s** prefill with
+stable five-run IDs and completes in **66.66 minutes**. That one 128K-sized
+session is default/long-context validation, not the canonical right-sized
+short-shape memory rollup.
+
+The next selected-MoE candidate is retained in
+[`2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json`](results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json).
+GPF-3A shares one activation fragment across the existing two independent
+Q4T16 WMMA output halves while preserving each accumulator's K/WMMA order.
+BF16/FP16 fixture bytes are exact; the tiny trace is **44.725 -> 33.343 us
+(-25.45%)**, and identical real 40-layer routing moves Q4 gate/up
+**114.633 -> 97.082 ms (-15.31%)**. This is a diagnostic kernel-family win;
+the production alias remains unchanged pending clean full-model wall/decode.
 
 SOL-G4 is accepted on gfx1151 in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
@@ -249,7 +262,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-12 | clean detached hipEngine `3ce60e56`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: the repeated external and production token stream matches; four hidden/layer/30-Conv-GDN/10-KV transitions are finite and byte-exact. `performance_claim=false`. | Diagnostic link only | Rerun after eager math/state/KV, model, compiler/runtime, or device changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2 register-resident GDN diagnostics | 2026-07-13 | clean tree performance `31d4204d`, clean tree trajectory gate `2670ed04`, exact ordered candidate based at `cf3e8250`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Both default candidates rejected**: relaxed tree balanced 512/4K prefill improves **422.281 -> 956.765 tok/s (2.266x)** and **410.534 -> 844.847 tok/s (2.058x)**, but only **3/10** natural prompts preserve the complete fused 128-step trajectory. Exact ordered residency preserves byte identity but regresses 512/1K/4K by **12.98%/14.58%/13.50%**. `auto` remains fused. | Diagnostic link only | Test scalar-exact value columns with recurrent state resident in a 32/64-column LDS tile; require exact natural trajectories before any default/topline change. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2D scalar-exact LDS-resident GDN candidate | 2026-07-13 | clean detached hipEngine `a6f389d2`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Accepted for gfx1151-scoped promotion, implementation pending**: six-case matrix is byte-exact; balanced 512/4K prefill improves **420.959 -> 753.891 tok/s (1.791x)** and **408.359 -> 687.831 tok/s (1.684x)**. The full ten-prompt gate passes 250/250 exact logits and all timed trajectories; decode is **53.4295 -> 53.4416 tok/s (+0.023%)**. | Diagnostic link only | Implement and validate gfx1151 `auto`; keep gfx1100 fused until an independent transfer gate. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2D scalar-exact LDS-resident GDN | 2026-07-13 | clean candidate `a6f389d2`, promoted default `5f082783`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted gfx1151-scoped default**: six-case matrix and 250/250 natural logits are exact; balanced 512/4K prefill improves **420.959 -> 753.891 tok/s (1.791x)** and **408.359 -> 687.831 tok/s (1.684x)**; decode is +0.023%. The clean automatic max-context stress gate records **751.993/804.420/688.545/589.866/504.730/372.892 tok/s** across six shapes with stable IDs. | Diagnostic link pending right-sized rollup | Keep gfx1100 fused until an independent transfer gate; replace the public GGUF column only after the final right-sized six-shape sweep. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-3A Q4T16 shared-activation prefill | 2026-07-13 | dirty explicit candidate based at `5f082783`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Candidate replay passed, production unchanged**: BF16/FP16 fixture bytes are exact; tiny kernel **44.725 -> 33.343 us (-25.45%)** and real 40-layer Q4 gate/up **114.633 -> 97.082 ms (-15.31%)**, with identical routing/token. | Diagnostic link only | Run clean balanced 512/1K/4K full-model prefill and decode non-regression before any scoped default change. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q8T16 dual-split wave/block indexing | 2026-07-12 | clean scalar `8184355c` and promoted `e20cdc13`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained**: clean p512/d128 eager **20.5342 -> 20.4709 ms/token** (-0.308%); marked dual-split leaf **4245.4 -> 4188.2 us/token** (-1.349%); graph route **20.5736 -> 20.5324 ms/token** (-0.200%); every token/state gate exact. | Yes, named repeated-token protocol | Rerun after Q8T16 indexing/layout, compiler, graph policy, or gfx1151 launch geometry changes; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 historical; 2026-07-12 refresh | clean detached hipEngine `7f611fe3` on HIP 7.13; clean `8184355c`/`e20cdc13` on HIP 7.15; exact Q4_K_M fingerprint retained | **Historical retained / current speed-policy stale**: all 128 graph launches remain byte-exact. HIP 7.13 measured +0.112% over eager; both current HIP 7.15 reruns reject at -0.246%/-0.293%. | Current table reports exact diagnostic wall, not a graph-over-eager win | Run a scoped balanced current-stack A/B; restore eager default if graph does not reproduce a win. Validate separately on gfx1100 before any admission. |
