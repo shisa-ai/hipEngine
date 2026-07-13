@@ -363,6 +363,39 @@ def _aggregate_gate(
     }
 
 
+def _classify_gate(
+    summary: Mapping[str, Any],
+    *,
+    provenance: Mapping[str, Any],
+    candidate_mode: str,
+) -> dict[str, Any]:
+    clean = not bool(provenance.get("dirty"))
+    performance_comparison_valid = bool(clean and summary["trajectory_tokens_exact"])
+    gate_passed = bool(clean and summary["passed"])
+    if gate_passed:
+        status = "accepted_project_trajectory_and_decode_nonregression"
+        conclusion = (
+            f"{candidate_mode} passes every natural-prompt trajectory logit/token "
+            "gate and does not regress the balanced aggregate decode wall."
+        )
+    elif not clean:
+        status = "invalid_measurement"
+        conclusion = "The trajectory/decode measurement has dirty provenance."
+    elif not summary["correctness_passed"] or not summary["trajectory_tokens_exact"]:
+        status = "rejected_correctness"
+        conclusion = f"{candidate_mode} changes a required natural trajectory."
+    else:
+        status = "rejected_decode_regression"
+        conclusion = f"{candidate_mode} regresses the paired aggregate decode wall."
+    return {
+        "status": status,
+        "conclusion": conclusion,
+        "gate_passed": gate_passed,
+        "measurement_valid": clean,
+        "performance_comparison_valid": performance_comparison_valid,
+    }
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_mode = str(args.candidate_mode)
     if candidate_mode not in CANDIDATE_MODES:
@@ -522,33 +555,24 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         repetitions=repetitions,
         profiler={"enabled": False, "kind": None, "command": None},
     )
-    clean = not bool(provenance.get("dirty"))
-    measurement_valid = bool(clean and summary["trajectory_tokens_exact"])
-    gate_passed = bool(measurement_valid and summary["passed"])
-    if gate_passed:
-        status = "accepted_project_trajectory_and_decode_nonregression"
-        conclusion = (
-            f"{candidate_mode} passes every natural-prompt trajectory logit/token "
-            "gate and does not regress the balanced aggregate decode wall."
-        )
-    elif not measurement_valid:
-        status = "invalid_measurement"
-        conclusion = "The trajectory/decode measurement is not promotion-eligible."
-    elif not summary["correctness_passed"] or not summary["trajectory_tokens_exact"]:
-        status = "rejected_correctness"
-        conclusion = f"{candidate_mode} changes a required natural trajectory."
-    else:
-        status = "rejected_decode_regression"
-        conclusion = f"{candidate_mode} regresses the paired aggregate decode wall."
+    classification = _classify_gate(
+        summary,
+        provenance=provenance,
+        candidate_mode=candidate_mode,
+    )
     return {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": status,
-        "performance_claim": measurement_valid,
+        "status": classification["status"],
+        "performance_claim": classification["performance_comparison_valid"],
         "correctness_claim": True,
-        "gate_passed": gate_passed,
-        "conclusion": conclusion,
+        "gate_passed": classification["gate_passed"],
+        "measurement_valid": classification["measurement_valid"],
+        "performance_comparison_valid": classification[
+            "performance_comparison_valid"
+        ],
+        "conclusion": classification["conclusion"],
         "workload": {
             "model": str(args.model.resolve()),
             "quant": "gguf_q4_k_m",

@@ -4,6 +4,7 @@ import numpy as np
 
 from scripts.gguf_gdn_trajectory_gate import (
     _aggregate_gate,
+    _classify_gate,
     _compare_trajectories,
     _summarize_decode_measurements,
 )
@@ -134,3 +135,20 @@ def test_aggregate_gate_has_no_decode_regression_allowance() -> None:
     assert summary["correctness_passed"] is True
     assert summary["decode_non_regressive"] is False
     assert summary["passed"] is False
+
+
+def test_clean_trajectory_divergence_is_a_correctness_rejection() -> None:
+    classification = _classify_gate(
+        {
+            "passed": False,
+            "correctness_passed": False,
+            "trajectory_tokens_exact": False,
+        },
+        provenance={"dirty": False},
+        candidate_mode="chain_wave32_tree",
+    )
+
+    assert classification["status"] == "rejected_correctness"
+    assert classification["measurement_valid"] is True
+    assert classification["performance_comparison_valid"] is False
+    assert classification["gate_passed"] is False
