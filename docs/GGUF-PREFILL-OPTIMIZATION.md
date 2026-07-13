@@ -422,6 +422,17 @@ therefore requires an explicit decision recorded here, a multi-prompt greedy
 trajectory/decode gate, and retention of fused plus the exact unfused chain as
 rollback/oracle paths.
 
+The executable promotion gate is
+[`scripts/gguf_gdn_trajectory_gate.py`](../scripts/gguf_gdn_trajectory_gate.py).
+It uses all prompts in `mtpbench-code-general-ja.jsonl`, covering
+`code/general_en/general_ja/mixed_ja_en`. For each prompt it compares the fused
+and candidate own-token greedy prefill sample plus 24 decoded transitions,
+requiring exact IDs and the project KL/top-1 thresholds at every transition.
+It then runs two balanced 128-transition production decode windows per mode and
+prompt. Candidate decode passes only when all measured trajectories are exact
+and the sum of per-prompt candidate median walls does not exceed fused; there
+is no percentage regression allowance.
+
 ### Performance
 
 Use one resident session, reset state before every leg, balance candidate/control
