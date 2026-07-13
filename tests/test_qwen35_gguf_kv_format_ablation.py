@@ -97,3 +97,28 @@ def test_fixed_mixed_prompt_matches_paro_screen_fixture() -> None:
     assert len(prompt) == 512
     assert len(set(prompt)) == 36
     assert ablation._prompt_sha256(prompt) == "933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8"
+
+
+def test_asymmetric_candidate_catalog_covers_v_preserving_and_reverse_controls() -> None:
+    catalog = ablation._candidate_catalog(256)
+
+    assert catalog["key_group32_value_bf16"].k_group_size == 32
+    assert catalog["key_group32_value_bf16"].v_mode == "bf16"
+    assert catalog["key_group16_value_bf16"].k_group_size == 16
+    assert catalog["key_hadamard_group32_value_bf16"].strategy == "hadamard_groupwise"
+    assert catalog["key_bf16_value_group32"].k_mode == "bf16"
+    assert catalog["key_bf16_value_group32"].v_group_size == 32
+    assert catalog["key_group32_value_group16"].v_group_size == 16
+    assert catalog["key_group16_value_group32"].k_group_size == 16
+
+
+def test_hadamard_asymmetric_roundtrip_keeps_bf16_component_exact() -> None:
+    rng = np.random.default_rng(7)
+    key = rng.normal(size=(3, 2, 256)).astype(np.float32)
+    value = rng.normal(size=(3, 2, 256)).astype(np.float32)
+    spec = ablation._candidate_catalog(256)["key_hadamard_group32_value_bf16"]
+
+    key_out, value_out = ablation._roundtrip_pair(key, value, spec, scale_dtype="fp16")
+
+    assert not np.array_equal(key_out, key)
+    assert np.array_equal(value_out, value)

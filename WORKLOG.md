@@ -153573,3 +153573,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   than merely memory-fit INT8 KV, replaced its obsolete repeated-Q8 premise,
   and posted the full mixed/native attribution in issue comment
   `#issuecomment-4959445980`.
+
+## 2026-07-13 — Add the multi-prompt asymmetric GGUF K/V screen
+
+- Added `scripts/qwen35_gguf_kv_asymmetric_suite.py`, a host-emulation fidelity
+  harness that keeps one resident Q4_K_M session and runs the committed ten-row
+  `mtpbench-code-general-ja.jsonl` suite plus the existing `mixed_v1` control.
+  Each natural case uses an exact Qwen chat envelope, a deterministic rotation
+  of the other nine category prompts as diverse context, and the selected prompt
+  preserved in full as the final query. Exact token/file/text hashes,
+  train/heldout/category scopes, per-prompt gates, and 256K memory projections
+  are retained.
+- Defined S1 as 512/8 across all 11 cases. A candidate advances only if every
+  natural full/train/heldout/category row and `mixed_v1` passes mean KL `<=0.05`
+  and top-1 `>=90%`, while staying within 1.5 GiB over per-head INT8 at projected
+  256K. Transfer uses the identical suite at 4K/16; no candidate-conditioned
+  prompt selection is allowed.
+- Extended the representation catalog with V-preserving per-head/group32/
+  group16/Hadamard-K + BF16-V layouts, BF16-K reverse controls, and group32/16
+  all-INT8 asymmetries. Hadamard now transforms only quantized components, so a
+  BF16 K or V side remains bit-exact instead of incurring a needless floating
+  round trip.
+- RED/GREEN: the new suite import initially failed because the driver did not
+  exist. Eight focused tests now pass, covering exact prompt shape/identity,
+  heldout-gated aggregation, resident-array compaction, catalog contracts, and
+  bit-exact BF16 preservation. Ruff, `py_compile`, actual 512/4K prompt
+  construction against the GGUF tokenizer, and `git diff --check` pass.
