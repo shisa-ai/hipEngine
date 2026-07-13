@@ -13,6 +13,7 @@ from scripts.qwen35_paro_kv_format_ablation import (
     _reconstruction_summary,
     _roundtrip_pair,
     _select_recommendation,
+    _variance_normalize,
 )
 
 
@@ -67,6 +68,47 @@ def test_kivi_roundtrip_keeps_incomplete_chunk_unquantized() -> None:
     assert np.any(value_out[:4] != value[:4])
     np.testing.assert_array_equal(key_out[4:], key[4:])
     np.testing.assert_array_equal(value_out[4:], value[4:])
+
+
+def test_variance_normalize_reconstructs_and_reduces_axis_imbalance() -> None:
+    values = np.asarray(
+        [
+            [1.0, 2.0, 4.0, 8.0],
+            [0.1, 0.4, 1.6, 6.4],
+            [3.0, 3.5, 4.0, 4.5],
+            [-8.0, -2.0, -0.5, -0.125],
+        ],
+        dtype=np.float32,
+    )
+
+    balanced, column_scale, row_scale = _variance_normalize(values, iterations=8)
+    reconstructed = balanced * column_scale * row_scale
+
+    np.testing.assert_allclose(reconstructed, values, rtol=2e-6, atol=2e-6)
+    initial_spread = np.std(values, axis=0).max() / np.std(values, axis=0).min()
+    balanced_spread = np.std(balanced, axis=0).max() / np.std(balanced, axis=0).min()
+    assert balanced_spread < initial_spread
+
+
+def test_kvarn_roundtrip_preserves_permanent_sink_tokens() -> None:
+    rng = np.random.default_rng(9)
+    key = rng.normal(size=(6, 1, 8)).astype(np.float32)
+    value = rng.normal(size=(6, 1, 8)).astype(np.float32)
+    spec = FormatSpec(
+        "kvarn_sink_test",
+        strategy="kvarn",
+        chunk_size=2,
+        residual_tokens=1,
+        sink_tokens=2,
+        hadamard_group_size=8,
+    )
+
+    key_out, value_out = _roundtrip_pair(key, value, spec, scale_dtype="fp16")
+
+    np.testing.assert_array_equal(key_out[:2], key[:2])
+    np.testing.assert_array_equal(value_out[:2], value[:2])
+    assert np.any(key_out[2:] != key[2:])
+    assert np.any(value_out[2:] != value[2:])
 
 
 def test_kvarn_roundtrip_is_finite_deterministic_and_zero_safe() -> None:

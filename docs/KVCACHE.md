@@ -563,7 +563,7 @@ held-out shapes; prompt-specific or 512-only improvements are rejected.
 
 | Harness / evidence | Fast-loop role | Claim boundary |
 | --- | --- | --- |
-| `scripts/qwen35_paro_kv_format_ablation.py` | Primary S0/S1 emulation screen; load the runner once, compare several formats, and emit KL/top-1/top-k plus 256K memory projections. | Ranks representations only; reconstructed BF16 cache and current-row semantics are not a native production result. |
+| `scripts/qwen35_paro_kv_format_ablation.py` | Primary S0/S1 emulation screen; load one BF16 resident-weight session, reset request state across formats, and emit KL/top-1/top-k plus 256K memory projections. | Ranks representations only; reconstructed BF16 cache and current-row semantics are not a native production result. |
 | `scripts/qwen35_paro_int8_kv_quality_sweep.py` | S2/S3 native matched-context transfer and final numerical gate. | Correctness evidence for the named model/context/history; not downstream task accuracy. |
 | `scripts/qwen35_paro_kv_functional_mc.py` | Small milestone smoke after a candidate survives numerical transfer. `--limit`/category selection may be used for developer sanity, while the full retained row remains canonical. | Restricted-choice evidence only; never a broad natural-task claim. |
 | RULER/NoLiMa/HELMET-RAG-style length subsets | Later long-context retrieval/reasoning coverage. | Run for finalist/promoted formats, not each quantizer edit. |
@@ -576,7 +576,13 @@ not present on this host). It reinforces K/V-asymmetric treatment, chunked
 KIVI-style keys, Hadamard rotation, cross-layer AQUA residual prediction, and a
 cheap-before-expensive eval ladder. hipEngine screens those ideas in its own
 NumPy/BF16 reconstruction harness before considering native HIP work; external
-Torch/HF cache code is reference material, not a runtime dependency.
+Torch/HF cache code is reference material, not a runtime dependency. The
+KVarN-specific screen additionally follows the official read-only
+`huawei-csl/KVarN@7586257f` reference: eight best-so-far log-domain Sinkhorn
+passes, K-per-channel/V-per-token affine RTN, and a permanent 128-token BF16
+sink. hipEngine evaluates that pipeline at INT8 for an apples-to-apples dense
+INT8 representation test; it does not claim the shipped KVarN preset with
+4-bit keys and 2-bit values.
 
 The first externally informed S1 candidate set is deliberately bounded:
 
@@ -585,7 +591,7 @@ The first externally informed S1 candidate set is deliberately bounded:
 | Current baseline | Symmetric INT8 per token/head with one scale | Native-format anchor. |
 | Hadamard group32 | Deterministic orthogonal channel rotation, group32 INT8, inverse reconstruction | Tests whether spreading channel outliers improves the already-promising group32 geometry. |
 | KIVI-style INT8 | Chunked per-channel K plus per-token/group V with an unquantized incomplete residual block | Tests the established K/V asymmetry under online-feasible chunk semantics. |
-| KVarN-inspired INT8 | Hadamard rotation plus two-axis variance normalization and asymmetric chunk quantization | Targets the token-magnitude/tail errors associated with autoregressive accumulation. This is an emulation screen, not a claim of paper-faithful production KVarN. |
+| KVarN-informed INT8 | Full-head Hadamard rotation; eight-pass best-so-far log-domain variance normalization; K-per-channel/V-per-token affine INT8 tiles; 128-token BF16 sink and incomplete tail | Tests KVarN's error-accumulation mechanism at eight bits. This is a source-aligned representation emulation, not a native kernel or the official 4-bit-key/2-bit-value preset. |
 
 AQUA-style cross-layer residual prediction remains the next representation
 screen if these local transforms do not pass transfer. It requires fitting and
