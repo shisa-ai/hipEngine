@@ -5,9 +5,10 @@ Last updated: 2026-07-13.
 Status: active `SOL-R5` implementation log. `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 `GPF-2B` clears the repository KL/top-1 gate and improves the focused
-512/1K/4K prefill rows by 2.07x-2.30x, but it is not byte-exact and is not yet
-the default. Promotion still requires a balanced A/B plus a generated-trajectory
-gate and an explicit numerical-contract decision.
+512/1K/4K prefill rows by 2.07x-2.30x. A clean balanced A/B now confirms
+2.266x at 512 and 2.058x at 4K, but the candidate is not byte-exact and is not
+yet the default. Promotion still requires a generated-trajectory/decode gate
+and an explicit numerical-contract decision.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -54,6 +55,15 @@ that still round-tripped state through global memory both measured about
 129 tok/s. The register-resident tree reaches **954.063/1031.350/847.981
 tok/s** at 512/1K/4K versus the clean fused control's
 **423.708/448.694/410.023** (+125.17%/+129.86%/+106.81%).
+
+The promotion-grade same-session A/B confirms that the separate screens were
+not a control/run-order artifact. With one warmup and four alternating measured
+repetitions per mode, 512 moves **1212.462 -> 535.136 ms** (**422.281 ->
+956.765 tok/s, 2.266x**) and 4096 moves **9977.239 -> 4848.216 ms**
+(**410.534 -> 844.847 tok/s, 2.058x**). All 16 timed final IDs are `9707`,
+provenance is clean at `31d4204d`, and the measured process took approximately
+108 seconds including model/session setup. This completes the performance
+portion of the promotion gate, not the numerical-contract decision.
 
 That speedup changes the next bottleneck: a cache-clean 512 trace attributes
 only **61.411 ms (11.45%)** to the new recurrence, versus **158.223 ms** dense
@@ -143,7 +153,7 @@ baseline to restore verbatim.
 | Current gfx1151 fused M0 | HIP 7.15 clean control at 512/1K/4K: `423.708/448.694/410.023 tok/s`; cache-clean 512 trace: GDN `794.120/1227.335 ms`, 64.70% GPU-active | Five measured repetitions; timed token `9707` exact | Current same-session denominator |
 | `GPF-1` tile64/tile32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json): `388.300/374.206 tok/s` at 512, -8.36%/-11.68%; tile64 recurrence `862.281 ms` | Six primitive tile/segment cases byte-exact; 36 focused tests pass; decode flat | Rejected; keep only as short-lived diagnostic while GPF-2 is developed |
 | `GPF-2A` non-resident wave32 | Ordered exact `128.879 tok/s`; tree-reduced `129.785 tok/s`; tree recurrence `3516.665 ms` | Ordered form byte-exact; tree primitive stays within numeric budget | Rejected: per-token global state traffic dominates |
-| `GPF-2B` register-resident wave32 tree | [`2026-07-13 candidate diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json): `954.063/1031.350/847.981 tok/s` at 512/1K/4K | Six fused-vs-candidate cases: KL `3.48e-6..5.39e-5`, top-1 `100%`, sampled tokens identical; state is not byte-exact | Candidate passes project gate; default remains fused pending promotion gates/contract decision |
+| `GPF-2B` register-resident wave32 tree | [`candidate diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json): `954.063/1031.350/847.981 tok/s` at 512/1K/4K; [`balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json): 2.266x/2.058x at 512/4K | Six fused-vs-candidate cases: KL `3.48e-6..5.39e-5`, top-1 `100%`, sampled tokens identical; state is not byte-exact; all balanced timed IDs match | Performance and project gates pass; default remains fused pending trajectory/decode and contract decision |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -276,7 +286,7 @@ select current code without a fresh profile.
 | 0 | `GPF-M0` | **In progress:** clean gfx1151 512 fused trace captured; 4K/128K and matched llama.cpp traces remain | Confirm GDN share and llama fused-GDN dispatch before attributing a candidate win |
 | 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
 | 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
-| 3 | `GPF-2` | **Candidate gate passed:** register-resident wave32 tree; non-resident exact/tree forms rejected | Run balanced 512/4K A/B and multi-prompt greedy/decode gate; explicitly approve or reject the non-byte-exact numerical contract before default promotion |
+| 3 | `GPF-2` | **Performance gate passed:** register-resident wave32 tree wins clean balanced 512/4K by 2.266x/2.058x; non-resident exact/tree forms rejected | Run the multi-prompt greedy/decode gate; explicitly approve or reject the non-byte-exact numerical contract before default promotion |
 | 4 | `GPF-M1` | **512 complete:** new GDN is 11.45%; 4K/128K profiles remain | Select the next bucket rather than inheriting the June profile |
 | 5 | `GPF-3` | **Next:** optimize dense-Q8 and/or selected-MoE WMMA named by GPF-M1 | Family-local correctness A/B and full-wall win; retain decode non-regression |
 | 6 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
@@ -380,9 +390,10 @@ The tree changes FP reduction order. Across greeting, 512, 1024/1025, and
 4095/4096, fused and candidate sampled tokens are identical, top-1 agreement
 is **100%**, and KL is **3.48e-6..5.39e-5**, well inside the repository gate.
 It is not byte-exact: layer-0 recurrence diverges first and accumulated hidden
-and state fingerprints differ. `auto` therefore remains fused until the
-balanced performance gate, multi-prompt generated trajectory/decode gate, and
-explicit numerical-contract decision complete.
+and state fingerprints differ. The clean balanced performance gate passes at
+**2.266x/2.058x** for 512/4K with exact timed IDs. `auto` therefore remains
+fused only until the multi-prompt generated trajectory/decode gate and explicit
+numerical-contract decision complete.
 
 ## Correctness And Promotion Contract
 

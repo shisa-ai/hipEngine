@@ -153300,3 +153300,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_gguf_gdn_prefill_ab.py` passes all **6** tests; pycompile and
   `git diff --check` pass. The next command is a clean detached-worktree,
   balanced 512/4096 fused-versus-`chain_wave32_tree` A/B.
+
+## 2026-07-13 - Pass the GPF-2B balanced prefill performance gate
+
+- Created clean detached worktree `/tmp/hipengine-gpf2-ab` at `31d4204d`,
+  prebuilt the revision's lazy AOTriton wrapper outside measurement, and reran
+  with `HIPENGINE_HIP_ARCH=gfx1151`, the recorded HIP 7.15 compiler string,
+  `--require-cached-build`, TuneD `accelerator-performance`, one warmup, and
+  four alternating fused/candidate repetitions at 512 and 4096.
+- 512 prefill moves **1212.462 -> 535.136 ms**, or **422.281 -> 956.765
+  tok/s (2.266x, -55.86% wall)**. 4096 moves **9977.239 -> 4848.216 ms**, or
+  **410.534 -> 844.847 tok/s (2.058x, -51.41% wall)**. The paired median
+  savings are 677.367 and 5128.989 ms. All 16 measured final IDs are `9707`;
+  provenance is fully clean and the complete benchmark process took about 108
+  seconds including model/session setup.
+- The full local artifact is `/tmp/gpf-2-wave32-tree-balanced-ab.json`
+  (`sha256 91e5c2efdb172dd132bd4fdb64273e2950ff9965314eec546a5aa931ebcc0dbc`).
+  Compact retained artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-balanced-ab.json`.
+  Updated the GGUF optimization plan, benchmark index/changelog, and refactor
+  ledger. This clears the performance portion only: `auto` remains fused until
+  the multi-prompt generated-trajectory/decode gate and explicit numerical
+  contract decision complete.

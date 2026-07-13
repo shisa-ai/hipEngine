@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_prefill_optimization_balanced_ab",
+  "status": "candidate_performance_gate_passed_pending_trajectory_contract",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "candidate": "GPF-2B register-resident wave32 tree GDN prefill",
+  "conclusion": "The candidate wins clean balanced same-session 512/4096 prefill wall by 2.266x/2.058x and preserves every timed final token. The default remains unchanged pending the multi-prompt generated-trajectory/decode gate and explicit acceptance of the project KL/top-1 numerical contract.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "31d4204df2669257a5da0bcd49079a9f8a5e8d8b",
+    "hipengine_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "workload": {
+    "contexts": [512, 4096],
+    "decode_tokens": 0,
+    "prompt": "repeated token 9707",
+    "bulk_attention_mode": "bulk",
+    "baseline_mode": "fused",
+    "candidate_mode": "chain_wave32_tree",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true
+  },
+  "protocol": {
+    "session": "one resident session shared by both modes and contexts",
+    "ordering": "balanced fused-candidate / candidate-fused",
+    "warmups_per_mode_context": 1,
+    "measured_repetitions_per_mode_context": 4,
+    "timing": "synchronized perf_counter_ns around production session.prefill",
+    "state_reset": "production prefill reset before every prompt",
+    "build": "lazy artifacts prebuilt outside the measurement; measured command required cached builds",
+    "observed_process_wall_seconds_approx": 108
+  },
+  "correctness_gate": {
+    "artifact": "benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json",
+    "artifact_sha256": "97287b25f92243979f9cdfd567f7190ab52852944a6fa49ac10b5ef81947391e",
+    "contract": "project_kl_top1_non_exact",
+    "covered_contexts": [17, 512, 1024, 1025, 4095, 4096],
+    "kl_mean_max": 0.000053852719021640166,
+    "top1_agreement_min": 1.0,
+    "sampled_tokens_identical": true,
+    "stronger_byte_exact_state_contract": false
+  },
+  "measurements": {
+    "512": {
+      "fused_wall_ms": [1210.84744, 1211.643854, 1214.341315, 1213.279591],
+      "candidate_wall_ms": [535.977739, 535.180193, 535.092758, 535.00899],
+      "fused_median_ms": 1212.4617225,
+      "candidate_median_ms": 535.1364755,
+      "fused_prefill_tok_s": 422.2813722682285,
+      "candidate_prefill_tok_s": 956.7652803364177,
+      "candidate_speedup": 2.265705624657985,
+      "candidate_wall_delta_percent": -55.863639604507185,
+      "paired_candidate_minus_fused_median_ms": -677.367131,
+      "timed_token_ids_exact": true,
+      "timed_token_id": 9707
+    },
+    "4096": {
+      "fused_wall_ms": [9972.012087, 9997.775226, 9982.398505, 9972.080448],
+      "candidate_wall_ms": [4849.977847, 4837.822665, 4846.454181, 4851.723991],
+      "fused_median_ms": 9977.239476499999,
+      "candidate_median_ms": 4848.216014,
+      "fused_prefill_tok_s": 410.5343977808249,
+      "candidate_prefill_tok_s": 844.8468443180222,
+      "candidate_speedup": 2.0579197477358937,
+      "candidate_wall_delta_percent": -51.40724019485251,
+      "paired_candidate_minus_fused_median_ms": -5128.989281999999,
+      "timed_token_ids_exact": true,
+      "timed_token_id": 9707
+    }
+  },
+  "decision": {
+    "measurement_valid": true,
+    "clean_provenance": true,
+    "candidate_wins_all_contexts": true,
+    "performance_gate_passed": true,
+    "default_changed": false,
+    "reason_default_unchanged": "The current correctness artifact passes the repository KL/top-1 floor but does not establish byte-exact state. Multi-prompt generated-trajectory/decode evidence and an explicit contract decision remain required."
+  },
+  "sources": {
+    "full_local_artifact": "/tmp/gpf-2-wave32-tree-balanced-ab.json",
+    "full_local_artifact_sha256": "91e5c2efdb172dd132bd4fdb64273e2950ff9965314eec546a5aa931ebcc0dbc",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=/tmp/hipengine-gpf2-ab /home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_gdn_prefill_ab.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --contexts 512,4096 --candidate-mode chain_wave32_tree --prompt-token-id 9707 --expected-token-id 9707 --warmups 1 --repetitions 4 --use-wmma-prefill --correctness-artifact benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf-2-wave32-tree-balanced-ab.json"
+  },
+  "next_actions": [
+    "Run a multi-prompt generated-trajectory and decode non-regression gate.",
+    "Record the numerical-contract decision explicitly before changing auto.",
+    "If promoted, run the 512/1K/4K focused gate followed by the full six-shape sweep and gfx1100 transfer gate."
+  ]
+}
