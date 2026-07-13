@@ -12,6 +12,9 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+)
 from hipengine.kernels.registry import (
     KernelKey,
     is_registered,
@@ -31,7 +34,22 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct"
 # Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
 # selected-dual Q4T16 prefill schedule on gfx1151.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
+# Clean GPF-5A exactness plus 512/4K fresh-process focus admits two-wave
+# activation-sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151.
+GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 _SOURCE_BACKEND = "hip_gfx1100"
+_GFX1151_OVERRIDES = {
+    (
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "wmma_prefill_bf16_bf16_out",
+    ): gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+    (
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ): gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+}
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
     "hipengine.kernels.hip_gfx1100.convert",
@@ -60,9 +78,15 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         target_key = KernelKey(BACKEND, key.layer, key.quant, key.variant)
         if not replace and is_registered(target_key):
             continue
+        source_fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
         register(
             target_key,
-            resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant),
+            _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
             replace=replace,
         )
 
@@ -75,6 +99,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",

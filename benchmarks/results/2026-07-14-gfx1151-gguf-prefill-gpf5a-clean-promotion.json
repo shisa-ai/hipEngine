@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_gpf5a_clean_promotion",
+  "status": "promote_gfx1151_registry_override_pending_final_rollup",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_commit": "4a1fff53",
+  "candidate": {
+    "id": "GPF-5A",
+    "family": "dense Q8T16 WMMA prefill",
+    "selector": "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=1",
+    "promoted_capability": "hip_gfx1151.GGUF_Q8_T16_PREFILL_TWO_WAVE=true",
+    "registry_override": "(hip_gfx1151,linear,gguf_q8_0_t16_v1,{wmma_prefill,t16_wmma_prefill}_bf16_bf16_out) -> auto_2wave wrapper",
+    "gfx1100_default": "unchanged production wrapper"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "correctness": {
+    "protocol": "Clean detached candidate commit; separate off/on processes; repeated token 9707; exact FP32 logits, FP32 hidden seed, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs.",
+    "contexts": {
+      "512": {"token_ids": [9707, 9707], "parts_compared": 82, "all_parts_exact": true, "aggregate_sha256": "6659d4f8a4130a3b5b0aa8a12dfbbb0ee74edcd9d74989a4d02cbf4b5eb20622"},
+      "4096": {"token_ids": [9707, 9707], "parts_compared": 82, "all_parts_exact": true, "aggregate_sha256": "24eb7b4730ce6f775b2294a8e30a246ee77026eab05f29bb3faebd4694b7370c"}
+    },
+    "local_artifacts": {
+      "off": {"path": "/tmp/gpf5a-clean-exact-off.json", "sha256": "9d22061859d43a6a70a53288f51b691dbbad59486340a55aaee9962b2cb596f0"},
+      "on": {"path": "/tmp/gpf5a-clean-exact-on.json", "sha256": "1475754b8fe655bde8d8c4be3d444505320ab7ce20220eb93fbd1842a782faf7"}
+    }
+  },
+  "clean_fresh_process_focus": {
+    "protocol": "One discarded warmup plus three measured prefill-only runs in a clean fresh process per context/mode; 512 order off/on and 4K order on/off; cached builds; no decode.",
+    "512": {
+      "off_samples_tok_s": [798.8518264999169, 820.4455308434551, 819.332969196091],
+      "on_samples_tok_s": [861.0397771144344, 887.7601357693495, 887.817772184994],
+      "off_median_tok_s": 819.332969196091,
+      "on_median_tok_s": 887.7601357693495,
+      "candidate_delta_percent": 8.35157001437372,
+      "tracked_peak_gib_off_on": [21.477776296436787, 21.477776296436787],
+      "final_token_ids_exact": true,
+      "off_artifact_sha256": "323464ac1be33309609355de549a8da420d04073fbfc6c28a982767c39e02830",
+      "on_artifact_sha256": "939ea87469c86632b49f7f31befaadb9d5e88488a4f1a1bf055a1c1a00c49bf4"
+    },
+    "4096_primary": {
+      "off_samples_tok_s": [25.014927319844762, 749.5023095589165, 750.1052090328898],
+      "on_samples_tok_s": [765.7348624264627, 764.9658533042947, 765.8802640002107],
+      "off_median_tok_s": 749.5023095589165,
+      "on_median_tok_s": 765.7348624264627,
+      "candidate_delta_percent": 2.165777564728133,
+      "variance_trigger": "Baseline measured run 1 collapsed to 25.015 tok/s between two approximately 750 tok/s samples; replace this comparison with the documented 1+5 escalation below.",
+      "tracked_peak_gib_off_on": [22.99488216638565, 22.99488216638565],
+      "final_token_ids_exact": true,
+      "off_artifact_sha256": "bfe414665fa157ff7100a9f76bb0fcd826af49fb3f8ecb211d54880cd0ee49ff",
+      "on_artifact_sha256": "22a862571fe1a923c58992d03fa36a3736d2777ad7156348e88346361d9f9997"
+    }
+  },
+  "clean_4096_variance_escalation": {
+    "protocol": "Fresh one-warmup plus five-measurement replacement legs, off then on, triggered only by the primary baseline outlier.",
+    "off_samples_tok_s": [747.6512636871471, 747.6930349416306, 745.9138301360223, 748.1620356617749, 746.5717565717608],
+    "on_samples_tok_s": [765.9587199625514, 766.9064383919571, 766.6062232569041, 767.6862300388103, 766.5366373880976],
+    "off_median_tok_s": 747.6512636871471,
+    "on_median_tok_s": 766.6062232569041,
+    "candidate_delta_percent": 2.5352675091162125,
+    "off_artifact_sha256": "25f99eaf1de92af6db28ebca65433707cae4c44aec86071549ea99cda11a1ae6",
+    "on_artifact_sha256": "8b7e7e0096a596f63cf038e0a7d6bc84670bc3b7018cf5fa1a86ddd7f3857296"
+  },
+  "decision": {
+    "promote": true,
+    "reason": "Clean full state is byte-exact; 512 improves 8.35%; the variance-triggered stable 4K replacement improves 2.54%; candidate samples are stable; memory is unchanged; profiler and micro gates passed before full-model routing.",
+    "scope": "Override only gfx1151 registry keys for BF16/BF16 Q8T16 prefill. The auto wrapper applies GPF-5A only to default TM32/TM64, TN32, output width >=2048 shapes; explicit env 0 remains rollback and env 1 remains cross-backend diagnostic.",
+    "next": "Commit the gfx1151 registry override, then run the final automatic-route one-warmup/three-measurement six-shape publication sweep."
+  },
+  "caveat": "This compact artifact records clean promotion evidence but is not the final public performance claim; the automatic-route six-shape rollup owns retained topline values."
+}

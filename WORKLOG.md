@@ -154185,3 +154185,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-candidate-focus.json`.
   It is not a performance claim while the candidate is uncommitted. Next commit
   default-off and repeat exact/focus gates from a clean detached commit.
+
+## 2026-07-14 - Promote GPF-5A through gfx1151 registry metadata
+
+- Validated clean detached candidate commit `4a1fff53` in
+  `/tmp/hipengine-gpf5a-clean-4a1fff53`; its worktree stayed clean. Prebuilt
+  worktree-specific JIT artifacts outside timing, discarded that run, and
+  required cached builds for every retained gate.
+- Clean separate-process exact capture reproduces all hashes: token `9707`,
+  FP32 logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V
+  pairs match **82/82** at both 512 and 4K.
+- Clean 512 fresh-process 1+3 moves default **819.333 tok/s** to GPF-5A
+  **887.760 tok/s (+8.35%)** with unchanged **21.478 GiB** peak.
+- The primary clean 4K baseline samples were
+  **[25.015, 749.502, 750.105] tok/s** while candidate samples were stable
+  **[765.735, 764.966, 765.880]**. The baseline collapse met the documented
+  variance trigger, so replaced—not informally extended—the comparison with
+  fresh 1+5 legs:
+  - off **[747.651, 747.693, 745.914, 748.162, 746.572]**, median
+    **747.651 tok/s**;
+  - on **[765.959, 766.906, 766.606, 767.686, 766.537]**, median
+    **766.606 tok/s (+2.54%)**.
+- RED requires a gfx1151-only Q8T16 registry override and explicit `=0`
+  rollback; it failed because no automatic wrapper/capability existed. GREEN
+  adds `GGUF_Q8_T16_PREFILL_TWO_WAVE=True` to gfx1151 metadata and maps only
+  its BF16/BF16 Q8T16 prefill aliases to an auto-two-wave wrapper. gfx1100
+  retains the production wrapper. Explicit env `0`/`1` overrides either
+  architecture for rollback/diagnosis. An env-unset automatic-route 512 screen
+  launches successfully at **846.169 tok/s** with token `9707` (no warmup;
+  routing confirmation only).
+- Clean promotion artifact:
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-clean-promotion.json`.
+  Next commit the registry promotion and run the final automatic six-shape 1+3
+  publication sweep.
