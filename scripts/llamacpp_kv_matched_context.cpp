@@ -1,9 +1,11 @@
-// Exact llama.cpp F16-vs-Q8_0 KV matched-context quality harness.
+// Exact llama.cpp matched-context KV quality harness.
 //
 // This file intentionally uses only llama.cpp's public C API. It loads one
-// model, runs an F16-KV reference, then runs a Q8_0-KV candidate while feeding
-// the reference's greedy tokens. Only prompt-final plus decode-step logits are
-// retained, avoiding llama-perplexity's context*vocab logit file.
+// model, runs a reference KV context, then runs a candidate with independently
+// selectable K/V types while feeding the reference's greedy tokens. Prompts may
+// be a repeated token or an exact whitespace-delimited token-ID file. Only
+// prompt-final plus decode-step logits are retained, avoiding
+// llama-perplexity's context*vocab logit file.
 
 #include "ggml-backend.h"
 #include "llama.h"
@@ -31,6 +33,7 @@ struct Options {
     std::string model;
     std::string json_path;
     std::string reference_logits_path;
+    std::string prompt_token_path;
     int32_t prompt_token_id = 9707;
     int32_t prompt_length = 131072;
     int32_t decode_steps = 16;
@@ -41,6 +44,8 @@ struct Options {
     int32_t threads = 16;
     std::string reference_cache = "f16";
     std::string candidate_cache = "q8_0";
+    std::string candidate_cache_k;
+    std::string candidate_cache_v;
     bool flash_attn = true;
     double kl_threshold = 0.05;
     double top1_threshold = 0.90;
@@ -48,6 +53,8 @@ struct Options {
 
 struct RunResult {
     std::string cache_type;
+    std::string cache_type_k;
+    std::string cache_type_v;
     uint32_t actual_ctx_size = 0;
     int32_t n_vocab = 0;
     int32_t prompt_tokens = 0;
@@ -76,10 +83,12 @@ struct CompareResult {
 [[noreturn]] void usage_error(const std::string & message) {
     throw std::runtime_error(message +
         "\nusage: llamacpp_kv_matched_context --model PATH --json PATH "
-        "[--prompt-token-id 9707] [--prompt-length 131072] [--decode-steps 16] "
+        "[--prompt-token-id 9707 | --prompt-token-file PATH] "
+        "[--prompt-length 131072] [--decode-steps 16] "
         "[--ctx-size N] [--batch-size 4096] [--ubatch-size 512] "
         "[--n-gpu-layers 99] [--threads 16] [--reference-cache f16] "
-        "[--candidate-cache q8_0] [--flash-attn on|off] "
+        "[--candidate-cache q8_0] [--candidate-cache-k TYPE] "
+        "[--candidate-cache-v TYPE] [--flash-attn on|off] "
         "[--reference-logits-bin PATH]");
 }
 
@@ -126,6 +135,7 @@ Options parse_args(int argc, char ** argv) {
         if (arg == "--model") options.model = value;
         else if (arg == "--json") options.json_path = value;
         else if (arg == "--reference-logits-bin") options.reference_logits_path = value;
+        else if (arg == "--prompt-token-file") options.prompt_token_path = value;
         else if (arg == "--prompt-token-id") options.prompt_token_id = parse_i32(value, arg);
         else if (arg == "--prompt-length") options.prompt_length = parse_i32(value, arg);
         else if (arg == "--decode-steps") options.decode_steps = parse_i32(value, arg);
@@ -136,6 +146,8 @@ Options parse_args(int argc, char ** argv) {
         else if (arg == "--threads") options.threads = parse_i32(value, arg);
         else if (arg == "--reference-cache") options.reference_cache = value;
         else if (arg == "--candidate-cache") options.candidate_cache = value;
+        else if (arg == "--candidate-cache-k") options.candidate_cache_k = value;
+        else if (arg == "--candidate-cache-v") options.candidate_cache_v = value;
         else if (arg == "--flash-attn") options.flash_attn = parse_bool(value, arg);
         else if (arg == "--kl-threshold") options.kl_threshold = parse_double(value, arg);
         else if (arg == "--top1-threshold") options.top1_threshold = parse_double(value, arg);
@@ -143,7 +155,9 @@ Options parse_args(int argc, char ** argv) {
     }
     if (options.model.empty()) usage_error("--model is required");
     if (options.json_path.empty()) usage_error("--json is required");
-    if (options.prompt_token_id < 0) usage_error("--prompt-token-id must be non-negative");
+    if (options.prompt_token_path.empty() && options.prompt_token_id < 0) {
+        usage_error("--prompt-token-id must be non-negative");
+    }
     if (options.prompt_length <= 0) usage_error("--prompt-length must be positive");
     if (options.decode_steps < 0) usage_error("--decode-steps must be non-negative");
     if (options.batch_size <= 0 || options.ubatch_size <= 0 || options.threads <= 0) {
@@ -154,6 +168,8 @@ Options parse_args(int argc, char ** argv) {
     if (options.ctx_size < options.prompt_length + options.decode_steps) {
         usage_error("--ctx-size must cover prompt plus decode inputs");
     }
+    if (options.candidate_cache_k.empty()) options.candidate_cache_k = options.candidate_cache;
+    if (options.candidate_cache_v.empty()) options.candidate_cache_v = options.candidate_cache;
     return options;
 }
 
@@ -161,6 +177,37 @@ enum ggml_type parse_cache_type(const std::string & value) {
     if (value == "f16") return GGML_TYPE_F16;
     if (value == "q8_0") return GGML_TYPE_Q8_0;
     throw std::runtime_error("unsupported KV cache type: " + value);
+}
+
+std::vector<llama_token> load_prompt_tokens(const Options & options) {
+    if (options.prompt_token_path.empty()) {
+        return std::vector<llama_token>(
+            static_cast<size_t>(options.prompt_length),
+            static_cast<llama_token>(options.prompt_token_id));
+    }
+    std::ifstream input(options.prompt_token_path);
+    if (!input) {
+        throw std::runtime_error("failed to open prompt token file: " + options.prompt_token_path);
+    }
+    std::vector<llama_token> prompt;
+    prompt.reserve(static_cast<size_t>(options.prompt_length));
+    std::string field;
+    while (input >> field) {
+        prompt.push_back(static_cast<llama_token>(parse_i32(field, "prompt token")));
+    }
+    if (!input.eof()) {
+        throw std::runtime_error("failed while reading prompt token file: " + options.prompt_token_path);
+    }
+    if (static_cast<int32_t>(prompt.size()) != options.prompt_length) {
+        std::ostringstream message;
+        message << "prompt token file contains " << prompt.size()
+                << " tokens, expected exactly " << options.prompt_length;
+        throw std::runtime_error(message.str());
+    }
+    for (llama_token token : prompt) {
+        if (token < 0) throw std::runtime_error("prompt token IDs must be non-negative");
+    }
+    return prompt;
 }
 
 double seconds_since(const Clock::time_point & start) {
@@ -192,7 +239,9 @@ std::vector<float> copy_logits(llama_context * context, int32_t n_vocab, bool & 
 RunResult run_context(
         llama_model * model,
         const Options & options,
-        const std::string & cache_type,
+        const std::string & cache_type_k,
+        const std::string & cache_type_v,
+        std::vector<llama_token> & prompt,
         const std::vector<int32_t> * forced_inputs) {
     llama_context_params params = llama_context_default_params();
     params.n_ctx = static_cast<uint32_t>(options.ctx_size);
@@ -202,8 +251,8 @@ RunResult run_context(
     params.n_threads = options.threads;
     params.n_threads_batch = options.threads;
     params.flash_attn_type = options.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED;
-    params.type_k = parse_cache_type(cache_type);
-    params.type_v = parse_cache_type(cache_type);
+    params.type_k = parse_cache_type(cache_type_k);
+    params.type_v = parse_cache_type(cache_type_v);
     params.offload_kqv = true;
     params.no_perf = false;
 
@@ -211,26 +260,31 @@ RunResult run_context(
     std::unique_ptr<llama_context, decltype(&llama_free)> context(
         llama_init_from_model(model, params), llama_free);
     if (!context) {
-        throw std::runtime_error("failed to create llama context for cache type " + cache_type);
+        throw std::runtime_error(
+            "failed to create llama context for K=" + cache_type_k + " V=" + cache_type_v);
     }
 
     RunResult result;
-    result.cache_type = cache_type;
+    result.cache_type = cache_type_k == cache_type_v
+        ? cache_type_k
+        : "k=" + cache_type_k + ",v=" + cache_type_v;
+    result.cache_type_k = cache_type_k;
+    result.cache_type_v = cache_type_v;
     result.actual_ctx_size = llama_n_ctx(context.get());
     result.prompt_tokens = options.prompt_length;
     result.decode_steps = options.decode_steps;
     result.context_create_seconds = seconds_since(create_start);
     const llama_vocab * vocab = llama_model_get_vocab(model);
     result.n_vocab = llama_vocab_n_tokens(vocab);
-    if (options.prompt_token_id >= result.n_vocab) {
-        throw std::runtime_error("prompt token ID is outside model vocabulary");
+    for (llama_token token : prompt) {
+        if (token < 0 || token >= result.n_vocab) {
+            throw std::runtime_error("prompt token ID is outside model vocabulary");
+        }
     }
     if (forced_inputs != nullptr && static_cast<int32_t>(forced_inputs->size()) != options.decode_steps) {
         throw std::runtime_error("forced input count does not match decode steps");
     }
 
-    std::vector<llama_token> prompt(static_cast<size_t>(options.prompt_length),
-                                    static_cast<llama_token>(options.prompt_token_id));
     const auto prefill_start = Clock::now();
     int32_t offset = 0;
     while (offset < options.prompt_length) {
@@ -371,6 +425,8 @@ void write_bool_array(std::ostream & out, const std::vector<bool> & values) {
 void write_run_json(std::ostream & out, const RunResult & run) {
     out << '{'
         << "\"cache_type\":\"" << json_escape(run.cache_type) << "\","
+        << "\"cache_type_k\":\"" << json_escape(run.cache_type_k) << "\","
+        << "\"cache_type_v\":\"" << json_escape(run.cache_type_v) << "\","
         << "\"actual_ctx_size\":" << run.actual_ctx_size << ','
         << "\"n_vocab\":" << run.n_vocab << ','
         << "\"finite_logits\":" << (run.finite_logits ? "true" : "false") << ','
@@ -426,6 +482,15 @@ void write_json(
         << "\"performance_claim\":false,"
         << "\"model\":\"" << json_escape(options.model) << "\","
         << "\"prompt_token_id\":" << options.prompt_token_id << ','
+        << "\"prompt_token_file\":";
+    if (options.prompt_token_path.empty()) {
+        out << "null,";
+    } else {
+        out << "\"" << json_escape(options.prompt_token_path) << "\",";
+    }
+    out << "\"prompt\":{\"mode\":\""
+        << (options.prompt_token_path.empty() ? "repeated_token" : "token_file")
+        << "\",\"token_count\":" << options.prompt_length << "},"
         << "\"prompt_length\":" << options.prompt_length << ','
         << "\"decode_steps\":" << options.decode_steps << ','
         << "\"positions\":" << comparison.kl.size() << ','
@@ -450,7 +515,7 @@ void write_json(
     out << ",\"candidate\":";
     write_run_json(out, candidate);
     out << ",\"matched_context\":{"
-        << "\"semantics\":\"candidate consumes F16-reference seed and generated tokens\","
+        << "\"semantics\":\"candidate consumes reference seed and generated tokens\","
         << "\"all_logit_positions_share_token_inputs\":true,"
         << "\"mean_kl\":" << comparison.mean_kl << ','
         << "\"max_kl\":" << comparison.max_kl << ','
@@ -476,7 +541,8 @@ void write_json(
     out << ",\"candidate_reference_top1_rank\":";
     write_number_array(out, comparison.candidate_reference_top1_rank);
     out << "},\"notes\":["
-        << "\"F16 and Q8_0 designate llama.cpp KV cache types; model weights are identical.\","
+        << "\"F16 and Q8_0 designate llama.cpp K/V cache types; model weights are identical.\","
+        << "\"Candidate K and V cache types may be selected independently.\","
         << "\"Only prompt-final and decode-step full logits are retained in host memory.\","
         << "\"This is a correctness diagnostic, not a throughput claim.\"]}"
         << '\n';
@@ -499,16 +565,22 @@ int main(int argc, char ** argv) {
         if (!model) throw std::runtime_error("failed to load model");
         const double model_load_seconds = seconds_since(load_start);
 
-        std::cerr << "running F16 reference..." << std::endl;
-        RunResult reference = run_context(model.get(), options, options.reference_cache, nullptr);
+        std::vector<llama_token> prompt = load_prompt_tokens(options);
+        std::cerr << "running reference K=" << options.reference_cache
+                  << " V=" << options.reference_cache << "..." << std::endl;
+        RunResult reference = run_context(
+            model.get(), options, options.reference_cache, options.reference_cache, prompt, nullptr);
         std::vector<int32_t> forced_inputs;
         forced_inputs.reserve(static_cast<size_t>(options.decode_steps));
         for (int32_t step = 0; step < options.decode_steps; ++step) {
             forced_inputs.push_back(reference.top1_ids.at(static_cast<size_t>(step)));
         }
 
-        std::cerr << "running Q8_0 candidate with reference-token forcing..." << std::endl;
-        RunResult candidate = run_context(model.get(), options, options.candidate_cache, &forced_inputs);
+        std::cerr << "running candidate K=" << options.candidate_cache_k
+                  << " V=" << options.candidate_cache_v
+                  << " with reference-token forcing..." << std::endl;
+        RunResult candidate = run_context(
+            model.get(), options, options.candidate_cache_k, options.candidate_cache_v, prompt, &forced_inputs);
         CompareResult comparison = compare_logits(reference, candidate);
         write_logits_binary(options.reference_logits_path, reference);
         write_json(options, reference, candidate, comparison, model_load_seconds);
