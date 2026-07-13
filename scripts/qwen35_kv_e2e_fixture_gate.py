@@ -28,6 +28,7 @@ from hipengine.kvcache import ResolvedKVPolicy, resolve_kv_policy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
+from scripts.qwen35_paro_int8_kv_quality_sweep import _kv_memory_audit
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -205,30 +206,6 @@ def _first_mismatch(a: list[int], b: list[int]) -> dict[str, int] | None:
     if len(a) != len(b):
         return {"index": min(len(a), len(b)), "left": len(a), "right": len(b)}
     return None
-
-
-def _kv_memory_audit(summary: dict[str, Any], storage_dtype: str) -> dict[str, Any]:
-    full_layers = list(summary.get("full_attention_layers", ()))
-    if storage_dtype != "int8_per_token_head":
-        return {"required": False, "passed": True, "persistent_bf16_kv_layers": []}
-    persistent_bf16 = [
-        int(layer.get("layer_id", -1))
-        for layer in full_layers
-        if layer.get("storage_dtype") == "bf16" or layer.get("payload_dtype") == "bf16"
-    ]
-    missing_scales = [
-        int(layer.get("layer_id", -1))
-        for layer in full_layers
-        if not layer.get("scale_metadata") or int(layer.get("scale_metadata", {}).get("scale_bytes", 0)) <= 0
-    ]
-    return {
-        "required": True,
-        "passed": not persistent_bf16 and not missing_scales,
-        "persistent_bf16_kv_layers": persistent_bf16,
-        "missing_int8_scale_layers": missing_scales,
-        "full_attention_kv_payload_bytes": int(summary.get("full_attention_kv_payload_bytes", 0)),
-        "full_attention_kv_scale_bytes": int(summary.get("full_attention_kv_scale_bytes", 0)),
-    }
 
 
 def _command(args: argparse.Namespace) -> str:

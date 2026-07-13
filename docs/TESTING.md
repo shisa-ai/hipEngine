@@ -288,6 +288,33 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
   --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
 ```
 
+For Qwen3.6/PARO long-context admission, also run
+`scripts/qwen35_paro_int8_kv_quality_sweep.py --comparison-mode both` on the
+promotion shapes. The quality gate uses the candidate rollout forced with the
+BF16 reference token inputs, so every KL/top-1 position has the same token
+history. The independent greedy rollout is diagnostic: only its
+`matched_history_logit_gate` is an intrinsic fidelity comparison; metrics after
+`first_context_divergent_logit_position` include rollout cascade and must not be
+reported as quantization-only error.
+
+Use the bounded task smoke as a fast product-level companion, not as a full
+benchmark replacement:
+
+```bash
+python3 scripts/qwen35_paro_kv_quality_smoke.py \
+  --suite benchmarks/prompts/kv-int8-long-context-smoke.jsonl \
+  --context-tokens 4096 --max-new-tokens 48 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-kv-quality-smoke.json
+```
+
+The suite has one retrieval, multihop, aggregation, long-document, and code
+row. It gates candidate regressions only when the BF16 reference answers the
+same row correctly; a BF16 failure is `reference_unscorable`, not an INT8 pass.
+Exact candidate/reference token equality remains diagnostic because distinct
+valid wording is allowed when both task scores pass.
+
 For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
 expected to pass via the BF16 mirror. Long contexts must pass with
 `--require-no-bf16-mirror`; the safety fallback keeps 8 of 10 full-attention

@@ -32,6 +32,12 @@ _SYMBOL_INT8_BLOCK16_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_bl
 _SYMBOL_INT8_BLOCK16_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_spans"
 _SYMBOL_INT8_BLOCK16_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_batch_spans"
 _SYMBOL_INT8_BLOCK16_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_prompt_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_f32_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_f32_batch_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_f32_prompt_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_fp16_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_fp16_batch_spans"
+_SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_hadamard_group32_scale_fp16_prompt_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_batch_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_prompt_spans"
@@ -543,6 +549,120 @@ def qwen35_write_paged_kv_int8_block16_prompt_spans(
     )
 
 
+def qwen35_write_paged_kv_int8_hadamard_group32_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Transform and append one FP32 K/V row as Hadamard-group32 INT8."""
+
+    _launch_int8_write(
+        _int8_hadamard_group32_symbol(spans, batch=False, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_hadamard_group32_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Transform and append row-major batched K/V as Hadamard-group32 INT8."""
+
+    _launch_int8_write_batch(
+        _int8_hadamard_group32_symbol(spans, batch=True, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_hadamard_group32_prompt_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Transform and append prompt K/V as Hadamard-group32 INT8."""
+
+    _launch_int8_write_batch(
+        _int8_hadamard_group32_symbol(spans, batch=True, prompt=True),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_int8_key_bf16_value_spans(
     key_ptr: int,
     value_ptr: int,
@@ -720,6 +840,21 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_batch_spans"),
         qwen35_write_paged_kv_int8_block16_batch_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_hadamard_group32", "hadamard_group32_spans"),
+        qwen35_write_paged_kv_int8_hadamard_group32_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_hadamard_group32", "hadamard_group32_prompt_spans"),
+        qwen35_write_paged_kv_int8_hadamard_group32_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_hadamard_group32", "hadamard_group32_batch_spans"),
+        qwen35_write_paged_kv_int8_hadamard_group32_batch_spans,
         replace=replace,
     )
     register(
@@ -1171,6 +1306,7 @@ def _check_int8_write_shape(
         block_size,
         num_kv_heads,
         required_blocks=block_table_len,
+        head_dim=head_dim,
         k_scale_ptr=k_scale_ptr,
         v_scale_ptr=v_scale_ptr,
     )
@@ -1204,6 +1340,7 @@ def _check_int8_write_batch_shape(
         block_size,
         num_kv_heads,
         required_blocks=required_scale_blocks,
+        head_dim=head_dim,
         k_scale_ptr=k_scale_ptr,
         v_scale_ptr=v_scale_ptr,
     )
@@ -1216,6 +1353,7 @@ def _check_int8_scale_metadata(
     num_kv_heads: int,
     *,
     required_blocks: int,
+    head_dim: int,
     k_scale_ptr: int,
     v_scale_ptr: int,
 ) -> None:
@@ -1234,14 +1372,30 @@ def _check_int8_scale_metadata(
         scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
         if scale_block_size != block_size or scale_heads != num_kv_heads:
             raise ValueError("INT8 scale tensor shape must match block_size and num_kv_heads")
-    elif metadata.granularity == "block16":
+    elif metadata.granularity in {"block16", "hadamard_group32"}:
+        group_dim = 16 if metadata.granularity == "block16" else 32
         if len(metadata.k_scale.shape) != 4:
-            raise ValueError("block16 INT8 scale tensors must have shape [blocks, block_size, num_kv_heads, 16]")
-        scale_blocks, scale_block_size, scale_heads, scale_dim_blocks = (int(dim) for dim in metadata.k_scale.shape)
-        if scale_block_size != block_size or scale_heads != num_kv_heads or scale_dim_blocks != 16:
-            raise ValueError("block16 INT8 scale tensor shape must match block_size, num_kv_heads, and 16 scale blocks")
+            raise ValueError(
+                f"{metadata.granularity} INT8 scale tensors must have shape "
+                "[blocks, block_size, num_kv_heads, scale_groups]"
+            )
+        scale_blocks, scale_block_size, scale_heads, scale_dim_blocks = (
+            int(dim) for dim in metadata.k_scale.shape
+        )
+        expected_groups = int(head_dim) // group_dim if int(head_dim) % group_dim == 0 else -1
+        if (
+            scale_block_size != block_size
+            or scale_heads != num_kv_heads
+            or scale_dim_blocks != expected_groups
+        ):
+            raise ValueError(
+                f"{metadata.granularity} INT8 scale tensor shape must match block_size, "
+                f"num_kv_heads, and {expected_groups} scale groups"
+            )
     else:
-        raise ValueError("INT8 scale metadata granularity must be per_token_head or block16")
+        raise ValueError(
+            "INT8 scale metadata granularity must be per_token_head, block16, or hadamard_group32"
+        )
     if scale_blocks < required_blocks:
         raise ValueError("INT8 scale tensors must cover the paged block table")
 
@@ -1288,6 +1442,24 @@ def _int8_block16_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> st
     if batch:
         return _SYMBOL_INT8_BLOCK16_SCALE_F32_BATCH
     return _SYMBOL_INT8_BLOCK16_SCALE_F32
+
+
+def _int8_hadamard_group32_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
+    metadata = spans.scale_metadata
+    scale_dtype = metadata.scale_dtype if metadata is not None else None
+    if scale_dtype == DType.FP32:
+        if prompt:
+            return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32_PROMPT
+        if batch:
+            return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32_BATCH
+        return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_F32
+    if scale_dtype == DType.FP16:
+        if prompt:
+            return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16_PROMPT
+        if batch:
+            return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16_BATCH
+        return _SYMBOL_INT8_HADAMARD_GROUP32_SCALE_FP16
+    raise ValueError("Hadamard-group32 INT8 scales must use fp16 or fp32")
 
 
 def _int8_key_bf16_value_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:

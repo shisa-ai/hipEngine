@@ -549,6 +549,8 @@ def estimate_qwen35_paro_kv_capacity(
     chunk_size: int = 256,
     reserve_bytes: int = 0,
     max_batch_size: int = 1,
+    quantized_full_attention_layers: int | None = None,
+    scale_granularity: str = "per_token_head",
 ) -> Qwen35ParoKVCapacityEstimate:
     """Estimate the largest retained full-attention KV arena that can fit.
 
@@ -578,6 +580,8 @@ def estimate_qwen35_paro_kv_capacity(
         storage_dtype=storage_dtype,
         scale_dtype=scale_dtype,
         max_batch_size=max_batch,
+        quantized_full_attention_layers=quantized_full_attention_layers,
+        scale_granularity=scale_granularity,
     )
     requested_rounded = _round_up_to_block(requested, block)
     requested_kv_bytes = requested_rounded * bytes_per_token
@@ -683,7 +687,10 @@ def _qwen35_paro_context_overhead_bytes(
     blocks = (max(tokens, decode_context_capacity) + int(block_size) - 1) // int(block_size)
     prefill_rows = tokens * max_batch
     block_table_bytes = blocks * np.dtype(np.int32).itemsize
-    prefill_block_table_bytes = prefill_rows * blocks * np.dtype(np.int32).itemsize
+    # The resident prefill table starts as one reusable dense row and grows only
+    # to the largest active full-attention chunk/packed slab. It is not a
+    # context_tokens-by-blocks allocation.
+    prefill_block_table_bytes = blocks * np.dtype(np.int32).itemsize
     prefill_token_bytes = prefill_rows * np.dtype(np.int64).itemsize
     prefill_position_bytes = prefill_rows * np.dtype(np.int64).itemsize
     prefill_context_count_bytes = prefill_rows * np.dtype(np.int64).itemsize
@@ -702,6 +709,8 @@ def qwen35_paro_kv_bytes_per_token(
     storage_dtype: str | DType,
     scale_dtype: str | DType = DType.FP16,
     max_batch_size: int = 1,
+    quantized_full_attention_layers: int | None = None,
+    scale_granularity: str = "per_token_head",
 ) -> int:
     storage = DType.parse(storage_dtype)
     if storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
@@ -714,13 +723,33 @@ def qwen35_paro_kv_bytes_per_token(
     if kv_heads <= 0 or head_dim <= 0:
         raise ValueError("Qwen3.5/PARO KV estimate requires num_key_value_heads and head_dim")
     batch = max(1, int(max_batch_size))
-    payload = batch * full_layers * 2 * kv_heads * head_dim * storage.itemsize
     if storage != DType.INT8_PER_TOKEN_HEAD:
-        return payload
+        return batch * full_layers * 2 * kv_heads * head_dim * storage.itemsize
+    quantized_layers = (
+        full_layers
+        if quantized_full_attention_layers is None
+        else int(quantized_full_attention_layers)
+    )
+    if quantized_layers < 0 or quantized_layers > full_layers:
+        raise ValueError("quantized_full_attention_layers must be within the full-attention layer count")
+    preserved_layers = full_layers - quantized_layers
+    payload = batch * 2 * kv_heads * head_dim * (
+        preserved_layers * DType.BF16.itemsize
+        + quantized_layers * DType.INT8_PER_TOKEN_HEAD.itemsize
+    )
     scale = DType.parse(scale_dtype)
     if scale not in {DType.FP16, DType.FP32}:
         raise ValueError("INT8 KV scale dtype must be fp16 or fp32")
-    return payload + batch * full_layers * 2 * kv_heads * scale.itemsize
+    if scale_granularity == "per_token_head":
+        scale_groups = 1
+    elif scale_granularity == "hadamard_group32":
+        if head_dim % 32:
+            raise ValueError("Hadamard-group32 KV requires head_dim divisible by 32")
+        scale_groups = head_dim // 32
+    else:
+        raise ValueError(f"unsupported INT8 KV scale granularity {scale_granularity!r}")
+    scale_bytes = batch * quantized_layers * 2 * kv_heads * scale_groups * scale.itemsize
+    return payload + scale_bytes
 
 
 def _qwen35_paro_full_attention_layers(config: Any) -> int:
@@ -1589,12 +1618,17 @@ class Qwen35ParoResidentSession:
         self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
         if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("resident full-attention KV storage must be bf16 or int8_per_token_head")
+        self.kv_storage_layout = str(getattr(self.kv_policy, "storage_layout", "uniform"))
         self.kv_scale_dtype = DType.parse(kv_scale_dtype)
         if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("resident INT8 KV scales must use fp16 or fp32")
-        if kv_scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
-            raise ValueError("resident INT8 KV scale granularity must be per_token_head")
-        self.kv_scale_granularity = kv_scale_granularity
+        policy_granularity = str(getattr(self.kv_policy, "scale_granularity", kv_scale_granularity))
+        resolved_granularity = (
+            policy_granularity if self.kv_storage_layout != "uniform" else kv_scale_granularity
+        )
+        if resolved_granularity not in KV_SCALE_GRANULARITY_CHOICES:
+            raise ValueError("unsupported resident INT8 KV scale granularity")
+        self.kv_scale_granularity = resolved_granularity
         self.auto_context_length = bool(auto_context_length)
         self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
             self.max_sequence_length,
@@ -2877,9 +2911,10 @@ class Qwen35ParoResidentSession:
 
     def _slot_full_scale_metadata(self, layer_id: int, slot: int) -> KVScaleMetadata | None:
         self._check_slot(slot)
-        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        scales = getattr(self, "full_cache_scales", {}).get(layer_id)
+        if scales is None:
             return None
-        k_scale, v_scale, k_buf, v_buf = self.full_cache_scales[layer_id]
+        k_scale, v_scale, k_buf, v_buf = scales
         scale_nbytes = int(np.prod(k_scale.shape)) * k_scale.dtype.itemsize
         return KVScaleMetadata(
             k_scale=Tensor.from_handle(
@@ -2895,20 +2930,59 @@ class Qwen35ParoResidentSession:
                 v_scale.device,
             ),
             scale_dtype=k_scale.dtype,
-            granularity=self.kv_scale_granularity,
+            granularity=self.full_cache_scale_metadata[layer_id].granularity,
         )
 
     def _full_cache_scale_metadata_all_slots(self, layer_id: int) -> KVScaleMetadata | None:
-        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        scales = getattr(self, "full_cache_scales", {}).get(layer_id)
+        if scales is None:
             return None
-        k_scale, v_scale, k_buf, v_buf = self.full_cache_scales[layer_id]
-        shape = self.batch_layout.flat_full_kv_scale_shape
+        k_scale, v_scale, k_buf, v_buf = scales
+        shape = (self.max_batch_size * int(k_scale.shape[0]), *k_scale.shape[1:])
         return KVScaleMetadata(
             k_scale=Tensor.from_handle(k_buf.ptr, shape, k_scale.dtype, k_scale.device),
             v_scale=Tensor.from_handle(v_buf.ptr, shape, v_scale.dtype, v_scale.device),
             scale_dtype=k_scale.dtype,
-            granularity=self.kv_scale_granularity,
+            granularity=self.full_cache_scale_metadata[layer_id].granularity,
         )
+
+    def _full_attention_storage_dtype(self, layer_id: int) -> DType:
+        config = getattr(self, "config", None)
+        layer_types = tuple(getattr(config, "layer_types", ()) or ())
+        if not layer_types or int(layer_id) >= len(layer_types):
+            return self.kv_storage_dtype
+        full_layer_ids = tuple(
+            index for index, layer_type in enumerate(layer_types) if str(layer_type) == "full_attention"
+        )
+        try:
+            full_index = full_layer_ids.index(int(layer_id))
+        except ValueError:
+            raise ValueError(f"layer {layer_id} is not a full-attention layer") from None
+        selector = getattr(getattr(self, "kv_policy", None), "full_attention_storage_dtype", None)
+        if selector is None:
+            return self.kv_storage_dtype
+        return DType.parse(selector(full_index, len(full_layer_ids)))
+
+    def _quantized_full_attention_layer_count(self) -> int:
+        config = getattr(self, "config", None)
+        layer_types = tuple(getattr(config, "layer_types", ()) or ())
+        full_layer_ids = tuple(
+            index for index, layer_type in enumerate(layer_types) if str(layer_type) == "full_attention"
+        )
+        if not full_layer_ids:
+            return 0
+        return sum(
+            self._full_attention_storage_dtype(layer_id) == DType.INT8_PER_TOKEN_HEAD
+            for layer_id in full_layer_ids
+        )
+
+    def _full_attention_scale_granularity(self, layer_id: int) -> str | None:
+        if self._full_attention_storage_dtype(layer_id) != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        metadata = getattr(self, "full_cache_scale_metadata", {}).get(layer_id)
+        if metadata is not None:
+            return metadata.granularity
+        return self.kv_scale_granularity
 
     def _slot_spans(self, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
         position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
@@ -2931,6 +3005,7 @@ class Qwen35ParoResidentSession:
         position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
         context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
         scale_metadata = self._slot_full_scale_metadata(layer_id, slot)
+        storage_dtype = self._full_attention_storage_dtype(layer_id)
         append_max_live_count = self.max_sequence_length - 1
         decode_max_live_count = self.max_sequence_length
         position_arr = getattr(self, "position_arr", None)
@@ -2942,14 +3017,14 @@ class Qwen35ParoResidentSession:
             block_table=self.block_table,
             live_counts=position_tensor,
             max_live_count=append_max_live_count,
-            storage_dtype=self.kv_storage_dtype,
+            storage_dtype=storage_dtype,
             scale_metadata=scale_metadata,
         )
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=context_tensor,
             max_live_count=decode_max_live_count,
-            storage_dtype=self.kv_storage_dtype,
+            storage_dtype=storage_dtype,
             scale_metadata=scale_metadata,
         )
         return position_tensor, append_spans, decode_spans
@@ -2981,9 +3056,67 @@ class Qwen35ParoResidentSession:
             tensor.device,
         )
 
-    def _prefill_block_table_rows(self, rows: int, *, start: int = 0) -> Tensor:
+    def _ensure_prefill_block_table_capacity(self, rows: int, *, uniform: bool) -> None:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("prefill block-table rows must be positive")
+        # A few narrow unit fakes predate managed table-capacity metadata and
+        # supply a fixed legacy buffer. Keep those structural tests on the
+        # legacy view while every real session initializes the managed fields.
+        if not hasattr(self, "prefill_block_table_capacity_rows"):
+            return
+        if rows > self.prefill_capacity_rows:
+            raise ValueError(
+                f"prefill block-table rows {rows} exceed session capacity {self.prefill_capacity_rows}"
+            )
+        capacity = int(getattr(self, "prefill_block_table_capacity_rows", 0) or 0)
+        current = self.prefill_block_table_buf
+        if capacity < rows:
+            dense_row = np.arange(self.blocks, dtype=np.int32)
+            table = np.tile(dense_row, (rows, 1))
+            replacement = self._dev(table)
+            # Prompt-length changes synchronize in reset(), and growth normally
+            # happens before the first full-attention chunk. Keep replacement
+            # safe for direct diagnostic callers too.
+            self.runtime.device_synchronize()
+            self.buffers = [buffer for buffer in self.buffers if buffer is not current]
+            free(current, runtime=self.runtime)
+            self.prefill_block_table_buf = replacement
+            self.prefill_block_table_capacity_rows = rows
+            self._prefill_block_table_is_uniform = True
+            self._prefill_block_table_owner = "uniform"
+            capacity = rows
+        if uniform and not bool(getattr(self, "_prefill_block_table_is_uniform", False)):
+            dense_row = np.arange(self.blocks, dtype=np.int32)
+            table = np.tile(dense_row, (capacity, 1))
+            copy_host_to_device(
+                self.prefill_block_table_buf,
+                host_array_ptr(table),
+                table.nbytes,
+                runtime=self.runtime,
+            )
+            self._prefill_block_table_is_uniform = True
+            self._prefill_block_table_owner = "uniform"
+
+    def _prefill_block_table_rows(
+        self,
+        rows: int,
+        *,
+        start: int = 0,
+        ensure_uniform: bool = True,
+    ) -> Tensor:
+        # ``start`` indexes token-position/context metadata, not the dense page
+        # table. Every single-request chunk reuses rows [0:rows] of this compact
+        # allocation because each table row is identical.
+        managed = hasattr(self, "prefill_block_table_capacity_rows")
+        self._ensure_prefill_block_table_capacity(rows, uniform=ensure_uniform)
+        table_ptr = (
+            self.prefill_block_table_buf.ptr
+            if managed
+            else self.prefill_block_table_buf.ptr + int(start) * self.blocks * DType.INT32.itemsize
+        )
         return Tensor.from_handle(
-            self.prefill_block_table_buf.ptr + int(start) * self.blocks * DType.INT32.itemsize,
+            table_ptr,
             (rows, self.blocks),
             DType.INT32,
             self.device,
@@ -3084,9 +3217,10 @@ class Qwen35ParoResidentSession:
             layer_payload_bytes = int(key_buf.nbytes) + int(value_buf.nbytes)
             payload_bytes += layer_payload_bytes
             payload_elements += layer_payload_elements
+            layer_storage_dtype = self._full_attention_storage_dtype(layer_id)
             entry: dict[str, Any] = {
                 "layer_id": int(layer_id),
-                "storage_dtype": self.kv_storage_dtype.value,
+                "storage_dtype": layer_storage_dtype.value,
                 "payload_dtype": key_cache.dtype.value,
                 "key_shape": list(key_cache.shape),
                 "value_shape": list(value_cache.shape),
@@ -3116,8 +3250,8 @@ class Qwen35ParoResidentSession:
                     "scale_dtype": metadata.scale_dtype.value,
                     "k_scale_shape": list(k_scale.shape),
                     "v_scale_shape": list(v_scale.shape),
-                    "k_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", k_scale.shape)),
-                    "v_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", v_scale.shape)),
+                    "k_scale_full_shape": [self.max_batch_size * int(k_scale.shape[0]), *k_scale.shape[1:]],
+                    "v_scale_full_shape": [self.max_batch_size * int(v_scale.shape[0]), *v_scale.shape[1:]],
                     "k_scale_elements": k_scale_elements,
                     "v_scale_elements": v_scale_elements,
                     "scale_elements": layer_scale_elements,
@@ -3129,8 +3263,10 @@ class Qwen35ParoResidentSession:
             full_layers.append(entry)
         buffer_bytes = sum(int(buffer.nbytes) for buffer in getattr(self, "buffers", ()))
         allocation_bytes = sum(int(allocation.buffer.nbytes) for allocation in getattr(self, "allocations", ()))
+        prefill_block_table = getattr(self, "prefill_block_table_buf", None)
         return {
             "kv_storage_dtype": self.kv_storage_dtype.value,
+            "kv_storage_layout": getattr(self, "kv_storage_layout", "uniform"),
             "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
             "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
             "full_attention_layer_count": len(full_layers),
@@ -3144,6 +3280,10 @@ class Qwen35ParoResidentSession:
             "buffer_bytes": buffer_bytes,
             "allocation_bytes": allocation_bytes,
             "owned_direct_bytes": buffer_bytes + allocation_bytes,
+            "prefill_block_table_bytes": int(getattr(prefill_block_table, "nbytes", 0)),
+            "prefill_block_table_capacity_rows": int(
+                getattr(self, "prefill_block_table_capacity_rows", 0) or 0
+            ),
         }
 
     def kv_memory_audit(self) -> dict[str, Any]:
@@ -3151,9 +3291,13 @@ class Qwen35ParoResidentSession:
 
         summary = self.owned_buffer_summary()
         storage_dtype = DType.parse(summary["kv_storage_dtype"])
-        requires_int8 = storage_dtype == DType.INT8_PER_TOKEN_HEAD
         retained_layers = list(summary.get("full_attention_layers", ()))
+        requires_int8 = any(
+            str(layer.get("storage_dtype")) == DType.INT8_PER_TOKEN_HEAD.value
+            for layer in retained_layers
+        )
         persistent_bf16_layers: list[int] = []
+        preserved_bf16_layers: list[int] = []
         missing_scale_layers: list[int] = []
         payload_dtype_mismatch_layers: list[int] = []
         payload_element_size_mismatch_layers: list[int] = []
@@ -3163,8 +3307,13 @@ class Qwen35ParoResidentSession:
             payload_dtype = str(layer.get("payload_dtype"))
             storage_value = str(layer.get("storage_dtype"))
             bytes_per_element = layer.get("payload_bytes_per_element")
-            if requires_int8:
-                if storage_value != DType.INT8_PER_TOKEN_HEAD.value or payload_dtype == DType.BF16.value:
+            if storage_value == DType.BF16.value:
+                preserved_bf16_layers.append(layer_id)
+                if payload_dtype != DType.BF16.value:
+                    payload_dtype_mismatch_layers.append(layer_id)
+                continue
+            if storage_value == DType.INT8_PER_TOKEN_HEAD.value:
+                if payload_dtype == DType.BF16.value:
                     persistent_bf16_layers.append(layer_id)
                 if payload_dtype != DType.INT8.value:
                     payload_dtype_mismatch_layers.append(layer_id)
@@ -3197,6 +3346,7 @@ class Qwen35ParoResidentSession:
             "retained_kv_scale_elements": int(summary.get("full_attention_kv_scale_elements", 0)),
             "retained_kv_total_bytes": int(summary.get("full_attention_kv_total_bytes", 0)),
             "persistent_bf16_kv_layers": persistent_bf16_layers,
+            "preserved_bf16_kv_layers": preserved_bf16_layers,
             "missing_int8_scale_layers": missing_scale_layers,
             "payload_dtype_mismatch_layers": payload_dtype_mismatch_layers,
             "payload_element_size_mismatch_layers": payload_element_size_mismatch_layers,
@@ -3346,6 +3496,15 @@ class Qwen35ParoResidentSession:
         if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
             return None
         value = os.environ.get(_INT8_PREFILL_ATTENTION_ENV, "auto").strip().lower()
+        if getattr(self, "kv_storage_layout", "uniform") == "tail4_hadamard_group32":
+            if value in {"streaming", "streaming_direct", "direct", "direct_streaming"}:
+                return "streaming_direct"
+            if value in {"", "auto", "oracle", "bf16_oracle", "aotriton", "oracle_aotriton"}:
+                return "mixed_bf16_oracle_tail4_packed"
+            raise ValueError(
+                f"{_INT8_PREFILL_ATTENTION_ENV} must be auto, streaming, or oracle "
+                f"(got {value!r})"
+            )
         if value in {"", "auto"}:
             min_tokens = max(
                 0,
@@ -3370,14 +3529,20 @@ class Qwen35ParoResidentSession:
         return self._prefill_int8_attention_path(tokens) == "streaming_direct"
 
     def _prefill_int8_uses_oracle_attention(self, tokens: int) -> bool:
-        return self._prefill_int8_attention_path(tokens) == "oracle_bf16"
+        return self._prefill_int8_attention_path(tokens) in {
+            "oracle_bf16",
+            "mixed_bf16_oracle_tail4_packed",
+        }
 
     def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
         if not self._prefill_use_aotriton_attention(tokens):
             return False
-        if self.kv_storage_dtype == DType.BF16:
+        if (
+            self.kv_storage_dtype == DType.BF16
+            or getattr(self, "kv_storage_layout", "uniform") == "tail4_hadamard_group32"
+        ):
             return True
-        # AOTriton consumes BF16 K/V. For INT8-retained sessions, use it only
+        # AOTriton consumes BF16 K/V. For uniform INT8-retained sessions, use it only
         # when the INT8 prefill gate selects the temporary BF16 oracle bridge;
         # the slow direct streaming INT8 path remains available for explicit
         # diagnostics and very-long memory-gate prompts.
@@ -3451,10 +3616,13 @@ class Qwen35ParoResidentSession:
         position_arr = np.asarray(slab.positions, dtype=np.int64)
         context_arr = np.asarray(slab.context_counts, dtype=np.int64)
         block_table_arr = np.asarray(physical_tables, dtype=np.int32)
+        self._ensure_prefill_block_table_capacity(slab.rows, uniform=False)
         copy_host_to_device(self.prefill_token_id_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_position_buf, host_array_ptr(position_arr), position_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_context_count_buf, host_array_ptr(context_arr), context_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_block_table_buf, host_array_ptr(block_table_arr), block_table_arr.nbytes, runtime=self.runtime)
+        self._prefill_block_table_is_uniform = False
+        self._prefill_block_table_owner = "packed"
         # Prefill overwrote the shared block-table buffer; force the decode
         # block-table cache to rebuild on the next _batch_full_spans call.
         self._decode_full_block_table_key = None
@@ -4581,8 +4749,10 @@ class Qwen35ParoResidentSession:
                     )
             elif layer_type == "full_attention":
                 retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
-                int8_retained = self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
-                direct_int8_prefill = self._prefill_int8_uses_direct_attention(tokens)
+                retained_scale_metadata = self._slot_full_scale_metadata(layer_id, 0)
+                int8_retained = retained_scale_metadata is not None
+                direct_int8_prefill = int8_retained and self._prefill_int8_uses_direct_attention(tokens)
+                layer_use_aotriton_attention = use_aotriton_attention and not direct_int8_prefill
                 if int8_retained and not direct_int8_prefill:
                     key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
                     prefill_storage_dtype = DType.BF16
@@ -4590,7 +4760,7 @@ class Qwen35ParoResidentSession:
                 else:
                     key_cache, value_cache = retained_key_cache, retained_value_cache
                     prefill_storage_dtype = DType.INT8_PER_TOKEN_HEAD if int8_retained else DType.BF16
-                    prefill_scale_metadata = self._slot_full_scale_metadata(layer_id, 0) if int8_retained else None
+                    prefill_scale_metadata = retained_scale_metadata
                 chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
                 for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
                     rows = end - start
@@ -4609,16 +4779,16 @@ class Qwen35ParoResidentSession:
                             start=start,
                             total_tokens=tokens,
                             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-                            scale_metadata=self._slot_full_scale_metadata(layer_id, 0),
+                            scale_metadata=retained_scale_metadata,
                         )
                     positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
-                    if use_aotriton_attention:
+                    if layer_use_aotriton_attention:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
                     else:
                         cu_seqlens_q = cu_seqlens_k = None
                     attention_scratch = self._ensure_full_prefill_scratch(
                         tokens=rows,
-                        aotriton_attention=use_aotriton_attention,
+                        aotriton_attention=layer_use_aotriton_attention,
                     )
                     moe_scratch = self._ensure_moe_prefill_scratch(layer_id, tokens=rows)
                     out = state.run_full_attention_moe_prefill_layer_fp16(
@@ -4635,10 +4805,10 @@ class Qwen35ParoResidentSession:
                         moe_scratch=moe_scratch,
                         cu_seqlens_q=cu_seqlens_q,
                         cu_seqlens_k=cu_seqlens_k,
-                        aotriton_attention=use_aotriton_attention,
+                        aotriton_attention=layer_use_aotriton_attention,
                         aotriton_bridge=(
                             self._prefill_aotriton_bridge_for_rows(rows)
-                            if use_aotriton_attention
+                            if layer_use_aotriton_attention
                             else None
                         ),
                         aotriton_kv_rows=end,
@@ -4776,17 +4946,19 @@ class Qwen35ParoResidentSession:
                         slot = int(slab.physical_slot_ids[segment_index])
                         local_block_table = np.asarray(slab.block_tables[start:end], dtype=np.int32)
                         local_block_table = np.ascontiguousarray(local_block_table)
-                        block_table_offset = int(start) * block_count * DType.INT32.itemsize
+                        self._ensure_prefill_block_table_capacity(segment_rows, uniform=False)
                         copy_host_to_device(
-                            DeviceBuffer(self.prefill_block_table_buf.ptr + block_table_offset, local_block_table.nbytes),
+                            DeviceBuffer(self.prefill_block_table_buf.ptr, local_block_table.nbytes),
                             host_array_ptr(local_block_table),
                             local_block_table.nbytes,
                             runtime=self.runtime,
                         )
                         self._decode_full_block_table_key = None
                         hidden_chunk = self._prefill_row_matrix_view(hidden, start, segment_rows)
+                        self._prefill_block_table_is_uniform = False
+                        self._prefill_block_table_owner = "packed_segment"
                         block_table = Tensor.from_handle(
-                            self.prefill_block_table_buf.ptr + block_table_offset,
+                            self.prefill_block_table_buf.ptr,
                             (segment_rows, block_count),
                             DType.INT32,
                             self.device,
@@ -5096,8 +5268,7 @@ class Qwen35ParoResidentSession:
         positions: tuple[int, ...],
         slots: tuple[int, ...],
     ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
-        _ = layer_id
-        # BF16 batch append/decode kernels run compact active rows and add an
+        # Batch append/decode kernels run compact active rows and add an
         # active-row base internally.  Encode physical slot ids as row-relative
         # block-table offsets so row ``r`` can address slot ``slots[r]`` without
         # moving retained KV cache pages after reclaim/compaction.
@@ -5142,17 +5313,21 @@ class Qwen35ParoResidentSession:
         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
         decode_live_counts = [int(position) + 1 for position in positions]
+        storage_dtype = self._full_attention_storage_dtype(layer_id)
+        scale_metadata = self._full_cache_scale_metadata_all_slots(layer_id)
         append_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=position_tensor,
             max_live_count=max(append_live_counts),
-            storage_dtype=self.kv_storage_dtype,
+            storage_dtype=storage_dtype,
+            scale_metadata=scale_metadata,
         )
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=context_tensor,
             max_live_count=max(decode_live_counts),
-            storage_dtype=self.kv_storage_dtype,
+            storage_dtype=storage_dtype,
+            scale_metadata=scale_metadata,
         )
         self._last_batch_full_spans_metadata = {
             "layer_index": int(layer_id),
@@ -5166,7 +5341,7 @@ class Qwen35ParoResidentSession:
             "block_size": int(getattr(self, "block_size", 256)),
             "block_table_len_per_row": int(self.blocks),
             "block_table_rows": self._decode_full_block_rows_list,
-            "storage_dtype": DType.parse(self.kv_storage_dtype).value,
+            "storage_dtype": storage_dtype.value,
         }
         return position_tensor, append_spans, decode_spans
 
@@ -7482,7 +7657,10 @@ class Qwen35ParoResidentSession:
         self._allocate_verify_trunk_buffers()
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
-        prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))
+        # Keep one dense page-table row resident. Prompt prefill grows this
+        # buffer lazily only to the largest active chunk (or packed slab), then
+        # reuses rows [0:chunk_rows] for every subsequent layer/chunk.
+        prefill_block_table_arr = block_table_arr.reshape(1, self.blocks)
         prefill_context_count_arr = np.zeros((self.prefill_capacity_rows,), dtype=np.int64)
         self.position_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.context_arr = np.ones(self.batch_layout.slot_scalar_shape, dtype=np.int64)
@@ -7491,6 +7669,9 @@ class Qwen35ParoResidentSession:
         self.active_mask_arr[0] = 1
         self.block_table_buf = self._dev(block_table_arr)
         self.prefill_block_table_buf = self._dev(prefill_block_table_arr)
+        self.prefill_block_table_capacity_rows = 1
+        self._prefill_block_table_is_uniform = True
+        self._prefill_block_table_owner = "uniform"
         self.prefill_context_count_buf = self._dev(prefill_context_count_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
@@ -7760,6 +7941,8 @@ class Qwen35ParoResidentSession:
             chunk_size=self.chunk_size,
             reserve_bytes=reserve_bytes,
             max_batch_size=self.max_batch_size,
+            quantized_full_attention_layers=self._quantized_full_attention_layer_count(),
+            scale_granularity=self.kv_scale_granularity,
         )
         if self.auto_context_length:
             auto_context = self._auto_context_length_from_estimate(estimate)
@@ -7788,10 +7971,16 @@ class Qwen35ParoResidentSession:
                     chunk_size=self.chunk_size,
                     reserve_bytes=reserve_bytes,
                     max_batch_size=self.max_batch_size,
+                    quantized_full_attention_layers=self._quantized_full_attention_layer_count(),
+                    scale_granularity=self.kv_scale_granularity,
                 )
         self.kv_capacity_estimate = estimate
         self._emit("kv_capacity_estimate", **estimate.to_json_dict())
-        label = "INT8" if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else self.kv_storage_dtype.value.upper()
+        label = (
+            self.kv_storage_layout.upper()
+            if self.kv_storage_layout != "uniform"
+            else ("INT8" if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else self.kv_storage_dtype.value.upper())
+        )
         _LOGGER.debug(
             "%s KV capacity estimate: requested resident context %d tokens needs %s KV + %s metadata; "
             "current free HIP memory can fit about %d tokens (%s usable after %s reserve)%s.",
@@ -7865,7 +8054,8 @@ class Qwen35ParoResidentSession:
         return estimate
 
     def _allocate_full_attention_cache(self, layer_id: int) -> None:
-        payload_dtype = DType.INT8 if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else DType.BF16
+        storage_dtype = self._full_attention_storage_dtype(layer_id)
+        payload_dtype = DType.INT8 if storage_dtype == DType.INT8_PER_TOKEN_HEAD else DType.BF16
         key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=self._zero_array_dtype(payload_dtype))
         value_zero = np.zeros_like(key_zero)
         key_buf = self._dev(key_zero)
@@ -7875,22 +8065,44 @@ class Qwen35ParoResidentSession:
         self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
         self._clear_resident_tensor_view_caches()
 
-        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+        if storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            granularity = self._full_attention_scale_granularity(layer_id)
+            if granularity == "hadamard_group32":
+                if self.config.head_dim % 32:
+                    raise ValueError("Hadamard-group32 KV requires head_dim divisible by 32")
+                scale_groups = self.config.head_dim // 32
+                flat_scale_shape = (
+                    self.max_batch_size * self.blocks,
+                    self.block_size,
+                    self.config.num_key_value_heads,
+                    scale_groups,
+                )
+                slot_scale_shape = (
+                    self.blocks,
+                    self.block_size,
+                    self.config.num_key_value_heads,
+                    scale_groups,
+                )
+            elif granularity == "per_token_head":
+                flat_scale_shape = self.batch_layout.flat_full_kv_scale_shape
+                slot_scale_shape = self.batch_layout.slot0_full_kv_scale_shape
+            else:
+                raise ValueError(f"unsupported resident INT8 KV scale granularity {granularity!r}")
             scale_zero = np.zeros(
-                self.batch_layout.flat_full_kv_scale_shape,
+                flat_scale_shape,
                 dtype=self._zero_array_dtype(self.kv_scale_dtype),
             )
             k_scale_buf = self._dev(scale_zero)
             v_scale_buf = self._dev(np.zeros_like(scale_zero))
             k_scale = Tensor.from_handle(
                 k_scale_buf.ptr,
-                self.batch_layout.slot0_full_kv_scale_shape,
+                slot_scale_shape,
                 self.kv_scale_dtype,
                 self.device,
             )
             v_scale = Tensor.from_handle(
                 v_scale_buf.ptr,
-                self.batch_layout.slot0_full_kv_scale_shape,
+                slot_scale_shape,
                 self.kv_scale_dtype,
                 self.device,
             )
@@ -7899,7 +8111,7 @@ class Qwen35ParoResidentSession:
                 k_scale=k_scale,
                 v_scale=v_scale,
                 scale_dtype=self.kv_scale_dtype,
-                granularity=self.kv_scale_granularity,
+                granularity=granularity,
             )
         else:
             self.full_cache_scales.pop(layer_id, None)
@@ -11613,7 +11825,7 @@ class Qwen35ParoResidentSession:
         limit per row.
         """
 
-        block_table = self._prefill_block_table_rows(rows, start=0)
+        block_table = self._prefill_block_table_rows(rows, start=0, ensure_uniform=False)
         positions = Tensor.from_handle(
             self.prefill_position_buf.ptr,
             (rows,),
@@ -11843,7 +12055,7 @@ class Qwen35ParoResidentSession:
 
         if cache_slots.dtype is not DType.INT64 or cache_slots.shape != (rows,):
             raise ValueError("cache_slots must be INT64 with shape (rows,)")
-        block_table = self._prefill_block_table_rows(rows, start=0)
+        block_table = self._prefill_block_table_rows(rows, start=0, ensure_uniform=False)
         tree_committed = int(self.verify_tree_committed_count)
         total_len = tree_committed + rows
         # Uniform live_counts/row_positions for the prefill spans: total
@@ -12002,6 +12214,7 @@ class Qwen35ParoResidentSession:
         active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
         physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
         block_table = np.tile(physical_blocks, (rows, 1))
+        self._ensure_prefill_block_table_capacity(rows, uniform=False)
         # M12.5: cycle-to-cycle invariants (parent_rows, draft_depths,
         # row_to_request, active_mask, block_table) only change when the
         # (rows, base_slot, mode) bucket changes.  Cache by bucket signature
@@ -12037,7 +12250,12 @@ class Qwen35ParoResidentSession:
                 (self.verify_positions_i32, position_i32),
                 (self.prefill_context_count_buf, context_i64),
             ]
-        if self._verify_metadata_bucket_cache == bucket_signature:
+        table_owner = getattr(self, "_prefill_block_table_owner", None)
+        table_cache_hit = (
+            self._verify_metadata_bucket_cache == bucket_signature
+            and table_owner == ("verify", bucket_signature)
+        )
+        if table_cache_hit:
             copies: list[tuple[Any, Any]] = dynamic_copies
         else:
             copies = dynamic_copies + [
@@ -12049,6 +12267,8 @@ class Qwen35ParoResidentSession:
                 (self.prefill_block_table_buf, block_table),
             ]
             self._verify_metadata_bucket_cache = bucket_signature
+            self._prefill_block_table_is_uniform = False
+            self._prefill_block_table_owner = ("verify", bucket_signature)
         # Tree topology: build the dense ``[rows, rows]`` ancestor mask, the
         # global ``tree_committed_count``, and the per-row unique cache-slot
         # vector so the tree-aware K/V append + GQA gate kernels can filter

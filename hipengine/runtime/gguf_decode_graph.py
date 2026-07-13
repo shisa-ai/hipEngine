@@ -27,6 +27,7 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kvcache import KV_STORAGE_TAIL4_HADAMARD_GROUP32
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     record_f32_row_indexed,
@@ -42,6 +43,18 @@ def _sha256_json(payload: Any) -> str:
 
 def _enum_value(value: Any) -> str:
     return str(getattr(value, "value", value))
+
+
+def _decode_graph_kv_layout_admitted(session: Any) -> bool:
+    storage = _enum_value(session.kv_storage_dtype)
+    if storage == DType.BF16.value:
+        return True
+    return bool(
+        storage == DType.INT8_PER_TOKEN_HEAD.value
+        and str(getattr(session, "kv_storage_layout", "uniform"))
+        == KV_STORAGE_TAIL4_HADAMARD_GROUP32
+        and str(getattr(session, "kv_scale_granularity", "")) == "hadamard_group32"
+    )
 
 
 def _buffer_ptr(buffer: Any) -> int | None:
@@ -71,6 +84,8 @@ def _session_buffer_ptrs(session: Any) -> tuple[int, ...]:
         *scratch.layer_recurrent_states,
         *scratch.full_key_caches,
         *scratch.full_value_caches,
+        *getattr(scratch, "full_k_scale_caches", ()),
+        *getattr(scratch, "full_v_scale_caches", ()),
     ]
     pointers = [ptr for buffer in buffers if (ptr := _buffer_ptr(buffer)) is not None]
     for weight in session.runner.weights.weights:
@@ -136,6 +151,7 @@ class Qwen35GGUFDecodeGraphKey:
     vocab_size: int
     layer_types: tuple[str, ...]
     kv_storage_dtype: str
+    kv_storage_layout: str
     kv_scale_dtype: str
     kv_scale_granularity: str
     use_wmma_prefill: bool
@@ -220,6 +236,7 @@ def build_qwen35_gguf_decode_graph_key(
         "vocab_size": int(session.runner.vocab_size),
         "layer_types": tuple(str(layer) for layer in session.runner.weights.config.layer_types),
         "kv_storage_dtype": _enum_value(session.kv_storage_dtype),
+        "kv_storage_layout": str(getattr(session, "kv_storage_layout", "uniform")),
         "kv_scale_dtype": _enum_value(session.kv_scale_dtype),
         "kv_scale_granularity": str(session.kv_scale_granularity),
         "use_wmma_prefill": bool(session.use_wmma_prefill),
@@ -311,8 +328,10 @@ def capture_qwen35_gguf_decode_graph(
         raise RuntimeError("GGUF resident session is closed")
     if session.host_token_embedding_enabled:
         raise RuntimeError("GGUF decode graph requires device-resident token embedding")
-    if _enum_value(session.kv_storage_dtype) != "bf16":
-        raise RuntimeError("GGUF decode graph is currently admitted only for BF16 KV")
+    if not _decode_graph_kv_layout_admitted(session):
+        raise RuntimeError(
+            "GGUF decode graph requires BF16 KV or the admitted tail4_hadamard_group32 layout"
+        )
     if steps_per_replay <= 0:
         raise ValueError("steps_per_replay must be positive")
     replay_span = int(max_replay_steps if max_replay_steps is not None else steps_per_replay)
