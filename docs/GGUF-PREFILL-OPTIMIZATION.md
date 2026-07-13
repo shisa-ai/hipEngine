@@ -735,6 +735,7 @@ The existing balanced G3 control is:
 ```bash
 python3 scripts/gguf_gdn_prefill_ab.py \
   --model "$MODEL" --backend "$BACKEND" --contexts 512,4096 \
+  --baseline-mode chain_lds32 --candidate-mode chain_lds32_direct \
   --prompt-token-id 9707 --expected-token-id 9707 \
   --warmups 1 --repetitions 4 --use-wmma-prefill \
   --correctness-artifact /tmp/gpf-g2-exact-matrix.json \
@@ -742,8 +743,10 @@ python3 scripts/gguf_gdn_prefill_ab.py \
   --require-cached-build --json /tmp/gpf-g3-interleaved-ab.json
 ```
 
-The candidate harness must preserve this timing contract and record all three
-named modes until one is selected.
+The candidate harness must preserve this timing contract. `fused` remains the
+default timing baseline and byte-exact correctness oracle; an incremental
+candidate must explicitly name the already-promoted baseline so the gate
+measures the change under consideration rather than an older implementation.
 
 For the retained six-shape result, use the same boundary as the current
 leaderboard:

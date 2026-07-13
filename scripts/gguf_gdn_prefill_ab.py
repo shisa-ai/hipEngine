@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeated, interleaved fused-versus-candidate GGUF GDN prefill wall gate."""
+"""Repeated, interleaved baseline-versus-candidate GGUF GDN prefill wall gate."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 
 
 KIND = "hipengine_gguf_gdn_prefill_interleaved_ab"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_CORRECTNESS_ARTIFACT = (
     REPO_ROOT
@@ -90,6 +90,7 @@ def _load_correctness_gate(
     path: Path,
     *,
     contexts: Sequence[int],
+    baseline_mode: str = BASELINE_MODE,
     candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
@@ -103,11 +104,13 @@ def _load_correctness_gate(
     correctness = artifact.get("correctness")
     if isinstance(classification, Mapping) and classification.get("passed") is True:
         modes = artifact.get("protocol", {}).get("modes")
-        expected_modes = [BASELINE_MODE, candidate_mode]
-        if modes != expected_modes:
+        expected_oracle_modes = [BASELINE_MODE, candidate_mode]
+        expected_ab_modes = [baseline_mode, candidate_mode]
+        if modes not in (expected_oracle_modes, expected_ab_modes):
             raise BenchmarkError(
                 "correctness artifact candidate does not match A/B candidate: "
-                f"{modes!r} != {expected_modes!r}"
+                f"{modes!r} not in "
+                f"{(expected_oracle_modes, expected_ab_modes)!r}"
             )
         cases = artifact.get("cases")
         if not isinstance(cases, list):
@@ -122,6 +125,7 @@ def _load_correctness_gate(
         promotion_eligible = True
         status = classification.get("status")
         source_revision = artifact.get("source_revision")
+        correctness_modes = list(modes)
     elif isinstance(correctness, Mapping):
         project_gate = correctness.get("project_gate")
         cases = correctness.get("cases")
@@ -165,6 +169,7 @@ def _load_correctness_gate(
         promotion_eligible = False
         status = artifact.get("status")
         source_revision = artifact.get("software", {}).get("candidate_base_commit")
+        correctness_modes = None
     else:
         raise BenchmarkError("correctness artifact is not an accepted passing gate")
     missing = sorted(set(int(context) for context in contexts) - covered)
@@ -178,7 +183,9 @@ def _load_correctness_gate(
         "status": status,
         "contract": contract,
         "default_promotion_eligible": promotion_eligible,
+        "baseline_mode": baseline_mode,
         "candidate_mode": candidate_mode,
+        "correctness_modes": correctness_modes,
         "covered_contexts": sorted(covered),
         "passed": True,
     }
@@ -240,11 +247,12 @@ def _summarize_context(
     measurements: Sequence[Mapping[str, Any]],
     *,
     expected_token_id: int,
+    baseline_mode: str = BASELINE_MODE,
     candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     if not measurements:
         raise BenchmarkError("a context must contain measured repetitions")
-    modes = (BASELINE_MODE, candidate_mode)
+    modes = (baseline_mode, candidate_mode)
     mode_stats = {
         mode: _mode_statistics(
             [float(row["modes"][mode]["wall_ms"]) for row in measurements]
@@ -253,7 +261,7 @@ def _summarize_context(
     }
     paired_candidate_delta_ms = [
         float(row["modes"][candidate_mode]["wall_ms"])
-        - float(row["modes"][BASELINE_MODE]["wall_ms"])
+        - float(row["modes"][baseline_mode]["wall_ms"])
         for row in measurements
     ]
     token_ids = {
@@ -263,17 +271,17 @@ def _summarize_context(
     tokens_exact = all(
         baseline == candidate == int(expected_token_id)
         for baseline, candidate in zip(
-            token_ids[BASELINE_MODE], token_ids[candidate_mode], strict=True
+            token_ids[baseline_mode], token_ids[candidate_mode], strict=True
         )
     )
-    baseline_median = float(mode_stats[BASELINE_MODE]["median_ms"])
+    baseline_median = float(mode_stats[baseline_mode]["median_ms"])
     candidate_median = float(mode_stats[candidate_mode]["median_ms"])
     candidate_speedup = baseline_median / candidate_median
     candidate_delta_percent = (
         (candidate_median - baseline_median) / baseline_median
     ) * 100.0
     return {
-        "baseline_mode": BASELINE_MODE,
+        "baseline_mode": baseline_mode,
         "candidate_mode": candidate_mode,
         "measurements": [dict(row) for row in measurements],
         "statistics": mode_stats,
@@ -295,6 +303,7 @@ def _promotion_decision(
     *,
     provenance: Mapping[str, Any],
     correctness_gate: Mapping[str, Any],
+    baseline_mode: str = BASELINE_MODE,
     candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     clean = not bool(provenance.get("dirty"))
@@ -322,7 +331,7 @@ def _promotion_decision(
         )
     else:
         status = "retain_baseline_reject_candidate_performance"
-        default = BASELINE_MODE
+        default = baseline_mode
         conclusion = f"The {candidate_mode} candidate does not win every context."
     return {
         "measurement_valid": measurement_valid,
@@ -331,6 +340,7 @@ def _promotion_decision(
         "correctness_contract": correctness_gate.get("contract"),
         "contract_allows_default_promotion": contract_allows_promotion,
         "timed_tokens_exact": tokens_exact,
+        "baseline_mode": baseline_mode,
         "candidate_mode": candidate_mode,
         "candidate_wins_all_contexts": candidate_wins_all,
         "status": status,
@@ -341,10 +351,15 @@ def _promotion_decision(
 
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     contexts = _parse_contexts(args.contexts)
+    baseline_mode = str(args.baseline_mode)
     candidate_mode = str(args.candidate_mode)
+    if baseline_mode not in SUPPORTED_MODES:
+        raise BenchmarkError(f"unsupported baseline mode: {baseline_mode!r}")
     if candidate_mode not in CANDIDATE_MODES:
         raise BenchmarkError(f"unsupported candidate mode: {candidate_mode!r}")
-    modes = (BASELINE_MODE, candidate_mode)
+    if baseline_mode == candidate_mode:
+        raise BenchmarkError("baseline and candidate modes must differ")
+    modes = (baseline_mode, candidate_mode)
     repetitions = int(args.repetitions)
     warmups = int(args.warmups)
     if repetitions <= 0 or repetitions % 2:
@@ -357,6 +372,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     correctness_gate = _load_correctness_gate(
         args.correctness_artifact,
         contexts=contexts,
+        baseline_mode=baseline_mode,
         candidate_mode=candidate_mode,
     )
     compiler_version = None
@@ -406,6 +422,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             summary = _summarize_context(
                 measured,
                 expected_token_id=int(args.expected_token_id),
+                baseline_mode=baseline_mode,
                 candidate_mode=candidate_mode,
             )
             context_records.append(
@@ -434,7 +451,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIPENGINE_GGUF_GDN_PREFILL_MODE": (
-                f"interleaved {BASELINE_MODE} versus {candidate_mode}"
+                f"interleaved {baseline_mode} versus {candidate_mode}"
             ),
             "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": os.environ.get(
                 "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
@@ -455,6 +472,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         context_records,
         provenance=provenance,
         correctness_gate=correctness_gate,
+        baseline_mode=baseline_mode,
         candidate_mode=candidate_mode,
     )
     return {
@@ -473,14 +491,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "bulk_attention_mode": "bulk",
             "use_wmma_prefill": bool(args.use_wmma_prefill),
             "use_gemv_decode": True,
+            "baseline_mode": baseline_mode,
+            "candidate_mode": candidate_mode,
             "gdn_modes": list(modes),
         },
         "protocol": {
             "wall_clock": "time.perf_counter_ns around synchronized session.prefill",
             "session_scope": "one resident model/session shared by both modes and contexts",
             "ordering": (
-                f"balanced {BASELINE_MODE}-{candidate_mode} / "
-                f"{candidate_mode}-{BASELINE_MODE} by measured repetition"
+                f"balanced {baseline_mode}-{candidate_mode} / "
+                f"{candidate_mode}-{baseline_mode} by measured repetition"
             ),
             "warmups_per_context": warmups,
             "measured_repetitions_per_mode_context": repetitions,
@@ -501,10 +521,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--expected-token-id", type=int, default=9707)
     parser.add_argument(
+        "--baseline-mode",
+        choices=SUPPORTED_MODES,
+        default=BASELINE_MODE,
+        help="explicit GDN prefill implementation used as the wall-time baseline",
+    )
+    parser.add_argument(
         "--candidate-mode",
         choices=CANDIDATE_MODES,
         default="chain",
-        help="explicit GDN prefill implementation to compare against fused",
+        help="explicit GDN prefill implementation to compare against the baseline",
     )
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=4)
