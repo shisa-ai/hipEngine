@@ -153059,3 +153059,44 @@ graphless decode launch-collapse path without regressing target/serial parity.
   c2 route, and the runtime's selected-MoE/row-local-attention/batch-GEMV split.
   `PYTHONPATH=$PWD uv run --extra dev python -m pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py`
   passes all 201 tests.
+
+## 2026-07-13 - Define the GGUF prefill optimization lane
+
+- Reviewed the current GGUF/PARO prefill and llama.cpp parity documentation,
+  benchmark contracts, roofline notes, retained toplines/artifacts, and the
+  production GGUF/PARO GDN implementations. No kernel or runtime code changed.
+- Current retained prefill is decisively behind: hipEngine GGUF is only
+  26.7%-54.3% of llama.cpp HIP on W7900 and 40.0%-69.3% on gfx1151 across
+  512-128K, despite the same sampled Q4_K_M file. The decode control is much
+  closer (+21.0% to -13.2% at the sampled 512/4K/128K boundaries), localizing
+  the large loss to bulk prefill rather than generic GGUF execution.
+- The production-route W7900 512/0 audit at `b891aa04` measures 623.288 tok/s
+  and 821.450 ms wall. Its 30 fused decode-order GDN launches consume 592.336
+  ms, 79.51% of traced GPU time and 72.11% of wall. WMMA prefill is active;
+  full-attention prefill is only 0.54% of traced GPU time. This HIP 7.13 profile
+  is route-local steering evidence, not a stack-matched replacement for the
+  current HIP 7.15 topline, so a fresh 512/4K/128K profile remains the first
+  measurement gate.
+- Confirmed the old June normalized-Q/K K2 route is not retainable: commit
+  `937c13d1` selected the fused decode-order route after real greeting and
+  token-serial/native recurrent parity failed. The later raw-Q/K-plus-scale
+  chain passes the six-case G2 byte-exact matrix, but balanced G3 wall loses
+  5.19% at 512 and 6.70% at 4K. It remains the unfused fallback and candidate
+  substrate, not a default.
+- Source comparison explains the next bounded candidate. Current exact GGUF
+  recurrence launches one 128-thread block per value head and keeps each
+  column's 128-row contraction serial. PARO launches a block per value column
+  with a two-wave reduction. llama.cpp's clean GDN source at `e95dae18` uses
+  four wave-owned columns per block and register-sharded state while retaining
+  a serial token loop; a runtime trace is still required before treating that
+  source path as causal evidence for the measured binary.
+- Added `docs/GGUF-PREFILL-OPTIMIZATION.md`. `GPF-1` tiles the already-exact
+  split recurrence into 64- and 32-column wave-aligned blocks while preserving
+  token order, eight-wide FP accumulation, and disjoint state updates; the
+  existing post-recurrence RMSNorm remains the cross-column boundary. Promotion
+  requires the G2 matrix plus balanced full-prefill wins at both 512 and 4K;
+  there is no arbitrary minimum percentage. Added discovery links from
+  `GGUF.md`, `TUNING-gguf.md`, and the SOL R5 coordinator.
+- Documentation validation checks relative links, balanced code fences,
+  trailing whitespace, and `git diff --check`; no GPU run is required or
+  claimed for this docs-only unit.

@@ -1,5 +1,11 @@
 # GGUF Intake and Native-Quant Plan
 
+> Active GGUF prefill performance work is tracked in
+> [`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md). In
+> particular, the June split-GDN profiles below are historical opportunity
+> evidence: current production uses the correctness-certified fused
+> decode-order recurrence, and retained runs already have WMMA prefill enabled.
+
 Date: 2026-05-17
 Target repo: `~/hipENGINE`
 
@@ -3183,4 +3189,3 @@ materialization, not scratch/KV:
 | 4 | **Fuse activate+down** | +1-2% DC | Low | **Done** (2026-06-17). Neutral/slightly lower decode speed; retained for launch overhead reduction. |
 | 5 | **Pack8 layout opt** | -2-3 GiB mem | Tradeoff | **Done** (2026-06-17). Avoided Pack8 expansion, saving ~1.15 GiB peak memory at the cost of a small prefill/decode throughput regression (114.60 -> 114.42 tok/s on 4K DC). |
 | 6 | **Drop T16 for Q8_0** | -0.5-1 GiB mem | Low | **Done** (2026-06-17). Saved ~0.55 GiB peak memory with negligible decode regression. |
-
