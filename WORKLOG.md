@@ -153230,3 +153230,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   no missing INT8 scales. Raw SHA-256 values are `303f1638...5099` (4K) and
   `0cf4e790...2f94` (32K). Retained compact artifact:
   `benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json`.
+
+## 2026-07-13 — Publish protocol-matched KV fidelity comparison
+
+- Published the exact llama.cpp Q8_0-vs-F16 128K/16 result at mean/max KL
+  `0.00520759/0.08749123`, 100% top-1, with an exact-zero F16/F16 control.
+  Against the separately normalized PARO per-head INT8 result, this is 163.47x
+  lower mean KL and +58.82 top-1 percentage points, explicitly qualified by the
+  different cache quantizers, weight formats, and engine arithmetic.
+- The benchmark/root README sections now include the same-weight GGUF bridge:
+  all-position hipEngine-BF16-vs-llama-F16 mean KL `0.26606` rejects because
+  prompt-final KL is `4.51481`; the 16 decode-only rows average `0.000510` and
+  retain 100% top-1. No timing result is promoted.
+- Published the bounded functional outcome alongside the numerical table: one
+  of two BF16-qualified 4K choices regresses under INT8, while all three
+  BF16-qualified 32K choices remain correct. The partial-reference and
+  restricted-choice limitations remain prominent; 256K INT8 stays unsupported.
+- Added `benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`,
+  updated the platform index/detailed benchmark section, root benchmark export,
+  and reverse-chronological changelog. GitHub issue #4 now includes the completed
+  bridge and functional findings: https://github.com/shisa-ai/hipEngine/issues/4

@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-13**
 
 Latest measured hipEngine revision in this scoreboard:
-`d6504544712809e20e099cd4862524b85a5e9136`
+`2743798ffedc408db7a9607e385b8460b24f82a1`
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -178,7 +178,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean measured hipEngine `d6504544`; TheRock HIP `7.15.0-0000000`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: compact chunk-local prefill metadata lowers 256K INT8 tracked peak **23.957 -> 22.971 GiB (-0.986 GiB)** with no BF16 shadow. Final matched-context 128K/16 remains rejected at KL **0.85128**, top-1 **41.18%**; no clipped, groupwise, mixed-layer/head, or residual candidate transferred through the 4K gate. Allocation evidence only, not a usable route. | Current diagnostic table | Rerun only after a materially different KV representation/model or a validated BF16 semantic-task baseline; require matched-context and bounded-task quality before support. |
+| Radeon Pro W7900, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean capacity `d6504544`; clean functional check `2743798f`; TheRock HIP 7.15; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness rejection**: compact chunk-local prefill metadata lowers 256K INT8 tracked peak **23.957 -> 22.971 GiB (-0.986 GiB)** with no BF16 shadow. Final matched-context 128K/16 remains rejected at KL **0.85128**, top-1 **41.18%**. Bounded restricted-choice tasks are only partially scorable: INT8 flips one BF16-qualified 4K multihop answer but retains all three qualified 32K answers. Allocation evidence only, not a usable route. | Current diagnostic table | Rerun only after a materially different KV representation/model or validated BF16 semantic generation; require matched-context and broader task quality before support. |
+| Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV fidelity and same-weight GGUF bridge | 2026-07-13 | clean harness `31c12a3a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Accepted quality diagnostic for the named protocol**: Q8_0-vs-F16 KV on identical Q4_K_M weights passes 128K/16 at mean/max KL **0.00521/0.08749**, top-1 **100%**; F16/F16 control is exactly zero. Same-weight hipEngine BF16-vs-llama F16 rejects all-position mean KL at **0.26606** because prompt-final KL is **4.51481**, while its 16 decode rows average **0.000510** and preserve 100% top-1. No performance claim. | Current diagnostic table | Rerun after llama.cpp/hipEngine GGUF prefill math, cache types, model/build, or protocol changes. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
@@ -585,13 +586,38 @@ top-1 agreement. This is the intrinsic comparison; the older 128K/128
 independent-rollout KL/top-1 headline includes cascade after histories diverge.
 Clipping, group16/32/64, K/V mixed formats, selective BF16 layers/heads, and
 sink/recent residual windows all failed to clear both gates at 4K within the
-reclaimed budget. The five-category task smoke remains
-`reference_unscorable` because BF16 itself scored 0/5. Do not describe 256K
-INT8 as supported.
+reclaimed budget.
+
+The protocol-matched llama.cpp calibration makes the scale of that rejection
+clear while preserving important qualifications:
+
+| 128K/16 comparison | Weight identity within row | Mean / max KL | Top-1 | Gate / interpretation |
+| --- | --- | ---: | ---: | --- |
+| llama.cpp F16 KV vs F16 KV control | Identical Q4_K_M | `0 / 0` | 100% | Deterministic control |
+| llama.cpp Q8_0 KV vs F16 KV | Identical Q4_K_M | **`0.00521 / 0.08749`** | **100%** | Pass; decode-only mean KL `0.0000649` |
+| hipEngine GGUF BF16 KV vs llama.cpp F16 KV | Same exact Q4_K_M file | `0.26606 / 4.51481` | 100% | Reject is localized to prompt-final row; decode-only mean KL `0.000510` |
+| hipEngine PARO INT8 KV vs BF16 KV | Identical W4-PARO | **`0.85128 / 4.97382`** | **41.18%** | Reject; intrinsic long-context drift |
+
+The first, second, and fourth rows are within-engine cache comparisons. The
+third is a cross-engine baseline and does not isolate F16-vs-BF16 storage from
+other arithmetic. Likewise, Q8_0 and per-token/head INT8 are different
+quantizers, and Q4_K_M and W4-PARO are different weight formats; the table is a
+matched protocol comparison, not a direct implementation A/B.
+
+The original free-generation task smoke remains `reference_unscorable` because
+BF16 scored 0/5. A replacement restricted-choice probe provides partial bounded
+functional evidence: at 4K, BF16 qualifies 2/5 and INT8 flips the qualified
+multihop answer `D -> C` while retaining aggregation; at 32K, BF16 qualifies
+3/5 and INT8 retains all three (multihop, aggregation, long-document). Thus high
+KL can change a real decision but does not imply every answer changes. This is
+not a full/free-generation quality claim and does not make 256K INT8 supported.
 
 Outcome artifact:
 [`2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`](results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json).
 Detailed diagnostics:
+[llama.cpp Q8_0 matched quality](results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json),
+[same-weight GGUF bridge](results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json),
+[bounded functional check](results/2026-07-13-w7900-paro-int8-kv-functional-mc.json),
 [matched baseline](results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json),
 [format screen](results/2026-07-13-w7900-paro-kv-format-ablation.json), and
 [policy screen](results/2026-07-13-w7900-paro-kv-policy-ablation.json).
