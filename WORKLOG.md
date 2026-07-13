@@ -153626,3 +153626,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   rules and formatting on changed files; the unfiltered large-runner check only
   reports its pre-existing unused imports/local, which this unit leaves alone.
   Next: commit the selector, then build a balanced full-model A/B harness.
+
+## 2026-07-13 - Add the GPF-3A balanced full-model promotion gate
+
+- Added `scripts/gguf_q4_t16_prefill_ab.py` with an explicit, threshold-free
+  512/1K/4K protocol. It requires the retained BF16/FP16 byte-exact kernel
+  artifact, compares full-model prefill logits byte-for-byte, and records the
+  prefill sample plus every token in a 128-step decode trajectory.
+- The gate uses one resident model, alternates baseline/shared-X order, discards
+  at least one warmup, and requires an even minimum of four measured legs per
+  mode/shape. Synchronized prefill and decode walls remain separate; decode
+  graph capture and generated-token readback are excluded from the measured
+  decode window.
+- Promotion requires clean provenance, exact logits and trajectories, a lower
+  median prefill wall at all three focus shapes, and no increase in the sum of
+  their median decode walls. It has no arbitrary percentage or full-model
+  dilution threshold.
+- RED initially failed collection because the harness module did not exist.
+  GREEN plus the existing GDN A/B and trajectory-gate regression tests pass
+  **18/18**; Ruff check/format and `git diff --check` pass. Next run it from a
+  clean detached worktree with cached builds before changing backend policy.
