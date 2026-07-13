@@ -1543,6 +1543,7 @@ class Qwen35GGUFFullStackRunner:
                 mode = "auto"
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
+        use_direct_lds32 = mode == "chain_lds32_direct"
         if mode == "chain_tile64":
             exact_recurrent = plan.exact_recurrent_tile64
             exact_recurrent_segments = plan.exact_recurrent_segments_tile64
@@ -1595,6 +1596,15 @@ class Qwen35GGUFFullStackRunner:
                 "the exact prepare, LDS32 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
             )
+        if (
+            requested_mode == "chain_lds32_direct"
+            and not plan.has_exact_chain_lds32_direct
+        ):
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_lds32_direct' is unavailable; "
+                "the compact-scale prepare, direct LDS32 recurrent, and "
+                "RMSNorm-gate kernels must all be registered"
+            )
         if requested_mode == "chain_wave32" and not plan.has_exact_chain_wave32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_wave32' is unavailable; "
@@ -1614,6 +1624,7 @@ class Qwen35GGUFFullStackRunner:
             "chain_tile32",
             "chain_lds64",
             "chain_lds32",
+            "chain_lds32_direct",
             "chain_wave32",
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
@@ -1639,6 +1650,82 @@ class Qwen35GGUFFullStackRunner:
             )
             return
         if use_chain:
+            if use_direct_lds32 and plan.has_exact_chain_lds32_direct:
+                plan.exact_prepare_compact(
+                    scratch.conv_out.ptr,
+                    scratch.linear_alpha.ptr,
+                    scratch.linear_beta.ptr,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    scratch.prefill_beta.ptr,
+                    scratch.prefill_decay.ptr,
+                    scratch.prefill_query_scale.ptr,
+                    scratch.prefill_key_scale.ptr,
+                    rows,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                segment_threshold = _gguf_gdn_prefill_segment_threshold()
+                use_direct_segments = (
+                    plan.exact_recurrent_segments_lds32_direct is not None
+                    and rows >= segment_threshold
+                    and getattr(scratch, "gdn_cu_seqlens", None) is not None
+                    and getattr(scratch, "gdn_state_indices", None) is not None
+                )
+                if use_direct_segments:
+                    plan.exact_recurrent_segments_lds32_direct(
+                        scratch.conv_out.ptr,
+                        scratch.prefill_beta.ptr,
+                        scratch.prefill_decay.ptr,
+                        scratch.prefill_query_scale.ptr,
+                        scratch.prefill_key_scale.ptr,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr,
+                        scratch.gdn_cu_seqlens.ptr,
+                        scratch.gdn_state_indices.ptr,
+                        rows,
+                        1,
+                        cfg.ssm_group_count,
+                        cfg.ssm_time_step_rank,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                else:
+                    plan.exact_recurrent_lds32_direct(
+                        scratch.conv_out.ptr,
+                        scratch.prefill_beta.ptr,
+                        scratch.prefill_decay.ptr,
+                        scratch.prefill_query_scale.ptr,
+                        scratch.prefill_key_scale.ptr,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr,
+                        rows,
+                        cfg.ssm_group_count,
+                        cfg.ssm_time_step_rank,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                plan.rmsnorm_gate(
+                    scratch.recurrent_out.ptr,
+                    scratch.linear_z.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
+                    scratch.recurrent_bf16.ptr,
+                    cfg.rms_norm_eps,
+                    rows,
+                    cfg.ssm_time_step_rank,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             if (
                 plan.exact_prepare is not None
                 and exact_recurrent is not None
@@ -13696,6 +13783,12 @@ _GDN_PREFILL_EXACT_PREPARE_KEY = KernelKey(
     "gguf_qwen35",
     "f32_bf16_raw_scales",
 )
+_GDN_PREFILL_EXACT_PREPARE_COMPACT_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_prefill_prepare",
+    "gguf_qwen35",
+    "f32_bf16_compact_scales",
+)
 _GDN_PREFILL_EXACT_RECURRENT_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -13756,6 +13849,18 @@ _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_KEY = KernelKey(
     "gguf_qwen35",
     "f32_decode_order_exact_segments_lds32",
 )
+_GDN_PREFILL_EXACT_RECURRENT_LDS32_DIRECT_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_lds32_direct",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_lds32_direct",
+)
 _GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -13791,6 +13896,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain_tile32",
         "chain_lds64",
         "chain_lds32",
+        "chain_lds32_direct",
         "chain_wave32",
         "chain_wave32_tree",
     }
@@ -13842,6 +13948,7 @@ class _GGUFGDNPrefillPlan:
     rmsnorm_gate: object | None
     fused_decode_order: object | None
     exact_prepare: object | None = None
+    exact_prepare_compact: object | None = None
     exact_recurrent: object | None = None
     exact_recurrent_segments: object | None = None
     exact_recurrent_tile64: object | None = None
@@ -13852,6 +13959,8 @@ class _GGUFGDNPrefillPlan:
     exact_recurrent_segments_lds64: object | None = None
     exact_recurrent_lds32: object | None = None
     exact_recurrent_segments_lds32: object | None = None
+    exact_recurrent_lds32_direct: object | None = None
+    exact_recurrent_segments_lds32_direct: object | None = None
     exact_recurrent_wave32: object | None = None
     exact_recurrent_segments_wave32: object | None = None
     recurrent_wave32_tree: object | None = None
@@ -13911,6 +14020,14 @@ class _GGUFGDNPrefillPlan:
         )
 
     @property
+    def has_exact_chain_lds32_direct(self) -> bool:
+        return (
+            self.exact_prepare_compact is not None
+            and self.exact_recurrent_lds32_direct is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
     def has_exact_chain_wave32(self) -> bool:
         return (
             self.exact_prepare is not None
@@ -13937,6 +14054,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
         "chain_tile32": plan.has_exact_chain_tile32,
         "chain_lds64": plan.has_exact_chain_lds64,
         "chain_lds32": plan.has_exact_chain_lds32,
+        "chain_lds32_direct": plan.has_exact_chain_lds32_direct,
         "chain_wave32": plan.has_exact_chain_wave32,
         "chain_wave32_tree": plan.has_chain_wave32_tree,
     }.get(str(mode), False)
@@ -14119,6 +14237,7 @@ def _resolve_gguf_gdn_prefill_plan(
         rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
         fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
         exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
+        exact_prepare_compact=_resolve(_GDN_PREFILL_EXACT_PREPARE_COMPACT_KEY),
         exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
         exact_recurrent_segments=_resolve(_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_KEY),
         exact_recurrent_tile64=_resolve(_GDN_PREFILL_EXACT_RECURRENT_TILE64_KEY),
@@ -14136,6 +14255,12 @@ def _resolve_gguf_gdn_prefill_plan(
         exact_recurrent_lds32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_LDS32_KEY),
         exact_recurrent_segments_lds32=_resolve(
             _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_KEY
+        ),
+        exact_recurrent_lds32_direct=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_LDS32_DIRECT_KEY
+        ),
+        exact_recurrent_segments_lds32_direct=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_KEY
         ),
         exact_recurrent_wave32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY),
         exact_recurrent_segments_wave32=_resolve(

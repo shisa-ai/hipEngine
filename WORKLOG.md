@@ -153704,3 +153704,46 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json`;
   full local sha256
   `7a7d0dcdc2077afb1d539328000f8f509028e339a5501d30ca4329f5829bf57e`.
+
+## 2026-07-13 - GPF-2E compact-scale/direct-conv candidate passes focus screen
+
+- Profile-led audit of the remaining exact GDN prepare found two redundant
+  costs: raw Q/K/V are copied from `conv_out` into prompt-sized FP32 scratch
+  and immediately reread, while Q/K norms are recomputed for all 32 V heads
+  although the production shape has four K heads. The required lineage command
+  could not inspect `/home/lhl/amd-gpu-tuning/nano-vllm-amd` because that
+  configured read-only parent is absent. GPF-2E is an original in-tree
+  dataflow/schedule change and copies no external source.
+- RED extended primitive and routing tests first; both modules failed
+  collection on the intentionally missing compact-prepare and direct plain/
+  segment LDS32 wrappers. GREEN adds registered
+  `f32_bf16_compact_scales`, `f32_decode_order_exact_lds32_direct`, and
+  `f32_decode_order_exact_segments_lds32_direct` variants plus fail-closed
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct`. The compact scale ABI
+  is `[token,k_head]`; beta/decay remain `[token,v_head]`. gfx1151 `auto`
+  remains materialized `chain_lds32` pending promotion evidence.
+- The combined GDN correctness/routing and three promotion-harness bundles pass
+  **89/89** tests. Plain and segment direct output plus FP32 final state are
+  byte-exact to materialized LDS32 on the 4-K-head/32-V-head fixture and pass
+  the CPU-reference gate. Cache-only `rocprofv3` observes compact prepare and
+  both direct recurrence names; recurrence uses workgroup 32, 64 VGPR, 16 KiB
+  LDS, and zero scratch.
+- Same-worktree separate-session screen, one discarded plus three measured
+  eager-decode repetitions per shape:
+  - 512/128: **769.378 -> 817.004 tok/s (+6.19%)**;
+  - 1K/128: **821.460 -> 903.229 (+9.95%)**;
+  - 4K/128: **702.808 -> 755.077 (+7.44%)**.
+  Candidate ranges are `816.826-817.819`, `898.473-904.060`, and
+  `754.901-755.693 tok/s`; all control/candidate IDs are `9707`. Separate-
+  session decode deltas of -0.11%..-0.17% are diagnostic noise, not a retained
+  comparison. Both artifacts are dirty and the compact result correctly sets
+  `performance_claim=false`.
+- Full local artifacts:
+  `/tmp/gpf2e-default-dirty-control-512-1k-4k.json` sha256
+  `a8438aada8ce3132a722226c781ded53adae08932ff89b5d6a9dee9e6aee30bf`
+  and `/tmp/gpf2e-direct-dirty-screen-512-1k-4k.json` sha256
+  `d7f34c38b3eecac709da58459ac603e2387ab855cbf3f99504c6aa90461e4d90`.
+  Compact artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-direct-conv-screen.json`.
+  Next commit the explicit candidate, then run the clean six-case full-model
+  matrix and balanced current-default/direct wall+decode gate before promotion.
