@@ -153186,3 +153186,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Expanded GitHub issue #4 with the memory-vs-usability problem, matched-context
   protocol, ablation transfer gates, llama.cpp calibration, functional blocker,
   promotion criteria, and current decision: https://github.com/shisa-ai/hipEngine/issues/4
+
+## 2026-07-13 — Add reference-qualified PARO KV functional probe
+
+- Added a five-category restricted multiple-choice check at exact configurable
+  context length. Each task has independently known A-D answers; both BF16 and
+  INT8 consume the same fixed assistant prefix `The correct option is `, and the
+  next token is scored only among the four declared label tokens. A candidate
+  row counts only when BF16 first chooses the known-correct option. This avoids
+  relabeling BF16 garbage as an oracle while making the quantized cache active
+  after prefill.
+- The committed suite covers retrieval, multihop, aggregation, long-document
+  revision handling, and code evaluation with evidence distributed through
+  neutral filler. This is a bounded functional diagnostic, not free-generation
+  quality or a full benchmark claim.
+- Fifteen focused tests cover suite validity, scoring/margins, reference
+  qualification, existing prompt construction, and candidate-regression
+  accounting. Dirty live harness probes confirmed the protocol executes: at
+  512, BF16 qualifies 1/5 and INT8 regresses that code row; at 4K, BF16
+  qualifies 2/5, INT8 retains aggregation and regresses multihop. Clean 4K/32K
+  publication runs remain next; these smokes are not retained evidence.
