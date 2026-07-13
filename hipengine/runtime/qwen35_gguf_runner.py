@@ -8092,29 +8092,6 @@ class Qwen35GGUFResidentSession:
                 retained_append_spans=None,
                 int8_kv_value_bf16=False,
             )
-        if metadata.granularity == "hadamard_group32":
-            retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
-            direct_append_spans = replace(
-                bulk_scratch.append_spans,
-                storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-                scale_metadata=metadata,
-            )
-            direct_prefill_spans = replace(
-                bulk_scratch.prefill_spans,
-                storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-                scale_metadata=metadata,
-            )
-            return replace(
-                bulk_scratch,
-                key_cache=retained_key_cache,
-                value_cache=retained_value_cache,
-                append_spans=direct_append_spans,
-                prefill_spans=direct_prefill_spans,
-                retained_key_cache=None,
-                retained_value_cache=None,
-                retained_append_spans=None,
-                int8_kv_value_bf16=False,
-            )
         bf16_mirror_cache = None
         full_bf16_mirror_cache = getattr(self.scratch, "full_bf16_mirror_cache", None)
         if full_bf16_mirror_cache is not None:

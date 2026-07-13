@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-14
+
+- [gfx1100 native mild mixed KV] Qwen3.6-35B-A3B GGUF Q4_K_M + W4-PARO / six BF16 plus four tail Hadamard-group32 INT8 K/V layers: host candidate -> **native GGUF accepted but native PARO rejected**. GGUF passes the full 11-prompt 512/8 and 4K/16 gates plus bounded 128K/16 at 100% top-1; PARO fails 1/11 and 2/11 prompts. XTX p512/d128 is effectively flat for GGUF eager (**+0.05% prefill / +0.25% decode**) but PARO graph decode changes **134.653 -> 129.116 tok/s (-4.11%)**. The quality-preserving 256 Ki PARO scratch probe OOMs at 23.469 GiB tracked; direct streaming allocates but is correctness-rejected. Explicit-only, no support/default promotion; `performance_claim=false`. `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
+
 ## 2026-07-13
 
 - [gfx1100 mild asymmetric KV fidelity] Qwen3.6-35B-A3B Q4_K_M / complete 11-prompt 512/8 -> 4K/16 transfer: no suite-qualified 256 Ki bridge -> **tail-four Hadamard-group32 INT8 K/V passes every natural/train/heldout/category/`mixed_v1` gate at 0.00012265/0.004491 mean/max KL and 100% top-1**. Its 18.75% KV reduction projects 4.066 GiB KV and 0.362 GiB whole-card margin at 256 Ki. Tail-four E4M3 also passes but INT8 lowers mean KL **0.00078965 -> 0.00012265 (-84.47%, 6.44x lower)** and is the hardware-relevant RDNA3 path; all-layer K-only INT8 fails `mixed_v1` near 0.32 KL. Exact S2 reruns reproduce all 11 prompt logit gates. Host emulation only; native implementation remains gated. `benchmarks/results/2026-07-13-w7900-gguf-asymmetric-kv-mild-256ki-screen.json`.

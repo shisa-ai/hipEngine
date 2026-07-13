@@ -3450,9 +3450,16 @@ class Qwen35ParoResidentSession:
     def _prefill_int8_attention_path(self, tokens: int) -> str | None:
         if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
             return None
-        if getattr(self, "kv_storage_layout", "uniform") == "tail4_hadamard_group32":
-            return "mixed_bf16_tail4_hadamard_direct"
         value = os.environ.get(_INT8_PREFILL_ATTENTION_ENV, "auto").strip().lower()
+        if getattr(self, "kv_storage_layout", "uniform") == "tail4_hadamard_group32":
+            if value in {"streaming", "streaming_direct", "direct", "direct_streaming"}:
+                return "streaming_direct"
+            if value in {"", "auto", "oracle", "bf16_oracle", "aotriton", "oracle_aotriton"}:
+                return "mixed_bf16_oracle_tail4_packed"
+            raise ValueError(
+                f"{_INT8_PREFILL_ATTENTION_ENV} must be auto, streaming, or oracle "
+                f"(got {value!r})"
+            )
         if value in {"", "auto"}:
             min_tokens = max(
                 0,
@@ -3477,7 +3484,10 @@ class Qwen35ParoResidentSession:
         return self._prefill_int8_attention_path(tokens) == "streaming_direct"
 
     def _prefill_int8_uses_oracle_attention(self, tokens: int) -> bool:
-        return self._prefill_int8_attention_path(tokens) == "oracle_bf16"
+        return self._prefill_int8_attention_path(tokens) in {
+            "oracle_bf16",
+            "mixed_bf16_oracle_tail4_packed",
+        }
 
     def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
         if not self._prefill_use_aotriton_attention(tokens):
@@ -4696,10 +4706,7 @@ class Qwen35ParoResidentSession:
                 retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
                 retained_scale_metadata = self._slot_full_scale_metadata(layer_id, 0)
                 int8_retained = retained_scale_metadata is not None
-                direct_int8_prefill = int8_retained and (
-                    retained_scale_metadata.granularity == "hadamard_group32"
-                    or self._prefill_int8_uses_direct_attention(tokens)
-                )
+                direct_int8_prefill = int8_retained and self._prefill_int8_uses_direct_attention(tokens)
                 layer_use_aotriton_attention = use_aotriton_attention and not direct_int8_prefill
                 if int8_retained and not direct_int8_prefill:
                     key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
