@@ -456,6 +456,27 @@ def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context()
     assert estimate.fits_model_max is False
 
 
+def test_qwen35_paro_tail4_hadamard_kv_capacity_matches_mixed_layout() -> None:
+    config = SimpleNamespace(
+        layer_types=("linear_attention",) * 30 + ("full_attention",) * 10,
+        num_key_value_heads=2,
+        head_dim=256,
+    )
+
+    bf16_bytes = qwen35_paro_kv_bytes_per_token(config, storage_dtype="bf16")
+    mixed_bytes = qwen35_paro_kv_bytes_per_token(
+        config,
+        storage_dtype="int8_per_token_head",
+        scale_dtype="fp16",
+        quantized_full_attention_layers=4,
+        scale_granularity="hadamard_group32",
+    )
+
+    assert bf16_bytes == 20480
+    assert mixed_bytes == 16640
+    assert mixed_bytes / bf16_bytes == 0.8125
+
+
 def test_qwen35_paro_prepare_allocates_configured_resident_session(monkeypatch) -> None:
     calls = []
 

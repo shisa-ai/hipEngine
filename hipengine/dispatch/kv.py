@@ -108,6 +108,21 @@ _PAGED_KV_WRITE_ROUTES: dict[tuple[DType, PagedKVWriteKind, DType], _RouteTempla
 }
 
 
+_PAGED_KV_WRITE_GRANULARITY_ROUTES: dict[
+    tuple[str, PagedKVWriteKind, DType], _RouteTemplate
+] = {
+    ("hadamard_group32", PagedKVWriteKind.DECODE, DType.FP32): _RouteTemplate(
+        "paged_kv_write", "hadamard_group32_spans", quant="int8_hadamard_group32"
+    ),
+    ("hadamard_group32", PagedKVWriteKind.PROMPT, DType.FP32): _RouteTemplate(
+        "paged_kv_write", "hadamard_group32_prompt_spans", quant="int8_hadamard_group32"
+    ),
+    ("hadamard_group32", PagedKVWriteKind.BATCH, DType.FP32): _RouteTemplate(
+        "paged_kv_write", "hadamard_group32_batch_spans", quant="int8_hadamard_group32"
+    ),
+}
+
+
 _PAGED_ATTN_PREFILL_ROUTES: dict[tuple[DType, PagedAttnPrefillKind], _RouteTemplate] = {
     (DType.BF16, PagedAttnPrefillKind.GQA_GATE_FP16): _RouteTemplate(
         "paged_attn_prefill", "bf16_gqa_gate_fp16_spans"
@@ -119,6 +134,17 @@ _PAGED_ATTN_PREFILL_ROUTES: dict[tuple[DType, PagedAttnPrefillKind], _RouteTempl
         "paged_attn_prefill",
         "per_token_head_gqa_gate_fp16_spans",
         quant=DType.INT8_PER_TOKEN_HEAD.value,
+    ),
+}
+
+
+_PAGED_ATTN_PREFILL_GRANULARITY_ROUTES: dict[
+    tuple[str, PagedAttnPrefillKind], _RouteTemplate
+] = {
+    ("hadamard_group32", PagedAttnPrefillKind.GQA_GATE_FP16): _RouteTemplate(
+        "paged_attn_prefill",
+        "hadamard_group32_gqa_gate_fp16_spans",
+        quant="int8_hadamard_group32",
     ),
 }
 
@@ -151,6 +177,32 @@ _PAGED_ATTN_DECODE_ROUTES: dict[tuple[DType, PagedAttnDecodeKind], _RouteTemplat
 }
 
 
+_PAGED_ATTN_DECODE_GRANULARITY_ROUTES: dict[
+    tuple[str, PagedAttnDecodeKind], _RouteTemplate
+] = {
+    ("hadamard_group32", PagedAttnDecodeKind.GQA_SPLITK): _RouteTemplate(
+        "paged_attn_decode",
+        "hadamard_group32_gqa_splitk_spans",
+        quant="int8_hadamard_group32",
+    ),
+    ("hadamard_group32", PagedAttnDecodeKind.GQA_SPLITK_GATE_BF16): _RouteTemplate(
+        "paged_attn_decode",
+        "hadamard_group32_gqa_splitk_gate_bf16_spans",
+        quant="int8_hadamard_group32",
+    ),
+    ("hadamard_group32", PagedAttnDecodeKind.GQA_SPLITK_GATE_FP16): _RouteTemplate(
+        "paged_attn_decode",
+        "hadamard_group32_gqa_splitk_gate_fp16_spans",
+        quant="int8_hadamard_group32",
+    ),
+}
+
+
+def _scale_granularity(spans: KVLiveSpans) -> str | None:
+    metadata = spans.scale_metadata
+    return None if metadata is None else metadata.granularity
+
+
 def plan_paged_kv_write(
     spans: KVLiveSpans,
     *,
@@ -167,7 +219,14 @@ def plan_paged_kv_write(
 
     write_kind = _enum_value(PagedKVWriteKind, kind, "paged KV write kind")
     source = DType.parse(source_dtype)
-    route = _PAGED_KV_WRITE_ROUTES.get((spans.storage_dtype, write_kind, source))
+    granularity = _scale_granularity(spans)
+    route = (
+        _PAGED_KV_WRITE_GRANULARITY_ROUTES.get((granularity, write_kind, source))
+        if granularity is not None
+        else None
+    )
+    if route is None:
+        route = _PAGED_KV_WRITE_ROUTES.get((spans.storage_dtype, write_kind, source))
     if route is None:
         raise ValueError(
             "no paged KV write route for "
@@ -235,7 +294,14 @@ def plan_paged_attn_prefill(
     """Select a paged-attention prefill key from span storage metadata."""
 
     prefill_kind = _enum_value(PagedAttnPrefillKind, kind, "paged attention prefill kind")
-    route = _PAGED_ATTN_PREFILL_ROUTES.get((spans.storage_dtype, prefill_kind))
+    granularity = _scale_granularity(spans)
+    route = (
+        _PAGED_ATTN_PREFILL_GRANULARITY_ROUTES.get((granularity, prefill_kind))
+        if granularity is not None
+        else None
+    )
+    if route is None:
+        route = _PAGED_ATTN_PREFILL_ROUTES.get((spans.storage_dtype, prefill_kind))
     if route is None:
         raise ValueError(
             "no paged attention prefill route for "
@@ -290,7 +356,14 @@ def plan_paged_attn_decode(
     """Select a paged-attention decode key from span storage metadata."""
 
     decode_kind = _enum_value(PagedAttnDecodeKind, kind, "paged attention decode kind")
-    route = _PAGED_ATTN_DECODE_ROUTES.get((spans.storage_dtype, decode_kind))
+    granularity = _scale_granularity(spans)
+    route = (
+        _PAGED_ATTN_DECODE_GRANULARITY_ROUTES.get((granularity, decode_kind))
+        if granularity is not None
+        else None
+    )
+    if route is None:
+        route = _PAGED_ATTN_DECODE_ROUTES.get((spans.storage_dtype, decode_kind))
     if route is None:
         raise ValueError(
             "no paged attention decode route for "

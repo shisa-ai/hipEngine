@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
-from hipengine.runtime.gguf_decode_graph import build_qwen35_gguf_decode_graph_key
+from hipengine.runtime.gguf_decode_graph import (
+    _decode_graph_kv_layout_admitted,
+    build_qwen35_gguf_decode_graph_key,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
@@ -39,6 +42,8 @@ def _session(*, position: int = 512, hidden_ptr: int = 100):
         layer_recurrent_states=(_buffer(7), None),
         full_key_caches=(None, _buffer(8)),
         full_value_caches=(None, _buffer(9)),
+        full_k_scale_caches=(None, _buffer(10)),
+        full_v_scale_caches=(None, _buffer(11)),
     )
     return SimpleNamespace(
         backend="hip_gfx1151",
@@ -52,6 +57,7 @@ def _session(*, position: int = 512, hidden_ptr: int = 100):
         ),
         scratch=scratch,
         kv_storage_dtype=SimpleNamespace(value="bf16"),
+        kv_storage_layout="uniform",
         kv_scale_dtype=SimpleNamespace(value="fp16"),
         kv_scale_granularity="per_token_head",
         use_wmma_prefill=True,
@@ -130,12 +136,26 @@ def test_decode_graph_key_serializes_complete_shape_state_axes() -> None:
     assert payload["backend"] == "hip_gfx1151"
     assert payload["target_arch"] == "gfx1151"
     assert payload["kv_storage_dtype"] == "bf16"
+    assert payload["kv_storage_layout"] == "uniform"
     assert payload["layer_types"] == ["linear_attention", "full_attention"]
     assert payload["decode_repack"] is True
-    assert payload["buffer_count"] == 18
+    assert payload["buffer_count"] == 20
     assert len(payload["buffer_identity_sha256"]) == 64
     assert len(payload["weight_role_sha256"]) == 64
     assert len(payload["key_sha256"]) == 64
+
+
+def test_decode_graph_admits_bf16_and_tail4_hadamard_only() -> None:
+    session = _session()
+    assert _decode_graph_kv_layout_admitted(session) is True
+
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = "tail4_hadamard_group32"
+    session.kv_scale_granularity = "hadamard_group32"
+    assert _decode_graph_kv_layout_admitted(session) is True
+
+    session.kv_storage_layout = "uniform"
+    assert _decode_graph_kv_layout_admitted(session) is False
 
 
 def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:

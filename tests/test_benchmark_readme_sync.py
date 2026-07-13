@@ -36,6 +36,12 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             / "2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json"
         ).read_text(encoding="utf-8")
     )
+    gguf_partial_refresh = json.loads(
+        (
+            results_dir
+            / "2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json"
+        ).read_text(encoding="utf-8")
+    )
     paro_recovery = json.loads(
         (results_dir / "2026-07-12-gfx1151-paro-prefill-recovery.json").read_text(
             encoding="utf-8"
@@ -76,6 +82,18 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         ]
         is False
     )
+    assert gguf_partial_refresh["status"] == "accepted_topline_partial_refresh"
+    assert gguf_partial_refresh["performance_claim"] is True
+    assert gguf_partial_refresh["software"]["refreshed_measurement_commit"].startswith(
+        "e9baf563"
+    )
+    assert gguf_partial_refresh["software"]["final_scoped_policy_commit"].startswith(
+        "6418b278"
+    )
+    assert gguf_partial_refresh["variance_gate"]["passed"] is True
+    assert gguf_partial_refresh["summary_by_workload"]["128K/128"][
+        "carried_forward"
+    ] is True
     assert paro_recovery["status"] == "accepted"
     assert paro_recovery["performance_claim"] is True
     assert paro_recovery["correctness_claim"] is True
@@ -140,7 +158,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert table_header in root_readme
         for row in rows:
             paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
-            gguf_summary = gguf_rollup["summary_by_workload"][row["workload"]]
+            gguf_summary = gguf_partial_refresh["summary_by_workload"][row["workload"]]
             if table_key == "prefill_tok_s":
                 gguf_value = gguf_summary["prefill_tok_s"]["median"]
             elif table_key == "decode_tok_s":

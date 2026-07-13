@@ -239,7 +239,8 @@ def test_resident_prefill_capture_marks_only_final_serial_prompt_token() -> None
 def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(
-        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2))
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
     )
     session.use_wmma_prefill = None
     session.use_gemv_decode = None

@@ -154282,3 +154282,1093 @@ graphless decode launch-collapse path without regressing target/serial parity.
   tests/test_qwen35_gguf_aotriton_stream.py -q` passes **101/101**;
   `python3 scripts/sync_benchmark_readme.py --check`, compact-artifact
   JSON/provenance/source-component assertions, and `git diff --check` all pass.
+
+## 2026-07-13 — Add matched-context PARO INT8 KV fidelity instrumentation
+
+- Created branch `kv-int8-accuracy` for the INT8 KV fidelity, compact metadata,
+  and bounded long-context quality work.
+- Extended `scripts/qwen35_paro_int8_kv_quality_sweep.py` schema 2 with a
+  BF16-reference-token teacher-forced candidate rollout. The admission gate now
+  uses matched-context KL/top-1; independent greedy rollout output remains
+  separate and reports the last still-comparable logit position before token
+  histories diverge. Added per-position reference-token log-probability/rank
+  diagnostics and explicit decode input IDs.
+- No RED-first run was practical for the additive schema/instrumentation surface:
+  the script had no matched-context execution interface to invoke before the
+  implementation. Focused unit coverage in
+  `tests/test_qwen35_paro_int8_kv_quality_sweep.py` checks reference-token
+  metrics, cascade boundaries, and forced-token execution. Focused CPU bundle:
+  `PYTHONPATH=$PWD python3 -m pytest
+  tests/test_qwen35_paro_int8_kv_quality_sweep.py
+  tests/test_qwen35_kv_e2e_fixture_gate.py
+  tests/test_qwen35_resident_batch_layout.py -q` passed **152 tests**.
+- Live W7900/gfx1100 smoke used the clean Qwen3.6 PARO snapshot, cached HIP
+  compiler version, repeated token `9707`, `512/4`, FP16-scale
+  `int8_per_token_head`, and `--comparison-mode both`. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3
+  scripts/qwen35_paro_int8_kv_quality_sweep.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --prompt-lengths 512 --decode-steps 4 --token-id 9707 --max-layers 40
+  --comparison-mode both --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build
+  --kv-storage int8_per_token_head --json
+  /tmp/hipengine-kv-int8-accuracy-instrumentation-smoke.json`.
+  Instrumentation behaved
+  as intended: matched and reference decode input IDs were both
+  `[16, 198, 4795, 13]`; free rollout first diverged at generated index 1 and
+  correctly marked logit position 3 as the first unequal-history comparison.
+  The quality row rejected (expected diagnostic result): matched KL by position
+  was `0.0/0.78374/0.28920/0.58985/1.06016`, top-1 agreement `0.6`. Output:
+  `/tmp/hipengine-kv-int8-accuracy-instrumentation-smoke.json`.
+
+## 2026-07-13 — Add bounded five-category KV quality smoke
+
+- Added `benchmarks/prompts/kv-int8-long-context-smoke.jsonl` with one compact
+  retrieval, multihop, aggregation, long-document, and code task. The runner
+  expands neutral filler to an exact token count while preserving distributed
+  evidence offsets and a Qwen chat suffix.
+- Added `scripts/qwen35_paro_kv_quality_smoke.py`. It loads model metadata once,
+  runs serial BF16 and candidate-KV resident sessions, scores strict `FINAL:`
+  answers, records prompt/output hashes and provenance, and distinguishes a
+  candidate regression from an unscorable BF16 reference. Exact token equality
+  is diagnostic only. No RED-first run was possible for this new standalone
+  harness; eleven focused CPU tests developed with it cover suite validation,
+  exact token expansion, scoring, task selection, and paired-result semantics.
+  The first live smoke caught and fixed an incorrect assumption that tokenizer
+  ownership/cleanup lived on `Qwen35ParoNextTokenRunner`; tokenizer and device
+  allocations actually belong to each resident session.
+- Live W7900 runner smoke command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD python3
+  scripts/qwen35_paro_kv_quality_smoke.py --model
+  /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
+  --suite benchmarks/prompts/kv-int8-long-context-smoke.jsonl --limit 1
+  --context-tokens 512 --max-new-tokens 48 --max-layers 40
+  --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --kv-storage int8_per_token_head --json
+  /tmp/hipengine-kv-quality-suite-smoke-chat.json`.
+- The smoke exercised both complete runtime paths and emitted a valid artifact,
+  but correctly returned `reference_unscorable`: the BF16 PARO output did not
+  produce a `FINAL:` answer and decoded as number/punctuation fragments. This is
+  now explicit baseline evidence to investigate rather than being misclassified
+  as an INT8 task-quality pass. Candidate output was also unscorable.
+
+## 2026-07-13 — Measure clean W7900 PARO INT8 KV fidelity baseline
+
+- Clean source commit `a2bda640`, Qwen3.6 PARO model revision `437eba06`, W7900
+  `gfx1100`, ROCm `7.2.4`, HIP `7.15.0-0000000`. Ran repeated token `9707` at
+  `512/16`, `4K/16`, `32K/16`, and `128K/16` with BF16-reference-token matched
+  context plus separate free-running rollouts. Exact command and raw hashes are
+  retained in
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-fidelity-baseline.json`.
+- Matched-context mean KL / top-1 agreement rejected at every length:
+  `512 0.53849/52.94%`, `4K 0.56875/52.94%`, `32K 1.56717/11.76%`, and
+  `128K 0.85128/41.18%`, versus required `<=0.05/>=90%`. All INT8 no-shadow
+  memory audits passed. At 128K the first four matched-history KL values were
+  `0.0, 0.00710, 0.29353, 1.91999`, with the first top-1 mismatch at logit
+  position 3.
+- The old free-running headline materially overstated intrinsic error after
+  divergence: at 128K/16, matched-context mean KL is `0.85128`, while the
+  independent full-rollout mean is `2.24510`. It does not change the rejection:
+  the matched-token result itself is far outside the gate.
+- Ran all five bounded task rows at 4K/48. BF16 and INT8 both scored `0/5`; the
+  BF16 path emitted no `FINAL:` answer for retrieval, multihop, aggregation,
+  long-document, or code. Status is therefore `reference_unscorable`, not an
+  INT8 pass or measured task regression. The task harness remains useful once
+  the BF16 PARO semantic baseline is independently validated.
+
+## 2026-07-13 — Compact PARO persistent prefill block-table metadata
+
+- RED tests showed the 256K context-overhead estimator charging
+  `1,080,037,376` bytes because the runtime persistently tiled the dense page
+  table across every prompt row; the compact target was `6,299,648` bytes of
+  resident context metadata. A second RED test showed `_prefill_block_table_rows`
+  returning an unchecked pointer into the full table rather than growing and
+  reusing chunk-local rows.
+- Replaced the `context_rows x blocks` resident allocation with one initial
+  dense table row. It grows lazily to the largest active full-attention chunk or
+  packed slab, then reuses offset zero for each sequential chunk. Packed and
+  verifier routes keep their row-specific tables and ownership tags so cached
+  verifier metadata cannot be mistaken for uniform prompt metadata. The
+  `KVLiveSpans` ABI and all existing kernel signatures remain unchanged.
+- Focused runtime/layout, capacity-estimator, memory-audit, E2E fixture, and
+  matched-quality tests pass. W7900 `512/4` matched-context smoke preserved the
+  baseline result (`mean KL 0.544593`, top-1 `60%`) and exact BF16/INT8 output
+  IDs `[198,4795,13,508]` / `[198,43150,13,13]`.
+- Scoped dirty-tree 256K/128 validation used the exact prior capacity command
+  with model revision `437eba06`, FP16-scale per-token/head INT8 KV, and cached
+  gfx1100 builds. It completed with unchanged generated preview
+  `58054,292`, no-shadow audit pass, `635.318` prefill tok/s, and `40.070`
+  decode tok/s. The table retained only `4,096 x 1,025` entries
+  (`16,793,600` bytes). Tracked peak fell from the published
+  `25,723,838,504` to `24,665,296,404` bytes (`23.9572 -> 22.9713 GiB`,
+  `-0.9858 GiB`), increasing the 24 GiB margin from `0.0428` to `1.0287 GiB`.
+  Raw diagnostic: `/tmp/hipengine-compact-prefill-table-256k-int8.json`.
+  A clean-source confirmation is required before publishing the retained row.
+
+## 2026-07-13 — Add real-cache PARO KV format ablation harness
+
+- Added `scripts/qwen35_paro_kv_format_ablation.py` to capture sampled BF16
+  full-attention K/V distributions, calibrate clipping, estimate 256K format
+  memory, and rank candidate formats with teacher-forced model-logit gates
+  before adding production kernels. Candidate cache values are quantized and
+  reconstructed on the host, then written back into the BF16 resident cache.
+  The harness labels the limitation that each current-token row is BF16 during
+  its own attention and is round-tripped immediately afterward; every retained
+  candidate still needs a native runtime gate.
+- RED-first unit coverage checks writer-accurate float-scale code generation
+  plus FP16 stored-scale reconstruction, groupwise error behavior,
+  distribution/reconstruction summaries, K/V mixed-format memory accounting,
+  candidate parsing, and budget-constrained recommendation.
+- W7900 harness smoke (`32/2`, four model layers, candidates baseline/group16)
+  completed in `13.88 s`. Group16 reduced emulated matched-context mean KL from
+  `0.0014288` to `0.00000862` and K/V sample NRMSE from
+  `0.00770/0.00841` to `0.00466/0.00512`; clipping calibration selected `1.0`
+  (no clipping) for both K and V. These are harness diagnostics, not retained
+  model-quality claims.
+- Validation: `ruff check` passes after cleanup; focused script/quality tests
+  report `14 passed`; live smoke artifact is
+  `/tmp/hipengine-kv-format-ablation-smoke.json`.
+
+## 2026-07-13 — Screen full-model PARO KV quantization formats
+
+- Clean source commit `4efc6df9`, Qwen3.6 PARO revision `437eba06`, W7900
+  `gfx1100`, repeated-token `512/8`, all 40 layers, FP16 scales. Captured
+  `2,621,440` real K elements and the same number of V elements across ten
+  full-attention layers. Per-head sample NRMSE was `0.00899` K / `0.01088` V;
+  calibrated clipping selected `0.999` for both, a negligible reconstruction
+  change. More aggressive clipping regressed both reconstruction and logits.
+- The native all-layer per-token/head runtime baseline rejected at matched
+  mean KL `0.65550`, top-1 `55.56%`. The corresponding BF16-cache emulation
+  rejected at KL `0.34450`, top-1 `66.67%`, confirming direction but also that
+  emulation is only a ranking screen.
+- No all-layer candidate passed `KL <= 0.05` and top-1 `>= 90%`. Within the
+  reclaimed 1 GiB budget, group32 minimized KL (`0.14177`, top-1 `77.78%`,
+  `+146,800,640` bytes projected at 256K); group64 preserved top-1 at all nine
+  positions but still had KL `0.16157` (`+62,914,560` bytes). Group16 had the
+  best reconstruction NRMSE but regressed model KL to `0.89119`, showing that
+  reconstruction error alone is not a safe selector. K-BF16/V-INT8 was the
+  best top-1-clean mixed component (`KL 0.14873`) but needs `+1,331,691,520`
+  bytes and exceeds the compact-table budget.
+- Conclusion: format changes alone do not admit all-layer INT8. Carry group32
+  and group64 into the mixed-layer/residual policy sweep; do not promote a
+  format yet. Compact diagnostic:
+  `benchmarks/results/2026-07-13-w7900-paro-kv-format-ablation.json`.
+
+## 2026-07-13 — Add mixed-layer/head/residual KV policy harness
+
+- Added `scripts/qwen35_paro_kv_policy_ablation.py` on top of the real-cache
+  format harness. It emulates selective BF16 full-attention layer ordinals,
+  selective BF16 KV heads, fixed attention-sink and recent-token BF16 residual
+  windows, group64 combinations, and data-driven sensitive-layer sets. Memory
+  accounting distinguishes primary layer/head replacement from an additional
+  BF16 residual side cache over the INT8 primary.
+- RED-first tests cover exact preservation masks for layer/head/sink/recent
+  combinations, overlap-safe 256K memory accounting, and gate/budget-aware
+  recommendation ordering. The recent window quantizes only the row that falls
+  out after each decode step rather than repeatedly requantizing old history.
+- W7900 four-layer `32/2` smoke exercised baseline, layer, head, and combined
+  sink/recent routes. It completed successfully and selected the sole
+  full-attention layer as expected (`KL 0`, top-1 `100%`); the baseline
+  emulation was KL `0.0014288`, top-1 `100%`. This is mechanics validation only.
+- Validation: `ruff check` passed; focused format/policy tests report `8 passed`;
+  live artifact `/tmp/hipengine-kv-policy-ablation-smoke.json`.
+
+### Policy-screen follow-up
+
+- Clean `62045de0` W7900 `512/4` default sweep completed in `740.21 s`.
+  No policy passed both gates. Group64 plus BF16 full-attention ordinals `0,1`
+  came closest while fitting the reclaimed budget: KL `0.053324`, top-1 `100%`,
+  projected `+583,008,256` bytes at 256K. Per-head INT8 plus BF16 prefix 3 was
+  KL `0.066408`, top-1 `100%`, `+799,014,912` bytes. Four BF16 layers met KL
+  but flipped top-1 and nearly exhausted the budget. Sink/recent residuals were
+  non-monotonic; group64 plus 64 sink and 64 recent rows had KL `0.028494` but
+  only `80%` top-1.
+- Added a tested `--policies custom` route for explicit format, BF16 layer/head
+  sets, and sink/recent windows. This avoids rerunning the twelve-minute full
+  sensitivity matrix while checking the obvious near-gate combinations and
+  longer-context transfer.
+
+## 2026-07-13 — Reject mixed PARO KV policies after 4K transfer
+
+- Clean targeted `512/8` follow-ups found two emulated passes inside the 1 GiB
+  budget: per-head INT8 with BF16 full-attention ordinals `0,1,2` plus 64-token
+  sink/recent residuals (`KL 0.02281`, top-1 `100%`, `+800,849,920` bytes), and
+  group64 with the same mixed policy (`KL 0.00445`, top-1 `100%`,
+  `+844,890,112` bytes).
+- Neither transferred to `4K/8`: per-head fell to KL `0.02173`, top-1 `77.78%`;
+  group64 to KL `0.02467`, top-1 `66.67%`. Increasing sink/recent windows from
+  64 to 512 did not recover top-1. A clean 4K single-layer sensitivity sweep
+  ranked ordinals `2,0,4` highest, but those three-layer combinations also
+  rejected at `4K/16`: group32 was best at KL `0.04136`, top-1 `82.35%`.
+- The most accurate 4K primary-only candidate was group64 plus BF16 prefix 4:
+  `4K/8` KL `0.00998`, top-1 `88.89%`; `4K/16` KL `0.03254`, top-1 `76.47%`.
+  It still fails and projects `+1,103,101,952` bytes at 256K, consuming all but
+  about 1.4 MiB of the compact-table gain measured against the 24 GiB tracked
+  peak. Per-head prefix 4 also rejected (`4K/16` KL `0.04922`, top-1 `64.71%`).
+- Product task scoring remains unavailable: the BF16 reference itself scored
+  `0/5` on retrieval, multihop, aggregation, long-document, and code, so the
+  status is `reference_unscorable`, not a mixed-policy pass or regression.
+- Decision: no format/mixed/residual candidate is evidence-backed for runtime
+  implementation. Do not add group32/group64 or mixed-cache production
+  complexity for a path that already fails the bounded 4K matched-context gate.
+  Keep explicit INT8 KV diagnostic/approximate only. Artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-kv-policy-ablation.json`.
+
+## 2026-07-13 — Finalize PARO INT8 KV capacity/quality outcome
+
+- Final clean `d6504544` W7900 matched-context `128K/16` rerun reproduces the
+  baseline rejection exactly: mean/max KL `0.8512849/4.9738187`, top-1
+  `41.176%`, first mismatch at logit position 3, and no-shadow memory audit
+  passed. The compact prefill table is `8,404,992` bytes at 128K; retained INT8
+  KV is `1,355,304,960` bytes.
+- Final clean `d6504544` W7900 `256K/128` capacity run passed allocation and
+  no-shadow audits with unchanged preview IDs `[58054,292]`. The reusable table
+  is `4,096 x 1,025` entries (`16,793,600` bytes). Tracked peak is
+  `24,665,296,404` bytes (`22.971347 GiB`, 1.028653 GiB below 24 GiB), sampled
+  HIP peak `21.041016 GiB`, and retained KV `2,707,968,000` bytes.
+- Against the July 12 row, tracked peak improves
+  `25,723,838,504 -> 24,665,296,404` bytes (`-1,058,542,100`, `-0.98584 GiB`,
+  `-4.115%`). One-shot diagnostic throughput is flat/noise-level:
+  prefill `632.837 -> 631.457 tok/s` (`-0.218%`) and decode
+  `40.066 -> 40.008 tok/s` (`-0.145%`). This is a capacity/memory claim, not a
+  speed claim.
+- Final focused gate: `ruff` passed and 172 tests passed across format/policy,
+  matched-quality, resident layout, E2E KV fixture, memory audit, and primitive
+  accuracy coverage. Benchmark README/export and changelog now publish the
+  memory win while keeping `usable_int8_256k_claim=false`.
+- Outcome artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-accuracy-outcome.json`.
+
+## 2026-07-13 — Add exact llama.cpp KV matched-context harness
+
+- Added `scripts/llamacpp_kv_matched_context.cpp`, a public-C-API harness that
+  loads one llama.cpp model, runs an F16 K/V reference, then runs a Q8_0 K/V
+  candidate forced with the reference seed/generated tokens. It retains only
+  prompt-final plus decode-step full logits, so 128K/16 needs 17 rows instead of
+  llama-perplexity's roughly context-by-vocabulary logits file. Model weights
+  stay identical Q4_K_M; only K/V cache storage changes.
+- Added `scripts/llamacpp_kv_matched_context.py` to build against an explicit
+  llama.cpp shared-library directory, validate teacher forcing and metric
+  summaries, and record host/external git state plus exact source, binary,
+  library, and model hashes. The measured external build is the gfx1100 build
+  9648 at commit `1ebf790c`; its source tree contains disclosed local MTP
+  instrumentation, while the comparison uses the same libraries for both KV
+  modes and makes no performance claim.
+- Five unit tests cover build/run command identity, workload shape, exact
+  reference-token forcing, and metric consistency. A live W7900 `8/2` smoke
+  passed with mean/max KL `0.0003786/0.0005905` and top-1 `100%`. No RED-first
+  model run was practical because the new external integration harness did not
+  previously exist; malformed-history/summary tests provide the deterministic
+  behavioral RED coverage.
+
+## 2026-07-13 — Add same-weight llama.cpp-to-hipEngine GGUF bridge
+
+- Extended the exact llama.cpp harness with an optional versioned FP32 reference
+  logit dump (`HKVLOG1`, shape header, contiguous rows). The wrapper fingerprints
+  the dump, and `scripts/gguf_llamacpp_matched_context.py` validates its shape,
+  finite values, recorded argmax IDs, model path, workload, and teacher history
+  before running hipEngine GGUF BF16 KV on the same Q4_K_M file.
+- The bridge compares all prompt-final/decode distributions and records
+  per-position KL, top-1, first mismatch, and reference-token rank. It explicitly
+  classifies timing as diagnostic and does not claim that cross-engine parity
+  isolates FP16-vs-BF16 cache precision from other implementation arithmetic.
+- Four parser/comparison tests plus the extended command test pass. A live W7900
+  `8/2` bridge smoke on repeated token 9707 passed at mean/max KL
+  `0.00057285/0.00075715` and 100% top-1. This tooling enables the requested
+  clean same-weight 128K/16 bridge measurement.
+
+## 2026-07-13 — Measure llama.cpp Q8 KV and same-weight GGUF parity at 128K
+
+- Clean hipEngine `31c12a3a` reran llama.cpp build 9648 (`1ebf790c`, exact
+  library hashes retained) on W7900 with Q4_K_M weights, repeated token 9707,
+  and 128K/16 F16-reference-token matched context. Q8_0 K/V passes the aggregate
+  gate at mean/max KL `0.00520759/0.08749123` and 100% top-1. Position 0 carries
+  the max; the 16 teacher-forced decode rows alone average KL `0.00006487` with
+  max `0.00015978`. A separate F16-vs-F16 repeatability control is exactly zero
+  KL with 100% top-1 across all 17 rows.
+- Exported 16,885,780 bytes of versioned F16 reference logits (SHA-256
+  `f62cfa80705cec8b85f4f942499f02311f477f87ab3b5383faeec48114dfab9a`).
+  The same-weight bridge then ran hipEngine GGUF BF16 KV on the exact same GGUF,
+  prompt, and llama.cpp teacher history from a clean tree.
+- The formal all-position cross-engine gate rejects: mean/max KL
+  `0.26605665/4.51480768`, top-1 100%. The discrepancy is localized to the
+  prompt-final bulk-prefill row (KL `4.51480768`); the 16 teacher-forced decode
+  rows average KL `0.00050971`, max `0.00108810`, and retain 100% top-1. This is
+  a cross-engine baseline, not a cache-only comparison: F16/BF16 storage and
+  implementation arithmetic differ. It also shows that the within-llama Q8
+  result cannot be used as a direct numerical oracle for PARO INT8.
+- Diagnostic wall only: hipEngine prefill `268.386s`, decode `0.505s`; no speed
+  claim. Retained artifact:
+  `benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json`.
+- Expanded GitHub issue #4 with the memory-vs-usability problem, matched-context
+  protocol, ablation transfer gates, llama.cpp calibration, functional blocker,
+  promotion criteria, and current decision: https://github.com/shisa-ai/hipEngine/issues/4
+
+## 2026-07-13 — Add reference-qualified PARO KV functional probe
+
+- Added a five-category restricted multiple-choice check at exact configurable
+  context length. Each task has independently known A-D answers; both BF16 and
+  INT8 consume the same fixed assistant prefix `The correct option is `, and the
+  next token is scored only among the four declared label tokens. A candidate
+  row counts only when BF16 first chooses the known-correct option. This avoids
+  relabeling BF16 garbage as an oracle while making the quantized cache active
+  after prefill.
+- The committed suite covers retrieval, multihop, aggregation, long-document
+  revision handling, and code evaluation with evidence distributed through
+  neutral filler. This is a bounded functional diagnostic, not free-generation
+  quality or a full benchmark claim.
+- Fifteen focused tests cover suite validity, scoring/margins, reference
+  qualification, existing prompt construction, and candidate-regression
+  accounting. Dirty live harness probes confirmed the protocol executes: at
+  512, BF16 qualifies 1/5 and INT8 regresses that code row; at 4K, BF16
+  qualifies 2/5, INT8 retains aggregation and regresses multihop. Clean 4K/32K
+  publication runs remain next; these smokes are not retained evidence.
+
+## 2026-07-13 — Run clean bounded PARO INT8 functional checks
+
+- Clean `2743798f` W7900 runs used the committed five-category restricted-choice
+  suite at 4K and 32K. Each INT8 row was scored only if BF16 chose the known
+  answer first; both policies consumed the identical fixed assistant prefix.
+- At 4K, BF16 qualifies 2/5. INT8 retains aggregation (`C -> C`, expected-choice
+  margin `3.7216 -> 3.8446`) but regresses multihop (`D -> C`, margin
+  `+0.3036 -> -0.2385`). The regressed row's full-distribution KL is `0.42265`.
+  This is direct bounded evidence that cache-induced distribution drift can
+  change a functional decision.
+- At 32K, BF16 qualifies 3/5 and INT8 retains all three: multihop `D -> D`,
+  aggregation `C -> C`, and long-document `A -> A`. Their full-logit KL values
+  are `0.45807`, `0.03534`, and `0.21307`; margins narrow for multihop and
+  especially long-document (`0.6973 -> 0.1024`) but do not flip. High KL is
+  therefore not equivalent to every answer changing.
+- The outcome stays `partially_scorable`: BF16 fails 3/5 at 4K and 2/5 at 32K.
+  This is a five-task restricted-choice diagnostic, not a free-generation or
+  broad long-context quality claim. It cannot override the strict 128K/16
+  matched-context rejection or promote INT8.
+- Both no-shadow audits pass: no persistent BF16 full-attention K/V layers and
+  no missing INT8 scales. Raw SHA-256 values are `303f1638...5099` (4K) and
+  `0cf4e790...2f94` (32K). Retained compact artifact:
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-functional-mc.json`.
+
+## 2026-07-13 — Publish protocol-matched KV fidelity comparison
+
+- Published the exact llama.cpp Q8_0-vs-F16 128K/16 result at mean/max KL
+  `0.00520759/0.08749123`, 100% top-1, with an exact-zero F16/F16 control.
+  Against the separately normalized PARO per-head INT8 result, this is 163.47x
+  lower mean KL and +58.82 top-1 percentage points, explicitly qualified by the
+  different cache quantizers, weight formats, and engine arithmetic.
+- The benchmark/root README sections now include the same-weight GGUF bridge:
+  all-position hipEngine-BF16-vs-llama-F16 mean KL `0.26606` rejects because
+  prompt-final KL is `4.51481`; the 16 decode-only rows average `0.000510` and
+  retain 100% top-1. No timing result is promoted.
+- Published the bounded functional outcome alongside the numerical table: one
+  of two BF16-qualified 4K choices regresses under INT8, while all three
+  BF16-qualified 32K choices remain correct. The partial-reference and
+  restricted-choice limitations remain prominent; 256K INT8 stays unsupported.
+- Added `benchmarks/results/2026-07-13-w7900-llamacpp-q8-kv-matched-quality.json`,
+  updated the platform index/detailed benchmark section, root benchmark export,
+  and reverse-chronological changelog. GitHub issue #4 now includes the completed
+  bridge and functional findings: https://github.com/shisa-ai/hipEngine/issues/4
+
+## 2026-07-13 — Rewrite KVCACHE around current accuracy evidence
+
+- Replaced the stale June 24 `docs/KVCACHE.md` status/baseline with a
+  comprehensive architecture, capacity, and accuracy report. The document now
+  explicitly supersedes the old inference that a Qwen3.5 short E2E fixture made
+  current Qwen3.6 256K INT8 correctness-passing.
+- Consolidated all current evidence: independent-rollout FP16/FP32 scale
+  rejection; 512/4K/32K/128K matched-context rows; clipping/group16/32/64 and
+  K/V-mixed reconstruction; BF16 layer/head and sink/recent transfer; clean
+  128K/16 outcome; 4K/32K bounded functional choices; llama.cpp Q8_0/F16 plus
+  F16 repeatability; and the same-Q4_K_M cross-engine bridge. Also folded in the
+  June GGUF pure/hybrid, prefix-depth, block16, key-only, non-contiguous-mask,
+  host-QDQ, and generated-corpus accuracy sequence with protocol caveats.
+- Reconciled capacity versus support: final 256K tracked/sampled peaks remain
+  `22.971/21.041 GiB`, retained INT8 K/V is `2.708 GB`, and no-shadow passes,
+  while fidelity remains rejected at KL `0.85128/4.97382`, top-1 `41.18%`.
+- Preserved the `KVLiveSpans`, K1 kernel/policy, and K2 FastDMS architecture,
+  but changed DMS bring-up to BF16-first semantics; current rejected dense INT8
+  is no longer assumed to be a quality-safe DMS storage dtype.
+- Added canonical commands, an artifact index, supported/unsupported
+  conclusions, promotion gates, and an updated punchlist. Local-link validation
+  found every target present; mechanical assertions rechecked headline values
+  against the retained JSON artifacts; `git diff --check` passed.
+
+## 2026-07-13 — Direct 220 Ki PARO BF16 capacity rejection
+
+- Replaced the retained-KV-only projection with a clean direct W7900/gfx1100
+  run at exactly 225,280 prompt tokens (220 Ki), 4 warmup decode tokens, and 128
+  measured decode tokens on hipEngine `bec5428d` and the current Qwen3.6 W4-PARO
+  fingerprint `995a8c67...d917`. Exact command:
+  `env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 225280 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-220ki-20260713/paro-220ki-bf16.json`.
+- The run completes without a segfault, emits finite logits, and passes the BF16
+  layout audit, retaining `4,618,977,280` K/V bytes. It nevertheless fails the
+  24 GiB tracked gate: peak `25,866,320,852` bytes (`24.089889 GiB`), or
+  `96,517,076` bytes (`0.089889 GiB`) over.
+- An approximately 1 Hz `rocm-smi` monitor covering the final 82 seconds of
+  prefill observes at least `26,663,366,656` bytes (`24.832195 GiB`) whole-device
+  use. Because monitoring began after process launch this is a lower bound; the
+  benchmark's phase-boundary HIP sample (`22.750 GiB`) is coarser and cannot be
+  used to claim physical 24 GB fit. Raw/monitor SHA-256 values are
+  `2f395e0d...e0c9` / `bbe7c5bd...25b3`.
+- Published the compact capacity-rejection artifact and updated only benchmark
+  rollups/exports plus this handoff. Single-run 716.869 prefill / 45.301 decode
+  tok/s values remain diagnostic (`performance_claim=false`). Next action is a
+  fully monitored lower-context sweep to locate a realistic BF16 frontier.
+
+## 2026-07-13 — Establish profile-aware BF16 safe context frontier
+
+- The W7900-only 220 Ki result was not sufficient to answer physical 24 GB fit:
+  prefill chunk auto-tuning keys off total VRAM. The 48 GB W7900 selects
+  `1024/1024/4096/1024/1024`, while the 25,753,026,560-byte RX 7900 XTX selects
+  all-`768` through `low_memory_full_context_24gb`. Ran a clean, full-child
+  approximately 1 Hz `rocm-smi` capacity sweep on hipEngine `5a49b16d`; all
+  retained rows had finite logits and passing BF16 K/V layout audits.
+- W7900 default-profile screens were: 176 Ki tracked/device
+  `23.033/23.779 GiB` (+0.205 GiB versus the 24 GB card bytes); 184 Ki
+  `23.226/23.971` (+0.013 GiB, not safe); and 200 Ki `23.610/24.356`
+  (-0.371 GiB). These prove that tracked-only or W7900-default observations do
+  not model the runtime's actual low-memory route.
+- Direct physical 24 GB results with automatic all-768 chunks were: 176 Ki
+  tracked/device `22.315/22.857 GiB` (+1.127 GiB); **208 Ki**
+  `23.082/23.623 GiB` (**+0.361 GiB / 388,128,768 bytes**); and **220 Ki**
+  `23.369/23.908 GiB` (**+0.076 GiB / 81,764,352 bytes**). The 220 Ki run exits
+  cleanly, but ~78 MiB is an edge rather than an operational margin.
+- A clean W7900 screen at 232 Ki with the same manual all-768 profile reaches
+  tracked/device `23.657/24.163 GiB`, 0.178 GiB above the physical-card byte
+  limit. We did not risk the corresponding XTX OOM run. No tested run
+  segfaulted.
+- Recommendation: use **208 Ki (212,992 tokens)** as the practical safe BF16
+  cap under the current 24 GB low-memory profile; 200K/200 Ki are below it.
+  220 Ki is the largest directly validated physical pass but is edge-only. This
+  report defines safe as at least 0.25 GiB directly observed headroom; it does
+  not claim the exact 209-219 Ki frontier.
+- Exact recommended-cap command:
+  `env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prompt-length 212992 --graph-replay-decode --kv-storage bf16 --json /tmp/hipengine-bf16-frontier-20260713/208ki-xtx-clean/paro-212992-bf16.json`.
+- Published `benchmarks/results/2026-07-13-gfx1100-paro-bf16-context-frontier.json`
+  and updated only benchmark rollups/exports plus this handoff. Several runs
+  overlapped on independent GPUs, so all throughput remains diagnostic and
+  `performance_claim=false`.
+
+## 2026-07-13 — Define the INT8 accuracy optimization loop
+
+- Added a dedicated `docs/KVCACHE.md` workflow for representation research.
+  Matched-context mean KL is the primary inner-loop metric; maximum KL, top-1,
+  top-5/top-10 overlap, and BF16-top-1 candidate rank are supporting guards.
+  Downstream task benchmarks remain milestone/promotion evidence rather than a
+  tax on every quantizer hypothesis.
+- Locked the escalation ladder to host reconstruction, a fixed `512/8` S1
+  candidate set with a total wall-time target of at most 10 minutes, winner-only
+  `4K/16` transfer, clean native `128K/16`, and then functional/task gates.
+  Existing KL `<= 0.05` and top-1 `>= 90%` promotion requirements are unchanged.
+- Added a table of harness roles and claim boundaries plus the first bounded
+  external-research-informed screen: current baseline, Hadamard group32,
+  KIVI-style asymmetric chunked INT8, and KVarN-inspired dual-axis INT8.
+  AQUA residual prediction remains the next screen rather than inflating the
+  first fast candidate set.
+- Reviewed the clean read-only research mirror at
+  `/home/lhl/amd-gpu-tuning/reference/kvcache-quantization-research@a0bb333`;
+  the requested `/home/lhl/github/shisa-ai/kvcache-quantization-research` path
+  is not present on this host. Re-read `docs/KVCACHE.md` end to end and
+  `git diff --check` passed.
+
+## 2026-07-13 — Add the fast external-format numerical screen
+
+- Extended `scripts/qwen35_paro_kv_format_ablation.py` with a fixed
+  `--fast-accuracy-screen`: one mixed English/Japanese/code/math/tool-token
+  512-token prompt, eight BF16-teacher-forced decode rows, one resident-weight
+  session reset/reused across BF16 cases, and the four-candidate
+  baseline/Hadamard/KIVI/KVarN set. The JSON records the
+  prompt-token SHA-256, distinct-token count, total elapsed time, and whether
+  the 600-second development budget was met.
+- Added deterministic NumPy emulations and 256K byte projections for:
+  normalized Walsh-Hadamard group32 + symmetric INT8; KIVI-style 128-token
+  per-channel key chunks + affine group32 values + BF16 incomplete residual;
+  and KVarN-inspired Hadamard/two-axis-RMS/affine INT8 chunks. These are
+  representation screens only and do not add Torch or production kernels.
+- Extended matched-logit reports with top-5/top-10 set overlap and exact-set
+  agreement while preserving mean/max KL, top-1 agreement, and reference-token
+  rank. Candidate prompts are tokenized once and reused exactly for all runs.
+- Followed RED/GREEN: the new Hadamard/KIVI/KVarN and top-k tests initially
+  failed import/output expectations, then passed after implementation.
+  Validation: `python3 -m pytest -q
+  tests/test_qwen35_paro_int8_kv_quality_sweep.py
+  tests/test_qwen35_paro_kv_format_ablation.py
+  tests/test_qwen35_paro_kv_policy_ablation.py` (19 passed), targeted Ruff,
+  `py_compile`, and `git diff --check` all pass.
+
+## 2026-07-13 — Correct the KVarN screen against the official source
+
+- Ran the clean `b868710a` W7900 fast profile on the fixed 512/8 mixed prompt
+  (36 distinct tokens; token SHA-256
+  `933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8`).
+  Setup-inclusive harness/shell wall time was `29.883/30 s`, well below the
+  600-second S1 budget. The initial rows were:
+  - baseline: mean/max KL `0.36841/1.20200`, top-1/top-5/top-10
+    `66.67/71.11/77.78%`;
+  - Hadamard group32: `0.13342/0.45135`, `77.78/84.44/84.44%`;
+  - KIVI-style INT8: `0.16667/0.60739`, `88.89/86.67/88.89%`;
+  - initial one-pass KVarN-inspired row: `0.36283/1.49168`,
+    `66.67/75.56/80.00%`.
+  All failed the KL/top-1 promotion gate; Hadamard had best mean KL while KIVI
+  had best decision fidelity. Artifact source:
+  `/tmp/hipengine-int8-fast-screen-20260713/screen.json`, SHA-256
+  `27eb3c712565b22f564d3ec0e3e10fde9fc485307bc0d00563f7f7ed1167817b`.
+- Before transferring a winner, inspected the official KVarN implementation
+  read-only through `gh` at `huawei-csl/KVarN@7586257f`. The production method
+  is materially more specific than the initial one-pass approximation: eight
+  best-so-far log-domain alternating variance-normalization passes, K tiles in
+  channel-by-token orientation, V tiles in token-by-channel orientation,
+  per-row asymmetric RTN, and a permanent 128-token BF16 sink.
+- Corrected the INT8 emulation and memory projection to those source-aligned
+  semantics while retaining an incomplete BF16 tail. The screen remains INT8
+  and does not claim equivalence to KVarN's shipped K4/V2 preset. Added RED/GREEN
+  fixtures for exact Sinkhorn reconstruction/imbalance improvement and permanent
+  sink preservation; the targeted 21-test bundle, Ruff, `py_compile`, and
+  `git diff --check` pass. The first KVarN number is superseded pending the clean
+  rerun; the baseline/Hadamard/KIVI rows remain valid.
+
+## 2026-07-13 — Reject external INT8 formats at the 4K transfer gate
+
+- Re-ran the clean source-aligned S1 screen at `d0b56364`. Harness/shell wall is
+  `28.778/29 s`; prompt token hash and the unchanged baseline/Hadamard/KIVI rows
+  reproduce exactly. Source-aligned KVarN improves the superseded approximation
+  from mean/max KL `0.36283/1.49168` to `0.27125/1.25017`, top-1 from `66.67%`
+  to `88.89%`, top-5 from `75.56%` to `77.78%`, and top-10 remains `80.00%`.
+  Its projected 256K storage is `2.593 GiB`, `0.073 GiB` above the native-format
+  baseline including the permanent BF16 sink and incomplete tail.
+- Final S1 ranking on the primary metric is Hadamard group32 `0.13342` mean KL,
+  KIVI `0.16667`, KVarN `0.27125`, baseline `0.36841`. Hadamard reduces mean KL
+  by `63.78%` and improves every top-k guard over baseline, so it alone advanced
+  to S2 despite KIVI's stronger `88.89%` top-1.
+- Clean Hadamard 4K/16 transfer at the same `d0b56364` completes in
+  harness/shell `29.173/30 s`: mean/max KL `0.15512/1.14267`, top-1 `94.12%`,
+  top-5/top-10 overlap `88.24/84.71%`, and max BF16-top-1 candidate rank `2`.
+  Top-1 passes, but mean KL is 3.10x the `0.05` threshold, so the combined gate
+  rejects. No native HIP format, 128K run, or downstream task benchmark is
+  justified from this row.
+- Raw clean JSON SHA-256 values are
+  `c2a3043f33a6104f5250a0509f2f3826b1bc197f1e09dd2b6128e1a7335ea88a`
+  (S1) and
+  `451ce1c20d5bf7db5a0e4fd6d32dcf7366c1dd31b056416aa72f09a05b2f3a56`
+  (S2). Published compact evidence as
+  `benchmarks/results/2026-07-13-w7900-paro-int8-kv-external-format-screen.json`
+  and updated only the requested KVCACHE workflow/result section plus benchmark
+  rollups. `performance_claim=false`; supported INT8 status is unchanged.
+
+## 2026-07-13 — Add a same-weight GGUF KV-format screen
+
+- Added `scripts/qwen35_gguf_kv_format_ablation.py`, a GGUF-only host-emulation
+  diagnostic that resets and reuses one BF16-KV Q4_K_M resident session across
+  a BF16 reference and per-head INT8, raw group32/Q8_0-shaped, Hadamard
+  group32, and KIVI candidates. It reuses the tested representation math and
+  matched-logit/top-k metrics from the PARO screen without adding a native
+  kernel or changing the runtime hot path.
+- Embedded the exact 45-token `mixed_v1` unit used by the PARO S1 screen, so the
+  repeated 512-token prompt reproduces SHA-256
+  `933b5f11bdfb5766ab729e06c6fe024f5e9041fb287aee9472589560d350a5f8`
+  and 36 distinct IDs without requiring a tokenizer sidecar beside the GGUF.
+- Followed RED/GREEN: the new test initially failed because the script did not
+  exist. Three tests now cover full-attention cache discovery, reset/reuse plus
+  teacher history and post-attention row roundtrip, and exact prompt identity.
+  The combined GGUF/PARO format bundle passes 14 tests; Ruff, `py_compile`,
+  CLI help, and `git diff --check` pass.
+- A live W7900 8/2 group32 smoke exercised all ten physical GGUF BF16 cache
+  pairs and finite full logits. It completed in 73.65 seconds setup-inclusive
+  at mean KL `0.00005884` and 100% top-1. This dirty-tree smoke validates the
+  harness plumbing only; clean 512/8 and 4K/16 measurements follow after the
+  harness commit.
+
+## 2026-07-13 — Reject same-weight GGUF INT8 formats at 4K transfer
+
+- Clean `f0d9ac25` on W7900 ran the exact fixed `mixed_v1` 512/8 prompt used by
+  the PARO screen (36 distinct IDs, SHA-256 `933b5f11...0a5f8`) against the same
+  Q4_K_M model fingerprint as the llama.cpp Q8_0 calibration. Setup-inclusive
+  wall was 81.923 seconds, inside the 600-second budget. Every representation
+  passes S1: per-head mean/max KL `0.0001646/0.0005551`, plain group32
+  `0.0000812/0.0003984`, Hadamard group32 `0.0000974/0.0003191`, and KIVI
+  `0.0001753/0.0012793`; all retain 100% top-1. Plain group32 is the S1 KL
+  winner, improving the per-head anchor by 50.67% without a Hadamard transform.
+- Transferred all four rows—not only the S1 winner—to 4K/16 because the user
+  requested a direct Hadamard/KIVI comparison and raw group32 isolates Q8_0
+  block geometry. All reject the combined gate. Per-head is lowest mean/max KL
+  at `0.12779/2.03039` but only 88.24% top-1; group32 is
+  `0.28106/4.39924`, 88.24%; Hadamard is `0.25180/4.09533` and passes top-1 at
+  94.12%; KIVI is `0.33306/5.43878`, 88.24%. Transfer wall was 114.907 seconds.
+- The dominant failure is `decode_3`. Hadamard preserves 16/17 top-1 rows; the
+  other formats also miss `decode_4`. A second clean 4K/16 run in reverse
+  candidate order reproduces every per-position KL value and candidate top-1
+  exactly (115.417 seconds), ruling out reset/order contamination.
+- This host emulation reconstructs BF16 cache values and therefore does not
+  reproduce llama.cpp's direct Q8_0 integer-dot attention. The result establishes
+  that 32-value scale granularity alone is insufficient under the mixed GGUF
+  protocol; it does not invalidate llama.cpp's repeated-token native-Q8 row.
+  Stop before native kernels, 128K, or tasks. Source JSON SHA-256 values are
+  `84bc69c9...15ac` (S1), `fe2312ce...cf9d` (S2), and `28f79095...c5aa`
+  (reverse). Published compact evidence at
+  `benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`;
+  `performance_claim=false` and supported-cache status is unchanged.
+
+## 2026-07-13 — Audit native llama.cpp Q8_0 KV arithmetic
+
+- Audited the exact llama.cpp build family used by the W7900 calibration
+  (`1ebf790c`, build 9648, measured `libggml-hip.so` hash retained in the prior
+  artifact). The relevant CUDA/HIP sources are clean relative to that commit.
+  Q8_0 persistent storage is 32 signed INT8 values plus one FP16 scale, with no
+  F16 KV shadow. `set_rows` consumes FP32 K/V source activations directly,
+  computes codes with the unrounded FP32 max-abs scale, stores that scale as
+  FP16, and later dequantizes with the stored FP16 scale. The host group32
+  screen already matches those scale/code semantics apart from rare tie
+  rounding; its larger differences are source and attention precision.
+- For Q8 K, the RDNA3 vector-attention path applies the attention scale while
+  quantizing the current FP32 query into Q8_1 block32, uses INT8 `dp4a` for
+  Q8_0-K by Q8_1-Q products, and accumulates scaled dot products in FP32. For
+  Q8 V, RDNA3 dequantizes to FP16 and uses FP16 softmax-weight/V accumulation
+  before writing FP32 output. Therefore "direct quantized attention" is not a
+  single reconstruction-free FP32 path: K introduces temporary query
+  quantization and V deliberately uses FP16 arithmetic.
+- Added exact token-file prompt support to the public-C-API harness plus
+  independent candidate K/V cache selectors. This enables native full-Q8,
+  K-only-Q8, and V-only-Q8 rows on the same fixed `mixed_v1` token IDs while
+  retaining repeated-token compatibility and exact int32-token SHA-256
+  provenance. RED/GREEN unit coverage is 7 tests. Ruff, `py_compile`, and C++
+  `-Wall -Wextra -Werror` build pass. A live W7900 mixed-token `8/2` K-only
+  smoke instantiated `K=q8_0, V=f16`, retained 100% top-1, and produced finite
+  logits at mean/max KL `0.0014142/0.00223386`. This smoke validates plumbing
+  only; clean 4K/16 protocol/isolation rows follow after commit.
+
+## 2026-07-13 — Add exact-token support to the native GGUF INT8 gate
+
+- Extended `scripts/qwen35_gguf_int8_kv_correctness.py` with a mutually
+  exclusive `--prompt-token-file` input for whitespace-delimited exact token
+  IDs. The gate records the selected int32 token SHA-256, distinct-ID count,
+  prefix sample, path, and available token count without tokenizer
+  round-tripping. This lets the native per-head INT8 path consume the exact
+  `mixed_v1` trajectory used by both format screens and the updated llama.cpp
+  harness.
+- Followed RED/GREEN with two focused tests covering exact token/hash identity
+  and prompt-source exclusivity. Both tests, Ruff, `py_compile`, and
+  `git diff --check` pass. Clean native repeated/mixed 4K/16 measurements follow
+  after this harness commit.
+
+## 2026-07-13 — Attribute the GGUF Q8 gap to prompt and K/V arithmetic
+
+- Clean W7900 `a344d32a` ran llama.cpp build 9648 on identical Q4_K_M weights
+  at 4K/16. Native full Q8_0 passes repeated token 9707 at mean/max KL
+  `0.00000619/0.00003186`, 100% top-1, but rejects the exact 36-ID `mixed_v1`
+  prompt at `0.075654/1.26009`, 94.12% top-1. Mixed F16/F16 is exactly zero,
+  and a second mixed full-Q8 run reproduces every per-position KL, top-1, and
+  reference rank exactly. The old 128K repeated-token pass remains mechanically
+  valid but is now a saturation control, not representative Q8 fidelity
+  evidence.
+- Native llama.cpp mixed K-only Q8 reaches mean/max KL `0.096682/1.56852`; V-only
+  Q8 is worse at `0.243219/3.99543`; full Q8 improves to `0.075654`. All three
+  flip the same `decode_3` boundary, and full K+V being better than either
+  component proves material non-additive error cancellation. The source audit
+  found no F16 shadow: FP32 K/V write directly to Q8_0; K uses Q8_1-query INT8
+  dot/FP32 scaled accumulation; V dequantizes and accumulates through FP16 on
+  RDNA3.
+- hipEngine host reconstruction shows the same protocol effect. Per-head,
+  group32, and Hadamard group32 all pass repeated 4K/16 near `0.000002` mean KL
+  with 100% top-1, versus mixed means `0.12779/0.28106/0.25180`. Native llama.cpp
+  group32 is 73.08% lower than host group32 on mixed input but still fails the
+  KL gate by 1.51x.
+- Clean `cb6211d2` native hipEngine per-head INT8, with all ten full-attention
+  layers INT8/FP16-scale, no BF16 primary layer, and zero persistent mirrors,
+  passes repeated 4K/16 at mean/max KL `0.00000235/0.00000638`. It rejects
+  exact mixed input at `0.19038/2.99555`, 88.24% top-1; an exact rerun
+  reproduces aggregate metrics and reference/candidate top-1 arrays. Native
+  mixed mean KL is 48.98% worse than BF16 reconstruction, so direct INT8
+  arithmetic is not a universal fidelity repair.
+- Decision: do not implement native group32 or Hadamard from these rows. Retain
+  per-head/group32/Hadamard as screen controls; next test V-preserving or
+  asymmetric K/V layouts across multiple fixed mixed/natural prompts. Published
+  compact evidence at
+  `benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`;
+  timing remains diagnostic and `performance_claim=false`.
+- Updated only benchmark/benchmark-report sections (`benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, root README memory benchmark, and
+  `docs/KVCACHE.md`). Retitled GitHub issue #4 to emphasize fidelity-safe rather
+  than merely memory-fit INT8 KV, replaced its obsolete repeated-Q8 premise,
+  and posted the full mixed/native attribution in issue comment
+  `#issuecomment-4959445980`.
+
+## 2026-07-13 — Add the multi-prompt asymmetric GGUF K/V screen
+
+- Added `scripts/qwen35_gguf_kv_asymmetric_suite.py`, a host-emulation fidelity
+  harness that keeps one resident Q4_K_M session and runs the committed ten-row
+  `mtpbench-code-general-ja.jsonl` suite plus the existing `mixed_v1` control.
+  Each natural case uses an exact Qwen chat envelope, a deterministic rotation
+  of the other nine category prompts as diverse context, and the selected prompt
+  preserved in full as the final query. Exact token/file/text hashes,
+  train/heldout/category scopes, per-prompt gates, and 256K memory projections
+  are retained.
+- Defined S1 as 512/8 across all 11 cases. A candidate advances only if every
+  natural full/train/heldout/category row and `mixed_v1` passes mean KL `<=0.05`
+  and top-1 `>=90%`, while staying within 1.5 GiB over per-head INT8 at projected
+  256K. Transfer uses the identical suite at 4K/16; no candidate-conditioned
+  prompt selection is allowed.
+- Extended the representation catalog with V-preserving per-head/group32/
+  group16/Hadamard-K + BF16-V layouts, BF16-K reverse controls, and group32/16
+  all-INT8 asymmetries. Hadamard now transforms only quantized components, so a
+  BF16 K or V side remains bit-exact instead of incurring a needless floating
+  round trip.
+- RED/GREEN: the new suite import initially failed because the driver did not
+  exist. Eight focused tests now pass, covering exact prompt shape/identity,
+  heldout-gated aggregation, resident-array compaction, catalog contracts, and
+  bit-exact BF16 preservation. Ruff, `py_compile`, actual 512/4K prompt
+  construction against the GGUF tokenizer, and `git diff --check` pass.
+
+## 2026-07-13 — Audit OSCAR, AQUA/HIGGS, and FP8 for the 256 Ki gap
+
+- Reviewed OSCAR arXiv v1 (`2605.17757`) and the pinned local source/artifact
+  audit at `/home/lhl/kvcache-quantization-research@31979ce`. OSCAR's relevant
+  mechanisms are separate query-aware K and score-aware V covariance rotations,
+  Hadamard mixing, bit-reversal group balancing, calibrated clipping, affine
+  grouped INT2, and a mixed token layout with BF16 sink64/recent256. Its central
+  lesson is to minimize downstream attention distortion rather than raw K/V
+  reconstruction MSE. The public implementation differs materially from the
+  paper in its V-covariance proxy, global clip ratios, metadata dtype, and
+  G64/G128 accounting, so its headline BPE and H100 speed cannot be transferred
+  directly.
+- OSCAR's fixed BF16 token windows contribute only about 0.12% of a 256 Ki
+  context and therefore do not bridge this capacity gap by themselves. Its
+  attention-aware rotations remain a credible later calibration technique if
+  mild eight-bit layouts fail, but they require new per-layer artifacts and
+  fused rotate/read math; this is disproportionate before testing selective
+  layer precision. AQUA similarly improves HIGGS by predicting adjacent-layer
+  KV and quantizing residuals, but reconstruction adds a predictor matmul and
+  cross-layer cache dependency. Local HIGGS/AQUA evidence is strong on quality
+  density but its packed serving rows are materially slower; neither is the
+  first choice when only mild compression is required.
+- Corrected the target arithmetic using the physical-card frontier rather than
+  the earlier W7900 default-profile screen. RX 7900 XTX BF16 is directly safe at
+  208 Ki (`23.623 GiB` peak, `0.361 GiB` free) and physically completes 220 Ki
+  edge-only. Reaching 256 Ki with the same >=0.25 GiB operating margin needs
+  only about 16-19% K/V reduction. Keeping six of ten full-attention layers BF16
+  and storing both K/V for the final four at one byte yields 4.000 GiB prompt-KV
+  at 256 Ki; per-head INT8 with FP16 scales is about 4.008 GiB and group32 INT8
+  is 4.063 GiB. Projected from either retained physical anchor, all three keep
+  more than 0.25 GiB whole-device margin.
+- RDNA3 has no native FP8 matrix or conversion instruction. Parent gfx11 evidence
+  estimates software E4M3 conversion at 5-8 ALU operations per element and
+  records an FSR4 gfx1151 microkernel at 3.7x slower than INT8; local FP8 KV
+  quality/speed rows were measured on NVIDIA Blackwell and are quality hints,
+  not W7900 performance evidence. FP8 remains worth one host-emulated fidelity
+  screen because it has outlier-tolerant floating dynamic range and no scale
+  metadata, but it is a storage-codec comparator only. Any surviving native
+  FP8 row must beat BF16/INT8 on W7900 decode and prefill before promotion.
+- Candidate priority: (1) V-preserving K-only group32/per-head INT8 controls,
+  (2) input-agnostic tail-four mixed-layer per-head/group32 INT8 at the minimal
+  18.75-20% reduction, (3) raw E4M3 K-only and tail-four host emulation as a
+  fidelity comparison, then (4) attention-aware OSCAR-style calibration only
+  if the simpler rows fail. Full AQUA/HIGGS remains a later, more aggressive
+  compression tier rather than the 208 Ki-to-256 Ki bridge.
+
+## 2026-07-13 — Add mild-compression INT8/FP8 host candidates
+
+- Extended the format screen with a saturating OCP E4M3FN host codec and fixed
+  tail-layer precision. E4M3FN uses exact finite-value rounding-to-nearest-even,
+  including subnormals and signed zero, with saturation at +/-448. A 500,000
+  sample finite-range cross-check against Torch float8 conversion had zero
+  bitwise mismatches. This is a representation emulator, not a Torch runtime
+  dependency or RDNA3 speed claim.
+- Added input-agnostic candidates for all-layer FP8-K/BF16-V and for only the
+  final four of ten full-attention layers: per-head INT8 K/V, group32 INT8 K/V,
+  Hadamard-group32 INT8 K/V, and FP8 K/V. The first six full-attention layers
+  remain bit-exact BF16 in every tail-four row. Existing all-layer V-preserving
+  INT8 controls stay in the matrix.
+- Rebased the suite's target memory accounting on exact 256 Ki capacity rows:
+  262,144 prompt rows plus 256 decode/guard rows. Projected retained K/V and
+  inferred whole-device margin from the measured physical 208 Ki W4-PARO
+  non-KV peak are: BF16 `5.004883 GiB` / `-0.576027 GiB`; FP8-K/BF16-V
+  `3.753662` / `0.675194`; tail-four FP8 `4.003906` / `0.424950`; tail-four
+  per-head INT8 `4.011726` / `0.417130`; and tail-four group32/Hadamard
+  `4.066467` / `0.362389`. These are projections for the W4-PARO capacity
+  target, not measured GGUF memory rows. The gate requires at least 0.25 GiB.
+- Updated the 11-prompt default matrix to nine focused rows: one all-INT8 anchor,
+  three all-layer V-preserving INT8 controls, FP8-K/BF16-V, and the four
+  tail-layer candidates. The old arbitrary `+1.5 GiB over INT8` limit remains
+  diagnostic only; transfer eligibility now requires every natural/heldout/
+  category/mixed prompt quality gate plus the physical-card margin projection.
+- RED/GREEN: tests first failed on the missing layer/FP8 helpers. The final
+  30-test bundle passes across PARO/GGUF format and quality helpers. Ruff,
+  `py_compile`, suite CLI help, `git diff --check`, and the independent 500K
+  E4M3FN bitwise cross-check pass. No GPU measurement or native format was
+  attempted in this design unit.
+
+## 2026-07-13 — Identify a mild 256 Ki asymmetric INT8 candidate
+
+- Ran the clean nine-row S1 host-fidelity matrix on the W7900 at commit
+  `e463083e`, exact Q4_K_M fingerprint
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`,
+  and canonical prompt-suite SHA
+  `fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a`.
+  Command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3
+  scripts/qwen35_gguf_kv_asymmetric_suite.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100
+  --prompt-length 512 --decode-steps 8 --sample-tokens 128
+  --target-context-tokens 262400 --scale-dtype fp16 --kl-threshold 0.05
+  --top1-threshold 0.90 --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --attn-aotriton-min-tokens 512
+  --wall-time-budget-seconds 1200 --json
+  /tmp/hipengine-kv-asymmetric-20260713/s1-512-d8.json`. S1 completed in
+  `263.070 s`; five rows passed all ten natural/category prompts (including
+  four heldouts) plus `mixed_v1`: all three INT8-K/BF16-V rows, tail-four
+  Hadamard-group32 INT8 K/V, and tail-four E4M3 K/V. Plain tail-four
+  per-head/group32 each missed one top-1 on `mixed_ja_en_translate`; all-layer
+  E4M3-K/BF16-V failed `general_ja_plan`.
+- Transferred only those five S1-qualified rows together to 4K/16 with the same
+  suite. Command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3
+  scripts/qwen35_gguf_kv_asymmetric_suite.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1100
+  --prompt-length 4096 --decode-steps 16 --sample-tokens 128
+  --target-context-tokens 262400 --candidates
+  key_int8_value_bf16,key_group32_value_bf16,key_hadamard_group32_value_bf16,tail4_hadamard_group32,tail4_fp8_e4m3
+  --scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.90
+  --compiler-version-file
+  /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt
+  --require-cached-build --attn-aotriton-min-tokens 512
+  --wall-time-budget-seconds 1800 --json
+  /tmp/hipengine-kv-asymmetric-20260713/s2-4096-d16.json`. S2 completed in
+  `628.450 s`. All-layer K-only rows passed all ten natural prompts but failed
+  `mixed_v1` at `0.31984-0.32989` mean KL and `88.24%` top-1.
+- The two selective-layer rows passed every S2 scope. Tail-four
+  Hadamard-group32 INT8 K/V reached aggregate mean/max KL
+  `0.0001226466/0.004491313` and `100%` top-1; tail-four E4M3 reached
+  `0.0007896465/0.04564691` and `100%`. INT8 therefore has `6.438x` lower mean
+  KL than FP8 here despite FP8's dynamic range. This is evidence that preserving
+  the six sensitive full-attention layers matters more than choosing floating
+  versus integer eight-bit storage. On RDNA3, INT8 is also the hardware-relevant
+  path; E4M3 remains a host storage-quality comparator with no speed claim.
+- Re-ran the best all-layer K-only boundary plus both finalists at exact 4K/16.
+  All candidate summaries and every one of the 11 per-prompt logit gates matched
+  exactly. Raw SHA-256 values are `031101f8...` (S1), `e28ecc8b...` (S2), and
+  `6ed7723c...` (reproduction); full hashes and exact commands are retained in
+  `benchmarks/results/2026-07-13-w7900-gguf-asymmetric-kv-mild-256ki-screen.json`.
+- Capacity remains a projection, not a physical/native claim. At 262,400 rows,
+  tail-four Hadamard group32 is `4.066467 GiB` KV, 18.75% below BF16, and
+  projects `23.621986 GiB` whole-card peak / `0.362389 GiB` margin from the
+  physical 208 Ki W4-PARO anchor. The selected native target is BF16 K/V on
+  full-attention layers `3,7,11,15,19,23` and Hadamard-group32 INT8 K/V only on
+  `27,31,35,39`. No native cache, direct 256 Ki run, throughput result, or
+  supported-context change has been made.
+- Publication validation: 24 focused tests pass; Ruff, `py_compile`, JSON parse,
+  `git diff --check`, benchmark link checks, and README export sync pass. Next
+  gate is a native PARO implementation with an unfused BF16 fallback, CPU
+  reference and profiler proof, this full multi-prompt suite, native speed, and
+  physical RX 7900 XTX 256 Ki capacity validation.
+
+## 2026-07-13 — Start native tail-four Hadamard-group32 mixed K/V implementation
+
+- User approved implementing the screened layout for both GGUF and PARO and
+  measuring its performance cost. The exact target remains BF16 K/V for
+  full-attention indices `0..5` (model layers `3,7,11,15,19,23`) and normalized
+  Walsh-Hadamard-group32 symmetric INT8 K/V with FP16 per-token/head/group scales
+  for indices `6..9` (layers `27,31,35,39`). BF16 remains the registered
+  fallback and no supported/default status changes before native fidelity and
+  performance gates pass.
+- Pre-edit audit: `git status -sb` was clean on branch `kv-int8-accuracy`; both
+  W7900 and RX 7900 XTX enumerate as gfx1100; `libamdhip64.so` loads. Ran
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`: the existing
+  attention writer/decode family is already landed in-tree; reported parent
+  drift is in Qwen expert/PARO weight-kernel sources and does not contain this
+  net-new K/V codec. No parent kernel will be copied.
+- Integration decision: represent this as a fixed-page policy layout, not a
+  model-weight quant branch. Per-layer `KVLiveSpans` remain authoritative:
+  preserved layers carry BF16 spans with no scale metadata; compressed layers
+  carry INT8 spans with `granularity="hadamard_group32"`. Dispatch maps that
+  metadata to dedicated `int8_hadamard_group32` writer/attention registry keys.
+  The policy exposes the four-layer tail selection so GGUF and PARO share the
+  same layout contract instead of separate environment-variable branches.
+- Kernel design: the writer applies normalized 32-wide FWHT, computes one FP16
+  max-abs scale per transformed group, and stores INT8. Decode transforms each
+  query group in wave32 registers, performs attention in transformed K space,
+  and applies the self-inverse normalized FWHT to each split's accumulated V
+  before the existing split reduction/gate. Because the inverse is linear, the
+  standard split reduction stays an exact unfused fallback boundary. Oracle is
+  the NumPy host-screen representation; required gates are CPU round-trip and
+  attention fixtures, HIP primitive accuracy, profiler-visible writer/decode
+  names, native GGUF/PARO multi-prompt KL/top-1, and matched BF16-vs-mixed
+  prefill/decode/memory measurements.
+
+## 2026-07-14 — Land shared Hadamard-group32 KV primitives
+
+- Added the shared `tail4_hadamard_group32` policy contract. It resolves to a
+  fixed layer layout (six preserved BF16 full-attention layers, four quantized
+  tail layers), exposes per-layer storage/granularity selection, and dispatches
+  `KVLiveSpans.scale_metadata.granularity="hadamard_group32"` through dedicated
+  `int8_hadamard_group32` writer, prefill, and decode registry keys. The normal
+  BF16 policy and CPU dequantize+attention chain remain unfused fallbacks.
+- Added the CPU oracle and raw-pointer gfx1100 kernels. The writer performs a
+  normalized wave32 FWHT and groupwise max-abs quantization. Decode transforms
+  Q in registers, consumes transformed K/V, and applies the self-inverse FWHT
+  to each split's V accumulator before the existing reduction. The streaming
+  causal prefill body uses the same groupwise template and inverses the output
+  before FP16 gate/output.
+- RED/GREEN: the new test initially failed collection on the missing CPU codec.
+  Final focused gate:
+  `python3 -m pytest tests/test_kv_hadamard_group32.py tests/test_kv_dispatch.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q`
+  -> `43 passed`; Ruff and `py_compile` pass. The HIP fixture compares native
+  prompt writer payload/scales exactly to NumPy and native split-K attention to
+  the CPU dequantized oracle within `atol=rtol=2e-4`.
+- Built both changed HIP families successfully. Cached W7900 profiler command
+  used `HIP_VISIBLE_DEVICES=0`, the precomputed compiler-version file, and a
+  direct single-test function invocation (the first unpinned pytest profiler
+  attempt hung during tool initialization and was terminated without a kernel
+  trace). Retained trace:
+  `/tmp/hipengine-hadamard-kv-rocprof/hadamard-kv_kernel_trace.csv`.
+  It records the FP16-scale Hadamard writer at `6760 ns` (16 VGPR, no scratch),
+  groupwise `<...,32,true>` decode context at `18760 ns` (88 VGPR, no scratch),
+  and unchanged split reducer at `1600 ns`. These are primitive execution proof,
+  not an end-to-end performance claim. Runner integration and native fidelity
+  remain next.
+
+## 2026-07-14 — Integrate mixed Hadamard KV into GGUF and PARO runners
+
+- Wired the shared fixed-page layout through both resident runners. PARO now
+  allocates BF16 payloads with no scales for full-attention layers
+  `3,7,11,15,19,23` and INT8 payloads plus FP16 `[token,head,group32]` scales
+  for `27,31,35,39`; per-layer `KVLiveSpans` select writer, prefill, and decode
+  routes. Its capacity estimator now accounts for six BF16 and four grouped
+  INT8 layers (`16,640` bytes/token versus `20,480` BF16, exactly `0.8125x`).
+- GGUF uses the same policy selector and allocation shape. The compressed tail
+  bypasses both the short-context BF16 mirror and the bulk-prefill BF16 oracle:
+  it writes Hadamard INT8 directly and invokes the streaming causal INT8
+  attention kernel. Preserved layers retain the existing BF16/AOTriton path.
+  The benchmark scratch breakdown now reports the storage layout and BF16
+  mirror bytes explicitly.
+- Native W7900 integration smokes completed at repeated token `9707`, 512-token
+  prefill, two eager decode tokens. GGUF Q4_K_M completed with finite logits,
+  `12,582,912` payload bytes + `196,608` scale bytes for the 768-row rounded
+  cache; PARO completed with the same `12,779,520` total K/V bytes and its
+  post-prefill memory audit passed with preserved layers
+  `[3,7,11,15,19,23]`, packed layers `[27,31,35,39]`, no missing scales, and no
+  BF16 shadow. These are route/allocation smokes, not retained correctness or
+  speed claims. Raw diagnostics are `/tmp/gguf-tail4-integration-smoke.json`
+  and `/tmp/paro-tail4-integration-smoke.json`.
+- Exact smoke commands used `scripts/qwen35_gguf_bench.py` and
+  `scripts/qwen35_paro_bench.py` with `--prompt-length 512 --decode-tokens 2
+  --no-graph-replay-decode --kv-storage tail4_hadamard_group32
+  --kv-scale-dtype fp16` on `HIP_VISIBLE_DEVICES=0`. The first GGUF cached-only
+  attempt correctly stopped because the changed writer hash was not prebuilt;
+  it was rebuilt outside any profiler. The assembled PARO MTP directory had
+  broken parent-model symlinks, so the smoke used the available packed snapshot
+  `Qwen3.6-35B-A3B-PARO-packed@437eba06...`.
+- Focused validation: `270` tests pass across policy/dispatch/kernel-plan,
+  GGUF/PARO runner layout, capacity, and prefill-policy suites. `py_compile`,
+  fatal-name Ruff (`E9,F821,F822,F823`), and `git diff --check` pass. Native
+  multi-prompt BF16-vs-mixed fidelity is the next gate; matched performance and
+  physical 256 Ki capacity remain unclaimed.
+
+## 2026-07-14 — Admit declared BF16 prefix in PARO quality audits
+
+- Corrected the script-level PARO K/V memory audit before running native mixed
+  fidelity. Uniform INT8 still rejects any BF16 primary payload, while
+  `tail4_hadamard_group32` now distinguishes the six policy-preserved BF16
+  layers from an invalid BF16 payload on a layer declared INT8; missing scales
+  are checked only on declared INT8 layers. The fixture gate now reuses this
+  single audit implementation.
+- Validation: `11` focused quality-sweep/fixture tests pass, including positive
+  mixed-layout and negative quantized-layer-shadow cases; `py_compile`, fatal
+  Ruff checks, and `git diff --check` pass.
+
+## 2026-07-14 — Native tail-four mixed-KV transfer outcome
+
+- Added `scripts/qwen35_native_mixed_kv_suite.py`, which compares native BF16
+  and `tail4_hadamard_group32` sessions on all ten committed natural/category
+  prompts plus `mixed_v1`. Candidate decode is teacher-forced with BF16 tokens;
+  every prompt independently requires mean KL <= 0.05 and top-1 >= 90%, and the
+  audit requires six BF16 plus four packed INT8 full-attention layers with no
+  persistent BF16 shadow.
+- Directly attending the packed cache during prefill is rejected at 512/8:
+  GGUF reaches aggregate mean/max KL `1.49476/23.96165` and `85.86%` top-1;
+  PARO reaches `0.02802/0.19413` and `85.86%`. The retained explicit layout now
+  uses a temporary BF16 attention oracle while writing only packed tail-layer
+  K/V, then releases the oracle before decode. GGUF's chunk-outer scheduler uses
+  layer-local temporary caches; PARO's layer-outer path reuses one workspace.
+  The direct streaming route remains only an explicit diagnostic.
+- With the BF16 prefill oracle, native GGUF passes all 11 prompts at both 512/8
+  (`0.00015686/0.0043299`, 100% top-1) and 4K/16
+  (`0.00006564/0.0016805`, 100%). Native PARO does not transfer: 512/8 fails
+  `code_merge_intervals` on one of nine top-1 positions; 4K/16 fails
+  `code_lru_cache` and `general_en_explain`, with aggregate mean/max KL
+  `0.02187/0.69728`, `92.51%` aggregate top-1, and worst prompt top-1 `58.82%`.
+  FP32 scales reproduce the same PARO 512/8 mismatch, so scale rounding is not
+  the blocker. The policy stays explicit and supported/default status is
+  unchanged.
+- A bounded native GGUF `mixed_v1` transfer at 128K/16 also passes: mean/max KL
+  `0.00003239/0.00051852`, 100% top-1 across all 17 positions, with
+  `2,185,297,920` retained K/V bytes, zero BF16 shadow, and no surviving oracle
+  buffer. This is one long-context control, not a substitute for the full
+  11-prompt gate already run at 4K.
+- Physical RX 7900 XTX request-scratch probe at 262,144 prompt rows plus 128
+  decode rows confirms the remaining capacity conflict. Mixed resident state
+  allocates `4,366,336,000` K/V bytes and leaves `1.418 GiB` free, but the
+  quality-preserving shared BF16 oracle plus prefill scratch raises tracked peak
+  to `23.469 GiB` and then returns clean `HIP error 2: out of memory`. Forcing
+  direct streaming removes the 0.5 GiB oracle and passes the same allocation
+  probe at `23.290 GiB` tracked peak, but that path is correctness-rejected.
+  No GPU segfault occurred.
+- Matched XTX 512/128 performance is split by engine. PARO graph decode median
+  changes `134.653 -> 129.116 tok/s` (`-4.11%`); prefill is
+  `2394.609 -> 2384.937 tok/s` (`-0.40%`). GGUF eager three-run medians are
+  effectively flat: prefill `647.643 -> 647.994` (`+0.05%`) and decode
+  `60.942 -> 61.092 tok/s` (`+0.25%`). GGUF graph capture initially rejected
+  non-BF16 KV, so the graph key now includes storage layout and scale-buffer
+  identities and admits only BF16 or the validated tail-four Hadamard layout.
+  The mixed graph smoke is finite, keeps final ID `9707`, and measures
+  `105.013 tok/s` versus the one-sample BF16 graph control `102.349`; this is
+  no-regression evidence, not a retained +2.60% speed claim.
+- RED/GREEN for graph admission first failed import on the missing layout helper;
+  the final focused bundle passes `186` tests. Full targeted Ruff for new files,
+  fatal-name Ruff for the large runners, `py_compile`, and `git diff --check`
+  pass. The split native outcome, exact commands, raw hashes, and diagnostic
+  performance/capacity rows are retained in
+  `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`;
+  `benchmarks/README.md` and `benchmarks/CHANGELOG.md` carry the explicit-only
+  decision.
+- Updated GitHub issue `#4` with `gh issue edit`: the title now states the two
+  remaining requirements (fidelity-safe and prefill-memory-safe), and the body
+  distinguishes persistent K/V savings from transient scratch, documents the
+  native GGUF/PARO split, records the clean HIP OOM/no-segfault result, and sets
+  the next two open gates. Verified the 141-line remote body at
+  `https://github.com/shisa-ai/hipEngine/issues/4` with SHA-256
+  `e60a1b2b36cbe4974c42e01945b8150369c09bdc5175de857a5b4d91be2aa30a`.
+
+## 2026-07-14 — Export native mixed-KV outcome to the root README
+
+- Updated the canonical `W7900_MEMORY_CAPACITY` chart and synchronized it into
+  `README.md`. The chart now distinguishes the quality-preserving XTX 256 Ki
+  request-scratch OOM (`23.469 GiB` tracked before the failed allocation) from
+  the direct-streaming allocation control (`23.290 GiB` tracked,
+  `23.590 GiB` live device sample), which remains correctness-rejected.
+- Added the requested high-level accuracy/approach paragraph directly below the
+  chart: BF16 layers `3,7,11,15,19,23`; Hadamard-group32 INT8 layers
+  `27,31,35,39`; 18.75% retained-K/V reduction; no persistent BF16 shadow;
+  native GGUF full-suite pass at 512/8 and 4K/16 plus bounded 128K/16; native
+  PARO prompt-level rejection; explicit/non-default decision. Also replaced the
+  stale root status claim that 256K INT8 was supported with the measured 208 Ki
+  BF16 safe cap and current mixed-KV blockers.
+- Documentation validation: `scripts/sync_benchmark_readme.py --write/--check`,
+  targeted content assertions, and `git diff --check` pass. No benchmark metric
+  changed; `benchmarks/CHANGELOG.md` records this as presentation-only.
+
+## 2026-07-14 — Merge `kv-int8-accuracy` into current `main`
+
+- Fast-forwarded local `main` to `origin/main` at `2332756e`, then merged the
+  validated `kv-int8-accuracy` tip `8db8b5d1`. Documentation conflicts retain
+  the current gfx1151 GPF-5A/v0.3 rollups alongside the mixed-KV rows. The GGUF
+  runner combines current-main's AOTriton eligibility gate with mixed-KV's
+  direct-INT8 exclusion rather than dropping either condition.
+- Updated two current-main tests exposed by the combined tree: the gfx1151
+  README publication test now reads the accepted GPF-5A partial-refresh
+  artifact while retaining the carried GPF-2E 128K assertions, and the GGUF
+  hidden-seed mock supplies the runner backend required by request-scoped
+  GPF-5A routing.
+- Validation against this checkout: `PYTHONPATH=$PWD uv run pytest -q` completes
+  with exit code 0 (`6196 passed, 43 skipped`; one expected NumPy overflow
+  warning in the CPU-reference SiLU test). The two updated test files pass
+  together (`26 passed`), benchmark README synchronization passes, and the
+  WORKLOG conflict checker passes.

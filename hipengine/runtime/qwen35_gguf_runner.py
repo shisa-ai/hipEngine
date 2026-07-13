@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_bf16_to_bf16,
     qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans,
+    qwen35_paged_attn_decode_int8_hadamard_group32_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
@@ -38,12 +39,15 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
+    qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     build_qwen35_paged_kv_write,
     qwen35_write_paged_kv_int8_block16_prompt_spans,
     qwen35_write_paged_kv_int8_block16_spans,
+    qwen35_write_paged_kv_int8_hadamard_group32_prompt_spans,
+    qwen35_write_paged_kv_int8_hadamard_group32_spans,
     qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans,
     qwen35_write_paged_kv_int8_key_bf16_value_spans,
     qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
@@ -2273,26 +2277,18 @@ class Qwen35GGUFFullStackRunner:
                 "GGUF full-attention prefill requires cache-backed key/value buffers; "
                 "resident bulk prefill should provide either retained BF16 caches or a BF16 oracle cache for INT8 retention"
             )
-        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-            scratch.full_key.ptr,
-            scratch.full_v.ptr,
-            scratch.key_cache.ptr,
-            scratch.value_cache.ptr,
-            scratch.append_spans,
-            rows,
-            scratch.block_size,
-            cfg.head_count_kv,
-            cfg.key_length,
-            stream=stream,
-            library=kv_write_library,
-            runtime=runtime,
+        append_metadata = scratch.append_spans.scale_metadata
+        direct_hadamard_int8 = (
+            scratch.append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and append_metadata is not None
+            and append_metadata.granularity == "hadamard_group32"
         )
-        if scratch.retained_key_cache is not None or scratch.retained_value_cache is not None:
-            if scratch.retained_key_cache is None or scratch.retained_value_cache is None:
-                raise RuntimeError("GGUF INT8 retained prefill requires both key and value caches")
-            retained_spans = scratch.retained_append_spans
-            if retained_spans is None or retained_spans.scale_metadata is None:
-                raise RuntimeError("GGUF INT8 retained prefill requires append spans with scale metadata")
+        if direct_hadamard_int8:
+            if (
+                scratch.prefill_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD
+                or scratch.prefill_spans.scale_metadata is not append_metadata
+            ):
+                raise RuntimeError("GGUF direct Hadamard INT8 prefill requires matching append/attention metadata")
             bf16_to_f32(
                 scratch.full_v.ptr,
                 scratch.full_key_raw.ptr,
@@ -2301,42 +2297,90 @@ class Qwen35GGUFFullStackRunner:
                 library=cast_library,
                 runtime=runtime,
             )
-            if getattr(scratch, "int8_kv_value_bf16", False):
-                qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
-                    scratch.full_key.ptr,
+            int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(append_metadata)
+            int8_prompt_write_fn(
+                scratch.full_key.ptr,
+                scratch.full_key_raw.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                append_metadata.k_scale.ptr,
+                append_metadata.v_scale.ptr,
+                scratch.append_spans,
+                rows,
+                scratch.block_size,
+                cfg.head_count_kv,
+                cfg.key_length,
+                stream=stream,
+                library=kv_write_library,
+                runtime=runtime,
+            )
+        else:
+            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+                scratch.full_key.ptr,
+                scratch.full_v.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.append_spans,
+                rows,
+                scratch.block_size,
+                cfg.head_count_kv,
+                cfg.key_length,
+                stream=stream,
+                library=kv_write_library,
+                runtime=runtime,
+            )
+            if scratch.retained_key_cache is not None or scratch.retained_value_cache is not None:
+                if scratch.retained_key_cache is None or scratch.retained_value_cache is None:
+                    raise RuntimeError("GGUF INT8 retained prefill requires both key and value caches")
+                retained_spans = scratch.retained_append_spans
+                if retained_spans is None or retained_spans.scale_metadata is None:
+                    raise RuntimeError("GGUF INT8 retained prefill requires append spans with scale metadata")
+                bf16_to_f32(
+                    scratch.full_v.ptr,
                     scratch.full_key_raw.ptr,
-                    scratch.retained_key_cache.ptr,
-                    scratch.retained_value_cache.ptr,
-                    retained_spans.scale_metadata.k_scale.ptr,
-                    retained_spans,
-                    rows,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
+                    rows * self.kv_width,
                     stream=stream,
-                    library=kv_write_library,
+                    library=cast_library,
                     runtime=runtime,
                 )
-            else:
-                int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(retained_spans.scale_metadata)
-                int8_prompt_write_fn(
-                    scratch.full_key.ptr,
-                    scratch.full_key_raw.ptr,
-                    scratch.retained_key_cache.ptr,
-                    scratch.retained_value_cache.ptr,
-                    retained_spans.scale_metadata.k_scale.ptr,
-                    retained_spans.scale_metadata.v_scale.ptr,
-                    retained_spans,
-                    rows,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
+                if getattr(scratch, "int8_kv_value_bf16", False):
+                    qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
+                        scratch.full_key.ptr,
+                        scratch.full_key_raw.ptr,
+                        scratch.retained_key_cache.ptr,
+                        scratch.retained_value_cache.ptr,
+                        retained_spans.scale_metadata.k_scale.ptr,
+                        retained_spans,
+                        rows,
+                        scratch.block_size,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        stream=stream,
+                        library=kv_write_library,
+                        runtime=runtime,
+                    )
+                else:
+                    int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(retained_spans.scale_metadata)
+                    int8_prompt_write_fn(
+                        scratch.full_key.ptr,
+                        scratch.full_key_raw.ptr,
+                        scratch.retained_key_cache.ptr,
+                        scratch.retained_value_cache.ptr,
+                        retained_spans.scale_metadata.k_scale.ptr,
+                        retained_spans.scale_metadata.v_scale.ptr,
+                        retained_spans,
+                        rows,
+                        scratch.block_size,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        stream=stream,
+                        library=kv_write_library,
+                        runtime=runtime,
+                    )
         threshold = int(PrefillConfig().attn_aotriton_min_tokens)
-        use_aotriton = bool(allow_aotriton and threshold > 0 and rows >= threshold)
+        use_aotriton = bool(
+            allow_aotriton and not direct_hadamard_int8 and threshold > 0 and rows >= threshold
+        )
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
         paged_context_len = end if paged_max_context_len is None else int(paged_max_context_len)
@@ -2345,7 +2389,30 @@ class Qwen35GGUFFullStackRunner:
                 "paged_max_context_len must be positive and within the prefill scratch capacity"
             )
 
-        if use_aotriton:
+        if direct_hadamard_int8:
+            qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(
+                scratch.full_query.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                append_metadata.k_scale.ptr,
+                append_metadata.v_scale.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.prefill_spans,
+                rows,
+                end,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+        elif use_aotriton:
             aotriton_library = self._aotriton_prefill_library()
 
             # Keep pre/post work on the caller stream. Only the high-scratch
@@ -6127,8 +6194,10 @@ def _gguf_int8_kv_scale_granularity(
     requested_granularity: str = "per_token_head",
 ) -> str:
     requested = str(requested_granularity or "per_token_head").strip().lower()
-    if requested not in {"per_token_head", "block16"}:
-        raise ValueError("GGUF resident INT8 KV scale granularity must be per_token_head or block16")
+    if requested not in {"per_token_head", "block16", "hadamard_group32"}:
+        raise ValueError(
+            "GGUF resident INT8 KV scale granularity must be per_token_head, block16, or hadamard_group32"
+        )
     if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
         return "per_token_head"
     if _env_flag(_GGUF_INT8_KV_BLOCK16_ENV, False):
@@ -6215,6 +6284,7 @@ def _gguf_int8_effective_scale_dtype(
     requested_scale_dtype: DType,
     bf16_prefix_full_attention_layers: int,
     bf16_full_attention_layer_count: int | None = None,
+    scale_granularity: str = "per_token_head",
 ) -> DType:
     hybrid_bf16_layers = (
         int(bf16_prefix_full_attention_layers)
@@ -6225,6 +6295,7 @@ def _gguf_int8_effective_scale_dtype(
         kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
         and int(max_positions) > _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         and hybrid_bf16_layers > 0
+        and scale_granularity != "hadamard_group32"
     ):
         return DType.FP32
     return requested_scale_dtype
@@ -6236,9 +6307,14 @@ def _validate_gguf_int8_kv_context(
     max_positions: int,
     bf16_prefix_full_attention_layers: int = 0,
     bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
+    storage_layout: str = "uniform",
 ) -> None:
     if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
         return
+    if storage_layout == "tail4_hadamard_group32":
+        return
+    if storage_layout != "uniform":
+        raise ValueError(f"unsupported GGUF resident KV storage layout {storage_layout!r}")
     if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
         return
     if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
@@ -6268,7 +6344,11 @@ def _gguf_int8_kv_prompt_write_fn(metadata: KVScaleMetadata):
         return qwen35_write_paged_kv_int8_block16_prompt_spans
     if granularity == "per_token_head":
         return qwen35_write_paged_kv_int8_per_token_head_prompt_spans
-    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+    if granularity == "hadamard_group32":
+        return qwen35_write_paged_kv_int8_hadamard_group32_prompt_spans
+    raise ValueError(
+        "GGUF INT8 KV scale granularity must be per_token_head, block16, or hadamard_group32"
+    )
 
 
 def _gguf_int8_kv_append_write_fn(metadata: KVScaleMetadata):
@@ -6277,7 +6357,11 @@ def _gguf_int8_kv_append_write_fn(metadata: KVScaleMetadata):
         return qwen35_write_paged_kv_int8_block16_spans
     if granularity == "per_token_head":
         return qwen35_write_paged_kv_int8_per_token_head_spans
-    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+    if granularity == "hadamard_group32":
+        return qwen35_write_paged_kv_int8_hadamard_group32_spans
+    raise ValueError(
+        "GGUF INT8 KV scale granularity must be per_token_head, block16, or hadamard_group32"
+    )
 
 
 def _gguf_int8_kv_decode_gate_fn(metadata: KVScaleMetadata):
@@ -6286,7 +6370,11 @@ def _gguf_int8_kv_decode_gate_fn(metadata: KVScaleMetadata):
         return qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans
     if granularity == "per_token_head":
         return qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans
-    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+    if granularity == "hadamard_group32":
+        return qwen35_paged_attn_decode_int8_hadamard_group32_gqa_splitk_gate_bf16_spans
+    raise ValueError(
+        "GGUF INT8 KV scale granularity must be per_token_head, block16, or hadamard_group32"
+    )
 
 
 def _q8_0_embedding_rows_to_bf16(
@@ -7434,6 +7522,7 @@ class Qwen35GGUFResidentSession:
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
+    kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
@@ -7476,16 +7565,27 @@ class Qwen35GGUFResidentSession:
         self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
         if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
+        self.kv_storage_layout = str(getattr(self.kv_policy, "storage_layout", "uniform"))
         self.int8_kv_value_bf16 = _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=self.kv_storage_dtype)
         self.kv_scale_dtype = DType.parse(self.kv_scale_dtype)
         if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF resident INT8 KV scales must use fp16 or fp32")
-        self.kv_scale_granularity = _gguf_int8_kv_scale_granularity(
-            kv_storage_dtype=self.kv_storage_dtype,
-            requested_granularity=self.kv_scale_granularity,
+        requested_granularity = (
+            str(getattr(self.kv_policy, "scale_granularity", self.kv_scale_granularity))
+            if self.kv_storage_layout != "uniform"
+            else self.kv_scale_granularity
         )
-        if self.int8_kv_value_bf16 and self.kv_scale_granularity == "block16":
-            raise ValueError("GGUF INT8 KV block16 scales are not supported with the key-only diagnostic")
+        if self.kv_storage_layout == "uniform":
+            self.kv_scale_granularity = _gguf_int8_kv_scale_granularity(
+                kv_storage_dtype=self.kv_storage_dtype,
+                requested_granularity=requested_granularity,
+            )
+        else:
+            self.kv_scale_granularity = str(requested_granularity).strip().lower()
+            if self.kv_scale_granularity not in {"per_token_head", "block16", "hadamard_group32"}:
+                raise ValueError("unsupported GGUF resident INT8 KV scale granularity")
+        if self.int8_kv_value_bf16 and self.kv_scale_granularity != "per_token_head":
+            raise ValueError("GGUF grouped INT8 KV scales are not supported with the key-only diagnostic")
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
             int(self.runner.weights.config.context_length),
@@ -7494,22 +7594,44 @@ class Qwen35GGUFResidentSession:
         full_attention_layer_count = sum(
             1 for layer_type in self.runner.weights.config.layer_types if layer_type == FULL_ATTENTION
         )
-        self.int8_bf16_prefix_full_attention_layers = _gguf_int8_bf16_prefix_full_attention_layers(
-            kv_storage_dtype=self.kv_storage_dtype,
-            max_positions=rounded_positions,
+        if self.kv_storage_layout == "uniform":
+            self.int8_bf16_prefix_full_attention_layers = _gguf_int8_bf16_prefix_full_attention_layers(
+                kv_storage_dtype=self.kv_storage_dtype,
+                max_positions=rounded_positions,
+            )
+            self.int8_bf16_full_attention_layer_indices = _gguf_int8_bf16_full_attention_layer_indices(
+                kv_storage_dtype=self.kv_storage_dtype,
+                max_positions=rounded_positions,
+                full_attention_layers=full_attention_layer_count,
+            )
+        else:
+            selector = getattr(self.kv_policy, "full_attention_storage_dtype", None)
+            if selector is None:
+                raise ValueError("mixed GGUF KV policy must select per-layer full-attention storage")
+            self.int8_bf16_full_attention_layer_indices = tuple(
+                index
+                for index in range(full_attention_layer_count)
+                if DType.parse(selector(index, full_attention_layer_count)) == DType.BF16
+            )
+            self.int8_bf16_prefix_full_attention_layers = next(
+                (
+                    index
+                    for index in range(full_attention_layer_count)
+                    if index not in self.int8_bf16_full_attention_layer_indices
+                ),
+                full_attention_layer_count,
+            )
+        custom_bf16_layers = (
+            self.kv_storage_layout == "uniform"
+            and _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None
         )
-        self.int8_bf16_full_attention_layer_indices = _gguf_int8_bf16_full_attention_layer_indices(
-            kv_storage_dtype=self.kv_storage_dtype,
-            max_positions=rounded_positions,
-            full_attention_layers=full_attention_layer_count,
-        )
-        custom_bf16_layers = _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None
         self.kv_scale_dtype = _gguf_int8_effective_scale_dtype(
             kv_storage_dtype=self.kv_storage_dtype,
             max_positions=rounded_positions,
             requested_scale_dtype=self.kv_scale_dtype,
             bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             bf16_full_attention_layer_count=len(self.int8_bf16_full_attention_layer_indices),
+            scale_granularity=self.kv_scale_granularity,
         )
         _validate_gguf_int8_kv_context(
             kv_storage_dtype=self.kv_storage_dtype,
@@ -7518,6 +7640,7 @@ class Qwen35GGUFResidentSession:
             bf16_full_attention_layer_indices=(
                 self.int8_bf16_full_attention_layer_indices if custom_bf16_layers else None
             ),
+            storage_layout=self.kv_storage_layout,
         )
         runtime = self.runtime or get_hip_runtime()
         if _gguf_host_token_embedding_requested():
@@ -7548,6 +7671,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             max_sequence_length=self.max_sequence_length,
             kv_storage_dtype=self.kv_storage_dtype,
+            kv_storage_layout=self.kv_storage_layout,
             kv_scale_dtype=self.kv_scale_dtype,
             kv_scale_granularity=self.kv_scale_granularity,
             int8_kv_value_bf16=self.int8_kv_value_bf16,
@@ -13289,6 +13413,7 @@ class _FullStackScratch:
     full_v_scale_caches: tuple[object | None, ...]
     full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
     kv_storage_dtype: DType
+    kv_storage_layout: str
     kv_scale_dtype: DType
     kv_scale_granularity: str
     int8_kv_value_bf16: bool
@@ -13348,6 +13473,7 @@ class _FullStackScratch:
         runtime: HipRuntime,
         max_sequence_length: int | None = None,
         kv_storage_dtype: str | DType = DType.BF16,
+        kv_storage_layout: str = "uniform",
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
         int8_kv_value_bf16: bool = False,
@@ -13367,12 +13493,21 @@ class _FullStackScratch:
         scale_dtype = DType.parse(kv_scale_dtype)
         if scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF INT8 KV scales must use fp16 or fp32")
+        kv_storage_layout = str(kv_storage_layout or "uniform").strip().lower()
+        if kv_storage_layout not in {"uniform", "tail4_hadamard_group32"}:
+            raise ValueError(f"unsupported GGUF resident KV storage layout {kv_storage_layout!r}")
         kv_scale_granularity = str(kv_scale_granularity or "per_token_head").strip().lower()
-        if kv_scale_granularity not in {"per_token_head", "block16"}:
-            raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+        if kv_scale_granularity not in {"per_token_head", "block16", "hadamard_group32"}:
+            raise ValueError(
+                "GGUF INT8 KV scale granularity must be per_token_head, block16, or hadamard_group32"
+            )
+        if kv_storage_layout == "tail4_hadamard_group32" and (
+            kv_storage != DType.INT8_PER_TOKEN_HEAD or kv_scale_granularity != "hadamard_group32"
+        ):
+            raise ValueError("tail4_hadamard_group32 requires Hadamard-group32 INT8 storage")
         int8_kv_value_bf16 = bool(int8_kv_value_bf16 and kv_storage == DType.INT8_PER_TOKEN_HEAD)
-        if int8_kv_value_bf16 and kv_scale_granularity == "block16":
-            raise ValueError("GGUF INT8 KV block16 scales are not supported with the key-only diagnostic")
+        if int8_kv_value_bf16 and kv_scale_granularity != "per_token_head":
+            raise ValueError("GGUF grouped INT8 KV scales are not supported with the key-only diagnostic")
         requested_positions = block_size if max_sequence_length is None else int(max_sequence_length)
         if requested_positions <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -13432,6 +13567,7 @@ class _FullStackScratch:
         mirror_bf16_nbytes = bf16_cache_nbytes
         short_int8_bf16_mirror = (
             kv_storage == DType.INT8_PER_TOKEN_HEAD
+            and kv_scale_granularity != "hadamard_group32"
             and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         )
         if kv_scale_granularity == "block16":
@@ -13439,6 +13575,10 @@ class _FullStackScratch:
             if int(cfg.key_length) % 16 != 0 or scale_dim_blocks != 16:
                 raise ValueError("GGUF INT8 KV block16 scales require head_dim/key_length 256")
             scale_shape = (block_count, block_size, cfg.head_count_kv, scale_dim_blocks)
+        elif kv_scale_granularity == "hadamard_group32":
+            if int(cfg.key_length) % 32:
+                raise ValueError("GGUF Hadamard-group32 KV requires head_dim/key_length divisible by 32")
+            scale_shape = (block_count, block_size, cfg.head_count_kv, int(cfg.key_length) // 32)
         else:
             scale_shape = (block_count, block_size, cfg.head_count_kv)
         scale_nbytes = int(np.prod(scale_shape)) * scale_dtype.itemsize
@@ -13605,6 +13745,7 @@ class _FullStackScratch:
             full_v_scale_caches=tuple(full_v_scale_caches),
             full_kv_scale_metadata=tuple(full_kv_scale_metadata),
             kv_storage_dtype=kv_storage,
+            kv_storage_layout=kv_storage_layout,
             kv_scale_dtype=scale_dtype,
             kv_scale_granularity=kv_scale_granularity,
             int8_kv_value_bf16=int8_kv_value_bf16,
