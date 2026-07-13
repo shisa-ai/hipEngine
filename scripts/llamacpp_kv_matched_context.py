@@ -104,7 +104,7 @@ def _build_command(
 
 
 def _run_command(args: argparse.Namespace, *, binary: Path, cpp_json: Path) -> list[str]:
-    return [
+    command = [
         str(binary),
         "--model",
         str(args.model),
@@ -137,6 +137,10 @@ def _run_command(args: argparse.Namespace, *, binary: Path, cpp_json: Path) -> l
         "--top1-threshold",
         str(args.top1_threshold),
     ]
+    reference_logits_bin = getattr(args, "reference_logits_bin", None)
+    if reference_logits_bin is not None:
+        command.extend(("--reference-logits-bin", str(reference_logits_bin)))
+    return command
 
 
 def _validate_cpp_payload(payload: dict[str, Any], *, prompt_length: int, decode_steps: int) -> None:
@@ -211,6 +215,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.rebuild or not binary.exists():
         subprocess.run(build_command, check=True)
     cpp_json = build_dir / "result.json"
+    if args.reference_logits_bin is not None:
+        args.reference_logits_bin.parent.mkdir(parents=True, exist_ok=True)
     run_command = _run_command(args, binary=binary, cpp_json=cpp_json)
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = ":".join(
@@ -236,6 +242,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         libraries[name] = {"path": str(path), "sha256": _sha256_file(path)}
     host_state = _git_state(REPO_ROOT)
     llama_state = _git_state(args.llama_source)
+    reference_logits_dump = None
+    if args.reference_logits_bin is not None:
+        reference_logits_dump = {
+            "path": str(args.reference_logits_bin),
+            "size_bytes": args.reference_logits_bin.stat().st_size,
+            "sha256": _sha256_file(args.reference_logits_bin),
+        }
     return {
         "schema": 1,
         "status": cpp_payload["status"],
@@ -251,6 +264,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "cpp_source": str(CPP_SOURCE.relative_to(REPO_ROOT)),
             "cpp_source_sha256": _sha256_file(CPP_SOURCE),
         },
+        "reference_logits_dump": reference_logits_dump,
         "provenance": {
             "hipengine": host_state,
             "llama_cpp": llama_state,
@@ -294,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--flash-attn", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)
+    parser.add_argument("--reference-logits-bin", type=Path)
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.prompt_token_id < 0 or args.prompt_length <= 0 or args.decode_steps < 0:

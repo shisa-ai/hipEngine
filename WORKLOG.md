@@ -153143,3 +153143,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   model run was practical because the new external integration harness did not
   previously exist; malformed-history/summary tests provide the deterministic
   behavioral RED coverage.
+
+## 2026-07-13 — Add same-weight llama.cpp-to-hipEngine GGUF bridge
+
+- Extended the exact llama.cpp harness with an optional versioned FP32 reference
+  logit dump (`HKVLOG1`, shape header, contiguous rows). The wrapper fingerprints
+  the dump, and `scripts/gguf_llamacpp_matched_context.py` validates its shape,
+  finite values, recorded argmax IDs, model path, workload, and teacher history
+  before running hipEngine GGUF BF16 KV on the same Q4_K_M file.
+- The bridge compares all prompt-final/decode distributions and records
+  per-position KL, top-1, first mismatch, and reference-token rank. It explicitly
+  classifies timing as diagnostic and does not claim that cross-engine parity
+  isolates FP16-vs-BF16 cache precision from other implementation arithmetic.
+- Four parser/comparison tests plus the extended command test pass. A live W7900
+  `8/2` bridge smoke on repeated token 9707 passed at mean/max KL
+  `0.00057285/0.00075715` and 100% top-1. This tooling enables the requested
+  clean same-weight 128K/16 bridge measurement.
