@@ -1124,6 +1124,10 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - GPF-5A is promoted on gfx1151 through 64K. Final automatic 512-64K medians
   are **889.904/919.598/762.940/648.948/546.296 tok/s**, all stable/exact.
   Same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**.
+- The post-GPF-5A source/profile audit is complete in
+  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). It rejects a wholesale
+  llama.cpp port and selects exact same-stream 32-token shared-memory
+  convolution (`LCP-1`) before exact chunked/prefix GDN research.
 - No benchmark process is intentionally left running. Publication, artifacts,
   rollups, and the root README export are complete.
 
@@ -1131,8 +1135,9 @@ Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens;
 request-scoped package policy restores production above that. gfx1100 stays on
 the production wrapper. The published partial refresh is final; investigate
-128K lifecycle only with phase markers and bounded lifecycle coverage.
-Token-parallel/prefix GDN remains the high-effort fallback.
+128K lifecycle only with phase markers and bounded lifecycle coverage. Start
+future parity implementation from `LCP-1`; token-parallel/prefix GDN remains
+the exactness-constrained high-effort fallback.
 
 ## Document Ownership
 
@@ -1142,6 +1147,8 @@ Token-parallel/prefix GDN remains the high-effort fallback.
 - [`TUNING-gguf.md`](TUNING-gguf.md) is the historical tuning notebook; its
   June profiles are not current-route selection evidence.
 - [`PREFILL.md`](PREFILL.md) owns the PARO native-prefill design.
+- [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md) owns the post-GPF-5A
+  source/profile comparison and ranked AR parity work.
 - [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) owns decode/MTP timing
   boundaries, not AR prefill optimization.
 - [`PARO-GGUF-MTP-TRANSFER.md`](PARO-GGUF-MTP-TRANSFER.md) owns cross-path MTP

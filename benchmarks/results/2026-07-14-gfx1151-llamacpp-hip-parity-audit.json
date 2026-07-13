@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_hipengine_llamacpp_hip_parity_audit",
+  "status": "diagnostic_analysis_complete",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "date": "2026-07-14",
+  "conclusion": "The current gfx1151 GGUF deficit is shape- and family-specific, not a blanket llama.cpp implementation advantage. At 4K, exact GDN recurrence and linear-attention convolution account for the dominant measured excess; the long-token convolution schedule is the highest-confidence exact-plausible transfer. llama.cpp's GDN reduction tree is faster but conflicts with hipEngine's stronger exact trajectory contract. hipEngine already wins the matched selected-Q4, selected-Q5, and full-attention family buckets, so those are not port targets.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "kv_dtype": {
+      "hipengine": "bf16",
+      "llamacpp": "f16"
+    }
+  },
+  "software": {
+    "hipengine_profiled_commit": "2332756e32c04f61103be3aa5f0f72d00290ed3a",
+    "hipengine_profile_worktree_clean": true,
+    "hipengine_hip": "7.15.0-0000000",
+    "hipengine_compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "llamacpp_measured_build_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llamacpp_build_number": 9648,
+    "llamacpp_upstream_base": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "llamacpp_lineage_note": "The measured local build is upstream 6e9007ae6 plus seven MTP instrumentation commits. gated_delta_net.cu, ssm-conv.cu, mmq.cu/mmq.cuh, topk-moe.cu, ggml-cuda.cu, fattn.cu, and the Qwen35MoE AR graph are byte-identical to upstream at the performance-relevant lines; the local qwen35moe.cpp change is later in the MTP-only block."
+  },
+  "protocol": {
+    "topline": "hipEngine uses one discarded warmup plus three measured repetitions per independent right-sized process. llama.cpp uses split prefill/decode llama-bench with one internal warmup plus five samples per phase.",
+    "profile": "hipEngine post-GPF-5A uses a clean detached commit, no warmup, one prefill-only run under rocprofv3, cached builds, bulk attention, and automatic gfx1151 policy. llama.cpp family rows are the previously retained no-warmup one-pass prefill-only rocprofv3 traces at the measured build.",
+    "comparability": "Same device, GGUF file, quant, and row counts. Not a strict kernel A/B: prompt generation, KV dtype, software revision, allocator scope, and repetition protocol differ. Profiler-affected one-pass throughput is diagnostic only.",
+    "hipengine_command_template": "env -i <TheRock gfx1151 environment> HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=/tmp/hipengine-llama-parity-2332756e rocprofv3 --kernel-trace --output-format csv --output-directory <OUT> --output-file hipengine-<N> -- <therock-python> scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length <N> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <OUT>/bench.json",
+    "llamacpp_command_template": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 --no-warmup -o json -p <N> -n 0 -d 0 -dev ROCm0"
+  },
+  "public_topline": {
+    "source": "benchmarks/README.md gfx1151 model throughput",
+    "contexts": [512, 1024, 4096, 32768, 65536, 131072],
+    "hipengine_prefill_tok_s": [889.904, 919.598, 762.940, 648.948, 546.296, 387.334],
+    "llamacpp_prefill_tok_s": [1061.260, 1043.230, 1009.240, 743.547, 573.611, 390.441],
+    "hipengine_prefill_percent_of_llamacpp": [83.854, 88.149, 75.595, 87.277, 95.238, 99.204],
+    "hipengine_prefill_delta_percent": [-16.146, -11.851, -24.405, -12.723, -4.762, -0.796],
+    "prefill_wall_gap_seconds": [0.093, 0.132, 1.310, 6.424, 5.713, 2.693],
+    "hipengine_decode_tok_s": [48.968, 51.494, 52.351, 43.491, 37.149, 27.753],
+    "llamacpp_decode_tok_s": [50.939, 50.818, 50.126, 44.240, 39.326, 32.114],
+    "hipengine_decode_delta_percent": [-3.869, 1.330, 4.439, -1.693, -5.536, -13.580]
+  },
+  "profile_sources": {
+    "hipengine": {
+      "location_note": "Raw profiler output was retained under /tmp for analysis and is not committed.",
+      "512": {
+        "bench_json_sha256": "3f1d097dbc29f8bcf35b9770d04ed84a559781afab0b0311693647de7dd3a7ed",
+        "summary_json_sha256": "062e6e27e7762f0fa7209950ce77609b25a12bfa4e04c7cfea77cb4e46eb023e",
+        "kernel_trace_csv_sha256": "c28ae359fbcf6e22efe20c006c49bbbd4054936f4a535295a2acd5e21c90303f"
+      },
+      "4096": {
+        "bench_json_sha256": "6323f58410993bbc4838b8cd1867d2ba3e1675fc3bbd1f64de43b131e8e31ba8",
+        "summary_json_sha256": "f3423e2a4effa33ea3bec800b3a1407c0f87657a174d84da8b7f43d22c63d33a",
+        "kernel_trace_csv_sha256": "2bca3b6ed710594bf497b1a2dd5443e97948f4b7b9fa02a3edd9f464a37664e6"
+      }
+    },
+    "llamacpp": {
+      "artifact": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json",
+      "trace_512_sha256": "f9e0a2f8e42937e676b507da71b0a767e4d23f48a92c8c5dc8047b4a79226124",
+      "trace_4096_sha256": "39aaccae4546be7c43ced8b1e7c401a26545b78669d9a4fabfde8433d5b1e160"
+    }
+  },
+  "post_gpf5a_profiles": {
+    "512": {
+      "hipengine_host_prefill_seconds": 0.6293146480165888,
+      "hipengine_diagnostic_prefill_tok_s": 813.5834778574924,
+      "hipengine_total_kernel_ms": 568.953488,
+      "hipengine_dispatches": 2009,
+      "llamacpp_wall_seconds": 0.547395765,
+      "llamacpp_total_kernel_ms": 448.372739,
+      "llamacpp_dispatches": 2490,
+      "families": {
+        "gdn": {"hipengine_ms": 205.570364, "hipengine_share_percent": 36.131, "llamacpp_ms": 44.179996, "llamacpp_share_percent": 9.853, "hipengine_over_llamacpp": 4.653},
+        "linear_attn_conv": {"hipengine_ms": 14.303122, "hipengine_share_percent": 2.514, "llamacpp_ms": 4.260073, "llamacpp_share_percent": 0.950, "hipengine_over_llamacpp": 3.357},
+        "dense_q8": {"hipengine_ms": 110.526487, "hipengine_share_percent": 19.426, "llamacpp_ms": 66.859122, "llamacpp_share_percent": 14.912, "hipengine_over_llamacpp": 1.653},
+        "selected_q4": {"hipengine_ms": 95.946093, "hipengine_share_percent": 16.864, "llamacpp_ms": 141.703928, "llamacpp_share_percent": 31.604, "hipengine_over_llamacpp": 0.677},
+        "selected_q5": {"hipengine_ms": 56.377393, "hipengine_share_percent": 9.909, "llamacpp_ms": 70.947180, "llamacpp_share_percent": 15.823, "hipengine_over_llamacpp": 0.795},
+        "full_attention": {"hipengine_ms": 4.253503, "hipengine_share_percent": 0.748, "llamacpp_ms": 6.137267, "llamacpp_share_percent": 1.369, "hipengine_over_llamacpp": 0.693}
+      }
+    },
+    "4096": {
+      "hipengine_host_prefill_seconds": 5.317733535019215,
+      "hipengine_diagnostic_prefill_tok_s": 770.2529607823232,
+      "hipengine_total_kernel_ms": 5235.029429,
+      "hipengine_dispatches": 5495,
+      "llamacpp_wall_seconds": 3.858026345,
+      "llamacpp_total_kernel_ms": 3732.515865,
+      "llamacpp_dispatches": 17789,
+      "families": {
+        "gdn": {"hipengine_ms": 1700.469004, "hipengine_share_percent": 32.483, "llamacpp_ms": 330.487620, "llamacpp_share_percent": 8.854, "hipengine_over_llamacpp": 5.145},
+        "linear_attn_conv": {"hipengine_ms": 954.438469, "hipengine_share_percent": 18.232, "llamacpp_ms": 32.980473, "llamacpp_share_percent": 0.884, "hipengine_over_llamacpp": 28.940},
+        "dense_q8": {"hipengine_ms": 749.444021, "hipengine_share_percent": 14.316, "llamacpp_ms": 531.344578, "llamacpp_share_percent": 14.236, "hipengine_over_llamacpp": 1.410},
+        "selected_q4": {"hipengine_ms": 622.996889, "hipengine_share_percent": 11.901, "llamacpp_ms": 1173.527432, "llamacpp_share_percent": 31.441, "hipengine_over_llamacpp": 0.531},
+        "selected_q5": {"hipengine_ms": 391.636997, "hipengine_share_percent": 7.481, "llamacpp_ms": 585.011370, "llamacpp_share_percent": 15.673, "hipengine_over_llamacpp": 0.669},
+        "full_attention": {"hipengine_ms": 147.761771, "hipengine_share_percent": 2.823, "llamacpp_ms": 204.083457, "llamacpp_share_percent": 5.468, "hipengine_over_llamacpp": 0.724}
+      }
+    }
+  },
+  "gpf5a_profile_delta": {
+    "comparison_artifact": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json",
+    "512_dense_q8_ms_old_new": [158.981924, 110.526487],
+    "512_dense_q8_delta_percent": -30.478,
+    "512_total_kernel_ms_old_new": [619.556295, 568.953488],
+    "512_total_kernel_delta_percent": -8.168,
+    "4096_dense_q8_ms_old_new": [844.669713, 749.444021],
+    "4096_dense_q8_delta_percent": -11.273,
+    "4096_total_kernel_ms_old_new": [5396.574786, 5235.029429],
+    "4096_total_kernel_delta_percent": -2.993,
+    "note": "These are separately profiled diagnostic runs, not a same-process causal A/B. The clean focused GPF-5A gates remain the causal evidence."
+  },
+  "source_findings": {
+    "gdn": "llama.cpp keeps a state-column shard in registers across the serial token loop and uses wave reductions. hipEngine's exact default keeps a 128x32 state tile in LDS and preserves canonical scalar contraction order. The prior register/tree replication was fast but failed the exact trajectory gate, so the source schedule is evidence for algorithm research, not a direct port.",
+    "linear_attn_conv": "llama.cpp's long-token kernel tiles 32 tokens by 128 channels into shared memory and fuses SiLU. hipEngine maps one thread to each token/channel output, reads its four-value window from global memory, and updates state in a second launch. This schedule is independently testable without changing convolution math.",
+    "quantized_matmul": "llama.cpp quantizes activations to a bank-conflict-aware Q8_1 MMQ layout, stages weight and activation tiles in shared memory, and shape-selects MMQ tile width. hipEngine's replacement T16 layouts already beat llama.cpp in Q4/Q5; only dense Q8 remains slower after GPF-5A.",
+    "moe_router": "llama.cpp fuses softmax/top-k/get-rows and routes MUL_MAT_ID through sorted MMVQ/MMQ. hipEngine's separate select is small at 4K; the F32 router-logits matrix kernel owns most of the router bucket, so matrix-kernel screening precedes top-k fusion.",
+    "attention": "llama.cpp has architecture/shape-aware vector, tile, WMMA, and MMA FlashAttention selection. hipEngine AOTriton is already faster in the complete 512/4K family traces, so no short/mid attention port is selected.",
+    "graph_dispatch": "llama.cpp supports graph-level operator fusion, concurrent events, and HIP graph replay. It nevertheless launches more traced kernels than hipEngine at both measured prefill shapes, so generic launch-count work is not the current prefill blocker.",
+    "memory": "llama.cpp's graph allocator aliases eligible parent buffers and frees intermediates at their last consumer. hipEngine's bulk-prefill scratch allocates all named intermediates concurrently. Cross-engine peak scopes differ, so this is a design opportunity rather than a measured allocator-efficiency claim."
+  },
+  "ranked_next_work": [
+    {
+      "rank": 1,
+      "id": "LCP-1",
+      "work": "Add an exact long-token shared-memory convolution variant modeled on llama.cpp's 32-token x 128-channel schedule.",
+      "reason": "At 4K the family is 954.438 vs 32.980 ms. The prior isolated-stream experiment reduced the same hipEngine family to 88.839 ms and host wall by 0.858 s, proving the family is causal, but that queue policy was unstable. A direct kernel schedule avoids re-enabling it.",
+      "gate": "Bit-exact convolution outputs and final Conv state around token-tile boundaries; 512/4K full-state equality; same-stream profiler confirmation; fresh-process 1+3 full-wall A/B; retain only exact non-regressive shapes."
+    },
+    {
+      "rank": 2,
+      "id": "LCP-D1",
+      "work": "Capture a bounded matched 128K decode family profile and, if feasible, a BF16/F16 KV dtype control before implementation.",
+      "reason": "128K prefill is within 0.8%, but decode trails 13.58%. Current source differences do not distinguish KV dtype from attention-kernel or lifecycle effects.",
+      "gate": "Bounded phase-marked profile; no extension of the publication sweep; preserve transition-matched timing."
+    },
+    {
+      "rank": 3,
+      "id": "LCP-2",
+      "work": "Research a chunked/prefix GDN algorithm that preserves the current exact state/trajectory contract.",
+      "reason": "GDN is the largest family and 4.65x/5.15x slower, but llama.cpp's faster reduction tree is not exact-equivalent and the prior direct replication failed 7/10 natural trajectories.",
+      "gate": "Existing six-case state matrix plus 250/250 natural-logit/trajectory gate before performance retention."
+    },
+    {
+      "rank": 4,
+      "id": "LCP-3",
+      "work": "Screen another dense-Q8 schedule using MMQ's shared activation layout ideas without quantizing away hipEngine's exact BF16 activation contract.",
+      "reason": "GPF-5A narrowed Q8 substantially, but it remains 1.65x/1.41x slower and 19.43%/14.32% of current kernel time.",
+      "gate": "Byte-exact primitive and 512/4K state gates; profile the exact dominant shapes before full sweep."
+    },
+    {
+      "rank": 5,
+      "id": "LCP-4",
+      "work": "Benchmark a matrix-oriented F32-router-logits replacement; fuse top-k only if selection remains material afterward.",
+      "reason": "At 4K router logits are about 229.820 ms while select is about 12.536 ms, so copying top-k fusion first targets the wrong subwindow.",
+      "gate": "Exact selected experts/weights and full model state; family-local then 512/4K wall."
+    },
+    {
+      "rank": 6,
+      "id": "LCP-M1",
+      "work": "Add a liveness/alias plan for bulk-prefill scratch buffers.",
+      "reason": "This is a capacity and residency improvement suggested by source structure, not a current speed claim.",
+      "gate": "Allocator accounting, exact state, and no throughput regression at 4K/64K/128K."
+    }
+  ],
+  "explicit_non_targets": [
+    "Do not replace selected Q4/Q5 with generic llama.cpp MMQ: hipEngine's measured families are already faster.",
+    "Do not replace short/mid AOTriton with llama.cpp FlashAttention: hipEngine's measured attention family is already faster.",
+    "Do not re-enable GPF-4 isolated AOTriton queues by default: the final stability gate remains rejected.",
+    "Do not port llama.cpp's GDN wave-reduction tree under the exact/default name: it changes contraction order and failed hipEngine's trajectory contract.",
+    "Do not prioritize generic graph/dispatch reduction for prefill: llama.cpp has more measured dispatches and the gap is kernel-family wall."
+  ],
+  "references": {
+    "current_topline": "benchmarks/README.md",
+    "current_gpf5a": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json",
+    "prior_matched_family_profile": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json",
+    "analysis_document": "docs/LLAMACPP-HIP-PARITY.md"
+  }
+}
