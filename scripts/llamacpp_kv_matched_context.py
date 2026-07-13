@@ -103,6 +103,60 @@ def _build_command(
     ]
 
 
+def _read_prompt_tokens(path: Path) -> list[int]:
+    try:
+        fields = path.read_text(encoding="utf-8").split()
+    except OSError as exc:
+        raise ValueError(f"failed to read prompt token file {path}: {exc}") from exc
+    if not fields:
+        raise ValueError(f"prompt token file is empty: {path}")
+    tokens: list[int] = []
+    for index, field in enumerate(fields):
+        try:
+            token = int(field, 10)
+        except ValueError as exc:
+            raise ValueError(f"invalid prompt token at index {index}: {field!r}") from exc
+        if not 0 <= token <= (1 << 31) - 1:
+            raise ValueError(f"prompt token at index {index} is outside signed int32: {token}")
+        tokens.append(token)
+    return tokens
+
+
+def _token_ids_sha256(tokens: list[int]) -> str:
+    digest = hashlib.sha256()
+    for token in tokens:
+        digest.update(int(token).to_bytes(4, byteorder="little", signed=True))
+    return digest.hexdigest()
+
+
+def _prompt_metadata(args: argparse.Namespace) -> dict[str, Any]:
+    token_file = getattr(args, "prompt_token_file", None)
+    if token_file is None:
+        tokens = [int(args.prompt_token_id)] * int(args.prompt_length)
+        return {
+            "mode": "repeated_token",
+            "token_id": int(args.prompt_token_id),
+            "token_count": len(tokens),
+            "distinct_tokens": 1,
+            "prefix_token_ids_sample": tokens[:16],
+            "token_ids_int32_le_sha256": _token_ids_sha256(tokens),
+        }
+    tokens = _read_prompt_tokens(token_file)
+    if len(tokens) != int(args.prompt_length):
+        raise ValueError(
+            f"prompt token file contains {len(tokens)} tokens, expected exactly {args.prompt_length}"
+        )
+    return {
+        "mode": "token_file",
+        "token_file": str(token_file),
+        "token_count": len(tokens),
+        "distinct_tokens": len(set(tokens)),
+        "prefix_token_ids_sample": tokens[:16],
+        "token_ids_int32_le_sha256": _token_ids_sha256(tokens),
+        "token_file_fingerprint": _file_fingerprint(token_file),
+    }
+
+
 def _run_command(args: argparse.Namespace, *, binary: Path, cpp_json: Path) -> list[str]:
     command = [
         str(binary),
@@ -137,17 +191,37 @@ def _run_command(args: argparse.Namespace, *, binary: Path, cpp_json: Path) -> l
         "--top1-threshold",
         str(args.top1_threshold),
     ]
+    prompt_token_file = getattr(args, "prompt_token_file", None)
+    if prompt_token_file is not None:
+        command.extend(("--prompt-token-file", str(prompt_token_file)))
+    candidate_cache_k = getattr(args, "candidate_cache_k", None)
+    candidate_cache_v = getattr(args, "candidate_cache_v", None)
+    if candidate_cache_k is not None:
+        command.extend(("--candidate-cache-k", str(candidate_cache_k)))
+    if candidate_cache_v is not None:
+        command.extend(("--candidate-cache-v", str(candidate_cache_v)))
     reference_logits_bin = getattr(args, "reference_logits_bin", None)
     if reference_logits_bin is not None:
         command.extend(("--reference-logits-bin", str(reference_logits_bin)))
     return command
 
 
-def _validate_cpp_payload(payload: dict[str, Any], *, prompt_length: int, decode_steps: int) -> None:
+def _validate_cpp_payload(
+    payload: dict[str, Any],
+    *,
+    prompt_length: int,
+    decode_steps: int,
+    prompt_mode: str | None = None,
+) -> None:
     if payload.get("mode") != "llamacpp_kv_matched_context":
         raise ValueError("unexpected C++ harness mode")
     if payload.get("prompt_length") != prompt_length or payload.get("decode_steps") != decode_steps:
         raise ValueError("C++ harness workload does not match request")
+    prompt = payload.get("prompt", {})
+    if prompt.get("token_count") != prompt_length:
+        raise ValueError("C++ harness prompt token count mismatch")
+    if prompt_mode is not None and prompt.get("mode") != prompt_mode:
+        raise ValueError("C++ harness prompt mode does not match request")
     positions = decode_steps + 1
     if payload.get("positions") != positions:
         raise ValueError("C++ harness position count mismatch")
@@ -190,6 +264,7 @@ def _version_text(binary: Path, env: dict[str, str]) -> str:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    prompt = _prompt_metadata(args)
     llama_bin = args.llama_build / "bin"
     llama_library = llama_bin / "libllama.so.0.0.9648"
     if not llama_library.exists():
@@ -235,6 +310,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         cpp_payload,
         prompt_length=args.prompt_length,
         decode_steps=args.decode_steps,
+        prompt_mode=str(prompt["mode"]),
     )
     libraries = {}
     for name in ("libllama.so.0", "libggml.so.0", "libggml-base.so.0", "libggml-cpu.so.0", "libggml-hip.so.0"):
@@ -265,6 +341,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "cpp_source_sha256": _sha256_file(CPP_SOURCE),
         },
         "reference_logits_dump": reference_logits_dump,
+        "prompt": prompt,
         "provenance": {
             "hipengine": host_state,
             "llama_cpp": llama_state,
@@ -280,7 +357,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "result": cpp_payload,
         "caveats": [
-            "F16 and Q8_0 refer only to llama.cpp K/V cache storage; both runs use identical Q4_K_M model weights.",
+            "F16 and Q8_0 refer only to llama.cpp K/V cache storage; reference and candidate use identical Q4_K_M model weights.",
             "The external llama.cpp source tree may contain local instrumentation; exact shared-library hashes identify the measured build.",
             "Candidate decode inputs are structurally validated against the F16 reference top-1 history.",
         ],
@@ -296,6 +373,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler", default="g++")
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--prompt-token-id", type=int, default=9707)
+    parser.add_argument(
+        "--prompt-token-file",
+        type=Path,
+        help="Whitespace-delimited token IDs; must contain exactly --prompt-length entries",
+    )
     parser.add_argument("--prompt-length", type=int, default=131072)
     parser.add_argument("--decode-steps", type=int, default=16)
     parser.add_argument("--ctx-size", type=int, default=0)
@@ -305,6 +387,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--threads", type=int, default=16)
     parser.add_argument("--reference-cache", choices=("f16", "q8_0"), default="f16")
     parser.add_argument("--candidate-cache", choices=("f16", "q8_0"), default="q8_0")
+    parser.add_argument("--candidate-cache-k", choices=("f16", "q8_0"))
+    parser.add_argument("--candidate-cache-v", choices=("f16", "q8_0"))
     parser.add_argument("--flash-attn", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)

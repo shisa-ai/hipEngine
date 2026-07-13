@@ -153489,3 +153489,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   (reverse). Published compact evidence at
   `benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`;
   `performance_claim=false` and supported-cache status is unchanged.
+
+## 2026-07-13 — Audit native llama.cpp Q8_0 KV arithmetic
+
+- Audited the exact llama.cpp build family used by the W7900 calibration
+  (`1ebf790c`, build 9648, measured `libggml-hip.so` hash retained in the prior
+  artifact). The relevant CUDA/HIP sources are clean relative to that commit.
+  Q8_0 persistent storage is 32 signed INT8 values plus one FP16 scale, with no
+  F16 KV shadow. `set_rows` consumes FP32 K/V source activations directly,
+  computes codes with the unrounded FP32 max-abs scale, stores that scale as
+  FP16, and later dequantizes with the stored FP16 scale. The host group32
+  screen already matches those scale/code semantics apart from rare tie
+  rounding; its larger differences are source and attention precision.
+- For Q8 K, the RDNA3 vector-attention path applies the attention scale while
+  quantizing the current FP32 query into Q8_1 block32, uses INT8 `dp4a` for
+  Q8_0-K by Q8_1-Q products, and accumulates scaled dot products in FP32. For
+  Q8 V, RDNA3 dequantizes to FP16 and uses FP16 softmax-weight/V accumulation
+  before writing FP32 output. Therefore "direct quantized attention" is not a
+  single reconstruction-free FP32 path: K introduces temporary query
+  quantization and V deliberately uses FP16 arithmetic.
+- Added exact token-file prompt support to the public-C-API harness plus
+  independent candidate K/V cache selectors. This enables native full-Q8,
+  K-only-Q8, and V-only-Q8 rows on the same fixed `mixed_v1` token IDs while
+  retaining repeated-token compatibility and exact int32-token SHA-256
+  provenance. RED/GREEN unit coverage is 7 tests. Ruff, `py_compile`, and C++
+  `-Wall -Wextra -Werror` build pass. A live W7900 mixed-token `8/2` K-only
+  smoke instantiated `K=q8_0, V=f16`, retained 100% top-1, and produced finite
+  logits at mean/max KL `0.0014142/0.00223386`. This smoke validates plumbing
+  only; clean 4K/16 protocol/isolation rows follow after commit.
