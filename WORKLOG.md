@@ -153322,3 +153322,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   ledger. This clears the performance portion only: `auto` remains fused until
   the multi-prompt generated-trajectory/decode gate and explicit numerical
   contract decision complete.
+
+## 2026-07-13 - Add the GPF-2B natural trajectory/decode gate
+
+- RED added `tests/test_gguf_gdn_trajectory_gate.py` before the driver existed;
+  collection failed with the expected `ModuleNotFoundError`. GREEN adds
+  `scripts/gguf_gdn_trajectory_gate.py` and four pure protocol tests.
+- The driver loads the complete `mtpbench-code-general-ja.jsonl` category suite
+  and, for every prompt, compares fused versus named-candidate own-token greedy
+  logits at the prefill sample plus 24 decode transitions. Every transition
+  must keep the same token and pass KL <= 0.05 / top-1 >= 90%.
+- A separate performance lane runs two balanced 128-transition production
+  decode windows per mode/prompt, including graph capture/instantiate/close
+  when the backend admits graph replay. All repeated trajectories must be
+  exact. Decode non-regression has no invented tolerance: the sum of candidate
+  per-prompt median walls must not exceed fused.
+- `PYTHONPATH=$PWD uv run --extra dev python -m pytest -q
+  tests/test_gguf_gdn_trajectory_gate.py` passes all **4** tests; pycompile and
+  `git diff --check` pass. The next step is a clean detached-worktree full-suite
+  run against `chain_wave32_tree`.
