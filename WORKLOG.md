@@ -153517,3 +153517,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   smoke instantiated `K=q8_0, V=f16`, retained 100% top-1, and produced finite
   logits at mean/max KL `0.0014142/0.00223386`. This smoke validates plumbing
   only; clean 4K/16 protocol/isolation rows follow after commit.
+
+## 2026-07-13 — Add exact-token support to the native GGUF INT8 gate
+
+- Extended `scripts/qwen35_gguf_int8_kv_correctness.py` with a mutually
+  exclusive `--prompt-token-file` input for whitespace-delimited exact token
+  IDs. The gate records the selected int32 token SHA-256, distinct-ID count,
+  prefix sample, path, and available token count without tokenizer
+  round-tripping. This lets the native per-head INT8 path consume the exact
+  `mixed_v1` trajectory used by both format screens and the updated llama.cpp
+  harness.
+- Followed RED/GREEN with two focused tests covering exact token/hash identity
+  and prompt-source exclusivity. Both tests, Ruff, `py_compile`, and
+  `git diff --check` pass. Clean native repeated/mixed 4K/16 measurements follow
+  after this harness commit.
