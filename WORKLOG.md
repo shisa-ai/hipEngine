@@ -153238,3 +153238,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `auto` remains fused-first. The next candidate is GPF-2: one wave32 per value
   column, four state rows per lane, with ordered shuffles first attempted to
   retain the current serial contraction bits.
+
+## 2026-07-13 - Retain GPF-2B register-resident GGUF GDN candidate
+
+- Implemented registered plain/segment wave32 GDN schedules and fail-closed
+  `chain_wave32|chain_wave32_tree` routes. The ordered-shuffle form uses lane 0
+  to reconstruct the fused 0..127 contraction order and is byte-exact after
+  explicit `fmaf` repair, but full 512/128 prefill collapses to **128.879
+  tok/s (-69.58%)**. A conventional reduction tree that still reloads/stores
+  state every token is equally rejected at **129.785 tok/s (-69.37%)**;
+  cache-clean recurrence is **3516.665 ms / 30** and 88.14% of GPU-active.
+- Audited local llama.cpp HIP
+  `ggml/src/ggml-cuda/gated_delta_net.cu` (file lineage `e95dae18`) and found
+  the missing property: each lane's four state rows live in `s_shard[]`
+  registers across the complete token loop. Changed the tree candidate to load
+  four FP32 rows once, cache scaled Q/K per token, and store final state once.
+  Focused primitive/routing tests pass **46**; comparator unit tests pass **7**.
+- Register residency changes the full focused rows from clean fused
+  **423.708/448.694/410.023** to **954.063/1031.350/847.981 tok/s** at
+  512/1K/4K (**+125.17%/+129.86%/+106.81%**). Decode is
+  **49.020/51.600/52.414 tok/s**, within -0.20%..-0.11% of control, and all
+  timed IDs remain `9707`. Candidate protocol is one discarded warmup plus
+  three measured repetitions; the control uses two plus five.
+- Extended `scripts/gguf_gdn_prefill_compare.py` with a named candidate mode
+  and explicit project KL/top-1 reporting. Greeting, 512, 1024/1025, and
+  4095/4096 all retain the fused sampled token, top-1 is **100%**, and KL is
+  **3.48e-6..5.39e-5** versus the **0.05/90%** project gate. The tree is not
+  byte-exact: first divergence is layer-0 recurrent state and downstream
+  hidden/Conv/GDN fingerprints differ. `auto` therefore remains fused pending
+  balanced A/B, multi-prompt generated-trajectory/decode, and an explicit
+  numerical-contract decision.
+- Cache-clean register-resident trace:
+  `qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_kernel` runs 30 times,
+  **61.411 ms** total, workgroup 256, 40 VGPR, zero scratch/LDS. Total kernels
+  are **536.167 ms**; GDN is now only **11.45%**. Dense-Q8 WMMA is
+  **158.223 ms** and selected Q4+Q5 MoE WMMA is **173.023 ms**, selecting the
+  next optimization family. A 128-thread/four-wave control is rejected despite
+  512 **954.063 -> 957.756 (+0.39%)** because 1K/4K regress
+  **1031.350 -> 1012.765 (-1.80%)** and **847.981 -> 832.416 (-1.84%)**;
+  restored 256 threads/eight waves.
+- Compact candidate artifact:
+  `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json`.
+  Updated `docs/GGUF-PREFILL-OPTIMIZATION.md`, `docs/KERNELS.md`,
+  `docs/REFACTOR.md`, and `benchmarks/CHANGELOG.md`. No topline/default claim
+  is made yet.

@@ -3,8 +3,11 @@
 Last updated: 2026-07-13.
 
 Status: active `SOL-R5` implementation log. `GPF-1` exact value-column tiling
-is byte-exact but rejected on performance; `GPF-2` wave-per-value-column state
-sharding is the active candidate. No default performance change is claimed.
+and `GPF-2A` non-resident wave sharding are rejected. Register-resident
+`GPF-2B` clears the repository KL/top-1 gate and improves the focused
+512/1K/4K prefill rows by 2.07x-2.30x, but it is not byte-exact and is not yet
+the default. Promotion still requires a balanced A/B plus a generated-trajectory
+gate and an explicit numerical-contract decision.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -43,10 +46,21 @@ its additional **26.508 ms** prepare and **11.618 ms** RMSNorm+gate work. This
 rules out `GPF-1B`: fusion can remove the latter overhead, but cannot recover a
 recurrence kernel that is already 8.58% slower.
 
-The active next step is `GPF-2`: map one wave32 to one value column and shard
-the 128 state rows four-per-lane. Its first form must reconstruct the current
-serial contraction order with ordered lane shuffles, so performance and
-byte-exactness are measured rather than traded against one another.
+`GPF-2` identified the missing implementation property. Mapping one wave32 to
+one value column is only fast when each lane loads its four recurrent-state
+rows once, keeps them in registers across the complete serial token loop, and
+writes them back once. The ordered-shuffle exact form and a tree-reduced form
+that still round-tripped state through global memory both measured about
+129 tok/s. The register-resident tree reaches **954.063/1031.350/847.981
+tok/s** at 512/1K/4K versus the clean fused control's
+**423.708/448.694/410.023** (+125.17%/+129.86%/+106.81%).
+
+That speedup changes the next bottleneck: a cache-clean 512 trace attributes
+only **61.411 ms (11.45%)** to the new recurrence, versus **158.223 ms** dense
+Q8 WMMA and **173.023 ms** selected-MoE Q4+Q5 WMMA. Do not keep micro-tuning
+GDN launch geometry: llama.cpp's four-wave/128-thread launch gains 0.39% at
+512 but regresses 1K/4K by 1.80%/1.84%, so the balanced eight-wave/256-thread
+schedule remains selected.
 
 Do not start with AOTriton tuning, generic chunk sweeps, graph capture, compiler
 flags, or another attempt to enable WMMA. Full-attention prefill is only 0.54%
@@ -128,6 +142,8 @@ baseline to restore verbatim.
 | Existing exact split wall | [`SOL-G3 interleaved A/B`](../benchmarks/results/2026-07-11-sol-g3-gfx1151-gdn-prefill-interleaved-ab.json): chain is +5.19% at 512 and +6.70% at 4K | Correct but slower | Retain fused; do not retry the unchanged chain |
 | Current gfx1151 fused M0 | HIP 7.15 clean control at 512/1K/4K: `423.708/448.694/410.023 tok/s`; cache-clean 512 trace: GDN `794.120/1227.335 ms`, 64.70% GPU-active | Five measured repetitions; timed token `9707` exact | Current same-session denominator |
 | `GPF-1` tile64/tile32 | [`2026-07-13 rejected diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json): `388.300/374.206 tok/s` at 512, -8.36%/-11.68%; tile64 recurrence `862.281 ms` | Six primitive tile/segment cases byte-exact; 36 focused tests pass; decode flat | Rejected; keep only as short-lived diagnostic while GPF-2 is developed |
+| `GPF-2A` non-resident wave32 | Ordered exact `128.879 tok/s`; tree-reduced `129.785 tok/s`; tree recurrence `3516.665 ms` | Ordered form byte-exact; tree primitive stays within numeric budget | Rejected: per-token global state traffic dominates |
+| `GPF-2B` register-resident wave32 tree | [`2026-07-13 candidate diagnostic`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json): `954.063/1031.350/847.981 tok/s` at 512/1K/4K | Six fused-vs-candidate cases: KL `3.48e-6..5.39e-5`, top-1 `100%`, sampled tokens identical; state is not byte-exact | Candidate passes project gate; default remains fused pending promotion gates/contract decision |
 
 The old route proves that substantially more parallel recurrence was possible;
 it does not prove that its normalized-Q/K materialization or reduction tree is
@@ -260,9 +276,9 @@ select current code without a fresh profile.
 | 0 | `GPF-M0` | **In progress:** clean gfx1151 512 fused trace captured; 4K/128K and matched llama.cpp traces remain | Confirm GDN share and llama fused-GDN dispatch before attributing a candidate win |
 | 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
 | 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
-| 3 | `GPF-2` | **Active:** wave-per-value-column, state-row-sharded recurrence; ordered-shuffle exact form first | Promote only if byte-exact; otherwise requires an explicit numerical-contract decision plus the full model correctness suite |
-| 4 | `GPF-M1` | Reprofile the winning GDN route at 512/4K/128K | Select the next bucket rather than inheriting the June profile |
-| 5 | `GPF-3` | Optimize the selected-MoE and/or dense-Q8 family named by GPF-M1 | Exact family-local A/B and full-wall win; order determined by current profile |
+| 3 | `GPF-2` | **Candidate gate passed:** register-resident wave32 tree; non-resident exact/tree forms rejected | Run balanced 512/4K A/B and multi-prompt greedy/decode gate; explicitly approve or reject the non-byte-exact numerical contract before default promotion |
+| 4 | `GPF-M1` | **512 complete:** new GDN is 11.45%; 4K/128K profiles remain | Select the next bucket rather than inheriting the June profile |
+| 5 | `GPF-3` | **Next:** optimize dense-Q8 and/or selected-MoE WMMA named by GPF-M1 | Family-local correctness A/B and full-wall win; retain decode non-regression |
 | 6 | `GPF-4` | Revisit AOTriton queue isolation/query chunks at 4K-128K if attention becomes material | Same-shape exact A/B; no short-context regression |
 | 7 | `GPF-5` | Router/glue/launch fusion or host submission work | Only after device-family residual is measured as material |
 | 8 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if column tiling and an approved reduction path leave material GDN wall |
@@ -334,6 +350,40 @@ blocks. It also gives up useful same-block sharing/locality. Occupancy intuition
 was therefore insufficient, and the measured kernel result rejects both
 `GPF-1` and its materialization-only `GPF-1B` follow-up.
 
+## GPF-2 Result
+
+`GPF-2A` first tested state-row sharding without changing state lifetime. The
+ordered-shuffle kernel reconstructed the fused 0..127 contraction order and
+was byte-exact, but 256 shuffles per token plus per-token global state traffic
+collapsed 512/128 to **128.879 tok/s (-69.58%)**. Replacing the ordered
+reconstruction with a wave tree barely changed the result:
+**129.785 tok/s (-69.37%)**. Its cache-clean recurrence trace was
+**3516.665 ms / 30**, 4.43x the fused recurrence.
+
+The source comparison with llama.cpp exposed the missing property: its
+`s_shard[rows_per_lane]` lives in registers across the token loop. `GPF-2B`
+does the same, while caching normalized Q/K shards per token and storing final
+state once. The recurrence falls to **61.411 ms / 30**, uses 40 VGPR, zero
+scratch/LDS, and changes full-wall performance as follows:
+
+| Route | 512/128 | 1K/128 | 4K/128 | Decode medians |
+| --- | ---: | ---: | ---: | ---: |
+| Clean fused control (5 runs) | 423.708 | 448.694 | 410.023 | 49.116 / 51.657 / 52.505 |
+| Register-resident tree, 256 threads (3 runs) | **954.063** | **1031.350** | **847.981** | 49.020 / 51.600 / 52.414 |
+| Delta | **+125.17%** | **+129.86%** | **+106.81%** | -0.20% / -0.11% / -0.17% |
+
+The 128-thread/four-wave llama.cpp-shaped launch is rejected as shape-local:
+it measures **957.756** at 512 (+0.39% versus 256 threads), but only
+**1012.765/832.416** at 1K/4K (-1.80%/-1.84%). Keep 256 threads/eight waves.
+
+The tree changes FP reduction order. Across greeting, 512, 1024/1025, and
+4095/4096, fused and candidate sampled tokens are identical, top-1 agreement
+is **100%**, and KL is **3.48e-6..5.39e-5**, well inside the repository gate.
+It is not byte-exact: layer-0 recurrence diverges first and accumulated hidden
+and state fingerprints differ. `auto` therefore remains fused until the
+balanced performance gate, multi-prompt generated trajectory/decode gate, and
+explicit numerical-contract decision complete.
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -355,8 +405,11 @@ be selected without an untracked source edit. Require:
 - all-layer output identity at greeting and 512.
 
 The repository-wide new-kernel floor remains KL <= 0.05 and top-1 >= 90%, but
-that weaker floor does not supersede the stronger current GGUF GDN state
-contract.
+that floor does not silently supersede the stronger current GGUF GDN state
+contract. `GPF-2B` passes the floor but not byte identity. Changing the default
+therefore requires an explicit decision recorded here, a multi-prompt greedy
+trajectory/decode gate, and retention of fused plus the exact unfused chain as
+rollback/oracle paths.
 
 ### Performance
 

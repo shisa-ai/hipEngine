@@ -1085,6 +1085,394 @@ __global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_segments_kernel(
   }
 }
 
+// GPF-2: one logical wave32 owns one value column. The 128 recurrent-state
+// rows are sharded four-per-lane for loads and updates, while lane 0 rebuilds
+// the exact 0..127 contraction order through source-lane shuffles. Keeping the
+// key/state operands separate until lane 0 evaluates the expression preserves
+// the same contraction/FMA opportunity as the scalar exact kernel.
+__device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_body(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t start,
+    int64_t end,
+    int64_t v_head,
+    int64_t value_idx,
+    int64_t state_col,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    int lane) {
+  constexpr int kWaveWidth = 32;
+  constexpr int kHeadKDim = 128;
+  volatile float* recurrent_state_v = recurrent_state;
+  for (int64_t token = start; token < end; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t qk_base = head_offset * kHeadKDim;
+    const float q_scale = query_scale[head_offset];
+    const float k_scale = key_scale[head_offset];
+    const float decay_value = decay[head_offset];
+    float kv_mem = 0.0f;
+
+#pragma unroll
+    for (int state_group = 0; state_group < kHeadKDim; state_group += kWaveWidth) {
+      const int idx = state_group + lane;
+      const float lane_key = key_raw[qk_base + idx];
+      const float lane_state =
+          recurrent_state_v[state_col + static_cast<int64_t>(idx) * head_v_dim];
+#pragma unroll
+      for (int source_lane = 0; source_lane < kWaveWidth; ++source_lane) {
+        const float ordered_key = __shfl(lane_key, source_lane, kWaveWidth);
+        const float ordered_state = __shfl(lane_state, source_lane, kWaveWidth);
+        if (lane == 0) {
+          const float scaled_state = ordered_key * k_scale * ordered_state;
+          kv_mem = fmaf(scaled_state, decay_value, kv_mem);
+        }
+      }
+    }
+    kv_mem = __shfl(kv_mem, 0, kWaveWidth);
+    float delta = 0.0f;
+    if (lane == 0) {
+      delta =
+          (value[head_offset * head_v_dim + value_idx] - kv_mem) * beta[head_offset];
+    }
+    delta = __shfl(delta, 0, kWaveWidth);
+
+    float out_acc = 0.0f;
+#pragma unroll
+    for (int state_group = 0; state_group < kHeadKDim; state_group += kWaveWidth) {
+      const int idx = state_group + lane;
+      const int64_t state_offset =
+          state_col + static_cast<int64_t>(idx) * head_v_dim;
+      const float q_lane = query_raw[qk_base + idx] * q_scale;
+      const float k_lane = key_raw[qk_base + idx] * k_scale;
+      const float decayed_state =
+          recurrent_state_v[state_offset] * decay_value;
+      const float next_state = fmaf(k_lane, delta, decayed_state);
+      recurrent_state_v[state_offset] = next_state;
+
+#pragma unroll
+      for (int eight = 0; eight < kWaveWidth; eight += 8) {
+        const float q0 = __shfl(q_lane, eight + 0, kWaveWidth);
+        const float q1 = __shfl(q_lane, eight + 1, kWaveWidth);
+        const float q2 = __shfl(q_lane, eight + 2, kWaveWidth);
+        const float q3 = __shfl(q_lane, eight + 3, kWaveWidth);
+        const float q4 = __shfl(q_lane, eight + 4, kWaveWidth);
+        const float q5 = __shfl(q_lane, eight + 5, kWaveWidth);
+        const float q6 = __shfl(q_lane, eight + 6, kWaveWidth);
+        const float q7 = __shfl(q_lane, eight + 7, kWaveWidth);
+        const float ns0 = __shfl(next_state, eight + 0, kWaveWidth);
+        const float ns1 = __shfl(next_state, eight + 1, kWaveWidth);
+        const float ns2 = __shfl(next_state, eight + 2, kWaveWidth);
+        const float ns3 = __shfl(next_state, eight + 3, kWaveWidth);
+        const float ns4 = __shfl(next_state, eight + 4, kWaveWidth);
+        const float ns5 = __shfl(next_state, eight + 5, kWaveWidth);
+        const float ns6 = __shfl(next_state, eight + 6, kWaveWidth);
+        const float ns7 = __shfl(next_state, eight + 7, kWaveWidth);
+        if (lane == 0) {
+          out_acc += q0 * ns0 + q1 * ns1 + q2 * ns2 + q3 * ns3
+                     + q4 * ns4 + q5 * ns5 + q6 * ns6 + q7 * ns7;
+        }
+      }
+    }
+    if (lane == 0) {
+      out[head_offset * head_v_dim + value_idx] = out_acc;
+    }
+  }
+}
+
+__global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_kernel(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.y) * waves_per_block + wave;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t state_col =
+      v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_body(
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      0,
+      tokens,
+      v_head,
+      value_idx,
+      state_col,
+      num_v_heads,
+      head_v_dim,
+      lane);
+}
+
+__global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_kernel(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    const int32_t* __restrict__ cu_seqlens,
+    const int64_t* __restrict__ state_indices,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t segment = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.z) * waves_per_block + wave;
+  if (segment >= segments || v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t start = static_cast<int64_t>(cu_seqlens[segment]);
+  const int64_t end = static_cast<int64_t>(cu_seqlens[segment + 1]);
+  if (end <= start) {
+    return;
+  }
+  const int64_t state_slot = state_indices[segment];
+  const int64_t state_stride = num_v_heads * 128 * head_v_dim;
+  const int64_t state_col =
+      state_slot * state_stride + v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_body(
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      start,
+      end,
+      v_head,
+      value_idx,
+      state_col,
+      num_v_heads,
+      head_v_dim,
+      lane);
+}
+
+// GPF-2 relaxed diagnostic: one wave32 per value column with a conventional
+// tree reduction. Each lane keeps its four recurrent-state rows in registers
+// across the complete serial token loop, matching the critical residency
+// property of llama.cpp's schedule. This exposes the available state-row
+// parallelism but changes contraction order, so it is registered separately
+// from every exact variant.
+__device__ __forceinline__ void qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_body(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t start,
+    int64_t end,
+    int64_t v_head,
+    int64_t value_idx,
+    int64_t state_col,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    int lane) {
+  constexpr int kWaveWidth = 32;
+  constexpr int kHeadKDim = 128;
+  constexpr int kRowsPerLane = kHeadKDim / kWaveWidth;
+  float state_shard[kRowsPerLane];
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    state_shard[row] =
+        recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim];
+  }
+
+  for (int64_t token = start; token < end; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t qk_base = head_offset * kHeadKDim;
+    const float q_scale = query_scale[head_offset];
+    const float k_scale = key_scale[head_offset];
+    const float decay_value = decay[head_offset];
+    float q_reg[kRowsPerLane];
+    float k_reg[kRowsPerLane];
+    float kv_local = 0.0f;
+
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      const int idx = row * kWaveWidth + lane;
+      q_reg[row] = query_raw[qk_base + idx] * q_scale;
+      k_reg[row] = key_raw[qk_base + idx] * k_scale;
+      const float scaled_state = k_reg[row] * state_shard[row];
+      kv_local = fmaf(scaled_state, decay_value, kv_local);
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      kv_local += __shfl_down(kv_local, offset, kWaveWidth);
+    }
+    float delta = 0.0f;
+    if (lane == 0) {
+      delta =
+          (value[head_offset * head_v_dim + value_idx] - kv_local) * beta[head_offset];
+    }
+    delta = __shfl(delta, 0, kWaveWidth);
+
+    float out_local = 0.0f;
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      const float decayed_state = state_shard[row] * decay_value;
+      state_shard[row] = fmaf(k_reg[row], delta, decayed_state);
+      out_local = fmaf(q_reg[row], state_shard[row], out_local);
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      out_local += __shfl_down(out_local, offset, kWaveWidth);
+    }
+    if (lane == 0) {
+      out[head_offset * head_v_dim + value_idx] = out_local;
+    }
+  }
+
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim] =
+        state_shard[row];
+  }
+}
+
+__global__ void qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_kernel(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.y) * waves_per_block + wave;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t state_col = v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_body(
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      0,
+      tokens,
+      v_head,
+      value_idx,
+      state_col,
+      num_v_heads,
+      head_v_dim,
+      lane);
+}
+
+__global__ void qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_kernel(
+    const float* __restrict__ query_raw,
+    const float* __restrict__ key_raw,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    const int32_t* __restrict__ cu_seqlens,
+    const int64_t* __restrict__ state_indices,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t segment = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.z) * waves_per_block + wave;
+  if (segment >= segments || v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t start = static_cast<int64_t>(cu_seqlens[segment]);
+  const int64_t end = static_cast<int64_t>(cu_seqlens[segment + 1]);
+  if (end <= start) {
+    return;
+  }
+  const int64_t state_slot = state_indices[segment];
+  const int64_t state_stride = num_v_heads * 128 * head_v_dim;
+  const int64_t state_col =
+      state_slot * state_stride + v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_body(
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      start,
+      end,
+      v_head,
+      value_idx,
+      state_col,
+      num_v_heads,
+      head_v_dim,
+      lane);
+}
+
 __global__ void qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(
     const float* __restrict__ recurrent,
     const uint16_t* __restrict__ gate,
@@ -3328,6 +3716,96 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_
       stream);
 }
 
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32(
+    const float* query_raw,
+    const float* key_raw,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_k_dim != 128 ||
+      head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 256;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_kernel,
+      dim3(
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      tokens,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32(
+    const float* query_raw,
+    const float* key_raw,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_k_dim != 128 ||
+      head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 256;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_kernel,
+      dim3(
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      tokens,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 static int launch_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32(
     const float* query_raw,
     const float* key_raw,
@@ -3449,6 +3927,108 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segment
       query_raw, key_raw, value, beta, decay, query_scale, key_scale,
       recurrent_state, out, cu_seqlens, state_indices, total_tokens, segments,
       num_v_heads, head_k_dim, head_v_dim, 32, stream);
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32(
+    const float* query_raw,
+    const float* key_raw,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_v_heads <= 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 256;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_kernel,
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32(
+    const float* query_raw,
+    const float* key_raw,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_v_heads <= 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 256;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_kernel,
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query_raw,
+      key_raw,
+      value,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16(

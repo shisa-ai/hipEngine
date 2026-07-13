@@ -270,6 +270,21 @@ and no scratch/LDS, but recurrence regressed `794.120 -> 862.281 ms`; full
 `374.206 tok/s`. These are rejected, short-lived geometry controls; see
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf1-value-tiling-rejected.json`.
 
+GPF-2 adds exact ordered-shuffle and relaxed tree-reduced wave32 variants,
+each with plain and segment-aware registry entries. One wave owns one value
+column and each lane owns four of the 128 state rows. The decisive tree variant
+keeps those four FP32 state values in registers across the complete serial
+token loop and writes final state once. On gfx1151 512/128, the non-resident
+ordered/tree controls are rejected at `128.879/129.785 tok/s`; register
+residency reaches `954.063 tok/s` versus fused `423.708`. A cache-clean trace
+records `qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_kernel`, 30
+dispatches, `61.411 ms` total, workgroup 256, 40 VGPR, zero scratch/LDS. The
+six-case full-model matrix has identical sampled tokens, KL
+`3.48e-6..5.39e-5`, and 100% top-1, but not byte-identical hidden/recurrent
+state. The candidate remains explicit-only pending the numerical-contract and
+generated-trajectory promotion gates; see
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

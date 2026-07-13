@@ -8,9 +8,18 @@ from scripts.gguf_gdn_prefill_compare import (
     CompareError,
     _array_comparison,
     _build_prompt_ids,
+    build_parser,
     _classify,
     _first_layer_part_divergence,
+    _logit_gate,
 )
+
+
+def test_parser_accepts_named_gdn_candidate_mode() -> None:
+    args = build_parser().parse_args(
+        ["--candidate-mode", "chain_wave32_tree", "--json", "/tmp/out.json"]
+    )
+    assert args.candidate_mode == "chain_wave32_tree"
 
 
 def test_array_comparison_reports_exact_and_numeric_drift() -> None:
@@ -27,6 +36,19 @@ def test_array_comparison_reports_exact_and_numeric_drift() -> None:
     assert drift["mismatch_elements"] == 1
     assert drift["max_abs"] > 0.0
     assert drift["left"]["blake2b_128"] != drift["right"]["blake2b_128"]
+
+
+def test_logit_gate_reports_project_thresholds() -> None:
+    reference = np.asarray([[3.0, 1.0, -2.0]], dtype=np.float32)
+    gate = _logit_gate(reference, reference.copy())
+    assert gate == {
+        "kl_mean": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "kl_threshold": 0.05,
+        "top1_threshold": 0.9,
+        "passed": True,
+    }
 
 
 def test_array_comparison_rejects_shape_mismatch() -> None:

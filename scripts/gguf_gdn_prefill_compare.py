@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
+from hipengine.benchmark.correctness import evaluate_logits
 
 
 KIND = "hipengine_gguf_gdn_prefill_fused_chain_compare"
@@ -101,6 +102,23 @@ def _array_comparison(left: np.ndarray, right: np.ndarray) -> dict[str, Any]:
     }
 
 
+def _logit_gate(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any]:
+    result = evaluate_logits(
+        reference,
+        candidate,
+        kl_threshold=0.05,
+        top1_threshold=0.90,
+    )
+    return {
+        "kl_mean": float(result.kl_mean),
+        "kl_max": float(result.kl_max),
+        "top1_agreement": float(result.top1_agreement),
+        "kl_threshold": 0.05,
+        "top1_threshold": 0.90,
+        "passed": bool(result.passed),
+    }
+
+
 def _build_prompt_ids(*, kind: str, token_id: int, length: int) -> list[int]:
     if kind == "greeting":
         return list(GREETING_PROMPT_IDS)
@@ -136,24 +154,32 @@ def _classify(
     actual_first_state: Mapping[str, Any] | None,
     bisect_first_hidden: Mapping[str, Any] | None,
     bisect_first_state: Mapping[str, Any] | None,
+    candidate_mode: str = "chain",
 ) -> dict[str, Any]:
     visible_token_exact = int(fused_token) == int(chain_token)
     state_exact = actual_first_state is None and bisect_first_state is None
     hidden_exact = bool(actual_hidden_exact and bisect_first_hidden is None)
     passed = bool(visible_token_exact and state_exact and hidden_exact)
     if passed:
-        status = "fused_chain_exact"
-        conclusion = "Fused and split-chain bulk prefill are byte-exact."
+        status = (
+            "fused_chain_exact"
+            if candidate_mode == "chain"
+            else "fused_candidate_exact"
+        )
+        conclusion = (
+            f"Fused and {candidate_mode} bulk prefill are byte-exact."
+        )
     elif visible_token_exact:
         status = "visible_token_match_state_divergence"
         conclusion = (
             "The sampled token matches, but hidden or resident GDN state diverges; "
-            "the split chain is not promotable."
+            f"the {candidate_mode} candidate is not exact."
         )
     else:
         status = "visible_token_and_state_divergence"
         conclusion = (
-            "The split chain changes the sampled token and internal state; inspect "
+            f"The {candidate_mode} candidate changes the sampled token and internal "
+            "state; inspect "
             "the first recorded divergence."
         )
     return {
@@ -162,6 +188,7 @@ def _classify(
         "visible_token_exact": visible_token_exact,
         "hidden_exact": hidden_exact,
         "state_exact": state_exact,
+        "candidate_mode": str(candidate_mode),
         "first_actual_state_divergence": actual_first_state,
         "first_bisect_hidden_divergence": bisect_first_hidden,
         "first_bisect_state_divergence": bisect_first_state,
@@ -257,13 +284,14 @@ def _run_production_mode(
             [int(token) for token in prompt_ids],
             use_bulk=True,
             bulk_attention_mode=str(bulk_attention_mode),
-            return_logits=False,
+            return_logits=True,
             capture_hidden_seed_fp32=True,
         )
     session.runtime.device_synchronize()
     wall_ms = (time.perf_counter() - started) * 1000.0
     return {
         "token_id": int(result.token_id),
+        "logits": np.ascontiguousarray(result.logits, dtype=np.float32),
         "hidden_seed": _capture_hidden_seed(session),
         "linear_states": _capture_resident_state(session),
         "wall_ms_diagnostic": float(wall_ms),
@@ -367,6 +395,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     compiler_version = None
     if args.compiler_version_file is not None:
         compiler_version = args.compiler_version_file.read_text(encoding="utf-8")
+    candidate_mode = str(args.candidate_mode)
+    modes = ("fused", candidate_mode)
 
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -384,7 +414,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 prompt_ids=prompt_ids,
                 bulk_attention_mode=str(args.bulk_attention_mode),
             )
-            for mode in ("fused", "chain")
+            for mode in modes
         }
         bisect = None
         if not bool(args.skip_layer_bisect):
@@ -395,7 +425,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     prompt_ids=prompt_ids,
                     bulk_attention_mode=str(args.bulk_attention_mode),
                 )
-                for mode in ("fused", "chain")
+                for mode in modes
             }
         if session.runner is None:
             raise CompareError("GGUF resident session closed before provenance capture")
@@ -404,11 +434,19 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     actual_hidden = _array_comparison(
         production["fused"]["hidden_seed"],
-        production["chain"]["hidden_seed"],
+        production[candidate_mode]["hidden_seed"],
+    )
+    actual_logits = _array_comparison(
+        production["fused"]["logits"],
+        production[candidate_mode]["logits"],
+    )
+    project_logit_gate = _logit_gate(
+        production["fused"]["logits"],
+        production[candidate_mode]["logits"],
     )
     actual_states = _compare_states(
         production["fused"]["linear_states"],
-        production["chain"]["linear_states"],
+        production[candidate_mode]["linear_states"],
     )
     actual_first_state = _first_layer_part_divergence(actual_states)
 
@@ -417,11 +455,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     bisect_first_state = None
     if bisect is not None:
         fused_layers = bisect["fused"]["layer_final_rows"]
-        chain_layers = bisect["chain"]["layer_final_rows"]
-        if set(fused_layers) != set(chain_layers):
-            raise CompareError("fused and chain captured different hidden-output layers")
+        candidate_layers = bisect[candidate_mode]["layer_final_rows"]
+        if set(fused_layers) != set(candidate_layers):
+            raise CompareError(
+                "fused and candidate captured different hidden-output layers"
+            )
         layer_comparisons = {
-            int(layer): _array_comparison(fused_layers[layer], chain_layers[layer])
+            int(layer): _array_comparison(
+                fused_layers[layer], candidate_layers[layer]
+            )
             for layer in sorted(fused_layers)
         }
         bisect_first_hidden = next(
@@ -434,17 +476,17 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         )
         bisect_states = _compare_states(
             bisect["fused"]["linear_states"],
-            bisect["chain"]["linear_states"],
+            bisect[candidate_mode]["linear_states"],
         )
         bisect_first_state = _first_layer_part_divergence(bisect_states)
         bisect_record = {
             "route": "verify_target_block_all_layer_final_row",
             "tokens": {
-                mode: int(bisect[mode]["token_id"]) for mode in ("fused", "chain")
+                mode: int(bisect[mode]["token_id"]) for mode in modes
             },
             "hidden_seed": _array_comparison(
                 bisect["fused"]["hidden_seed"],
-                bisect["chain"]["hidden_seed"],
+                bisect[candidate_mode]["hidden_seed"],
             ),
             "layer_final_rows": [
                 {"layer": int(layer), "comparison": layer_comparisons[layer]}
@@ -457,11 +499,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     classification = _classify(
         fused_token=int(production["fused"]["token_id"]),
-        chain_token=int(production["chain"]["token_id"]),
+        chain_token=int(production[candidate_mode]["token_id"]),
         actual_hidden_exact=bool(actual_hidden["exact"]),
         actual_first_state=actual_first_state,
         bisect_first_hidden=bisect_first_hidden,
         bisect_first_state=bisect_first_state,
+        candidate_mode=candidate_mode,
     )
     return {
         "kind": KIND,
@@ -475,7 +518,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "kv_dtype": "bf16",
             "prompt": _prompt_record(prompt_ids, kind=str(args.prompt_kind)),
             "bulk_attention_mode": str(args.bulk_attention_mode),
-            "gdn_modes": ["fused", "chain"],
+            "gdn_modes": list(modes),
+            "candidate_mode": candidate_mode,
             "segment_threshold": os.environ.get(
                 "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "1025"
             ),
@@ -483,16 +527,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "production_bulk_prefill": {
             "tokens": {
                 mode: int(production[mode]["token_id"])
-                for mode in ("fused", "chain")
+                for mode in modes
             },
             "wall_ms_diagnostic": {
                 mode: float(production[mode]["wall_ms_diagnostic"])
-                for mode in ("fused", "chain")
+                for mode in modes
             },
             "hidden_seed": actual_hidden,
+            "logits": actual_logits,
+            "project_logit_gate": project_logit_gate,
             "mode_state_fingerprints": {
                 mode: _compact_states(production[mode]["linear_states"])
-                for mode in ("fused", "chain")
+                for mode in modes
             },
             "linear_state_comparisons": _compact_state_comparisons(actual_states),
             "first_state_divergence": actual_first_state,
@@ -511,7 +557,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             environment={
                 "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
                 "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-                "HIPENGINE_GGUF_GDN_PREFILL_MODE": "explicit fused/chain sweep",
+                "HIPENGINE_GGUF_GDN_PREFILL_MODE": (
+                    f"explicit fused/{candidate_mode} sweep"
+                ),
                 "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD": os.environ.get(
                     "HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
                 ),
@@ -536,6 +584,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=512)
+    parser.add_argument(
+        "--candidate-mode",
+        choices=(
+            "chain",
+            "chain_tile64",
+            "chain_tile32",
+            "chain_wave32",
+            "chain_wave32_tree",
+        ),
+        default="chain",
+        help="Named registered GDN route compared against fused (default: chain).",
+    )
     parser.add_argument(
         "--bulk-attention-mode",
         choices=("bulk", "native"),
