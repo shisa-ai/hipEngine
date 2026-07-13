@@ -153919,3 +153919,21 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the next two open gates. Verified the 141-line remote body at
   `https://github.com/shisa-ai/hipEngine/issues/4` with SHA-256
   `e60a1b2b36cbe4974c42e01945b8150369c09bdc5175de857a5b4d91be2aa30a`.
+
+## 2026-07-14 — Export native mixed-KV outcome to the root README
+
+- Updated the canonical `W7900_MEMORY_CAPACITY` chart and synchronized it into
+  `README.md`. The chart now distinguishes the quality-preserving XTX 256 Ki
+  request-scratch OOM (`23.469 GiB` tracked before the failed allocation) from
+  the direct-streaming allocation control (`23.290 GiB` tracked,
+  `23.590 GiB` live device sample), which remains correctness-rejected.
+- Added the requested high-level accuracy/approach paragraph directly below the
+  chart: BF16 layers `3,7,11,15,19,23`; Hadamard-group32 INT8 layers
+  `27,31,35,39`; 18.75% retained-K/V reduction; no persistent BF16 shadow;
+  native GGUF full-suite pass at 512/8 and 4K/16 plus bounded 128K/16; native
+  PARO prompt-level rejection; explicit/non-default decision. Also replaced the
+  stale root status claim that 256K INT8 was supported with the measured 208 Ki
+  BF16 safe cap and current mixed-KV blockers.
+- Documentation validation: `scripts/sync_benchmark_readme.py --write/--check`,
+  targeted content assertions, and `git diff --check` pass. No benchmark metric
+  changed; `benchmarks/CHANGELOG.md` records this as presentation-only.

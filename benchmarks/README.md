@@ -558,16 +558,18 @@ links without publishing their numeric rows as current results. Their removed
 tables remain recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1100 PARO context capacity and INT8 fidelity, 2026-07-13
+### gfx1100 PARO context capacity and mixed-KV fidelity, 2026-07-14
 
 **Status: 208 Ki BF16 is the recommended safe cap on a physical 24 GB card;
-220 Ki is a validated edge, and 256K INT8 remains quality-rejected.** Clean
-hipEngine `5a49b16d` ran profile-aware BF16 sweeps on the W7900 and directly on
-this host's 25,753,026,560-byte (23.984 GiB) RX 7900 XTX. Every retained row
-uses the current Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 decode
-tokens, full-run approximately 1 Hz whole-device monitoring, finite-output
-checks, and a passing BF16 layout audit. Clean `d6504544` supplies the separate
-compact 256K INT8 row.
+220 Ki is a validated edge, and neither all-layer INT8 nor native tail-four
+mixed KV makes 256K a supported route.** Clean hipEngine `5a49b16d` ran
+profile-aware BF16 sweeps on the W7900 and directly on this host's
+25,753,026,560-byte (23.984 GiB) RX 7900 XTX. Every retained BF16 row uses the
+current Qwen3.6 packed PARO snapshot, repeated token `9707`, 128 decode tokens,
+full-run approximately 1 Hz whole-device monitoring, finite-output checks, and
+a passing layout audit. Clean `d6504544` supplies the separate compact 256K
+all-layer INT8 row; the native mixed-KV diagnostic records exact source hashes
+and physical request-scratch probes in the July 14 artifact.
 
 <!-- BEGIN TOPLINE:W7900_MEMORY_CAPACITY -->
 | Route / profile | Hardware | Context/decode | Tracked peak | Observed device peak | Device/card margin | Capacity / quality status |
@@ -577,6 +579,21 @@ compact 256K INT8 row.
 | PARO BF16 KV, automatic 24 GB low-memory profile | RX 7900 XTX 24 GB | 220 Ki (225,280)/128 | 23.369 GiB | **23.908 GiB** | **+0.076 GiB (~78 MiB)** | Physical pass, but **edge only—not safe cap** |
 | PARO BF16 KV, default 48 GB-card profile | W7900 | 220 Ki (225,280)/128 | 24.090 GiB | at least 24.832 GiB | at most -0.848 GiB vs 24 GB card | Rejected for this larger-chunk profile |
 | PARO INT8 per-token/head KV, FP16 scales | W7900 | 256K/128 | **22.971 GiB** | 21.041 GiB phase sample | +1.029 GiB tracked | **Rejected** by Qwen3.6 matched-context and task gates |
+| PARO tail-four Hadamard-group32 mixed KV, BF16-oracle prefill | RX 7900 XTX 24 GB | 256 Ki (262,144)/128 request scratch | **23.469 GiB before failed allocation** | 22.566 GiB after clean OOM | 1.418 GiB free before request scratch; insufficient | **Rejected:** `HIP error 2` OOM and PARO fidelity failure; no segfault |
+| PARO tail-four Hadamard-group32 mixed KV, direct-streaming control | RX 7900 XTX 24 GB | 256 Ki (262,144)/128 request scratch | **23.290 GiB** | **23.590 GiB** live sample | **+0.394 GiB** live | Allocation passes, but direct packed prefill is **correctness-rejected** |
+
+The native explicit `tail4_hadamard_group32` layout keeps K/V for
+full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
+`27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
+rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
+BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
+while writing packed tail K/V, then releases that oracle before decode. Native
+GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
+KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
+1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
+the mixed policy remains explicit and non-default: its quality-preserving 256
+Ki request scratch OOMs, while the allocation-passing direct route fails
+fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The physical-card result differs from the earlier W7900 220 Ki rejection

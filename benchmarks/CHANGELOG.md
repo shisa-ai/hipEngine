@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-14
 
+- [gfx1100 mixed-KV presentation] Qwen3.6-35B-A3B / 24 GB context-capacity chart: all-layer INT8-only table -> adds the physical XTX tail-four quality-preserving OOM and direct-streaming allocation-control rows plus exact six-BF16/four-INT8 layer and native accuracy summary; no metric changed. `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 - [gfx1100 native mild mixed KV] Qwen3.6-35B-A3B GGUF Q4_K_M + W4-PARO / six BF16 plus four tail Hadamard-group32 INT8 K/V layers: host candidate -> **native GGUF accepted but native PARO rejected**. GGUF passes the full 11-prompt 512/8 and 4K/16 gates plus bounded 128K/16 at 100% top-1; PARO fails 1/11 and 2/11 prompts. XTX p512/d128 is effectively flat for GGUF eager (**+0.05% prefill / +0.25% decode**) but PARO graph decode changes **134.653 -> 129.116 tok/s (-4.11%)**. The quality-preserving 256 Ki PARO scratch probe OOMs at 23.469 GiB tracked; direct streaming allocates but is correctness-rejected. Explicit-only, no support/default promotion; `performance_claim=false`. `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 
 ## 2026-07-13
