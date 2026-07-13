@@ -160,7 +160,7 @@ run_prebuild() {
 run_hipengine() {
   run_prebuild
   local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
-  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-3run.json"
   local workloads=(512/128 1K/128 4K/128 32K/128 64K/128 128K/128)
   local paro_components=()
   local gguf_components=()
@@ -199,7 +199,7 @@ run_hipengine() {
       "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
       --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
       --backend hip_gfx1151 --workloads "$workload" \
-      --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+      --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
       --force-bulk-prefill --bulk-prefill-attention-mode bulk \
       --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
       --compiler-version-file "$HIPCC_VERSION_FILE" --require-cached-build \
@@ -241,7 +241,7 @@ run_llamacpp() {
 
 run_summary() {
   local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
-  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
+  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-3run.json"
   local hip_json="$OUTDIR/${DATE_PREFIX}-llamacpp-hip-q4km-f16kv.json"
   local vulkan_json="$OUTDIR/${DATE_PREFIX}-llamacpp-vulkan-q4km-f16kv.json"
   local summary_json="$OUTDIR/${DATE_PREFIX}-summary.json"

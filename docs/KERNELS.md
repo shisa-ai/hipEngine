@@ -335,10 +335,15 @@ A/B is `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at
 512/1K/4K; the six-case state matrix and 250/250 natural transitions are exact,
 and aggregate decode is +0.075%. Backend capability therefore selects
 `chain_lds32_direct` for gfx1151 `auto`; gfx1100 remains fused. Materialized
-`chain_lds32` stays as an explicit rollback/bisection route. See
+`chain_lds32` stays as an explicit rollback/bisection route. The clean
+right-sized 1+3 rollup publishes
+`819.641/893.266/752.308/640.096/540.850/387.334 tok/s` across
+512/1K/4K/32K/64K/128K with at most 0.132% prefill stdev/median. See
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json`,
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json`, and
-`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json`.
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json`,
+plus
+`benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`.
 
 ## DFlash / MTP lineage map
 

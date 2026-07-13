@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument("--workloads", nargs="+", default=list(DEFAULT_WORKLOADS), help="Workloads like 512/128, 4K/128, 128K/128")
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--warmup-runs", type=int, default=1)
-    parser.add_argument("--measured-runs", type=int, default=5)
+    parser.add_argument("--measured-runs", type=int, default=3)
     parser.add_argument("--warmup-decode-tokens", type=int, default=None)
     parser.add_argument("--backend", choices=("auto", "hip_gfx1100", "hip_gfx1151"), default="hip_gfx1100")
     parser.add_argument("--shared-expert-format", choices=("auto", "legacy_fp16", "packed_paro_w4"), default="packed_paro_w4")
