@@ -9,6 +9,7 @@ from hipengine.kvcache.policy import (
     KV_SCALE_GRANULARITY_CHOICES,
     KV_STORAGE_AUTO,
     KV_STORAGE_CHOICES,
+    KV_STORAGE_TAIL4_HADAMARD_GROUP32,
     ResolvedKVPolicy,
     resolve_kv_policy,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "RadixCache",
     "KV_STORAGE_AUTO",
     "KV_STORAGE_CHOICES",
+    "KV_STORAGE_TAIL4_HADAMARD_GROUP32",
     "ResolvedKVPolicy",
     "resolve_kv_policy",
     "resolve_prefix_cache_mode",

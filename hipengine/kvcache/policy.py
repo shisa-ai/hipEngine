@@ -10,9 +10,15 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 KV_STORAGE_AUTO = "auto"
-KV_STORAGE_CHOICES = (KV_STORAGE_AUTO, DType.BF16.value, DType.INT8_PER_TOKEN_HEAD.value)
+KV_STORAGE_TAIL4_HADAMARD_GROUP32 = "tail4_hadamard_group32"
+KV_STORAGE_CHOICES = (
+    KV_STORAGE_AUTO,
+    DType.BF16.value,
+    DType.INT8_PER_TOKEN_HEAD.value,
+    KV_STORAGE_TAIL4_HADAMARD_GROUP32,
+)
 KV_SCALE_DTYPE_CHOICES = (DType.FP16.value, DType.FP32.value)
-KV_SCALE_GRANULARITY_CHOICES = ("per_token_head",)
+KV_SCALE_GRANULARITY_CHOICES = ("per_token_head", "hadamard_group32")
 
 
 def _validate_unique_request_ids(request_ids: Sequence[int]) -> None:
@@ -34,6 +40,8 @@ class ResolvedKVPolicy:
     int8_admission_gated: bool = False
     spans_mode: str = "uniform"
     policy_class: str = "FixedPagedKVPolicy"
+    storage_layout: str = "uniform"
+    quantized_tail_layers: int = 0
 
     def __post_init__(self) -> None:
         storage = DType.parse(self.storage_dtype)
@@ -45,7 +53,16 @@ class ResolvedKVPolicy:
         if scale not in {DType.FP16, DType.FP32}:
             raise ValueError("INT8 KV scale dtype must be fp16 or fp32")
         if self.scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
-            raise ValueError("INT8 KV scale granularity must be per_token_head")
+            raise ValueError("unsupported INT8 KV scale granularity")
+        if self.quantized_tail_layers < 0:
+            raise ValueError("quantized_tail_layers must be non-negative")
+        if self.storage_layout == KV_STORAGE_TAIL4_HADAMARD_GROUP32:
+            if self.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+                raise ValueError("tail4_hadamard_group32 requires INT8 storage")
+            if self.scale_granularity != "hadamard_group32" or self.quantized_tail_layers != 4:
+                raise ValueError("tail4_hadamard_group32 requires four Hadamard-group32 tail layers")
+        elif self.storage_layout != "uniform":
+            raise ValueError("unsupported KV storage layout")
         if self.block_size <= 0:
             raise ValueError("KV block_size must be positive")
         if self.spans_mode != "uniform":
@@ -56,15 +73,21 @@ class ResolvedKVPolicy:
         return self.storage_dtype == DType.INT8_PER_TOKEN_HEAD
 
     def create_policy(self) -> "FixedPagedKVPolicy":
-        return FixedPagedKVPolicy(block_size=self.block_size, storage_dtype=self.storage_dtype)
+        return FixedPagedKVPolicy(
+            block_size=self.block_size,
+            storage_dtype=self.storage_dtype,
+            scale_granularity=self.scale_granularity,
+            storage_layout=self.storage_layout,
+            quantized_tail_layers=self.quantized_tail_layers,
+        )
 
     def to_json_dict(self) -> dict[str, Any]:
         scale_format = {
             "present": bool(self.uses_int8),
             "scale_dtype": self.scale_dtype.value if self.uses_int8 else None,
             "granularity": self.scale_granularity if self.uses_int8 else None,
-            "k_scale": "per_token_head" if self.uses_int8 else None,
-            "v_scale": "per_token_head" if self.uses_int8 else None,
+            "k_scale": self.scale_granularity if self.uses_int8 else None,
+            "v_scale": self.scale_granularity if self.uses_int8 else None,
         }
         return {
             "policy_class": self.policy_class,
@@ -79,6 +102,8 @@ class ResolvedKVPolicy:
             "int8_explicit": bool(self.int8_explicit),
             "int8_admission_gated": bool(self.int8_admission_gated),
             "selection_reason": self.selection_reason,
+            "storage_layout": self.storage_layout,
+            "quantized_tail_layers": int(self.quantized_tail_layers),
         }
 
 
@@ -98,7 +123,17 @@ def resolve_kv_policy(
     """
 
     requested = requested_storage.value if isinstance(requested_storage, DType) else str(requested_storage)
-    if requested == KV_STORAGE_AUTO:
+    storage_layout = "uniform"
+    quantized_tail_layers = 0
+    if requested == KV_STORAGE_TAIL4_HADAMARD_GROUP32:
+        storage = DType.INT8_PER_TOKEN_HEAD
+        reason = "explicit_tail4_hadamard_group32"
+        int8_explicit = True
+        int8_admission = False
+        scale_granularity = "hadamard_group32"
+        storage_layout = KV_STORAGE_TAIL4_HADAMARD_GROUP32
+        quantized_tail_layers = 4
+    elif requested == KV_STORAGE_AUTO:
         if admission_gated_int8:
             storage = DType.INT8_PER_TOKEN_HEAD
             reason = "admission_gated_int8"
@@ -111,7 +146,9 @@ def resolve_kv_policy(
     else:
         storage = DType.parse(requested)
         if storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
-            raise ValueError("KV storage must be bf16, int8_per_token_head, or auto")
+            raise ValueError(
+                "KV storage must be bf16, int8_per_token_head, tail4_hadamard_group32, or auto"
+            )
         reason = "explicit_int8" if storage == DType.INT8_PER_TOKEN_HEAD else "explicit_bf16"
         int8_explicit = storage == DType.INT8_PER_TOKEN_HEAD
         int8_admission = False
@@ -124,6 +161,8 @@ def resolve_kv_policy(
         selection_reason=reason,
         int8_explicit=int8_explicit,
         int8_admission_gated=int8_admission,
+        storage_layout=storage_layout,
+        quantized_tail_layers=quantized_tail_layers,
     )
 
 
@@ -250,6 +289,9 @@ class FixedPagedKVPolicy:
         block_size: int = 256,
         storage_dtype: str | DType = DType.BF16,
         total_capacity_tokens: int | None = None,
+        scale_granularity: str = "per_token_head",
+        storage_layout: str = "uniform",
+        quantized_tail_layers: int = 0,
     ) -> None:
         if block_size <= 0:
             raise ValueError("block_size must be positive")
@@ -257,6 +299,21 @@ class FixedPagedKVPolicy:
             raise ValueError("total_capacity_tokens must be positive")
         self.block_size = int(block_size)
         self.storage_dtype = DType.parse(storage_dtype)
+        if scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
+            raise ValueError("unsupported INT8 KV scale granularity")
+        if storage_layout not in {"uniform", KV_STORAGE_TAIL4_HADAMARD_GROUP32}:
+            raise ValueError("unsupported KV storage layout")
+        if int(quantized_tail_layers) < 0:
+            raise ValueError("quantized_tail_layers must be non-negative")
+        if storage_layout == KV_STORAGE_TAIL4_HADAMARD_GROUP32 and (
+            self.storage_dtype != DType.INT8_PER_TOKEN_HEAD
+            or scale_granularity != "hadamard_group32"
+            or int(quantized_tail_layers) != 4
+        ):
+            raise ValueError("tail4_hadamard_group32 requires four Hadamard-group32 INT8 tail layers")
+        self.scale_granularity = scale_granularity
+        self.storage_layout = storage_layout
+        self.quantized_tail_layers = int(quantized_tail_layers)
         self.total_capacity_tokens = None if total_capacity_tokens is None else int(total_capacity_tokens)
         self._reservations: dict[int, KVReservation] = {}
         self._transactions: dict[int, KVTransaction] = {}
@@ -264,6 +321,23 @@ class FixedPagedKVPolicy:
         self._live_block_owner_by_id: dict[int, int] = {}
         self._reservation_block_ids: dict[int, tuple[int, ...]] = {}
         self._next_transaction_id = 0
+
+    def full_attention_storage_dtype(self, layer_index: int, layer_count: int) -> DType:
+        """Return the fixed storage dtype for one full-attention layer."""
+
+        index = int(layer_index)
+        count = int(layer_count)
+        if count <= 0 or index < 0 or index >= count:
+            raise ValueError("full-attention layer index must be within layer_count")
+        if self.quantized_tail_layers and index < max(0, count - self.quantized_tail_layers):
+            return DType.BF16
+        return self.storage_dtype
+
+    def full_attention_scale_granularity(self, layer_index: int, layer_count: int) -> str | None:
+        """Return scale metadata granularity, or ``None`` for preserved BF16 layers."""
+
+        storage = self.full_attention_storage_dtype(layer_index, layer_count)
+        return self.scale_granularity if storage == DType.INT8_PER_TOKEN_HEAD else None
 
     @property
     def reservations(self) -> dict[int, KVReservation]:
