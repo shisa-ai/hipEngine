@@ -60,10 +60,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
@@ -842,6 +844,7 @@ def _run_exact_split_chain(
     wave32_tree: bool = False,
     lds_tile: int | None = None,
     direct_conv_lds32: bool = False,
+    direct_conv_lds32_nonvolatile: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -867,7 +870,7 @@ def _run_exact_split_chain(
     cu = _to_device(np.asarray([0, inputs.tokens], dtype=np.int32))
     state_indices = _to_device(np.asarray([0], dtype=np.int64))
     try:
-        if direct_conv_lds32:
+        if direct_conv_lds32 or direct_conv_lds32_nonvolatile:
             qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16(
                 conv_out.ptr,
                 a.ptr,
@@ -938,8 +941,13 @@ def _run_exact_split_chain(
             recurrent_segments = (
                 qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
             )
+        if direct_conv_lds32_nonvolatile:
+            recurrent = qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32
+            recurrent_segments = (
+                qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32
+            )
         if use_segments:
-            if direct_conv_lds32:
+            if direct_conv_lds32 or direct_conv_lds32_nonvolatile:
                 recurrent_segments(
                     conv_out.ptr,
                     beta.ptr,
@@ -977,7 +985,7 @@ def _run_exact_split_chain(
                     inputs.head_v_dim,
                 )
         else:
-            if direct_conv_lds32:
+            if direct_conv_lds32 or direct_conv_lds32_nonvolatile:
                 recurrent(
                     conv_out.ptr,
                     beta.ptr,
@@ -1215,6 +1223,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             backend="hip_gfx1100",
             layer="gdn_prefill_recurrent",
             quant="gguf_qwen35",
+            variant="f32_decode_order_exact_lds32_direct_nonvolatile",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
             variant="f32_decode_order_exact_segments_lds64",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32
@@ -1236,6 +1253,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments_lds32_direct",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_decode_order_exact_segments_lds32_direct_nonvolatile",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32
     )
     assert (
         resolve(
@@ -1727,6 +1753,37 @@ def test_gdn_prefill_direct_conv_lds32_is_bit_exact_to_materialized_chain(
     np.testing.assert_array_equal(state_direct, state_materialized)
     _assert_output_close(out_direct, out_cpu, label="direct LDS32 vs CPU")
     _assert_state_close(state_direct, state_cpu, label="direct LDS32 vs CPU")
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_direct_nonvolatile_is_bit_exact_to_direct(
+    use_segments: bool,
+) -> None:
+    """Compiler-cacheable LDS accesses must preserve direct recurrence bits."""
+
+    inputs = _GDNInputs(
+        tokens=17,
+        num_k_heads=2,
+        num_v_heads=4,
+        head_k_dim=128,
+        head_v_dim=32,
+        seed=113,
+    )
+    out_baseline, state_baseline = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        direct_conv_lds32=True,
+    )
+    out_candidate, state_candidate = _run_exact_split_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        direct_conv_lds32_nonvolatile=True,
+    )
+    np.testing.assert_array_equal(out_candidate, out_baseline)
+    np.testing.assert_array_equal(state_candidate, state_baseline)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

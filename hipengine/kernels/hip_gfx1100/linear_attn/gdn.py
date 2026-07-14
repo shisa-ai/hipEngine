@@ -47,6 +47,9 @@ _SYMBOL_PREFILL_DECODE_ORDER_EXACT_LDS32 = (
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_LDS32_DIRECT = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32"
 )
+_SYMBOL_PREFILL_DECODE_ORDER_EXACT_LDS32_DIRECT_NONVOLATILE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32"
+)
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_WAVE32 = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32"
 )
@@ -70,6 +73,9 @@ _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_LDS32 = (
 )
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_LDS32_DIRECT = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32"
+)
+_SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_LDS32_DIRECT_NONVOLATILE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32"
 )
 _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_WAVE32 = (
     "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32"
@@ -1270,6 +1276,52 @@ def qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32(
+    conv_out_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact LDS32 recurrence with compiler-cacheable state accesses."""
+
+    _check_exact_prefill_shape(
+        tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim
+    )
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_EXACT_LDS32_DIRECT_NONVOLATILE)
+    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(query_scale_ptr),
+        ctypes.c_void_p(key_scale_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32(
     query_raw_ptr: int,
     key_raw_ptr: int,
@@ -1681,6 +1733,63 @@ def qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_LDS32_DIRECT)
+    fn.argtypes = [ctypes.c_void_p] * 9 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(query_scale_ptr),
+        ctypes.c_void_p(key_scale_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32(
+    conv_out_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    query_scale_ptr: int,
+    key_scale_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run segment-aware exact LDS32 recurrence with cacheable state."""
+
+    _check_exact_prefill_shape(
+        total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim
+    )
+    if segments <= 0:
+        raise ValueError(f"segments must be positive, got {segments}")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_PREFILL_DECODE_ORDER_EXACT_SEGMENTS_LDS32_DIRECT_NONVOLATILE,
+    )
     fn.argtypes = [ctypes.c_void_p] * 9 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(
@@ -2626,6 +2735,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "gdn_prefill_recurrent",
             "gguf_qwen35",
+            "f32_decode_order_exact_lds32_direct_nonvolatile",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
             "f32_decode_order_exact_segments_lds64",
         ),
         qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
@@ -2649,6 +2768,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_decode_order_exact_segments_lds32_direct",
         ),
         qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_decode_order_exact_segments_lds32_direct_nonvolatile",
+        ),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32,
         replace=replace,
     )
     register(

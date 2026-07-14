@@ -12,7 +12,12 @@ from scripts.gguf_gdn_trajectory_gate import (
 
 
 def test_parser_accepts_exact_lds_candidate_modes() -> None:
-    for mode in ("chain_lds32", "chain_lds64", "chain_lds32_direct"):
+    for mode in (
+        "chain_lds32",
+        "chain_lds64",
+        "chain_lds32_direct",
+        "chain_lds32_direct_nonvolatile",
+    ):
         args = build_parser().parse_args(
             ["--candidate-mode", mode, "--json", "/tmp/out.json"]
         )

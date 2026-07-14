@@ -1003,6 +1003,35 @@ component. Do not substitute the single eager marker-profile rate for that
 median, and do not attribute shorter-context decode drift to LCP-D1: the new
 branch is not executed at `num_splits <= 256`.
 
+## LCP-2A: compiler-cacheable exact GDN state candidate
+
+The production-path audit reopened exact GDN work without relaxing the
+recurrent-state contract. The first bounded idea, sharing scaled Q/K through
+LDS across the 32 value columns, was byte-exact but nearly doubled the
+isolated recurrence (`6.639 -> 13.014 ms` at 512 and
+`58.455 -> 113.116 ms` at 4K); it was removed.
+
+The second candidate changes no operation order. The existing rolled scalar
+body is instantiated with a nonvolatile LDS pointer so LLVM may cache legal
+state accesses; the original volatile plain/segment symbols remain unchanged
+as rollback. On gfx1151, the isolated one-layer recurrence moves
+**6.572 -> 1.763 ms (3.73x)** at 512 and
+**58.613 -> 19.864 ms (2.95x)** at 4K. `rocprofv3` records the intended
+nonvolatile body with **32 VGPR, 16 KiB LDS, and zero scratch**, versus 64 VGPR
+for the production body.
+
+The dirty-worktree correctness screen is exact in all six required full-model
+cases: greeting, repeated 9707 at 512, 1024/1025, and 4095/4096. Sampled token,
+FP32 hidden seed, all resident Conv/GDN states, and the greeting/512 all-layer
+outputs match fused byte-for-byte. A one-warmup/four-interleaved-measurement
+screen against `chain_lds32_direct` wins every pair and reduces median bulk
+prefill wall by **26.33%/27.15%/27.15%** at 512/1K/4K. This remains
+`performance_claim=false` because the worktree is dirty. The candidate is
+registered as explicit `chain_lds32_direct_nonvolatile`; gfx1151 `auto` remains
+on GPF-2E until a clean committed revision reproduces the six-case matrix,
+250/250 natural transitions, and balanced wall gate. Candidate evidence is
+[`2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json).
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
