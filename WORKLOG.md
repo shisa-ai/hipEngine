@@ -155511,3 +155511,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   auto wrapper. The expanded backend/Q8/GDN/Q4 bundle passes **203/203** and the
   explicit W7900 GPF-5A byte-exact fixture passes **3/3**. Next commit this
   policy, then run a clean automatic-route confirmation before LCP-1.
+
+## 2026-07-14 - Confirm the promoted gfx1100 automatic prefill route
+
+- Committed the transfer policy as clean `82b62d5f`, then ran selector-unset,
+  right-sized 1+3 512/128 and 4K/128 sessions with no schedule override. Exact
+  command family: `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1100 --workloads <shape> --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode
+  bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode
+  --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt
+  --require-cached-build` under the clean TheRock environment.
+- Automatic 512/128 records **1344.043 tok/s prefill** and **90.259 tok/s
+  decode**; 4K/128 records **1463.713/97.466 tok/s**. All six measured final
+  IDs are `9707`; tracked peaks remain exactly **21.478/22.995 GiB**; both raw
+  artifacts report commit `82b62d5f` and `dirty=false`. Relative to the clean
+  pre-promotion default this is **+107.25%/+114.57% prefill**.
+- Added compact diagnostic
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-promoted-focus.json` and
+  updated the handoff/changelog narrative. `performance_claim=false`: this
+  confirms automatic routing but intentionally does not replace the public
+  six-shape table before the LCP-1/profile pass completes.
