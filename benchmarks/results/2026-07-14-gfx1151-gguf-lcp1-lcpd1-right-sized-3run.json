@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_lcp1_lcpd1_right_sized_refresh",
+  "status": "accepted_topline_refresh",
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon 8060S/gfx1151 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV six-shape right-sized 1+3 prefill and graph decode",
+  "candidate": "LCP-1 exact tiled convolution at all six shapes plus LCP-D1 exact >256-split gated reducer at 128K",
+  "conclusion": "Clean automatic prefill is 906.979/929.724/946.366/778.371/636.330/433.811 tok/s and graph decode is 49.061/51.569/52.432/43.543/37.562/28.047 tok/s at 512/1K/4K/32K/64K/128K. All 18 measured IDs are 9707, tracked memory is unchanged, and no variance gate requires five samples.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "measurement_commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+    "all_component_worktrees_clean": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "prompt": "repeated token 9707"
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "decode_tokens": 128,
+    "decode": "fresh state-bound graph per measured repetition; capture excluded from decode throughput",
+    "build": "cached builds required; wrappers prebuilt outside retained timing",
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <one-shape> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/lcp1-hipcc-version-current.txt --require-cached-build --json <component.json>"
+  },
+  "source_components": {
+    "512/128": {
+      "filename": "512-128.json",
+      "sha256": "9e466154f8cd924cb93c0587a6e21238f62e569d6fa805da5997001bf61326c1",
+      "bytes": 161682,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    },
+    "1K/128": {
+      "filename": "1K-128.json",
+      "sha256": "6a98708233747abb9356f4af097d3d34c0f9682fbfa0f487f853b1afac14c15d",
+      "bytes": 162923,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    },
+    "4K/128": {
+      "filename": "4K-128.json",
+      "sha256": "641b980b49e36bed29237e532b602d07f2f1104d6797170e327c6e7ba9c2b60f",
+      "bytes": 163080,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    },
+    "32K/128": {
+      "filename": "32K-128.json",
+      "sha256": "fc047950ecdd686bc4f899afedf1a95c3d5710a38a2be2314021a77a3cfc2b1e",
+      "bytes": 163351,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    },
+    "64K/128": {
+      "filename": "64K-128.json",
+      "sha256": "c96827cfa362720bfadc4720d4e3962947a24420a3187c92f3b15ab810dbd4db",
+      "bytes": 163400,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    },
+    "128K/128": {
+      "filename": "128K-128.json",
+      "sha256": "29e5481ba52258a91ddcabc9f6c3a408eea40545a03ef882a56e1f85242dfd66",
+      "bytes": 163517,
+      "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+      "dirty": false
+    }
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "route": "LCP-1 tiled convolution + original <=256-split reducer",
+      "prefill_tok_s": {"samples": [904.8245217022984, 906.9790393585359, 907.0587753354694], "median": 906.9790393585359, "stdev": 1.2675562745163431, "stdev_over_median_percent": 0.13975585096352686},
+      "decode_tok_s": {"samples": [49.05961987891857, 49.09075160750323, 49.06114720150572], "median": 49.06114720150572, "stdev": 0.01754963481775646, "stdev_over_median_percent": 0.03577094262732171},
+      "tracked_peak_allocated_gib": 21.477776296436787,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 1.9186959133568493, "decode": 0.19025196084130336},
+      "versus_llamacpp_hip_percent": {"prefill": -14.537527150883289, "decode": -3.686473622360631}
+    },
+    "1K/128": {
+      "route": "LCP-1 tiled convolution + original <=256-split reducer",
+      "prefill_tok_s": {"samples": [929.2918367220433, 929.8545538569903, 929.724447021471], "median": 929.724447021471, "stdev": 0.2945986065204316, "stdev_over_median_percent": 0.0316866580699505},
+      "decode_tok_s": {"samples": [51.56872529710917, 51.5468329476864, 51.58071843797005], "median": 51.56872529710917, "stdev": 0.01718204897909964, "stdev_over_median_percent": 0.03331873898396094},
+      "tracked_peak_allocated_gib": 21.710381522774696,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 1.1012288288513972, "decode": 0.14577257928529708},
+      "versus_llamacpp_hip_percent": {"prefill": -10.880204075662036, "decode": 1.477282256501966}
+    },
+    "4K/128": {
+      "route": "LCP-1 tiled convolution + original <=256-split reducer",
+      "prefill_tok_s": {"samples": [946.365704271869, 947.4088532238713, 945.6731780573688], "median": 946.365704271869, "stdev": 0.8737200712515911, "stdev_over_median_percent": 0.09232372509988925},
+      "decode_tok_s": {"samples": [52.43202625601851, 52.523554258619804, 52.412817824050215], "median": 52.43202625601851, "stdev": 0.05917332881747737, "stdev_over_median_percent": 0.11285722304253891},
+      "tracked_peak_allocated_gib": 22.99488216638565,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 24.04197916393698, "decode": 0.15458726920927202},
+      "versus_llamacpp_hip_percent": {"prefill": -6.229865614534791, "decode": 4.600459354463782}
+    },
+    "32K/128": {
+      "route": "LCP-1 tiled convolution + original <=256-split reducer",
+      "prefill_tok_s": {"samples": [778.6135629511128, 778.2037768670774, 778.3707835892118], "median": 778.3707835892118, "stdev": 0.20605731341556663, "stdev_over_median_percent": 0.026472899260863596},
+      "decode_tok_s": {"samples": [43.54797443132143, 43.54323534853481, 43.54269679868873], "median": 43.54323534853481, "stdev": 0.0029040875733143375, "stdev_over_median_percent": 0.006669434528851696},
+      "tracked_peak_allocated_gib": 23.558860778808594,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 19.94344935397041, "decode": 0.11969242698002258},
+      "versus_llamacpp_hip_percent": {"prefill": 4.683467701330479, "decode": -1.5749653062052338}
+    },
+    "64K/128": {
+      "route": "LCP-1 tiled convolution + original <=256-split reducer",
+      "prefill_tok_s": {"samples": [636.7069393424462, 636.3303213347081, 636.0794057155522], "median": 636.3303213347081, "stdev": 0.31585814974755794, "stdev_over_median_percent": 0.04963745073235594},
+      "decode_tok_s": {"samples": [37.56945387903191, 37.55482598221513, 37.56191029249516], "median": 37.56191029249516, "stdev": 0.007315149978682199, "stdev_over_median_percent": 0.019474914672121348},
+      "tracked_peak_allocated_gib": 24.203407764434814,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 16.480927540396138, "decode": 1.1111584262811558},
+      "versus_llamacpp_hip_percent": {"prefill": 10.93412109159484, "decode": -4.485810170128768}
+    },
+    "128K/128": {
+      "route": "LCP-1 tiled convolution + LCP-D1 long-split reducer",
+      "prefill_tok_s": {"samples": [434.1416290348068, 433.81067123342604, 433.75695060840985], "median": 433.81067123342604, "stdev": 0.2083252519427763, "stdev_over_median_percent": 0.04802215937898864},
+      "decode_tok_s": {"samples": [28.057259869674635, 28.04128672699198, 28.04663763621239], "median": 28.04663763621239, "stdev": 0.008130245592558427, "stdev_over_median_percent": 0.02898830761110939},
+      "tracked_peak_allocated_gib": 25.492501735687256,
+      "final_token_ids": [9707, 9707, 9707],
+      "versus_prior_public_percent": {"prefill": 11.999074833314216, "decode": 1.0566482896116725},
+      "versus_llamacpp_hip_percent": {"prefill": 11.107868085940265, "decode": -12.665386945841705}
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "all_18_measured_final_ids_9707": true,
+    "all_component_final_logits_finite": true,
+    "lcp1_full_state": "512 and 4K compare FP32 logits/hidden, 30 Conv/GDN pairs, and 10 live BF16 K/V pairs byte-for-byte (82/82 each).",
+    "lcpd1": "256/257 CPU contract passes; 512-split baseline/candidate A/B is byte-exact for 4096 BF16 outputs; clean 128K profile has 24/24 exact tokens.",
+    "variance_gate": "sample stdev <=5% of median",
+    "largest_prefill_stdev_over_median_percent": 0.13975585096352686,
+    "largest_decode_stdev_over_median_percent": 0.11285722304253891,
+    "tracked_memory_unchanged_from_prior_public": true
+  },
+  "causal_evidence": {
+    "lcp1": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json",
+    "lcpd1": "benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json",
+    "lcp1_focus": "512/4K prefill +1.73%/+22.91%, 82/82 exact, unchanged memory",
+    "lcpd1_clean_profile": "128K reducer -16.30%, attention -2.15%, total GPU -1.22%, profiled host throughput +1.32%"
+  },
+  "rollup_validation": {
+    "script": "scripts/merge_readme_sweep_components.py --engine gguf --platform gfx1151",
+    "status": "accepted_topline",
+    "performance_claim": true,
+    "sha256": "37aa56373bd4770c19b7261b423d73e5b26518954a5b6060778433e6e1564f8b"
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json",
+    "replaces": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json",
+    "llamacpp_reference": "benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-14T03:09:31.817597+00:00",
+    "repo_root": "/tmp/hipengine-lcpd1-clean-71e61524",
+    "hipengine_commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": ["scripts/qwen35_readme_sweep.py", "--engine", "gguf", "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf", "--quant", "gguf_q4_k_m", "--backend", "hip_gfx1151", "--workloads", "512/128", "--warmup-runs", "1", "--measured-runs", "3", "--warmup-decode-tokens", "1", "--force-bulk-prefill", "--bulk-prefill-attention-mode", "bulk", "--use-wmma-prefill", "--use-gemv-decode", "--graph-replay-decode", "--compiler-version-file", "/tmp/lcp1-hipcc-version-current.txt", "--require-cached-build", "--json", "/tmp/hipengine-lcp-final-sweep-71e61524/512-128.json"],
+    "environment": {"HIPENGINE_BACKEND": null, "HIPENGINE_HIP_ARCH": "gfx1151", "HIP_VISIBLE_DEVICES": null, "ROCR_VISIBLE_DEVICES": null, "CUDA_VISIBLE_DEVICES": null, "GPU_DEVICE_ORDINAL": null},
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {"enabled": false, "reason": "topline host-wall sweep"}
+  },
+  "provenance_note": "The canonical block is the exact clean 512 component provenance. All other components share the same clean commit/model/backend/compiler identity and are bound above by SHA-256; the clean detached merge gate validates identity, protocol, finite logits, stable IDs, and variance."
+}

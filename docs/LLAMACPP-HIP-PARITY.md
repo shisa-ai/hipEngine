@@ -1,9 +1,13 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **source and profile audit complete; implementation work not started**
+Status: **audit complete; LCP-1 prefill and LCP-D1 long-context decode retained on gfx1151**
 Date: **2026-07-14**
 Machine-readable evidence:
-[`2026-07-14-gfx1151-llamacpp-hip-parity-audit.json`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json)
+
+- [`2026-07-14-gfx1151-llamacpp-hip-parity-audit.json`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json)
+- [`2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json)
+- [`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json)
+- [`2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -14,7 +18,7 @@ and which implementation ideas are actually worth transferring?
 Do **not** treat llama.cpp as a uniformly faster implementation and do not port
 its generic HIP backend wholesale.
 
-The current comparison has three distinct regimes:
+The audit baseline had three distinct regimes:
 
 1. **512-64K prefill:** hipEngine still trails, most sharply at 4K. The current
    512/4K traces attribute the actionable excess to exact GDN recurrence,
@@ -22,14 +26,18 @@ The current comparison has three distinct regimes:
 2. **128K prefill:** hipEngine is already within **0.80%** of llama.cpp HIP.
    This is not the place for another broad prefill rewrite.
 3. **Decode:** hipEngine is within **-5.54% to +4.44%** through 64K and trails
-   clearly only at 128K (**-13.58%**). That row needs a bounded matched decode
-   profile and KV-dtype control before source differences are called causal.
+   clearly only at 128K (**-13.58%**). At the audit point, that row needed a
+   bounded matched profile before source differences could be called causal;
+   LCP-D1 closes that attribution below for hipEngine BF16 KV.
 
-The first implementation candidate is **LCP-1: an exact, same-stream,
-long-token SSM-convolution kernel using llama.cpp's 32-token shared-memory
-schedule**. It targets a measured 4K family gap of **954.438 versus 32.980 ms**
-without importing llama.cpp's non-identical GDN reduction tree or re-enabling
-the unstable isolated-AOTriton-stream policy.
+That first candidate, **LCP-1**, is now retained: the exact same-stream
+32-token shared-memory convolution reduces its 4K body from **954.134 to
+49.790 ms** and improves the clean 4K focus by **22.91%** without importing
+llama.cpp's non-identical GDN tree or re-enabling the unstable isolated-stream
+policy. The bounded decode follow-up, **LCP-D1**, also retains an exact long-
+split reducer improvement; its clean 128K eager profile moves
+**27.130 -> 27.488 tok/s (+1.32%)**. Publication medians remain separate from
+these marker-profile rates.
 
 ## Evidence boundary
 
@@ -65,10 +73,12 @@ These limitations allow family selection and source-backed hypotheses. They do
 not allow claims that two similarly named kernels implement identical math or
 that KV dtype is irrelevant.
 
-## Current topline gap
+## Audit topline gap before LCP-1/LCP-D1
 
-The public values come from [`benchmarks/README.md`](../benchmarks/README.md).
-The wall gap is `N / hipEngine_tok_s - N / llama_tok_s`.
+These values were the public GPF-5A baseline when the audit ran; the retained
+LCP rollup below now supersedes the hipEngine column in
+[`benchmarks/README.md`](../benchmarks/README.md). The wall gap is
+`N / hipEngine_tok_s - N / llama_tok_s`.
 
 | Context | hipEngine prefill | llama.cpp HIP | hipEngine / llama | Prefill wall gap | Decode delta |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -322,8 +332,8 @@ accounting and no-regression gates.
 
 | Rank | ID | Work | Why now | Exit gate |
 | ---: | --- | --- | --- | --- |
-| 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | 4K is 954.438 vs 32.980 ms; schedule is exact-plausible and independent of rejected stream isolation | Primitive output/state bytes; 512/4K 82-part state; same-stream trace; fresh 1+3 wall |
-| 2 | `LCP-D1` | Bounded 128K decode profile plus BF16/F16 control where feasible | Prefill is at parity; decode trails 13.58%; attribution is missing | Phase-marked bounded profile, no publication-sweep extension |
+| 1 | `LCP-1` | **Retained:** exact 32-token shared-memory long-token convolution | Clean 512/4K focus is +1.73%/+22.91%; 82/82 state parts are byte-exact and the 4K body falls 954.134 -> 49.790 ms | Complete on gfx1151; gfx1100 remains baseline pending W7900 evidence |
+| 2 | `LCP-D1` | **Retained:** bounded 128K attribution plus exact long-split gated reduction | Attention is 50.95% at 128K; parallelizing only independent work above 256 splits cuts the reducer 234.714 -> 196.466 us/call | Complete for GGUF BF16 KV; PARO/KV-dtype work remains separate |
 | 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap, but direct tree port violates trajectory contract | Six-case state matrix and 250/250 natural transitions before timing |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
@@ -331,6 +341,63 @@ accounting and no-regression gates.
 
 There is no invented minimum win. Exact, same-suite non-regressive
 improvements remain retainable under the project evidence policy.
+
+## Retained implementation outcomes
+
+### LCP-1: exact shared-token convolution
+
+Clean detached commit `3ff8e2d7` passes the six-length primitive gate and the
+512/4K 82-part full-state differential byte-for-byte. The spill-free body uses
+128 threads, a 32-token by 128-channel tile, 17.5 KiB LDS, and zero scratch.
+On the normal caller stream its 4K output family is **49.790 ms / 120 launches**
+versus **954.134 ms** for the prior body. Fresh one-warmup/three-measurement
+focus improves prefill **890.727 -> 906.118 tok/s (+1.73%)** at 512 and
+**762.273 -> 936.910 tok/s (+22.91%)** at 4K, with unchanged memory. gfx1151
+selects the tiled schedule; gfx1100 retains the baseline pending hardware-local
+evidence.
+
+### LCP-D1: exact long-split gated reduction
+
+The clean attribution uses baseline `631498dd`; the retained candidate is
+`71e61524`. Both use the same Q4_K_M model, BF16 KV, repeated token `9707`, four
+eager-decode warmups, and 24 exact ROCTX-marked steps. At 512, dense Q8 remains
+first at **8.520 ms/token / 44.25%**, while attention is only
+**2.160 ms/token / 11.22%**. At 128K, attention becomes the context-local
+majority at **17.882 ms/token / 50.95%**. The grouped-GQA context body is
+**15.502 ms/token** and its gated split reducer is **2.347 ms/token**.
+
+An all-eight-query-head register tile was byte-exact but decisively slower at
+128K (**1.748 -> 2.878 ms/call, 0.607x**) and was removed. LCP-D1 instead keeps
+max selection, denominator summation, and final output accumulation serial in
+the original split order. Only independent exponentials and normalization
+multiplies run cooperatively, and only when `num_splits > 256`; shorter contexts
+execute the original serial body.
+
+The 512-split reducer microbench is byte-exact for all 4,096 BF16 outputs and
+moves **138.139 -> 101.350 us (1.363x)**. The 256-split control is neutral at
+**76.184 -> 76.103 us**. In the clean 128K model trace, the reducer moves
+**234.714 -> 196.466 us/call (-16.30%)**, attention moves
+**17.882 -> 17.498 ms/token (-2.15%)**, total traced GPU time moves
+**35.094 -> 34.668 ms/token (-1.22%)**, and profiled host wall moves
+**36.860 -> 36.380 ms/token**, or **27.130 -> 27.488 tok/s (+1.32%)**.
+All 24 candidate tokens are exact; the kernel uses 16 VGPR and zero scratch.
+Evidence:
+[`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json).
+
+### Right-sized publication gate
+
+The clean automatic one-warmup/three-measurement sweep is complete at
+`71e61524`. Prefill is
+**906.979/929.724/946.366/778.371/636.330/433.811 tok/s** at
+512/1K/4K/32K/64K/128K, improving the prior public rows by
+**1.92%/1.10%/24.04%/19.94%/16.48%/12.00%**. Graph decode is
+**49.061/51.569/52.432/43.543/37.562/28.047 tok/s**; the 128K row improves
+**1.06%**. All 18 measured IDs are `9707`, tracked memory is unchanged, and
+maximum prefill/decode sample stdev over median is only **0.140%/0.113%**, so no
+five-sample escalation is justified. At 32K, 64K, and 128K, hipEngine prefill
+now exceeds the retained llama.cpp HIP rows by **4.68%/10.93%/11.11%**. The
+single eager marker-profile rate above remains kernel evidence; this 1+3 graph-
+decode sweep supplies the publication medians.
 
 ## Explicit non-targets
 
@@ -347,25 +414,13 @@ improvements remain retainable under the project evidence policy.
 - Do not infer memory efficiency from the public cross-column peak values; the
   scopes differ.
 
-## LCP-1 implementation gate
+## Next parity targets
 
-The first coding tranche should remain narrow:
-
-1. Add a registered convolution variant; do not branch on backend or quant in
-   engine/dispatch code.
-2. Keep the current convolution output and state-update chain as the unfused
-   fallback.
-3. Tile 32 tokens by 128 channels in shared memory. Preserve each output's
-   product/add order and final state bytes.
-4. RED/GREEN around token lengths `4, 31, 32, 33, 512, 4096`, including initial
-   and final convolution state.
-5. Run the all-layer/full-state 512 and 4K differential gate.
-6. Profile on the normal caller stream after AOTriton. The candidate must win
-   without `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM=1`.
-7. Run fresh-process one-warmup/three-measurement 512/4K A/B. Escalate only on
-   the documented variance trigger.
-8. If exact and non-regressive, promote through gfx1151 registry metadata and
-   retain gfx1100 baseline until its own hardware gate.
-
-This separates a source-backed kernel schedule from the rejected queue-policy
-experiment and preserves every current correctness invariant.
+LCP-1 and LCP-D1 close the first source-backed tranche. The next prefill target
+is exact chunked/prefix GDN research, but only behind the six-case state matrix
+and 250/250 natural-transition gate. Dense-Q8 shared-layout work follows; do
+not disturb the already-faster selected Q4/Q5 families. For decode, the clean
+128K trace still leaves the grouped-GQA context body at **15.502 ms/token** and
+dense Q8 at **8.546 ms/token**. Any follow-up must target one of those measured
+families and preserve the current BF16-KV, `KVLiveSpans`, and exact state/token
+contracts.

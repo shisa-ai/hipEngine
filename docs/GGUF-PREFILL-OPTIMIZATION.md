@@ -1,8 +1,9 @@
 # GGUF Prefill Optimization
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-14.
 
-Status: `SOL-R5` implementation and publication tranche complete on gfx1151.
+Status: `SOL-R5` plus the bounded GGUF half of `SOL-R6` are retained and
+published on gfx1151.
 `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
@@ -30,20 +31,24 @@ full-model matrix and all 250 natural logit transitions are byte-exact; every
 timed decode trajectory matches and weighted decode is **+0.075%**. GPF-2E is
 now the gfx1151-scoped automatic route; gfx1100 remains fused. A clean
 selector-unset focus confirmation at `b8949477` reproduces
-**821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. The clean
-right-sized 1+3 publication window records
-**819.641/893.266/752.308/640.096/540.850/387.334 tok/s** at
-512/1K/4K/32K/64K/128K and now supplies the public gfx1151 GGUF column. The
-largest prefill sample stdev/median is only **0.132%**; the first-three median
-equals the five-sample median at every shape that serialized five samples.
-Two later 128K repetitions stop making progress, but both occur after the
-retained three-run window and are tracked as a separate lifecycle-soak issue,
-not as a publication blocker. No more prefill implementation is active in
-this tranche.
+**821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. That first
+clean right-sized 1+3 publication window recorded
+**819.641/893.266/752.308/640.096/540.850/387.334 tok/s**. Scoped two-wave
+Q8T16 GPF-5A then refreshed 512-64K to
+**889.904/919.598/762.940/648.948/546.296 tok/s** while restoring the
+production wrapper at 128K. The post-GPF-5A llama.cpp parity tranche is now
+complete: exact tiled convolution LCP-1 and long-split reducer LCP-D1 publish
+**906.979/929.724/946.366/778.371/636.330/433.811 prefill tok/s** and
+**49.061/51.569/52.432/43.543/37.562/28.047 graph-decode tok/s** at
+512/1K/4K/32K/64K/128K. All 18 measured IDs are `9707`; tracked memory is
+unchanged; maximum prefill/decode stdev over median is **0.140%/0.113%**. The
+separate 128K lifecycle-soak issue is not reproduced inside this calibrated
+1+3 window.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
-`hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
-replace the separate decode, MTP, concurrency, or long-context memory plans.
+`hip_gfx1100` and `hip_gfx1151`. LCP-D1 records the bounded 128K GGUF decode
+follow-up selected by the parity audit; this is still not a general decode, MTP,
+concurrency, or long-context memory plan.
 
 ## Decision
 
@@ -388,8 +393,10 @@ select current code without a fresh profile.
 | 8 | `GPF-2E` | **Promoted and published on gfx1151:** compact Q/K scales and direct `conv_out` Q/K/V reads for exact LDS32 | Clean 512/1K/4K prefill +6.01%/+7.74%/+6.24%, 250/250 natural logits exact, decode +0.075%; six right-sized rows retained; gfx1100 remains fused |
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
-| 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there; final automatic 128K rerun remains |
-| 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
+| 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there |
+| 12 | `LCP-1` | **Promoted and published on gfx1151:** exact 32-token by 128-channel shared-memory convolution | 82/82 state parts exact; 4K body 954.134 -> 49.790 ms; six-shape prefill +1.10%..+24.04%; gfx1100 stays baseline |
+| 13 | `LCP-D1` | **Retained long-context decode reduction:** cooperate only above 256 splits | 4,096 BF16 values exact; 128K reducer -16.30%; graph decode 27.753 -> 28.047 tok/s; shorter reducer unchanged |
+| 14 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort next prefill algorithm; require six-case state and 250/250 natural transitions before timing |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -953,9 +960,48 @@ independent hardware transfer. Explicit
 `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline` is the rollback. Clean
 evidence is
 [`2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json).
-The right-sized six-shape automatic sweep remains the publication and
-long-context scope gate; it must scope or revert any context that does not
-preserve the win rather than extending the 512/4K protocol informally.
+The clean right-sized automatic sweep at `71e61524` is complete: prefill is
+**906.979/929.724/946.366/778.371/636.330/433.811 tok/s** at
+512/1K/4K/32K/64K/128K, or
+**+1.92%/+1.10%/+24.04%/+19.94%/+16.48%/+12.00%** versus the prior public row.
+Graph decode is **49.061/51.569/52.432/43.543/37.562/28.047 tok/s**, including
+**+1.06%** at 128K. All 18 measured IDs are `9707`, tracked memory is
+unchanged, and maximum prefill/decode sample stdev over median is only
+**0.140%/0.113%**, so no five-run escalation is required. Compact evidence is
+[`2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json).
+
+## LCP-D1: exact long-split decode reduction
+
+The bounded clean decode profiles at `631498dd` establish that the 512-token
+Amdahl ordering does not transfer to 128K. At 512, dense Q8 is
+**8.520 ms/token / 44.25%** and attention is **2.160 ms/token / 11.22%**. At
+128K, attention grows to **17.882 ms/token / 50.95%**: the grouped-GQA context
+body is **15.502 ms/token** and the gated split reducer is
+**2.347 ms/token**.
+
+An all-query-head register tile preserved output bytes but regressed the 128K
+attention call **1.748 -> 2.878 ms (0.607x)** and was removed. LCP-D1 instead
+keeps max selection, denominator summation, and final output accumulation in
+the original serial split order. It parallelizes only independent exponentials
+and normalization multiplies when `num_splits > 256`; the original serial body
+remains byte-for-byte through 256 splits.
+
+The 512-split microbench compares 4,096 BF16 outputs byte-for-byte and moves the
+reducer **138.139 -> 101.350 us (1.363x)**; the 256-split control is neutral at
+**76.184 -> 76.103 us**. The final clean `71e61524` 128K profile moves the
+reducer **234.714 -> 196.466 us/call (-16.30%)**, attention
+**17.882 -> 17.498 ms/token (-2.15%)**, total GPU time
+**35.094 -> 34.668 ms/token (-1.22%)**, and profiled host wall
+**36.860 -> 36.380 ms/token**, or **27.130 -> 27.488 tok/s (+1.32%)**. All 24
+candidate tokens are exact; the reducer uses 16 VGPR and zero scratch. The
+256/257 CPU contract, direct-gate/registry tests, cached BF16 GQA/GQA-state
+smokes, and all seven CPU fixtures pass. Evidence is
+[`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json).
+
+The graph-decode public row remains governed by the separate right-sized 1+3
+component. Do not substitute the single eager marker-profile rate for that
+median, and do not attribute shorter-context decode drift to LCP-D1: the new
+branch is not executed at `num_splits <= 256`.
 
 ## Correctness And Promotion Contract
 
@@ -1140,45 +1186,44 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - Correctness is anchored by the six-case byte-exact matrices and the GPF-2E
   ten-prompt gate: 250/250 natural logits and every measured trajectory are
   exact. Do not weaken that contract after seeing a faster tree reduction.
-- The public gfx1151 GGUF prefill row is
-  **889.904/919.598/762.940/648.948/546.296/387.334 tok/s** and decode is
-  **48.968/51.494/52.351/43.491/37.149/27.753 tok/s** at
-  512/1K/4K/32K/64K/128K. Clean `e9baf563` supplies the refreshed 512-64K
-  components; final scoped policy is `6418b278`; the unchanged production-
-  wrapper 128K row carries forward from clean `28b45d38`. All use TheRock HIP
-  7.15, kernel 7.1.3-2-cachyos, TuneD `accelerator-performance`.
-- The calibrated gfx1151 GGUF publication protocol is one discarded warmup
-  plus three measured repetitions. Five is an escalation, not a default.
-  Existing data prove the first-three median equals the five-sample median at
-  all five fully serialized shapes; about 65 minutes of this tranche were
-  avoidable under the old 2+5 procedure.
-- 128K later-pass no-progress is not a performance-publication blocker. It is
-  an independent fresh-graph/session lifecycle soak with unknown subphase.
-  The final scoped retry confirms production routing at **385.474 tok/s** once,
-  then reproduces the stall on measured run 2; it is intentionally excluded
-  from the accepted row. Do not rerun the full model sweep to investigate it;
-  first add phase markers and bounded lifecycle-only coverage.
-- GPF-4 is rejected as a default after its final stability gate. It is exact
-  and often fast, but automatic-route 32K includes a **294.254 tok/s** collapse,
-  the 1+5 replacement stalls before warmup completion, and 128K measured run 2
-  remains GPU-active beyond **1200 s**. A same-stream control is healthy.
-- GPF-5A is promoted on gfx1151 through 64K. Final automatic 512-64K medians
-  are **889.904/919.598/762.940/648.948/546.296 tok/s**, all stable/exact.
-  Same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**.
-- The post-GPF-5A source/profile audit is complete in
-  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). It rejects a wholesale
-  llama.cpp port and selects exact same-stream 32-token shared-memory
-  convolution (`LCP-1`) before exact chunked/prefix GDN research.
+- The public gfx1151 GGUF prefill row is now
+  **906.979/929.724/946.366/778.371/636.330/433.811 tok/s** and graph decode is
+  **49.061/51.569/52.432/43.543/37.562/28.047 tok/s** at
+  512/1K/4K/32K/64K/128K. Clean `71e61524` supplies all six independent
+  right-sized components on TheRock HIP 7.15, kernel 7.1.3-2-cachyos, and
+  TuneD `accelerator-performance`.
+- The calibrated publication protocol remains one discarded warmup plus three
+  measured repetitions. Five is a variance/stability/borderline escalation,
+  not a default. The LCP sweep's largest prefill/decode stdev over median is
+  only **0.140%/0.113%**; all 18 measured IDs are `9707`.
+- 128K later-pass no-progress remains a separate lifecycle-soak diagnostic.
+  The new calibrated 1+3 LCP component completes all four passes cleanly at
+  **433.811 prefill / 28.047 decode tok/s** and does not disprove the older
+  intermittent later-pass issue. Investigate that issue only with phase markers
+  and bounded lifecycle coverage, not more timing repetitions.
+- GPF-4 remains rejected. GPF-5A remains promoted only through 64K; same-commit
+  128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)** and package policy
+  restores its production Q8T16 wrapper above 65,536 tokens.
+- LCP-1 is retained on gfx1151 at all six shapes. Its clean 4K body falls
+  **954.134 -> 49.790 ms**, its 512/4K focus is **+1.73%/+22.91%**, and the
+  final right-sized prefill refresh is **+1.10%..+24.04%** through 64K plus
+  **+12.00%** at 128K. gfx1100 stays on the production convolution pending its
+  hardware-local transfer gate.
+- LCP-D1 is retained for `num_splits > 256`; shorter reducers remain serial.
+  The clean 128K reducer falls **234.714 -> 196.466 us/call (-16.30%)**, and
+  right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.
+- The parity audit and retained outcomes are complete in
+  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). Next targets are exact
+  chunked/prefix GDN research, then dense-Q8 layout screening for prefill; the
+  remaining 128K decode bodies are grouped-GQA context and dense Q8.
 - No benchmark process is intentionally left running. Publication, artifacts,
   rollups, and the root README export are complete.
 
-Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
-prefill aliases only when the request has at most 65,536 prompt tokens;
-request-scoped package policy restores production above that. gfx1100 stays on
-the production wrapper. The published partial refresh is final; investigate
-128K lifecycle only with phase markers and bounded lifecycle coverage. Start
-future parity implementation from `LCP-1`; token-parallel/prefix GDN remains
-the exactness-constrained high-effort fallback.
+Keep GPF-4 explicit/default-off and GPF-5A request-scoped through 65,536 tokens.
+Keep the exact production convolution fallback while LCP-1's selector survives
+one release and gfx1100 transfer. Future parity work starts from exact
+chunked/prefix GDN or the measured 128K grouped-GQA/dense-Q8 bodies, not from a
+wholesale llama.cpp port or the rejected GDN tree.
 
 ## Document Ownership
 

@@ -155630,3 +155630,59 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `scripts/check_fixtures.py` remains blocked independently by the existing
   nested `moe/moe_ffn_selected_gguf_q4_k.json` schema (no top-level
   `expected`), after four earlier fixtures pass.
+
+## 2026-07-14 - Publish LCP-1/LCP-D1 gfx1151 GGUF rollup
+
+- Repeated the LCP-D1 128K marker profile from detached clean commit
+  `71e61524`. The gated reducer is **196.466 us/call** versus clean baseline
+  `631498dd` at **234.714 us/call (-16.30%)**. Attention moves
+  **17.882 -> 17.498 ms/token (-2.15%)**, total traced GPU time
+  **35.094 -> 34.668 ms/token (-1.22%)**, and profiled host wall
+  **36.860 -> 36.380 ms/token**, or **27.130 -> 27.488 tok/s (+1.32%)**.
+  All 24 tokens are `9707`; the reducer uses 16 VGPR and zero scratch. Compact
+  retained evidence is
+  `benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`.
+- Ran the final publication protocol from the clean detached worktree, one
+  independent process per shape, with `HIPENGINE_HIP_ARCH=gfx1151`, one
+  discarded warmup, three measurements, one warmup decode token, 128 measured
+  decode tokens, bulk/WMMA/GEMV paths, fresh graph replay per measured run,
+  cached builds required, and the exact Q4_K_M/BF16-KV repeated-9707 workload:
+  `python3 scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1151 --workloads <one-shape> --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode
+  bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode
+  --compiler-version-file /tmp/lcp1-hipcc-version-current.txt
+  --require-cached-build --json <component.json>`.
+
+  | Workload | Prefill tok/s | Versus prior public | Graph decode tok/s | Tracked peak GiB |
+  | --- | ---: | ---: | ---: | ---: |
+  | 512/128 | **906.979** | **+1.92%** | 49.061 | 21.478 |
+  | 1K/128 | **929.724** | **+1.10%** | 51.569 | 21.710 |
+  | 4K/128 | **946.366** | **+24.04%** | 52.432 | 22.995 |
+  | 32K/128 | **778.371** | **+19.94%** | 43.543 | 23.559 |
+  | 64K/128 | **636.330** | **+16.48%** | 37.562 | 24.203 |
+  | 128K/128 | **433.811** | **+12.00%** | **28.047 (+1.06%)** | 25.493 |
+
+- All **18/18** measured final IDs are `9707`, every final logit is finite, and
+  tracked peak memory is unchanged. Largest prefill/decode sample stdev over
+  median is only **0.140%/0.113%**; no five-run escalation is justified. The
+  clean detached `merge_readme_sweep_components.py` gate returns
+  `accepted_topline`, `performance_claim=true`; validation artifact SHA-256 is
+  `37aa56373bd4770c19b7261b423d73e5b26518954a5b6060778433e6e1564f8b`.
+- The public prefill row now exceeds retained llama.cpp HIP by
+  **4.68%/10.93%/11.11%** at 32K/64K/128K. Decode remains behind llama.cpp HIP
+  at 128K by **12.67%**; the next measured residuals are the grouped-GQA context
+  body (**15.502 ms/token**) and dense Q8 (**8.546 ms/token**), not another
+  undirected reducer/threshold sweep.
+- Compact rollup is
+  `benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`.
+  Updated the canonical/root benchmark tables, changelog, parity audit, GGUF
+  optimization handoff, SOL coordinator, kernel catalog, and refactor ledger.
+  The older intermittent 128K later-pass lifecycle issue remains separate; this
+  calibrated 1+3 component completed all four passes cleanly.
+- Post-publication validation: paged-attention direct-gate/plan tests pass
+  **8/8**; all seven CPU fixtures pass; the canonical/root benchmark blocks are
+  synchronized. Both compact artifacts pass canonical provenance, JSON,
+  source-binding, and arithmetic checks; new local links and `git diff --check`
+  pass.
