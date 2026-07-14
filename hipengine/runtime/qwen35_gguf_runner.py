@@ -37,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans,
@@ -14448,6 +14449,17 @@ def _gguf_paged_attn_warp_split_enabled() -> bool:
     )
 
 
+def _gguf_paged_attn_parallel_reduce_enabled(active_context: int) -> bool:
+    min_context = max(
+        0,
+        _env_int("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT", 65536),
+    )
+    return (
+        _env_flag("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", False)
+        and int(active_context) >= min_context
+    )
+
+
 def _gguf_qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
     return (
         int(block_size) == 256
@@ -14474,6 +14486,8 @@ def _gguf_full_attention_split_gate_bf16_fn(
 ):
     if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
         if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
+            if _gguf_paged_attn_parallel_reduce_enabled(active_context):
+                return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
             return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
         if _gguf_paged_attn_warp_split_enabled():
             return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans

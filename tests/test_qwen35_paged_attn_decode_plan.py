@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gate_f32_spans,
     qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
@@ -200,6 +201,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16_split_k_gqa_gate_bf16_spans",
         )
         is qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_split_k_gqa_gate_bf16_parallel_reduce_spans",
+        )
+        is qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
     )
     assert (
         resolve(
