@@ -19,6 +19,57 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
+## Production-path attribution: 2026-07-14
+
+The corrected microbench dashboard remains useful for mechanism, but production
+selection now comes from matched llama.cpp Vulkan and HIP traces on the same
+Radeon 8060S/gfx1151 device and the same Qwen3.6-35B-A3B `UD-Q4_K_M` file.
+Vulkan uses the built-in timestamp logger; HIP uses `rocprofv3`. The clocks are
+not strict cross-profiler A/Bs, so family shares and source selection are
+retained while profiler-affected rates do not replace the five-sample toplines.
+Compact evidence is
+[`2026-07-14-gfx1151-llamacpp-vulkan-hip-production-profile.json`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-vulkan-hip-production-profile.json).
+
+### Measured production result
+
+- **Prefill:** Vulkan's backend-specific leads are GDN and long
+  FlashAttention. At 128K, Vulkan GDN is **2.711 s** versus llama.cpp HIP
+  **12.785 s**, and FlashAttention is **144.805 s** versus **208.121 s**.
+  Vulkan is slower than llama.cpp HIP in selected Q4, selected Q5, and dense
+  Q8 at 512, 4K, and 128K. The quantized-prefill topline gap is therefore not
+  evidence for a Vulkan MMQ port.
+- **Decode:** llama.cpp HIP FlashAttention is faster than Vulkan at every
+  measured depth: **0.130/0.479/11.646 ms/token** at 512/4K/128K versus
+  Vulkan **0.210/0.821/12.540 ms/token**. Vulkan's remaining decode lead comes
+  from quantized/F32 matvecs plus lower command-buffer/fusion residual, not a
+  better attention body.
+- **Dispatch:** Vulkan executes **1,483 operations/token** in the measured
+  decode graph, but hipEngine already graph-replays fewer launches than either
+  llama.cpp backend. Vulkan command-buffer structure is not a reason to add a
+  hipEngine Vulkan backend or generic fusion pass without a new hipEngine
+  trace naming host/launch overhead.
+- **Exactness:** the Vulkan GDN shader, like llama.cpp HIP, shards state rows
+  across subgroup lanes and changes contraction order. That schedule conflicts
+  with hipEngine's byte-exact recurrent-state and natural-trajectory contract;
+  it is algorithmic evidence, not a copyable default.
+
+### Transfer decision
+
+| Rank | Production-backed opportunity | Decision |
+| ---: | --- | --- |
+| 1 | Exact chunked/prefix GDN for prefill | Research in HIP behind the existing six-case state and 250/250 natural-transition gates. Do not copy the Vulkan/HIP subgroup reduction tree under the exact route. |
+| 2 | Dense Q8 prefill and decode | Screen HIP-local address, live-range, activation-sharing, and shape schedules while preserving BF16 activation/output semantics. Do not substitute Vulkan Q8_1 math. |
+| 3 | 128K grouped-GQA decode context body | Compare hipEngine with the faster llama.cpp HIP FlashAttention implementation. Vulkan is explicitly not the source target. Preserve BF16 KV and `KVLiveSpans`. |
+| 4 | F32 router logits | Screen only after the larger families; Vulkan's separate top-k bucket is small, so top-k fusion is not the first router experiment. |
+
+Closed non-targets are selected Q4/Q5 prefill, short/mid full-attention prefill,
+generic graph/dispatch work, a wholesale Vulkan backend, broad compiler/ISA
+work, and the already-rejected non-exact GDN tree. The exact tiled convolution
+and long-split reducer opportunities named by the earlier llama.cpp HIP audit
+are already retained as LCP-1 and LCP-D1. Future implementation claims must
+start from the current hipEngine family trace rather than transfer raw
+cross-profiler ratios.
+
 ## Measurement Reset: 2026-07-10
 
 **Current status:** there is no retained HIP/Vulkan timing ratio from the
