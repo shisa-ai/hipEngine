@@ -155553,3 +155553,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   This dirty-worktree focus is not a retained performance claim. Commit the
   candidate with both automatic backend capabilities still `baseline`, then
   repeat exact/focus gates from that clean commit before promotion.
+
+## 2026-07-14 - Promote LCP-1 convolution on gfx1151
+
+- Validated detached clean candidate commit `3ff8e2d7` in
+  `/tmp/hipengine-lcp1-clean-3ff8e2d7`; the worktree remained clean. One
+  non-profiled pass prebuilt worktree-local wrappers outside timing, and every
+  retained run used `--require-cached-build`.
+- Clean separate-process capture reproduces the retained production hashes at
+  both 512 and 4K: predicted token `9707`, FP32 logits/hidden, all 30 Conv/GDN
+  state pairs, and all 10 live BF16 K/V pairs match **82/82**.
+- Clean fresh-process one-warmup/three-measurement prefill-only focus:
+  - 512 production **[863.622, 891.776, 890.727]**, median
+    **890.727 tok/s**; LCP-1 **[881.900, 907.469, 906.118]**, median
+    **906.118 tok/s (+1.73%)**;
+  - 4K production **[762.873, 761.546, 762.273]**, median
+    **762.273 tok/s**; LCP-1 **[936.910, 937.202, 935.743]**, median
+    **936.910 tok/s (+22.91%)**.
+  Tracked peak is unchanged at 21.478/22.995 GiB. All child artifacts identify
+  commit `3ff8e2d7` and `dirty=false`.
+- Promote the gfx1151 package capability to `f32_tile32x128`; gfx1100 remains on
+  `f32_baseline` pending an independent W7900 gate. The production route stays
+  registered as the required exact fallback, and explicit
+  `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline` is the rollback.
+- Clean promotion evidence is
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json`.
+  The right-sized six-shape automatic sweep is the next publication/scope gate;
+  do not infer 32K-128K behavior from the focus pair or extend 1+3 to five
+  without the documented variance trigger.
+- Validation: the primitive/registry/policy/backend bundle passes **30/30**;
+  promotion artifact JSON and arithmetic checks pass; `git diff --check`
+  passes; the changed optimization/history sections were re-read in context.

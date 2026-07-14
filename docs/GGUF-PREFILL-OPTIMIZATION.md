@@ -916,6 +916,47 @@ The external lineage checkout is absent in this environment, so the required
 lineage command cannot resolve it; no external code is copied, and GPF-5A is an
 in-tree schedule experiment over the catalogued T16 body.
 
+## LCP-1: exact shared-token convolution
+
+The post-GPF-5A llama.cpp parity audit selected linear-attention convolution as
+the strongest transferable schedule: hipEngine's clean 4K caller-stream trace
+spent **954.438 ms** in convolution versus llama.cpp's **32.980 ms**. LCP-1
+therefore stages a 35-row input window for 32 output tokens by 128 channels in
+17.5 KiB LDS. It preserves the production kernel's four separately rounded
+FP32 products, serial add order, SiLU, and unchanged second state-update launch.
+Both implementations are registered under `gguf_qwen35`; the production route
+remains the exact fallback.
+
+The first healthy-queue microbench was deliberately not hidden: the initial
+candidate lost to production at both 512 and 4K rows. The bounded full-model
+probe then measured **928.759 vs 756.961 tok/s (+22.70%)**, proving that the new
+same-stream body avoids the post-AOTriton queue-local cliff that the isolated
+microbench cannot reproduce. Replacing volatile product locals with an explicit
+separately rounded `v_mul_f32_e32` removes scratch while preserving bytes. The
+final cached 4K trace records **49.790 ms / 120** output launches versus
+**954.134 ms / 120** for production, with 128 threads, 17.5 KiB LDS, and zero
+scratch. Candidate evidence is
+[`2026-07-14-gfx1151-gguf-prefill-lcp1-candidate-focus.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-candidate-focus.json).
+
+Clean detached commit `3ff8e2d7` reproduces **82/82** exact FP32
+logits/hidden, Conv/GDN, and live BF16 K/V parts at both 512 and 4K. Its
+prescribed one-warmup/three-measurement focus is:
+
+| Context | Production samples tok/s | LCP-1 samples tok/s | Median delta |
+| ---: | --- | --- | ---: |
+| 512 | 863.622, 891.776, 890.727 | 881.900, 907.469, 906.118 | **+1.73%** |
+| 4K | 762.873, 761.546, 762.273 | 936.910, 937.202, 935.743 | **+22.91%** |
+
+Tracked peak remains 21.478/22.995 GiB. gfx1151 therefore selects
+`f32_tile32x128` automatically; gfx1100 remains on `f32_baseline` pending an
+independent hardware transfer. Explicit
+`HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline` is the rollback. Clean
+evidence is
+[`2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json).
+The right-sized six-shape automatic sweep remains the publication and
+long-context scope gate; it must scope or revert any context that does not
+preserve the win rather than extending the 512/4K protocol informally.
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required

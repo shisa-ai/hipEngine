@@ -9,9 +9,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 from hipengine.runtime import qwen35_gguf_runner as runner_module
 
 
-def test_lcp1_auto_policy_keeps_both_backends_on_production() -> None:
+def test_lcp1_auto_policy_is_scoped_to_gfx1151() -> None:
     assert runner_module._gguf_linear_attn_conv_prefill_mode("hip_gfx1100") == "baseline"
-    assert runner_module._gguf_linear_attn_conv_prefill_mode("hip_gfx1151") == "baseline"
+    assert runner_module._gguf_linear_attn_conv_prefill_mode("hip_gfx1151") == "tile32x128"
 
 
 def test_lcp1_explicit_candidate_and_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
