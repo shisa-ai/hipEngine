@@ -156071,3 +156071,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   new kernel remains or is claimed.
 - Compact rejected artifact:
   `benchmarks/results/2026-07-14-gfx1100-q6t16-top1-fusion-rejected.json`.
+
+## 2026-07-14 - Predeclare exact Q8T16 virtual-wave32 dual-split screen
+
+- The next candidate targets only the dominant dense-Q8 dual-split leaf, not
+  the already-rejected all-body block64 or indexing-only extensions. Current
+  Q8T16 dual-split uses four physical waves per 16-output tile, wave-local sums,
+  LDS exchange, and an ordered four-part final sum. This family is about
+  **16.77%** of the retained 4K GPU window.
+- Test a true one-subgroup schedule while preserving exact arithmetic: one
+  physical wave serially executes the same four virtual-wave block-index
+  sequences (`block_idx = virtual_wave; += 4`), performs the same wave reduction
+  for each, stores four partials, then adds them in the current `0..3` order.
+  This is distinct from the historical 64-thread candidate, which changed K
+  ownership/reduction order, changed generated IDs, and regressed throughput.
+- Admission requires byte identity to the current 128-thread body at the
+  production `rows=1, in=2048, out=8192+4096` shape and on a tied fixture. A
+  cache-cycled W7900 micro A/B must improve the complete dual-split launch before
+  runtime routing or full-model timing. Any negative or scratch-spilling leaf
+  result removes the candidate; an advancing candidate then needs expected-
+  symbol trace and clean 4K graph nonregression with exact IDs/final value.
+
+## 2026-07-14 - Reject exact Q8T16 virtual-wave32 dual-split
+
+- The production-shape ordinary and repeated-output fixtures pass byte-exactly
+  versus the current 128-thread dual-split body (**2/2**). The one-wave kernel
+  reproduces each virtual wave's block sequence and reduction plus the final
+  ordered four-part sum, so this result isolates schedule rather than math.
+- The W7900 cache-cycled micro gate is decisively negative. Current 128-thread
+  median is **31.337 us**; exact virtual-wave32 is **48.618 us**, a
+  **55.143% latency regression**, across six alternating 80-warmup/400-call
+  legs cycling about 107 MiB of Q8T16 weights.
+- Rejected before runtime routing, trace, or full-model timing. Eliminating the
+  physical cross-wave exchange cannot pay when the current 16-output T16 map
+  forces one subgroup to execute all four virtual-wave instruction streams
+  serially. Removed the candidate kernel, wrapper, and tests; production is
+  unchanged.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q8t16-virtual-wave32-rejected.json`.
