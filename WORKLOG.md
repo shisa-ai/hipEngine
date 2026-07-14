@@ -156169,3 +156169,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the old three-kernel route for clean post-commit A/B and rollback; its removal
   trigger is recorded in `docs/REFACTOR.md`. Clean implementation validation and
   commit come next, followed by clean 4K publication evidence.
+
+## 2026-07-14 - Publish exact gfx1100 F32-weight router default
+
+- Implementation commit `4c743994` is clean and default-on. The clean W7900
+  rollback/default/rollback 4K/128 sequence uses three fresh right-sized
+  processes, each with one discarded warmup and three measured state-bound
+  graph runs. All three child artifacts report commit `4c743994`, clean
+  provenance, gfx1100/W7900, exact Q4_K_M fingerprint, TheRock HIP 7.15, and
+  cached-only builds.
+- Control A is **97.2948/97.2488/97.2501 tok/s** (median **97.2501**), the
+  no-env default is **98.3278/98.2727/98.0825** (median **98.2727**), and
+  control B is **97.1832/97.2197/97.0424** (median **97.1832**). The combined
+  control median is **97.2342 tok/s**; the default improves graph decode by
+  **+1.0680%**. This confirms and strengthens the source-dirty +0.60% screen.
+- All nine measured final IDs are `9707`, all nine final values are exactly
+  `29.407920837402344`, and tracked peak is exactly **21.543610 GiB** in every
+  leg. Prefill drifts monotonically **1455.530/1453.199/1450.387 tok/s** across
+  process order and is not claimed; this change only routes c1 decode.
+- Published accepted scoped artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-f32w-cooperative-router.json`.
+  Updated the benchmark index/changelog and kernel/refactor handoff. The public
+  six-shape throughput table remains on its clean `ef3e97dd` sweep until every
+  shape receives a new defaults-only refresh; the new 4K row is retained as a
+  named exact optimization gate rather than silently mixing revisions.
