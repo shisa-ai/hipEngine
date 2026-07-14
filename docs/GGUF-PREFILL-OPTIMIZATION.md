@@ -65,6 +65,18 @@ byte fixtures but is neutral at 512 and regresses full-model 4K **0.192%**; all
 candidate code and routing were removed. Evidence is
 [`2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json).
 
+The independent `LCP-D1/D2` decode addendum is also complete on gfx1100. The
+128K profile isolates **5.067 ms/token** grouped-GQA context plus
+**1.621 ms/token** serial split reduction. Replacing only the reduction with a
+parallel prepare and coalesced output stage moves the 513-split leaf
+**194.881 -> 25.000 us (7.80x)**. Clean graph decode improves
+**84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307 (+3.95%)** at
+64K, and **56.927 -> 61.367 (+7.80%)** at 128K. The 64K logit gate records max
+KL **1.904e-6**, top-1 100%, and exact generated IDs; memory is unchanged.
+The gfx1100 backend selects the candidate from 32K onward while gfx1151 retains
+serial reduction pending independent evidence. See
+[`2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
+
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
 replace the separate decode, MTP, concurrency, or long-context memory plans.
