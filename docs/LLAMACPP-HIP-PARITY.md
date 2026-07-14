@@ -1,9 +1,10 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **source and profile audit complete; implementation work not started**
+Status: **gfx1151 source/profile audit complete; gfx1100 LCP-1 transfer rejected**
 Date: **2026-07-14**
 Machine-readable evidence:
-[`2026-07-14-gfx1151-llamacpp-hip-parity-audit.json`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json)
+[`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json) and
+[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -30,6 +31,26 @@ long-token SSM-convolution kernel using llama.cpp's 32-token shared-memory
 schedule**. It targets a measured 4K family gap of **954.438 versus 32.980 ms**
 without importing llama.cpp's non-identical GDN reduction tree or re-enabling
 the unstable isolated-AOTriton-stream policy.
+
+## gfx1100 post-transfer update
+
+The W7900 schedule-transfer work changes the ranking and closes LCP-1 on
+`hip_gfx1100`. A clean, prefill-only `rocprofv3` profile at `16395fe5` records
+**358.274/2701.741 ms** over **2009/5495** dispatches at 512/4K. Exact GDN
+recurrence now owns **211.487/1652.114 ms (59.0%/61.1%)**, while convolution
+falls to only **3.101/29.552 ms (0.87%/1.09%)**. The old 4K 954 ms convolution
+queue cliff disappeared when the architecture-local direct-LDS32 GDN route was
+promoted; it is not an independent current hotspot on gfx1100.
+
+The planned 32-token by 128-channel LDS candidate was nevertheless implemented
+as a bounded diagnostic. It preserves raw output and final-state bytes at token
+lengths `4,31,32,33,512,4096`, but the normal-stream full-model screen is
+neutral at 512 (**+0.043%**) and regresses 4K **1468.728 -> 1465.910 tok/s
+(-0.192%)**. The candidate kernel, selector, and duplicate route were removed.
+Do not tune LCP-1 further on gfx1100 without a new profile that restores a
+material convolution bucket. The next first-order gfx1100 prefill problem is
+exact GDN recurrence; `LCP-D1` remains the independent bounded 128K decode
+attribution task.
 
 ## Evidence boundary
 
@@ -322,7 +343,7 @@ accounting and no-regression gates.
 
 | Rank | ID | Work | Why now | Exit gate |
 | ---: | --- | --- | --- | --- |
-| 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | 4K is 954.438 vs 32.980 ms; schedule is exact-plausible and independent of rejected stream isolation | Primitive output/state bytes; 512/4K 82-part state; same-stream trace; fresh 1+3 wall |
+| 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1` | Bounded 128K decode profile plus BF16/F16 control where feasible | Prefill is at parity; decode trails 13.58%; attribution is missing | Phase-marked bounded profile, no publication-sweep extension |
 | 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap, but direct tree port violates trajectory contract | Six-case state matrix and 250/250 natural transitions before timing |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
@@ -348,6 +369,11 @@ improvements remain retainable under the project evidence policy.
   scopes differ.
 
 ## LCP-1 implementation gate
+
+**gfx1100 result (2026-07-14): rejected and removed.** The candidate passed the
+primitive byte gate but failed the normal-stream full-model wall gate after the
+promoted schedule profile invalidated the old hotspot premise. The checklist
+below remains the original gfx1151-local gate, not open gfx1100 work.
 
 The first coding tranche should remain narrow:
 

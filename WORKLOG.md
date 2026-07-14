@@ -155533,3 +155533,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   updated the handoff/changelog narrative. `performance_claim=false`: this
   confirms automatic routing but intentionally does not replace the public
   six-shape table before the LCP-1/profile pass completes.
+
+## 2026-07-14 - Reprofile promoted gfx1100 prefill and reject LCP-1
+
+- Prewarmed the exact current cache outside the profiler, then traced clean
+  `16395fe5` with `rocprofv3 --kernel-trace` around direct final
+  `scripts/qwen35_gguf_bench.py` children at 512/0 and 4096/0. Both used normal
+  caller-stream bulk prefill, no graph/decode, zero profiler warmups, one
+  measurement, the precomputed compiler-version file, and
+  `--require-cached-build`.
+- The promoted route changes the family ranking. At 512 the trace is
+  **358.274 ms / 2009 dispatches**: exact GDN **211.487 ms (59.0%)**, dense Q8
+  **49.736 ms**, selected Q4/Q5 **33.901/23.167 ms**, and convolution only
+  **3.101 ms (0.87%)**. At 4K it is **2701.741 ms / 5495 dispatches**: exact GDN
+  **1652.114 ms (61.1%)**, dense Q8 **307.935 ms**, selected Q4/Q5
+  **225.292/173.756 ms**, router **96.168 ms**, full attention **83.899 ms**,
+  and convolution only **29.552 ms (1.09%)**. GPF-2E removed the old 954 ms
+  downstream convolution queue cliff; LCP-1 is no longer a first-order W7900
+  target.
+- Still implemented the bounded LCP-1 schedule to test the source-backed
+  hypothesis: 128 threads stage 32 tokens by 128 channels in 17.5 KiB LDS while
+  preserving the four product/add operations and existing separate final-state
+  update. TheRock W7900 fixtures at token lengths 4, 31, 32, 33, 512, and 4096
+  pass raw output and final-state byte equality (**6/6**).
+- The normal-stream max-4K 1+3 full-model diagnostic rejects it. 512 is noise at
+  **1353.791 -> 1354.374 tok/s (+0.043%)**; 4K regresses
+  **1468.728 -> 1465.910 tok/s (-0.192%)**. The screen is deliberately dirty
+  and `performance_claim=false`; it is a rejection gate, not promotion
+  evidence. Removed the candidate kernel, wrapper, selector, registry entry,
+  exports, and tests, leaving the tree at the exact promoted baseline.
+- Added
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`
+  and updated both optimization handoffs. Do not tune LCP-1 further on gfx1100
+  without a new profile. Exact GDN is the first-order prefill family; bounded
+  128K decode attribution (`LCP-D1`) remains independent.
