@@ -336,7 +336,7 @@ accounting and no-regression gates.
 | 2 | `LCP-D1` | **Retained:** bounded 128K attribution plus exact long-split gated reduction | Attention is 50.95% at 128K; parallelizing only independent work above 256 splits cuts the reducer 234.714 -> 196.466 us/call | Complete for GGUF BF16 KV; PARO/KV-dtype work remains separate |
 | 3 | `LCP-2A` | **Retained:** compiler-cacheable exact direct LDS32 GDN state | Clean balanced 512/1K/4K prefill is +34.76%/+36.63%/+36.58%; direct tree port remains invalid | Six-case state and 250/250 natural transitions pass byte-exactly; gfx1151 promoted |
 | 4 | `LCP-3` | **Retained:** four exact Q8T16 waves share one activation tile | Clean 512/4K full-model prefill is +0.53%/+1.57%; dominant 4K shapes are 7.50%-14.08% faster than GPF-5A | Complete on gfx1151 through 64K; two-wave and production remain rollback paths |
-| 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
+| 5 | `LCP-4A` | **Retained:** remove idle half of exact F32 router reduction on gfx1151 | Clean 512/4K full-model prefill is +2.76%/+3.28%; graph decode is exact/+0.071% | 256-thread trace passes; refresh profile before deciding whether select fusion remains material |
 | 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
 
 There is no invented minimum win. Exact, same-suite non-regressive
@@ -406,6 +406,23 @@ restores production. `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0` is the two-wave
 rollback; gfx1100 remains production. Evidence:
 [`2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json).
 
+### LCP-4A: exact 256-thread F32 router logits
+
+The existing token-tiled router used 512 threads for `hidden_size=2048`, while
+only the first 256 lanes received one eight-element dot fragment. Its first
+reduction step therefore added only zeros. Reusing the unchanged HIP body with
+256 threads preserves the meaningful reduction tree byte-for-byte and cuts the
+isolated 512/1024-token `2048x256` router by **44.32%/44.17%**.
+
+Clean detached candidate `3ef55ad4` is **83/83** exact at 512 and 4K. Five
+balanced pairs improve prefill **1218.536 -> 1252.147 tok/s (+2.76%)** and
+**1290.923 -> 1333.229 tok/s (+3.28%)**. A separate clean 512/128 graph gate is
+exact and moves **48.987 -> 49.021 tok/s (+0.071%)**. `rocprofv3` confirms the
+named token-tile body at 256 threads, 32 VGPR, and zero scratch. gfx1151 now
+selects the 256-thread wrapper through the registry; gfx1100 remains at 512
+pending independent evidence. Evidence:
+[`2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json).
+
 ### Right-sized publication gate
 
 The clean automatic one-warmup/three-measurement sweep is complete at
@@ -438,10 +455,10 @@ decode sweep supplies the publication medians.
 
 ## Next parity targets
 
-LCP-1, LCP-D1, LCP-2A, and LCP-3 close the currently actionable exact
-convolution, GDN, and dense-Q8 prefill tranche. The next prefill target is the
-measured F32 router-logit family (`LCP-4`); do not disturb the already-faster
-selected Q4/Q5 families. For decode, the clean 128K trace still leaves the
-grouped-GQA context body at **15.502 ms/token** and dense Q8 at
+LCP-1, LCP-D1, LCP-2A, LCP-3, and LCP-4A close the currently actionable
+exact convolution, GDN, dense-Q8, and router-logit prefill bodies. Refresh the
+4K family profile before attempting router-select fusion; do not disturb the
+already-faster selected Q4/Q5 families. For decode, the clean 128K trace still
+leaves the grouped-GQA context body at **15.502 ms/token** and dense Q8 at
 **8.546 ms/token**. Any follow-up must target one of those measured families and
 preserve the current BF16-KV, `KVLiveSpans`, and exact state/token contracts.

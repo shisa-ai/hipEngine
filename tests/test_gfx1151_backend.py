@@ -20,6 +20,9 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
     register_qwen35_rmsnorm_kernels,
 )
+from hipengine.kernels.hip_gfx1100.moe.router import (
+    qwen35_router_logits_bf16_f32w_auto_256,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
@@ -33,6 +36,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q8_T16_PREFILL_FOUR_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
+    GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     TARGET_ARCH,
@@ -89,6 +93,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q8_T16_PREFILL_FOUR_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
+    assert GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
@@ -131,6 +136,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="router_logits",
+            quant="f32",
+            variant="bf16_hidden",
+        )
+        is qwen35_router_logits_bf16_f32w_auto_256
     )
     assert (
         backend_package_capability(

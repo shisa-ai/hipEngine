@@ -155983,3 +155983,19 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **1299.336 -> 1339.481 tok/s (+3.09%)**, with all 20 timed IDs `9707`.
   Added a callable default-off 256-thread wrapper; clean detached exact/wall and
   a 256-thread trace are required before the gfx1151 registry changes.
+
+## 2026-07-15 - LCP-4A clean promotion
+
+- Clean detached candidate `3ef55ad4` required one uncached AOTriton-wrapper
+  warmup, then reproduced **83/83** exact full-model parts at both 512 and 4K.
+  Five balanced pairs improve **1218.536 -> 1252.147 tok/s (+2.76%)** and
+  **1290.923 -> 1333.229 tok/s (+3.28%)**; all 20 timed IDs are `9707`.
+- A separate clean 512/128 graph gate records exact final token `9707` and logit
+  `28.27558135986328` in all six measured legs. Decode is non-regressive at
+  **48.987 -> 49.021 tok/s (+0.071%)**. Cached `rocprofv3` confirms
+  `qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>` launched
+  with 256 threads, 32 VGPR, 128 SGPR, and zero scratch.
+- Promoted only gfx1151 `(router_logits, f32, bf16_hidden)` through the backend
+  registry override. gfx1100 keeps the 512-thread base pending independent
+  evidence. Clean commands and raw hashes are in
+  `benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`.

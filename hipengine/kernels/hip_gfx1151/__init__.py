@@ -12,6 +12,9 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.hip_gfx1100.moe.router import (
+    qwen35_router_logits_bf16_f32w_auto_256,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
@@ -37,6 +40,9 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
 # Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
 # selected-dual Q4T16 prefill schedule on gfx1151.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
+# LCP-4's exact router primitive and full-model gates admit the 256-thread
+# reduction geometry for BF16-hidden/F32-weight GGUF router logits on gfx1151.
+GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
 # Clean LCP-3 exactness plus balanced 512/4K wall admits four-wave activation
 # sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151. Two-wave stays
 # available as the first rollback schedule during its release window.
@@ -47,6 +53,11 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
+    (
+        "router_logits",
+        "f32",
+        "bf16_hidden",
+    ): qwen35_router_logits_bf16_f32w_auto_256,
     (
         "linear",
         "gguf_q8_0_t16_v1",
