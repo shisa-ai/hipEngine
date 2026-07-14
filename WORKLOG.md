@@ -155734,4 +155734,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **7.709/2.148/1.342/1.936 ms/token**, plus **0.390 ms/token** quantization.
   This narrows the short-context Vulkan/HIP kernel-body difference: Vulkan's
   matched quant-operation totals are close, while its command-buffer/fusion
-  path has less host residual. The 128K HIP trace is still running.
+  path has less host residual.
+- The complete Vulkan matrix finished cleanly. Timestamp GPU sums at
+  512/4K/128K prefill are **0.464/3.854/267.391 s**. At 128K, FlashAttention is
+  **144.805 s (54.15%)** and GDN **2.711 s (1.01%)**; Vulkan's selected Q4,
+  dense Q8, and selected Q5 are **42.372/24.801/24.399 s**. Against the matched
+  llama.cpp HIP profile, Vulkan wins long FlashAttention and GDN but loses all
+  three quantized prefill families.
+- The matched HIP depth+128 traces also finished. Decode-only template/name
+  isolation avoids subtracting depth-dominated totals: HIP FlashAttention is
+  **0.130/0.479/11.646 ms/token** at 512/4K/128K versus Vulkan
+  **0.210/0.821/12.540 ms/token**. Thus Vulkan is not the long-decode attention
+  kernel target; llama.cpp HIP is faster there. Vulkan's decode advantages are
+  quantized/F32 matvecs plus lower command-buffer/fusion overhead.
+- Compact diagnostic evidence is
+  `benchmarks/results/2026-07-14-gfx1151-llamacpp-vulkan-hip-production-profile.json`.
+  It binds all six Vulkan summaries and three HIP decode summaries/traces by
+  SHA-256, references the retained five-sample toplines, marks profiler rates
+  non-topline, and passes JSON/family arithmetic checks. The matched profiling
+  task is complete; implementation ranking follows from these measured
+  families rather than generic backend assumptions.
