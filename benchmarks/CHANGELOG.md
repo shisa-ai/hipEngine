@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-14
 
+- [promoted gfx1100 GGUF persistent cooperative-router counter] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV selected-ID counter alias plus 40 four-byte reset nodes/token -> dedicated self-resetting counter: cache-cycled fused leaf **14.667 -> 10.444 us (-28.79%)** and clean 4K graph decode **98.812 -> 100.446 tok/s (+1.65%)**, with production router outputs replay-exact, all nine IDs/final values exact, and only eight added tracked bytes; `benchmarks/results/2026-07-14-gfx1100-gguf-persistent-router-counter.json`.
+
 - [promoted gfx1100 GGUF exact F32-weight cooperative router] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV separate expert/shared FP32 logits plus top-k -> one cooperative producer/select kernel: cache-cycled leaf **17.845 -> 14.666 us (-17.81%)** and clean 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**, with full production router outputs byte-exact, all nine IDs/final values exact, and unchanged **21.543610 GiB** tracked peak; `benchmarks/results/2026-07-14-gfx1100-gguf-f32w-cooperative-router.json`.
 
 - [promoted gfx1100 GGUF LCP-M1 scratch liveness] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV dedicated prompt-sized prefill intermediates -> phase-liveness arena: six-shape tracked memory **21.478/21.710/22.995/23.559/24.203/25.493 -> 21.204/21.256/21.544/22.108/22.752/24.041 GiB** (**-0.274/-0.455/-1.451/-1.451/-1.451/-1.452 GiB**), now below llama.cpp HIP's retained whole-device total at every shape. Same-process 4K A/B keeps all **248,320 FP32 logits byte-exact**; clean 4K 1+3 prefill/decode are **1401.632 -> 1403.619 (+0.14%) / 97.292 -> 97.669 tok/s (+0.39%)**. `benchmarks/results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json`.

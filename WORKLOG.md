@@ -156246,3 +156246,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   selected-ID alias/reset route for clean post-commit A/B and rollback. Focused
   validation and the implementation commit come next; publication still
   requires the clean rollback/default/rollback gate.
+
+## 2026-07-14 - Publish persistent gfx1100 router counter default
+
+- Implementation commit `0ec2a813` is clean and default-on. The required clean
+  W7900 rollback/default/rollback gate uses three fresh right-sized 4K/128
+  processes, each with one discarded warmup and three measured state-bound
+  graph runs. All child artifacts report clean `0ec2a813`, gfx1100/W7900, the
+  exact Q4_K_M fingerprint, TheRock HIP 7.15, and cached-only builds.
+- Rollback A is **98.9202/98.9234/98.7325 tok/s** (median **98.9202**), the
+  no-env default is **100.4463/100.3104/100.4766** (median **100.4463**), and
+  rollback B is **98.8721/98.7520/98.6264** (median **98.7520**). The combined
+  rollback median is **98.8120 tok/s**; the persistent default improves graph
+  decode by **+1.6539%** and confirms the source-dirty +1.79% admission screen.
+- All nine final IDs are `9707`, all final values are exactly
+  `29.407920837402344`, and tracked peak is exactly **23,132,275,240 bytes
+  (21.543610133 GiB)** in every leg. That is only eight bytes above the prior
+  route: one four-byte counter in resident scratch and one in prefill scratch.
+  Prefill medians are **1452.891/1453.126/1453.967 tok/s** in process order and
+  are not claimed because this change only affects c=1 decode.
+- Published retained artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-persistent-router-counter.json`
+  and updated the benchmark index/changelog plus kernel/refactor handoff. The
+  public six-shape table remains on clean `ef3e97dd` until a complete defaults-
+  only refresh measures every shape at one revision.
