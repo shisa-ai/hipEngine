@@ -1,12 +1,13 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **gfx1151 audit complete; gfx1100 optimization pass published**
+Status: **gfx1151 audit complete; gfx1100 HIP memory parity closed, compute parity open**
 Date: **2026-07-14**
 Machine-readable evidence:
 [`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json),
 [`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json),
-[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json), and
-[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json)
+[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
+[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json), and
+[`gfx1100 LCP-M1 memory gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json).
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -83,6 +84,25 @@ The clean final gfx1100 defaults-only publication then records
 including **+0.54% at 128K**. All 18 measured final IDs are `9707`. Evidence:
 [`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
+`LCP-M1` closes the retained HIP memory target without changing model math.
+The gfx1100 production Qwen3.6 MoE/direct-LDS32 route now owns one aligned
+phase-liveness arena instead of every attention/GDN/MoE intermediate at once.
+A clean six-shape right-sized allocation census moves tracked memory from
+**21.478/21.710/22.995/23.559/24.203/25.493** to
+**21.204/21.256/21.544/22.108/22.752/24.041 GiB**. Every row is now
+**0.048-0.402 GiB below** the retained llama.cpp HIP whole-device reading.
+Residual memory versus Vulkan is only **0.036-0.266 GiB** from 1K through
+128K, while 512 is 0.056 GiB lower. These remain different allocator scopes,
+but the prior stronger condition—a narrower hipEngine count exceeding the
+broader HIP count—is gone.
+
+Correctness and wall gates are exact/non-regressive. A same-weight,
+same-process 4K dedicated-versus-aliased A/B preserves all **248,320 FP32
+logits byte-for-byte**. Clean 4K 1+3 prefill is
+**1401.632 -> 1403.619 tok/s (+0.14%)**, and graph decode is
+**97.292 -> 97.669 tok/s (+0.39%)**. Diagnostics, non-direct GDN modes,
+non-MoE configs, and unvalidated backends retain dedicated buffers.
+
 ## gfx1100 parity continuation
 
 Parity remains the target; the final optimization rollup is a new baseline, not
@@ -94,19 +114,16 @@ remaining work explicit:
 - Decode already exceeds llama.cpp HIP at every shape, but needs
   **+20.13%/+13.08%/+5.93%/+6.91%/+11.64%/+15.62%** to match llama.cpp
   Vulkan.
-- At 4K-128K, hipEngine's owned/tracked peak exceeds llama.cpp HIP's broader
-  whole-device reading by **1.321/1.343/1.308/1.404 GiB**. The scopes still
-  prohibit small allocator-efficiency ratios, but a narrower owned count being
-  materially larger is actionable capacity evidence.
+- `LCP-M1` has closed the retained llama.cpp HIP memory target at all six
+  shapes. hipEngine now sits **0.402/0.362/0.130/0.108/0.143/0.048 GiB below**
+  the HIP whole-device rows. Small cross-scope efficiency claims remain invalid;
+  this result establishes capacity parity, not allocator equivalence.
 
-The memory gap has a named owner. The right-sized session keeps
-**1.751-1.759 GiB** of bulk-prefill scratch resident at every 4K+ shape. After
-weights, decode state/KV, and non-bulk session buffers, the maximum bulk scratch
-that would fit under the llama.cpp HIP totals is only
-**0.431/0.410/0.447/0.356 GiB** at 4K/32K/64K/128K. `LCP-M1` therefore needs
-attention/FFN liveness aliasing, not another context-cap or KV-format change.
-This single bucket is large enough to close the observed HIP memory gap if it
-can be reduced by roughly 1.3-1.4 GiB without extending live ranges.
+The closed memory lane confirms the original attribution. At 4K+, the prior
+**1.751-1.759 GiB** bulk-prefill bucket falls to **0.300-0.308 GiB**, below the
+predeclared **0.35-0.45 GiB** ceiling. The reduction is approximately 1.45 GiB
+at every 4K+ shape because context-dependent KV/state and metadata are unchanged.
+No KV-format change is involved.
 
 A cached-only current-tree 4K decode trace adds the missing middle-shape
 attribution. Its final eight state-update/embedding-delimited exact decode
@@ -128,13 +145,13 @@ actual dominant family and full-model wall.
 
 Continuation order is now:
 
-1. `LCP-M1`: reduce bulk scratch to **<=0.35-0.45 GiB** at 4K+ with exact
-   state/tokens and no throughput regression.
-2. `LCP-2`: pursue exact chunked/prefix GDN or a separately predeclared
+1. `LCP-2`: pursue exact chunked/prefix GDN or a separately predeclared
    quality-safe register-resident design; do not rerun rejected LDS16,
    two-lane, or tree defaults unchanged.
-3. Profile-directed dense-Q8/selected-MoE decode work for Vulkan parity,
+2. Profile-directed dense-Q8/selected-MoE decode work for Vulkan parity,
    retaining 4K first and escalating to the 512 and 128K endpoints.
+
+`LCP-M1` is complete and promoted.
 
 Machine-readable ratios, allocation buckets, the diagnostic 4K family trace,
 and source boundary:
@@ -418,14 +435,15 @@ the last child/view is consumed:
 - [in-place parent reuse](https://github.com/ggml-org/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/ggml/src/ggml-alloc.c#L622-L689)
 - [last-consumer allocation/free walk](https://github.com/ggml-org/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/ggml/src/ggml-alloc.c#L717-L804)
 
-hipEngine's bulk-prefill session allocates every named intermediate together:
+hipEngine now applies the same principle to the admitted gfx1100 production
+route. `04b48b67` gives each scratch field an explicit route/phase lifetime,
+places non-overlapping live ranges in one aligned arena, and retains dedicated
+ownership for diagnostics and unvalidated routes. The six-shape census and
+byte-exact 4K A/B above close the capacity gate without a speed regression.
 
-- [scratch inventory and allocation](https://github.com/shisa-ai/hipEngine/blob/2332756e32c04f61103be3aa5f0f72d00290ed3a/hipengine/runtime/qwen35_gguf_runner.py#L12767-L13070)
-- [session ownership](https://github.com/shisa-ai/hipEngine/blob/2332756e32c04f61103be3aa5f0f72d00290ed3a/hipengine/runtime/qwen35_gguf_runner.py#L7569-L7605)
-
-**Decision:** liveness-based scratch aliasing is a capacity project, not a
-current speed claim. Pursue it after the named compute residuals, with allocator
-accounting and no-regression gates.
+**Decision:** `LCP-M1` is complete and promoted. Keep the explicit liveness
+contract and fallback; reopen memory work only if a resident-allocation/KV/model
+change makes hipEngine exceed the retained HIP capacity row again.
 
 ## Ranked parity work
 
@@ -436,7 +454,7 @@ accounting and no-regression gates.
 | 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap; exact LDS16 is mixed and two-lane VGPR residency fails byte equality, while the direct tree port violates trajectory contract | High-effort only: six-case state matrix and 250/250 natural transitions before timing |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
-| 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
+| 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
 
 There is no invented minimum win. Exact, same-suite non-regressive
 improvements remain retainable under the project evidence policy.
