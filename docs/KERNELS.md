@@ -349,6 +349,27 @@ right-sized 1+3 rollup publishes
 plus
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`.
 
+The independent gfx1100 transfer subsequently promoted the same exact
+`chain_lds32_direct` route after byte-exact primitive/state and 250/250 natural
+transition gates; W7900 512/4K moved `649.131/677.888 -> 1291.225/1401.330
+tok/s`. The backend package now selects direct LDS32 automatically on both
+architectures. See `docs/REFACTOR.md` for the rollback window and
+`benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`.
+
+GPF-6 screened three distinct gfx1100 register-resident/direct-input schedules
+without retaining any kernel. One-wave/value and contiguous group4 reached
+`2181.778/2473.972` and `2281.383/2661.671 tok/s` at 512/4K, but failed the
+predeclared 18-prompt same-context gate (KL max `0.068757/0.065184 > 0.05`,
+top-1 `98.444%/98.889% < 99%`). Irregular group3 passed primitive CPU-budget
+fixtures but missed both speed floors at `1804.460/2019.696 tok/s`. All GPF-6
+kernel bodies, registry entries, selectors, and routing were removed. The
+retained `scripts/gguf_gdn_semantic_gate.py` plus frozen
+`benchmarks/prompts/gdn-prefill-category-heldouts.jsonl` are the admission path
+for any future non-byte-exact GDN schedule. Exact chunked/prefix algebra is the
+only remaining GDN prefill research lane; do not reopen reduction-width sweeps.
+See
+`benchmarks/results/2026-07-14-gfx1100-gguf-gdn-register-residency-rejected.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
