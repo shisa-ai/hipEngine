@@ -1,0 +1,322 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_llamacpp_vulkan_hip_production_profile",
+  "status": "diagnostic_profile_complete",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "date": "2026-07-14",
+  "purpose": "Matched production-path family attribution for llama.cpp Vulkan and HIP at 512, 4K, and 128K prefill/decode shapes. Profiler-affected rates do not replace the retained five-sample toplines.",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "vulkan_driver": "RADV STRIX_HALO / Mesa 26.1.4-arch3.1",
+    "vulkan_api": "1.4.354",
+    "rocm": "HIP 7.15.0-0000000",
+    "rocprofv3": "1.3.2 e711c9e7361a0c9d74b6d5c09c08c8ac2eee0253"
+  },
+  "software": {
+    "vulkan_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "hip_measured_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "hip_upstream_base": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "hip_lineage_note": "The local HIP head adds MTP instrumentation. The AR Qwen35MoE graph and measured GDN, convolution, MMQ/MMVQ, router, and FlashAttention bodies are byte-identical to the upstream base at their performance-relevant lines.",
+    "hipengine_profile_tool_commit": "fd410e39",
+    "vulkan_summary_schema": "hipengine.llamacpp_vulkan_perf_summary.v1",
+    "hip_summary_schema": "hipengine.llamacpp_kernel_trace_summary.v1"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "f16"
+  },
+  "protocol": {
+    "vulkan_env": {
+      "GGML_VK_PERF_LOGGER": "1",
+      "GGML_VK_PERF_LOGGER_FREQUENCY": "1"
+    },
+    "common_args": "-m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json",
+    "vulkan_prefill": "llama-bench <common> -p <512|4096|131072> -n 0 -d 0 -dev Vulkan0; keep the final prompt_length/512 timestamp sections so the full internal warmup is excluded",
+    "vulkan_decode": "llama-bench <common> -p 0 -n 128 -d <512|4096|131072> -dev Vulkan0; keep only the final 128 timestamp sections so warmup and untimed depth setup are excluded",
+    "hip_prefill": "Previously retained no-warmup one-pass rocprofv3 kernel traces from the same measured HIP build and device",
+    "hip_decode": "rocprofv3 --kernel-trace -- llama-bench <common> --no-warmup -p 0 -n 128 -d <512|4096|131072> -dev ROCm0. Decode MMVQ families are unique names; decode FlashAttention uses template <256,256,1,8>, while depth prefill uses <256,256,4,8>.",
+    "comparability": "Same file, device, F16 KV, prompt/depth rows, and upstream AR bodies. Vulkan uses device timestamp queries and HIP uses rocprofv3; family shares and source selection are diagnostic, not strict cross-profiler speed ratios."
+  },
+  "retained_topline_reference": {
+    "artifact": "benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json",
+    "contexts": [512, 1024, 4096, 32768, 65536, 131072],
+    "vulkan_prefill_tok_s": [1067.77, 1069.87, 1016.58, 814.923, 660.974, 476.788],
+    "vulkan_decode_tok_s": [62.3959, 62.1362, 60.0973, 51.3194, 44.4221, 34.9478],
+    "note": "These five-sample rows remain the throughput baseline. The timestamp-logger/rocprof rates below are profiler diagnostics only."
+  },
+  "vulkan_profiles": {
+    "prefill": {
+      "512": {
+        "host_ms": 467.195524,
+        "host_tok_s": 1095.90091,
+        "timestamp_gpu_ms": 464.477,
+        "selected_sections": 1,
+        "operations": 1788,
+        "family_ms": {
+          "selected_q4": 154.13,
+          "dense_q8": 95.02115,
+          "selected_q5": 89.1211,
+          "elementwise": 37.771065,
+          "copy_layout": 25.117876,
+          "f32_matmul": 23.2204,
+          "norm": 12.098102,
+          "gdn": 10.14,
+          "selected_q6": 7.43777,
+          "linear_attn_conv": 3.01944,
+          "flash_attn": 2.8149,
+          "router_topk": 2.222177,
+          "lm_head": 1.89556,
+          "rope": 0.467397
+        }
+      },
+      "4096": {
+        "host_ms": 3888.405098,
+        "host_tok_s": 1053.388188,
+        "timestamp_gpu_ms": 3853.693,
+        "selected_sections": 8,
+        "operations": 13912,
+        "family_ms": {
+          "selected_q4": 1262.704,
+          "dense_q8": 773.42368,
+          "selected_q5": 729.5905,
+          "elementwise": 282.546517,
+          "f32_matmul": 194.34069,
+          "copy_layout": 184.417776,
+          "flash_attn": 132.98481,
+          "norm": 98.691238,
+          "gdn": 82.2717,
+          "selected_q6": 56.62189,
+          "linear_attn_conv": 26.48512,
+          "router_topk": 22.071834,
+          "lm_head": 3.74576,
+          "rope": 3.798088
+        }
+      },
+      "131072": {
+        "host_ms": 270793.763742,
+        "host_tok_s": 484.028872,
+        "timestamp_gpu_ms": 267390.683,
+        "selected_sections": 256,
+        "operations": 443324,
+        "family_ms": {
+          "flash_attn": 144805.33666,
+          "selected_q4": 42371.791,
+          "dense_q8": 24800.91869,
+          "selected_q5": 24398.7971,
+          "elementwise": 9646.495212,
+          "f32_matmul": 6059.31141,
+          "copy_layout": 5874.298341,
+          "norm": 3230.819528,
+          "gdn": 2711.2648,
+          "selected_q6": 1726.50359,
+          "linear_attn_conv": 801.95369,
+          "router_topk": 720.548009,
+          "lm_head": 119.96293,
+          "rope": 122.685374
+        }
+      }
+    },
+    "decode": {
+      "512": {
+        "host_ms_per_token": 17.824223,
+        "host_tok_s": 56.103427,
+        "timestamp_gpu_ms_per_token": 16.90314,
+        "operations_per_token": 1483,
+        "family_ms_per_token": {
+          "dense_q8": 7.612476,
+          "selected_q4": 1.986449,
+          "lm_head": 1.795385,
+          "selected_q5": 1.181177,
+          "elementwise": 1.143674,
+          "f32_matmul": 0.755514,
+          "router_topk": 0.670734,
+          "norm": 0.570567,
+          "copy_layout": 0.432376,
+          "gdn": 0.286966,
+          "flash_attn": 0.209902,
+          "selected_q6": 0.113318,
+          "linear_attn_conv": 0.094786,
+          "rope": 0.049815
+        }
+      },
+      "4096": {
+        "host_ms_per_token": 18.405898,
+        "host_tok_s": 54.330412,
+        "timestamp_gpu_ms_per_token": 17.498116,
+        "operations_per_token": 1483,
+        "family_ms_per_token": {
+          "dense_q8": 7.568078,
+          "selected_q4": 1.995986,
+          "lm_head": 1.797679,
+          "selected_q5": 1.182722,
+          "elementwise": 1.145016,
+          "flash_attn": 0.820744,
+          "f32_matmul": 0.75454,
+          "router_topk": 0.673841,
+          "norm": 0.577958,
+          "copy_layout": 0.434627,
+          "gdn": 0.287644,
+          "selected_q6": 0.114018,
+          "linear_attn_conv": 0.094976,
+          "rope": 0.050287
+        }
+      },
+      "131072": {
+        "host_ms_per_token": 30.917867,
+        "host_tok_s": 32.343758,
+        "timestamp_gpu_ms_per_token": 29.198293,
+        "operations_per_token": 1483,
+        "family_ms_per_token": {
+          "flash_attn": 12.53982,
+          "dense_q8": 7.56699,
+          "selected_q4": 1.978637,
+          "lm_head": 1.802415,
+          "selected_q5": 1.220255,
+          "elementwise": 1.144344,
+          "f32_matmul": 0.749577,
+          "router_topk": 0.666536,
+          "norm": 0.57948,
+          "copy_layout": 0.425279,
+          "gdn": 0.268181,
+          "selected_q6": 0.113475,
+          "linear_attn_conv": 0.09397,
+          "rope": 0.049337
+        }
+      }
+    }
+  },
+  "hip_profiles": {
+    "prefill": {
+      "source": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-next-family-profile.json",
+      "512": {
+        "kernel_ms": 448.372739,
+        "dispatches": 2490,
+        "family_ms": {
+          "selected_q4": 141.703928,
+          "selected_q5": 70.94718,
+          "dense_q8": 66.859122,
+          "gdn": 44.179996,
+          "copy_layout": 26.018543,
+          "f32_matmul": 21.75447,
+          "elementwise": 19.177411,
+          "norm": 8.795456,
+          "selected_q6": 7.263259,
+          "flash_attn": 6.137267,
+          "linear_attn_conv": 4.260073
+        }
+      },
+      "4096": {
+        "kernel_ms": 3732.515865,
+        "dispatches": 17789,
+        "family_ms": {
+          "selected_q4": 1173.527432,
+          "selected_q5": 585.01137,
+          "dense_q8": 531.344578,
+          "gdn": 330.48762,
+          "flash_attn": 204.083457,
+          "copy_layout": 189.846415,
+          "f32_matmul": 171.879687,
+          "elementwise": 148.470805,
+          "norm": 70.177858,
+          "selected_q6": 58.380063,
+          "linear_attn_conv": 32.980473
+        }
+      },
+      "131072": {
+        "kernel_ms": 322358.176486,
+        "dispatches": 559917,
+        "family_ms": {
+          "flash_attn": 208121.191051,
+          "selected_q4": 36479.807919,
+          "selected_q5": 18195.281449,
+          "dense_q8": 16942.774264,
+          "gdn": 12784.758676,
+          "copy_layout": 6205.966168,
+          "f32_matmul": 5429.748106,
+          "elementwise": 4920.173627,
+          "norm": 2273.611798,
+          "selected_q6": 1891.557728,
+          "linear_attn_conv": 1088.970576
+        }
+      }
+    },
+    "decode": {
+      "note": "MMVQ, MMVF, regular q8_1 quantize, decode FlashAttention template, and decode convolution template are isolated from depth-prefill names. Shared-name GDN/elementwise/copy totals are intentionally not derived by subtracting separately profiled long depth traces.",
+      "512": {
+        "profiled_host_ms_per_token": 20.653157,
+        "profiled_host_tok_s": 48.418749,
+        "family_ms_per_token": {
+          "dense_q8_mmvq": 7.654493,
+          "selected_q4_mmvq": 2.12403,
+          "selected_q5_mmvq": 1.304534,
+          "q6_selected_and_lm_head_mmvq": 1.895932,
+          "f32_matvec": 0.979564,
+          "shared_q8_1_quantize": 0.373724,
+          "flash_attn_decode": 0.130004,
+          "linear_attn_conv_decode": 0.068577
+        }
+      },
+      "4096": {
+        "profiled_host_ms_per_token": 21.536038,
+        "profiled_host_tok_s": 46.433796,
+        "family_ms_per_token": {
+          "dense_q8_mmvq": 7.709429,
+          "selected_q4_mmvq": 2.147958,
+          "selected_q5_mmvq": 1.342574,
+          "q6_selected_and_lm_head_mmvq": 1.90571,
+          "f32_matvec": 1.006398,
+          "shared_q8_1_quantize": 0.379894,
+          "flash_attn_decode": 0.478827,
+          "linear_attn_conv_decode": 0.080051
+        }
+      },
+      "131072": {
+        "profiled_host_ms_per_token": 35.351198,
+        "profiled_host_tok_s": 28.287585,
+        "family_ms_per_token": {
+          "dense_q8_mmvq": 7.766676,
+          "selected_q4_mmvq": 2.164732,
+          "selected_q5_mmvq": 1.356314,
+          "q6_selected_and_lm_head_mmvq": 1.92096,
+          "f32_matvec": 1.002682,
+          "shared_q8_1_quantize": 0.387971,
+          "flash_attn_decode": 11.646085,
+          "linear_attn_conv_decode": 0.078146
+        }
+      }
+    }
+  },
+  "measured_findings": [
+    "Vulkan prefill's large backend-specific wins are GDN and long FlashAttention. At 128K Vulkan GDN is 2.711 s versus HIP 12.785 s and FlashAttention is 144.805 s versus HIP 208.121 s; Vulkan is slower in the Q4/Q5/Q8 matmul families.",
+    "Decode is different: HIP's isolated decode FlashAttention template is faster than Vulkan at every measured depth (0.130/0.479/11.646 ms per token versus 0.210/0.821/12.540). Vulkan's kernel-side leads are the quantized/f32 matvec operations and lower command-buffer/fusion overhead.",
+    "The Vulkan GDN shader shards each state column across lanes and uses subgroup reductions. That changes contraction order and cannot be copied under hipEngine's byte-exact recurrent-state/trajectory contract.",
+    "The matched source does not support replacing hipEngine selected Q4/Q5 prefill with Vulkan MMQ: Vulkan is slower than llama.cpp HIP in both families at all three profiled prompt lengths.",
+    "The production opportunity is therefore not a new hipEngine Vulkan backend. Transferable candidates are exact convolution geometry, exact HIP-side GEMV address/live-range improvements, and the common llama.cpp long-decode attention implementation; generic Vulkan dispatch/fusion ideas must be screened against hipEngine graph replay and its already-lower launch count."
+  ],
+  "source_bindings": {
+    "vulkan_summary_sha256": {
+      "p512": "3792923895f815393491693375f76570c8d626c80723086fe88425685bd5bdc2",
+      "p4k": "21ed3ea6b0b4fb7f802279591038ecdac22399245ede1489db18ce64bb96a8af",
+      "p128k": "6546eecaf31e5076460a5ed0dc3de4f0c4e043a45e2251fd1967a677badbaa9d",
+      "d512": "6c11dc88b734992c55502f345a7f7a7b4c9f57cb28036a637c266e9810bbd738",
+      "d4k": "cbc7585a9f5102fdf7b5f09822dfede0f4bad249d2a0525a9971dfaf5e885cd9",
+      "d128k": "d7eafdae2ee137325af167464a203001763d5fadf087b828e6bfa0cbe54f7c5a"
+    },
+    "hip_decode_summary_sha256": {
+      "d512": "86170a16c932ec596170097be6c51cd65d615dccf435a50fd3cbbca4ca195f01",
+      "d4k": "fef8faae814837e6286d3b40506eddd5a69ccd3dc37c591579c3715a8c3c308e",
+      "d128k": "9ac75e204bc9415e74debabc96f128ff0c8fe5b44cc1120fce89c57d8711ff9e"
+    },
+    "hip_decode_trace_sha256": {
+      "d512": "93379cb2d9bf5ad1ecdeb2e26153177a9fb8626bd227fe18d84cfc91c99ff22c",
+      "d4k": "5f799f04f1ffd315642b92310914b7c7bc0a89ab4a31943d0bd0c41298b9a283",
+      "d128k": "f40b09d349a1d6b32f25aef3f2904a9f53810ae9e823787fbfafd395664c8533"
+    }
+  }
+}
