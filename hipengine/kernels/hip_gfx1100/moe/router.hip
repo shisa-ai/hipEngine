@@ -512,7 +512,7 @@ __global__ void qwen35_router_topk_split_shared_coop_out_kernel(
       top_k);
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool PersistentCounter>
 __global__ void qwen35_router_topk_split_shared_coop_out_f32w_kernel(
     const scalar_t* __restrict__ hidden,
     const float* __restrict__ expert_weight,
@@ -520,6 +520,7 @@ __global__ void qwen35_router_topk_split_shared_coop_out_f32w_kernel(
     float* __restrict__ logits,
     int64_t* __restrict__ selected,
     float* __restrict__ routing,
+    int32_t* __restrict__ completion_counter,
     int64_t hidden_size,
     int64_t num_experts,
     int64_t top_k) {
@@ -536,8 +537,7 @@ __global__ void qwen35_router_topk_split_shared_coop_out_f32w_kernel(
   if (tid == 0) {
     logits[row] = shared_scratch[0];
     __threadfence();
-    int32_t* counter = reinterpret_cast<int32_t*>(selected);
-    const int prior = atomicAdd(counter, 1);
+    const int prior = atomicAdd(completion_counter, 1);
     is_last_block = (prior + 1 == static_cast<int>(num_rows)) ? 1 : 0;
   }
   __syncthreads();
@@ -555,6 +555,9 @@ __global__ void qwen35_router_topk_split_shared_coop_out_f32w_kernel(
       num_rows,
       num_experts,
       top_k);
+  if (PersistentCounter && tid == 0) {
+    atomicExch(completion_counter, 0);
+  }
 }
 
 bool valid_threads(int64_t threads) {
@@ -852,7 +855,7 @@ extern "C" int hipengine_qwen35_router_topk_split_shared_coop_out_bf16_f32w(
   }
   const int64_t shared_floats = (threads > num_experts) ? threads : num_experts;
   hipLaunchKernelGGL(
-      (qwen35_router_topk_split_shared_coop_out_f32w_kernel<uint16_t>),
+      (qwen35_router_topk_split_shared_coop_out_f32w_kernel<uint16_t, false>),
       dim3(static_cast<unsigned int>(num_experts + 1)),
       dim3(static_cast<unsigned int>(threads)),
       static_cast<size_t>(shared_floats) * sizeof(float),
@@ -863,6 +866,46 @@ extern "C" int hipengine_qwen35_router_topk_split_shared_coop_out_bf16_f32w(
       logits,
       selected,
       routing,
+      reinterpret_cast<int32_t*>(selected),
+      hidden_size,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
+    const uint16_t* hidden,
+    const float* expert_weight,
+    const float* shared_weight,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int32_t* completion_counter,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens != 1 || hidden_size <= 0 || hidden_size > 2048 || num_experts <= 0 ||
+      top_k <= 0 || top_k > 16 || top_k > num_experts || threads != 256 ||
+      completion_counter == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t shared_floats = (threads > num_experts) ? threads : num_experts;
+  hipLaunchKernelGGL(
+      (qwen35_router_topk_split_shared_coop_out_f32w_kernel<uint16_t, true>),
+      dim3(static_cast<unsigned int>(num_experts + 1)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(shared_floats) * sizeof(float),
+      stream,
+      hidden,
+      expert_weight,
+      shared_weight,
+      logits,
+      selected,
+      routing,
+      completion_counter,
       hidden_size,
       num_experts,
       top_k);

@@ -156193,3 +156193,56 @@ graphless decode launch-collapse path without regressing target/serial parity.
   six-shape throughput table remains on its clean `ef3e97dd` sweep until every
   shape receives a new defaults-only refresh; the new 4K row is retained as a
   named exact optimization gate rather than silently mixing revisions.
+
+## 2026-07-14 - Predeclare persistent cooperative-router counter screen
+
+- The clean post-promotion 4K trace contains **40 four-byte `fillBuffer` counter
+  resets per token**, totaling **0.116 ms (1.31% of the GPU window)**. These are
+  launch-DAG overhead, not router math: the cooperative kernel currently aliases
+  its completion counter onto selected-ID output and therefore must clear it
+  before every layer.
+- Test a dedicated four-byte counter initialized once with scratch allocation.
+  The last producer block already observes that every row has incremented the
+  counter; after the existing exact top-k/softmax writes, thread 0 can reset the
+  dedicated counter for the next same-stream graph replay. The old selected-ID
+  alias plus host reset remains a separately registered control/fallback during
+  admission.
+- RED/GREEN requires byte identity for every production-shape FP32 logit,
+  selected ID, and routing-weight bit across **two consecutive launches without
+  a host reset**, plus a zero counter after replay. Admission then requires a
+  cached W7900 leaf A/B, an expected-symbol `rocprofv3` trace with the 40 reset
+  nodes absent, and clean 4K graph control/candidate/control nonregression with
+  exact generated IDs/final value. A negative leaf or wall result removes the
+  candidate, dedicated scratch, flag, and tests.
+
+## 2026-07-14 - Promote persistent cooperative-router counter on gfx1100
+
+- The production-shape RED/GREEN compares the complete current three-kernel
+  chain with the persistent cooperative route at `hidden=2048, experts=256,
+  top_k=8`. Every FP32 logit, selected ID, and routing-weight bit is exact,
+  including the lower-ID equal-logit tie. Poisoning all candidate outputs and
+  launching a second time without touching the counter reproduces the outputs;
+  the counter reads zero after replay.
+- The 128.5 MiB cache-cycled W7900 fused-router A/B (six alternating legs, 80
+  warmups plus 400 calls/leg) measures selected-ID alias plus `hipMemsetAsync`
+  at **14.6673 us** median and the dedicated self-resetting counter at
+  **10.4442 us (-28.7926%)**.
+- Cached-only eager `rocprofv3` over four warmup plus one timed token observes
+  200 expected
+  `qwen35_router_topk_split_shared_coop_out_f32w_kernel<unsigned short, true>`
+  launches at 256 threads, 40 VGPR, zero scratch, 512-byte LDS, and **10.360 us**
+  median. Total `fillBuffer` launches fall **650 -> 450**, exactly **200 fewer =
+  40 removed per token**; all six generated IDs remain `9707`.
+- The source-dirty but right-sized 4K graph control/candidate/control gate
+  measures control A **99.0830/99.0222/98.9412**, candidate
+  **100.7379/100.7105/100.5892**, and control B
+  **98.9301/98.8811/98.7117 tok/s**. Candidate median **100.7105** improves the
+  combined-control median **98.9357 tok/s** by **+1.7939%**. All nine final IDs
+  are `9707`, all final values are exactly `29.407920837402344`, and every leg
+  reports matched tracked peak **21.543610133 GiB** (eight bytes above the prior
+  route for one resident and one prefill completion counter).
+- Promote the persistent registry variant as the gfx1100 exact-contract default.
+  `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` temporarily retains the
+  selected-ID alias/reset route for clean post-commit A/B and rollback. Focused
+  validation and the implementation commit come next; publication still
+  requires the clean rollback/default/rollback gate.

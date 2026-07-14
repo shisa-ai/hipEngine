@@ -1187,10 +1187,12 @@ def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
     logits_ptr: int,
     selected_ptr: int,
     routing_ptr: int,
+    completion_counter_ptr: int,
     *,
     hidden_size: int,
     num_experts: int,
     top_k: int,
+    persistent_counter: bool = False,
     stream: int = 0,
     runtime=None,
 ) -> bool:
@@ -1200,22 +1202,32 @@ def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
         return False
     if expert_weight.spec.quant_key != shared_weight.spec.quant_key:
         return False
+    variant = (
+        "coop_out_bf16_hidden_persistent"
+        if persistent_counter
+        else "coop_out_bf16_hidden"
+    )
     fn = resolve(
         backend=expert_weight.backend,
         layer="router_topk_split_shared",
         quant=expert_weight.spec.quant_key,
-        variant="coop_out_bf16_hidden",
+        variant=variant,
         missing="none",
     )
     if fn is None:
         return False
-    fn(
+    args = (
         hidden_ptr,
         expert_weight.allocation().tensor.ptr,
         shared_weight.allocation().tensor.ptr,
         logits_ptr,
         selected_ptr,
         routing_ptr,
+    )
+    if persistent_counter:
+        args = (*args, completion_counter_ptr)
+    fn(
+        *args,
         1,
         hidden_size,
         num_experts,
@@ -5027,9 +5039,11 @@ class Qwen35GGUFFullStackRunner:
                 scratch.moe_router_logits.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.moe_routing_weights.ptr,
+                scratch.moe_router_counter.ptr,
                 hidden_size=self.hidden_size,
                 num_experts=cfg.expert_count,
                 top_k=top_k,
+                persistent_counter=_gguf_router_f32w_persistent_counter_enabled(),
                 stream=stream,
                 runtime=runtime,
             )
@@ -6153,6 +6167,7 @@ _GGUF_VERIFY_F32_SHARED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_ROUTER_F32W_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
+_GGUF_ROUTER_F32W_PERSISTENT_COUNTER_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
 _GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8"
 _GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV"
@@ -6592,6 +6607,10 @@ def _gguf_verify_f32_post_norm_router_enabled() -> bool:
 
 def _gguf_router_f32w_coop_enabled() -> bool:
     return _env_flag(_GGUF_ROUTER_F32W_COOP_ENV, True)
+
+
+def _gguf_router_f32w_persistent_counter_enabled() -> bool:
+    return _env_flag(_GGUF_ROUTER_F32W_PERSISTENT_COUNTER_ENV, True)
 
 
 def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
@@ -13192,6 +13211,7 @@ class _GGUFFullAttentionPrefillScratch:
     ffn_down: object
     moe_q8_1: object
     moe_router_logits: object
+    moe_router_counter: object
     moe_shared_gate_logits: object
     moe_selected_experts: object
     moe_routing_weights: object
@@ -13440,6 +13460,7 @@ class _GGUFFullAttentionPrefillScratch:
             "cu_k": buf(cu_arr.nbytes),
             "softmax_lse": buf(cfg.head_count * rows * 4),
             "atomic": buf(atomic_arr.nbytes),
+            "moe_router_counter": buf(DType.INT32.itemsize),
         }
         fields.update(dedicated_fields)
         owners.extend(value for value in dedicated_fields.values() if value is not None)
@@ -13449,6 +13470,7 @@ class _GGUFFullAttentionPrefillScratch:
         copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+        copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
         gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
         copy_host_to_device(
             fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
@@ -13743,6 +13765,7 @@ class _FullStackScratch:
     ffn_down: object
     moe_q8_1: object
     moe_router_logits: object
+    moe_router_counter: object
     moe_selected_experts: object
     moe_routing_weights: object
     moe_down_out: object
@@ -14014,6 +14037,7 @@ class _FullStackScratch:
             "ffn_down": buf(hidden_bytes),
             "moe_q8_1": buf(q8_1_moe_bytes),
             "moe_router_logits": buf((moe_experts + 1) * DType.FP32.itemsize),
+            "moe_router_counter": buf(DType.INT32.itemsize),
             "moe_selected_experts": buf(moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
@@ -14036,6 +14060,13 @@ class _FullStackScratch:
         }
         moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)
         moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
+        router_counter_zero = np.zeros((1,), dtype=np.int32)
+        copy_host_to_device(
+            fields["moe_router_counter"],
+            host_array_ptr(router_counter_zero),
+            router_counter_zero.nbytes,
+            runtime=runtime,
+        )
         metadata_buffers = (block_table, position_buf, context_buf, cos_table_buf, sin_table_buf)
         return cls(
             **fields,
