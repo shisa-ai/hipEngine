@@ -396,7 +396,7 @@ select current code without a fresh profile.
 | 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there |
 | 12 | `LCP-1` | **Promoted and published on gfx1151:** exact 32-token by 128-channel shared-memory convolution | 82/82 state parts exact; 4K body 954.134 -> 49.790 ms; six-shape prefill +1.10%..+24.04%; gfx1100 stays baseline |
 | 13 | `LCP-D1` | **Retained long-context decode reduction:** cooperate only above 256 splits | 4,096 BF16 values exact; 128K reducer -16.30%; graph decode 27.753 -> 28.047 tok/s; shorter reducer unchanged |
-| 14 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort next prefill algorithm; require six-case state and 250/250 natural transitions before timing |
+| 14 | `LCP-2A` | **Promoted on gfx1151:** compiler-cacheable exact direct-LDS32 GDN state | Six-case state and 250/250 natural transitions exact; balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%; volatile GPF-2E remains rollback |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -1003,7 +1003,7 @@ component. Do not substitute the single eager marker-profile rate for that
 median, and do not attribute shorter-context decode drift to LCP-D1: the new
 branch is not executed at `num_splits <= 256`.
 
-## LCP-2A: compiler-cacheable exact GDN state candidate
+## LCP-2A: compiler-cacheable exact GDN state
 
 The production-path audit reopened exact GDN work without relaxing the
 recurrent-state contract. The first bounded idea, sharing scaled Q/K through
@@ -1025,12 +1025,21 @@ cases: greeting, repeated 9707 at 512, 1024/1025, and 4095/4096. Sampled token,
 FP32 hidden seed, all resident Conv/GDN states, and the greeting/512 all-layer
 outputs match fused byte-for-byte. A one-warmup/four-interleaved-measurement
 screen against `chain_lds32_direct` wins every pair and reduces median bulk
-prefill wall by **26.33%/27.15%/27.15%** at 512/1K/4K. This remains
-`performance_claim=false` because the worktree is dirty. The candidate is
-registered as explicit `chain_lds32_direct_nonvolatile`; gfx1151 `auto` remains
-on GPF-2E until a clean committed revision reproduces the six-case matrix,
-250/250 natural transitions, and balanced wall gate. Candidate evidence is
-[`2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json).
+prefill wall by **26.33%/27.15%/27.15%** at 512/1K/4K. This dirty screen remains
+`performance_claim=false`.
+
+Clean detached candidate `53928aaf` reproduces all six exact cases. Its
+one-warmup/four-interleaved-measurement A/B moves prefill
+**900.814 -> 1213.912 tok/s (+34.76%)** at 512,
+**940.736 -> 1285.266 tok/s (+36.63%)** at 1K, and
+**941.462 -> 1285.888 tok/s (+36.58%)** at 4K; every pair wins and every timed
+ID is exact. The ten-prompt gate passes **250/250** natural transitions with
+`KL=0`, 100% top-1, exact timed decode trajectories, and weighted decode
+**53.348 -> 53.359 tok/s (+0.021%)**. gfx1151 therefore selects
+`chain_lds32_direct_nonvolatile` automatically; gfx1100 remains fused pending
+its independent hardware gate. The volatile GPF-2E route remains the explicit
+rollback. Clean evidence is
+[`2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json); the earlier dirty candidate artifact remains implementation history.
 
 ## Correctness And Promotion Contract
 
@@ -1238,21 +1247,25 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   final right-sized prefill refresh is **+1.10%..+24.04%** through 64K plus
   **+12.00%** at 128K. gfx1100 stays on the production convolution pending its
   hardware-local transfer gate.
+- LCP-2A is promoted on gfx1151: all six state cases and 250/250 natural
+  transitions are exact; balanced 512/1K/4K prefill improves
+  **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100 stays
+  fused pending its own transfer gate.
 - LCP-D1 is retained for `num_splits > 256`; shorter reducers remain serial.
   The clean 128K reducer falls **234.714 -> 196.466 us/call (-16.30%)**, and
   right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.
 - The parity audit and retained outcomes are complete in
-  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). Next targets are exact
-  chunked/prefix GDN research, then dense-Q8 layout screening for prefill; the
-  remaining 128K decode bodies are grouped-GQA context and dense Q8.
+  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). LCP-2A closes the
+  currently actionable exact-GDN source lane; next is dense-Q8 layout screening
+  for prefill, while the remaining 128K decode bodies are grouped-GQA context
+  and dense Q8.
 - No benchmark process is intentionally left running. Publication, artifacts,
   rollups, and the root README export are complete.
 
 Keep GPF-4 explicit/default-off and GPF-5A request-scoped through 65,536 tokens.
 Keep the exact production convolution fallback while LCP-1's selector survives
-one release and gfx1100 transfer. Future parity work starts from exact
-chunked/prefix GDN or the measured 128K grouped-GQA/dense-Q8 bodies, not from a
-wholesale llama.cpp port or the rejected GDN tree.
+one release and gfx1100 transfer. Future parity work starts from dense-Q8 layout or the measured 128K grouped-GQA
+body, not from a wholesale llama.cpp port or the rejected GDN tree.
 
 ## Document Ownership
 

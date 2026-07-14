@@ -358,11 +358,13 @@ strongly positive: the isolated 512/4K recurrence moves
 `6.572 -> 1.763 ms` and `58.613 -> 19.864 ms`; `rocprofv3` names the intended
 kernel with 32 VGPR, 16 KiB LDS, and zero scratch versus 64 VGPR for GPF-2E.
 All six full-model token/hidden/Conv/GDN-state cases are byte-exact, including
-1024/1025 and 4095/4096 boundaries. A dirty interleaved screen wins every pair
-at 512/1K/4K (`-26.33%/-27.15%/-27.15%` wall), but is not promotion evidence.
-Keep gfx1151 `auto` on `chain_lds32_direct` until the candidate is committed and
-reproduces the exact/natural/full-wall gates from a clean revision. Evidence:
-`benchmarks/results/2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json`.
+1024/1025 and 4095/4096 boundaries. Clean detached `53928aaf` reproduces those
+cases and improves balanced 512/1K/4K prefill by
+`+34.76%/+36.63%/+36.58%`; all 250 natural transitions and timed decode
+trajectories are exact, with decode `+0.021%`. gfx1151 `auto` therefore selects
+`chain_lds32_direct_nonvolatile`; gfx1100 stays fused. Keep the volatile direct
+symbol as rollback for one release. Evidence:
+`benchmarks/results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`.
 
 ## DFlash / MTP lineage map
 

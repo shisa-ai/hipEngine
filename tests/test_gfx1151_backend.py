@@ -88,7 +88,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
-    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
+    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert (
@@ -142,7 +142,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "chain_lds32_direct"
+        == "chain_lds32_direct_nonvolatile"
     )
     assert (
         backend_package_capability(

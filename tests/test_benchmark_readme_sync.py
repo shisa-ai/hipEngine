@@ -36,10 +36,10 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             / "2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json"
         ).read_text(encoding="utf-8")
     )
-    gguf_partial_refresh = json.loads(
+    gguf_lcp_refresh = json.loads(
         (
             results_dir
-            / "2026-07-14-gfx1151-gguf-prefill-gpf5a-right-sized-3run.json"
+            / "2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json"
         ).read_text(encoding="utf-8")
     )
     paro_recovery = json.loads(
@@ -82,18 +82,18 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         ]
         is False
     )
-    assert gguf_partial_refresh["status"] == "accepted_topline_partial_refresh"
-    assert gguf_partial_refresh["performance_claim"] is True
-    assert gguf_partial_refresh["software"]["refreshed_measurement_commit"].startswith(
-        "e9baf563"
-    )
-    assert gguf_partial_refresh["software"]["final_scoped_policy_commit"].startswith(
-        "6418b278"
-    )
-    assert gguf_partial_refresh["variance_gate"]["passed"] is True
-    assert gguf_partial_refresh["summary_by_workload"]["128K/128"][
-        "carried_forward"
-    ] is True
+    assert gguf_lcp_refresh["status"] == "accepted_topline_refresh"
+    assert gguf_lcp_refresh["performance_claim"] is True
+    assert gguf_lcp_refresh["software"]["measurement_commit"].startswith("71e61524")
+    assert gguf_lcp_refresh["software"]["all_component_worktrees_clean"] is True
+    assert gguf_lcp_refresh["protocol"]["warmup_runs"] == 1
+    assert gguf_lcp_refresh["protocol"]["measured_runs"] == 3
+    assert gguf_lcp_refresh["correctness"][
+        "largest_prefill_stdev_over_median_percent"
+    ] < 5.0
+    assert gguf_lcp_refresh["correctness"][
+        "largest_decode_stdev_over_median_percent"
+    ] < 5.0
     assert paro_recovery["status"] == "accepted"
     assert paro_recovery["performance_claim"] is True
     assert paro_recovery["correctness_claim"] is True
@@ -158,7 +158,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert table_header in root_readme
         for row in rows:
             paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
-            gguf_summary = gguf_partial_refresh["summary_by_workload"][row["workload"]]
+            gguf_summary = gguf_lcp_refresh["summary_by_workload"][row["workload"]]
             if table_key == "prefill_tok_s":
                 gguf_value = gguf_summary["prefill_tok_s"]["median"]
             elif table_key == "decode_tok_s":
@@ -196,8 +196,8 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             assert published_row in canonical_values
             assert published_row in root_values
 
-    assert "The PARO 1K follow-up shared a max-32K session" in canonical
-    assert "does not replace the existing right-sized 1K row" in canonical
+    assert "Each hipEngine shape uses its own right-sized resident session" in canonical
+    assert "GGUF uses one discarded warmup plus\nthree measurements" in canonical
 
     for name, component in artifact["components"].items():
         assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name

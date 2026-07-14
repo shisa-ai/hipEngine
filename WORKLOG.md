@@ -155821,3 +155821,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Next commit the default-off candidate, then reproduce exactness, natural
   250/250 transitions, and balanced wall from a clean detached revision before
   changing gfx1151 `auto`.
+
+## 2026-07-14 - Promote LCP-2A exact GDN on gfx1151
+
+- Committed the default-off body as `53928aaf` and created clean detached
+  `/tmp/hipengine-lcp2-clean-53928aaf`. A discarded 512 run populated the
+  worktree-keyed AOTriton cache; every retained comparison then used
+  `/tmp/lcp1-hipcc-version-current.txt` plus `--require-cached-build` and left
+  the detached worktree clean.
+- Repeated the six full-model comparisons at greeting, 512, 1024/1025, and
+  4095/4096. All **6/6** retain sampled token, FP32 hidden seed, every resident
+  Conv/GDN state byte, and the required greeting/512 all-layer output bytes.
+- Clean balanced `chain_lds32_direct` ->
+  `chain_lds32_direct_nonvolatile` medians are:
+  - 512: **568.375 -> 421.777 ms**, or
+    **900.814 -> 1213.912 tok/s (+34.76%)**;
+  - 1K: **1088.509 -> 796.722 ms**, or
+    **940.736 -> 1285.266 tok/s (+36.63%)**;
+  - 4K: **4350.680 -> 3185.348 ms**, or
+    **941.462 -> 1285.888 tok/s (+36.58%)**.
+  Every one of 12 pairs favors the candidate and all 24 timed IDs are exact.
+- The full ten-prompt/four-category natural gate passes **250/250** transitions
+  with `KL=0`, 100% top-1, exact timed trajectories, and weighted decode
+  **53.3479 -> 53.3592 tok/s (+0.021%)** over 1,280 steps per mode. This
+  satisfies the stronger existing GDN state/trajectory contract, not merely the
+  project KL floor.
+- gfx1151 package policy now selects `chain_lds32_direct_nonvolatile`;
+  gfx1100 remains fused. The volatile direct GPF-2E route stays as the explicit
+  rollback. Compact clean evidence is
+  `benchmarks/results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`.
+  Updated the benchmark ledger/changelog, GGUF handoff, kernel catalog, and
+  refactor ledger. The canonical six-shape selector-unset 1+3 sweep is next;
+  until it lands, the public throughput table keeps the prior LCP-1/LCP-D1 row.
