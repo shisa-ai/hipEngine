@@ -13,7 +13,7 @@ from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
-    gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+    gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
 from hipengine.kernels.registry import (
     KernelKey,
@@ -37,11 +37,13 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
 # Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
 # selected-dual Q4T16 prefill schedule on gfx1151.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
-# Clean GPF-5A exactness plus 512/4K fresh-process focus admits two-wave
-# activation-sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151.
+# Clean LCP-3 exactness plus balanced 512/4K wall admits four-wave activation
+# sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151. Two-wave stays
+# available as the first rollback schedule during its release window.
+GGUF_Q8_T16_PREFILL_FOUR_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
-# Same-commit production-protocol 128K A/B rejects two-wave (382.041 vs
-# 392.219 tok/s), so automatic selection is bounded through 64K.
+# Same-commit production-protocol 128K A/B rejects predecessor two-wave
+# (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
@@ -49,12 +51,12 @@ _GFX1151_OVERRIDES = {
         "linear",
         "gguf_q8_0_t16_v1",
         "wmma_prefill_bf16_bf16_out",
-    ): gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+    ): gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
     (
         "linear",
         "gguf_q8_0_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
-    ): gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+    ): gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 }
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",

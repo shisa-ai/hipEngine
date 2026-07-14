@@ -335,7 +335,7 @@ accounting and no-regression gates.
 | 1 | `LCP-1` | **Retained:** exact 32-token shared-memory long-token convolution | Clean 512/4K focus is +1.73%/+22.91%; 82/82 state parts are byte-exact and the 4K body falls 954.134 -> 49.790 ms | Complete on gfx1151; gfx1100 remains baseline pending W7900 evidence |
 | 2 | `LCP-D1` | **Retained:** bounded 128K attribution plus exact long-split gated reduction | Attention is 50.95% at 128K; parallelizing only independent work above 256 splits cuts the reducer 234.714 -> 196.466 us/call | Complete for GGUF BF16 KV; PARO/KV-dtype work remains separate |
 | 3 | `LCP-2A` | **Retained:** compiler-cacheable exact direct LDS32 GDN state | Clean balanced 512/1K/4K prefill is +34.76%/+36.63%/+36.58%; direct tree port remains invalid | Six-case state and 250/250 natural transitions pass byte-exactly; gfx1151 promoted |
-| 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
+| 4 | `LCP-3` | **Retained:** four exact Q8T16 waves share one activation tile | Clean 512/4K full-model prefill is +0.53%/+1.57%; dominant 4K shapes are 7.50%-14.08% faster than GPF-5A | Complete on gfx1151 through 64K; two-wave and production remain rollback paths |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
 
@@ -384,6 +384,28 @@ All 24 candidate tokens are exact; the kernel uses 16 VGPR and zero scratch.
 Evidence:
 [`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json).
 
+### LCP-2A: compiler-cacheable exact GDN state
+
+Clean detached candidate `53928aaf` preserves the six full-state cases and all
+**250/250** natural transitions byte-for-byte. The compiler-cacheable direct
+LDS32 body uses 32 VGPR, 16 KiB LDS, and zero scratch. Balanced 512/1K/4K
+prefill improves **+34.76%/+36.63%/+36.58%**, while weighted decode is
+**+0.021%**. gfx1151 selects it automatically; the volatile direct body remains
+rollback and gfx1100 stays fused.
+
+### LCP-3: exact four-wave dense Q8 prefill
+
+Four independent production-order 32-column waves now share one 1 KiB BF16
+activation tile. The named 128-thread kernel uses 80 VGPR and zero scratch.
+Tail fixtures and clean detached 512/4K full-model captures are **83/83** exact.
+Against automatic GPF-5A, five balanced pairs improve
+**1214.510 -> 1220.993 tok/s (+0.53%)** at 512 and
+**1269.030 -> 1288.986 tok/s (+1.57%)** at 4K; every timed ID is `9707`.
+gfx1151 selects four-wave under the inherited 65,536-token ceiling, then
+restores production. `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0` is the two-wave
+rollback; gfx1100 remains production. Evidence:
+[`2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json).
+
 ### Right-sized publication gate
 
 The clean automatic one-warmup/three-measurement sweep is complete at
@@ -416,11 +438,10 @@ decode sweep supplies the publication medians.
 
 ## Next parity targets
 
-LCP-1 and LCP-D1 close the first source-backed tranche. The next prefill target
-is exact chunked/prefix GDN research, but only behind the six-case state matrix
-and 250/250 natural-transition gate. Dense-Q8 shared-layout work follows; do
-not disturb the already-faster selected Q4/Q5 families. For decode, the clean
-128K trace still leaves the grouped-GQA context body at **15.502 ms/token** and
-dense Q8 at **8.546 ms/token**. Any follow-up must target one of those measured
-families and preserve the current BF16-KV, `KVLiveSpans`, and exact state/token
-contracts.
+LCP-1, LCP-D1, LCP-2A, and LCP-3 close the currently actionable exact
+convolution, GDN, and dense-Q8 prefill tranche. The next prefill target is the
+measured F32 router-logit family (`LCP-4`); do not disturb the already-faster
+selected Q4/Q5 families. For decode, the clean 128K trace still leaves the
+grouped-GQA context body at **15.502 ms/token** and dense Q8 at
+**8.546 ms/token**. Any follow-up must target one of those measured families and
+preserve the current BF16-KV, `KVLiveSpans`, and exact state/token contracts.
