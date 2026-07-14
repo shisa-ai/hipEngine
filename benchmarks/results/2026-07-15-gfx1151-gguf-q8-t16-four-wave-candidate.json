@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8_t16_four_wave_candidate",
+  "status": "candidate_default_off_dirty_screen",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "hipengine_base_commit": "338e4072",
+  "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+  "candidate": {
+    "selector": "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=1",
+    "baseline": "gfx1151 automatic GPF-5A two-wave",
+    "description": "four 32-column waves share one exact BF16 activation tile",
+    "default_on": false
+  },
+  "correctness": {
+    "512": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    },
+    "4096": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    }
+  },
+  "balanced_prefill": {
+    "512": {
+      "baseline_ms": [
+        422.7816150523722,
+        422.49924497446045,
+        421.4755639550276,
+        423.35253598866984,
+        423.54705202160403
+      ],
+      "candidate_ms": [
+        420.3358549857512,
+        419.8182440013625,
+        421.378401981201,
+        421.2507319753058,
+        419.68223900767043
+      ],
+      "baseline_median_ms": 422.7816150523722,
+      "candidate_median_ms": 420.3358549857512,
+      "baseline_tok_s": 1211.02711605985,
+      "candidate_tok_s": 1218.073580749746,
+      "ids": {
+        "0": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "1": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "wall_delta_percent": -0.5784925312606215,
+      "speedup": 1.0058185853945387
+    },
+    "4096": {
+      "baseline_ms": [
+        3204.5594740193337,
+        3209.953018988017,
+        3214.3333409912884,
+        3218.951581977308,
+        3217.337814043276
+      ],
+      "candidate_ms": [
+        3160.0487980176695,
+        3158.133905963041,
+        3161.5479470347054,
+        3162.755383993499,
+        3167.1258799615316
+      ],
+      "baseline_median_ms": 3214.3333409912884,
+      "candidate_median_ms": 3161.5479470347054,
+      "baseline_tok_s": 1274.2922296717393,
+      "candidate_tok_s": 1295.5678890910829,
+      "ids": {
+        "0": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "1": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "wall_delta_percent": -1.6421879238045722,
+      "speedup": 1.0166960599177666
+    }
+  },
+  "microbench": {
+    "512_2048x8192_ms": {
+      "two_wave": 0.8285150397568941,
+      "four_wave": 0.828874995931983
+    },
+    "512_8192x2048_ms": {
+      "two_wave": 0.8303580107167363,
+      "four_wave": 0.7510900031775236
+    },
+    "4096_2048x8192_ms": {
+      "two_wave": 6.551052967552096,
+      "four_wave": 6.059840961825103
+    },
+    "4096_8192x2048_ms": {
+      "two_wave": 7.212274009361863,
+      "four_wave": 6.196738977450877
+    }
+  },
+  "kernel_profile": {
+    "name": "gguf_q8_0_t16_prefill_wmma_nwave_kernel<32,4>",
+    "duration_ns": 1282887,
+    "threads": 128,
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0
+  },
+  "decision": "Proceed to clean default-off gate; scope candidate to the same <=64K request policy as GPF-5A unless independent 128K evidence wins.",
+  "sources": {
+    "exact": {
+      "path": "/tmp/q8-4wave-exact82.json",
+      "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"
+    },
+    "ab": {
+      "path": "/tmp/q8-4wave-ab.json",
+      "sha256": "648aa6e932703fc0c2e5504aa586c29e11c36bc3683b5601a3eec7cbc06e07fb"
+    },
+    "trace": {
+      "path": "/tmp/q8-4wave-trace/gfx1151/3279920_kernel_trace.csv",
+      "sha256": "61a8a66ce53f2de1d8668d342ac803644c87385580744307e7cb761ca91abc69"
+    }
+  }
+}

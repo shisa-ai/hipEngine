@@ -155927,3 +155927,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   The concrete blocker is the unresolved phase-sensitive 128K variance/lifecycle
   state, not LCP-2A correctness. Clean evidence is
   `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`.
+
+## 2026-07-15 - LCP-3 four-wave dense-Q8 prefill candidate
+
+- Extended the exact GPF-5A schedule with a default-off four-wave variant:
+  four independent 32-column waves share one 1 KiB BF16 activation tile across
+  128 output columns. The 128-thread kernel preserves every wave's K traversal,
+  WMMA order, accumulator, and output mapping. Tail fixtures pass; dirty 512/4K
+  full-model capture is **83/83** exact.
+- Seven-pair dominant-shape micros compare GPF-5A two-wave to four-wave. At
+  512 rows, `2048x8192` is flat (**0.829/0.829 ms**) while `8192x2048` improves
+  **0.830 -> 0.751 ms (-9.55%)**. At 4K rows, the same shapes improve
+  **6.551 -> 6.060 ms (-7.50%)** and **7.212 -> 6.197 ms (-14.08%)**.
+- Five balanced full-model pairs improve **1211.027 -> 1218.074 tok/s
+  (+0.58%)** at 512 and **1274.292 -> 1295.568 tok/s (+1.67%)** at 4K; all
+  20 IDs are `9707`. Cached trace confirms the named `<32,4>` kernel at
+  128 threads, 80 VGPR, 128 SGPR, 1 KiB LDS, zero scratch.
+- Candidate remains explicit under `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=1`
+  pending a clean gate. Dirty evidence is
+  `benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-candidate.json`.
