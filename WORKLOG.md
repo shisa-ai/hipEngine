@@ -155983,3 +155983,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1100-q8t16-waveblock-extension-rejected.json`.
   No public benchmark rollup changes because no candidate advanced past its
   micro gate.
+
+## 2026-07-14 - Predeclare W7900 c1 selected-Q4 dp4a screen
+
+- Test the source-grounded Vulkan mechanism directly on the current normal
+  decode path: enable only the existing Q4T16 selected gate/up q8_1+`sudot4`
+  diagnostic with `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1`. Keep Q5 selected
+  down exact; its existing c1 fixture top-1 of 0.875 misses the repository
+  kernel gate and therefore cannot be promoted in this screen.
+- This is distinct from the prior gfx1151 MTP/B3 evidence: target W7900/gfx1100
+  c1 graph decode at 4K with Qwen3.6-35B-A3B Q4_K_M and BF16 KV. The current Q4
+  selected gate/up+SiLU leaf is **10.88%** of 4K GPU time, so a positive result
+  can explain part of Vulkan's advantage but cannot by itself justify a broad
+  dp4a claim.
+- Admission is one clean cached 4K/128 smoke with finite logits, final IDs
+  unchanged, and positive decode throughput. Only if that passes, run a clean
+  interleaved 1+3 A/B and expected-symbol trace, then require the frozen
+  multi-prompt teacher-forced KL/top-1 gate before any default consideration.
+  A changed token, failed quality gate, or non-positive wall result rejects the
+  route without changing the existing default-off diagnostic flag.
