@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-14
 
+- [gfx1100 GGUF residual prefill schedule rejections] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV: exact LDS16 changes 512/4K **-0.155%/+0.434%**, extending two-wave dense Q8 changes 32K/64K **-1.62%/-0.22%**, and two-lane VGPR GDN fails BF16 byte equality in both dispatch forms before timing; all candidate code removed, no topline change. `benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json`.
+
 - [promoted gfx1100 GGUF LCP-D2 long-context split reduction] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV serial gated split reduction -> parallel prepare plus coalesced output from 32K: clean graph decode **84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307 (+3.95%)** at 64K, and **56.927 -> 61.367 (+7.80%)** at 128K; the 513-split leaf is **194.881 -> 25.000 us (7.80x)**, max 64K logit KL is **1.904e-6**, top-1 is 100%, IDs/memory are unchanged, and the 128K confirmation is 0.71% above llama.cpp HIP. `benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`.
 
 - [gfx1100 GGUF post-transfer profile / LCP-1 rejection] W7900/gfx1100 promoted automatic prefill at clean `16395fe5`: 4K exact GDN is **1652.114 ms / 61.1%**, while convolution is only **29.552 ms / 1.09%** after the transfer removed the old queue cliff. An exact 32-token/128-channel LDS convolution candidate passes six output/final-state byte gates but changes full-model 4K **1468.728 -> 1465.910 tok/s (-0.192%)**; candidate code and routing removed, no topline change. `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`.

@@ -367,6 +367,12 @@ retained llama.cpp HIP row. These focused rows do not replace the six-shape
 table before the final defaults-only 1+3 refresh. Evidence:
 [`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
 
+The closing residual prefill screens retain the current policy boundaries:
+exact LDS16 is mixed at **-0.155%/+0.434%** for 512/4K, extending two-wave Q8
+regresses 32K/64K **1.62%/0.22%**, and two-lane VGPR GDN fails BF16 byte
+identity before timing. No candidate code or topline change is retained; see
+[`residual screens`](results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
+
 This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
 (rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
 `docs/PROCESS-IMPROVEMENT.md` differ) on TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident

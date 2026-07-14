@@ -66,6 +66,14 @@ memory and stable IDs. The 128K candidate is **0.71% above** the retained
 llama.cpp HIP reference. gfx1100 therefore selects LCP-D2 from 32K onward;
 gfx1151 remains on the serial reducer pending an independent gate.
 
+The final residual gfx1100 prefill screens do not open a lower-effort GDN
+route. Exact LDS16 is mixed (**-0.155% at 512, +0.434% at 4K**); a two-lane
+VGPR-resident ordered schedule fails BF16 byte equality in both plain and
+segmented fixtures before timing. Extending GPF-5A two-wave dense Q8 beyond its
+4K W7900 cap also regresses 32K/64K **1.62%/0.22%**. All candidate code was
+removed. See the
+[`residual-screen artifact`](../benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
+
 ## Evidence boundary
 
 ### What is matched
@@ -359,7 +367,7 @@ accounting and no-regression gates.
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
-| 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap, but direct tree port violates trajectory contract | Six-case state matrix and 250/250 natural transitions before timing |
+| 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap; exact LDS16 is mixed and two-lane VGPR residency fails byte equality, while the direct tree port violates trajectory contract | High-effort only: six-case state matrix and 250/250 natural transitions before timing |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
