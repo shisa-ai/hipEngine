@@ -399,6 +399,7 @@ select current code without a fresh profile.
 | 14 | `LCP-2A` | **Promoted on gfx1151:** compiler-cacheable exact direct-LDS32 GDN state | Six-case state and 250/250 natural transitions exact; balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%; volatile GPF-2E remains rollback |
 | 15 | `LCP-M2` | **Blocked default-off:** generate contiguous chunk metadata on-device instead of six synchronous H2D copies | 83/83 exact; clean 512/4K +1.47%/+0.65%, but the required 128K variance escalation reproduces the separate low-power GPU-active lifecycle state |
 | 16 | `LCP-3` | **Promoted on gfx1151 through 64K:** four exact Q8T16 waves share one activation tile | Clean 512/4K state is 83/83 exact; five-pair full-model prefill +0.53%/+1.57%; two-wave and production remain rollback paths |
+| 17 | `LCP-4A` | **Promoted on gfx1151:** exact 256-thread BF16-hidden/F32-weight router logits | Clean 512/4K state is 83/83 exact; prefill +2.76%/+3.28%; graph decode exact/+0.071%; gfx1100 remains 512-thread |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -1068,6 +1069,30 @@ two-wave; `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0` restores production. gfx1100
 remains production pending independent hardware evidence. Clean evidence is
 [`2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json).
 
+## LCP-4A: exact F32-router launch geometry
+
+The current F32-weight router body maps one eight-element hidden fragment per
+lane. At the model's `hidden_size=2048`, only 256 of the former 512 lanes
+receive useful work; the first reduction step adds zero partials. Launching the
+unchanged token-tiled body with 256 threads preserves all meaningful additions
+and every output byte.
+
+Nine-pair primitive medians at `experts=256` improve
+**0.683 -> 0.380 ms (-44.32%)** for 512 tokens and
+**1.354 -> 0.756 ms (-44.17%)** for 1024. Clean detached candidate `3ef55ad4`
+reproduces **83/83** exact full-model parts at 512 and 4K. Five balanced pairs
+improve prefill **1218.536 -> 1252.147 tok/s (+2.76%)** and
+**1290.923 -> 1333.229 tok/s (+3.28%)**, with all timed IDs exact. The separate
+512/128 graph gate keeps the final token/logit exact and improves
+**48.987 -> 49.021 tok/s (+0.071%)**.
+
+A cached `rocprofv3` smoke records
+`qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>` at 256
+threads, 32 VGPR, 128 SGPR, and zero scratch. gfx1151 therefore overrides only
+`(router_logits, f32, bf16_hidden)` with the 256-thread wrapper; gfx1100 keeps
+512 threads pending hardware-local evidence. Clean evidence is
+[`2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json).
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1241,13 +1266,14 @@ python3 scripts/qwen35_readme_sweep.py \
 This is the authoritative pickup state; do not reconstruct it from chat:
 
 - gfx1151 automatic GGUF prefill selects exact
-  `chain_lds32_direct_nonvolatile` GDN, Q4T16 `shared_x`, and LCP-3 four-wave
-  Q8T16 through 65,536 prompt tokens. Longer prompts restore the production
-  Q8T16 wrapper. gfx1100 remains on its
+  `chain_lds32_direct_nonvolatile` GDN, Q4T16 `shared_x`, LCP-3 four-wave
+  Q8T16 through 65,536 prompt tokens, and LCP-4A 256-thread F32 router logits.
+  Longer prompts restore the production Q8T16 wrapper while retaining LCP-4A.
+  gfx1100 remains on its
   prior fused/baseline/production routes pending hardware-local transfer
   evidence.
 - Causal retained wins are the clean GPF-2D, GPF-3A, GPF-2E, scoped GPF-5A,
-  LCP-1, LCP-D1, LCP-2A, and scoped LCP-3 gates above. GPF-1, GPF-2A, GPF-2B,
+  LCP-1, LCP-D1, LCP-2A, scoped LCP-3, and LCP-4A gates above. GPF-1, GPF-2A, GPF-2B,
   and GPF-2C are closed rejections; do not
   rerun them without a genuinely different algorithm or contract.
 - Correctness is anchored by the six-case byte-exact matrices and the GPF-2E
@@ -1293,18 +1319,20 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.
 - The parity audit and retained outcomes are complete in
   [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). LCP-2A closes the
-  currently actionable exact-GDN source lane and LCP-3 closes the current
-  dense-Q8 shared-layout screen. Next prefill work is LCP-4 F32 router logits;
-  the remaining 128K decode bodies are grouped-GQA context and dense Q8.
+  currently actionable exact-GDN source lane; LCP-3 closes the current
+  dense-Q8 shared-layout screen; and LCP-4A closes the router-logit launch
+  geometry. Refresh the 4K profile before deciding whether router-select fusion
+  remains material. The remaining 128K decode bodies are grouped-GQA context
+  and dense Q8.
 - No benchmark process is intentionally left running. Publication, artifacts,
   rollups, and the root README export are complete.
 
 Keep GPF-4 explicit/default-off and LCP-3 request-scoped through 65,536 tokens,
 with GPF-5A as its first rollback. Keep the exact production convolution
 fallback while LCP-1's selector survives one release and gfx1100 transfer.
-Future prefill parity work starts from F32 router logits; decode starts from the
-measured 128K grouped-GQA body, not from a wholesale llama.cpp port or the
-rejected GDN tree.
+Future prefill parity work starts with a post-LCP-4A profile and only then any
+material router-select remainder; decode starts from the measured 128K
+grouped-GQA body, not from a wholesale llama.cpp port or the rejected GDN tree.
 
 ## Document Ownership
 

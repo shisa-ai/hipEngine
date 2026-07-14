@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-15
 
+- [promoted gfx1151 GGUF LCP-4A exact F32 router] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV 512-thread -> 256-thread BF16-hidden/F32-weight router logits: clean balanced 512/4K prefill **1218.536/1290.923 -> 1252.147/1333.229 tok/s (+2.76%/+3.28%)** with **83/83** full-model parts and all timed IDs exact. Clean 512/128 graph decode is exact and **48.987 -> 49.021 tok/s (+0.071%)**; trace confirms 256 threads, 32 VGPR, and zero scratch. `benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`.
+
 - [promoted gfx1151 GGUF LCP-3 four-wave Q8T16 through 64K] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV automatic GPF-5A two-wave -> four production-order waves sharing one activation tile: clean balanced 512/4K prefill **1214.510/1269.030 -> 1220.993/1288.986 tok/s (+0.53%/+1.57%)** with **83/83** token/logit/hidden/Conv/GDN/KV parts and all 20 timed IDs exact. The 128-thread kernel uses 80 VGPR, 1 KiB LDS, and zero scratch; package policy retains the measured 64K ceiling and production above it. `benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json`.
 
 - [blocked gfx1151 GGUF device-metadata promotion] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV synchronous chunk metadata -> stream-ordered device preparation: clean balanced 512/4K prefill **1225.203/1273.720 -> 1243.183/1282.003 tok/s (+1.47%/+0.65%)** with **83/83** token/logit/hidden/Conv/GDN/KV parts exact, but 128K variance escalation reproduces the low-power GPU-active lifecycle state after a **491.898 tok/s** warmup; candidate remains default-off. `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`.

@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_router_threads256_clean_promotion",
+  "status": "accepted_gfx1151_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "software": {
+    "candidate_commit": "3ef55ad4",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "id": "LCP-4A",
+    "description": "use 256 rather than 512 threads for the existing exact BF16-hidden/F32-weight router-logits body",
+    "scope": "gfx1151 router_logits/f32/bf16_hidden registry override",
+    "gfx1100_changed": false,
+    "fallback": "the 512-thread base wrapper remains registered on gfx1100 and callable directly"
+  },
+  "protocol": {
+    "worktree": "/tmp/hipengine-router256-clean-3ef55ad4",
+    "correctness": "one uncached warmup, then independent cached 512/4096 full-model differential capture",
+    "performance": "five balanced same-session baseline/candidate prefill pairs per context",
+    "decode": "512/128, one discarded eager warmup per mode, three balanced fresh-graph measurements; capture excluded",
+    "prompt_token_id": 9707,
+    "expected_token_id": 9707,
+    "command": "cd /tmp/hipengine-router256-clean-3ef55ad4 && HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/lcp1-hipcc-version-current.txt PYTHONPATH=. python3 /tmp/router256_clean_exact83.py && python3 /tmp/router256_clean_ab.py && python3 /tmp/router256_decode_ab.py"
+  },
+  "correctness": {
+    "512": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "kv_parts": 20, "token": 9707},
+    "4096": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "kv_parts": 20, "token": 9707}
+  },
+  "balanced_prefill": {
+    "512": {
+      "baseline_ms": [420.17634300282225, 420.49353901529685, 420.0666680117138, 421.2300709914416, 417.7848139661364],
+      "candidate_ms": [408.8978220243007, 408.8514340110123, 409.06336199259385, 408.8977310457267, 408.55380502762273],
+      "baseline_median_ms": 420.17634300282225,
+      "candidate_median_ms": 408.8977310457267,
+      "wall_delta_percent": -2.6842567757366154,
+      "baseline_tok_s": 1218.535999292471,
+      "candidate_tok_s": 1252.146835568387,
+      "throughput_delta_percent": 2.7582965374376878,
+      "timed_ids_exact": true
+    },
+    "4096": {
+      "baseline_ms": [3168.993077997584, 3177.646300988272, 3172.6512580062263, 3172.922798024956, 3174.6040279977024],
+      "candidate_ms": [3069.0056059975177, 3074.4926300249062, 3071.9187089707702, 3072.2409570007585, 3078.614411992021],
+      "baseline_median_ms": 3172.922798024956,
+      "candidate_median_ms": 3072.2409570007585,
+      "wall_delta_percent": -3.173157603672827,
+      "baseline_tok_s": 1290.9233097476024,
+      "candidate_tok_s": 1333.2287595041616,
+      "throughput_delta_percent": 3.277146631183747,
+      "timed_ids_exact": true
+    }
+  },
+  "graph_decode_512_128": {
+    "baseline_tok_s": [49.00067757828163, 48.98664818844434, 48.97306900528122],
+    "candidate_tok_s": [49.00173894765594, 49.021405650771534, 49.09388108356133],
+    "baseline_median_tok_s": 48.98664818844434,
+    "candidate_median_tok_s": 49.021405650771534,
+    "delta_percent": 0.07095293026271321,
+    "all_final_token_ids": 9707,
+    "all_final_logits": 28.27558135986328,
+    "effective_graph_replay": true
+  },
+  "kernel_trace": {
+    "name": "qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>",
+    "duration_ns": 919648,
+    "workgroup_size_x": 256,
+    "grid_size_x": 65536,
+    "grid_size_y": 128,
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_block_size_reported": 0,
+    "scratch_bytes": 0,
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/router256-clean-trace --output-file router256 -- python3 /tmp/router256_trace.py"
+  },
+  "decision": "Promote the 256-thread wrapper only for gfx1151 F32-weight/BF16-hidden router logits. The exact prefill win reproduces cleanly and graph decode is exact/non-regressive; keep gfx1100 at 512 threads pending independent hardware evidence.",
+  "sources": {
+    "exact_json": {"path": "/tmp/router256-clean-exact83.json", "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"},
+    "ab_json": {"path": "/tmp/router256-clean-ab.json", "sha256": "a4b59a50f7703eda84bca5dcbae4ea546405c996287b11643f60901e621e0a8a"},
+    "decode_json": {"path": "/tmp/router256-clean-decode-ab.json", "sha256": "4ec5375c3ec308539da4992a7ccd5d6d3a3f93cc584d1bf484081a769de5d58f"},
+    "exact_log": {"path": "/tmp/router256-clean-exact83.log", "sha256": "a298c1b97d84238df3878f4531595032448d5b219c424f9d0848d9608ca851be"},
+    "ab_log": {"path": "/tmp/router256-clean-ab.log", "sha256": "f109f29218f3d4f8615a80778b60ef516739010dd8aaa01a222df456f24f14be"},
+    "decode_log": {"path": "/tmp/router256-clean-decode-ab.log", "sha256": "17627aba4ea0b6b61211ff8c6ed0e8e43824c068d1cab51d0180b7916fbab112"},
+    "trace_csv": {"path": "/tmp/router256-clean-trace/router256_kernel_trace.csv", "sha256": "7dbbcbdc148562495757d125380854cc564dda2834fbecffe7a2fffd918283a3"}
+  }
+}
