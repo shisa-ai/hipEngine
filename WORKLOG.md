@@ -155774,3 +155774,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **2/2**; backend/GDN/chunked-prefill/runner bundle passes **84** with 12
   HIP-skipped cases; `git diff --check` and Python compilation pass. Clean
   post-commit endpoint measurement and benchmark publication remain next.
+
+## 2026-07-14 - Publish gfx1100 GGUF LCP-M1 memory parity
+
+- Clean commit `04b48b67` six-shape right-sized shared-weight allocation census
+  measures **21.204/21.256/21.544/22.108/22.752/24.041 GiB** tracked at
+  512/1K/4K/32K/64K/128K. The pre-LCP-M1 row was
+  **21.478/21.710/22.995/23.559/24.203/25.493 GiB**. Every session uses the
+  `liveness_aliased` mode, each close returns tracked ownership exactly to the
+  shared-weight baseline, and no row is projected.
+- The new row is **0.402/0.362/0.130/0.108/0.143/0.048 GiB below** the retained
+  llama.cpp HIP whole-device totals. The different memory scopes still prohibit
+  allocator-efficiency claims, but the stronger capacity-parity target is met
+  at all six shapes. Versus Vulkan, the residual is **+0.036 to +0.266 GiB**
+  from 1K-128K; hipEngine is **0.056 GiB lower** at 512.
+- Clean 4K/128 1+3 at the same commit records prefill samples
+  **1409.006/1403.619/1401.568 tok/s** (median **1403.619**, +0.142% versus the
+  retained 1401.632) and graph-decode samples
+  **97.725/97.669/97.578 tok/s** (median **97.669**, +0.388%). All measured IDs
+  remain `9707`, the final logit remains `29.407920837402344`, and tracked peak
+  is exactly **21.543610 GiB** in every repetition.
+- Added accepted artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json`,
+  refreshed the benchmark memory table/changelog and parity handoff, and left
+  throughput rows on the full clean six-shape `ef3e97dd` rollup. `LCP-M1` is
+  closed; exact GDN prefill and profile-directed Vulkan decode remain open.
