@@ -155467,3 +155467,89 @@ graphless decode launch-collapse path without regressing target/serial parity.
   across measured head/upstream base; recomputed six-shape wall deltas and every
   family ratio/share match the serialized values; the focused trace-summary
   suite passes **25/25**; local links and `git diff --check` pass.
+
+## 2026-07-14 - Start LCP-1 exact shared-token convolution
+
+- Reviewed `docs/LLAMACPP-HIP-PARITY.md` and the complete
+  `docs/SOL-OPTIMIZATION.md` coordinator. The next prefill unit is `LCP-1`: a
+  separately registered, same-stream FP32 convolution prefill candidate that
+  stages 32 output tokens by 128 channels in shared memory. The schedule is
+  inspired by llama.cpp upstream `6e9007ae6` `ssm-conv.cu#L58-L206`; the
+  hipEngine body will preserve its existing four FP32 multiplies, serial add
+  order, SiLU, and separate state-update fallback rather than copying backend
+  graph code or changing arithmetic.
+- Activation premise: the clean post-GPF-5A 4K profile records hipEngine
+  convolution at **954.438 ms / 18.23%** versus llama.cpp **32.980 ms**. The
+  rejected isolated-stream route reduced the same family to **88.839 ms** but
+  failed long-shape stability. LCP-1 attacks global-load/grid geometry on the
+  caller stream and must not enable that queue policy.
+- RED/GREEN gate: register the candidate under the four-axis kernel registry;
+  compare outputs and final Conv state byte-for-byte at token lengths
+  `4,31,32,33,512,4096`; retain the production two-launch implementation as the
+  fallback; require cached-build profiler proof of the expected kernel name,
+  zero scratch, and 128-thread/32-token geometry; then run clean fresh-process
+  1+3 512/4K full-state and wall gates. Stop/reject on any byte mismatch,
+  unexpected queue isolation, or stable full-wall regression.
+- Decode remains a separate `LCP-D1` unit. The 512-token SOL-G4 Amdahl table is
+  not transferred to 128K by assumption. After LCP-1 closes, run bounded
+  ROCTX-sliced 512/128K decode profiles and select only the context-local
+  dominant exact family. Grouped-GQA paged attention is a hypothesis, not yet a
+  selected implementation.
+- Required `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot
+  run because the manifest still points at the absent
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout. No parent kernel is copied;
+  current in-tree `conv.hip` and immutable llama.cpp source are the only inputs.
+- RED failed collection on the missing `tile32x128` wrapper/registry member.
+  GREEN adds the 128-thread, 17.5 KiB LDS body plus the unchanged separate state
+  update. `tests/test_qwen35_linear_attn_conv_plan.py` and the new six-length
+  HIP fixture pass **9/9**; output and final Conv state are byte-identical to
+  production at `4,31,32,33,512,4096` rows, including a 257-channel tail.
+  Runtime policy RED then failed all four missing-selector assertions; the
+  registered `gguf_qwen35` baseline/candidate policy passes **13/13** with the
+  primitive gate. Both backend automatic capabilities remain `baseline` while
+  the explicit candidate is measured; the production wrapper is still the
+  default/fallback.
+- Healthy-queue real-shape event microbench is negative. At 8192 channels and
+  kernel size 4, 12 balanced samples measure production versus `tile32x128` at
+  **0.308399 vs 0.423496 ms** for 512 rows (`0.728x`) and **2.525121 vs
+  3.867341 ms** for 4K (`0.653x`). This does not yet close LCP-1 because the
+  activation premise is the post-AOTriton same-stream cliff: production grows
+  from an isolated-family expectation near this micro rate to 954.438 ms over
+  30 layers in the marked 4K trace. One bounded full-model 4K candidate/control
+  run is therefore still required to test whether the different LDS/resource
+  body avoids that queue-local cliff. Stop immediately if it does not.
+- The bounded 4K full-model test is strongly positive: explicit candidate
+  **928.759 tok/s** versus explicit production **756.961 tok/s (+22.70%)**, with
+  unchanged **22.995 GiB** tracked peak. This proves the schedule avoids the
+  same-stream cliff despite losing the isolated healthy-queue microbench.
+- The first candidate trace exposed the exactness implementation's volatile
+  products as **20 B scratch/thread** and **131.050 ms / 120** output launches.
+  Replaced those volatile locals with an explicit separately rounded
+  `v_mul_f32_e32` helper and disabled loop unrolling. The six-length primitive
+  suite remains byte-exact, while the required cached-build same-stream 4K
+  trace now records the candidate output body at **49.790 ms / 120**, the
+  unchanged state update at **0.241 ms / 120**, **128 threads**, **17.5 KiB
+  LDS**, **zero scratch**, 224 VGPR, and 128 SGPR. The prior production output
+  body was **954.134 ms / 120**; total profiled kernel wall falls from
+  **5235.029 to 4400.647 ms** without isolated-stream routing.
+- Separate candidate capture matches the retained same-model production hashes
+  for FP32 logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V
+  pairs: **82/82 exact** at both 512 and 4K. Both predicted tokens are `9707`;
+  aggregate references remain `6659d4f8...5eb20622` and
+  `24eb7b47...94b7370c`.
+- Dirty fresh-process one-warmup/three-measurement prefill-only focus:
+  - 512 production **[864.357, 889.231, 889.837]**, median
+    **889.231 tok/s**; candidate **[876.500, 904.445, 902.974]**, median
+    **902.974 tok/s (+1.55%)**;
+  - 4K production **[762.995, 763.624, 764.575]**, median
+    **763.624 tok/s**; candidate **[937.964, 938.893, 938.130]**, median
+    **938.130 tok/s (+22.85%)**.
+  Tracked peak is unchanged at 21.478/22.995 GiB. No five-run escalation was
+  needed: the prescribed 1+3 result is directionally stable and the 4K legs
+  have sub-0.1% measured spread.
+- Added the current kernel to `docs/KERNELS.md` and serialized the default-off
+  candidate evidence in
+  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-candidate-focus.json`.
+  This dirty-worktree focus is not a retained performance claim. Commit the
+  candidate with both automatic backend capabilities still `baseline`, then
+  repeat exact/focus gates from that clean commit before promotion.

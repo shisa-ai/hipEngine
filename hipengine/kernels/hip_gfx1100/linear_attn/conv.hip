@@ -22,6 +22,14 @@ __device__ inline float silu_f32(float value) {
   return value / (1.0f + expf(-value));
 }
 
+// Force the production kernel's separately rounded multiply without using a
+// volatile local, which would spill every product to scratch under hipcc.
+__device__ __forceinline__ float mul_f32_round(float lhs, float rhs) {
+  float product;
+  asm("v_mul_f32_e32 %0, %1, %2" : "=v"(product) : "v"(lhs), "v"(rhs));
+  return product;
+}
+
 template <typename scalar_t>
 __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
@@ -143,6 +151,65 @@ __global__ void qwen35_linear_attn_conv_prefill_kernel(
       }
     }
     out[idx] = silu_f32(acc);
+  }
+}
+
+constexpr int64_t QWEN35_CONV_TOKEN_TILE = 32;
+constexpr int64_t QWEN35_CONV_CHANNEL_TILE = 128;
+constexpr int64_t QWEN35_CONV_KERNEL_SIZE = 4;
+constexpr int64_t QWEN35_CONV_WINDOW = QWEN35_CONV_TOKEN_TILE + QWEN35_CONV_KERNEL_SIZE - 1;
+
+// Long-token exact convolution schedule inspired by llama.cpp@6e9007ae6
+// ssm-conv.cu. One 128-thread block owns a channel tile and computes 32
+// consecutive output rows. The 35x128 input window is loaded once into LDS;
+// each output preserves the production kernel's four products, serial adds,
+// and SiLU order.
+__global__ __launch_bounds__(128) void qwen35_linear_attn_conv_prefill_tile32x128_kernel(
+    const float* __restrict__ hidden_states,
+    const float* __restrict__ conv_state,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t channels) {
+  const int64_t lane = static_cast<int64_t>(threadIdx.x);
+  const int64_t channel = static_cast<int64_t>(blockIdx.x) * QWEN35_CONV_CHANNEL_TILE + lane;
+  const int64_t token_base = static_cast<int64_t>(blockIdx.y) * QWEN35_CONV_TOKEN_TILE;
+  const int64_t tile_tokens = min(QWEN35_CONV_TOKEN_TILE, tokens - token_base);
+  __shared__ float tile[QWEN35_CONV_WINDOW][QWEN35_CONV_CHANNEL_TILE];
+
+  const int64_t state_offset = channel * QWEN35_CONV_KERNEL_SIZE;
+  const int64_t load_rows = tile_tokens + QWEN35_CONV_KERNEL_SIZE - 1;
+  for (int64_t row = 0; row < load_rows; ++row) {
+    float value = 0.0f;
+    if (channel < channels) {
+      const int64_t padded = token_base + row;
+      value = padded < QWEN35_CONV_KERNEL_SIZE - 1
+          ? conv_state[state_offset + padded + 1]
+          : hidden_states[(padded - (QWEN35_CONV_KERNEL_SIZE - 1)) * channels + channel];
+    }
+    tile[row][lane] = value;
+  }
+  __syncthreads();
+
+  if (channel >= channels) {
+    return;
+  }
+  const float weight0 = conv_weight[state_offset + 0];
+  const float weight1 = conv_weight[state_offset + 1];
+  const float weight2 = conv_weight[state_offset + 2];
+  const float weight3 = conv_weight[state_offset + 3];
+#pragma unroll 1
+  for (int64_t token = 0; token < tile_tokens; ++token) {
+    const float product0 = mul_f32_round(tile[token + 0][lane], weight0);
+    const float product1 = mul_f32_round(tile[token + 1][lane], weight1);
+    const float product2 = mul_f32_round(tile[token + 2][lane], weight2);
+    const float product3 = mul_f32_round(tile[token + 3][lane], weight3);
+    float acc = 0.0f;
+    acc += product0;
+    acc += product1;
+    acc += product2;
+    acc += product3;
+    out[(token_base + token) * channels + channel] = silu_f32(acc);
   }
 }
 
@@ -802,6 +869,57 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
   if (err != static_cast<int>(hipSuccess)) {
     return err;
   }
+  const int64_t state_size = channels * kernel_size;
+  const int64_t state_blocks64 = (state_size + threads - 1) / threads;
+  const int state_blocks = static_cast<int>(state_blocks64 < 65535 ? state_blocks64 : 65535);
+  hipLaunchKernelGGL(
+      qwen35_linear_attn_conv_prefill_state_kernel,
+      dim3(static_cast<unsigned int>(state_blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      tokens,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32_tile32x128(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size) ||
+      kernel_size != QWEN35_CONV_KERNEL_SIZE) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t channel_blocks64 =
+      (channels + QWEN35_CONV_CHANNEL_TILE - 1) / QWEN35_CONV_CHANNEL_TILE;
+  const int64_t token_blocks64 =
+      (tokens + QWEN35_CONV_TOKEN_TILE - 1) / QWEN35_CONV_TOKEN_TILE;
+  hipLaunchKernelGGL(
+      qwen35_linear_attn_conv_prefill_tile32x128_kernel,
+      dim3(static_cast<unsigned int>(channel_blocks64), static_cast<unsigned int>(token_blocks64)),
+      dim3(static_cast<unsigned int>(QWEN35_CONV_CHANNEL_TILE)),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_weight,
+      out,
+      tokens,
+      channels);
+  int err = static_cast<int>(hipGetLastError());
+  if (err != static_cast<int>(hipSuccess)) {
+    return err;
+  }
+  const int threads = 256;
   const int64_t state_size = channels * kernel_size;
   const int64_t state_blocks64 = (state_size + threads - 1) / threads;
   const int state_blocks = static_cast<int>(state_blocks64 < 65535 ? state_blocks64 : 65535);

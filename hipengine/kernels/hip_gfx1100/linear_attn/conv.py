@@ -20,6 +20,7 @@ _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_
 _SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
+_SYMBOL_PREFILL_F32_TILE32X128 = "hipengine_qwen35_linear_attn_conv_prefill_f32_tile32x128"
 _SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_state_rows"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
@@ -342,6 +343,40 @@ def qwen35_linear_attn_conv_prefill_f32(
     )
 
 
+def qwen35_linear_attn_conv_prefill_f32_tile32x128(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact 32-token/128-channel FP32 prefill candidate."""
+
+    _check_conv_shape(channels, kernel_size)
+    _check_positive(tokens, "tokens")
+    if kernel_size != 4:
+        raise ValueError("tile32x128 prefill requires kernel_size == 4")
+    _launch_conv_prefill(
+        _SYMBOL_PREFILL_F32_TILE32X128,
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        tokens,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_linear_attn_conv_prefill_f32_state_rows(
     hidden_states_ptr: int,
     conv_state_ptr: int,
@@ -529,6 +564,16 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "fp16"),
         qwen35_linear_attn_conv_prefill_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "gguf_qwen35", "f32_baseline"),
+        qwen35_linear_attn_conv_prefill_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "gguf_qwen35", "f32_tile32x128"),
+        qwen35_linear_attn_conv_prefill_f32_tile32x128,
         replace=replace,
     )
     register(

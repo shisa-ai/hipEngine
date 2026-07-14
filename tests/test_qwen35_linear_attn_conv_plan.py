@@ -8,6 +8,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     qwen35_linear_attn_conv_decode_f32,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_f32_tile32x128,
     qwen35_linear_attn_conv_prefill_fp16,
     qwen35_linear_attn_conv_prefill_segments_f32,
     qwen35_linear_attn_tree_conv_decode_bf16_tloop,
@@ -73,6 +74,15 @@ def test_qwen35_linear_attn_conv_registers_decode_and_prefill_variants() -> None
         resolve(
             backend="hip_gfx1100",
             layer="linear_attn_conv_prefill",
+            quant="gguf_qwen35",
+            variant="f32_tile32x128",
+        )
+        is qwen35_linear_attn_conv_prefill_f32_tile32x128
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_conv_prefill",
             quant="w4_paro",
             variant="f32_segments",
         )
@@ -125,6 +135,8 @@ def test_qwen35_linear_attn_conv_wrappers_validate_before_gpu_load() -> None:
         qwen35_linear_attn_conv_decode_fp16(0, 0, 0, 0, 0, 4)
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_linear_attn_conv_prefill_f32(0, 0, 0, 0, 0, 4, 4)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_linear_attn_conv_prefill_f32_tile32x128(0, 0, 0, 0, 0, 4, 4)
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_linear_attn_conv_prefill_fp16(0, 0, 0, 0, 0, 4, 4)
     with pytest.raises(ValueError, match="segments must be positive"):
