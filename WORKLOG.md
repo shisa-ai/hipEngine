@@ -155892,3 +155892,31 @@ graphless decode launch-collapse path without regressing target/serial parity.
   true exact chunked/prefix algebra rather than another reduction-width sweep.
   In parallel, the short-shape profile must be re-attributed because even the
   fastest rejected GDN candidate remained 5.43% below llama.cpp HIP at 512.
+
+## 2026-07-14 - Reprofile exact 512 prefill and predeclare scalar-register GDN
+
+- Clean `7e39a515` cached-only W7900 512/0 `rocprofv3 --kernel-trace` records
+  **356.145 ms / 1,948 dispatches**. Exact direct LDS32 recurrence is
+  **210.501 ms / 30 (59.11%)**, dense Q8 WMMA **48.654 ms (13.66%)**, selected
+  MoE WMMA **58.901 ms (16.54%)**, and all remaining families **10.69%**.
+  This reconfirms exact GDN, not generic launch or full attention, as the parity
+  blocker. Trace path: `/tmp/gfx1100-gdn-postscreen-512-prof/trace_kernel_trace.csv`;
+  summary: `/tmp/gfx1100-gdn-postscreen-512-prof/summary.json`.
+- Registered read-only lineage to Atlas `37513bf`,
+  `kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu`. The transferable
+  idea is narrow: one thread owns one 128-row state column, explicit launch
+  bounds permit the FP32 state to remain in registers, and state is loaded and
+  stored once around the serial token loop. hipEngine will independently retain
+  its compact-scale/direct-`conv_out` ABI and exact scalar operation order; it
+  does not copy Atlas CUDA/BF16/gate-clamp semantics.
+- Predeclare `chain_register32_direct` as one final **strict-exact** candidate,
+  not another reduction-width schedule. Compile/trace admission is workgroup 32,
+  zero LDS, zero scratch, and a plausible <=192 VGPR allocation. Any scratch or
+  loss of register residency rejects it before full-model timing.
+- RED/GREEN requires plain and segmented production geometry to be byte-exact
+  for BF16 output and FP32 final state versus `chain_lds32_direct`, plus the CPU
+  correctness budget. Only then run cached expected-symbol trace and dirty
+  512/4K full-model timing. Promotion requires at least
+  **2412.320/2255.080 tok/s** (llama.cpp HIP parity) at 512/4K, 250/250 natural
+  transitions exact, and aggregate decode nonregression. No threshold changes
+  or relaxed semantic fallback are allowed after measurement.

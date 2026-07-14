@@ -386,6 +386,7 @@ python3 scripts/check_lineage.py --file '*pack8 small-row*' --diff patch
 
 | Source | Baseline | Role | Port note |
 | --- | --- | --- | --- |
+| `atlas/kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu` | `37513bf` | Scalar-column register-resident GDN prefill | Scheduling/launch-bounds reference only: independently implement raw-pointer HIP against hipEngine's exact direct-conv arithmetic and byte gate; do not copy CUDA/BF16/clamp semantics. |
 | `nano-vllm-amd/csrc/amd/qwen35_expert.hip` | `b95eaa5` | R1 single-launch tree Conv/GDN t-loop kernels | Kernel source for DFlash tree/chain linear-attention verification; port as raw-pointer HIP with CPU or parent oracle fixtures. |
 | `nano-vllm-amd/csrc/amd/extension.cpp` | `b95eaa5` | R1 extension bindings | Binding shape only; hipEngine wrappers stay torch-free and do not copy PyBind/Tensor signatures. |
 | `nano-vllm-amd/csrc/amd/smoke.hip` | `b95eaa5` | R1 smoke fixtures | Fixture/oracle reference for t-loop kernels, not an E2E runtime dependency. |
