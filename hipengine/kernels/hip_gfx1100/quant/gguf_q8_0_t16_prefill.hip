@@ -260,9 +260,9 @@ __global__ void gguf_q8_0_t16_prefill_wmma_kernel(
 // GPF-5A diagnostic: pair two order-preserving 32-column waves in one block
 // and convert/load each activation tile once through bounded LDS. Each wave
 // keeps the production 32xTN accumulator and K traversal unchanged.
-template <int AWQ_TILE_N>
-__launch_bounds__(64, 4)
-__global__ void gguf_q8_0_t16_prefill_wmma_2wave_kernel(
+template <int AWQ_TILE_N, int NUM_WAVES>
+__launch_bounds__(NUM_WAVES * 32, 8 / NUM_WAVES)
+__global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
@@ -277,7 +277,7 @@ __global__ void gguf_q8_0_t16_prefill_wmma_2wave_kernel(
   const int wave_lane = tid & 31;
   const int lane16 = wave_lane & 15;
   const int row_start = blockIdx.y * AWQ_TILE_N;
-  const int block_out_start = blockIdx.x * 64;
+  const int block_out_start = blockIdx.x * (NUM_WAVES * WAVE_TILE_M);
   const int out_start = block_out_start + wave * WAVE_TILE_M;
   if (row_start >= rows || block_out_start >= out_features) return;
 
@@ -391,13 +391,50 @@ int launch_gguf_q8_0_t16_prefill_wmma_2wave(
       static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
   if (tile_n == 16) {
     hipLaunchKernelGGL(
-        (gguf_q8_0_t16_prefill_wmma_2wave_kernel<16>),
+        (gguf_q8_0_t16_prefill_wmma_nwave_kernel<16, 2>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
         static_cast<int>(out_features));
   } else {
     hipLaunchKernelGGL(
-        (gguf_q8_0_t16_prefill_wmma_2wave_kernel<32>),
+        (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 2>),
+        grid, block, 0, stream, x, tiles, out,
+        static_cast<int>(rows), static_cast<int>(in_features),
+        static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_gguf_q8_0_t16_prefill_wmma_4wave(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % Q8_0_QK) != 0 ||
+      (out_features % T16_COLS) != 0 ||
+      tile_m != 128 || (tile_n != 16 && tile_n != 32)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 127) / 128),
+      static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
+  if (tile_n == 16) {
+    hipLaunchKernelGGL(
+        (gguf_q8_0_t16_prefill_wmma_nwave_kernel<16, 4>),
+        grid, block, 0, stream, x, tiles, out,
+        static_cast<int>(rows), static_cast<int>(in_features),
+        static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL(
+        (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
         static_cast<int>(out_features));
@@ -479,6 +516,20 @@ HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(fp16, half_t, f32, float)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, bf16, uint16_t)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, fp16, half_t)
 HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(f32, float, f32, float)
+
+extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_t16_prefill_wmma_4wave(
+      x, tiles, out, rows, in_features, out_features, tile_m, tile_n, stream);
+}
 
 extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
     const uint16_t* x,

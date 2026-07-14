@@ -28,7 +28,9 @@ _T16_COLS = 16
 _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
 
 _TWO_WAVE_VARIANT = "wmma_prefill_2wave_bf16_bf16_out"
+_FOUR_WAVE_VARIANT = "wmma_prefill_4wave_bf16_bf16_out"
 _TWO_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE"
+_FOUR_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE"
 _two_wave_session_enabled: bool | None = None
 
 _VARIANTS: tuple[str, ...] = (
@@ -161,6 +163,19 @@ def _two_wave_prefill_applies(
     return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
 
 
+def _four_wave_prefill_applies(
+    *,
+    tile_m: int,
+    tile_n: int,
+    out_features: int,
+) -> bool:
+    """Return whether the explicit LCP-3 four-wave diagnostic covers this tile."""
+
+    raw = os.environ.get(_FOUR_WAVE_ENV, "").strip().lower()
+    enabled = raw in {"1", "true", "yes", "on"}
+    return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
+
+
 def _symbol_for_variant(variant: str) -> str:
     return f"hipengine_gguf_q8_0_t16_{variant}"
 
@@ -188,7 +203,14 @@ def _make_wrapper(variant: str, *, two_wave_default: bool = False):
         if tile_n is not None:
             resolved_tile_n = tile_n
         selected_symbol = symbol
-        if variant == "wmma_prefill_bf16_bf16_out" and _two_wave_prefill_applies(
+        if variant == "wmma_prefill_bf16_bf16_out" and _four_wave_prefill_applies(
+            tile_m=resolved_tile_m,
+            tile_n=resolved_tile_n,
+            out_features=out_features,
+        ):
+            selected_symbol = _symbol_for_variant(_FOUR_WAVE_VARIANT)
+            resolved_tile_m = 128
+        elif variant == "wmma_prefill_bf16_bf16_out" and _two_wave_prefill_applies(
             tile_m=resolved_tile_m,
             tile_n=resolved_tile_n,
             out_features=out_features,
@@ -263,6 +285,38 @@ def gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
     )
 
 
+def gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the LCP-3 four-wave activation-sharing diagnostic."""
+
+    _launch(
+        _symbol_for_variant(_FOUR_WAVE_VARIANT),
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        tile_m=128 if tile_m is None else tile_m,
+        tile_n=(32 if rows >= 32 else 16) if tile_n is None else tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def __getattr__(name: str):
     if name.startswith("gguf_q8_0_t16_wmma_prefill_") and name.endswith("_out"):
         variant = name[len("gguf_q8_0_t16_") :]
@@ -301,8 +355,13 @@ def _launch(
         tm_def, tn_def = _default_tiles(rows, in_features, out_features)
         tile_m = tm_def if tile_m is None else tile_m
         tile_n = tn_def if tile_n is None else tile_n
-    if (tile_m, tile_n) not in _ALLOWED_TILES:
-        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
+    allowed_tiles = (
+        {(128, 16), (128, 32)}
+        if symbol == _symbol_for_variant(_FOUR_WAVE_VARIANT)
+        else _ALLOWED_TILES
+    )
+    if (tile_m, tile_n) not in allowed_tiles:
+        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(allowed_tiles))
         raise ValueError(
             f"tile (tile_m={tile_m}, tile_n={tile_n}) is not supported. "
             f"Supported tiles: {allowed}"
@@ -359,6 +418,16 @@ def register_gguf_q8_0_t16_prefill_kernels(*, replace: bool = True) -> None:
         gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q8_0_t16_v1",
+            _FOUR_WAVE_VARIANT,
+        ),
+        gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out,
+        replace=replace,
+    )
 
     for variant in _VARIANTS:
         fn = _WRAPPER_CACHE[variant]
@@ -396,5 +465,6 @@ __all__ = [
     "register_gguf_q8_0_t16_prefill_kernels",
     "q8_t16_two_wave_prefill_session",
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
+    "gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

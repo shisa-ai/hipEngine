@@ -29,6 +29,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     _default_tiles,
+    _four_wave_prefill_applies,
     _two_wave_prefill_applies,
     build_gguf_q8_0_t16_prefill,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
@@ -38,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_f32_f32_out,
     gguf_q8_0_t16_wmma_prefill_f32_fp16_out,
     gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
+    gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_fp16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_fp16_f32_out,
     gguf_q8_0_t16_wmma_prefill_fp16_fp16_out,
@@ -110,6 +112,19 @@ def test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy() -> None:
     assert _default_tiles(rows=31, in_features=2048, out_features=4096) == (64, 16)
     assert _default_tiles(rows=31, in_features=2048, out_features=512) == (16, 16)
     assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
+
+
+def test_lcp3_four_wave_policy_is_explicit_and_shape_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", raising=False)
+    assert not _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", "1")
+    assert _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192)
+    assert _four_wave_prefill_applies(tile_m=64, tile_n=32, out_features=2048)
+    assert not _four_wave_prefill_applies(tile_m=16, tile_n=32, out_features=8192)
+    assert not _four_wave_prefill_applies(tile_m=32, tile_n=16, out_features=8192)
+    assert not _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=512)
 
 
 def test_gpf5a_two_wave_policy_is_explicit_and_shape_scoped(
@@ -193,6 +208,15 @@ def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
             variant="wmma_prefill_2wave_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q8_0_t16_v1",
+            variant="wmma_prefill_4wave_bf16_bf16_out",
+        )
+        is gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out
     )
 
     artifact = plan_gguf_q8_0_t16_prefill_build(compiler_version="test-compiler")
@@ -409,6 +433,32 @@ def test_gpf5a_two_wave_q8_t16_prefill_is_bit_exact_to_32x32(
         out_dtype="bf16",
         tile=(64, 32),
         wrapper_override=gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(candidate, baseline)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(("rows", "out_features"), [(17, 128), (32, 144), (33, 256)])
+def test_lcp3_four_wave_q8_t16_prefill_is_bit_exact_to_32x32(
+    rows: int,
+    out_features: int,
+) -> None:
+    baseline, _ = _run_q8_0_t16_wmma_prefill_gpu(
+        rows=rows,
+        in_features=256,
+        out_features=out_features,
+        in_dtype="bf16",
+        out_dtype="bf16",
+        tile=(32, 32),
+    )
+    candidate, _ = _run_q8_0_t16_wmma_prefill_gpu(
+        rows=rows,
+        in_features=256,
+        out_features=out_features,
+        in_dtype="bf16",
+        out_dtype="bf16",
+        tile=(128, 32),
+        wrapper_override=gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out,
     )
     np.testing.assert_array_equal(candidate, baseline)
 
