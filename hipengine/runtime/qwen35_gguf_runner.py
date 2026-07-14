@@ -1510,6 +1510,26 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_prefill_plan_cache = plan
         return plan
 
+    def _linear_attn_conv_prefill_kernel(self):
+        """Resolve and cache the registered GGUF convolution prefill schedule."""
+
+        kernel = getattr(self, "_gguf_linear_attn_conv_prefill_kernel_cache", None)
+        if kernel is None:
+            load_backend_kernel_package(self.backend)
+            mode = _gguf_linear_attn_conv_prefill_mode(self.backend)
+            variant = {
+                "baseline": "f32_baseline",
+                "tile32x128": "f32_tile32x128",
+            }[mode]
+            kernel = resolve(
+                backend=self.backend,
+                layer="linear_attn_conv_prefill",
+                quant="gguf_qwen35",
+                variant=variant,
+            )
+            self._gguf_linear_attn_conv_prefill_kernel_cache = kernel
+        return kernel
+
     def _run_gdn_prefill(
         self,
         *,
@@ -4153,7 +4173,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         else:
-            qwen35_linear_attn_conv_prefill_f32(
+            self._linear_attn_conv_prefill_kernel()(
                 scratch.linear_qkv_f32.ptr,
                 conv_state.ptr,
                 layer.weight("ssm_conv1d").allocation().tensor.ptr,
@@ -6097,6 +6117,8 @@ _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_ST
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
+_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE_ENV = "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE"
+_GGUF_LINEAR_ATTN_CONV_PREFILL_MODES = frozenset({"baseline", "tile32x128"})
 _GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS = 512
 _GGUF_TOKEN_EMBEDDING_TENSOR = "token_embd.weight"
 _Q8_1_BLOCK = 32
@@ -6139,6 +6161,28 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if raw is None:
         return default
     return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _gguf_linear_attn_conv_prefill_mode(backend: str) -> str:
+    """Resolve the explicit or architecture-scoped GGUF convolution schedule."""
+
+    raw = _env_value(_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE_ENV)
+    mode = "auto" if raw is None else raw.strip().lower()
+    if mode == "auto":
+        mode = str(
+            backend_package_capability(
+                backend,
+                "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
+                "baseline",
+            )
+        ).strip().lower()
+    if mode not in _GGUF_LINEAR_ATTN_CONV_PREFILL_MODES:
+        valid = ", ".join(sorted(_GGUF_LINEAR_ATTN_CONV_PREFILL_MODES))
+        raise ValueError(
+            "unsupported GGUF linear-attention convolution prefill mode "
+            f"{mode!r}; expected auto, {valid}"
+        )
+    return mode
 
 
 def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> bool:

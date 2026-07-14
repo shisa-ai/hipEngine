@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_lcp1_candidate_focus",
+  "status": "candidate_positive_pending_clean_commit_gate",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "bc5600e26d14da0de3180cc7bf0823064a9c3ed7",
+  "candidate": {
+    "id": "LCP-1",
+    "family": "GGUF FP32 linear-attention convolution prefill",
+    "selector": "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=tile32x128",
+    "default": false,
+    "fallback": "registered f32_baseline production output kernel plus unchanged state-update kernel",
+    "source_idea": "llama.cpp@6e9007ae6 ggml/src/ggml-cuda/ssm-conv.cu 32-token shared-memory schedule"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt": "repeated token 9707"
+  },
+  "implementation": {
+    "kernel": "qwen35_linear_attn_conv_prefill_tile32x128_kernel",
+    "token_tile": 32,
+    "channel_tile": 128,
+    "workgroup_threads": 128,
+    "lds_bytes": 17920,
+    "state_update": "unchanged separate production state kernel",
+    "math_contract": "Four separately rounded FP32 products, production serial-add order, and production SiLU; v_mul_f32 inline instruction avoids volatile-product scratch spills."
+  },
+  "correctness": {
+    "unit": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_qwen35_linear_attn_conv_tiled_prefill.py tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_gguf_conv_prefill_policy.py -q",
+      "passed": 13,
+      "primitive_lengths": [4, 31, 32, 33, 512, 4096],
+      "channels": 257,
+      "output_and_final_state_byte_exact": true
+    },
+    "full_state_protocol": "Candidate process compared with the retained same-model production hashes for FP32 logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs.",
+    "contexts": {
+      "512": {
+        "predicted_token_id": 9707,
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_reference_sha256": "6659d4f8a4130a3b5b0aa8a12dfbbb0ee74edcd9d74989a4d02cbf4b5eb20622"
+      },
+      "4096": {
+        "predicted_token_id": 9707,
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_reference_sha256": "24eb7b4730ce6f775b2294a8e30a246ee77026eab05f29bb3faebd4694b7370c"
+      }
+    },
+    "local_capture": {
+      "path": "/tmp/lcp1-full-state-candidate-inline-mul.json",
+      "sha256": "abff9e5023f0517d7f1b00a4df4d497c91788ba45d0e08f3878a6eb88a64d163"
+    }
+  },
+  "same_stream_profiler": {
+    "protocol": "Normal caller stream after AOTriton; 4K prefill only; cached-build rocprofv3 kernel trace; no isolated prefill stream.",
+    "candidate_output_kernel": {
+      "dispatches": 120,
+      "total_ms": 49.790269,
+      "avg_ms": 0.41491890833333334,
+      "workgroup_threads": 128,
+      "grid_size_x": 8192,
+      "grid_size_y": 32,
+      "lds_bytes": 17920,
+      "scratch_bytes": 0,
+      "vgpr_count": 224,
+      "sgpr_count": 128
+    },
+    "candidate_family_including_state_update_ms": 50.031002,
+    "production_reference_output_kernel_ms": 954.133776,
+    "production_reference_family_ms": 954.438469,
+    "candidate_output_speedup_x": 19.163057263257606,
+    "candidate_total_kernel_ms": 4400.647081,
+    "profiled_prefill_tok_s": 912.8584973138734,
+    "local_artifacts": {
+      "trace": {
+        "path": "/tmp/hipengine-lcp1-profile-4k-spillfree/trace/lcp1-4k_kernel_trace.csv",
+        "sha256": "567232f6ccbd95b18395d98d76eaabcb5f94395834b97e7a54f66709bd4cdd63"
+      },
+      "summary": {
+        "path": "/tmp/hipengine-lcp1-profile-4k-spillfree/summary.json",
+        "sha256": "4389770513c7555475b8a380de50b7f42d74a32359ef82fa23a626c82471d337"
+      },
+      "bench": {
+        "path": "/tmp/hipengine-lcp1-profile-4k-spillfree/bench.json",
+        "sha256": "e127f0b318f47ec44e65065497a6b3eabaf8c0209afe739eb6218a2e21c04b3a"
+      }
+    }
+  },
+  "diagnostics": {
+    "healthy_queue_microbench": {
+      "reading": "The first volatile-product body was slower than production in a balanced isolated event microbench; this did not test the measured post-AOTriton caller-stream cliff.",
+      "512_rows": {"production_ms": 0.308399, "candidate_ms": 0.423496, "candidate_ratio": 0.728},
+      "4096_rows": {"production_ms": 2.525121, "candidate_ms": 3.867341, "candidate_ratio": 0.653}
+    },
+    "bounded_full_model_probe": {
+      "candidate_prefill_tok_s": 928.7585266901218,
+      "production_prefill_tok_s": 756.9607362159973,
+      "candidate_delta_percent": 22.695733378844942,
+      "reading": "The different same-stream body avoids the production queue-local cliff; this justified the prescribed full gate despite the isolated micro result."
+    }
+  },
+  "dirty_fresh_process_focus": {
+    "protocol": "One discarded warmup plus three measured prefill-only runs in one fresh persistent-session process per context/mode; order baseline/candidate at 512 and candidate/baseline at 4K; cached builds.",
+    "512": {
+      "production_samples_tok_s": [864.3571163710653, 889.2313417303732, 889.8371648955123],
+      "candidate_samples_tok_s": [876.500092653281, 904.4451683340956, 902.9739755174244],
+      "production_median_tok_s": 889.2313417303732,
+      "candidate_median_tok_s": 902.9739755174244,
+      "candidate_delta_percent": 1.5454509014841022,
+      "tracked_peak_gib_production_candidate": [21.477776296436787, 21.477776296436787],
+      "production_artifact_sha256": "75008e1a9afb75955aa0a153be4ac0ab222eae0a349883faed981d7c248b37a0",
+      "candidate_artifact_sha256": "427bdffc4187b5985f082fd468f11044cc980e25a3a197183e395b6c8b5672d6"
+    },
+    "4096": {
+      "production_samples_tok_s": [762.9948330116614, 763.6239539976754, 764.5749969886031],
+      "candidate_samples_tok_s": [937.9644606453486, 938.8927864722499, 938.1300540457835],
+      "production_median_tok_s": 763.6239539976754,
+      "candidate_median_tok_s": 938.1300540457835,
+      "candidate_delta_percent": 22.852360659267546,
+      "tracked_peak_gib_production_candidate": [22.99488216638565, 22.99488216638565],
+      "production_artifact_sha256": "75aee6e3004a234cc7a7f60cc914dcb0e8ddee07642a01d2a72bea8d70b2051f",
+      "candidate_artifact_sha256": "315e993792405279ed02d249d537ede591945605484c38e4777a838507f50910"
+    }
+  },
+  "decision": {
+    "commit_default_off": true,
+    "promote_default": false,
+    "reason": "Primitive/full-state exactness, same-stream execution, resource, and dirty fresh-process wall gates are positive. Project policy requires clean detached confirmation before architecture capability promotion.",
+    "next": "Commit the registered default-off candidate and evidence, then repeat exact and focused gates from that clean commit."
+  }
+}
