@@ -155920,3 +155920,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **2412.320/2255.080 tok/s** (llama.cpp HIP parity) at 512/4K, 250/250 natural
   transitions exact, and aggregate decode nonregression. No threshold changes
   or relaxed semantic fallback are allowed after measurement.
+
+## 2026-07-14 - Reject scalar-register GDN at resource gate
+
+- Plain and segmented production-geometry fixtures become byte-exact to direct
+  LDS32 after making the contraction/update FMA sites explicit, so the scalar
+  arithmetic hypothesis is sound. The cached W7900 trace then fails the earlier
+  compile/resource admission before any full-model timing.
+- Plain/segmented symbols compile at **256 VGPR** with **1064/1060 bytes of
+  scratch per thread**, workgroup 32, and zero LDS. This exceeds the <=192 VGPR
+  ceiling and, decisively, violates zero scratch: the complete 128-row state
+  does not remain register-resident on gfx1100 even with `__launch_bounds__(32,
+  1)`. Trace:
+  `/tmp/gfx1100-gdn-register32-trace/trace_kernel_trace.csv`.
+- Rejected under the predeclared stop rule. The temporary kernel bodies,
+  wrappers, registry variants, and RED test are removed without full-model or
+  trajectory timing. Atlas remains catalogued as a scheduling reference, but
+  its SM121 register-file result does not transfer mechanically to RDNA3.
+- Strict exact GDN has now exhausted direct LDS geometries, ordered/grouped
+  register schedules, relaxed register schedules, and full-column scalar
+  residency. A real future GDN step requires chunkwise/WY algebra with an
+  explicit numerical contract; do not reopen storage/reduction micro-variants.

@@ -3,10 +3,11 @@
   "kind": "gfx1100_gguf_gdn_register_residency_screen",
   "status": "rejected_removed",
   "created_at": "2026-07-14T17:01:12Z",
+  "updated_at": "2026-07-14T17:12:00Z",
   "performance_claim": false,
   "correctness_claim": false,
   "candidate_retained": false,
-  "conclusion": "The direct wave32 and contiguous-group4 register-resident schedules produce large prefill gains but fail the frozen 18-prompt semantic gate; irregular group3 fails the predeclared speed floor. All temporary candidate kernels, registry entries, selectors, routing, and candidate tests were removed. Exact chain_lds32_direct remains the production route.",
+  "conclusion": "The direct wave32 and contiguous-group4 register-resident schedules produce large prefill gains but fail the frozen 18-prompt semantic gate; irregular group3 fails the predeclared speed floor. A final strict-exact scalar-column candidate passes byte equality but compiles at 256 VGPR with about 1.04 KiB scratch/thread, failing its zero-scratch residency gate before timing. All temporary candidate kernels, registry entries, selectors, routing, and candidate tests were removed. Exact chain_lds32_direct remains the production route.",
   "platform": {
     "device": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
@@ -105,6 +106,26 @@
       },
       "semantic_gate_run": false,
       "decision": "rejected_speed_before_semantic_gate"
+    },
+    {
+      "candidate": "strict-exact scalar register32 direct, 128 FP32 state rows per thread",
+      "source_lineage": "atlas@37513bf kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu (scheduling reference only)",
+      "plain_byte_exact": true,
+      "segmented_byte_exact": true,
+      "workgroup_size": 32,
+      "lds_bytes": 0,
+      "plain_vgpr_count": 256,
+      "segmented_vgpr_count": 256,
+      "plain_scratch_bytes_per_thread": 1064,
+      "segmented_scratch_bytes_per_thread": 1060,
+      "resource_gate": {
+        "max_vgpr": 192,
+        "required_scratch_bytes_per_thread": 0,
+        "passed": false
+      },
+      "full_model_timing_run": false,
+      "semantic_gate_run": false,
+      "decision": "rejected_compile_resource_before_timing"
     }
   ],
   "semantic_category_diagnostics": {
@@ -130,11 +151,13 @@
     "gpf6-semantic-full-dirty.json": "4c2fa538c050edde0ff44083c7961fedc765f79dfe9db4aaa3bb9dbdb4b55eac",
     "gpf6b-group4-smoke.json": "feb42a2c9ebeaf5bea42f8d67d0dda4a50a48db0590fedd661b60fd122f3f818",
     "gpf6b-group4-semantic-full-dirty.json": "c01e2acc826e6aeadd13f3240987d4f808494add87875aa4c49c6189e095392b",
-    "gpf6c-group3-smoke.json": "153db1a063324e42f5b9e9720170eee4e7afcde2aa10fb21fa2f38309d3c778c"
+    "gpf6c-group3-smoke.json": "153db1a063324e42f5b9e9720170eee4e7afcde2aa10fb21fa2f38309d3c778c",
+    "gfx1100-gdn-register32-trace_kernel_trace.csv": "22207adaafd1495f1481f9833fb4093a028a1fa28d0c4c25b9e605b83e1ad3cb"
   },
   "notes": [
     "All candidate measurements were dirty development diagnostics and are not retained performance claims.",
     "Prompt contents were frozen before the semantic measurements and include eight category-heldouts in addition to the canonical ten-prompt suite.",
-    "No prompt-conditioned branch, token-specific logic, or post-measurement threshold change was used."
+    "No prompt-conditioned branch, token-specific logic, or post-measurement threshold change was used.",
+    "The strict-exact scalar-column candidate was removed after failing the predeclared compile/resource gate; no full-model performance claim was measured."
   ]
 }
