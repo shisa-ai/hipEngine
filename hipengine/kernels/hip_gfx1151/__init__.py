@@ -28,9 +28,9 @@ TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
-# Clean GPF-2E exactness, balanced-wall, and natural-trajectory/decode gates
-# admit compact-scale direct-conv scalar-exact LDS32 GDN prefill on gfx1151.
-GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct"
+# Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
+# gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
+GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # Clean LCP-1 primitive/full-state, same-stream trace, and fresh-process wall
 # gates admit the exact 32-token shared-memory convolution schedule on gfx1151.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"

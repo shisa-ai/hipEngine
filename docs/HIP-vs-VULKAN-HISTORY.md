@@ -57,16 +57,16 @@ Compact evidence is
 
 | Rank | Production-backed opportunity | Decision |
 | ---: | --- | --- |
-| 1 | Exact chunked/prefix GDN for prefill | Research in HIP behind the existing six-case state and 250/250 natural-transition gates. Do not copy the Vulkan/HIP subgroup reduction tree under the exact route. |
+| 1 | Exact GDN for prefill | **LCP-2A promoted on gfx1151:** compiler-cacheable state accesses preserve the scalar recurrence, pass the six-case and 250/250 natural-transition gates exactly, and improve balanced 512/1K/4K prefill by 34.76%-36.63%. The Vulkan/HIP subgroup tree remains rejected under the exact route. |
 | 2 | Dense Q8 prefill and decode | Screen HIP-local address, live-range, activation-sharing, and shape schedules while preserving BF16 activation/output semantics. Do not substitute Vulkan Q8_1 math. |
 | 3 | 128K grouped-GQA decode context body | Compare hipEngine with the faster llama.cpp HIP FlashAttention implementation. Vulkan is explicitly not the source target. Preserve BF16 KV and `KVLiveSpans`. |
 | 4 | F32 router logits | Screen only after the larger families; Vulkan's separate top-k bucket is small, so top-k fusion is not the first router experiment. |
 
 Closed non-targets are selected Q4/Q5 prefill, short/mid full-attention prefill,
 generic graph/dispatch work, a wholesale Vulkan backend, broad compiler/ISA
-work, and the already-rejected non-exact GDN tree. The exact tiled convolution
-and long-split reducer opportunities named by the earlier llama.cpp HIP audit
-are already retained as LCP-1 and LCP-D1. Future implementation claims must
+work, and the already-rejected non-exact GDN tree. The exact tiled convolution,
+long-split reducer, and compiler-cacheable exact GDN opportunities are retained
+as LCP-1, LCP-D1, and LCP-2A. Future implementation claims must
 start from the current hipEngine family trace rather than transfer raw
 cross-profiler ratios.
 

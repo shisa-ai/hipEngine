@@ -156,9 +156,10 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
 def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     plan = qgr._resolve_gguf_gdn_prefill_plan("hip_gfx1151")
 
-    assert plan.auto_mode == "chain_lds32_direct"
+    assert plan.auto_mode == "chain_lds32_direct_nonvolatile"
     assert plan.has_exact_chain_lds32
     assert plan.has_exact_chain_lds32_direct
+    assert plan.has_exact_chain_lds32_direct_nonvolatile
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:

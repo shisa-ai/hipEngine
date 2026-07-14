@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_gfx1151_gguf_gdn_lcp2a_clean_promotion",
+  "created_at": "2026-07-14T07:50:37.459586+00:00",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "status": "accepted_exact_default_promotion",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "software": {
+    "candidate_commit": "53928aaf594a379f22d00d16e74fae77912b984d",
+    "candidate_mode": "chain_lds32_direct_nonvolatile",
+    "baseline_mode": "chain_lds32_direct"
+  },
+  "correctness": {
+    "six_case_exact": true,
+    "contexts": [
+      17,
+      512,
+      1024,
+      1025,
+      4095,
+      4096
+    ],
+    "sampled_token_hidden_conv_gdn_exact": true,
+    "natural_transitions_passed": 250,
+    "natural_transitions_total": 250,
+    "kl_mean_max": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement_min": 1.0,
+    "timed_decode_trajectories_exact": true
+  },
+  "balanced_prefill": {
+    "protocol": "one warmup and four alternating measured repetitions per mode/context",
+    "contexts": [
+      {
+        "tokens": 512,
+        "baseline_median_ms": 568.3745805,
+        "candidate_median_ms": 421.776835,
+        "baseline_tok_s": 900.814388197292,
+        "candidate_tok_s": 1213.9120916870647,
+        "candidate_wall_delta_percent": -25.792452817125938,
+        "all_paired_candidate_wins": true,
+        "tokens_exact": true
+      },
+      {
+        "tokens": 1024,
+        "baseline_median_ms": 1088.5092694999998,
+        "candidate_median_ms": 796.7221935,
+        "baseline_tok_s": 940.7361321510548,
+        "candidate_tok_s": 1285.266066835127,
+        "candidate_wall_delta_percent": -26.80611770389704,
+        "all_paired_candidate_wins": true,
+        "tokens_exact": true
+      },
+      {
+        "tokens": 4096,
+        "baseline_median_ms": 4350.6802795,
+        "candidate_median_ms": 3185.3483450000003,
+        "baseline_tok_s": 941.4619638450497,
+        "candidate_tok_s": 1285.8876193021206,
+        "candidate_wall_delta_percent": -26.785051064104508,
+        "all_paired_candidate_wins": true,
+        "tokens_exact": true
+      }
+    ],
+    "decision": {
+      "baseline_mode": "chain_lds32_direct",
+      "candidate_mode": "chain_lds32_direct_nonvolatile",
+      "candidate_wins_all_contexts": true,
+      "clean_provenance": true,
+      "conclusion": "The correctness-qualified chain_lds32_direct_nonvolatile wins every context.",
+      "contract_allows_default_promotion": true,
+      "correctness_contract": "byte_exact",
+      "correctness_gate_passed": true,
+      "measurement_valid": true,
+      "selected_default": "chain_lds32_direct_nonvolatile",
+      "status": "promote_candidate",
+      "timed_tokens_exact": true
+    }
+  },
+  "decode_nonregression": {
+    "baseline_weighted_tok_s": 53.34786524069986,
+    "candidate_weighted_tok_s": 53.35915343304418,
+    "speedup": 1.0002115959522164,
+    "wall_delta_percent": -0.021155118884108537,
+    "passed": true
+  },
+  "kernel_profile": {
+    "baseline_vgpr": 64,
+    "candidate_vgpr": 32,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0
+  },
+  "sources": {
+    "exact_matrix": {
+      "path": "/tmp/lcp2-clean-exact-matrix.json",
+      "sha256": "7051880f577c3d07c3843a6a3fa23abd8271e953e13fb2484bf188914cc2fe4e"
+    },
+    "balanced_prefill_ab": {
+      "path": "/tmp/lcp2-clean-balanced-ab.json",
+      "sha256": "89f8b8beaef2ca8f9c3ffc4aeca3cc7759c9e44f7c6d563d37a73e2e83bf1aac"
+    },
+    "trajectory_decode": {
+      "path": "/tmp/lcp2-clean-trajectory-decode.json",
+      "sha256": "8a3a5c6c80cb2d3e37892fdb57e56c3c95f3f6c815089d854a4e8529525c11d6"
+    }
+  },
+  "provenance": {
+    "build_profile": "gguf_gdn_trajectory_decode_gate",
+    "collected_at": "2026-07-14T07:48:45.758443+00:00",
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "scripts/gguf_gdn_trajectory_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--baseline-mode",
+      "chain_lds32_direct",
+      "--candidate-mode",
+      "chain_lds32_direct_nonvolatile",
+      "--correctness-decode-steps",
+      "24",
+      "--performance-decode-steps",
+      "128",
+      "--performance-repetitions",
+      "2",
+      "--bulk-attention-mode",
+      "bulk",
+      "--graph-replay-decode",
+      "--decode-repack",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--compiler-version-file",
+      "/tmp/lcp1-hipcc-version-current.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/lcp2-clean-trajectory-decode.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "explicit chain_lds32_direct versus chain_lds32_direct_nonvolatile",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "53928aafc6c1b708ccb290780693e967aecee3c5",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 2,
+    "repo_root": "/tmp/hipengine-lcp2-clean-53928aaf",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "multi_prompt_logits_and_balanced_decode_v1",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 1
+  }
+}

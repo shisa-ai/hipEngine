@@ -1,6 +1,6 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **audit complete; LCP-1 prefill and LCP-D1 long-context decode retained on gfx1151**
+Status: **audit complete; LCP-1, LCP-2A prefill and LCP-D1 decode retained on gfx1151**
 Date: **2026-07-14**
 Machine-readable evidence:
 
@@ -334,7 +334,7 @@ accounting and no-regression gates.
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | **Retained:** exact 32-token shared-memory long-token convolution | Clean 512/4K focus is +1.73%/+22.91%; 82/82 state parts are byte-exact and the 4K body falls 954.134 -> 49.790 ms | Complete on gfx1151; gfx1100 remains baseline pending W7900 evidence |
 | 2 | `LCP-D1` | **Retained:** bounded 128K attribution plus exact long-split gated reduction | Attention is 50.95% at 128K; parallelizing only independent work above 256 splits cuts the reducer 234.714 -> 196.466 us/call | Complete for GGUF BF16 KV; PARO/KV-dtype work remains separate |
-| 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap, but direct tree port violates trajectory contract | Six-case state matrix and 250/250 natural transitions before timing |
+| 3 | `LCP-2A` | **Retained:** compiler-cacheable exact direct LDS32 GDN state | Clean balanced 512/1K/4K prefill is +34.76%/+36.63%/+36.58%; direct tree port remains invalid | Six-case state and 250/250 natural transitions pass byte-exactly; gfx1151 promoted |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
