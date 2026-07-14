@@ -361,7 +361,11 @@ def register_gguf_q8_0_t16_prefill_kernels(*, replace: bool = True) -> None:
     )
 
     for variant in _VARIANTS:
-        fn = _WRAPPER_CACHE[variant]
+        fn = (
+            gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
+            if variant == "wmma_prefill_bf16_bf16_out"
+            else _WRAPPER_CACHE[variant]
+        )
         register(
             KernelKey(
                 "hip_gfx1100",

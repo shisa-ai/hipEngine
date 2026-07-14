@@ -22,11 +22,12 @@ from hipengine.kernels.hip_gfx1100.norm import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
-    gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
+    GGUF_Q8_T16_PREFILL_TWO_WAVE as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE,
+    GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
@@ -87,10 +88,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
-    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
-    assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
+    assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -121,7 +124,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             quant="gguf_q8_0_t16_v1",
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
-        is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+        is gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
     )
     assert (
         backend_package_capability(
@@ -135,7 +138,28 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "fused"
+        == "chain_lds32_direct"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+        )
+        == "shared_x"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_PREFILL_TWO_WAVE",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+        )
+        == 4096
     )
     assert (
         backend_package_capability(

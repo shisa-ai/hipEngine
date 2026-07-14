@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_prefill_schedule_transfer_gate",
+  "created_at": "2026-07-14T02:05:00+00:00",
+  "status": "accepted_scoped_transfer",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_commit": "bc5600e26d14da0de3180cc7bf0823064a9c3ed7",
+    "hipengine_dirty": false,
+    "therock_hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompt_token_id": 9707,
+    "focus_contexts": [
+      512,
+      4096
+    ],
+    "bulk_attention_mode": "bulk",
+    "decode_repack": true,
+    "graph_replay_decode": true,
+    "compiler_version_file": "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+    "require_cached_build": true,
+    "schedule_policy": "Promote only architecture-local exact schedules that win every focus context and pass their predeclared decode/state gate. Bound GPF-5A to the independently measured request scope."
+  },
+  "combined_transfer_screen": {
+    "protocol": "Separate clean current-default and all-three-explicit processes; one discarded warmup plus three measurements per 512/128 or 4K/128 right-sized session.",
+    "contexts": {
+      "512": {
+        "default_prefill_tok_s": 648.5117318759709,
+        "candidate_prefill_tok_s": 1352.9083028531907,
+        "prefill_delta_percent": 108.6173983220919,
+        "default_decode_tok_s": 90.10724591876478,
+        "candidate_decode_tok_s": 90.23419488703614,
+        "default_final_token_ids": [9707, 9707, 9707],
+        "candidate_final_token_ids": [9707, 9707, 9707]
+      },
+      "4096": {
+        "default_prefill_tok_s": 682.1721675673334,
+        "candidate_prefill_tok_s": 1463.6680881595648,
+        "prefill_delta_percent": 114.55992456846964,
+        "default_decode_tok_s": 97.41316501456328,
+        "candidate_decode_tok_s": 97.21034619083169,
+        "default_final_token_ids": [9707, 9707, 9707],
+        "candidate_final_token_ids": [9707, 9707, 9707]
+      }
+    },
+    "raw_artifact_sha256": {
+      "default_512": "8aa9460b7ab0afa378d0a6bed050d2ce295abeb52129cd1f9a4935f4de047e34",
+      "candidate_512": "d25b38f1d0984639e92cfc31d16d4654ea226270b062cba24f8ed0843ff9fd01",
+      "default_4096": "70bb1bdff4799879fb7ceaec7357e8b988e270c2bfa40f229dbb695414552c84",
+      "candidate_4096": "3cd7e5dfaa7b53312fb54687da543ac32e95eaf6512a569baaa2b66867bbd210"
+    }
+  },
+  "gpf2e": {
+    "candidate": "chain_lds32_direct",
+    "decision": "promote_gfx1100_default",
+    "balanced_ab": {
+      "protocol": "One warmup plus four balanced same-session measurements per mode/context, fused versus chain_lds32_direct.",
+      "contexts": {
+        "512": {
+          "baseline_prefill_tok_s": 649.1308716078312,
+          "candidate_prefill_tok_s": 1291.2249167974824,
+          "speedup": 1.9891596183050877,
+          "all_timed_ids_exact": true
+        },
+        "4096": {
+          "baseline_prefill_tok_s": 677.8882706043546,
+          "candidate_prefill_tok_s": 1401.330465327387,
+          "speedup": 2.0671997526643517,
+          "all_timed_ids_exact": true
+        }
+      },
+      "raw_artifact_sha256": "b981bcab972d96e5e6a27fcc400f50205c92433d15b992103c75bee2aacd5fd1"
+    },
+    "natural_trajectory_decode_gate": {
+      "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompts": 10,
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "correctness_transitions": 250,
+      "correctness_transitions_passed": 250,
+      "kl_max": 0.0,
+      "top1_agreement_min": 1.0,
+      "all_128_step_timed_trajectories_exact": true,
+      "baseline_weighted_decode_tok_s": 97.9718750563837,
+      "candidate_weighted_decode_tok_s": 98.06054357284792,
+      "candidate_decode_delta_percent": 0.0905040517119815,
+      "raw_artifact_sha256": "74d742006a8fe24972f03abe5b648a0129ce040116958d7b9035f4818a67b460"
+    }
+  },
+  "gpf3a": {
+    "candidate": "shared_x",
+    "decision": "promote_gfx1100_default",
+    "initial_four_repetition_gate": {
+      "prefill_won_both_contexts": true,
+      "correctness_passed": true,
+      "trajectories_exact": true,
+      "aggregate_decode_delta_percent": 0.0014829698822873688,
+      "decision": "borderline_decode_repeat_triggered",
+      "raw_artifact_sha256": "082f41a15e7aab33279c06c44332f7f1ea16150188c85d2db928321450a15ba4"
+    },
+    "predeclared_borderline_repeat": {
+      "protocol": "One warmup plus eight balanced same-session measurements per mode/context.",
+      "contexts": {
+        "512": {
+          "baseline_prefill_tok_s": 640.8762749372938,
+          "candidate_prefill_tok_s": 646.4991468263139,
+          "speedup": 1.0087737245220543
+        },
+        "4096": {
+          "baseline_prefill_tok_s": 672.8658805046225,
+          "candidate_prefill_tok_s": 678.3948799683423,
+          "speedup": 1.0082170899490002
+        }
+      },
+      "logits_byte_exact": true,
+      "trajectories_exact": true,
+      "baseline_decode_median_wall_sum_ms": 2763.5027295,
+      "candidate_decode_median_wall_sum_ms": 2761.254503,
+      "candidate_decode_delta_percent": 0.08142047383017381,
+      "raw_artifact_sha256": "34c3e689c42ca65d03a225b4e32fae7a857360a0dec43082e402c9f7eef4d36f"
+    }
+  },
+  "gpf5a": {
+    "candidate": "two_wave",
+    "decision": "promote_gfx1100_through_4096_tokens",
+    "protocol": "Separate clean explicit-off/on processes sharing one max-4K resident session each; one discarded warmup plus four prefill-only measurements per context.",
+    "contexts": {
+      "512": {
+        "baseline_prefill_tok_s": 645.900578500446,
+        "candidate_prefill_tok_s": 654.8715201075161,
+        "candidate_delta_percent": 1.3889044081516921
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 676.4441205026296,
+        "candidate_prefill_tok_s": 683.1641518705931,
+        "candidate_delta_percent": 0.9934348106936275
+      }
+    },
+    "primitive_gate": "Three gfx1100 HIP fixtures pass byte-exact two-wave versus 32x32 output comparison.",
+    "full_model_sanity": "The combined 512/128 and 4K/128 transfer screen retains stable token 9707 trajectories.",
+    "scope_reason": "No gfx1100 long-context transfer A/B has been run; requests above 4096 tokens retain the production wrapper.",
+    "raw_artifact_sha256": {
+      "off": "41f5ccb5e1c638dde2906158f1f0ddbc6c0e782284eba776a41a75f4644204ea",
+      "on": "0fe1a8eab846b69985b6257e77f59508b9bba43d838e7811d96d554d493884c5"
+    }
+  },
+  "decision": {
+    "promote": true,
+    "gfx1100_gdn_auto_mode": "chain_lds32_direct",
+    "gfx1100_q4_t16_auto_mode": "shared_x",
+    "gfx1100_q8_t16_two_wave": true,
+    "gfx1100_q8_t16_two_wave_max_tokens": 4096,
+    "gfx1151_policy_unchanged": true,
+    "next": "Commit the architecture-local policy, run a clean automatic-route confirmation, then profile the promoted route before implementing LCP-1."
+  }
+}
