@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_router_threads256_candidate",
+  "status": "candidate_default_off_dirty_screen",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "software": {
+    "base_commit": "4fbc5337",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "id": "LCP-4A",
+    "description": "launch the existing exact BF16-hidden/F32-weight router-logits reduction with 256 threads instead of 512",
+    "default_on": false,
+    "operation_order": "unchanged meaningful reduction tree for hidden_size=2048; the removed 512-to-256 step adds only zero partials"
+  },
+  "primitive": {
+    "shape": "tokens x hidden x experts, BF16 x F32 -> F32",
+    "hidden_size": 2048,
+    "experts": 256,
+    "512_tokens": {
+      "threads512_median_ms": 0.6826640129089355,
+      "threads256_median_ms": 0.3801204919815063,
+      "delta_percent": -44.318070852782334,
+      "byte_exact": true
+    },
+    "1024_tokens": {
+      "threads512_median_ms": 1.3539803504943848,
+      "threads256_median_ms": 0.7558981895446777,
+      "delta_percent": -44.17214479747263,
+      "byte_exact": true
+    }
+  },
+  "full_model_correctness": {
+    "512": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "kv_parts": 20, "token": 9707},
+    "4096": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "kv_parts": 20, "token": 9707}
+  },
+  "balanced_prefill": {
+    "512": {
+      "baseline_ms": [417.77780203847215, 418.8049799995497, 419.24058698350564, 417.1875739702955, 419.5604369742796],
+      "candidate_ms": [406.595786975231, 406.26461600186303, 407.1511389920488, 406.24932799255475, 406.55637299641967],
+      "baseline_median_ms": 418.8049799995497,
+      "candidate_median_ms": 406.55637299641967,
+      "wall_delta_percent": -2.924656484061672,
+      "baseline_tok_s": 1222.5260549684738,
+      "candidate_tok_s": 1259.3579488778767,
+      "throughput_delta_percent": 3.0127696468892573,
+      "timed_ids_exact": true
+    },
+    "4096": {
+      "baseline_ms": [3152.379952953197, 3152.1816899767146, 3151.3689259882085, 3155.0114169949666, 3158.530944958329],
+      "candidate_ms": [3051.3136190129444, 3053.531279962044, 3059.399231977295, 3057.901001011487, 3061.555936001241],
+      "baseline_median_ms": 3152.379952953197,
+      "candidate_median_ms": 3057.901001011487,
+      "wall_delta_percent": -2.9970674015104226,
+      "baseline_tok_s": 1299.3357593721548,
+      "candidate_tok_s": 1339.4809049230607,
+      "throughput_delta_percent": 3.0896667979263714,
+      "timed_ids_exact": true
+    }
+  },
+  "decision": "Commit the callable default-off wrapper, then reproduce exactness, balanced wall, and a 256-thread kernel trace from a clean detached worktree before gfx1151 promotion.",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked: configured /home/lhl/amd-gpu-tuning/nano-vllm-amd checkout is absent",
+    "external_code_copied": false
+  },
+  "sources": {
+    "primitive_json": {"path": "/tmp/router-threads-micro.json", "sha256": "49f63218eec1a73c146f5fa863400cbce17c0c5f7411fd0a0e30d008abba3170"},
+    "exact_json": {"path": "/tmp/router256-exact83.json", "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"},
+    "ab_json": {"path": "/tmp/router256-ab.json", "sha256": "92d001ad66699a93a0f562e171562bd93dab53ed3b9fcd982a71b3a8f1e4acca"},
+    "exact_log": {"path": "/tmp/router256-exact83.log", "sha256": "a298c1b97d84238df3878f4531595032448d5b219c424f9d0848d9608ca851be"},
+    "ab_log": {"path": "/tmp/router256-ab.log", "sha256": "642c444c4e1a41fb09cced407cb01c85945e5937c136d8f5266622a76dcfa27a"}
+  }
+}

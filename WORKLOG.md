@@ -155966,3 +155966,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   remains unchanged. Focused route/registry/kernel tests pass. A selector-unset
   512 full-model run also matches explicit four-wave **83/83** parts exactly,
   confirming the promoted automatic wrapper rather than only its explicit flag.
+
+## 2026-07-15 - LCP-4A 256-thread F32-router candidate
+
+- The required lineage command remains blocked because configured checkout
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent; no external source was
+  copied. Source audit found the current BF16-hidden/F32-weight router uses 512
+  threads for `hidden_size=2048`, but only the first 256 lanes receive one
+  eight-element dot fragment. The first reduction step therefore adds zeros.
+- Calling the unchanged HIP body with 256 threads is byte-exact. Nine-pair
+  primitive medians improve **0.683 -> 0.380 ms (-44.32%)** at 512 tokens and
+  **1.354 -> 0.756 ms (-44.17%)** at 1024 tokens for `2048x256`. Tokens 1/4/32
+  are also exact and improve **24.66%/26.64%/39.27%**.
+- A dirty full-model screen reproduces **83/83** exact parts at 512 and 4K.
+  Five balanced pairs improve **1222.526 -> 1259.358 tok/s (+3.01%)** and
+  **1299.336 -> 1339.481 tok/s (+3.09%)**, with all 20 timed IDs `9707`.
+  Added a callable default-off 256-thread wrapper; clean detached exact/wall and
+  a 256-thread trace are required before the gfx1151 registry changes.
