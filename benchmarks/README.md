@@ -3,9 +3,7 @@
 Last reviewed: **2026-07-14**
 
 Latest retained hipEngine revision in this scoreboard:
-`fba8e7a440695e00d8bb34a7a3b5feb5fae6f1ba`. The July 14 mixed-KV diagnostic
-records exact source-file hashes atop `9d0bb4e2`; its dirty-source speed rows do
-not replace that retained revision.
+`ef3e97dd42f1f91ac19b6d297a032d1d4734163c`.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -338,52 +336,31 @@ script copies this marked block into the root README byte-for-byte.
 
 ### gfx1100 model throughput
 
-A clean W7900 transfer gate at `bc5600e2` accepts exact gfx1151-derived
-GPF-2E/GPF-3A schedules and a 4K-bounded GPF-5A schedule for gfx1100. The
-combined explicit 512/4K screen moves prefill **648.512/682.172 ->
-1352.908/1463.668 tok/s (+108.62%/+114.56%)** with stable IDs; isolated
-balanced/state/trajectory gates select each policy independently. The table
-below intentionally remains the last clean automatic six-shape publication
-until this optimization pass completes. Clean selector-unset commit `82b62d5f`
-confirms **1344.043/1463.713 tok/s** prefill and **90.259/97.466 tok/s** decode
-at 512/128 and 4K/128, with all IDs `9707` and unchanged tracked memory.
-Evidence:
-[`transfer gate`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json)
-and [`automatic focus`](results/2026-07-14-gfx1100-gguf-prefill-promoted-focus.json).
-A clean post-transfer profile finds exact GDN at **61.1%** of 4K kernel time
-and convolution at only **1.09%**. The byte-exact LCP-1 LDS convolution screen
-regresses full-model 4K **0.192%**, so no candidate code or topline change is
-retained; see the [`post-transfer profile`](results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json).
+The GGUF column is the clean 2026-07-14 defaults-only right-sized sweep at
+`ef3e97dd` on TheRock HIP 7.15. Each shape uses one discarded warmup plus three
+measurements in an independent resident process. Prefill is now
+**1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** and graph decode
+is **89.727/95.117/97.292/85.898/75.012/61.264 tok/s** from 512 through 128K.
+All 18 measured final IDs are `9707`; the largest prefill/decode stdev over
+median is **0.447%/0.109%**; tracked right-sized memory is unchanged.
 
-The bounded LCP-D1 profile and LCP-D2 gate then close the current gfx1100 128K
-decode deficit. The 513-split serial reduction moves **194.881 -> 25.000 us
-(7.80x)** with the prepare-plus-coalesced-output route. Clean graph decode
-improves **84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307
-(+3.95%)** at 64K, and **56.927 -> 61.367 (+7.80%)** at 128K. The 64K logit
-gate passes at max KL **1.904e-6**, top-1 100%, and exact generated IDs;
-tracked memory is unchanged. gfx1100 now selects the route from 32K onward,
-while gfx1151 stays serial. The 128K confirmation is **0.71% above** the
-retained llama.cpp HIP row. These focused rows do not replace the six-shape
-table before the final defaults-only 1+3 refresh. Evidence:
-[`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
+The retained policy combines exact direct-LDS32 GDN and shared-X Q4, exact
+two-wave dense Q8 only through 4K, and the parallel full-attention split
+reducer from 32K. Relative to the July 12 GGUF column, prefill improves
+**+100.13%/+106.34%/+106.85%/+94.43%/+78.43%/+58.38%** and decode changes
+**-0.16%/+0.39%/+0.77%/+2.66%/+4.70%/+7.96%**. The final 128K decode row is
+**0.54% above** llama.cpp HIP. Exactness, trajectory, expected-kernel trace,
+and residual-rejection evidence is linked from the compact
+[`optimization rollup`](results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json),
+[`transfer gate`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json),
+[`post-transfer profile`](results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json),
+[`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
+and [`residual screens`](results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
 
-The closing residual prefill screens retain the current policy boundaries:
-exact LDS16 is mixed at **-0.155%/+0.434%** for 512/4K, extending two-wave Q8
-regresses 32K/64K **1.62%/0.22%**, and two-lane VGPR GDN fails BF16 byte
-identity before timing. No candidate code or topline change is retained; see
-[`residual screens`](results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
-
-This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
-(rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
-`docs/PROCESS-IMPROVEMENT.md` differ) on TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident
-session, two discarded warmups, and five measured repetitions; the tables
-report medians. PARO and GGUF both use their admitted state-bound graph decode
-routes, with capture excluded from steady decode timing. llama.cpp uses one
-internal warmup plus five samples per split prefill/decode phase. The W7900
-four-step GGUF oracle passes external tokens plus byte-exact hidden, all 30
-Conv/GDN state families, and all 10 live K/V families; every measured sweep
-row has finite logits, stable final IDs, clean provenance, and <=5% sample
-variance.
+PARO remains the clean 2026-07-12 `8116c453` two-warmup/five-measurement row.
+llama.cpp HIP/Vulkan remain the matched July 12 Q4_K_M/F16-KV references with
+one internal warmup plus five samples per split phase. Every engine uses the
+stated graph/eager route and excludes graph capture from steady decode timing.
 
 Bold marks the best raw value in each row. It is descriptive only: PARO is W4
 PARO/BF16 KV, while the other columns use the same Q4_K_M GGUF with hipEngine
@@ -394,23 +371,23 @@ BF16 KV and llama.cpp F16 KV. Memory scopes also differ.
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | 644.719 | 2412.320 | 2627.990 |
-| 1K/128 | **2995.876** | 676.177 | 2389.670 | 2631.750 |
-| 4K/128 | **2943.038** | 677.618 | 2255.080 | 2521.770 |
-| 32K/128 | **2108.868** | 628.364 | 1667.640 | 1943.920 |
-| 64K/128 | **1584.131** | 572.612 | 1291.820 | 1414.470 |
-| 128K/128 | 1056.252 | 484.212 | 891.949 | **1079.280** |
+| 512/128 | **2917.732** | 1290.246 | 2412.320 | 2627.990 |
+| 1K/128 | **2995.876** | 1395.244 | 2389.670 | 2631.750 |
+| 4K/128 | **2943.038** | 1401.632 | 2255.080 | 2521.770 |
+| 32K/128 | **2108.868** | 1221.716 | 1667.640 | 1943.920 |
+| 64K/128 | **1584.131** | 1021.693 | 1291.820 | 1414.470 |
+| 128K/128 | 1056.252 | 766.892 | 891.949 | **1079.280** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.599** | 89.873 | 80.756 | 107.786 |
-| 1K/128 | 103.238 | 94.751 | 80.805 | **107.555** |
-| 4K/128 | **105.943** | 96.551 | 79.768 | 103.066 |
-| 32K/128 | **92.438** | 83.673 | 74.304 | 91.835 |
-| 64K/128 | 78.260 | 71.644 | 69.010 | **83.746** |
-| 128K/128 | 60.663 | 56.745 | 60.933 | **70.833** |
+| 512/128 | **115.599** | 89.727 | 80.756 | 107.786 |
+| 1K/128 | 103.238 | 95.117 | 80.805 | **107.555** |
+| 4K/128 | **105.943** | 97.292 | 79.768 | 103.066 |
+| 32K/128 | **92.438** | 85.898 | 74.304 | 91.835 |
+| 64K/128 | 78.260 | 75.012 | 69.010 | **83.746** |
+| 128K/128 | 60.663 | 61.264 | 60.933 | **70.833** |
 
 #### Peak memory GiB
 
@@ -431,9 +408,10 @@ artifact validates the 48 GiB W7900 device rather than the idle 24 GiB XTX.
 Use memory values for within-column context growth, not small cross-column
 allocator-efficiency claims.
 
-Artifacts: [accepted summary](results/2026-07-12-w7900-v030-8116c453-summary.json),
+Artifacts: [current hipEngine GGUF](results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json),
+[July 12 accepted summary](results/2026-07-12-w7900-v030-8116c453-summary.json),
 [hipEngine PARO](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
-[hipEngine GGUF](results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
+[superseded hipEngine GGUF](results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
 [llama.cpp HIP](results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json),
 [llama.cpp Vulkan](results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json),
 and [W7900 GGUF oracle](results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).

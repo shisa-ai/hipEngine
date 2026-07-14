@@ -155665,3 +155665,33 @@ graphless decode launch-collapse path without regressing target/serial parity.
   The retained residual boundary is unchanged: `chain_lds32_direct` for exact
   GDN, two-wave dense Q8 through 4K only, and high-effort exact chunked/prefix
   GDN research only behind the six-case state plus 250/250 natural gate.
+
+## 2026-07-14 - Publish the optimized gfx1100 GGUF six-shape rollup
+
+- Ran the final defaults-only sweep from clean `ef3e97dd` under TheRock HIP
+  7.15. Each of 512/1K/4K/32K/64K/128K used an independent right-sized
+  resident process, one discarded warmup, three measurements, 128 graph-replay
+  decode transitions, repeated token `9707`, production bulk attention,
+  automatic chunk policy, WMMA/GEMV enabled, precomputed compiler version, and
+  `--require-cached-build`. GDN/Q4/LCP-D2 selectors were explicitly absent.
+- The first shell completed a valid clean 512 component and then stopped only
+  because its progress-summary snippet used `summary` instead of the raw
+  artifact's `summary_by_workload` key. Resumed at 1K; no benchmark leg was
+  rerun or discarded and all six component hashes are retained in the rollup.
+- Final prefill medians are
+  **1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s**. Versus the
+  July 12 public GGUF column, deltas are
+  **+100.13%/+106.34%/+106.85%/+94.43%/+78.43%/+58.38%**.
+- Final graph decode medians are
+  **89.727/95.117/97.292/85.898/75.012/61.264 tok/s**, or
+  **-0.16%/+0.39%/+0.77%/+2.66%/+4.70%/+7.96%** versus July 12. The final
+  128K row is **0.54% above** llama.cpp HIP F16-KV (`60.933 tok/s`).
+- All 18 measured final IDs are `9707`, every final logit vector is finite,
+  effective WMMA/GEMV are true, and tracked memory remains
+  **21.478/21.710/22.995/23.559/24.203/25.493 GiB**. Largest prefill/decode
+  stdev over median is only **0.447%/0.109%**. Linked transfer and LCP-D2 gates
+  retain 250/250 exact prefill logits, KL/top-1 correctness, CPU attention
+  oracle, and expected-kernel traces.
+- Added
+  `benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json`
+  and replaced the public W7900 GGUF column. No benchmark process remains.
