@@ -1,10 +1,11 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **gfx1151 source/profile audit complete; gfx1100 LCP-1 transfer rejected**
+Status: **gfx1151 source/profile audit complete; gfx1100 LCP-1 rejected and LCP-D2 promoted**
 Date: **2026-07-14**
 Machine-readable evidence:
-[`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json) and
-[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json)
+[`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json),
+[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json), and
+[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -49,8 +50,21 @@ neutral at 512 (**+0.043%**) and regresses 4K **1468.728 -> 1465.910 tok/s
 (-0.192%)**. The candidate kernel, selector, and duplicate route were removed.
 Do not tune LCP-1 further on gfx1100 without a new profile that restores a
 material convolution bucket. The next first-order gfx1100 prefill problem is
-exact GDN recurrence; `LCP-D1` remains the independent bounded 128K decode
-attribution task.
+exact GDN recurrence.
+
+`LCP-D1` is now complete. A phase-marked eager profile at 128K attributes
+**44.92%** of GPU time to full-attention core: grouped-GQA context costs
+**5.067 ms/token** and the serial gated split reduction costs
+**1.621 ms/token**. `LCP-D2` replaces only that reduction with a parallel
+max/normalization prepare plus coalesced 32-dimension output reduction. At 513
+splits, the leaf moves **194.881 -> 25.000 us (7.80x)**. The clean 64K
+teacher-forced gate preserves all 17 generated IDs with max KL
+**1.904e-6** and 100% top-1. Clean graph decode improves
+**84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307 (+3.95%)**
+at 64K, and **56.927 -> 61.367 (+7.80%)** at 128K, with unchanged tracked
+memory and stable IDs. The 128K candidate is **0.71% above** the retained
+llama.cpp HIP reference. gfx1100 therefore selects LCP-D2 from 32K onward;
+gfx1151 remains on the serial reducer pending an independent gate.
 
 ## Evidence boundary
 
@@ -344,7 +358,7 @@ accounting and no-regression gates.
 | Rank | ID | Work | Why now | Exit gate |
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
-| 2 | `LCP-D1` | Bounded 128K decode profile plus BF16/F16 control where feasible | Prefill is at parity; decode trails 13.58%; attribution is missing | Phase-marked bounded profile, no publication-sweep extension |
+| 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
 | 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap, but direct tree port violates trajectory contract | Six-case state matrix and 250/250 natural transitions before timing |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |

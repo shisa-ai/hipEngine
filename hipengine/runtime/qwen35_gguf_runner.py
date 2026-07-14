@@ -4575,6 +4575,7 @@ class Qwen35GGUFFullStackRunner:
                 )
                 split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
                     cfg,
+                    backend=self.backend,
                     block_size=scratch.block_size,
                     num_splits=num_splits,
                     active_context=attention_context_cap,
@@ -14449,13 +14450,36 @@ def _gguf_paged_attn_warp_split_enabled() -> bool:
     )
 
 
-def _gguf_paged_attn_parallel_reduce_enabled(active_context: int) -> bool:
+def _gguf_paged_attn_parallel_reduce_enabled(
+    backend: str,
+    active_context: int,
+) -> bool:
+    default_enabled = bool(
+        backend_package_capability(
+            backend,
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+            False,
+        )
+    )
+    default_min_context = int(
+        backend_package_capability(
+            backend,
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+            32768,
+        )
+    )
     min_context = max(
         0,
-        _env_int("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT", 65536),
+        _env_int(
+            "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+            default_min_context,
+        ),
     )
     return (
-        _env_flag("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", False)
+        _env_flag(
+            "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+            default_enabled,
+        )
         and int(active_context) >= min_context
     )
 
@@ -14480,13 +14504,14 @@ def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bo
 def _gguf_full_attention_split_gate_bf16_fn(
     config,
     *,
+    backend: str,
     block_size: int,
     num_splits: int,
     active_context: int,
 ):
     if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
         if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
-            if _gguf_paged_attn_parallel_reduce_enabled(active_context):
+            if _gguf_paged_attn_parallel_reduce_enabled(backend, active_context):
                 return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
             return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
         if _gguf_paged_attn_warp_split_enabled():

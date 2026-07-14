@@ -40,6 +40,10 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 # Same-commit production-protocol 128K A/B rejects two-wave (382.041 vs
 # 392.219 tok/s), so automatic selection is bounded through 64K.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
+# LCP-D2 is admitted only on W7900/gfx1100. gfx1151 keeps the serial reduction
+# until it receives an independent long-context correctness/performance gate.
+GGUF_PAGED_ATTN_PARALLEL_REDUCE = False
+GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
     (
@@ -101,6 +105,8 @@ __all__ = [
     "BACKEND",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+    "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

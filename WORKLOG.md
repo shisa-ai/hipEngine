@@ -155607,3 +155607,37 @@ graphless decode launch-collapse path without regressing target/serial parity.
   catalogued parent qwen35/PARO drift is reported, and this candidate copies no
   external source. Added the default-off rollback/removal trigger to
   `docs/REFACTOR.md`.
+
+## 2026-07-14 - Promote LCP-D2 on gfx1100 from 32K
+
+- Committed the candidate as clean `fba8e7a4`, prebuilt outside profiling, and
+  reran every acceptance leg under the hermetic TheRock W7900 environment. The
+  clean 513-split trace records serial **194.881 us** versus candidate
+  **6.280 us prepare + 18.720 us output = 25.000 us (7.80x)**. Both expected
+  candidate kernel names execute with zero scratch; output uses 1 KiB LDS.
+- The clean 64K teacher-forced full-model gate compares 16 decode logits rows
+  after an identical repeated-token prefill. All 17 generated IDs are `9707`,
+  candidate logits are finite, KL mean/max are **4.948e-7/1.904e-6**, and top-1
+  agreement is **100%**. This passes the project `0.05/90%` gate by a wide
+  margin. The 8,448-token/33-split NumPy attention oracle remains exact.
+- A clean one-shot crossover screen with a matched max-64K session finds the
+  extra launch neutral/down through 16K and positive at 32K/64K: decode deltas
+  are **-0.39%/-0.64%/-0.18%/+1.16%/+3.95%** at 4K/8K/16K/32K/64K. The
+  predeclared 32K escalation uses independent right-sized 1+3 processes and
+  confirms **84.525 -> 85.561 tok/s (+1.226%)**. Candidate stdev is only
+  **0.047 tok/s**, all six measured IDs are `9707`, and tracked peak is exactly
+  unchanged at **23.559 GiB**.
+- Clean one-shot confirmations preserve the monotonic gain: 64K is
+  **72.446 -> 75.307 tok/s (+3.949%)**, and right-sized 128K is
+  **56.927 -> 61.367 (+7.800%)**, with IDs `9707` and unchanged
+  **24.203/25.493 GiB** tracked peaks. The 128K candidate is **0.713% above**
+  the retained llama.cpp HIP F16-KV reference (`60.933 tok/s`). These two are
+  scope confirmations, not replacements for the final defaults-only 1+3
+  publication sweep.
+- Backend capability now admits the route only on `hip_gfx1100`, from context
+  32,768 onward. `hip_gfx1151` remains serial pending an independent gate;
+  `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` remains rollback. Updated the
+  parity/prefill handoffs, benchmark narrative/changelog, cleanup ledger, and
+  compact artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`.
+  Targeted backend/routing/registry tests pass **29/29** before final staging.

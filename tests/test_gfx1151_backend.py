@@ -25,12 +25,16 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
     GGUF_GDN_PREFILL_AUTO_MODE,
@@ -90,6 +94,10 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
+    assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
+    assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is False
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
@@ -146,6 +154,27 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
         )
         == "shared_x"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+        )
+        == 32768
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+        )
+        is False
     )
     assert (
         backend_package_capability(

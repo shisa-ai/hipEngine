@@ -13,10 +13,17 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
+# Clean W7900 LCP-D2 correctness and 32K/64K/128K graph-decode gates admit the
+# split-parallel gated reduction from 32K onward. Shorter contexts retain the
+# single-launch serial reducer because the extra prepare launch is neutral/down.
+GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
+GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 
 __all__ = [
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+    "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
