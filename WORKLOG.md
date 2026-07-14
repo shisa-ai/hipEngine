@@ -155754,3 +155754,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   non-topline, and passes JSON/family arithmetic checks. The matched profiling
   task is complete; implementation ranking follows from these measured
   families rather than generic backend assumptions.
+
+## 2026-07-14 - Close Vulkan/HIP production comparison
+
+- Joined the matched production measurements with the existing hipEngine
+  family/source audit in `docs/HIP-vs-VULKAN-HISTORY.md`. The production result
+  supersedes generic backend intuition: Vulkan's prefill-specific leads are GDN
+  and long FlashAttention, while llama.cpp HIP is faster for decode
+  FlashAttention at every measured depth. Vulkan loses all three measured
+  quantized prefill families to llama.cpp HIP.
+- Ranked only exact-transferable work: exact chunked/prefix GDN research,
+  HIP-local dense-Q8 schedule/addressing work, then the faster llama.cpp HIP
+  grouped-GQA decode body. F32 router logits remains lower priority. Selected
+  Q4/Q5 prefill, short/mid attention prefill, generic graph/dispatch work, a
+  wholesale Vulkan backend, and the subgroup-reduced non-exact GDN tree are
+  closed non-targets.
+- This is a documentation/selection unit, not a performance claim. The compact
+  bound profile remains
+  `benchmarks/results/2026-07-14-gfx1151-llamacpp-vulkan-hip-production-profile.json`;
+  implementation candidates require their own exact gates and same-suite A/Bs.
