@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_q8t16_dual_split_virtual_wave32_screen",
+  "status": "rejected",
+  "created_at": "2026-07-14T18:28:00+00:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "baseline_commit": "88a09f0537fd5dbbf5d0906aab624544f1308ab7",
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "candidate": "One physical wave32 serially executes the current dual-split kernel's four virtual-wave block-index sequences, preserving each wave reduction and the ordered four-part final sum while eliminating physical cross-wave exchange.",
+  "distinction_from_prior_work": "The historical all-body block64 candidate changed K ownership and reduction order, changed generated IDs, and regressed full-model throughput. This candidate targeted only dual-split and emulated the exact 128-thread arithmetic order.",
+  "source_scope_removed_after_rejection": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py",
+    "tests/test_gguf_q8_0_t16_gemv_decode.py"
+  ],
+  "correctness": {
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py -k virtual128_wave32 --tb=short",
+    "result": "2 passed",
+    "shape": "rows=1, in=2048, out_a=8192, out_b=4096",
+    "contract": "Candidate BF16 output bytes equal the current 128-thread body for ordinary and all-output-repeated weight fixtures."
+  },
+  "micro_protocol": {
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 python3 /tmp/q8_dualsplit_virtual128_wave32_micro.py",
+    "shape": "rows=1, in=2048, out_a=8192, out_b=4096",
+    "warmups_per_leg": 80,
+    "timed_calls_per_leg": 400,
+    "alternating_order_rounds": 6,
+    "weight_cycle_mib": 107.0,
+    "timing": "HIP events; median of six per-call leg means",
+    "raw_output": "/tmp/q8_dualsplit_virtual128_wave32_micro.out"
+  },
+  "results": {
+    "exact_128_us_samples": [
+      31.396732330322266,
+      31.37418508529663,
+      30.959584712982178,
+      31.300699710845947,
+      30.96329689025879,
+      31.37580156326294
+    ],
+    "virtual_wave32_us_samples": [
+      48.69831085205078,
+      48.74789237976074,
+      48.627991676330566,
+      48.60751152038574,
+      48.58311176300049,
+      48.59971523284912
+    ],
+    "exact_128_median_us": 31.33744239807129,
+    "virtual_wave32_median_us": 48.617751598358154,
+    "candidate_latency_delta_pct": 55.142691546998776,
+    "candidate_speedup": 0.6445679071495681
+  },
+  "decision": "Reject at the predeclared cache-cycled leaf gate and remove all candidate code/tests. Serial execution of the four exact virtual waves costs 55.14% more than the current four-wave body, so cross-wave exchange is not removable under the existing 16-output-per-thread T16 mapping. No profiler or full-model run is warranted."
+}
