@@ -2,8 +2,9 @@
 
 Last updated: 2026-07-14.
 
-Status: `SOL-R5` implementation and publication tranche complete on gfx1151;
-the first architecture-local transfer tranche is accepted on gfx1100.
+Status: `SOL-R5` implementation and publication are complete on gfx1151 and
+for this architecture-local gfx1100 pass. The clean W7900 defaults-only 1+3
+rollup is now public.
 `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
@@ -13,13 +14,14 @@ is 12.98%-14.58% slower than fused at 512/1K/4K. Scalar-exact, LDS-resident
 512/4K wall gate. It improves clean prefill by 79.09%/68.44%, with all timed
 tokens exact. The ten-prompt gate is also exact across all 250 checked logits
 and every timed trajectory, with decode +0.023%. GPF-2D is accepted for a
-gfx1151-scoped `auto` promotion and is now the scoped default; gfx1100 remains
-fused pending an independent transfer gate. A clean max-context six-shape
+gfx1151-scoped `auto` promotion and became that architecture's scoped default;
+gfx1100 remained fused until the independent transfer gate below. A clean max-context six-shape
 stress run confirms the automatic route from 512 through 128K. Exact Q4T16
 shared-activation `GPF-3A` also passes its clean full-model gate: 512/1K/4K
 prefill improves **747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s**
 with byte-identical logits and trajectories and neutral aggregate decode.
-`shared_x` is now the gfx1151-scoped automatic route; gfx1100 stays baseline.
+`shared_x` became the gfx1151-scoped automatic route; gfx1100 stayed baseline
+until its independent transfer gate.
 A clean selector-unset four-run confirmation at promoted commit `431fe1e4`
 reproduces **774.653/823.149/701.389 tok/s** with stable IDs; it is a focus
 diagnostic, not the final right-sized memory rollup. `GPF-2E` removes
@@ -29,7 +31,8 @@ improves 512/1K/4K prefill **776.428/825.319/700.824 ->
 823.093/889.209/744.577 tok/s** (**+6.01%/+7.74%/+6.24%**). The six-case
 full-model matrix and all 250 natural logit transitions are byte-exact; every
 timed decode trajectory matches and weighted decode is **+0.075%**. GPF-2E is
-now the gfx1151-scoped automatic route; gfx1100 remains fused. A clean
+now the gfx1151-scoped automatic route; gfx1100 remained fused until its
+independent transfer gate. A clean
 selector-unset focus confirmation at `b8949477` reproduces
 **821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. The clean
 right-sized 1+3 publication window records
@@ -51,9 +54,9 @@ decode. The predeclared GPF-3A borderline repeat improves 512/4K
 **640.876/672.866 -> 646.499/678.395 tok/s**, with byte-exact logits and
 trajectories and aggregate decode wall -0.081%. GPF-5A improves focused 512/4K
 prefill **645.901/676.444 -> 654.872/683.164 tok/s** and is conservatively
-scoped through 4096 prompt tokens; longer gfx1100 requests keep production
-Q8T16 pending a long-context causal gate. The clean combined transfer screen
-moves 512/4K from **648.512/682.172 -> 1352.908/1463.668 tok/s** with stable
+scoped through 4096 prompt tokens; the later 32K/64K screen regresses
+1.62%/0.22%, so longer gfx1100 requests keep production Q8T16. The clean
+combined transfer screen moves 512/4K from **648.512/682.172 -> 1352.908/1463.668 tok/s** with stable
 IDs. Evidence is
 [`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
 
@@ -76,6 +79,14 @@ KL **1.904e-6**, top-1 100%, and exact generated IDs; memory is unchanged.
 The gfx1100 backend selects the candidate from 32K onward while gfx1151 retains
 serial reduction pending independent evidence. See
 [`2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
+
+The final clean W7900 defaults-only right-sized 1+3 publication records
+**1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** prefill and
+**89.727/95.117/97.292/85.898/75.012/61.264 tok/s** graph decode at
+512/1K/4K/32K/64K/128K. All 18 measured IDs are `9707`, largest
+prefill/decode stdev over median is **0.447%/0.109%**, and tracked memory is
+unchanged. This replaces the July 12 gfx1100 GGUF column; see the
+[`final optimization rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -196,8 +207,8 @@ This tranche correctly did not start with AOTriton tuning, generic chunk
 sweeps, graph capture, compiler flags, or another attempt to enable WMMA.
 Full-attention prefill was only 0.54% of its starting 512-token GPU profile,
 WMMA prefill was already enabled, and the existing exact split chain was
-slower than fused. The next tranche must reprofile the published route rather
-than treating that historical 512 share as a permanent exclusion.
+slower than fused. The later gfx1100 tranche correctly reprofiled the published
+route rather than treating that historical 512 share as a permanent exclusion.
 
 ## Current Gap
 
@@ -213,18 +224,19 @@ comparator.
 
 ### W7900 / gfx1100
 
-Clean 2026-07-12 hipEngine `8116c453`, TheRock HIP 7.15; llama.cpp HIP
-`1ebf790cd` build 9648. Values are medians after two discarded hipEngine
-warmups and five measured repetitions per shape.
+Clean 2026-07-14 hipEngine `ef3e97dd`, TheRock HIP 7.15; llama.cpp HIP
+`1ebf790cd` build 9648 remains the matched reference. GGUF values are medians
+from one discarded warmup and three measured repetitions in independent
+right-sized processes. PARO remains the July 12 row.
 
 | Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 644.719 | 2412.320 | 26.7% | 2917.732 | 22.1% |
-| 1K/128 | 676.177 | 2389.670 | 28.3% | 2995.876 | 22.6% |
-| 4K/128 | 677.618 | 2255.080 | 30.0% | 2943.038 | 23.0% |
-| 32K/128 | 628.364 | 1667.640 | 37.7% | 2108.868 | 29.8% |
-| 64K/128 | 572.612 | 1291.820 | 44.3% | 1584.131 | 36.1% |
-| 128K/128 | 484.212 | 891.949 | 54.3% | 1056.252 | 45.8% |
+| 512/128 | 1290.246 | 2412.320 | 53.5% | 2917.732 | 44.2% |
+| 1K/128 | 1395.244 | 2389.670 | 58.4% | 2995.876 | 46.6% |
+| 4K/128 | 1401.632 | 2255.080 | 62.2% | 2943.038 | 47.6% |
+| 32K/128 | 1221.716 | 1667.640 | 73.3% | 2108.868 | 57.9% |
+| 64K/128 | 1021.693 | 1291.820 | 79.1% | 1584.131 | 64.5% |
+| 128K/128 | 766.892 | 891.949 | 86.0% | 1056.252 | 72.6% |
 
 ### Radeon 8060S / gfx1151
 
@@ -254,9 +266,9 @@ has a much smaller long-context deficit than prefill:
 
 | GPU | Workload | hipEngine GGUF | llama.cpp HIP | GGUF delta |
 | --- | --- | ---: | ---: | ---: |
-| W7900 / gfx1100 | 512/128 | 89.873 | 80.756 | +11.3% |
-| W7900 / gfx1100 | 4K/128 | 96.551 | 79.768 | +21.0% |
-| W7900 / gfx1100 | 128K/128 | 56.745 | 60.933 | -6.9% |
+| W7900 / gfx1100 | 512/128 | 89.727 | 80.756 | +11.1% |
+| W7900 / gfx1100 | 4K/128 | 97.292 | 79.768 | +22.0% |
+| W7900 / gfx1100 | 128K/128 | 61.264 | 60.933 | +0.5% |
 | Radeon 8060S / gfx1151 | 512/128 | 49.067 | 50.939 | -3.7% |
 | Radeon 8060S / gfx1151 | 4K/128 | 52.498 | 50.126 | +4.7% |
 | Radeon 8060S / gfx1151 | 128K/128 | 27.753 | 32.114 | -13.6% |
@@ -1178,10 +1190,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   32K/64K **1.62%/0.22%**, and a two-lane VGPR GDN schedule fails BF16 byte
   equality before timing. Evidence:
   [`residual screens`](../benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
-- No benchmark process is intentionally left running. Clean selector-unset
-  `82b62d5f` confirms the promoted prefill policy at **1344.043/1463.713 tok/s**
-  for 512/4K; the complete defaults-only six-shape rollup is the remaining
-  publication step.
+- No benchmark process is intentionally left running. Clean defaults-only
+  `ef3e97dd` publishes **1290.246/1395.244/1401.632/1221.716/1021.693/766.892
+  tok/s** prefill and **89.727/95.117/97.292/85.898/75.012/61.264 tok/s**
+  graph decode across 512-128K, all 18 measured IDs `9707`. The gfx1100
+  optimization/publication pass is complete.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the

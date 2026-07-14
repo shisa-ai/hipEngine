@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-14
 
+- [published gfx1100 GGUF optimization sweep] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV clean defaults-only right-sized 1+3 at `ef3e97dd`: six-shape prefill **644.719/676.177/677.618/628.364/572.612/484.212 -> 1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** (**+100.13%/+106.34%/+106.85%/+94.43%/+78.43%/+58.38%**); graph decode changes **89.873/94.751/96.551/83.673/71.644/56.745 -> 89.727/95.117/97.292/85.898/75.012/61.264 tok/s** (**-0.16%/+0.39%/+0.77%/+2.66%/+4.70%/+7.96%**), all 18 IDs `9707`, largest variance 0.447%, unchanged tracked memory; 128K decode is 0.54% above llama.cpp HIP. `benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json`.
+
 - [gfx1100 GGUF residual prefill schedule rejections] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV: exact LDS16 changes 512/4K **-0.155%/+0.434%**, extending two-wave dense Q8 changes 32K/64K **-1.62%/-0.22%**, and two-lane VGPR GDN fails BF16 byte equality in both dispatch forms before timing; all candidate code removed, no topline change. `benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json`.
 
 - [promoted gfx1100 GGUF LCP-D2 long-context split reduction] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV serial gated split reduction -> parallel prepare plus coalesced output from 32K: clean graph decode **84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307 (+3.95%)** at 64K, and **56.927 -> 61.367 (+7.80%)** at 128K; the 513-split leaf is **194.881 -> 25.000 us (7.80x)**, max 64K logit KL is **1.904e-6**, top-1 is 100%, IDs/memory are unchanged, and the 128K confirmation is 0.71% above llama.cpp HIP. `benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`.

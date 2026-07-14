@@ -1,11 +1,12 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **gfx1151 source/profile audit complete; gfx1100 LCP-1 rejected and LCP-D2 promoted**
+Status: **gfx1151 audit complete; gfx1100 optimization pass published**
 Date: **2026-07-14**
 Machine-readable evidence:
 [`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json),
-[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json), and
-[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json)
+[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json),
+[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json), and
+[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -73,6 +74,14 @@ segmented fixtures before timing. Extending GPF-5A two-wave dense Q8 beyond its
 4K W7900 cap also regresses 32K/64K **1.62%/0.22%**. All candidate code was
 removed. See the
 [`residual-screen artifact`](../benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
+
+The clean final gfx1100 defaults-only publication then records
+**1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** prefill and
+**89.727/95.117/97.292/85.898/75.012/61.264 tok/s** graph decode from
+512 through 128K. The prefill gap versus llama.cpp HIP narrows from **46.5% at
+512 to 14.0% at 128K**; hipEngine decode is now ahead at every listed shape,
+including **+0.54% at 128K**. All 18 measured final IDs are `9707`. Evidence:
+[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
 ## Evidence boundary
 
