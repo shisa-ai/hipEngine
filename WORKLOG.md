@@ -155799,3 +155799,96 @@ graphless decode launch-collapse path without regressing target/serial parity.
   refreshed the benchmark memory table/changelog and parity handoff, and left
   throughput rows on the full clean six-shape `ef3e97dd` rollup. `LCP-M1` is
   closed; exact GDN prefill and profile-directed Vulkan decode remain open.
+
+## 2026-07-14 - Predeclare gfx1100 direct register-resident GDN gate
+
+- The next candidate is **not** the rejected materialized `chain_wave32_tree`
+  route. It combines the production compact-scale/direct-`conv_out` ABI with
+  one wave32 per value column and register-resident FP32 state, matching the
+  useful llama.cpp schedule property while retaining hipEngine's current
+  prepare/layout path. It stays explicit until every gate below passes.
+- RED/GREEN primitive admission is plain plus segmented production geometry
+  against `kernels/cpu_reference/`: finite output/state, KL <= 0.05, and top-1
+  agreement >= 90%. Also compare to exact direct LDS32 and record max/mean
+  output and state error; byte identity is not claimed because the wave tree
+  deliberately changes contraction order.
+- Promotion requires same-context (teacher-forced) next-token logits over all
+  four categories in `benchmarks/prompts/mtpbench-code-general-ja.jsonl` plus
+  category-heldouts, using exact direct LDS32 as baseline. Every transition
+  must satisfy KL <= 0.05 and aggregate top-1 agreement must be >= 99%; generated
+  trajectories are reported but are diagnostic rather than an exactness gate.
+  Decode must be aggregate non-regressive, with no tolerance, and 512/4K prefill
+  must each improve enough that the projected/default full-model row is worth
+  a clean retained A/B. No criterion will be relaxed after measurements.
+- A cache-clean `rocprofv3 --kernel-trace` must show the new plain/segmented
+  symbols, plausible duration, workgroup 256, zero scratch, and register-resident
+  state. Final promotion still requires clean right-sized full-model timing and
+  the benchmark artifact/README/changelog rollup; failure at any prior gate
+  removes the candidate rather than changing the contract.
+
+## 2026-07-14 - Reject direct wave32 tree; predeclare contiguous-group4 follow-up
+
+- The direct one-wave/value candidate clears primitive CPU-budget tests and the
+  dirty W7900 speed screen: 512/4K prefill reaches **2181.778/2473.972 tok/s**
+  versus retained exact **1290.246/1401.632** (+69.10%/+76.51%). The 4K row is
+  9.71% above llama.cpp HIP and 1.87% below Vulkan; 512 remains 9.56% below HIP.
+- It fails the predeclared 18-prompt semantic gate and is rejected without
+  changing thresholds: 450 same-context transitions have KL max **0.068757 >
+  0.05** and top-1 **443/450 = 98.444% < 99%**. Aggregate decode is
+  non-regressive (**-0.028%**) and free trajectories differ, but neither fact
+  overrides correctness. The one-wave/value candidate will not become default.
+- Predeclare one distinct follow-up under the unchanged semantic thresholds:
+  four lanes own one value column, each lane keeps one contiguous 32-row state
+  interval in registers, and one wave processes eight independent columns.
+  Lane 0 combines the four contiguous partials in row order. This is neither
+  the rejected 32-lane pairwise tree nor the rejected two-lane byte-exact
+  attempt; it trades parallel reduction width for scalar-order proximity.
+- The new route must pass plain/segmented CPU-budget fixtures, the same 18-prompt
+  KL/top-1 gate, aggregate decode nonregression, and improve **both** 512 and 4K
+  over exact direct LDS32. It must at least reach llama.cpp HIP at 512 while
+  retaining HIP parity at 4K; otherwise it is removed. The initial geometry is
+  128 threads (four waves, 32 value columns/block) to expose >=128 independent
+  blocks at production shape. Trace admission is zero scratch and plausible
+  VGPR occupancy; no gate or threshold changes after measurement.
+
+## 2026-07-14 - Reject group4; predeclare irregular contiguous-group3 screen
+
+- Group4 improves the dirty one-wave/value screen again to
+  **2281.383/2661.671 tok/s** at 512/4K, but misses the predeclared 512
+  llama.cpp HIP floor by **5.43%**. A 64-thread geometry is lower at
+  **2276.939/2649.001**; cross-column Q/K shuffles collapse to
+  **1811.517/2035.792**. Keep neither control.
+- Group4 also fails the unchanged 18-prompt semantic gate: KL max
+  **0.065184 > 0.05** and top-1 **445/450 = 98.889% < 99%**. Aggregate decode
+  remains non-regressive (**-0.056%**), but both semantic and short-shape speed
+  contracts fail, so group4 is rejected and will not be promoted.
+- One final bounded register-resident screen is predeclared before coding:
+  three lanes own contiguous state intervals of 43/43/42 rows. A wave processes
+  eight columns in lanes 0..23; lanes 24..31 participate only in required wave
+  shuffles. Three larger sequential partials should track scalar FP32 order
+  more closely than group4 while retaining eight columns/wave. This irregular
+  group3 schedule is distinct from the rejected two-lane and power-of-two tree
+  paths and is not selected from prompt contents.
+- Thresholds remain KL <= 0.05 per transition, aggregate top-1 >= 99%, and
+  aggregate decode nonregression over the same frozen 18 prompts. The 512/4K
+  floors remain llama.cpp HIP parity at both shapes. Primitive plain/segmented
+  CPU-budget failure, either semantic failure, or either speed-floor failure
+  rejects the lane entirely; no fourth reduction-width sweep follows.
+
+## 2026-07-14 - Close register-resident reduction-width screen
+
+- Group3 passes its plain/segmented production-geometry CPU-budget fixtures but
+  fails the earlier speed floor before semantic timing: dirty 512/4K is only
+  **1804.460/2019.696 tok/s**. It is slower than group4 by
+  **20.90%/24.12%**, below llama.cpp HIP by **25.20%/10.44%**, and therefore
+  rejected under the predeclared stop rule.
+- No register-resident relaxed reduction variant is retainable: wave32 and
+  group4 fail the frozen 18-prompt semantic contract, while group3 fails the
+  speed contract. The temporary kernels, registry entries, selectors, routing,
+  and candidate tests are removed. Keep the teacher-forced semantic harness and
+  frozen category-heldouts as reusable admission infrastructure; they exposed
+  failures that the six-case primitive gate and repeated-token smoke did not.
+- The strict-exact lane remains `chain_lds32_direct`. Further GDN work must be
+  true exact chunked/prefix algebra rather than another reduction-width sweep.
+  In parallel, the short-shape profile must be re-attributed because even the
+  fastest rejected GDN candidate remained 5.43% below llama.cpp HIP at 512.
