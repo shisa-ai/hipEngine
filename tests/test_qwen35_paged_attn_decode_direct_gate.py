@@ -132,6 +132,55 @@ def _spans(block_table_buf, live_counts_buf, *, rows: int, max_live_count: int):
     )
 
 
+@pytest.mark.parametrize("num_splits", (256, 257))
+def test_qwen35_decode_bf16_split_reduce_parallel_boundary_matches_serial_contract(
+    _attention_lib, _runtime, num_splits
+):
+    from hipengine.kernels.hip_gfx1100.attention import paged_attn_decode
+
+    num_q_heads = 2
+    head_dim = 256
+    rng = np.random.default_rng(20260714)
+    partial_out = rng.normal(
+        0.0, 0.25, size=(num_q_heads, num_splits, head_dim)
+    ).astype(np.float32)
+    partial_m = np.full((num_q_heads, num_splits), -np.inf, dtype=np.float32)
+    partial_m[:, 1] = np.float32(0.0)
+    partial_l = np.ones((num_q_heads, num_splits), dtype=np.float32)
+    gate = np.zeros((num_q_heads, head_dim), dtype=np.uint16)
+    expected = _to_bf16_bits(partial_out[:, 1, :] * np.float32(0.5))
+
+    bufs = []
+    try:
+        partial_out_buf = _upload(_runtime, bufs, partial_out)
+        partial_m_buf = _upload(_runtime, bufs, partial_m)
+        partial_l_buf = _upload(_runtime, bufs, partial_l)
+        gate_buf = _upload(_runtime, bufs, gate)
+        out_buf = _alloc(_runtime, bufs, expected.nbytes)
+
+        paged_attn_decode._launch_gate_reduce(
+            paged_attn_decode._SYMBOL_SPLIT_REDUCE_GATE_BF16,
+            partial_out_buf.ptr,
+            partial_m_buf.ptr,
+            partial_l_buf.ptr,
+            gate_buf.ptr,
+            out_buf.ptr,
+            num_q_heads,
+            num_splits,
+            head_dim,
+            head_dim,
+            1,
+            stream=0,
+            library=_attention_lib,
+            runtime=_runtime,
+        )
+        actual = _download(_runtime, out_buf, expected.shape, np.uint16)
+    finally:
+        _free_all(_runtime, bufs)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
 def test_qwen35_decode_batched_direct_gate_matches_split_reduce(_attention_lib, _runtime):
     from hipengine.kernels.hip_gfx1100.attention import (
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans,
