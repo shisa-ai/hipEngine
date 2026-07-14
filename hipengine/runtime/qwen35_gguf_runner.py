@@ -12889,6 +12889,192 @@ class Qwen35GGUFResidentSession:
         self.close()
 
 
+_GGUF_PREFILL_SCRATCH_EMPTY = DeviceBuffer(ptr=0, nbytes=0)
+_GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS = frozenset(
+    {
+        "linear_z_f32",
+        "linear_alpha_f32",
+        "linear_beta_f32",
+        "prefill_query",
+        "prefill_key",
+        "prefill_value",
+        "linear_conv_state_tmp",
+        "linear_recurrent_state_tmp",
+        "post_norm_f32",
+        "ffn_intermediate_f32",
+        "moe_down_out_f32",
+        "moe_shared_out_f32",
+    }
+)
+
+
+def _both_prefill_routes(start: int, end: int) -> tuple[tuple[str, int, int], ...]:
+    return (("linear", start, end), ("full", start, end))
+
+
+# Logical per-layer lifetimes for the production Qwen3.6 MoE bulk-prefill route.
+# Linear- and full-attention temporaries live in mutually-exclusive routes;
+# attention outputs hand off to one common post-attention MoE chain. Intervals
+# are conservative unions across the compact-WMMA and unfused MoE fallbacks.
+_GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType(
+    {
+        "norm": _both_prefill_routes(0, 1),
+        "linear_qkv": (("linear", 0, 2),),
+        "linear_qkv_f32": (("linear", 1, 3),),
+        "linear_z": (("linear", 0, 5),),
+        "linear_alpha": (("linear", 0, 4),),
+        "linear_beta": (("linear", 0, 4),),
+        # The exact recurrence reads the full convolution sequence while
+        # writing recurrent_out, so those ranges must remain disjoint.
+        "conv_out": (("linear", 2, 5),),
+        "prefill_beta": (("linear", 3, 5),),
+        "prefill_decay": (("linear", 3, 5),),
+        "prefill_query_scale": (("linear", 3, 5),),
+        "prefill_key_scale": (("linear", 3, 5),),
+        "recurrent_out": (("linear", 4, 5),),
+        "recurrent_bf16": (("linear", 5, 6),),
+        "full_q": (("full", 0, 2),),
+        "full_k": (("full", 0, 3),),
+        "full_v": (("full", 0, 4),),
+        "full_query_raw": (("full", 1, 3),),
+        "full_key_raw": (("full", 1, 3),),
+        "full_query": (("full", 2, 4),),
+        "full_key": (("full", 2, 4),),
+        "full_query_bf16": (("full", 3, 5),),
+        "full_gate": (("full", 1, 5),),
+        "full_attn_bf16": (("full", 4, 5),),
+        "full_gated": (("full", 5, 6),),
+        "attn_out": _both_prefill_routes(5, 7),
+        "post_norm": _both_prefill_routes(7, 15),
+        "residual": _both_prefill_routes(7, 17),
+        "ffn_gate_up": _both_prefill_routes(9, 15),
+        "ffn_intermediate": _both_prefill_routes(10, 12),
+        "ffn_down": _both_prefill_routes(12, 17),
+        # q8_1 is optional in the current default but remains provisioned for
+        # replacement layouts. Its union covers dense and selected routes.
+        "moe_q8_1": _both_prefill_routes(0, 17),
+        "moe_router_logits": _both_prefill_routes(7, 8),
+        "moe_shared_gate_logits": _both_prefill_routes(7, 17),
+        "moe_selected_experts": _both_prefill_routes(7, 12),
+        "moe_routing_weights": _both_prefill_routes(7, 17),
+        "moe_down_out": _both_prefill_routes(8, 17),
+        "moe_group_counts": _both_prefill_routes(8, 12),
+        "moe_padded_counts": _both_prefill_routes(8, 12),
+        "moe_scatter_offsets": _both_prefill_routes(8, 12),
+        "moe_expert_start_compact": _both_prefill_routes(8, 12),
+        "moe_expert_start_wmma": _both_prefill_routes(8, 12),
+        "moe_total_compact": _both_prefill_routes(8, 12),
+        "moe_wmma_total": _both_prefill_routes(8, 12),
+        "moe_tile_expert": _both_prefill_routes(8, 12),
+        "moe_sorted_lanes": _both_prefill_routes(8, 13),
+        "moe_sorted_experts": _both_prefill_routes(8, 13),
+        "moe_sorted_weights": _both_prefill_routes(8, 13),
+        "moe_lane_to_row": _both_prefill_routes(8, 13),
+        "moe_shared_gate": _both_prefill_routes(13, 15),
+        "moe_shared_up": _both_prefill_routes(13, 15),
+        "moe_shared_intermediate": _both_prefill_routes(14, 16),
+        "moe_shared_out": _both_prefill_routes(15, 17),
+    }
+)
+
+
+def _prefill_scratch_lifetimes_overlap(
+    lhs: tuple[tuple[str, int, int], ...],
+    rhs: tuple[tuple[str, int, int], ...],
+) -> bool:
+    return any(
+        lhs_route == rhs_route and lhs_start < rhs_end and rhs_start < lhs_end
+        for lhs_route, lhs_start, lhs_end in lhs
+        for rhs_route, rhs_start, rhs_end in rhs
+    )
+
+
+_GGUF_PREFILL_SCRATCH_COLOR_BYTES = 64 * 1024
+
+
+def _align_prefill_scratch(value: int, alignment: int = 256) -> int:
+    return (int(value) + alignment - 1) // alignment * alignment
+
+
+def _allocate_prefill_scratch_liveness_arena(
+    sizes: Mapping[str, int],
+    *,
+    runtime: HipRuntime,
+) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
+    missing = sorted(set(sizes) - set(_GGUF_PREFILL_SCRATCH_LIFETIMES))
+    if missing:
+        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
+    offsets: dict[str, tuple[int, int]] = {}
+    for name, size in sorted(sizes.items(), key=lambda item: (-int(item[1]), item[0])):
+        size = int(size)
+        if size <= 0:
+            raise ValueError(f"bulk-prefill liveness field {name} must be positive")
+        candidates = {0}
+        # Avoid exact power-of-two separation between simultaneously-live
+        # weight/activation streams; on RDNA3 that can map both ranges onto the
+        # same L2/TLB colors and made the otherwise-exact 512 route slower.
+        candidates.update(
+            _align_prefill_scratch(offset + allocated + _GGUF_PREFILL_SCRATCH_COLOR_BYTES)
+            for offset, allocated in offsets.values()
+        )
+        for candidate in sorted(candidates):
+            conflict = False
+            for other, (other_offset, other_size) in offsets.items():
+                ranges_overlap = candidate < other_offset + other_size and other_offset < candidate + size
+                if ranges_overlap and _prefill_scratch_lifetimes_overlap(
+                    _GGUF_PREFILL_SCRATCH_LIFETIMES[name],
+                    _GGUF_PREFILL_SCRATCH_LIFETIMES[other],
+                ):
+                    conflict = True
+                    break
+            if not conflict:
+                offsets[name] = (candidate, size)
+                break
+        else:  # pragma: no cover - candidate set always includes the current end
+            raise RuntimeError(f"failed to place bulk-prefill liveness field {name}")
+    arena_nbytes = _align_prefill_scratch(max(offset + size for offset, size in offsets.values()))
+    arena = malloc(arena_nbytes, runtime=runtime)
+    views = {
+        name: DeviceBuffer(ptr=arena.ptr + offset, nbytes=size)
+        for name, (offset, size) in offsets.items()
+    }
+    return arena, views, MappingProxyType(offsets)
+
+
+def _gguf_prefill_scratch_liveness_alias_enabled(runner: object) -> bool:
+    cfg = getattr(getattr(runner, "weights", None), "config", None)
+    backend = getattr(runner, "backend", None)
+    if cfg is None or not bool(getattr(cfg, "is_moe", False)) or not isinstance(backend, str):
+        return False
+    try:
+        admitted = bool(
+            backend_package_capability(
+                backend,
+                "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+                False,
+            )
+        )
+    except ValueError:
+        return False
+    if not admitted:
+        return False
+    requested_mode = _gguf_gdn_prefill_mode()
+    effective_mode = (
+        backend_package_capability(backend, "GGUF_GDN_PREFILL_AUTO_MODE", "fused")
+        if requested_mode == "auto"
+        else requested_mode
+    )
+    if effective_mode != "chain_lds32_direct":
+        return False
+    # F32/capture diagnostics intentionally retain independently-owned buffers
+    # so post-layer inspection can observe every intermediate concurrently.
+    return not any(
+        _env_flag(name, False)
+        for name in os.environ
+        if name.startswith("HIPENGINE_GGUF_VERIFY_")
+    )
+
+
 @dataclass(frozen=True)
 class _GGUFFullAttentionPrefillScratch:
     rows: int
@@ -12985,6 +13171,13 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
+    allocation_mode: str = "dedicated"
+    allocation_offsets: Mapping[str, tuple[int, int]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
     cos_table: object | None = None
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
@@ -13068,73 +13261,106 @@ class _GGUFFullAttentionPrefillScratch:
             rotary_dim=cfg.rope_dimension_count,
             base=cfg.rope_freq_base,
         )
-        fields = {
-            "norm": buf(hidden_bytes),
-            "full_q": buf(q_proj_bytes),
-            "full_k": buf(kv_bf16_bytes),
-            "full_v": buf(kv_bf16_bytes),
-            "linear_qkv": buf(linear_qkv_bf16_bytes),
-            "linear_qkv_f32": buf(linear_qkv_f32_bytes),
-            "linear_z": buf(linear_z_bytes),
-            "linear_z_f32": buf(linear_z_f32_bytes),
-            "linear_alpha": buf(linear_ab_bytes),
-            "linear_alpha_f32": buf(linear_ab_f32_bytes),
-            "linear_beta": buf(linear_ab_bytes),
-            "linear_beta_f32": buf(linear_ab_f32_bytes),
-            "conv_out": buf(linear_qkv_f32_bytes),
-            "prefill_query": buf(recurrent_f32_bytes),
-            "prefill_key": buf(recurrent_f32_bytes),
-            "prefill_value": buf(recurrent_f32_bytes),
-            "prefill_beta": buf(prefill_scalar_bytes),
-            "prefill_decay": buf(prefill_scalar_bytes),
-            "prefill_query_scale": buf(prefill_scalar_bytes),
-            "prefill_key_scale": buf(prefill_scalar_bytes),
-            "recurrent_out": buf(recurrent_f32_bytes),
-            "recurrent_bf16": buf(linear_z_bytes),
-            "linear_conv_state_tmp": buf(conv_state_bytes),
-            "linear_recurrent_state_tmp": buf(recurrent_state_bytes),
+        field_sizes = {
+            "norm": hidden_bytes,
+            "full_q": q_proj_bytes,
+            "full_k": kv_bf16_bytes,
+            "full_v": kv_bf16_bytes,
+            "linear_qkv": linear_qkv_bf16_bytes,
+            "linear_qkv_f32": linear_qkv_f32_bytes,
+            "linear_z": linear_z_bytes,
+            "linear_z_f32": linear_z_f32_bytes,
+            "linear_alpha": linear_ab_bytes,
+            "linear_alpha_f32": linear_ab_f32_bytes,
+            "linear_beta": linear_ab_bytes,
+            "linear_beta_f32": linear_ab_f32_bytes,
+            "conv_out": linear_qkv_f32_bytes,
+            "prefill_query": recurrent_f32_bytes,
+            "prefill_key": recurrent_f32_bytes,
+            "prefill_value": recurrent_f32_bytes,
+            "prefill_beta": prefill_scalar_bytes,
+            "prefill_decay": prefill_scalar_bytes,
+            "prefill_query_scale": prefill_scalar_bytes,
+            "prefill_key_scale": prefill_scalar_bytes,
+            "recurrent_out": recurrent_f32_bytes,
+            "recurrent_bf16": linear_z_bytes,
+            "linear_conv_state_tmp": conv_state_bytes,
+            "linear_recurrent_state_tmp": recurrent_state_bytes,
+            "full_query_raw": q_f32_bytes,
+            "full_key_raw": kv_f32_bytes,
+            "full_query": q_f32_bytes,
+            "full_key": kv_f32_bytes,
+            "full_query_bf16": rows * runner.q_width * 2,
+            "full_gate": rows * runner.q_width * 2,
+            "full_attn_bf16": rows * runner.q_width * 2,
+            "full_gated": rows * runner.q_width * 2,
+            "attn_out": hidden_bytes,
+            "post_norm": hidden_bytes,
+            "post_norm_f32": hidden_f32_bytes,
+            "residual": hidden_bytes,
+            "ffn_gate_up": 2 * ffn_bytes * moe_lane_count,
+            "ffn_intermediate": ffn_bytes * moe_lane_count,
+            "ffn_intermediate_f32": moe_selected_rows_capacity * runner.ffn_size * DType.FP32.itemsize,
+            "ffn_down": hidden_bytes,
+            "moe_q8_1": q8_1_moe_bytes,
+            "moe_router_logits": rows * moe_experts * DType.FP32.itemsize,
+            "moe_shared_gate_logits": rows * DType.FP32.itemsize,
+            "moe_selected_experts": rows * moe_top_k * DType.INT64.itemsize,
+            "moe_routing_weights": rows * moe_top_k * DType.FP32.itemsize,
+            "moe_down_out": moe_top_k * hidden_bytes,
+            "moe_down_out_f32": moe_selected_rows_capacity * runner.hidden_size * DType.FP32.itemsize,
+            "moe_group_counts": moe_group_counts_zero.nbytes,
+            "moe_padded_counts": moe_group_counts_zero.nbytes,
+            "moe_scatter_offsets": moe_scatter_offsets_zero.nbytes,
+            "moe_expert_start_compact": (moe_experts + 1) * DType.INT64.itemsize,
+            "moe_expert_start_wmma": (moe_experts + 1) * DType.INT64.itemsize,
+            "moe_total_compact": DType.INT64.itemsize,
+            "moe_wmma_total": DType.INT64.itemsize,
+            "moe_tile_expert": moe_tile_capacity * DType.INT64.itemsize,
+            "moe_sorted_lanes": moe_selected_rows_capacity * DType.INT64.itemsize,
+            "moe_sorted_experts": moe_selected_rows_capacity * DType.INT64.itemsize,
+            "moe_sorted_weights": moe_selected_rows_capacity * DType.FP32.itemsize,
+            "moe_lane_to_row": moe_selected_rows_capacity * DType.INT64.itemsize,
+            "moe_shared_gate": rows * moe_shared_ffn * DType.BF16.itemsize,
+            "moe_shared_up": rows * moe_shared_ffn * DType.BF16.itemsize,
+            "moe_shared_intermediate": rows * moe_shared_ffn * DType.BF16.itemsize,
+            "moe_shared_out": hidden_bytes,
+            "moe_shared_out_f32": hidden_f32_bytes,
+        }
+        allocation_mode = "dedicated"
+        allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
+        allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
+        owners: list[DeviceBuffer] = []
+        if _gguf_prefill_scratch_liveness_alias_enabled(runner):
+            active_sizes = {
+                name: int(nbytes)
+                for name, nbytes in field_sizes.items()
+                if name not in _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+            }
+            arena, active_fields, allocation_offsets = _allocate_prefill_scratch_liveness_arena(
+                active_sizes,
+                runtime=runtime,
+            )
+            fields = {
+                name: (
+                    _GGUF_PREFILL_SCRATCH_EMPTY
+                    if name in _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+                    else active_fields[name]
+                )
+                for name in field_sizes
+            }
+            owners.append(arena)
+            allocation_mode = "liveness_aliased"
+            allocation_lifetimes = MappingProxyType(
+                {name: _GGUF_PREFILL_SCRATCH_LIFETIMES[name] for name in active_sizes}
+            )
+        else:
+            fields = {name: buf(nbytes) for name, nbytes in field_sizes.items()}
+            owners.extend(fields.values())
+
+        dedicated_fields = {
             "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),
             "gdn_state_indices": buf(segments * DType.INT64.itemsize),
-            "full_query_raw": buf(q_f32_bytes),
-            "full_key_raw": buf(kv_f32_bytes),
-            "full_query": buf(q_f32_bytes),
-            "full_key": buf(kv_f32_bytes),
-            "full_query_bf16": buf(rows * runner.q_width * 2),
-            "full_gate": buf(rows * runner.q_width * 2),
-            "full_attn_bf16": buf(rows * runner.q_width * 2),
-            "full_gated": buf(rows * runner.q_width * 2),
-            "attn_out": buf(hidden_bytes),
-            "post_norm": buf(hidden_bytes),
-            "post_norm_f32": buf(hidden_f32_bytes),
-            "residual": buf(hidden_bytes),
-            "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
-            "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
-            "ffn_intermediate_f32": buf(moe_selected_rows_capacity * runner.ffn_size * DType.FP32.itemsize),
-            "ffn_down": buf(hidden_bytes),
-            "moe_q8_1": buf(q8_1_moe_bytes),
-            "moe_router_logits": buf(rows * moe_experts * DType.FP32.itemsize),
-            "moe_shared_gate_logits": buf(rows * DType.FP32.itemsize),
-            "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
-            "moe_routing_weights": buf(rows * moe_top_k * DType.FP32.itemsize),
-            "moe_down_out": buf(moe_top_k * hidden_bytes),
-            "moe_down_out_f32": buf(moe_selected_rows_capacity * runner.hidden_size * DType.FP32.itemsize),
-            "moe_group_counts": buf(moe_group_counts_zero.nbytes),
-            "moe_padded_counts": buf(moe_group_counts_zero.nbytes),
-            "moe_scatter_offsets": buf(moe_scatter_offsets_zero.nbytes),
-            "moe_expert_start_compact": buf((moe_experts + 1) * DType.INT64.itemsize),
-            "moe_expert_start_wmma": buf((moe_experts + 1) * DType.INT64.itemsize),
-            "moe_total_compact": buf(DType.INT64.itemsize),
-            "moe_wmma_total": buf(DType.INT64.itemsize),
-            "moe_tile_expert": buf(moe_tile_capacity * DType.INT64.itemsize),
-            "moe_sorted_lanes": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
-            "moe_sorted_experts": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
-            "moe_sorted_weights": buf(moe_selected_rows_capacity * DType.FP32.itemsize),
-            "moe_lane_to_row": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
-            "moe_shared_gate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
-            "moe_shared_up": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
-            "moe_shared_intermediate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
-            "moe_shared_out": buf(hidden_bytes),
-            "moe_shared_out_f32": buf(hidden_f32_bytes),
             "key_cache": buf(cache_nbytes) if allocate_kv_cache else None,
             "value_cache": buf(cache_nbytes) if allocate_kv_cache else None,
             "block_table": buf(block_table_arr.nbytes),
@@ -13145,6 +13371,8 @@ class _GGUFFullAttentionPrefillScratch:
             "softmax_lse": buf(cfg.head_count * rows * 4),
             "atomic": buf(atomic_arr.nbytes),
         }
+        fields.update(dedicated_fields)
+        owners.extend(value for value in dedicated_fields.values() if value is not None)
         copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
         copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
         copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
@@ -13200,7 +13428,10 @@ class _GGUFFullAttentionPrefillScratch:
             moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
             moe_selected_rows_capacity=moe_selected_rows_capacity,
             moe_wmma_rows_capacity=moe_wmma_rows_capacity,
-            buffers=tuple(value for value in fields.values() if value is not None),
+            buffers=tuple(owners),
+            allocation_mode=allocation_mode,
+            allocation_offsets=allocation_offsets,
+            allocation_lifetimes=allocation_lifetimes,
             gdn_segment_capacity=segments,
             gdn_active_segments=1,
         )

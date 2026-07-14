@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from hipengine.core.memory import DeviceBuffer
+from hipengine.runtime import qwen35_gguf_runner as gguf_runner
+from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
+
+_MIB = 1 << 20
+
+
+def _fake_runner(backend: str = "hip_gfx1100") -> SimpleNamespace:
+    cfg = SimpleNamespace(
+        expert_used_count=8,
+        is_moe=True,
+        expert_count=256,
+        expert_shared_feed_forward_length=512,
+        ssm_inner_size=4096,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=32,
+        ssm_state_size=128,
+        ssm_group_count=16,
+        head_count_kv=2,
+        key_length=256,
+        rope_dimension_count=64,
+        rope_freq_base=10_000_000.0,
+        head_count=16,
+    )
+    return SimpleNamespace(
+        backend=backend,
+        hidden_size=2048,
+        q_width=4096,
+        kv_width=512,
+        ffn_size=512,
+        linear_qkv_width=8192,
+        ssm_value_dim=128,
+        weights=SimpleNamespace(config=cfg),
+    )
+
+
+def _install_fake_device(monkeypatch):
+    next_ptr = 0x10000000
+    allocations: list[DeviceBuffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime):
+        nonlocal next_ptr
+        size = int(nbytes)
+        buffer = DeviceBuffer(ptr=next_ptr, nbytes=size)
+        next_ptr += max(256, ((size + 255) // 256) * 256 + 256)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
+    return allocations
+
+
+def _clear_diagnostic_environment(monkeypatch) -> None:
+    for name in tuple(gguf_runner.os.environ):
+        if name.startswith("HIPENGINE_GGUF_VERIFY_") or name in {
+            "HIPENGINE_GGUF_GDN_PREFILL_MODE",
+            "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A",
+            "HIPENGINE_GGUF_T16_SELECTED_DP4A",
+            "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
+            "HIPENGINE_GGUF_DENSE_Q8_DP4A",
+            "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL",
+            "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED",
+            "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32",
+        }:
+            monkeypatch.delenv(name, raising=False)
+
+
+def test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
+    allocations = _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner(),
+        rows=4096,
+        capacity=4352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.linear_z_f32 == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
+
+    offsets = dict(scratch.allocation_offsets)
+    lifetimes = dict(scratch.allocation_lifetimes)
+    assert offsets
+    assert offsets.keys() == lifetimes.keys()
+    entries = list(offsets.items())
+    for index, (name_a, (offset_a, size_a)) in enumerate(entries):
+        for name_b, (offset_b, size_b) in entries[index + 1 :]:
+            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
+                lifetimes[name_a],
+                lifetimes[name_b],
+            )
+            ranges_overlap = offset_a < offset_b + size_b and offset_b < offset_a + size_a
+            assert not (lifetimes_overlap and ranges_overlap), (
+                f"live scratch buffers overlap: {name_a}={offsets[name_a]}, "
+                f"{name_b}={offsets[name_b]}"
+            )
+
+    # One arena owner plus small independently-owned metadata allocations.
+    arena = max(allocations, key=lambda buffer: buffer.nbytes)
+    assert arena in scratch.buffers
+    for name, (offset, size) in offsets.items():
+        field = getattr(scratch, name)
+        assert field.ptr == arena.ptr + offset
+        assert field.nbytes == size
+
+
+def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_backend(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", "1")
+
+    diagnostic = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner(),
+        rows=4096,
+        capacity=4352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+    assert diagnostic.allocation_mode == "dedicated"
+    assert sum(buffer.nbytes for buffer in diagnostic.buffers) > 1700 * _MIB
+    assert diagnostic.moe_down_out_f32.ptr != 0
+    assert not diagnostic.allocation_offsets
+
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE")
+    gfx1151 = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("hip_gfx1151"),
+        rows=4096,
+        capacity=4352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+    assert gfx1151.allocation_mode == "dedicated"
+    assert sum(buffer.nbytes for buffer in gfx1151.buffers) > 1700 * _MIB

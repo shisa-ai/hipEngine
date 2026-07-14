@@ -18,12 +18,16 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 # single-launch serial reducer because the extra prepare launch is neutral/down.
 GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
+# LCP-M1 validates an aligned phase-liveness arena for the production Qwen3.6
+# MoE prefill route. Diagnostic/F32 layouts retain dedicated allocations.
+GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 
 __all__ = [
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+    "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
