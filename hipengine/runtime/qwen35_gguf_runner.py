@@ -98,6 +98,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgat
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     build_runtime_state,
+    prepare_prefill_chunk_metadata,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
     set_decode_position_i64,
@@ -6139,6 +6140,7 @@ _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PR
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
+_GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
 _GGUF_LINEAR_ATTN_CONV_PREFILL_MODE_ENV = "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE"
 _GGUF_LINEAR_ATTN_CONV_PREFILL_MODES = frozenset({"baseline", "tile32x128"})
@@ -6184,6 +6186,10 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if raw is None:
         return default
     return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _gguf_prefill_device_metadata_enabled() -> bool:
+    return _env_flag(_GGUF_PREFILL_DEVICE_METADATA_ENV, False)
 
 
 def _gguf_linear_attn_conv_prefill_mode(backend: str) -> str:
@@ -7779,6 +7785,7 @@ class Qwen35GGUFResidentSession:
             capacity=prefill_capacity,
             allocate_kv_cache=False,
             runtime=runtime,
+            runtime_state_library=self._runtime_state_library,
         )
         self._buffers = (
             self._token_buf,
@@ -13050,6 +13057,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
+    runtime_state_library: object | None = None
     cos_table: object | None = None
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
@@ -13067,6 +13075,7 @@ class _GGUFFullAttentionPrefillScratch:
         allocate_kv_cache: bool = True,
         segments: int = 1,
         runtime: HipRuntime,
+        runtime_state_library: object | None = None,
     ):
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -13266,6 +13275,7 @@ class _GGUFFullAttentionPrefillScratch:
             moe_selected_rows_capacity=moe_selected_rows_capacity,
             moe_wmma_rows_capacity=moe_wmma_rows_capacity,
             buffers=tuple(value for value in fields.values() if value is not None),
+            runtime_state_library=runtime_state_library,
             gdn_segment_capacity=segments,
             gdn_active_segments=1,
         )
@@ -13280,20 +13290,34 @@ class _GGUFFullAttentionPrefillScratch:
             raise ValueError(
                 f"chunk bounds [{start}, {start+rows}) must be within total_tokens={total_tokens} and max_positions={self.max_positions}"
             )
-        cu_q_arr = np.asarray([0, rows], dtype=np.int32)
-        cu_k_arr = np.asarray([0, start + rows], dtype=np.int32)
-        atomic_arr = np.asarray([0], dtype=np.int32)
-        copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
-        copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
-        copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
-        copy_host_to_device(
-            self.gdn_cu_seqlens, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime
-        )
-        _ = stream
-        positions_arr = np.arange(start, start + rows, dtype=np.int64)
-        context_arr = positions_arr + np.int64(1)
-        copy_host_to_device(self.positions, host_array_ptr(positions_arr), positions_arr.nbytes, runtime=runtime)
-        copy_host_to_device(self.context_counts, host_array_ptr(context_arr), context_arr.nbytes, runtime=runtime)
+        if _gguf_prefill_device_metadata_enabled():
+            prepare_prefill_chunk_metadata(
+                self.cu_q.ptr,
+                self.cu_k.ptr,
+                self.atomic.ptr,
+                self.gdn_cu_seqlens.ptr,
+                self.positions.ptr,
+                self.context_counts.ptr,
+                start,
+                rows,
+                stream=stream,
+                library=self.runtime_state_library,
+                runtime=runtime,
+            )
+        else:
+            cu_q_arr = np.asarray([0, rows], dtype=np.int32)
+            cu_k_arr = np.asarray([0, start + rows], dtype=np.int32)
+            atomic_arr = np.asarray([0], dtype=np.int32)
+            copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
+            copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
+            copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                self.gdn_cu_seqlens, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime
+            )
+            positions_arr = np.arange(start, start + rows, dtype=np.int64)
+            context_arr = positions_arr + np.int64(1)
+            copy_host_to_device(self.positions, host_array_ptr(positions_arr), positions_arr.nbytes, runtime=runtime)
+            copy_host_to_device(self.context_counts, host_array_ptr(context_arr), context_arr.nbytes, runtime=runtime)
 
         block_table = Tensor.from_handle(
             self.block_table.ptr,

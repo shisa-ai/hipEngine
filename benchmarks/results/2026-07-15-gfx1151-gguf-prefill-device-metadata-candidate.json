@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_prefill_device_metadata_candidate",
+  "status": "candidate_default_off_dirty_screen",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "candidate": {
+    "selector": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1",
+    "baseline": "=0",
+    "default_on": false,
+    "description": "one stream-ordered device kernel replaces six synchronous per-chunk H2D metadata copies"
+  },
+  "correctness": {
+    "contexts": {
+      "512": {
+        "exact_parts": 83,
+        "total_parts": 83,
+        "all_exact": true,
+        "kv_parts": 20,
+        "token": 9707
+      },
+      "4096": {
+        "exact_parts": 83,
+        "total_parts": 83,
+        "all_exact": true,
+        "kv_parts": 20,
+        "token": 9707
+      }
+    },
+    "all_83_parts_exact_both_contexts": true,
+    "parts_contract": "sampled token plus FP32 logits/hidden, 30 Conv/GDN pairs, and 10 BF16 K/V pairs"
+  },
+  "balanced_prefill": {
+    "protocol": "same resident session; both modes warmed; five alternating measurements per mode/context",
+    "contexts": {
+      "512": {
+        "baseline_ms": [
+          417.9830949869938,
+          417.95594402356073,
+          418.58525498537347,
+          417.6965460064821,
+          419.02331699384376
+        ],
+        "candidate_ms": [
+          411.7241129861213,
+          412.2458719648421,
+          411.52010997757316,
+          411.5336849936284,
+          410.97715898649767
+        ],
+        "baseline_median_ms": 417.9830949869938,
+        "candidate_median_ms": 411.5336849936284,
+        "baseline_tok_s": 1224.9299221441759,
+        "candidate_tok_s": 1244.126589559557,
+        "ids": {
+          "0": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "1": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "wall_delta_percent": -1.5429834533298714,
+        "speedup": 1.0156716454291348,
+        "baseline_outlier_count": 0
+      },
+      "4096": {
+        "baseline_ms": [
+          25295.51572795026,
+          3178.2618099823594,
+          3177.8853749856353,
+          3183.67657501949,
+          3179.800960002467
+        ],
+        "candidate_ms": [
+          3154.057069972623,
+          3151.6702700173482,
+          3159.381504985504,
+          3157.9094729968347,
+          3163.881823013071
+        ],
+        "baseline_median_ms": 3179.800960002467,
+        "candidate_median_ms": 3157.9094729968347,
+        "baseline_tok_s": 1288.1309401192275,
+        "candidate_tok_s": 1297.0606139994645,
+        "ids": {
+          "0": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "1": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "wall_delta_percent": -0.6884546322551977,
+        "speedup": 1.0069322718693572,
+        "baseline_outlier_count": 1
+      }
+    },
+    "note": "4K baseline has one 25.296 s lifecycle outlier; medians remain positive but clean promotion must run a fresh variance replacement"
+  },
+  "kernel_profile": {
+    "name": "prepare_prefill_chunk_metadata_kernel",
+    "duration_ns": 6612,
+    "workgroup_x": 256,
+    "grid_x": 1024,
+    "vgpr": 16,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0
+  },
+  "watchdog_attribution": {
+    "healthy_128k_stack_samples": [
+      "synchronous H2D in _GGUFFullAttentionPrefillScratch.for_chunk",
+      "synchronous D2H compact-WMMA selected-row scalar readback"
+    ],
+    "interpretation": "the metadata candidate removes the first exposed synchronization family; the second remains a separate candidate"
+  },
+  "provenance": {
+    "hipengine_commit": "71d2c33cb8f77dd06334bd02525393b2f4130c9a",
+    "dirty": true,
+    "hip_version": "7.15.0-0000000",
+    "lineage_check": "blocked: configured /home/lhl/amd-gpu-tuning/nano-vllm-amd checkout absent; no external code copied"
+  },
+  "sources": {
+    "ab": {
+      "path": "/tmp/device-metadata-ab.json",
+      "sha256": "82e0b2936f16d3a77e64570582d18bd851d2d49f7d70751af3928a11a4efbe2a"
+    },
+    "exact82": {
+      "path": "/tmp/device-metadata-exact82.json",
+      "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"
+    },
+    "trace": {
+      "path": "/tmp/device-metadata-trace/gfx1151/3218835_kernel_trace.csv",
+      "sha256": "2ef5d13ebdb87db4b038f84f84317fab3f34230c716907ffaa5d7434e73bde22"
+    },
+    "lifecycle": {
+      "path": "/tmp/lcp2_128k_lifecycle_diag.log",
+      "sha256": "545aad34b8753a3dd5cd97e92fd5bf75bb674fa27f98bb67d68c4f6c9579486f"
+    }
+  }
+}

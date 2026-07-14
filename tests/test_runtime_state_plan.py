@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
     plan_runtime_state_build,
+    prepare_prefill_chunk_metadata,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
     register_runtime_state_kernels,
@@ -98,6 +99,15 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         )
         is unpack_verify_chain_dynamic_metadata_i64
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="prefill_metadata",
+            quant="gguf_qwen35",
+            variant="contiguous_chunk",
+        )
+        is prepare_prefill_chunk_metadata
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -175,3 +185,7 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         record_f32_row_indexed(0, 0, 0, 1, 0)
     with pytest.raises(ValueError, match="rows"):
         unpack_verify_chain_dynamic_metadata_i64(0, 0, 0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="start"):
+        prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, -1, 1)
+    with pytest.raises(ValueError, match="rows"):
+        prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, 0, 0)
