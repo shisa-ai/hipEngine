@@ -156025,3 +156025,49 @@ graphless decode launch-collapse path without regressing target/serial parity.
   activation quantization is included.
 - Compact rejected artifact:
   `benchmarks/results/2026-07-14-gfx1100-selected-q4-dp4a-c1-rejected.json`.
+
+## 2026-07-14 - Predeclare exact Q6T16 lm-head top-1 fusion screen
+
+- The next bounded Vulkan-gap target is the exact Q6_K lm-head, which is
+  **7.19%** of the retained 4K GPU window. The current c1 greedy path launches
+  the resident Q6T16 projection into a full FP32 vocabulary row, then scans
+  that row with two argmax kernels even when callers explicitly request top-1
+  without logits.
+- Add a separately callable Q6T16 candidate that preserves the existing
+  per-logit dot, wave reduction, cross-wave sum, FP32 value, and minimum-index
+  tie break, but writes one winner per resident 16-column tile and reduces
+  those winners directly. It consumes the existing T16 allocation: no raw/X8
+  sidecar, activation quantization, weight duplication, or sampling narrowing.
+  Full-logit and non-Q6 dispatch remain unchanged fallbacks.
+- RED/GREEN requires candidate IDs and selected FP32 values to be byte-identical
+  to `q6_k_t16_gemv -> argmax` on plain and tied-maximum fixtures. A
+  production-shape W7900 cache-cycled micro A/B must show a positive combined
+  projection+selection result before runtime routing is retained. If it
+  advances, a cached trace must show the expected stage1/stage2 symbols and a
+  clean 4K graph-decode A/B must preserve generated IDs/final selected value
+  and be non-regressive. Exact positive leaf savings are retained even if the
+  aggregate wall is inside noise; a negative leaf result removes the candidate.
+
+## 2026-07-14 - Reject exact Q6T16 lm-head top-1 fusion
+
+- RED/GREEN passed while the candidate existed: the focused Q6 kernel plus
+  runtime-routing bundle was **10/10**, and candidate IDs/selected FP32 values
+  were byte-identical to full Q6T16 logits plus argmax. An all-equal-logit
+  fixture also confirmed the minimum-index tie break.
+- The production `rows=1, in=2048, out=248320` W7900 micro screen was narrowly
+  positive: full-logits+argmax median **877.526 us**, tile-winner fusion
+  **873.801 us** (**0.426% faster**) across six alternating 20-warmup/100-call
+  HIP-event legs. The selected ID/value were exact, so the candidate advanced.
+- The clean cached-only 4K graph control/candidate/control gate reversed the
+  result. Control A was **97.940/97.919/97.789 tok/s**, candidate
+  **97.337/97.206/97.137**, and control B **97.714/97.550/97.365**. Candidate
+  median **97.206** trails the combined-control median **97.751 tok/s** by
+  **0.558%**. All nine measured runs retain final ID `9707` and final logit
+  `29.407920837402344`.
+- Rejected under the predeclared aggregate nonregression rule. Removed the
+  candidate kernel, wrapper, registry route, runtime flag, enlarged scratch,
+  and candidate tests; the existing full-logits Q6T16 route is unchanged. A
+  profiler trace was not retained after the decisive wall rejection because no
+  new kernel remains or is claimed.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q6t16-top1-fusion-rejected.json`.
