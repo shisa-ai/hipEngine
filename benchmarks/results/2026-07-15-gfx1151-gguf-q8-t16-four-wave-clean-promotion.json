@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8_t16_four_wave_clean_promotion",
+  "status": "accepted_scoped_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "software": {
+    "candidate_commit": "d34476daa536aa3b11f024e8cfc64f2ece2f417a",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "id": "LCP-3",
+    "description": "four production-order 32-column waves share one exact BF16 activation tile",
+    "baseline": "gfx1151 automatic GPF-5A two-wave schedule",
+    "automatic_scope_max_prompt_tokens": 65536,
+    "rollback": "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0 or HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=1 selects two-wave; HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0 selects production"
+  },
+  "protocol": {
+    "worktree": "clean detached candidate commit",
+    "correctness": "one cache warmup followed by independent 512/4096 full-model differential capture",
+    "performance": "five balanced same-session baseline/candidate pairs per context after cache warmup",
+    "timing_scope": "bulk prefill wall",
+    "prompt_token_id": 9707,
+    "expected_token_id": 9707,
+    "command": "cd /tmp/hipengine-q8-fourwave-clean-d34476da && HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/lcp1-hipcc-version-current.txt PYTHONPATH=. python3 /tmp/q8_4wave_exact82.py && HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/lcp1-hipcc-version-current.txt PYTHONPATH=. python3 /tmp/q8_4wave_ab.py"
+  },
+  "correctness": {
+    "512": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    },
+    "4096": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    }
+  },
+  "balanced_prefill": {
+    "512": {
+      "baseline_ms": [421.56903201248497, 422.22180700628087, 421.3646390126087, 421.59694503061473, 421.11919802846387],
+      "candidate_ms": [419.31468195980415, 421.19646299397573, 418.71228197123855, 419.4081869791262, 419.33095298008993],
+      "baseline_median_ms": 421.56903201248497,
+      "candidate_median_ms": 419.33095298008993,
+      "wall_delta_percent": -0.5308926563488026,
+      "baseline_tok_s": 1214.5104623928753,
+      "candidate_tok_s": 1220.9926225606105,
+      "throughput_delta_percent": 0.5337261693871165,
+      "timed_ids_exact": true
+    },
+    "4096": {
+      "baseline_ms": [3221.743364993017, 3228.367608040571, 3227.661694982089, 3227.259221021086, 3227.7014320134185],
+      "candidate_ms": [3172.83552599838, 3174.711016996298, 3177.691712975502, 3178.586683003232, 3178.920521051623],
+      "baseline_median_ms": 3227.661694982089,
+      "candidate_median_ms": 3177.691712975502,
+      "wall_delta_percent": -1.54817904504283,
+      "baseline_tok_s": 1269.0301484718427,
+      "candidate_tok_s": 1288.9859589823518,
+      "throughput_delta_percent": 1.5725245404563326,
+      "timed_ids_exact": true
+    }
+  },
+  "kernel_profile_from_candidate_gate": {
+    "name": "gguf_q8_0_t16_prefill_wmma_nwave_kernel<32,4>",
+    "threads": 128,
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "source_artifact": "benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-candidate.json"
+  },
+  "request_scope_gate": {
+    "passed": true,
+    "policy": "automatic four-wave through 65536 prompt tokens; production above",
+    "selector_unset_512_vs_explicit_four_wave": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "token": 9707
+    },
+    "tests": [
+      "tests/test_gguf_q8_0_t16_wmma_prefill.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_qwen35_gguf_aotriton_stream.py"
+    ]
+  },
+  "decision": "Promote four-wave on gfx1151 under the existing <=64K request ceiling. Keep two-wave and production as explicit rollback schedules for one release; gfx1100 remains production pending independent hardware evidence.",
+  "sources": {
+    "exact_json": {
+      "path": "/tmp/q8-fourwave-clean-exact82.json",
+      "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"
+    },
+    "ab_json": {
+      "path": "/tmp/q8-fourwave-clean-ab.json",
+      "sha256": "a57a4b9ab99e2cf2c134dfe128ae4a76ac5960405180135c4db2cabf7016656f"
+    },
+    "exact_log": {
+      "path": "/tmp/q8-fourwave-clean-exact.log",
+      "sha256": "a298c1b97d84238df3878f4531595032448d5b219c424f9d0848d9608ca851be"
+    },
+    "ab_log": {
+      "path": "/tmp/q8-fourwave-clean-ab.log",
+      "sha256": "a37f29c9dd52cb84eba1bc59bc25e31f306dc1e137ed757d575d8b2e486cbadf"
+    },
+    "automatic_exact_json": {
+      "path": "/tmp/q8-fourwave-auto-exact83.json",
+      "sha256": "9a895a382f5630beb793bc1aecb0943806504bc9a173207586a31fb81f5d5a12"
+    },
+    "automatic_exact_log": {
+      "path": "/tmp/q8-fourwave-auto-exact83.log",
+      "sha256": "4423859c6042537e2843b062dbc0e5f4317c6f7331d88f953a56c76544c76dce"
+    }
+  }
+}

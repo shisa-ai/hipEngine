@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     _four_wave_prefill_applies,
     _two_wave_prefill_applies,
     build_gguf_q8_0_t16_prefill,
+    gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_f32_out,
     gguf_q8_0_t16_wmma_prefill_bf16_fp16_out,
@@ -114,17 +115,94 @@ def test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy() -> None:
     assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
 
 
-def test_lcp3_four_wave_policy_is_explicit_and_shape_scoped(
+def test_lcp3_four_wave_policy_is_defaultable_explicit_and_shape_scoped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", raising=False)
     assert not _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192)
+    assert _four_wave_prefill_applies(
+        tile_m=32,
+        tile_n=32,
+        out_features=8192,
+        default=True,
+    )
+    with q8_t16_two_wave_prefill_session(False):
+        assert not _four_wave_prefill_applies(
+            tile_m=32,
+            tile_n=32,
+            out_features=8192,
+            default=True,
+        )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", "0")
+    assert not _four_wave_prefill_applies(
+        tile_m=32,
+        tile_n=32,
+        out_features=8192,
+        default=True,
+    )
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", "1")
     assert _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=8192)
     assert _four_wave_prefill_applies(tile_m=64, tile_n=32, out_features=2048)
     assert not _four_wave_prefill_applies(tile_m=16, tile_n=32, out_features=8192)
     assert not _four_wave_prefill_applies(tile_m=32, tile_n=16, out_features=8192)
     assert not _four_wave_prefill_applies(tile_m=32, tile_n=32, out_features=512)
+
+
+def test_lcp3_auto_wrapper_is_request_scoped_with_two_wave_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[int | None, ...]]] = []
+
+    class FakeKernel:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __call__(self, *args: Any) -> int:
+            calls.append((self.name, tuple(getattr(arg, "value", arg) for arg in args)))
+            return 0
+
+    class FakeLibrary:
+        hipengine_gguf_q8_0_t16_wmma_prefill_bf16_bf16_out = FakeKernel("production")
+        hipengine_gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out = FakeKernel("two_wave")
+        hipengine_gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out = FakeKernel("four_wave")
+
+    kwargs = {
+        "x_ptr": 1,
+        "tiles_ptr": 2,
+        "out_ptr": 3,
+        "rows": 512,
+        "in_features": 2048,
+        "out_features": 8192,
+        "library": FakeLibrary(),
+        "runtime": object(),
+    }
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", raising=False)
+    with q8_t16_two_wave_prefill_session(True):
+        gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out(**kwargs)
+    assert calls[-1][0] == "four_wave"
+    assert calls[-1][1][6:8] == (128, 32)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE", "0")
+    with q8_t16_two_wave_prefill_session(True):
+        gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out(**kwargs)
+    assert calls[-1][0] == "two_wave"
+    assert calls[-1][1][6:8] == (64, 32)
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", "1")
+    with q8_t16_two_wave_prefill_session(False):
+        gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out(**kwargs)
+    assert calls[-1][0] == "two_wave"
+    assert calls[-1][1][6:8] == (64, 32)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE", "0")
+    with q8_t16_two_wave_prefill_session(True):
+        gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out(**kwargs)
+    assert calls[-1][0] == "production"
+    assert calls[-1][1][6:8] == (64, 32)
 
 
 def test_gpf5a_two_wave_policy_is_explicit_and_shape_scoped(

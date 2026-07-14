@@ -31,7 +31,7 @@ _TWO_WAVE_VARIANT = "wmma_prefill_2wave_bf16_bf16_out"
 _FOUR_WAVE_VARIANT = "wmma_prefill_4wave_bf16_bf16_out"
 _TWO_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE"
 _FOUR_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE"
-_two_wave_session_enabled: bool | None = None
+_wide_wave_session_enabled: bool | None = None
 
 _VARIANTS: tuple[str, ...] = (
     "wmma_prefill_bf16_bf16_out",
@@ -133,15 +133,26 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
 
 @contextlib.contextmanager
 def q8_t16_two_wave_prefill_session(enabled: bool | None) -> Iterator[None]:
-    """Temporarily scope GPF-5A selection to the current prefill request."""
+    """Temporarily scope the retained wide-wave schedule to one prefill request."""
 
-    global _two_wave_session_enabled
-    previous = _two_wave_session_enabled
-    _two_wave_session_enabled = None if enabled is None else bool(enabled)
+    global _wide_wave_session_enabled
+    previous = _wide_wave_session_enabled
+    _wide_wave_session_enabled = None if enabled is None else bool(enabled)
     try:
         yield
     finally:
-        _two_wave_session_enabled = previous
+        _wide_wave_session_enabled = previous
+
+
+def _wide_wave_prefill_enabled(*, default: bool) -> bool:
+    """Resolve the shared GPF-5A/LCP-3 request ceiling and rollback control."""
+
+    raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
+    if raw:
+        return raw in {"1", "true", "yes", "on"}
+    if _wide_wave_session_enabled is not None:
+        return _wide_wave_session_enabled
+    return default
 
 
 def _two_wave_prefill_applies(
@@ -153,13 +164,7 @@ def _two_wave_prefill_applies(
 ) -> bool:
     """Return whether the GPF-5A policy covers this tile."""
 
-    raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
-    if raw:
-        enabled = raw in {"1", "true", "yes", "on"}
-    elif _two_wave_session_enabled is not None:
-        enabled = _two_wave_session_enabled
-    else:
-        enabled = default
+    enabled = _wide_wave_prefill_enabled(default=default)
     return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
 
 
@@ -168,11 +173,20 @@ def _four_wave_prefill_applies(
     tile_m: int,
     tile_n: int,
     out_features: int,
+    default: bool = False,
 ) -> bool:
-    """Return whether the explicit LCP-3 four-wave diagnostic covers this tile."""
+    """Return whether the LCP-3 four-wave schedule covers this tile."""
 
     raw = os.environ.get(_FOUR_WAVE_ENV, "").strip().lower()
-    enabled = raw in {"1", "true", "yes", "on"}
+    two_wave_raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
+    if raw:
+        enabled = raw in {"1", "true", "yes", "on"}
+    elif two_wave_raw:
+        # Preserve the older selector's exact meaning: explicit 2WAVE=1 asks
+        # for two-wave, while 2WAVE=0 asks for production.
+        enabled = False
+    else:
+        enabled = _wide_wave_prefill_enabled(default=default)
     return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
 
 
@@ -180,7 +194,12 @@ def _symbol_for_variant(variant: str) -> str:
     return f"hipengine_gguf_q8_0_t16_{variant}"
 
 
-def _make_wrapper(variant: str, *, two_wave_default: bool = False):
+def _make_wrapper(
+    variant: str,
+    *,
+    two_wave_default: bool = False,
+    four_wave_default: bool = False,
+):
     symbol = _symbol_for_variant(variant)
 
     def wrapper(
@@ -207,6 +226,7 @@ def _make_wrapper(variant: str, *, two_wave_default: bool = False):
             tile_m=resolved_tile_m,
             tile_n=resolved_tile_n,
             out_features=out_features,
+            default=four_wave_default,
         ):
             selected_symbol = _symbol_for_variant(_FOUR_WAVE_VARIANT)
             resolved_tile_m = 128
@@ -250,6 +270,17 @@ gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__ = (
 )
 gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__qualname__ = (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out = _make_wrapper(
+    "wmma_prefill_bf16_bf16_out",
+    two_wave_default=True,
+    four_wave_default=True,
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__name__ = (
+    "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__qualname__ = (
+    gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__name__
 )
 
 
@@ -467,4 +498,5 @@ __all__ = [
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out",
+    "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

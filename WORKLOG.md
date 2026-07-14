@@ -155946,3 +155946,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Candidate remains explicit under `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=1`
   pending a clean gate. Dirty evidence is
   `benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-candidate.json`.
+
+## 2026-07-15 - LCP-3 clean promotion
+
+- Committed candidate `d34476da` was checked from clean detached worktree
+  `/tmp/hipengine-q8-fourwave-clean-d34476da`. After an uncached wrapper warmup,
+  independent 512/4K full-model capture reproduced **83/83** exact parts at
+  both shapes, including sampled token, FP32 logits/hidden, 30 Conv/GDN pairs,
+  and ten BF16 K/V pairs.
+- Five balanced same-session pairs improve bulk prefill
+  **1214.510 -> 1220.993 tok/s (+0.53%)** at 512 and
+  **1269.030 -> 1288.986 tok/s (+1.57%)** at 4K. Every one of 20 timed IDs is
+  `9707`; every pair wins. Exact command and raw-source hashes are retained in
+  `benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json`.
+- Promoted the gfx1151 registry override to the automatic four-wave wrapper.
+  It inherits GPF-5A's already-measured 65,536-token request ceiling and restores
+  production above it. `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0` rolls back to
+  two-wave; `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0` restores production. gfx1100
+  remains unchanged. Focused route/registry/kernel tests pass. A selector-unset
+  512 full-model run also matches explicit four-wave **83/83** parts exactly,
+  confirming the promoted automatic wrapper rather than only its explicit flag.
