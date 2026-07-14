@@ -155641,3 +155641,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   compact artifact
   `benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`.
   Targeted backend/routing/registry tests pass **29/29** before final staging.
+
+## 2026-07-14 - Close residual gfx1100 prefill schedule screens
+
+- Tested a W7900-specific exact 16-column direct-conv LDS GDN tile after the
+  96-CU occupancy audit. Plain and segmented primitive output/final state pass
+  byte equality, but the dirty same-source 1+3 screen is mixed: 512 moves
+  **1294.527 -> 1292.525 tok/s (-0.155%)** while 4K moves
+  **1404.183 -> 1410.274 (+0.434%)**. This fails the predeclared all-shape
+  requirement. Removed the candidate, selector, and template changes; the
+  final source is byte-identical to clean `54346596`.
+- Independently extended exact GPF-5A two-wave dense Q8 only for a bounded
+  same-session long-context screen. It regresses 32K
+  **1246.566 -> 1226.401 tok/s (-1.618%)** and 64K
+  **1026.872 -> 1024.617 (-0.220%)**, all IDs `9707`. The gfx1100 automatic
+  ceiling therefore remains 4096 prompt tokens; no source change was made.
+- Tried a two-lane-per-value exact-residency GDN schedule with 64 contiguous
+  state rows per lane. Both plain and segmented first-gate fixtures differ in
+  **11/69,632 BF16 outputs (0.0158%, max abs 9.77e-4)**, so the candidate was
+  rejected before timing and removed completely. Do not weaken the byte gate.
+- Added compact rejection artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json`.
+  The retained residual boundary is unchanged: `chain_lds32_direct` for exact
+  GDN, two-wave dense Q8 through 4K only, and high-effort exact chunked/prefix
+  GDN research only behind the six-case state plus 250/250 natural gate.

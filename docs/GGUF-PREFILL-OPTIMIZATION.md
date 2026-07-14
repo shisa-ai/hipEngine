@@ -1168,20 +1168,31 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   post-transfer profile closes LCP-1 on gfx1100: convolution is only 1.09% of
   4K kernel time and the exact candidate regresses full-model wall 0.192%.
   Exact GDN recurrence now owns 61.1% and is the first-order prefill family.
+- LCP-D1/D2 is complete on gfx1100. The parallel split-output reducer is the
+  exact scoped default from 32K and improves clean graph decode **1.23% at
+  32K**, **3.95% at 64K**, and **7.80% at 128K**; the 128K route reaches
+  **61.367 tok/s**, 0.713% above the matched llama.cpp HIP reference. Evidence:
+  [`LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
+- The final residual prefill screens retain no code. Exact LDS16 is mixed
+  (**-0.155% at 512, +0.434% at 4K**), extending two-wave Q8 regresses
+  32K/64K **1.62%/0.22%**, and a two-lane VGPR GDN schedule fails BF16 byte
+  equality before timing. Evidence:
+  [`residual screens`](../benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
 - No benchmark process is intentionally left running. Clean selector-unset
-  `82b62d5f` confirms the gfx1100 policy at **1344.043/1463.713 tok/s** prefill
-  and **90.259/97.466 tok/s** decode for 512/128 and 4K/128, all IDs `9707` and
-  unchanged memory. The public six-shape rollup waits for the optimization pass.
+  `82b62d5f` confirms the promoted prefill policy at **1344.043/1463.713 tok/s**
+  for 512/4K; the complete defaults-only six-shape rollup is the remaining
+  publication step.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
 gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
-production above each architecture's bound. The gfx1151 partial refresh is
-final; investigate its 128K lifecycle only with phase markers and bounded
-lifecycle coverage. On gfx1100, do not revisit LCP-1 without a new hotspot
-profile; exact token-parallel/prefix GDN is now the first-order but
-exactness-constrained high-effort prefill path. Run bounded `LCP-D1` 128K decode
-attribution independently.
+production above each architecture's bound. The long-context gfx1100 screen
+confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
+lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
+do not revisit LCP-1 without a new hotspot profile. Further exact GDN work is a
+high-effort chunked/prefix lane and still requires the six-case state matrix plus
+250/250 natural-transition gate; do not weaken that contract after the group2
+failure.
 
 ## Document Ownership
 
