@@ -155686,3 +155686,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   synchronized. Both compact artifacts pass canonical provenance, JSON,
   source-binding, and arithmetic checks; new local links and `git diff --check`
   pass.
+
+## 2026-07-14 - Start llama.cpp Vulkan production attribution
+
+- The user requested a bounded llama.cpp Vulkan/HIP production-path audit followed
+  by exhaustive exact hipEngine prefill/decode optimization of every opportunity
+  the attribution identifies. The GPU was idle and gfx1151/ROCm was healthy.
+  Unrelated untracked server artifacts remain untouched.
+- Added `scripts/llamacpp_vulkan_perf_summary.py` with RED/GREEN coverage. It
+  parses llama.cpp `GGML_VK_PERF_LOGGER=1` timestamp sections, supports discarding
+  explicit warmup graph calls, and rolls exact operations into parity families.
+  `python3 -m pytest tests/test_llamacpp_vulkan_perf_summary.py
+  tests/test_llamacpp_kernel_trace_summary.py -q` passes **42/42**.
+- First diagnostic command (raw logs remain under `/tmp`):
+  `GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1
+  /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16
+  -ctv f16 -r 1 -o json -p 512 -n 0 -d 0 -dev Vulkan0`. After discarding
+  llama-bench's one warmup section, the measured timestamp sum is **464.477 ms / 1,788
+  dispatches** and host wall is **467.196 ms (1095.901 tok/s)**. Largest Vulkan
+  families are selected Q4 **154.130 ms**, dense Q8 **95.021 ms**, selected Q5
+  **89.121 ms**, and elementwise **37.771 ms**. GDN is only **10.140 ms**. These
+  are profiler diagnostics, not a topline replacement; 4K/128K and decode runs
+  are in progress.
