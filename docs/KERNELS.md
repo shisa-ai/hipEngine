@@ -370,6 +370,17 @@ only remaining GDN prefill research lane; do not reopen reduction-width sweeps.
 See
 `benchmarks/results/2026-07-14-gfx1100-gguf-gdn-register-residency-rejected.json`.
 
+GPF-7 independently transferred Atlas `37513bf`'s scalar-column residency idea
+while retaining hipEngine's exact direct-conv FP32 arithmetic. Plain and
+segmented production fixtures became byte-exact after explicit FMA grouping,
+but the cached gfx1100 trace compiled both 32-thread kernels at **256 VGPR** and
+**1064/1060 bytes scratch per thread** (zero LDS). This fails the predeclared
+<=192 VGPR/zero-scratch gate before full-model timing, so all GPF-7 code and
+registry/routing surfaces were removed. Atlas remains lineage-only evidence:
+SM121's register-file result does not transfer mechanically to RDNA3. Future
+exact GDN work must use chunkwise/WY algebra, not another storage or reduction
+micro-variant. The rejection is recorded in the GPF-6/7 artifact above.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
