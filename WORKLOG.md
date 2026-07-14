@@ -155695,3 +155695,55 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Added
   `benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json`
   and replaced the public W7900 GGUF column. No benchmark process remains.
+
+## 2026-07-14 - Rebaseline gfx1100 GGUF parity continuation
+
+- Confirmed a clean `gfx1100-gguf-optimization` tree at `e60641f9`, TheRock
+  HIP load success, and both local gfx1100 devices; the W7900 remains the
+  selected benchmark target. Reused the accepted July 12 llama.cpp HIP/Vulkan
+  Q4_K_M/F16-KV rows and the clean July 14 hipEngine Q4_K_M/BF16-KV rollup
+  without changing any topline.
+- Expressed residuals as required hipEngine uplift rather than target-minus-
+  current percentages. Prefill needs
+  **+86.97%/+71.27%/+60.89%/+36.50%/+26.44%/+16.31%** to match llama.cpp
+  HIP at 512/1K/4K/32K/64K/128K. Decode already beats llama.cpp HIP at all
+  six shapes but needs **+20.13%/+13.08%/+5.93%/+6.91%/+11.64%/+15.62%**
+  to match llama.cpp Vulkan.
+- Audited the raw right-sized owned-session breakdowns. Weights are fixed at
+  **21.061 GiB**. At 4K/32K/64K/128K the bulk-prefill scratch alone is
+  **1.751/1.753/1.755/1.759 GiB**, while the full tracked totals exceed the
+  broader llama.cpp HIP whole-device readings by
+  **1.321/1.343/1.308/1.404 GiB**. After weights, decode KV/state, and
+  non-bulk session buffers, bulk scratch must fall to at most
+  **0.431/0.410/0.447/0.356 GiB** to fit below those HIP totals. This names
+  `LCP-M1` liveness/aliasing as the first memory lane; the public scope caveat
+  still applies, so these are directional capacity bounds, not allocator-
+  efficiency ratios.
+- Warmed the current 4K eager route outside the profiler with:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=.
+  python3 scripts/gguf_decode_rocprof.py --child-mode warmbuild --source-root .
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100
+  --prompt-length 4096 --max-seq 4352 --steps 1 --warmup-steps 1`.
+  Then ran the same cached-only child under
+  `rocprofv3 --kernel-trace --marker-trace --output-format csv` for four
+  warmup plus eight timed steps. Every generated ID remained `9707`.
+- The system ROCTX shim did not produce a marker CSV, so this new trace is
+  explicitly diagnostic: selected the final eight state-update/embedding-
+  delimited decode cycles from the trace tail, after the four warmup cycles. They contain about
+  **708 dispatches/token** and **8.914 ms GPU time/token**. Family shares are
+  dense Q8 T16 GEMV **39.28%**, selected-MoE T16 GEMV **20.30%**, attention
+  core **9.04%**, lm-head **7.19%**, router **6.65%**, and GDN **6.11%**.
+  At 4K the Vulkan target is only +5.93%, so dense Q8 and selected MoE are the
+  first decode candidates. Generic launch reduction is not the leading issue.
+- Re-read the parent source-grounded Vulkan/HIP audit. Both backends use q8_1
+  plus packed dot4; the retained Vulkan causes are smaller single-subgroup
+  workgroups/no cross-wave LDS reduction, RADV/ACO scheduling, activation-load
+  coalescing/weight unpack shape, and graph-level MoE/post-op fusion. Vulkan
+  WMMA decode, a wider dot instruction, and generic attention remain ruled
+  out. hipEngine's roughly 708 launches/token are already below the retained
+  llama.cpp HIP trace's roughly 1,600/token.
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json` and
+  updated `docs/LLAMACPP-HIP-PARITY.md`. Open order is memory liveness,
+  exact/new-contract GDN, and profile-directed Vulkan decode parity.
