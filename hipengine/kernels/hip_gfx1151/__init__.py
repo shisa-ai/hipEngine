@@ -31,9 +31,9 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # Clean GPF-2E exactness, balanced-wall, and natural-trajectory/decode gates
 # admit compact-scale direct-conv scalar-exact LDS32 GDN prefill on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct"
-# LCP-1 remains an explicit diagnostic until its same-stream full-state and
-# fresh-process wall gates pass on gfx1151.
-GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
+# Clean LCP-1 primitive/full-state, same-stream trace, and fresh-process wall
+# gates admit the exact 32-token shared-memory convolution schedule on gfx1151.
+GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
 # Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
 # selected-dual Q4T16 prefill schedule on gfx1151.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"

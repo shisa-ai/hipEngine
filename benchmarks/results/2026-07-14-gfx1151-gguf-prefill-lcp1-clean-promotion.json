@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_prefill_lcp1_clean_promotion",
+  "status": "promote_gfx1151_capability_pending_final_rollup",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "commit_under_test": "3ff8e2d7e4acb4e5e344f340ae217b1f37b56140",
+  "source_state": {
+    "worktree": "/tmp/hipengine-lcp1-clean-3ff8e2d7",
+    "detached": true,
+    "dirty": false,
+    "prebuilt_outside_timing": true,
+    "timed_runs_require_cached_build": true
+  },
+  "candidate": {
+    "id": "LCP-1",
+    "variant": "f32_tile32x128",
+    "selector": "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=tile32x128",
+    "promoted_backend": "hip_gfx1151",
+    "unverified_backend_default": "hip_gfx1100:f32_baseline",
+    "rollback": "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "profile": "accelerator-performance"
+  },
+  "software": {
+    "therock": "7.15.0a20260711",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt": "repeated token 9707"
+  },
+  "correctness": {
+    "protocol": "Separate clean candidate process compared against retained production hashes for FP32 logits/hidden, all 30 Conv/GDN state pairs, and all 10 live BF16 K/V pairs.",
+    "contexts": {
+      "512": {
+        "predicted_token_id": 9707,
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_reference_sha256": "6659d4f8a4130a3b5b0aa8a12dfbbb0ee74edcd9d74989a4d02cbf4b5eb20622"
+      },
+      "4096": {
+        "predicted_token_id": 9707,
+        "parts_compared": 82,
+        "all_parts_exact": true,
+        "aggregate_reference_sha256": "24eb7b4730ce6f775b2294a8e30a246ee77026eab05f29bb3faebd4694b7370c"
+      }
+    },
+    "local_capture": {
+      "path": "/tmp/lcp1-clean-full-state.json",
+      "sha256": "abff9e5023f0517d7f1b00a4df4d497c91788ba45d0e08f3878a6eb88a64d163"
+    }
+  },
+  "performance": {
+    "protocol": "One discarded warmup plus three measured prefill-only runs in one fresh persistent-session process per context/mode; order production/candidate at 512 and candidate/production at 4K; cached builds; detached clean commit.",
+    "512": {
+      "production_samples_tok_s": [863.6217324205107, 891.7760680640679, 890.7269952521315],
+      "candidate_samples_tok_s": [881.8997202744983, 907.4689935752485, 906.1181529543657],
+      "production_median_tok_s": 890.7269952521315,
+      "candidate_median_tok_s": 906.1181529543657,
+      "candidate_delta_percent": 1.7279321031330674,
+      "tracked_peak_gib_production_candidate": [21.477776296436787, 21.477776296436787],
+      "production_artifact_sha256": "62040b2cf0f8d34eb7044a902aad7c4d624dd68709842151150d388ddeef7bab",
+      "candidate_artifact_sha256": "33b5d988369573cac8b6c12bdbc97d534da00f9570b3319ca327b9337d4631ea"
+    },
+    "4096": {
+      "production_samples_tok_s": [762.8726034503804, 761.5455761555324, 762.2728951896842],
+      "candidate_samples_tok_s": [936.9096329891615, 937.2019838974895, 935.7427707868359],
+      "production_median_tok_s": 762.2728951896842,
+      "candidate_median_tok_s": 936.9096329891615,
+      "candidate_delta_percent": 22.91000229727711,
+      "tracked_peak_gib_production_candidate": [22.99488216638565, 22.99488216638565],
+      "production_artifact_sha256": "b0f4f229d7764ca26b80e0cb11c810be2e11319e00b0860a85b14c3a6e6c33f2",
+      "candidate_artifact_sha256": "02b9b906b6c694cff422073323534169f629ad45ff5e41180851abc3d86a700b"
+    }
+  },
+  "trace_link": {
+    "artifact": "benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-candidate-focus.json",
+    "candidate_output_ms": 49.790269,
+    "production_output_ms": 954.133776,
+    "scratch_bytes": 0
+  },
+  "decision": {
+    "promote": true,
+    "reason": "The clean exact gate passes and both prescribed focus contexts improve with unchanged tracked memory. gfx1151 selects f32_tile32x128 automatically; gfx1100 remains on the unverified production fallback.",
+    "publication_next": "Run the right-sized six-shape automatic sweep and scope or revert any context that does not preserve the win."
+  }
+}
