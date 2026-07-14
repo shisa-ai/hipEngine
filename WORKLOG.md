@@ -155941,3 +155941,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   register schedules, relaxed register schedules, and full-column scalar
   residency. A real future GDN step requires chunkwise/WY algebra with an
   explicit numerical contract; do not reopen storage/reduction micro-variants.
+
+## 2026-07-14 - Predeclare remaining Q8T16 wave/block indexing screen
+
+- The retained 4K exact-decode profile attributes **22.51%** of GPU time to the
+  three dense-Q8 bodies that still use scalar `k=tid; k+=blockDim`: single
+  **13.79%**, concatenated dual **4.50%**, and triple-split **4.22%**. The
+  largest dual-split leaf already uses the exact wave/block traversal retained
+  on gfx1151 and is not changed by this screen.
+- Extend that existing in-tree traversal only as separately callable BF16 A/B
+  symbols for the single, concatenated-dual, and triple-split kernels. This is
+  an indexing/compiler-scheduling screen, not a claim to remove cross-wave LDS
+  or reproduce Vulkan's one-subgroup shader. Every thread retains the same K
+  sequence and FP32 operation order at 64/128 threads.
+- RED/GREEN requires production-shape candidate output to be byte-identical to
+  each current body at both supported workgroup sizes. Cache-cycled micro A/Bs
+  must show a repeatable positive leaf result before a body can advance. Any
+  advancing subset then requires an expected-symbol trace, exact generated
+  tokens/logits, and a clean 4K full-model decode nonregression gate; retain a
+  measured sub-window win even if aggregate wall is flat within noise, per the
+  repository performance policy. Regressing bodies are removed independently.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` was rerun. Its
+  four DRIFT reports concern external PARO/GDN source families, not this
+  in-tree Q8T16 body; no external code is being ported.
+
+## 2026-07-14 - Reject remaining Q8T16 wave/block extensions
+
+- All six production-shape 64/128-thread RED/GREEN fixtures pass byte-exactly
+  against the current bodies. The W7900 cache-cycled 128-thread micro protocol
+  then rejects every candidate before full-model timing: single
+  **11.5981 -> 11.7262 us (+1.10%)**, concatenated dual
+  **23.5939 -> 23.6821 us (+0.37%)**, and triple split
+  **20.7068 -> 20.8705 us (+0.79%)**. Each median covers six alternating-order
+  legs of 80 warmups + 400 HIP-event-timed calls while cycling about 107 MiB of
+  weights.
+- Removed all temporary symbols, wrappers, and tests. The existing production
+  dual-split wave/block path remains unchanged. This exact indexing cleanup is
+  not the gfx1100 Vulkan-parity lever, and the earlier gfx1151 dual-split result
+  must not be generalized to these bodies.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q8t16-waveblock-extension-rejected.json`.
+  No public benchmark rollup changes because no candidate advanced past its
+  micro gate.
