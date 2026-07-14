@@ -1,6 +1,6 @@
 # gfx1151 PARO/GGUF Optimization Ledger
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-14.
 
 Status: v0.3.0 is published, so the unreproduced `SOL-R0` report is no longer a
 release blocker. Reactivate it only with a named matched known-good/current A/B.
@@ -91,7 +91,7 @@ The table names the source revision for each result.
 | MTP server routing | The corrected clean-tracked `d2b1e742` natural24 matrix shows the current `llama-compat` hook is faster at c1/c2 but changes exact AR IDs on heldout `general_ja_explain` even at c1; wider groups add more mismatches. | Compatibility MTP cannot select `auto`. Automatic requests must remain on exact/default AR until an exact MTP hook exists; explicit opt-in keeps the documented compatibility contract. Actual groups, not client c, remain the routing key. |
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
-| gfx1151 c1 model toplines | The clean `d1231ee0` six-shape refresh passes stable finite-output, five-sample variance, matched Q4_K_M identity, and GTT-memory gates for hipEngine GGUF plus llama.cpp HIP/Vulkan. Clean `9944e481` supplies exact PARO 512/1K rows; clean `01e2cec5` supplies exact queue-isolated 4K-128K rows. PARO 512/128 is `1140.101 prefill / 66.767 decode tok/s`; 128K/128 is `474.641 / 30.386`. | The repository and benchmark README tables use the newer retained PARO column and preserve the July 11 matched GGUF/llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. |
+| gfx1151 c1 model toplines | The clean `d1231ee0` comparison refresh remains the llama.cpp HIP/Vulkan reference. Clean `9944e481`/`01e2cec5` supply the retained PARO column; clean `71e61524` now supplies all six right-sized GGUF rows. PARO 512/128 is `1140.101 prefill / 66.767 decode tok/s`; GGUF 128K/128 is now `433.811 / 28.047`. | The repository and benchmark README tables use the retained PARO column, the LCP-1/LCP-D1 GGUF refresh, and the July 11 matched llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. |
 | PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. `SOL-P2` closes ragged c8-to-c1 lifecycle safety at clean `6f1910c9`: all generated IDs, 30 linear-state families, and 10 full-KV families match independent c1 through EOS plus front/middle/tail sparse cancellation. | Production greedy and sampled batches use exact width-1 sessions; ragged packed prefill uses the explicit `per_segment_ragged_exact` fallback. gfx1100 is stale/non-selecting pending W7900 hardware. P3/P4/P7-P9 are parked behind a general exact native c>N algorithm; P6's invalid splitter is removed. |
 | GGUF c>N | The production packed-prefill/packed-decode route now has an executable independent-c1 gate. On gfx1151, all 10 `mtpbench-code-general-ja` rows match for three c10 repeats at eight output tokens, using packed c4+c4+c2 chunks with no serial fallback. | This is generated-token evidence only (`performance_claim=false`). It does not clear hidden/Conv/GDN/KV identity, shrinking/sparse slots, long context, server cancellation/admission, or retained profiler/scaling gates. Artifact: [`2026-07-13...token-equality.json`](../benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json). |
 | PARO DFlash | Clean `8eb27215` S4 runs the curated 35B pair with same-session AR, exact output, coarse/fine phase buckets, and verifier graph shapes. Exact replay is `9.676` versus `65.266 tok/s` AR (`0.14825x`). | S5 branch-copy is correctness-red, S6 has no wider-group premise at 1/114 accepted proposals, and S7 fused LM-head is 5.16% slower. DFlash stays default-off. |
@@ -144,7 +144,7 @@ concurrency section publishes the exact PARO production route. The accepted
 source is now a composite of the
 [`d1231ee0` four-engine reference](../benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
 the retained PARO recovery artifacts, and the
-[`28b45d38` GGUF right-sized 1+3 rollup](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json).
+[`71e61524` GGUF LCP-1/LCP-D1 right-sized 1+3 rollup](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json).
 
 The comparison below uses the superseded
 [`2026-06-15` one-run summary](../benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json)
@@ -222,11 +222,11 @@ correctness contracts.
 | 2 | `SOL-R2` | Exact/default GGUF MTP long-horizon economics, then exact commit recovery if still needed. | `open` | Full-suite plus heldout natural 64/128 rows use true AR; an exact route beats AR with margin before server/`auto` work. |
 | 3 | `SOL-R3` | Measure exact serial c1-c8 server controls: shipping PARO width-1 groups and forced-serial GGUF. | `in_progress`: host cancellation isolation is fixed and both paths have executable equality diagnostics; the complete latency/occupancy/memory controls remain open | Both paths have exact IDs, aggregate/per-request throughput, latency, occupancy, and memory under final accounting. |
 | 4 | `SOL-R4` | Build a general shape/lifecycle-safe native c2 algorithm with path-specific PARO/GGUF math, then expand through c8/shrink/sparse. | `in_progress`: PARO has a narrow exact gfx1151 c2 hybrid; GGUF is token/Conv/GDN/live-KV exact through its production c4 chunk, ragged p512 boundary, and sparse c4→c1 shrink | Each path preserves its independent-c1 hidden/state/KV/order; only then reopen P3/P4/P7-P9 or promote G8. |
-| 5 | `SOL-R5` | Profile current fused GGUF prefill, then prototype a materially different parallel-exact GDN/layout schedule. | `accepted and published`: GPF-2D LDS-resident exact GDN, GPF-3A shared Q4 activation, and GPF-2E compact/direct-conv are gfx1151 defaults; final 1+3 prefill is `819.641/893.266/752.308/640.096/540.850/387.334 tok/s` | Six-case state matrices, 250/250 natural logits, exact trajectories, clean balanced walls, and right-sized publication all pass; gfx1100 remains unchanged pending transfer evidence. |
-| 6 | `SOL-R6` | Profile 512 versus 128K PARO/GGUF decode and memory growth, then recover the context-local dominant family. | `open` | Exact ROCTX/Amdahl and allocation tables name the 128K speed/capacity gaps; retain only a family-local exact wall or residency win. |
+| 5 | `SOL-R5` | Profile current fused GGUF prefill, then prototype materially different parallel-exact schedules. | `accepted and published on gfx1151`: GPF-2D/3A/2E, scoped GPF-5A, and LCP-1 exact tiled convolution are retained defaults; LCP-1 is byte-exact and improves the clean 512/4K focus by 1.73%/22.91% | Six-case/full-state matrices, 250/250 natural logits, exact trajectories, clean balanced walls, same-stream trace, and right-sized publication pass; gfx1100 remains unchanged pending transfer evidence. |
+| 6 | `SOL-R6` | Profile 512 versus 128K PARO/GGUF decode and memory growth, then recover the context-local dominant family. | `accepted for the first GGUF family; PARO remains open`: 128K attention is 50.95% of traced GPU time; LCP-D1 cuts the exact long-split reducer 16.30% and profiled host wall 1.30% while leaving <=256 splits serial | GGUF clean 512/128K attribution, 256/257 boundary, byte-exact BF16 A/B, GPU smokes, and 128K trace pass. Continue only from the remaining grouped-GQA context body or dense-Q8 bucket; profile PARO separately. |
 | 7 | `SOL-R7` | Implement matched HIP/Vulkan Q6 LM-head math/layout and close V11. | `open for implementation`; V11 comparison remains blocked | Rows 1/8, 2048->152064 use the same inputs/layout/output contract and pass correctness before any ratio. |
 | 8 | `SOL-R8` | Obtain/train and validate a materially higher-acceptance DFlash drafter for this exact target, then build exact transactional commit. | `blocked on drafter quality` | Full-suite acceptance changes the economics; exact state/KV commit enables graph hits and the complete route exceeds same-protocol AR. |
-| 9 | `SOL-R9` | Final validation and publication refresh after retained defaults settle. | `accepted for the R5-affected gfx1151 GGUF column`; a fully matched four-engine rerun remains conditional on a common refresh trigger | Affected artifacts, benchmark rollup, changelog, and both READMEs carry the six current GGUF rows, including log-recovered 128K disclosure. |
+| 9 | `SOL-R9` | Final validation and publication refresh after retained defaults settle. | `accepted for the LCP-1/LCP-D1 affected gfx1151 GGUF column`; a fully matched four-engine rerun remains conditional on a common refresh trigger | Artifacts, benchmark rollup, changelog, and both READMEs carry all six clean 1+3 GGUF rows. |
 
 ### Recovery Playbooks
 
@@ -554,41 +554,50 @@ The detailed R5 evidence hierarchy, implementation comparison, exclusions,
 ranked experiments, and exact value-column-tiling design live in
 [`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md).
 
-R5 is complete on gfx1151. The clean profile selected GDN rather than the old
-invalid route by analogy. GPF-2D keeps scalar contraction/update order while
-holding a 32-column recurrent-state tile in LDS; GPF-3A shares one Q4T16
-activation fragment across the existing WMMA output halves; GPF-2E removes
-prompt-sized Q/K/V materialization and duplicate per-V-head norm work. All are
-architecture-scoped defaults. gfx1100 remains on its prior fused/baseline
-routes pending independent transfer evidence.
+R5 is complete on gfx1151. The first retained chain kept scalar contraction
+order while moving recurrent state into LDS (GPF-2D), shared the existing Q4T16
+activation fragment (GPF-3A), removed prompt-sized Q/K/V materialization and
+duplicate norm work (GPF-2E), and scoped the exact two-wave dense-Q8 body through
+64K (GPF-5A). The post-GPF-5A source/profile audit then rejected wholesale
+llama.cpp porting and selected LCP-1: an exact 32-token by 128-channel
+caller-stream convolution tile. Its clean 512/4K focus is **+1.73%/+22.91%**,
+all 82 state/logit/hidden/KV parts are byte-exact at both shapes, and the 4K
+body falls **954.134 -> 49.790 ms** with zero scratch. The clean right-sized
+sweep is **906.979/929.724/946.366/778.371/636.330/433.811 prefill tok/s**,
+**+1.92%/+1.10%/+24.04%/+19.94%/+16.48%/+12.00%** over the previous public
+rows, with unchanged tracked memory and 18/18 exact IDs. gfx1100 remains on its
+prior fused/baseline routes pending hardware-local transfer evidence.
 
-The final clean right-sized 1+3 row at `28b45d38` is
-**819.641/893.266/752.308/640.096/540.850/387.334 prefill tok/s** at
-512/1K/4K/32K/64K/128K. The largest sample stdev/median is 0.132%; the
-first-three median equals the five-sample median at every fully serialized
-shape. The six-case state matrices and GPF-2E 250/250 natural-logit trajectory
-gate supply correctness. The interrupted 128K process did not serialize its
-per-run IDs, so its durable-log recovery is disclosed explicitly and linked to
-those stronger independent gates. Later no-progress occurs after the retained
-window and is a separate lifecycle-soak diagnostic.
+Do not reopen GPF-1, GPF-2A/B/C, GPF-4 queue isolation, or GPF-5A above its 64K
+ceiling. The next prefill algorithm is exact chunked/prefix GDN research behind
+the six-case state and 250/250 natural-transition gates; dense-Q8 shared-layout
+screening follows. Full evidence and the compaction handoff are in
+[`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md), while source
+mapping and ranked parity work are in
+[`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md).
 
-Do not reopen GPF-1 or GPF-2A/B/C. A future prefill tranche first profiles the
-published route at 512/4K/128K and obtains a matched llama.cpp trace. Only that
-new residual may activate long-context attention/AOTriton, dense Q8T16,
-selected Q4/Q5, router/glue/host submission, or the high-effort token-parallel
-prefix-GDN fallback. Full details and the compaction handoff are in
-[`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md).
+R6 now has the first retained GGUF family-local result. Clean 512/128K
+ROCTX-sliced eager profiles show that the 512 ordering does not transfer:
+dense Q8 is **44.25%** and attention **11.22%** at 512, but attention grows to
+**17.882 ms/token / 50.95%** at 128K. The grouped-GQA body is
+**15.502 ms/token** and its serial gated split reducer is
+**2.347 ms/token**. An all-query register tile was exact but rejected at
+**0.607x**. LCP-D1 instead parallelizes only independent exponentials and
+normalization multiplies above 256 splits, leaving the original serial order
+through 64K. Its clean 128K trace moves the reducer
+**234.714 -> 196.466 us/call (-16.30%)**, total GPU
+**35.094 -> 34.668 ms/token (-1.22%)**, and profiled host
+**36.860 -> 36.380 ms/token (+1.32% throughput)** with exact tokens and zero
+scratch. The 256/257 boundary, 4,096-value BF16 A/B, direct-gate/registry tests,
+and cached GQA/GQA-state smokes pass.
 
-Separately profile exact decode and allocation growth at 512 and 128K for both
-PARO and GGUF. At 128K PARO is `30.386` versus llama.cpp HIP `32.114 tok/s`
-(-5.4%); GGUF is `27.753` (-13.6%). Attribute attention/KV growth separately
-from dense Q8, selected-MoE, Q6 head, recurrent state, and reusable scratch.
-G4's 512 ordering (dense Q8 44.25%, selected-MoE 21.72%, attention 10.68%, Q6
-10.06%) is a hypothesis, not a 128K profile. Choose one exact family-local
-change from the new table and stop if its end-to-end ceiling is immaterial. If
-24 GiB-class GGUF support is required beyond 32K, prove the chosen KV/scratch
-policy exact and report its speed/memory trade rather than comparing tracked
-hipEngine allocation with whole-device llama.cpp GTT.
+The separate right-sized 1+3 sweep publishes graph decode at
+**49.061/51.569/52.432/43.543/37.562/28.047 tok/s**, including
+**27.753 -> 28.047 tok/s (+1.06%)** at 128K. Follow-on GGUF decode work must
+target either the remaining **15.502 ms/token** grouped-GQA context body or the
+measured **8.546 ms/token** dense-Q8 bucket; no undirected threshold sweep is
+authorized. PARO still needs its own 512/128K attribution. Any capacity work
+must report tracked allocation separately from llama.cpp whole-device GTT.
 
 #### R7: Matched Q6 HIP/Vulkan
 

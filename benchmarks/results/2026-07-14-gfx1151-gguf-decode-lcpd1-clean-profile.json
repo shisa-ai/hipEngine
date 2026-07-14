@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_decode_lcpd1_clean_profile",
+  "status": "accepted_scoped_kernel_and_profile_improvement",
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon 8060S/gfx1151 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV eager decode at 128K; clean 24-step ROCTX profile plus balanced reducer microbench",
+  "correctness_claim": true,
+  "candidate": {
+    "id": "LCP-D1",
+    "commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+    "kernel": "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+    "policy": "Parallelize only independent exp and normalization work when num_splits > 256; retain serial max, denominator sum, and final output accumulation order. The <=256-split body is unchanged.",
+    "scratch_bytes": 0,
+    "vgpr_count": 16,
+    "dynamic_lds_change_bytes": 4
+  },
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "baseline_commit": "631498dd2bb0332712c2374904436a502173ea19",
+    "candidate_commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+    "all_profile_worktrees_clean": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "prompt": "repeated token 9707"
+  },
+  "protocol": {
+    "attribution": "One clean detached eager-decode process per context at baseline commit 631498dd; four warmup steps and 24 timed steps enclosed by exact ROCTX marker windows; cached builds required; graph replay disabled.",
+    "clean_confirmation": "One clean detached candidate process at commit 71e61524 with the same 128K profile command and timing scope.",
+    "microbench": "Thirty balanced reducer event samples per mode at 256 and 512 splits.",
+    "publication_note": "The profile is causal kernel evidence. The separate right-sized one-warmup/three-measurement model sweep supplies public graph-decode medians."
+  },
+  "baseline_attribution": {
+    "512": {
+      "total_gpu_ms_per_token": 19.25638395833333,
+      "dense_q8_ms_per_token": 8.520204958333334,
+      "dense_q8_share_percent": 44.246131447987445,
+      "attention_ms_per_token": 2.1598709166666663,
+      "attention_share_percent": 11.216388919852045,
+      "profiled_host_ms_per_token": 21.088995875,
+      "profiled_host_tok_s": 47.4180945326777,
+      "all_24_tokens_exact": true
+    },
+    "128K": {
+      "total_gpu_ms_per_token": 35.09444970833333,
+      "attention_ms_per_token": 17.88193708333333,
+      "attention_share_percent": 50.95374690855229,
+      "grouped_gqa_context_ms_per_token": 15.502407166666666,
+      "split_reducer_ms_per_token": 2.3471404166666666,
+      "profiled_host_ms_per_token": 36.86000645833334,
+      "profiled_host_tok_s": 27.129675116318904,
+      "all_24_tokens_exact": true
+    },
+    "selection": "Attention becomes the context-local majority only at 128K. The reducer is a bounded exact opportunity; the 512 dense-Q8 ordering is not transferred to 128K by assumption."
+  },
+  "rejected_candidate": {
+    "name": "all-eight-query-head register tile",
+    "correctness": "Production output and partials byte-exact at contexts 1, 255, 256, 257, and 4096.",
+    "baseline_ms_per_call": 1.748,
+    "candidate_ms_per_call": 2.878,
+    "candidate_speed_ratio": 0.607,
+    "decision": "Rejected and removed; register pressure/occupancy loss dominates."
+  },
+  "selected_microbench": {
+    "512_splits": {
+      "baseline_median_us": 138.139,
+      "candidate_median_us": 101.35,
+      "speedup": 1.363,
+      "bf16_values_compared": 4096,
+      "byte_exact": true
+    },
+    "256_splits_control": {
+      "baseline_median_us": 76.184,
+      "candidate_median_us": 76.103,
+      "speedup": 1.001,
+      "interpretation": "The scoped <=256 serial route is performance-neutral."
+    }
+  },
+  "clean_128K_profile": {
+    "baseline": {
+      "reducer_us_per_call": 234.71404166666665,
+      "attention_ms_per_token": 17.88193708333333,
+      "total_gpu_ms_per_token": 35.09444970833333,
+      "profiled_host_ms_per_token": 36.86000645833334,
+      "profiled_host_tok_s": 27.129675116318904
+    },
+    "candidate": {
+      "reducer_us_per_call": 196.46575416666667,
+      "attention_ms_per_token": 17.49777,
+      "total_gpu_ms_per_token": 34.66783629166667,
+      "profiled_host_ms_per_token": 36.380146833333335,
+      "profiled_host_tok_s": 27.48751962385565
+    },
+    "delta": {
+      "reducer_percent": -16.295696341132825,
+      "attention_percent": -2.1483527290306226,
+      "total_gpu_percent": -1.2156150622454898,
+      "profiled_host_wall_percent": -1.3018435727688682,
+      "profiled_host_throughput_percent": 1.3190150858883642
+    },
+    "marker_windows": 24,
+    "selected_decode_kernels_each": 16992,
+    "all_candidate_tokens_exact": true
+  },
+  "correctness": {
+    "boundary_fixture": "The 256/257 split CPU contract passes and catches unsafe reuse of split metadata as reducer scratch.",
+    "random_ab": "Baseline/candidate output is byte-exact for all 4096 BF16 values at 512 splits.",
+    "focused_tests": "Paged-attention registry/plan plus direct-gate bundle passes 8/8.",
+    "gpu_smokes": "Cached gfx1151 gate-bf16, gqa, and gqa-state smokes pass with zero BF16 mismatches and NumPy max abs 4.1e-08.",
+    "cpu_fixtures": "scripts/smoke.py --mode cpu-fixtures passes all seven fixtures.",
+    "trace": "The clean trace contains the expected reducer kernel at 196.466 us/call with 16 VGPR and zero scratch.",
+    "known_unrelated_blocker": "scripts/check_fixtures.py stops on the pre-existing nested moe/moe_ffn_selected_gguf_q4_k.json schema after four prior fixtures; this is not caused by LCP-D1."
+  },
+  "source_bindings": {
+    "baseline_512_summary_sha256": "f8eecd6ede7309678fe6369c4ce1378ea6dea9a831ebf6cdf4f586f2f2e408b4",
+    "baseline_128K_summary_sha256": "496d34becf52e0e3a5dc0ae9d707a6504e3260b20e8880501fb897922c21a19b",
+    "candidate_128K_summary_sha256": "2765949b410ab1ebcc4d55f36d7b73a2b7cccb150491bd1db648f287fb0067df",
+    "baseline_512_child_sha256": "bb1d094f864f562ea9642929fbd4ab2d2adc206e0d7681335c29925344456fb4",
+    "baseline_128K_child_sha256": "5f4e9bd1bf56d770c24e2a7847212b504244e91f8b905190a7bff721bdec4dda",
+    "candidate_128K_child_sha256": "0e10cea84da1f57be2d0e0a398f003c904a8f786f87f664abb1bba3169ae4236",
+    "candidate_kernel_trace_sha256": "d5dde85eb6af4522090cb2d1f0fe71637bb29b4fcba8937ec945962087951a80",
+    "candidate_marker_trace_sha256": "9988cd56c1d41ecd79873a8e52d3778903379723e11a58db12333f372f700d2d"
+  },
+  "decision": {
+    "retain": true,
+    "reason": "The scoped long-split reducer is byte-exact, leaves <=256 splits on the original serial body, has no scratch, and improves the clean 128K reducer, attention window, total GPU window, and profiled host wall.",
+    "next": "The independent right-sized 1+3 gate completed and publishes 28.047 graph-decode tok/s at 128K in benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json."
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-14T03:21:35.536133+00:00",
+    "repo_root": "/tmp/hipengine-lcpd1-clean-71e61524",
+    "hipengine_commit": "71e615244a5c5c3305a6584a7de041247aaa60d6",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "rocprofv3", "--kernel-trace", "--marker-trace", "--output-format", "csv",
+      "-d", "/tmp/hipengine-lcpd1-clean-profile-71e61524/131072/trace",
+      "-o", "lcpd1-clean-131072", "--", "python3", "scripts/gguf_decode_rocprof.py",
+      "--child-mode", "profile", "--source-root", ".", "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf", "--backend", "hip_gfx1151",
+      "--prompt-token-id", "9707", "--prompt-length", "131072", "--expected-token-id",
+      "9707", "--steps", "24", "--warmup-steps", "4", "--compiler-version-file",
+      "/tmp/lcp1-hipcc-version-current.txt", "--require-cached", "--child-json",
+      "/tmp/hipengine-lcpd1-clean-profile-71e61524/131072/profile-child.json"
+    ],
+    "environment": {"HIPENGINE_HIP_ARCH": "gfx1151"},
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "lcpd1_clean_eager_decode_profile",
+    "timing_protocol": "four eager-decode warmup steps plus 24 ROCTX-marked timed steps; cached build; one clean detached process",
+    "warmups": 4,
+    "repetitions": 24,
+    "profiler": {
+      "enabled": true,
+      "kind": "rocprofv3_kernel_and_marker_trace",
+      "marker_windows": 24,
+      "kernel_trace_sha256": "d5dde85eb6af4522090cb2d1f0fe71637bb29b4fcba8937ec945962087951a80",
+      "marker_trace_sha256": "9988cd56c1d41ecd79873a8e52d3778903379723e11a58db12333f372f700d2d"
+    }
+  }
+}
