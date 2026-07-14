@@ -156109,3 +156109,63 @@ graphless decode launch-collapse path without regressing target/serial parity.
   unchanged.
 - Compact rejected artifact:
   `benchmarks/results/2026-07-14-gfx1100-q8t16-virtual-wave32-rejected.json`.
+
+## 2026-07-14 - Predeclare exact F32-weight cooperative router screen
+
+- The retained 4K graph route spends **6.65%** of GPU time in c=1 router work.
+  Each of 40 MoE layers launches a 512-thread BF16-hidden/F32-weight expert
+  projection, a second one-row shared-gate projection, and a 256-thread
+  top-k/softmax. The older one-launch cooperative route cannot be reused because
+  it contracts router weights to BF16; GGUF now preserves the source F32 router
+  and shared-gate tensors for llama.cpp parity.
+- Add a separately callable split-weight cooperative variant for BF16 hidden and
+  F32 weights. At the production `hidden=2048, experts=256, top_k=8` shape, a
+  256-thread producer has the same nonzero dot-product lanes and reduction order
+  as the current 512-thread projection (the upper 256 control threads contribute
+  zeros), while its last producer block can run the existing 256-thread select
+  order. The candidate must keep the full `[experts + 1]` FP32 logits ABI, raw
+  shared-gate logit, selected IDs, and routing weights byte-exact.
+- RED/GREEN first compares the candidate with the complete current three-kernel
+  chain at production shape, including near-tied logits. Then a cache-cycled
+  W7900 HIP-event A/B compares the complete sequence, including the candidate's
+  required counter reset. A non-positive leaf result removes the variant before
+  runtime routing. A positive leaf may advance behind an explicit diagnostic
+  flag to a cached expected-symbol trace and clean 4K control/candidate/control
+  graph gate; promotion requires exact generated IDs/final value and aggregate
+  decode nonregression. No BF16-weight contraction or relaxed quality gate is
+  permitted.
+- `scripts/check_lineage.py --kind kernel --diff stat` was rerun. Existing DRIFT
+  entries concern external PARO/GDN families; this screen extends the retained
+  in-tree router schedule and ports no new external body.
+
+## 2026-07-14 - Promote exact F32-weight cooperative router on gfx1100
+
+- Added `qwen35_router_topk_split_shared_coop_out_bf16_f32w` under the
+  four-axis `router_topk_split_shared/f32/coop_out_bf16_hidden` key. It preserves
+  the full FP32 logits/raw shared-gate ABI and folds the two 512-thread logits
+  launches plus 256-thread top-k into one 256-thread producer/select kernel;
+  its wrapper includes the required four-byte atomic-counter reset.
+- RED/GREEN at production `hidden=2048, experts=256, top_k=8` is byte-exact for
+  every FP32 logit, selected ID, and routing-weight bit, including an engineered
+  equal-logit lower-ID tie. The exact restriction is explicit: 256 threads and
+  hidden size <=2048; unsupported F32-hidden, backend, quant, or shape routes
+  keep the separate registry-resolved fallback.
+- The cache-cycled W7900 HIP-event gate (128.5 MiB weight pool, six alternating
+  legs, 80 warmups + 400 calls/leg) measures the complete current chain at
+  **17.8448 us** median and the cooperative chain at **14.6663 us**
+  (**-17.812% latency**), with output bytes rechecked before timing.
+- The initial source-dirty but right-sized 4K graph control/candidate/control
+  screen measures combined-control median **97.4553 tok/s** versus candidate
+  **98.0416 tok/s (+0.6016%)**. All nine measured IDs are `9707` and every final
+  value is exactly `29.407920837402344`; tracked memory is unchanged.
+- Cached-only W7900 `rocprofv3` eager-decode trace shows 200 candidate launches
+  over four warmup plus one timed token. The expected kernel runs at workgroup
+  256, 40 VGPR, zero scratch, 512-byte LDS, and **10.600 us** median; the final
+  timed token's 40 router launches total **426.245 us**. No c1 one-token router
+  logits/select kernel remains in that traced route (bulk-prefill select rows
+  are separate and expected).
+- Promote the cooperative path as the default when its registered exact
+  contract resolves. `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` temporarily retains
+  the old three-kernel route for clean post-commit A/B and rollback; its removal
+  trigger is recorded in `docs/REFACTOR.md`. Clean implementation validation and
+  commit come next, followed by clean 4K publication evidence.

@@ -1180,6 +1180,53 @@ def _launch_qwen35_router_logits_f32_hidden(
     )
 
 
+def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
+    hidden_ptr: int,
+    expert_weight: Qwen35GGUFDeviceWeight,
+    shared_weight: Qwen35GGUFDeviceWeight,
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    *,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Try the exact c=1 cooperative router registered for split F32 weights."""
+
+    if expert_weight.backend != shared_weight.backend:
+        return False
+    if expert_weight.spec.quant_key != shared_weight.spec.quant_key:
+        return False
+    fn = resolve(
+        backend=expert_weight.backend,
+        layer="router_topk_split_shared",
+        quant=expert_weight.spec.quant_key,
+        variant="coop_out_bf16_hidden",
+        missing="none",
+    )
+    if fn is None:
+        return False
+    fn(
+        hidden_ptr,
+        expert_weight.allocation().tensor.ptr,
+        shared_weight.allocation().tensor.ptr,
+        logits_ptr,
+        selected_ptr,
+        routing_ptr,
+        1,
+        hidden_size,
+        num_experts,
+        top_k,
+        threads=256,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 @dataclass(frozen=True)
 class _DeviceExpertPackedTensor:
     quant_key: str
@@ -4970,38 +5017,56 @@ class Qwen35GGUFFullStackRunner:
             else _launch_qwen35_router_logits_bf16_hidden
         )
         router_hidden_ptr = int(router_f32_ptr) if router_f32_ptr is not None else scratch.post_norm.ptr
-        router_fn(
-            router_hidden_ptr,
-            layer.weight("ffn_gate_inp"),
-            scratch.moe_router_logits.ptr,
-            1,
-            self.hidden_size,
-            cfg.expert_count,
-            stream=stream,
-            runtime=runtime,
+        router_fused = (
+            router_f32_ptr is None
+            and _gguf_router_f32w_coop_enabled()
+            and _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
+                router_hidden_ptr,
+                layer.weight("ffn_gate_inp"),
+                layer.weight("ffn_gate_inp_shexp"),
+                scratch.moe_router_logits.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.moe_routing_weights.ptr,
+                hidden_size=self.hidden_size,
+                num_experts=cfg.expert_count,
+                top_k=top_k,
+                stream=stream,
+                runtime=runtime,
+            )
         )
-        router_fn(
-            router_hidden_ptr,
-            layer.weight("ffn_gate_inp_shexp"),
-            scratch.moe_router_logits.ptr + cfg.expert_count * DType.FP32.itemsize,
-            1,
-            self.hidden_size,
-            1,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_router_select(
-            scratch.moe_router_logits.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.moe_routing_weights.ptr,
-            1,
-            cfg.expert_count,
-            cfg.expert_count,
-            top_k,
-            threads=256,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not router_fused:
+            router_fn(
+                router_hidden_ptr,
+                layer.weight("ffn_gate_inp"),
+                scratch.moe_router_logits.ptr,
+                1,
+                self.hidden_size,
+                cfg.expert_count,
+                stream=stream,
+                runtime=runtime,
+            )
+            router_fn(
+                router_hidden_ptr,
+                layer.weight("ffn_gate_inp_shexp"),
+                scratch.moe_router_logits.ptr + cfg.expert_count * DType.FP32.itemsize,
+                1,
+                self.hidden_size,
+                1,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_router_select(
+                scratch.moe_router_logits.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.moe_routing_weights.ptr,
+                1,
+                cfg.expert_count,
+                cfg.expert_count,
+                top_k,
+                threads=256,
+                stream=stream,
+                runtime=runtime,
+            )
 
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
@@ -6087,6 +6152,7 @@ _GGUF_VERIFY_F32_SELECTED_INTERMEDIATE_ENV = "HIPENGINE_GGUF_VERIFY_F32_SELECTED
 _GGUF_VERIFY_F32_SHARED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
+_GGUF_ROUTER_F32W_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
 _GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8"
 _GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV"
@@ -6522,6 +6588,10 @@ def _gguf_verify_f32_post_norm_enabled() -> bool:
 
 def _gguf_verify_f32_post_norm_router_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV, True)
+
+
+def _gguf_router_f32w_coop_enabled() -> bool:
+    return _env_flag(_GGUF_ROUTER_F32W_COOP_ENV, True)
 
 
 def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
