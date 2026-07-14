@@ -155747,3 +155747,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json` and
   updated `docs/LLAMACPP-HIP-PARITY.md`. Open order is memory liveness,
   exact/new-contract GDN, and profile-directed Vulkan decode parity.
+
+## 2026-07-14 - Implement gfx1100 GGUF prefill scratch liveness aliasing
+
+- Added a gfx1100 backend capability for the production Qwen3.6 MoE/direct-
+  LDS32 prefill route. It replaces independently-owned prompt-sized attention,
+  GDN, routing, selected-expert, and shared-expert intermediates with one
+  256-byte-aligned arena whose views may overlap only when their route/phase
+  lifetimes are disjoint. F32/capture diagnostics, other GDN modes, non-MoE
+  models, and unvalidated backends retain dedicated ownership.
+- The 4K arena plus independently-owned metadata is **322,322,468 bytes
+  (0.30019 GiB)** versus **1,880,613,956 bytes (1.75146 GiB)** for the prior
+  dedicated scratch, a **1.45127 GiB** reduction. The allocator RED/GREEN gate
+  also verifies every simultaneously-live pair has disjoint address ranges and
+  that diagnostic/gfx1151 allocation remains dedicated.
+- Same-weight, same-process W7900 4K full-logit A/B compared dedicated and
+  aliased sessions on `[9707] * 4096`: all **248,320 FP32 logits are byte-exact**,
+  token/logit are both `9707` / `28.98980140686035`, and prefill is
+  **1408.266 -> 1409.723 tok/s** in the single interleaved diagnostic.
+- Independent defaults-only right-sized W7900 smokes keep finite token `9707`.
+  At 4K, tracked peak falls **22.995 -> 21.544 GiB (-1.451 GiB)** and the one
+  measured prefill is **1407.887 tok/s** versus the retained **1401.632 tok/s**
+  median. At 512, peak falls **21.478 -> 21.204 GiB** and prefill is
+  **1285.751 tok/s**, within the retained variance band.
+- Validation before the implementation commit: focused scratch test passes
+  **2/2**; backend/GDN/chunked-prefill/runner bundle passes **84** with 12
+  HIP-skipped cases; `git diff --check` and Python compilation pass. Clean
+  post-commit endpoint measurement and benchmark publication remain next.
