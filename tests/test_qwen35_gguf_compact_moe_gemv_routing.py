@@ -40,6 +40,7 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", "0")
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", raising=False)
@@ -76,7 +77,7 @@ def test_compact_gemv_off_by_default_uses_legacy_selected_decode(monkeypatch: py
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
-def test_c1_decode_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_c1_decode_coop_optout_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
@@ -99,6 +100,59 @@ def test_c1_decode_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyP
     assert ("router", ("ffn_gate_inp", 1, 4)) in calls
     assert ("router", ("ffn_gate_inp_shexp", 1, 1)) in calls
     assert "router_split_coop" not in names
+
+
+def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", raising=False)
+    monkeypatch.setattr(
+        qgr,
+        "_try_launch_qwen35_router_topk_split_shared_bf16_f32w",
+        lambda hidden_ptr, expert_weight, shared_weight, logits_ptr, selected_ptr, routing_ptr, **kwargs: (
+            calls.append(
+                (
+                    "router_f32w_coop",
+                    (
+                        hidden_ptr,
+                        expert_weight.spec.source.name,
+                        shared_weight.spec.source.name,
+                        logits_ptr,
+                        selected_ptr,
+                        routing_ptr,
+                        kwargs.get("top_k"),
+                        kwargs.get("stream"),
+                    ),
+                )
+            )
+            or True
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_bf16_hidden",
+        lambda *args, **kwargs: pytest.fail("separate router logits should not run"),
+    )
+    monkeypatch.setattr(qgr, "qwen35_router_select", lambda *args, **kwargs: pytest.fail("select should be fused"))
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("legacy_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert (
+        "router_f32w_coop",
+        (100, "ffn_gate_inp", "ffn_gate_inp_shexp", 110, 130, 140, 2, 7),
+    ) in calls
 
 
 def test_c1_f32_post_norm_routes_f32_router_and_selected_source(monkeypatch: pytest.MonkeyPatch) -> None:
