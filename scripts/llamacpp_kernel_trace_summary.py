@@ -108,10 +108,18 @@ def read_marker_trace(path: Path) -> list[MarkerRange]:
 
 def classify_kernel(name: str) -> str:
     lower = name.lower()
+    mmvq_quant_types = {
+        "(ggml_type)8,": "q8_0",
+        "(ggml_type)12,": "q4_k",
+        "(ggml_type)13,": "q5_k",
+        "(ggml_type)14,": "q6_k",
+    }
     if "mul_mat_vec_q_moe" in lower:
-        return "llama_mmvq_moe"
+        quant = next((quant for signature, quant in mmvq_quant_types.items() if signature in lower), None)
+        return f"llama_mmvq_moe_{quant}" if quant is not None else "llama_mmvq_moe"
     if "mul_mat_vec_q" in lower:
-        return "llama_mmvq"
+        quant = next((quant for signature, quant in mmvq_quant_types.items() if signature in lower), None)
+        return f"llama_mmvq_{quant}" if quant is not None else "llama_mmvq"
     if "mul_mat_vec_f" in lower or "mul_mat_f" in lower:
         return "llama_mmvf"
     if "mul_mat_q<" in lower:
