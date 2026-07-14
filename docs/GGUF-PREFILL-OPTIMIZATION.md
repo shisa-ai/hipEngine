@@ -397,6 +397,7 @@ select current code without a fresh profile.
 | 12 | `LCP-1` | **Promoted and published on gfx1151:** exact 32-token by 128-channel shared-memory convolution | 82/82 state parts exact; 4K body 954.134 -> 49.790 ms; six-shape prefill +1.10%..+24.04%; gfx1100 stays baseline |
 | 13 | `LCP-D1` | **Retained long-context decode reduction:** cooperate only above 256 splits | 4,096 BF16 values exact; 128K reducer -16.30%; graph decode 27.753 -> 28.047 tok/s; shorter reducer unchanged |
 | 14 | `LCP-2A` | **Promoted on gfx1151:** compiler-cacheable exact direct-LDS32 GDN state | Six-case state and 250/250 natural transitions exact; balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%; volatile GPF-2E remains rollback |
+| 15 | `LCP-M2` | **Blocked default-off:** generate contiguous chunk metadata on-device instead of six synchronous H2D copies | 83/83 exact; clean 512/4K +1.47%/+0.65%, but the required 128K variance escalation reproduces the separate low-power GPU-active lifecycle state |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -1251,6 +1252,12 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   transitions are exact; balanced 512/1K/4K prefill improves
   **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100 stays
   fused pending its own transfer gate.
+- LCP-M2 is exact and locally positive but remains default-off. Clean 512/4K
+  improves **+1.47%/+0.65%** with 83/83 parts exact; 128K completes 1+3 at a
+  **499.636 tok/s** median but fires a variance escalation, whose measured pass
+  1 reproduces the low-power GPU-active lifecycle state. The phase-marked chunk
+  diagnostic completes three passes, so the unresolved blocker is intermittent
+  lifecycle stability rather than a deterministic LCP-2A or metadata error.
 - LCP-D1 is retained for `num_splits > 256`; shorter reducers remain serial.
   The clean 128K reducer falls **234.714 -> 196.466 us/call (-16.30%)**, and
   right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.

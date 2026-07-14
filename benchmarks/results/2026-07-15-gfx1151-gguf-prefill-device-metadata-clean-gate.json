@@ -1,0 +1,294 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_prefill_device_metadata_clean_gate",
+  "status": "blocked_default_promotion_lifecycle_variance",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "hipengine_commit": "996532da",
+  "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+  "candidate": {
+    "selector": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1",
+    "default_on": false,
+    "exact": true
+  },
+  "correctness": {
+    "512": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    },
+    "4096": {
+      "exact_parts": 83,
+      "total_parts": 83,
+      "all_exact": true,
+      "kv_parts": 20,
+      "token": 9707
+    }
+  },
+  "clean_balanced_512_4k": {
+    "512": {
+      "baseline_ms": [
+        417.8897720412351,
+        417.90036199381575,
+        419.54836499644443,
+        417.64988197246566,
+        417.62829100480303
+      ],
+      "candidate_ms": [
+        411.44895198522136,
+        412.5589850009419,
+        412.13788400636986,
+        411.7044410086237,
+        411.84593603247777
+      ],
+      "baseline_median_ms": 417.8897720412351,
+      "candidate_median_ms": 411.84593603247777,
+      "baseline_tok_s": 1225.2034729136146,
+      "candidate_tok_s": 1243.1833246489148,
+      "ids": {
+        "0": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "1": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "wall_delta_percent": -1.4462751694628628
+    },
+    "4096": {
+      "baseline_ms": [
+        3212.592944968492,
+        3214.300207037013,
+        3215.77862999402,
+        3216.972609050572,
+        3218.5479039908387
+      ],
+      "candidate_ms": [
+        3192.6775480387732,
+        3195.0015599722974,
+        3193.6760779935867,
+        3196.688911993988,
+        3202.08979799645
+      ],
+      "baseline_median_ms": 3215.77862999402,
+      "candidate_median_ms": 3195.0015599722974,
+      "baseline_tok_s": 1273.719515950517,
+      "candidate_tok_s": 1282.0025039472953,
+      "ids": {
+        "0": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "1": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "wall_delta_percent": -0.6460976457748568
+    }
+  },
+  "clean_128k_1plus3": {
+    "summary": {
+      "prefill_tok_s": {
+        "count": 3,
+        "median": 499.63593067424387,
+        "min": 468.80119081416075,
+        "max": 499.86556810539224,
+        "mean": 489.43422986459893,
+        "stdev": 17.869104865105218
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "median": 28.03039815206645,
+        "min": 28.027135463738528,
+        "max": 28.048991824819847,
+        "mean": 28.035508480208275,
+        "stdev": 0.011790323159994264
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 3,
+        "median": 25.492501735687256,
+        "min": 25.492501735687256,
+        "max": 25.492501735687256,
+        "mean": 25.492501735687256,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "count": 3,
+        "median": 26.02068328857422,
+        "min": 26.020671844482422,
+        "max": 26.020694732666016,
+        "mean": 26.02068328857422,
+        "stdev": 1.1444091796875e-05
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "runs": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "timings": {
+          "load_seconds": 46.05502323200926,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 261.97418163897237,
+          "warmup_decode_seconds": 0.0393162039690651,
+          "graph_capture_seconds": 0.0,
+          "decode_seconds_excluding_graph_capture": 4.5815665170084685,
+          "wall_seconds_excluding_load": 266.5950643599499
+        },
+        "throughput": {
+          "prefill_tok_s": 500.3241127808191,
+          "decode_tok_s": 27.938042484992128,
+          "decode_ms_per_token": 35.79348841412866
+        },
+        "final_token_id": 9707,
+        "tracked_peak_allocated_gib": 25.492501735687256
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "timings": {
+          "load_seconds": 46.05502323200926,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 262.21449998405296,
+          "warmup_decode_seconds": 0.036269785021431744,
+          "graph_capture_seconds": 0.021201888972427696,
+          "decode_seconds_excluding_graph_capture": 4.5670025809668005,
+          "wall_seconds_excluding_load": 266.8389742390136
+        },
+        "throughput": {
+          "prefill_tok_s": 499.86556810539224,
+          "decode_tok_s": 28.027135463738528,
+          "decode_ms_per_token": 35.67970766380313
+        },
+        "final_token_id": 9707,
+        "tracked_peak_allocated_gib": 25.492501735687256
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "timings": {
+          "load_seconds": 46.05502323200926,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 262.33501626498764,
+          "warmup_decode_seconds": 0.036094043985940516,
+          "graph_capture_seconds": 0.021209875005297363,
+          "decode_seconds_excluding_graph_capture": 4.5664709900156595,
+          "wall_seconds_excluding_load": 266.95879117399454
+        },
+        "throughput": {
+          "prefill_tok_s": 499.63593067424387,
+          "decode_tok_s": 28.03039815206645,
+          "decode_ms_per_token": 35.67555460949734
+        },
+        "final_token_id": 9707,
+        "tracked_peak_allocated_gib": 25.492501735687256
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "timings": {
+          "load_seconds": 46.05502323200926,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 279.58973349101143,
+          "warmup_decode_seconds": 0.036177340953145176,
+          "graph_capture_seconds": 0.01754802995128557,
+          "decode_seconds_excluding_graph_capture": 4.563443877035752,
+          "wall_seconds_excluding_load": 284.2069027389516
+        },
+        "throughput": {
+          "prefill_tok_s": 468.80119081416075,
+          "decode_tok_s": 28.048991824819847,
+          "decode_ms_per_token": 35.65190528934181
+        },
+        "final_token_id": 9707,
+        "tracked_peak_allocated_gib": 25.492501735687256
+      }
+    ],
+    "decision": "variance trigger fired: measured pass 3 is 468.801 tok/s versus 499.866/499.636"
+  },
+  "clean_128k_1plus5_escalation": {
+    "status": "bounded_gpu_active_lifecycle_stall",
+    "completed": [
+      "warmup 491.898285/27.997079"
+    ],
+    "stalled_repetition": "measured 1",
+    "observed_elapsed_seconds_before_termination": 380,
+    "gpu_observation": "100% use, 2900 MHz sclk, about 46-47 W PPT, edge 57-58 C; no amdgpu fault/reset; termination restored idle",
+    "json_emitted": false
+  },
+  "phase_chunk_diagnostic": {
+    "status": "completed",
+    "passes": [
+      490.1922304828811,
+      489.88209243728585,
+      489.44455473446294
+    ],
+    "geometry": "32 outer chunks x 4096 rows; all 40 layers emit begin/end per chunk",
+    "conclusion": "all normal phases complete; diagnostic host progress may perturb the intermittent lifecycle"
+  },
+  "compact_moe_no_read_followup": {
+    "existing_selector": "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+    "original_upper_bound_512_4k": {
+      "512_delta_percent": 0.06253069561752422,
+      "4096_delta_percent": 0.038892683190083766
+    },
+    "tight_upper_bound_experiment": {
+      "512_delta_percent": -0.1602054291108601,
+      "4096_delta_percent": 0.5558069870652993
+    },
+    "decision": "rejected: eliminating the scalar read launches enough empty WMMA tiles to regress 4K; uncommitted tight-bound experiment removed"
+  },
+  "decision": "Keep device metadata default-off. Short-context exact speedups are real, but 128K variance escalation reproduced the lifecycle state. Keep compact-MoE scalar readback because exact fixed-upper dispatch is 4K-negative.",
+  "sources": {
+    "exact82": {
+      "path": "/tmp/device-metadata-clean-exact82.json",
+      "sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67"
+    },
+    "ab": {
+      "path": "/tmp/device-metadata-clean-ab.json",
+      "sha256": "9933385ad5e3edad9510eb06e7247f183b72dc6766e531a06464e83424711a8a"
+    },
+    "128k_1plus3": {
+      "path": "/tmp/device-metadata-clean-128k-1p3.json",
+      "sha256": "5cd90c3b25a445756ec9c8164148d74d8bfb3703e9f662224824748d4cb0aa5e"
+    },
+    "128k_1plus5_log": {
+      "path": "/tmp/device-metadata-clean-128k-1p5.stderr",
+      "sha256": "e7c41a482a7c67bc1964a31322d28b4197207b7b4cefddd432ea60dddb894b10"
+    },
+    "chunk_trace": {
+      "path": "/tmp/lcp2_128k_chunk_trace_diag.log",
+      "sha256": "ed7f5eb8dfaaf6df9c31abf48e27af4314030f11b696e30b8c5614db140224e0"
+    },
+    "no_read": {
+      "path": "/tmp/compact-no-read-balanced.json",
+      "sha256": "0a601a1ea53c6d74e40e05c1a83723acc6cd659b4836c26f180e98943676e0d5"
+    }
+  }
+}
