@@ -155584,3 +155584,49 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation: the primitive/registry/policy/backend bundle passes **30/30**;
   promotion artifact JSON and arithmetic checks pass; `git diff --check`
   passes; the changed optimization/history sections were re-read in context.
+
+## 2026-07-14 - LCP-D1 long-context GGUF decode attribution and reducer candidate
+
+- Ran clean, marker-sliced eager-decode profiles from detached commit
+  `631498dd` at 512 and 128K, with cached builds, four warmup decode steps, and
+  24 timed steps. All generated IDs are `9707`. At 512, total GPU time is
+  **19.256 ms/token** and dense Q8 leads (**8.520 ms / 44.25%**); attention is
+  **2.160 ms / 11.22%**. At 128K, total GPU time is **35.094 ms/token** and
+  attention becomes the context-local majority at **17.882 ms / 50.95%**.
+  The grouped-GQA context body contributes **15.502 ms/token**, and its gated
+  split reducer contributes **2.347 ms/token**. This activates attention-only
+  LCP-D1 work; the 512 Amdahl ordering is not transferred by assumption.
+- The first exact candidate cached all eight query heads in registers to remove
+  repeated LDS query loads. It matches production output/partials byte-for-byte
+  at contexts `1,255,256,257,4096`, but the balanced 128K event microbench is
+  decisively negative: **1.748 -> 2.878 ms/call (0.607x)**. The register-pressure
+  path was removed completely and is not retained.
+- The selected reducer candidate keeps max selection, denominator summation,
+  and final output accumulation serial in the original split order, but spreads
+  independent exponentials and normalization multiplies across the block when
+  `num_splits > 256`. Through 256 splits it executes the original serial body,
+  avoiding extra barrier cost at 512-64K. A RED test was not possible because
+  the old and new schedules intentionally have identical output; the added
+  256/257 boundary fixture instead provides a numerical CPU contract and would
+  catch unsafe reuse of split metadata as reducer scratch.
+- Random baseline/candidate A/B at 512 splits is byte-exact for all **4096 BF16
+  outputs**. The final scoped schedule measures **138.139 -> 101.350 us** median
+  over 30 balanced reducer samples (**1.363x**); the 256-split control is
+  **76.184 -> 76.103 us (1.001x)**. No scratch is introduced; dynamic shared
+  memory increases by one FP32 scalar.
+- A bounded dirty-worktree 128K marker trace of the same `>256` long branch
+  records reducer **234.714 -> 197.955 us/call (-15.66%)**, attention
+  **17.882 -> 17.495 ms/token**, total GPU **35.094 -> 34.659 ms/token**, and
+  profiled host **36.860 -> 36.486 ms/token**, or
+  **27.130 -> 27.408 tok/s (+1.03%)**. The candidate trace has 24/24 exact
+  decode steps, 16 VGPR, and zero scratch. Because this profile predates the
+  final short/mid guard and comes from a dirty tree, it is selection evidence,
+  not a retained performance claim; repeat from the clean candidate commit.
+- Current validation: paged-attention plan/registry tests pass **2/2**; full
+  direct-gate plus paged-attention plan tests pass **8/8** after adding the
+  required explicit stream; cached gfx1151 `gate-bf16`, `gqa`, and `gqa-state`
+  smoke gates pass with zero BF16 mismatches and NumPy max abs `4.1e-08`.
+  `smoke.py --mode cpu-fixtures` passes all seven fixtures. The broader
+  `scripts/check_fixtures.py` remains blocked independently by the existing
+  nested `moe/moe_ffn_selected_gguf_q4_k.json` schema (no top-level
+  `expected`), after four earlier fixtures pass.
