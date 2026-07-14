@@ -156002,3 +156002,26 @@ graphless decode launch-collapse path without regressing target/serial parity.
   multi-prompt teacher-forced KL/top-1 gate before any default consideration.
   A changed token, failed quality gate, or non-positive wall result rejects the
   route without changing the existing default-off diagnostic flag.
+
+## 2026-07-14 - Reject W7900 c1 selected-Q4 dp4a route
+
+- Source audit after the admission smoke found that the existing narrow flag
+  was a c1 no-op: `_launch_selected_raw_gguf_moe_pair_silu()` forced the exact
+  float-dequant fused-SiLU body before reaching the flag-aware split helper.
+  The clean control/flagged/control samples confirm this: all logits are exactly
+  `29.407920837402344`; the apparent flagged **97.772 tok/s** versus combined
+  control **97.521 tok/s (+0.258%)** follows monotonic run-order drift and is
+  not dp4a evidence.
+- Added a temporary RED/GREEN route that actually quantized the c1 activation
+  and called the existing fused-SiLU q8_1+`sudot4` body under the narrow flag.
+  Its first W7900 4K/128 smoke is decisively negative:
+  **97.521 -> 88.920 tok/s (-8.82%)**. The final ID remains `9707`, but the
+  final logit changes **29.407921 -> 28.891205**.
+- Rejected at the predeclared wall gate; no profiler or teacher-forced quality
+  run is warranted. Removed the temporary runtime route and test change. The
+  flag retains its prior default-off rows>1 behavior. This isolates an
+  important backend difference: q8_1/dp4a as an instruction choice is not
+  enough; hipEngine's present selected-T16 c1 layout/schedule loses badly once
+  activation quantization is included.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-selected-q4-dp4a-c1-rejected.json`.
