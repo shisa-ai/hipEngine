@@ -5,12 +5,14 @@ import ctypes
 import numpy as np
 import pytest
 
+import hipengine.kernels.hip_gfx1100.moe.router as router_module
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.moe import (
     build_qwen35_router,
     plan_qwen35_router_build,
     qwen35_router_logits_bf16,
     qwen35_router_logits_bf16_f32w,
+    qwen35_router_logits_bf16_f32w_auto_256,
     qwen35_router_logits_f32_f32w,
     qwen35_router_logits_fp16,
     qwen35_router_logits_fp16_f32w,
@@ -155,6 +157,20 @@ def test_qwen35_router_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert artifact.compiler_version == "hipcc router test version"
     assert any(str(path).endswith("router.hip") for path in artifact.sources)
     assert not artifact.cache_dir.exists()
+
+
+def test_lcp4_auto_router_wrapper_uses_256_threads_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(
+        router_module,
+        "qwen35_router_logits_bf16_f32w",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    qwen35_router_logits_bf16_f32w_auto_256(1, 2, 3, 512, 2048, 256)
+    assert calls == [((1, 2, 3, 512, 2048, 256), {"threads": 256, "stream": 0, "library": None, "runtime": None})]
 
 
 def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:

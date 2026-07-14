@@ -185,6 +185,35 @@ def qwen35_router_logits_bf16_f32w(
     _check_launch(runtime, err)
 
 
+def qwen35_router_logits_bf16_f32w_auto_256(
+    hidden_ptr: int,
+    weight_ptr: int,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact F32-weight router with the gfx1151-optimal workgroup."""
+
+    qwen35_router_logits_bf16_f32w(
+        hidden_ptr,
+        weight_ptr,
+        logits_ptr,
+        tokens,
+        hidden_size,
+        num_rows,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_router_logits_fp16_f32w(
     hidden_ptr: int,
     weight_ptr: int,
