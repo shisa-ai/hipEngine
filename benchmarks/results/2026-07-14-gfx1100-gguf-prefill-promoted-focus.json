@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_prefill_promoted_automatic_focus",
+  "created_at": "2026-07-14T02:11:00+00:00",
+  "status": "accepted_automatic_focus_pending_six_shape_rollup",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_commit": "82b62d5f5968cef8f467c36a302487e4feb818ec",
+    "hipengine_dirty": false,
+    "therock_hip": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "automatic_policy": {
+    "gdn": "chain_lds32_direct",
+    "q4_t16_selected_prefill": "shared_x",
+    "q8_t16_two_wave": true,
+    "q8_t16_two_wave_max_tokens": 4096,
+    "explicit_schedule_overrides": false
+  },
+  "protocol": {
+    "session_scope": "one right-sized resident session per shape",
+    "warmups": 1,
+    "measurements": 3,
+    "prompt_token_id": 9707,
+    "decode_steps": 128,
+    "bulk_attention_mode": "bulk",
+    "decode_repack": true,
+    "graph_replay_decode": true,
+    "require_cached_build": true
+  },
+  "results": {
+    "512/128": {
+      "prefill_samples_tok_s": [
+        1343.4247974970333,
+        1344.042926470376,
+        1345.388663884043
+      ],
+      "prefill_median_tok_s": 1344.042926470376,
+      "decode_samples_tok_s": [
+        90.18853428939971,
+        90.29422660216339,
+        90.25923512120968
+      ],
+      "decode_median_tok_s": 90.25923512120968,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "tracked_peak_allocated_gib": 21.477776296436787
+    },
+    "4096/128": {
+      "prefill_samples_tok_s": [
+        1464.6127967158739,
+        1463.713032328934,
+        1460.8013331330774
+      ],
+      "prefill_median_tok_s": 1463.713032328934,
+      "decode_samples_tok_s": [
+        97.49317735471415,
+        97.46578296342938,
+        97.28203354169551
+      ],
+      "decode_median_tok_s": 97.46578296342938,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "tracked_peak_allocated_gib": 22.99488216638565
+    }
+  },
+  "comparison_to_clean_pre_promotion_default": {
+    "source": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json",
+    "512_prefill_delta_percent": 107.25036424282095,
+    "4096_prefill_delta_percent": 114.56651295942225
+  },
+  "raw_artifact_sha256": {
+    "512/128": "6a13de9aa4b0e33cffa0f7f659803cdc268aaffe9a8df36b38ff513ba5624f8d",
+    "4096/128": "b800145654362779a15fbb09434ab9484596d3d0cc68f0127a82336ac45cf6d4"
+  },
+  "decision": {
+    "automatic_route_confirmed": true,
+    "correctness_sanity_passed": true,
+    "memory_unchanged": true,
+    "public_topline_replaced": false,
+    "reason": "This right-sized 512/4K focus confirms selector-unset routing. The final public refresh is deferred until the optimization pass and six-shape protocol complete."
+  }
+}

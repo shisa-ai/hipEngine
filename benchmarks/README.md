@@ -343,9 +343,12 @@ combined explicit 512/4K screen moves prefill **648.512/682.172 ->
 1352.908/1463.668 tok/s (+108.62%/+114.56%)** with stable IDs; isolated
 balanced/state/trajectory gates select each policy independently. The table
 below intentionally remains the last clean automatic six-shape publication
-until the promoted package policy receives its selector-unset confirmation.
+until this optimization pass completes. Clean selector-unset commit `82b62d5f`
+confirms **1344.043/1463.713 tok/s** prefill and **90.259/97.466 tok/s** decode
+at 512/128 and 4K/128, with all IDs `9707` and unchanged tracked memory.
 Evidence:
-[`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
+[`transfer gate`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json)
+and [`automatic focus`](results/2026-07-14-gfx1100-gguf-prefill-promoted-focus.json).
 
 This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
 (rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and

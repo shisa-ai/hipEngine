@@ -1147,9 +1147,10 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). It rejects a wholesale
   llama.cpp port and selects exact same-stream 32-token shared-memory
   convolution (`LCP-1`) before exact chunked/prefix GDN research.
-- No benchmark process is intentionally left running. The gfx1100 transfer
-  policy and compact gate are ready for a clean automatic-route confirmation;
-  the public six-shape rollup is not refreshed by the pre-promotion screen.
+- No benchmark process is intentionally left running. Clean selector-unset
+  `82b62d5f` confirms the gfx1100 policy at **1344.043/1463.713 tok/s** prefill
+  and **90.259/97.466 tok/s** decode for 512/128 and 4K/128, all IDs `9707` and
+  unchanged memory. The public six-shape rollup waits for the optimization pass.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
