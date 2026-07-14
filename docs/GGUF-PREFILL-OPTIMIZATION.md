@@ -57,6 +57,14 @@ moves 512/4K from **648.512/682.172 -> 1352.908/1463.668 tok/s** with stable
 IDs. Evidence is
 [`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
 
+The clean post-transfer W7900 profile then invalidates the old LCP-1 hotspot
+premise: 512/4K convolution is only **3.101/29.552 ms (0.87%/1.09%)**, while
+exact GDN recurrence is **211.487/1652.114 ms (59.0%/61.1%)**. An exact
+32-token/128-channel LDS convolution prototype passes six output/final-state
+byte fixtures but is neutral at 512 and regresses full-model 4K **0.192%**; all
+candidate code and routing were removed. Evidence is
+[`2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json).
+
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
 replace the separate decode, MTP, concurrency, or long-context memory plans.
@@ -1144,9 +1152,10 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   are **889.904/919.598/762.940/648.948/546.296 tok/s**, all stable/exact.
   Same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**.
 - The post-GPF-5A source/profile audit is complete in
-  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). It rejects a wholesale
-  llama.cpp port and selects exact same-stream 32-token shared-memory
-  convolution (`LCP-1`) before exact chunked/prefix GDN research.
+  [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). The independent W7900
+  post-transfer profile closes LCP-1 on gfx1100: convolution is only 1.09% of
+  4K kernel time and the exact candidate regresses full-model wall 0.192%.
+  Exact GDN recurrence now owns 61.1% and is the first-order prefill family.
 - No benchmark process is intentionally left running. Clean selector-unset
   `82b62d5f` confirms the gfx1100 policy at **1344.043/1463.713 tok/s** prefill
   and **90.259/97.466 tok/s** decode for 512/128 and 4K/128, all IDs `9707` and
@@ -1157,9 +1166,10 @@ prefill aliases only when the request has at most 65,536 prompt tokens and the
 gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
 production above each architecture's bound. The gfx1151 partial refresh is
 final; investigate its 128K lifecycle only with phase markers and bounded
-lifecycle coverage. On gfx1100, confirm the automatic transfer route, then
-start `LCP-1`; token-parallel/prefix GDN remains the exactness-constrained
-high-effort fallback.
+lifecycle coverage. On gfx1100, do not revisit LCP-1 without a new hotspot
+profile; exact token-parallel/prefix GDN is now the first-order but
+exactness-constrained high-effort prefill path. Run bounded `LCP-D1` 128K decode
+attribution independently.
 
 ## Document Ownership
 

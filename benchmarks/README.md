@@ -349,6 +349,10 @@ at 512/128 and 4K/128, with all IDs `9707` and unchanged tracked memory.
 Evidence:
 [`transfer gate`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json)
 and [`automatic focus`](results/2026-07-14-gfx1100-gguf-prefill-promoted-focus.json).
+A clean post-transfer profile finds exact GDN at **61.1%** of 4K kernel time
+and convolution at only **1.09%**. The byte-exact LCP-1 LDS convolution screen
+regresses full-model 4K **0.192%**, so no candidate code or topline change is
+retained; see the [`post-transfer profile`](results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json).
 
 This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
 (rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
