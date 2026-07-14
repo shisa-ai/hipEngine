@@ -83,6 +83,63 @@ The clean final gfx1100 defaults-only publication then records
 including **+0.54% at 128K**. All 18 measured final IDs are `9707`. Evidence:
 [`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
+## gfx1100 parity continuation
+
+Parity remains the target; the final optimization rollup is a new baseline, not
+closure. Re-expressing the gaps as the uplift hipEngine still needs makes the
+remaining work explicit:
+
+- Prefill needs **+86.97%/+71.27%/+60.89%/+36.50%/+26.44%/+16.31%** to
+  match llama.cpp HIP from 512 through 128K.
+- Decode already exceeds llama.cpp HIP at every shape, but needs
+  **+20.13%/+13.08%/+5.93%/+6.91%/+11.64%/+15.62%** to match llama.cpp
+  Vulkan.
+- At 4K-128K, hipEngine's owned/tracked peak exceeds llama.cpp HIP's broader
+  whole-device reading by **1.321/1.343/1.308/1.404 GiB**. The scopes still
+  prohibit small allocator-efficiency ratios, but a narrower owned count being
+  materially larger is actionable capacity evidence.
+
+The memory gap has a named owner. The right-sized session keeps
+**1.751-1.759 GiB** of bulk-prefill scratch resident at every 4K+ shape. After
+weights, decode state/KV, and non-bulk session buffers, the maximum bulk scratch
+that would fit under the llama.cpp HIP totals is only
+**0.431/0.410/0.447/0.356 GiB** at 4K/32K/64K/128K. `LCP-M1` therefore needs
+attention/FFN liveness aliasing, not another context-cap or KV-format change.
+This single bucket is large enough to close the observed HIP memory gap if it
+can be reduced by roughly 1.3-1.4 GiB without extending live ranges.
+
+A cached-only current-tree 4K decode trace adds the missing middle-shape
+attribution. Its final eight state-update/embedding-delimited exact decode
+cycles contain about **708 dispatches/token** and **8.914 ms GPU time/token**. Dense Q8 T16 GEMV is
+**39.28%**, selected-MoE T16 GEMV **20.30%**, full-attention core **9.04%**,
+lm-head **7.19%**, router **6.65%**, and GDN decode **6.11%**. The 4K Vulkan
+wall target is only a **5.93%** throughput uplift away; dense Q8 and selected
+MoE are therefore the first decode families. Generic launch-count work is not
+the explanation: hipEngine is already far below the roughly 1,600
+dispatches/token in the retained llama.cpp HIP source/profile analysis.
+
+The source-grounded Vulkan advantage remains c=1-specific: smaller
+single-subgroup workgroups, no cross-wave LDS reduction, RADV/ACO scheduling,
+q8_1 activation-load coalescing, and graph-level MoE/post-op fusion. It is not
+Vulkan WMMA decode, a wider-than-dp4a instruction, or a generic attention
+advantage. Existing hipEngine dp4a diagnostics also show that changing the dot
+instruction alone is insufficient; any new decode candidate must improve the
+actual dominant family and full-model wall.
+
+Continuation order is now:
+
+1. `LCP-M1`: reduce bulk scratch to **<=0.35-0.45 GiB** at 4K+ with exact
+   state/tokens and no throughput regression.
+2. `LCP-2`: pursue exact chunked/prefix GDN or a separately predeclared
+   quality-safe register-resident design; do not rerun rejected LDS16,
+   two-lane, or tree defaults unchanged.
+3. Profile-directed dense-Q8/selected-MoE decode work for Vulkan parity,
+   retaining 4K first and escalating to the 512 and 128K endpoints.
+
+Machine-readable ratios, allocation buckets, the diagnostic 4K family trace,
+and source boundary:
+[`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json).
+
 ## Evidence boundary
 
 ### What is matched
