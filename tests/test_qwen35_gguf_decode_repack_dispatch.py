@@ -150,6 +150,11 @@ def _patch_full_attention_primitives(monkeypatch):
     )
     monkeypatch.setattr(
         qwen_runtime,
+        "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans",
+        record("split_k_gqa_parallel_reduce"),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
         "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans",
         record("split_k_warp_gate"),
     )
@@ -196,6 +201,23 @@ def test_long_context_routes_full_attention_through_split_k_gqa_gate(monkeypatch
         scratch.full_attn_split_m.ptr,
         scratch.full_attn_split_l.ptr,
     )
+    assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_long_context_parallel_reduce_candidate_is_explicit(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    monkeypatch.setenv("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", "1")
+    runner = _runner(is_moe=True)
+    scratch = _scratch(position=65535, max_positions=65536)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=65535, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "split_k_gqa_parallel_reduce" in names
+    assert "split_k_gqa_gate" not in names
+    split_args = next(args for name, args, _ in calls if name == "split_k_gqa_parallel_reduce")
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
 
 

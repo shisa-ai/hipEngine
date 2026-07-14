@@ -155567,3 +155567,43 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and updated both optimization handoffs. Do not tune LCP-1 further on gfx1100
   without a new profile. Exact GDN is the first-order prefill family; bounded
   128K decode attribution (`LCP-D1`) remains independent.
+
+## 2026-07-14 - Attribute 128K decode and add the LCP-D2 split-reduction candidate
+
+- `LCP-D1` used the prebuilt TheRock HIP 7.15 attention library and a direct
+  `rocprofv3 --kernel-trace` child with 4 eager warmup steps plus 8 timed eager
+  steps. The phase-marked 128K window contains **119.653 ms** of GPU kernels,
+  or **14.957 ms/token**. Full-attention core is **53.742 ms (44.92%)**:
+  grouped-GQA context is **5.067 ms/token** and the serial gated split reduction
+  is **1.621 ms/token**. The 512 control is **9.549 ms/token** total and attention
+  is only **16.30%**. This identifies the long-context reduction as a bounded
+  target rather than changing short/mid attention policy.
+- RED routing/registry collection initially failed because the new parallel
+  reduction wrapper was not exported. GREEN adds a gfx1100 raw-pointer HIP
+  route with a 16-head parallel max/normalization prepare and a coalesced
+  32-dimension-by-8-split-worker output reduction. The output body reads
+  contiguous dimensions across each wave32, stages only 1 KiB in LDS, and
+  retains the old serial reducer as fallback. Runtime selection is explicit and
+  default-off at contexts >=64K through
+  `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE`.
+- The kernel trace at 513 splits records the old reducer at **194.840 us** and
+  the candidate as **6.679 us prepare + 18.880 us output** with zero scratch;
+  the expected prepare/output kernel names are visible. A direct randomized
+  source-parity probe differs in only **1/4096 BF16 outputs**, max absolute
+  **3.815e-6**. More importantly, the independent NumPy full-attention fixture
+  at 8,448 tokens / 33 non-power-of-two splits is exact for the candidate
+  (`parallel_gate_bf16_mismatch=0`, max abs 0); the two existing reducers are
+  within one BF16 step (max abs `1.22e-4`).
+- Dirty selection screens are strongly positive but are not retained claims.
+  At 64K/128 the current coalesced candidate moves graph decode
+  **72.734 -> 75.576 tok/s (+3.91%)**, with prefill effectively identical,
+  final ID `9707`, and exactly unchanged **24.203 GiB** tracked peak. The prior
+  split-parallel body moved 128K/128 **56.920 -> 61.531 tok/s (+8.10%)**, also
+  with stable ID `9707` and unchanged **25.493 GiB** peak. The coalesced body
+  still needs a clean 64K/128K gate before promotion.
+- Validation: targeted routing/registry tests **11 passed**; the cached W7900
+  8,448-token CPU-oracle smoke passes. Re-ran
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`; only the already
+  catalogued parent qwen35/PARO drift is reported, and this candidate copies no
+  external source. Added the default-off rollback/removal trigger to
+  `docs/REFACTOR.md`.
