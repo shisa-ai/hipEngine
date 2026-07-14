@@ -23,10 +23,12 @@ import pytest
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
@@ -121,6 +123,15 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
     )
     assert plan.has_exact_chain_lds32_direct
+    assert (
+        plan.exact_recurrent_lds32_direct_nonvolatile
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32
+    )
+    assert (
+        plan.exact_recurrent_segments_lds32_direct_nonvolatile
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32
+    )
+    assert plan.has_exact_chain_lds32_direct_nonvolatile
     assert (
         plan.exact_recurrent_wave32
         is qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
@@ -310,6 +321,52 @@ def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
             1,
         )
         assert recurrent_args[11:15] == (4, 32, 128, 128)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected_recurrent"),
+    [(64, "exact_lds32_nonvolatile"), (1025, "exact_segments_lds32_nonvolatile")],
+)
+def test_run_gdn_prefill_explicit_nonvolatile_direct_uses_compact_abi(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: int,
+    expected_recurrent: str,
+) -> None:
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct_nonvolatile"
+    )
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        exact_prepare_compact=_recorder(calls, "exact_prepare_compact"),
+        exact_recurrent_lds32_direct_nonvolatile=_recorder(
+            calls, "exact_lds32_nonvolatile"
+        ),
+        exact_recurrent_segments_lds32_direct_nonvolatile=_recorder(
+            calls, "exact_segments_lds32_nonvolatile"
+        ),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=rows,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0005),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare_compact",
+        expected_recurrent,
+        "rmsnorm_gate",
+    ]
 
 
 def test_run_gdn_prefill_gfx1151_auto_uses_compact_direct_lds32(

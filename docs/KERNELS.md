@@ -349,6 +349,21 @@ right-sized 1+3 rollup publishes
 plus
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json`.
 
+LCP-2A adds default-off plain/segment
+`f32_decode_order_exact[_segments]_lds32_direct_nonvolatile` variants. They
+instantiate the same rolled scalar body without a `volatile` LDS pointer,
+allowing LLVM to cache legal state accesses while preserving every source
+operation and the volatile GPF-2E symbol as rollback. The first gfx1151 gate is
+strongly positive: the isolated 512/4K recurrence moves
+`6.572 -> 1.763 ms` and `58.613 -> 19.864 ms`; `rocprofv3` names the intended
+kernel with 32 VGPR, 16 KiB LDS, and zero scratch versus 64 VGPR for GPF-2E.
+All six full-model token/hidden/Conv/GDN-state cases are byte-exact, including
+1024/1025 and 4095/4096 boundaries. A dirty interleaved screen wins every pair
+at 512/1K/4K (`-26.33%/-27.15%/-27.15%` wall), but is not promotion evidence.
+Keep gfx1151 `auto` on `chain_lds32_direct` until the candidate is committed and
+reproduces the exact/natural/full-wall gates from a clean revision. Evidence:
+`benchmarks/results/2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

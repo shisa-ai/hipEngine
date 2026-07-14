@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_gfx1151_gguf_gdn_nonvolatile_candidate",
+  "created_at": "2026-07-14T07:30:30.874153+00:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "status": "candidate_default_off_dirty_screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "software": {
+    "base_commit": "bde49f84ddaa53a6984738120b9219e3bd13ca4b",
+    "dirty": true
+  },
+  "candidate": {
+    "mode": "chain_lds32_direct_nonvolatile",
+    "change": "instantiate the exact direct LDS32 body with a non-volatile state pointer so LLVM may cache legal LDS accesses; operation order is unchanged",
+    "default": false
+  },
+  "discarded_shared_qk_screen": {
+    "result": "rejected_removed",
+    "exact_fixture_cases": 2,
+    "tokens_512": {
+      "baseline_median_ms": 6.639,
+      "candidate_median_ms": 13.014
+    },
+    "tokens_4096": {
+      "baseline_median_ms": 58.455,
+      "candidate_median_ms": 113.116
+    }
+  },
+  "primitive_microbench": {
+    "protocol": "7 alternating synchronized wall samples after 2 warmups; synthetic Qwen3.6 shape, one layer",
+    "tokens_512": {
+      "baseline_median_ms": 6.572,
+      "candidate_median_ms": 1.763,
+      "speedup": 3.7277368122518437
+    },
+    "tokens_4096": {
+      "baseline_median_ms": 58.613,
+      "candidate_median_ms": 19.864,
+      "speedup": 2.950714861055175
+    }
+  },
+  "rocprof_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/lcp1-hipcc-version-current.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/gdn-nonvolatile-trace -- python3 /tmp/gdn_nonvolatile_ab_micro.py",
+    "resources": {
+      "baseline": {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+        "calls": 18,
+        "vgpr_count": 64,
+        "sgpr_count": 128,
+        "lds_block_bytes": 16384,
+        "scratch_bytes": 0
+      },
+      "candidate": {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+        "calls": 18,
+        "vgpr_count": 32,
+        "sgpr_count": 128,
+        "lds_block_bytes": 16384,
+        "scratch_bytes": 0
+      }
+    }
+  },
+  "six_case_full_model_exactness": {
+    "passed": true,
+    "cases": [
+      {
+        "context": 17,
+        "prompt_kind": "greeting",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": true,
+        "source_sha256": "1a4a89887349a01fdef6a0175832756986343fa57afc369a03d7b7dcb95fd895"
+      },
+      {
+        "context": 512,
+        "prompt_kind": "repeated",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": true,
+        "source_sha256": "54facf9b624b53c3a959c980eab41f146e48d8241f2831aa55aba8c9bbdabcbe"
+      },
+      {
+        "context": 1024,
+        "prompt_kind": "repeated",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": null,
+        "source_sha256": "414734a681c4cba9e17e7ff6646daf34153bf5ed5d3c591700b776f0a76d8780"
+      },
+      {
+        "context": 1025,
+        "prompt_kind": "repeated",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": null,
+        "source_sha256": "407e67b2bd3011d55dc2d2c3fefd4ff2822f61314869b08af50fdd9d87a1a22e"
+      },
+      {
+        "context": 4095,
+        "prompt_kind": "repeated",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": null,
+        "source_sha256": "3a38c8a7fda488971e198468380c75a206e6893614d95f99071414662cc3b247"
+      },
+      {
+        "context": 4096,
+        "prompt_kind": "repeated",
+        "passed": true,
+        "hidden_exact": true,
+        "state_exact": true,
+        "visible_token_exact": true,
+        "all_layer_outputs_exact": null,
+        "source_sha256": "0980a7c97adced9d2830c4a069607e4256fb05ab810b2a212af52229a9ce0b43"
+      }
+    ]
+  },
+  "dirty_balanced_full_prefill": {
+    "protocol": "1 warmup plus 4 interleaved measurements per mode/context",
+    "contexts": [
+      {
+        "tokens": 512,
+        "baseline_median_ms": 565.8572300000001,
+        "candidate_median_ms": 416.8684575,
+        "wall_delta_percent": -26.329746197640713,
+        "speedup": 1.3573999659113094,
+        "all_paired_candidate_wins": true,
+        "token_ids_exact": true
+      },
+      {
+        "tokens": 1024,
+        "baseline_median_ms": 1092.2330025,
+        "candidate_median_ms": 795.6549925,
+        "wall_delta_percent": -27.15336465032332,
+        "speedup": 1.3727469981280864,
+        "all_paired_candidate_wins": true,
+        "token_ids_exact": true
+      },
+      {
+        "tokens": 4096,
+        "baseline_median_ms": 4361.0699625,
+        "candidate_median_ms": 3177.2007,
+        "wall_delta_percent": -27.146302918317378,
+        "speedup": 1.3726139373253947,
+        "all_paired_candidate_wins": true,
+        "token_ids_exact": true
+      }
+    ],
+    "measurement_valid_for_promotion": false,
+    "reason": "dirty worktree; candidate commit and clean rerun required",
+    "source_sha256": "b6c7dda4d22688c4df63d9b315ee273dd7037ff497d99edd8f87fa14a6e0d1bb"
+  }
+}

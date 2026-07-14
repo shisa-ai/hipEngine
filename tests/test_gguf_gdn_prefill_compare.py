@@ -17,7 +17,13 @@ from scripts.gguf_gdn_prefill_compare import (
 
 @pytest.mark.parametrize(
     "mode",
-    ("chain_wave32_tree", "chain_lds32", "chain_lds64", "chain_lds32_direct"),
+    (
+        "chain_wave32_tree",
+        "chain_lds32",
+        "chain_lds64",
+        "chain_lds32_direct",
+        "chain_lds32_direct_nonvolatile",
+    ),
 )
 def test_parser_accepts_named_gdn_candidate_mode(mode: str) -> None:
     args = build_parser().parse_args(

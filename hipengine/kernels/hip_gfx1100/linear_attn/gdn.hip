@@ -1402,6 +1402,7 @@ __global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds_ker
 // indexed by [token, k_head], while beta/decay and output remain indexed by
 // [token, v_head]. This is intentionally separate from the retained GPF-2D
 // body so the baseline kernel's code generation cannot drift during the A/B.
+template <typename StateTilePtr>
 __device__ __forceinline__ void
 qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body(
     const float* __restrict__ conv_out,
@@ -1411,7 +1412,7 @@ qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body(
     const float* __restrict__ key_scale,
     float* recurrent_state,
     float* __restrict__ out,
-    volatile float* state_tile,
+    StateTilePtr state_tile,
     int64_t start,
     int64_t end,
     int64_t v_head,
@@ -1534,7 +1535,34 @@ __global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_ker
     return;
   }
   const int64_t state_col = v_head * 128 * head_v_dim + value_idx;
-  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body(
+  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body<
+      volatile float*>(
+      conv_out, beta, decay, query_scale, key_scale, recurrent_state, out,
+      state_tile, 0, tokens, v_head, value_idx, state_col, num_k_heads,
+      num_v_heads, head_v_dim);
+}
+
+__global__ void
+qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_kernel(
+    const float* __restrict__ conv_out,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  __shared__ float state_tile[128 * 32];
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_idx = static_cast<int64_t>(blockIdx.y) * 32 + threadIdx.x;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t state_col = v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body<float*>(
       conv_out, beta, decay, query_scale, key_scale, recurrent_state, out,
       state_tile, 0, tokens, v_head, value_idx, state_col, num_k_heads,
       num_v_heads, head_v_dim);
@@ -1571,7 +1599,45 @@ qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_kernel(
   const int64_t state_stride = num_v_heads * 128 * head_v_dim;
   const int64_t state_col =
       state_slot * state_stride + v_head * 128 * head_v_dim + value_idx;
-  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body(
+  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body<
+      volatile float*>(
+      conv_out, beta, decay, query_scale, key_scale, recurrent_state, out,
+      state_tile, start, end, v_head, value_idx, state_col, num_k_heads,
+      num_v_heads, head_v_dim);
+}
+
+__global__ void
+qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_kernel(
+    const float* __restrict__ conv_out,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    const float* __restrict__ query_scale,
+    const float* __restrict__ key_scale,
+    float* recurrent_state,
+    float* __restrict__ out,
+    const int32_t* __restrict__ cu_seqlens,
+    const int64_t* __restrict__ state_indices,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  __shared__ float state_tile[128 * 32];
+  const int64_t segment = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int64_t value_idx = static_cast<int64_t>(blockIdx.z) * 32 + threadIdx.x;
+  if (segment >= segments || v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t start = static_cast<int64_t>(cu_seqlens[segment]);
+  const int64_t end = static_cast<int64_t>(cu_seqlens[segment + 1]);
+  if (end <= start) {
+    return;
+  }
+  const int64_t state_slot = state_indices[segment];
+  const int64_t state_stride = num_v_heads * 128 * head_v_dim;
+  const int64_t state_col =
+      state_slot * state_stride + v_head * 128 * head_v_dim + value_idx;
+  qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_body<float*>(
       conv_out, beta, decay, query_scale, key_scale, recurrent_state, out,
       state_tile, start, end, v_head, value_idx, state_col, num_k_heads,
       num_v_heads, head_v_dim);
@@ -4394,6 +4460,46 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_d
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32(
+    const float* conv_out,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_k_heads <= 0 || num_v_heads <= 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_kernel,
+      dim3(
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>((head_v_dim + 31) / 32)),
+      dim3(32),
+      0,
+      stream,
+      conv_out,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32(
     const float* query_raw,
     const float* key_raw,
@@ -4733,6 +4839,54 @@ hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_
   }
   hipLaunchKernelGGL(
       qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_kernel,
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>((head_v_dim + 31) / 32)),
+      dim3(32),
+      0,
+      stream,
+      conv_out,
+      beta,
+      decay,
+      query_scale,
+      key_scale,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
+      num_k_heads,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32(
+    const float* conv_out,
+    const float* beta,
+    const float* decay,
+    const float* query_scale,
+    const float* key_scale,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_k_heads <= 0 ||
+      num_v_heads <= 0 || head_k_dim != 128 || head_v_dim <= 0 ||
+      head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_kernel,
       dim3(
           static_cast<unsigned int>(segments),
           static_cast<unsigned int>(num_v_heads),

@@ -155773,3 +155773,51 @@ graphless decode launch-collapse path without regressing target/serial parity.
   bound profile remains
   `benchmarks/results/2026-07-14-gfx1151-llamacpp-vulkan-hip-production-profile.json`;
   implementation candidates require their own exact gates and same-suite A/Bs.
+
+## 2026-07-14 - LCP-2A exact GDN candidate screen
+
+- Started the ranked prefill implementation tranche with exact GDN. The
+  required `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot
+  inspect its configured parent because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent; no external source was
+  copied. Unrelated untracked server artifacts remain untouched.
+- Rejected and removed the first idea. Sharing scaled Q/K in LDS across the 32
+  independent value columns passed two plain/segment byte-exact fixtures but
+  regressed the isolated one-layer recurrence **6.639 -> 13.014 ms** at 512 and
+  **58.455 -> 113.116 ms** at 4K. The two barriers per token overwhelm the
+  redundant-load reduction.
+- The second candidate instantiates the existing rolled, scalar-exact direct
+  LDS32 body with a nonvolatile state pointer, leaving the original volatile
+  plain/segment symbols intact. This permits LLVM to cache legal LDS accesses
+  without changing token, contraction, update, or output accumulation order.
+  RED collection initially failed on the absent wrappers; the new exact tests
+  now pass for plain and segmented paths.
+- Alternating synchronized one-layer microbench medians improve
+  **6.572 -> 1.763 ms (3.73x)** at 512 and
+  **58.613 -> 19.864 ms (2.95x)** at 4K. The cached profiler command was
+  `HIPENGINE_COMPILER_VERSION_FILE=/tmp/lcp1-hipcc-version-current.txt
+  PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d
+  /tmp/gdn-nonvolatile-trace -- python3
+  /tmp/gdn_nonvolatile_ab_micro.py`. It records the named nonvolatile kernel at
+  **32 VGPR, 128 SGPR, 16 KiB LDS, zero scratch**, versus 64 VGPR and zero
+  scratch for production.
+- Ran all six full-model `gguf_gdn_prefill_compare.py` cases with explicit
+  `chain_lds32_direct_nonvolatile` and cached builds: greeting, repeated token
+  9707 at 512, 1024, 1025, 4095, and 4096. All **6/6** preserve sampled token,
+  FP32 hidden seed, and every Conv/GDN state byte; greeting and 512 also retain
+  every captured layer output byte.
+- Dirty one-warmup/four-interleaved-measurement bulk-prefill screen versus
+  `chain_lds32_direct` wins all 12 pairs. Median wall moves
+  **565.857 -> 416.868 ms (-26.33%)** at 512,
+  **1092.233 -> 795.655 ms (-27.15%)** at 1K, and
+  **4361.070 -> 3177.201 ms (-27.15%)** at 4K; all 24 timed IDs are 9707.
+  The harness correctly classifies this dirty run `invalid_measurement`, so it
+  is implementation evidence, not a retained performance claim.
+- Added the default-off fail-closed mode, registry/plain/segment wrappers,
+  routing coverage, parser support, and refactor/catalog documentation. The
+  focused GDN/routing/backend/parser bundle passes **120/120**. Compact dirty
+  evidence is
+  `benchmarks/results/2026-07-14-gfx1151-gguf-gdn-nonvolatile-candidate.json`.
+  Next commit the default-off candidate, then reproduce exactness, natural
+  250/250 transitions, and balanced wall from a clean detached revision before
+  changing gfx1151 `auto`.

@@ -1571,7 +1571,19 @@ class Qwen35GGUFFullStackRunner:
                 mode = "auto"
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
-        use_direct_lds32 = mode == "chain_lds32_direct"
+        use_direct_lds32 = mode in {
+            "chain_lds32_direct",
+            "chain_lds32_direct_nonvolatile",
+        }
+        direct_recurrent = plan.exact_recurrent_lds32_direct
+        direct_recurrent_segments = plan.exact_recurrent_segments_lds32_direct
+        direct_route_available = plan.has_exact_chain_lds32_direct
+        if mode == "chain_lds32_direct_nonvolatile":
+            direct_recurrent = plan.exact_recurrent_lds32_direct_nonvolatile
+            direct_recurrent_segments = (
+                plan.exact_recurrent_segments_lds32_direct_nonvolatile
+            )
+            direct_route_available = plan.has_exact_chain_lds32_direct_nonvolatile
         if mode == "chain_tile64":
             exact_recurrent = plan.exact_recurrent_tile64
             exact_recurrent_segments = plan.exact_recurrent_segments_tile64
@@ -1633,6 +1645,16 @@ class Qwen35GGUFFullStackRunner:
                 "the compact-scale prepare, direct LDS32 recurrent, and "
                 "RMSNorm-gate kernels must all be registered"
             )
+        if (
+            requested_mode == "chain_lds32_direct_nonvolatile"
+            and not plan.has_exact_chain_lds32_direct_nonvolatile
+        ):
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode "
+                "'chain_lds32_direct_nonvolatile' is unavailable; "
+                "the compact-scale prepare, nonvolatile direct LDS32 recurrent, "
+                "and RMSNorm-gate kernels must all be registered"
+            )
         if requested_mode == "chain_wave32" and not plan.has_exact_chain_wave32:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain_wave32' is unavailable; "
@@ -1653,6 +1675,7 @@ class Qwen35GGUFFullStackRunner:
             "chain_lds64",
             "chain_lds32",
             "chain_lds32_direct",
+            "chain_lds32_direct_nonvolatile",
             "chain_wave32",
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
@@ -1678,7 +1701,7 @@ class Qwen35GGUFFullStackRunner:
             )
             return
         if use_chain:
-            if use_direct_lds32 and plan.has_exact_chain_lds32_direct:
+            if use_direct_lds32 and direct_route_available:
                 plan.exact_prepare_compact(
                     scratch.conv_out.ptr,
                     scratch.linear_alpha.ptr,
@@ -1699,13 +1722,13 @@ class Qwen35GGUFFullStackRunner:
                 )
                 segment_threshold = _gguf_gdn_prefill_segment_threshold()
                 use_direct_segments = (
-                    plan.exact_recurrent_segments_lds32_direct is not None
+                    direct_recurrent_segments is not None
                     and rows >= segment_threshold
                     and getattr(scratch, "gdn_cu_seqlens", None) is not None
                     and getattr(scratch, "gdn_state_indices", None) is not None
                 )
                 if use_direct_segments:
-                    plan.exact_recurrent_segments_lds32_direct(
+                    direct_recurrent_segments(
                         scratch.conv_out.ptr,
                         scratch.prefill_beta.ptr,
                         scratch.prefill_decay.ptr,
@@ -1725,7 +1748,7 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    plan.exact_recurrent_lds32_direct(
+                    direct_recurrent(
                         scratch.conv_out.ptr,
                         scratch.prefill_beta.ptr,
                         scratch.prefill_decay.ptr,
@@ -14170,6 +14193,18 @@ _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_KEY = KernelKey(
     "gguf_qwen35",
     "f32_decode_order_exact_segments_lds32_direct",
 )
+_GDN_PREFILL_EXACT_RECURRENT_LDS32_DIRECT_NONVOLATILE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_lds32_direct_nonvolatile",
+)
+_GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_NONVOLATILE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_decode_order_exact_segments_lds32_direct_nonvolatile",
+)
 _GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -14206,6 +14241,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain_lds64",
         "chain_lds32",
         "chain_lds32_direct",
+        "chain_lds32_direct_nonvolatile",
         "chain_wave32",
         "chain_wave32_tree",
     }
@@ -14270,6 +14306,8 @@ class _GGUFGDNPrefillPlan:
     exact_recurrent_segments_lds32: object | None = None
     exact_recurrent_lds32_direct: object | None = None
     exact_recurrent_segments_lds32_direct: object | None = None
+    exact_recurrent_lds32_direct_nonvolatile: object | None = None
+    exact_recurrent_segments_lds32_direct_nonvolatile: object | None = None
     exact_recurrent_wave32: object | None = None
     exact_recurrent_segments_wave32: object | None = None
     recurrent_wave32_tree: object | None = None
@@ -14337,6 +14375,14 @@ class _GGUFGDNPrefillPlan:
         )
 
     @property
+    def has_exact_chain_lds32_direct_nonvolatile(self) -> bool:
+        return (
+            self.exact_prepare_compact is not None
+            and self.exact_recurrent_lds32_direct_nonvolatile is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
     def has_exact_chain_wave32(self) -> bool:
         return (
             self.exact_prepare is not None
@@ -14364,6 +14410,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
         "chain_lds64": plan.has_exact_chain_lds64,
         "chain_lds32": plan.has_exact_chain_lds32,
         "chain_lds32_direct": plan.has_exact_chain_lds32_direct,
+        "chain_lds32_direct_nonvolatile": plan.has_exact_chain_lds32_direct_nonvolatile,
         "chain_wave32": plan.has_exact_chain_wave32,
         "chain_wave32_tree": plan.has_chain_wave32_tree,
     }.get(str(mode), False)
@@ -14570,6 +14617,12 @@ def _resolve_gguf_gdn_prefill_plan(
         ),
         exact_recurrent_segments_lds32_direct=_resolve(
             _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_KEY
+        ),
+        exact_recurrent_lds32_direct_nonvolatile=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_LDS32_DIRECT_NONVOLATILE_KEY
+        ),
+        exact_recurrent_segments_lds32_direct_nonvolatile=_resolve(
+            _GDN_PREFILL_EXACT_RECURRENT_SEGMENTS_LDS32_DIRECT_NONVOLATILE_KEY
         ),
         exact_recurrent_wave32=_resolve(_GDN_PREFILL_EXACT_RECURRENT_WAVE32_KEY),
         exact_recurrent_segments_wave32=_resolve(

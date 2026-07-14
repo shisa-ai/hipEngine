@@ -41,6 +41,7 @@ CANDIDATE_MODES = (
     "chain_lds64",
     "chain_lds32",
     "chain_lds32_direct",
+    "chain_lds32_direct_nonvolatile",
 )
 SUPPORTED_MODES = (BASELINE_MODE, *CANDIDATE_MODES)
 
