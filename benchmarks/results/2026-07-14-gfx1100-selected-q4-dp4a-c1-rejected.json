@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_selected_q4_t16_dp4a_c1_screen",
+  "status": "rejected",
+  "created_at": "2026-07-14T17:51:00+00:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "baseline_commit": "5755b68f",
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "workload": "4K/128 state-bound graph decode, one warmup run, fresh graph per measured run",
+  "diagnostic_flag": "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1",
+  "source_audit": {
+    "finding": "The pre-existing flag did not affect the c1 production path. _launch_selected_raw_gguf_moe_pair_silu explicitly selected the exact float-dequant fused-SiLU kernel before the split pair helper that owns the flag.",
+    "no_op_control_candidate_control": {
+      "control_1_decode_tok_s": [97.95286996033376, 97.86985825184496, 97.70211741370441],
+      "flagged_no_op_decode_tok_s": [97.81534613219462, 97.77248462029416, 97.58783956386289],
+      "control_2_decode_tok_s": [97.34007077706151, 97.20398109990633, 97.0624820120452],
+      "combined_control_median_tok_s": 97.52109409538296,
+      "flagged_no_op_median_tok_s": 97.77248462029416,
+      "apparent_delta_pct": 0.25778066503778785,
+      "interpretation": "Invalid as a causal dp4a result; exact final logit 29.407920837402344 on every sample confirms the route was unchanged. The monotonic control/candidate/control ordering is compatible with thermal drift."
+    }
+  },
+  "actual_candidate": {
+    "change": "Temporarily route c1 Q4T16 gate/up through the existing q8_1 activation quantizer and fused-SiLU sudot4 kernel under the same flag.",
+    "red_green": {
+      "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_t16_c1_q4_dp4a_env_routes_fused_silu_through_q8_workspace",
+      "result": "passed after first failing because the fused-SiLU dp4a symbol was not imported/routed"
+    },
+    "smoke_json": "/tmp/gfx1100-selected-q4-dp4a/fused-candidate-smoke.json",
+    "control_median_decode_tok_s": 97.52109409538296,
+    "candidate_decode_tok_s": 88.91967201359815,
+    "decode_delta_pct": -8.820063147950307,
+    "control_final_token_id": 9707,
+    "candidate_final_token_id": 9707,
+    "control_final_logit": 29.407920837402344,
+    "candidate_final_logit": 28.891204833984375,
+    "tracked_peak_gib": 21.543610125780106,
+    "finite_final_logits": true
+  },
+  "decision": "Reject at the predeclared c1 smoke gate. Remove the temporary runtime route and RED/GREEN change; leave the existing diagnostic flag default-off with its prior rows>1 behavior. Do not run the teacher-forced quality suite or profiler because the real path regresses decode by 8.82%."
+}
