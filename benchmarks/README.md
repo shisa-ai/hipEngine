@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-14**
+Last reviewed: **2026-07-15**
 
 Latest retained hipEngine revision in this scoreboard:
 `53928aaf594a379f22d00d16e74fae77912b984d`. The July 14 mixed-KV diagnostic
@@ -244,6 +244,13 @@ decode is **53.348 -> 53.359 tok/s (+0.021%)**. The named kernel uses 32 VGPR,
 LCP-2A; gfx1100 remains fused. The canonical six-shape throughput table still
 awaits its selector-unset right-sized 1+3 refresh. Evidence:
 [`2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`](results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json).
+
+The follow-up device-metadata candidate remains default-off. Replacing six
+synchronous per-chunk uploads with one stream-ordered kernel is **83/83** exact
+and improves clean balanced 512/4K prefill by **+1.47%/+0.65%**, but the 128K
+variance escalation reproduces the separately tracked low-power GPU-active
+lifecycle state. This blocked diagnostic does not scope or revert LCP-2A:
+[`2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`](results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json).
 
 SOL-G4 is accepted on gfx1151 in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).

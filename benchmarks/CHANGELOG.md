@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-15
+
+- [blocked gfx1151 GGUF device-metadata promotion] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV synchronous chunk metadata -> stream-ordered device preparation: clean balanced 512/4K prefill **1225.203/1273.720 -> 1243.183/1282.003 tok/s (+1.47%/+0.65%)** with **83/83** token/logit/hidden/Conv/GDN/KV parts exact, but 128K variance escalation reproduces the low-power GPU-active lifecycle state after a **491.898 tok/s** warmup; candidate remains default-off. `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`.
+
 ## 2026-07-14
 
 - [promoted gfx1151 GGUF LCP-2A exact GDN; canonical sweep pending] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV volatile direct LDS32 -> compiler-cacheable exact LDS32: balanced 512/1K/4K prefill **900.814/940.736/941.462 -> 1213.912/1285.266/1285.888 tok/s** (**+34.76%/+36.63%/+36.58%**) while six-case state, all **250/250** natural transitions, and every timed decode trajectory remain exact; weighted decode **53.348 -> 53.359 tok/s (+0.021%)**. The named kernel uses 32 VGPR/16 KiB LDS/zero scratch; gfx1151 `auto` is promoted and gfx1100 remains fused. `benchmarks/results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`.

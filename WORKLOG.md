@@ -155898,3 +155898,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-candidate.json`.
   Next: commit default-off, reproduce exactness plus a clean 512/4K 1+5
   replacement, then run a bounded 128K 1+3 before considering default-on.
+
+## 2026-07-15 - Clean device-metadata gate and lifecycle blocker
+
+- Committed the default-off candidate as `996532da`, then ran from a clean
+  detached worktree. The clean 512/4K full-model gate remains **83/83** exact.
+  Five alternating pairs are stable and improve **1225.203 -> 1243.183 tok/s
+  (+1.47%)** at 512 and **1273.720 -> 1282.003 tok/s (+0.65%)** at 4K; all
+  20 measured IDs are `9707`.
+- The required clean 128K 1+3 completed at **499.866/499.636/468.801 tok/s**.
+  The third-pass drop fires the documented variance trigger. Its fresh 1+5
+  replacement completed warmup at **491.898 tok/s**, then measured pass 1
+  entered the known GPU-active lifecycle state. After about 380 seconds the GPU
+  remained at 100%/2900 MHz but only 46-47 W and 57-58 C, with no amdgpu fault;
+  bounding the run restored idle immediately.
+- A separate layer/chunk-marked diagnostic completed three 128K passes at
+  **490.192/489.882/489.445 tok/s**. Every one of 32 outer 4096-token chunks
+  completed all 40 layers, followed by graph capture/replay/read/close. That
+  narrows normal geometry but does not explain why uninstrumented long soaks
+  intermittently enter the low-power active state.
+- Screened the already-existing compact-WMMA fixed-upper path to remove the
+  second watchdog-exposed D2H scalar read. The current loose upper bound is
+  flat-negative (**+0.06%/+0.04% wall** at 512/4K). A tighter exact bound saves
+  0.16% at 512 but regresses 4K by **0.56%** because empty WMMA tiles cost more
+  than the readback synchronization. The uncommitted tight-bound edit was
+  removed; the D2H read remains.
+- Decision: keep device metadata default-off despite exact short-context wins.
+  The concrete blocker is the unresolved phase-sensitive 128K variance/lifecycle
+  state, not LCP-2A correctness. Clean evidence is
+  `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`.
