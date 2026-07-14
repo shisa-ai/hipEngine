@@ -71,7 +71,11 @@ def _write_marker_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
     "name,expected",
     [
         ("void mul_mat_vec_q_moe<(ggml_type)10, 2>(void const*, void const*, int const*, float*)", "llama_mmvq_moe"),
-        ("void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*, void const*, int const*)", "llama_mmvq"),
+        ("void mul_mat_vec_q_moe<(ggml_type)12, 2>(void const*, void const*, int const*, float*)", "llama_mmvq_moe_q4_k"),
+        ("void mul_mat_vec_q<(ggml_type)8, 1, false, false>(void const*, void const*, int const*)", "llama_mmvq_q8_0"),
+        ("void mul_mat_vec_q<(ggml_type)12, 1, true, false>(void const*, void const*, int const*)", "llama_mmvq_q4_k"),
+        ("void mul_mat_vec_q<(ggml_type)13, 1, false, false>(void const*, void const*, int const*)", "llama_mmvq_q5_k"),
+        ("void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*, void const*, int const*)", "llama_mmvq_q6_k"),
         ("void mul_mat_vec_f<float, float, 4, 256, false, false>(float const*, float const*)", "llama_mmvf"),
         ("void mul_mat_q<(ggml_type)12, 128, false>(char const*, int const*, float*)", "llama_mmq_q4_k"),
         ("void mul_mat_q<(ggml_type)13, 128, false>(char const*, int const*, float*)", "llama_mmq_q5_k"),
@@ -155,7 +159,7 @@ def test_build_summary_groups_buckets_and_top_kernels(tmp_path: Path) -> None:
     assert payload["total_dispatches"] == 4
     buckets = {row["bucket"]: row for row in payload["buckets"]}
     assert buckets["llama_mmvq_moe"]["total_ms"] == pytest.approx(2.0)
-    assert buckets["llama_mmvq"]["total_ms"] == pytest.approx(1.0)
+    assert buckets["llama_mmvq_q6_k"]["total_ms"] == pytest.approx(1.0)
     assert buckets["llama_quantize_q8_1"]["total_ms"] == pytest.approx(0.5)
     assert buckets["llama_copy_layout"]["total_ms"] == pytest.approx(0.25)
     assert payload["top_kernels"][0]["kernel"].startswith("void mul_mat_vec_q_moe")
@@ -220,9 +224,9 @@ def test_build_summary_slices_kernels_by_marker_ranges(tmp_path: Path) -> None:
     assert ranges["draft_initial"]["kernel_dispatches"] == 2
     draft_buckets = {row["bucket"]: row for row in ranges["draft_initial"]["buckets"]}
     assert draft_buckets["llama_mmvq_moe"]["total_ms"] == pytest.approx(2.0)
-    assert draft_buckets["llama_mmvq"]["total_ms"] == pytest.approx(1.0)
+    assert draft_buckets["llama_mmvq_q6_k"]["total_ms"] == pytest.approx(1.0)
 
     sample = ranges["llama_draft_sample_topk"]
     assert sample["kernel_ms"] == pytest.approx(1.0)
     assert sample["kernel_dispatches"] == 1
-    assert sample["buckets"][0]["bucket"] == "llama_mmvq"
+    assert sample["buckets"][0]["bucket"] == "llama_mmvq_q6_k"

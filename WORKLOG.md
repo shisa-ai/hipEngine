@@ -155724,3 +155724,14 @@ graphless decode launch-collapse path without regressing target/serial parity.
   At 4K the non-attention families are flat and attention grows to **0.821 ms
   (4.69%)**. Logger overhead makes these family-selection diagnostics rather
   than throughput replacements.
+- Extended the HIP trace summarizer to split decode `mul_mat_vec_q` by quant
+  signature instead of collapsing Q8_0/Q4_K/Q5_K/Q6_K. RED fixtures cover all
+  four signatures plus the MoE-name case; paired HIP/Vulkan summary tests pass
+  **51/51**. In the matched llama.cpp HIP no-warmup depth+128 traces, MMVQ names
+  are decode-only because depth prefill uses MMQ: at depth 512, Q8/Q4/Q5/Q6 are
+  **7.654/2.124/1.304/1.911 ms/token**, with a separate shared q8_1 quantizer at
+  **0.374 ms/token**; at depth 4K they remain
+  **7.709/2.148/1.342/1.936 ms/token**, plus **0.390 ms/token** quantization.
+  This narrows the short-context Vulkan/HIP kernel-body difference: Vulkan's
+  matched quant-operation totals are close, while its command-buffer/fusion
+  path has less host residual. The 128K HIP trace is still running.
