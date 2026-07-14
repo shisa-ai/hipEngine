@@ -155853,3 +155853,48 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Updated the benchmark ledger/changelog, GGUF handoff, kernel catalog, and
   refactor ledger. The canonical six-shape selector-unset 1+3 sweep is next;
   until it lands, the public throughput table keeps the prior LCP-1/LCP-D1 row.
+
+## 2026-07-15 - Attribute the apparent LCP-2A 128K stall
+
+- Rejected the uncommitted idea of scoping LCP-2A through 64K. The historical
+  later-pass lifecycle issue predates LCP-2A and has occurred with GPF-2E and
+  the production Q8 wrapper. An explicit LCP-2A 128K warmup-plus-one run
+  completed both passes, and a phase-marked warmup-plus-three fresh-graph run
+  completed all four prefills at **497.579**, **498.315**, **498.039**, and
+  **492.771 tok/s**. Every sample is token `9707`; graph capture, replay,
+  readback, close, reset, and session close all completed normally.
+- `faulthandler` samples during healthy long prefills put the host in
+  synchronous `hipMemcpy`: first in `_GGUFFullAttentionPrefillScratch.for_chunk`
+  metadata H2D, then in the compact-WMMA selected-row scalar D2H. These stacks
+  explain why the process appears blocked while the GPU is active, but they do
+  not prove an LCP-2A kernel deadlock. Phase log:
+  `/tmp/lcp2_128k_lifecycle_diag.log` (SHA-256
+  `545aad34b8753a3dd5cd97e92fd5bf75bb674fa27f98bb67d68c4f6c9579486f`).
+- Removed the uncommitted 64K ceiling. LCP-2A remains the gfx1151 automatic GDN
+  route at 128K. The separately intermittent 600-1200 second lifecycle soak
+  remains a runtime/harness diagnostic, now narrowed to exposed synchronization
+  boundaries rather than GDN source.
+
+## 2026-07-15 - Device-prepared contiguous prefill metadata candidate
+
+- Added default-off `HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1`. One registered,
+  stream-ordered runtime-state kernel generates `cu_q`, `cu_k`, AOTriton atomic,
+  GDN `cu_seqlens`, positions, and contexts, replacing six synchronous H2D
+  copies in every contiguous prefill chunk. The exact GPU oracle covers the
+  final 128K chunk (`start=130048`, `rows=1024`). Focused tests pass **56/56**.
+- 512/4K full-model differential capture is **83/83** parts exact at both
+  shapes: sampled token, FP32 logits/hidden, all 30 Conv/GDN pairs, and all ten
+  BF16 K/V pairs. Five balanced same-session medians improve
+  **1224.930 -> 1244.127 tok/s (+1.57%)** at 512 and
+  **1288.131 -> 1297.061 tok/s (+0.69%)** at 4K. One baseline 4K leg reproduces
+  the lifecycle cliff at **25.296 s** while all candidate legs are
+  **3.152-3.164 s**, so a clean variance replacement is required before
+  promotion.
+- Cached `rocprofv3 --kernel-trace` records
+  `prepare_prefill_chunk_metadata_kernel` at **6.612 us**, 256 threads,
+  16 VGPR, 128 SGPR, zero LDS, and zero scratch. The lineage checkout is absent,
+  so `scripts/check_lineage.py` cannot resolve its configured parent; no
+  external code was copied. Dirty candidate evidence is
+  `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-candidate.json`.
+  Next: commit default-off, reproduce exactness plus a clean 512/4K 1+5
+  replacement, then run a bounded 128K 1+3 before considering default-on.

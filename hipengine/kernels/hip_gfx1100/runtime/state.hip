@@ -148,6 +148,32 @@ __global__ void set_decode_positions_i64_kernel(
   contexts[row] = value + 1;
 }
 
+__global__ void prepare_prefill_chunk_metadata_kernel(
+    int32_t* cu_q,
+    int32_t* cu_k,
+    int32_t* atomic,
+    int32_t* gdn_cu_seqlens,
+    int64_t* positions,
+    int64_t* contexts,
+    int64_t start,
+    int64_t rows) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row == 0) {
+    cu_q[0] = 0;
+    cu_q[1] = static_cast<int32_t>(rows);
+    cu_k[0] = 0;
+    cu_k[1] = static_cast<int32_t>(start + rows);
+    atomic[0] = 0;
+    gdn_cu_seqlens[0] = 0;
+    gdn_cu_seqlens[1] = static_cast<int32_t>(rows);
+  }
+  if (row < rows) {
+    const int64_t position = start + row;
+    positions[row] = position;
+    contexts[row] = position + 1;
+  }
+}
+
 __global__ void advance_decode_positions_i64_kernel(
     int64_t* positions,
     int64_t* contexts,
@@ -468,6 +494,38 @@ extern "C" int hipengine_set_decode_positions_i64(
       contexts,
       values,
       active_mask,
+      rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_prepare_prefill_chunk_metadata(
+    int32_t* cu_q,
+    int32_t* cu_k,
+    int32_t* atomic,
+    int32_t* gdn_cu_seqlens,
+    int64_t* positions,
+    int64_t* contexts,
+    int64_t start,
+    int64_t rows,
+    hipStream_t stream) {
+  if (start < 0 || !valid_vector_shape(rows) || start + rows > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((rows + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      prepare_prefill_chunk_metadata_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      cu_q,
+      cu_k,
+      atomic,
+      gdn_cu_seqlens,
+      positions,
+      contexts,
+      start,
       rows);
   return static_cast<int>(hipGetLastError());
 }

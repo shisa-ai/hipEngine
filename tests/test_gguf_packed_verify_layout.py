@@ -20,6 +20,17 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
+def test_prefill_device_metadata_is_default_off_and_explicitly_selectable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", raising=False)
+    assert not gguf_runner._gguf_prefill_device_metadata_enabled()
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", "1")
+    assert gguf_runner._gguf_prefill_device_metadata_enabled()
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", "0")
+    assert not gguf_runner._gguf_prefill_device_metadata_enabled()
+
+
 def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> None:
     calls: list[tuple] = []
 
