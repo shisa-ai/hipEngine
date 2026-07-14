@@ -1,8 +1,9 @@
 # GGUF Prefill Optimization
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-14.
 
-Status: `SOL-R5` implementation and publication tranche complete on gfx1151.
+Status: `SOL-R5` implementation and publication tranche complete on gfx1151;
+the first architecture-local transfer tranche is accepted on gfx1100.
 `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
@@ -39,7 +40,22 @@ equals the five-sample median at every shape that serialized five samples.
 Two later 128K repetitions stop making progress, but both occur after the
 retained three-run window and are tracked as a separate lifecycle-soak issue,
 not as a publication blocker. No more prefill implementation is active in
-this tranche.
+that gfx1151 tranche.
+
+The independent W7900 transfer gate at clean `bc5600e2` now admits GPF-2E
+`chain_lds32_direct` and GPF-3A `shared_x` as gfx1100 automatic routes. GPF-2E
+improves clean balanced 512/4K prefill **649.131/677.888 ->
+1291.225/1401.330 tok/s** (**1.9892x/2.0672x**) and passes all **250/250**
+natural logit transitions with exact timed trajectories and non-regressive
+decode. The predeclared GPF-3A borderline repeat improves 512/4K
+**640.876/672.866 -> 646.499/678.395 tok/s**, with byte-exact logits and
+trajectories and aggregate decode wall -0.081%. GPF-5A improves focused 512/4K
+prefill **645.901/676.444 -> 654.872/683.164 tok/s** and is conservatively
+scoped through 4096 prompt tokens; longer gfx1100 requests keep production
+Q8T16 pending a long-context causal gate. The clean combined transfer screen
+moves 512/4K from **648.512/682.172 -> 1352.908/1463.668 tok/s** with stable
+IDs. Evidence is
+[`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -1090,9 +1106,12 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 
 - gfx1151 automatic GGUF prefill selects exact `chain_lds32_direct` GDN,
   Q4T16 `shared_x`, and GPF-5A two-wave Q8T16 through 65,536 prompt tokens.
-  Longer prompts restore the production Q8T16 wrapper. gfx1100 remains on its
-  prior fused/baseline/production routes pending hardware-local transfer
-  evidence.
+  Longer prompts restore the production Q8T16 wrapper.
+- The clean W7900 transfer gate now selects `chain_lds32_direct` and `shared_x`
+  automatically on gfx1100. GPF-5A is request-scoped only through 4096 prompt
+  tokens; longer gfx1100 requests keep production Q8T16 until a hardware-local
+  long-context A/B. The combined 512/4K screen is **1352.908/1463.668 tok/s**
+  versus **648.512/682.172** current default, with stable IDs.
 - Causal retained wins are the clean GPF-2D, GPF-3A, GPF-2E, and scoped GPF-5A
   gates above. GPF-1, GPF-2A, GPF-2B, and GPF-2C are closed rejections; do not
   rerun them without a genuinely different algorithm or contract.
@@ -1128,16 +1147,18 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   [`LLAMACPP-HIP-PARITY.md`](LLAMACPP-HIP-PARITY.md). It rejects a wholesale
   llama.cpp port and selects exact same-stream 32-token shared-memory
   convolution (`LCP-1`) before exact chunked/prefix GDN research.
-- No benchmark process is intentionally left running. Publication, artifacts,
-  rollups, and the root README export are complete.
+- No benchmark process is intentionally left running. The gfx1100 transfer
+  policy and compact gate are ready for a clean automatic-route confirmation;
+  the public six-shape rollup is not refreshed by the pre-promotion screen.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
-prefill aliases only when the request has at most 65,536 prompt tokens;
-request-scoped package policy restores production above that. gfx1100 stays on
-the production wrapper. The published partial refresh is final; investigate
-128K lifecycle only with phase markers and bounded lifecycle coverage. Start
-future parity implementation from `LCP-1`; token-parallel/prefix GDN remains
-the exactness-constrained high-effort fallback.
+prefill aliases only when the request has at most 65,536 prompt tokens and the
+gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
+production above each architecture's bound. The gfx1151 partial refresh is
+final; investigate its 128K lifecycle only with phase markers and bounded
+lifecycle coverage. On gfx1100, confirm the automatic transfer route, then
+start `LCP-1`; token-parallel/prefix GDN remains the exactness-constrained
+high-effort fallback.
 
 ## Document Ownership
 

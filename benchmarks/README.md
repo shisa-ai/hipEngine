@@ -337,6 +337,16 @@ script copies this marked block into the root README byte-for-byte.
 
 ### gfx1100 model throughput
 
+A clean W7900 transfer gate at `bc5600e2` accepts exact gfx1151-derived
+GPF-2E/GPF-3A schedules and a 4K-bounded GPF-5A schedule for gfx1100. The
+combined explicit 512/4K screen moves prefill **648.512/682.172 ->
+1352.908/1463.668 tok/s (+108.62%/+114.56%)** with stable IDs; isolated
+balanced/state/trajectory gates select each policy independently. The table
+below intentionally remains the last clean automatic six-shape publication
+until the promoted package policy receives its selector-unset confirmation.
+Evidence:
+[`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
+
 This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
 (rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
 `docs/PROCESS-IMPROVEMENT.md` differ) on TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident

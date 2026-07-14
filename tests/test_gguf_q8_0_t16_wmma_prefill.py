@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     _default_tiles,
     _two_wave_prefill_applies,
     build_gguf_q8_0_t16_prefill,
+    gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_f32_out,
     gguf_q8_0_t16_wmma_prefill_bf16_fp16_out,
@@ -173,7 +174,7 @@ def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
             quant="gguf_q8_0_t16_v1",
             variant="wmma_prefill_bf16_bf16_out",
         )
-        is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+        is gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
     )
     # Aliased ``t16_wmma_prefill_*`` rewrite spelling is also resolvable.
     assert (
@@ -183,7 +184,7 @@ def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
             quant="gguf_q8_0_t16_v1",
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
-        is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+        is gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
     )
     assert (
         resolve(

@@ -155467,3 +155467,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   across measured head/upstream base; recomputed six-shape wall deltas and every
   family ratio/share match the serialized values; the focused trace-summary
   suite passes **25/25**; local links and `git diff --check` pass.
+
+## 2026-07-14 - Transfer-gate exact gfx1151 GGUF schedules on W7900
+
+- Created clean branch `gfx1100-gguf-optimization` from `bc5600e2` and reviewed
+  `docs/GGUF-PREFILL-OPTIMIZATION.md`, `docs/LLAMACPP-HIP-PARITY.md`, the
+  gfx1151 package policy, and retained profiler/benchmark evidence. TheRock HIP
+  7.15 is healthy on the AMD Radeon Pro W7900. The required
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` reports the
+  already-catalogued parent qwen35/PARO drift and clean DFlash R1 entries; this
+  tranche copies no external code.
+- Fresh clean current-default 1+3 measurements at `bc5600e2`, repeated token
+  `9707`, Q4_K_M/BF16 KV, bulk prefill, decode repack, and state-bound graph
+  decode record **648.512/90.107 tok/s** prefill/decode at 512/128 and
+  **682.172/97.413 tok/s** at 4K/128. Explicitly enabling all three already
+  exact gfx1151 schedules reaches **1352.908/90.234** and
+  **1463.668/97.210 tok/s**, respectively: prefill **+108.62%/+114.56%**, all
+  measured IDs `9707`, and unchanged tracked memory. This screen selects
+  isolated gates rather than promoting the combined environment directly.
+- GPF-2E is the dominant transfer. Clean same-session balanced 1+4 fused versus
+  `chain_lds32_direct` improves **649.131 -> 1291.225 tok/s (1.9892x)** at 512
+  and **677.888 -> 1401.330 tok/s (2.0672x)** at 4K; every timed ID is `9707`.
+  The full ten-prompt/four-category gate passes **250/250** own-token logit
+  transitions with `KL=0`, top-1 100%, and exact 128-step timed trajectories.
+  Weighted decode is non-regressive at **97.972 -> 98.061 tok/s (+0.091%)**.
+- GPF-3A `shared_x` is byte-exact and wins prefill at both contexts. The initial
+  1+4 gate triggered the predeclared borderline repeat because aggregate decode
+  measured +0.00148% wall. The clean 1+8 replacement passes: 512 prefill
+  **640.876 -> 646.499 tok/s (+0.877%)**, 4K **672.866 -> 678.395 (+0.822%)**,
+  byte-identical logits/trajectories, and aggregate median decode wall
+  **2763.503 -> 2761.255 ms (-0.081%)**.
+- GPF-5A explicit off/on fresh-process 1+4 prefill-only focus improves
+  **645.901 -> 654.872 tok/s (+1.389%)** at 512 and
+  **676.444 -> 683.164 tok/s (+0.993%)** at 4K. Three W7900 HIP primitive
+  fixtures remain byte-exact to the 32x32 schedule. Automatic selection is
+  conservatively capped at 4096 prompt tokens because no gfx1100 long-context
+  causal A/B has been run; longer requests keep production Q8T16.
+- Added compact promotion artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`.
+  RED backend-policy collection failed on missing gfx1100 Q8 capability;
+  GREEN exports `chain_lds32_direct`, `shared_x`, and scoped GPF-5A from the
+  gfx1100 package and maps the two BF16/BF16 Q8T16 aliases to the request-scoped
+  auto wrapper. The expanded backend/Q8/GDN/Q4 bundle passes **203/203** and the
+  explicit W7900 GPF-5A byte-exact fixture passes **3/3**. Next commit this
+  policy, then run a clean automatic-route confirmation before LCP-1.

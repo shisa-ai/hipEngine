@@ -139,7 +139,7 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32
     )
     assert plan.has_chain_wave32_tree
-    assert plan.auto_mode == "fused"
+    assert plan.auto_mode == "chain_lds32_direct"
 
 
 def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
