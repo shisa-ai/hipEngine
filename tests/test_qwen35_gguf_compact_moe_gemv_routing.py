@@ -41,6 +41,7 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER", raising=False)
     monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", "0")
+    monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", raising=False)
@@ -107,10 +108,11 @@ def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.M
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
     monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)
     monkeypatch.setattr(
         qgr,
         "_try_launch_qwen35_router_topk_split_shared_bf16_f32w",
-        lambda hidden_ptr, expert_weight, shared_weight, logits_ptr, selected_ptr, routing_ptr, **kwargs: (
+        lambda hidden_ptr, expert_weight, shared_weight, logits_ptr, selected_ptr, routing_ptr, counter_ptr, **kwargs: (
             calls.append(
                 (
                     "router_f32w_coop",
@@ -121,7 +123,9 @@ def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.M
                         logits_ptr,
                         selected_ptr,
                         routing_ptr,
+                        counter_ptr,
                         kwargs.get("top_k"),
+                        kwargs.get("persistent_counter"),
                         kwargs.get("stream"),
                     ),
                 )
@@ -151,7 +155,7 @@ def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.M
 
     assert (
         "router_f32w_coop",
-        (100, "ffn_gate_inp", "ffn_gate_inp_shexp", 110, 130, 140, 2, 7),
+        (100, "ffn_gate_inp", "ffn_gate_inp_shexp", 110, 130, 140, 125, 2, True, 7),
     ) in calls
 
 
@@ -839,6 +843,7 @@ def _fake_runner_and_scratch(*, strip_compact_scratch: bool = False):
     fields = dict(
         post_norm=_buf(100),
         moe_router_logits=_buf(110),
+        moe_router_counter=_buf(125),
         moe_shared_gate_logits=_buf(120),
         moe_selected_experts=_buf(130),
         moe_routing_weights=_buf(140),
