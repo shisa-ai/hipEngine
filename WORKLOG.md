@@ -155709,3 +155709,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **89.121 ms**, and elementwise **37.771 ms**. GDN is only **10.140 ms**. These
   are profiler diagnostics, not a topline replacement; 4K/128K and decode runs
   are in progress.
+- Decode logs contain one warmup graph, depth-prefill graph calls, and the 128
+  timed generation graphs. Added a RED/GREEN `--select-last-sections` contract
+  so attribution cannot accidentally charge depth setup to decode. Also fixed
+  family matching for decode's fused names (`MUL_MAT_ID_VEC`,
+  `MUL_MAT_ID_MUL`, and `MUL_MAT_ADD`). The paired parser suite now passes
+  **47/47**.
+- Using the exact split-decode command with `-p 0 -n 128 -d <depth>` and keeping
+  only the final 128 timestamp sections, Vulkan reports **16.903 ms/token** at
+  depth 512 and **17.498 ms/token** at depth 4K. At 512 the main families are
+  dense Q8 **7.613 ms/token (45.04%)**, selected Q4 **1.986 ms (11.75%)**,
+  Q6 lm-head **1.795 ms (10.62%)**, selected Q5 **1.181 ms (6.99%)**, and
+  elementwise **1.144 ms (6.77%)**; attention is only **0.210 ms (1.24%)**.
+  At 4K the non-attention families are flat and attention grows to **0.821 ms
+  (4.69%)**. Logger overhead makes these family-selection diagnostics rather
+  than throughput replacements.

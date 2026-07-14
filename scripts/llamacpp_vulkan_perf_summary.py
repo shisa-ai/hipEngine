@@ -51,17 +51,17 @@ class TimingSection:
 
 def classify_operation(name: str) -> str:
     upper = name.upper()
-    if upper.startswith("MUL_MAT_ID Q4_K"):
+    if "MUL_MAT_ID" in upper and "Q4_K" in upper:
         return "llama_selected_q4"
-    if upper.startswith("MUL_MAT_ID Q5_K"):
+    if "MUL_MAT_ID" in upper and "Q5_K" in upper:
         return "llama_selected_q5"
-    if upper.startswith("MUL_MAT_ID Q6_K"):
+    if "MUL_MAT_ID" in upper and "Q6_K" in upper:
         return "llama_selected_q6"
-    if upper.startswith("MUL_MAT_VEC Q6_K"):
+    if "MUL_MAT_VEC Q6_K" in upper:
         return "llama_lm_head"
-    if upper.startswith("MUL_MAT Q8_0"):
+    if "MUL_MAT" in upper and "Q8_0" in upper:
         return "llama_dense_q8"
-    if upper.startswith("MUL_MAT F32"):
+    if "MUL_MAT" in upper and "F32" in upper:
         return "llama_f32_matmul"
     if "GATED_DELTA_NET" in upper:
         return "llama_gdn"
@@ -191,14 +191,24 @@ def build_summary(
     command: str | None,
     discard_first_sections: int,
     top: int,
+    select_last_sections: int | None = None,
 ) -> dict[str, Any]:
     if discard_first_sections < 0:
         raise ValueError("discard_first_sections must be non-negative")
+    if select_last_sections is not None and select_last_sections <= 0:
+        raise ValueError("select_last_sections must be positive")
     if top <= 0:
         raise ValueError("top must be positive")
 
     sections = parse_perf_log(log_path)
     selected = sections[discard_first_sections:]
+    if select_last_sections is not None:
+        if len(selected) < select_last_sections:
+            raise ValueError(
+                f"requested last {select_last_sections} Vulkan timing sections, "
+                f"but only {len(selected)} remain after discard"
+            )
+        selected = selected[-select_last_sections:]
     if not selected:
         raise ValueError("no selected Vulkan timing sections remain after discard")
 
@@ -213,6 +223,7 @@ def build_summary(
         "source_log": str(log_path),
         "sections_found": len(sections),
         "discard_first_sections": discard_first_sections,
+        "select_last_sections": select_last_sections,
         "selected_section_count": len(selected),
         "total_gpu_ms": total_us / 1000.0,
         "avg_section_gpu_ms": total_us / 1000.0 / len(selected),
@@ -232,6 +243,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--label", required=True)
     parser.add_argument("--command")
     parser.add_argument("--discard-first-sections", type=int, default=0)
+    parser.add_argument(
+        "--select-last-sections",
+        type=int,
+        help="after discarding, keep only the final N sections (for timed decode tokens after depth setup)",
+    )
     parser.add_argument("--top", type=int, default=25)
     return parser.parse_args(argv)
 
@@ -244,6 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         command=args.command,
         discard_first_sections=args.discard_first_sections,
         top=args.top,
+        select_last_sections=args.select_last_sections,
     )
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(payload, indent=2) + "\n")
