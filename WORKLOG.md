@@ -157297,3 +157297,31 @@ raw A/B SHA256 values are
 Close selected-Q4T16 pressure work with the existing body. The final decode
 attribution and promotion sweep use therock 7.15; system 7.2 remains a
 compatibility gate rather than a source of mixed-toolchain topline deltas.
+
+## 2026-07-15 — Close LCP-D3 on clean therock 7.15 attribution
+
+Reran the production body at clean `11051aec` with the complete therock 7.15
+stack and `rocprofv3 1.3.2`, using a profiler-SDK ROCTx override so all measured
+steps have exact marker windows. Both profile children require cached builds and
+all prefill/warmup/measured IDs are `9707`.
+
+- 4K, 24 marked eager steps: **8.652 ms GPU/token**, 15,072 selected kernels.
+  Buckets are Q8T16 **3.413 ms (39.45%)**, selected-MoE **1.852 ms (21.41%)**,
+  attention **0.783 ms (9.06%)**, lm-head **0.627 ms (7.25%)**, RMSNorm/RoPE
+  **0.584 ms (6.75%)**, GDN **0.526 ms (6.08%)**, router **0.416 ms (4.81%)**.
+- 32K, 16 marked eager steps: **9.724 ms GPU/token**, 10,208 selected kernels.
+  Q8T16 is **3.442 ms (35.39%)**, selected-MoE **1.927 ms (19.82%)**, and
+  attention rises to **1.689 ms (17.36%)**.
+- The 32K grouped-GQA split-K context leaf is **1.569 ms/token**. The retained
+  LCP-D2 prepare and parallel output leaves are only **40.023 + 50.855 us/token**,
+  together **5.38%** of attention. The reducer promotion therefore remains
+  correctly scoped and is no longer the long-context target.
+
+No second candidate is admitted. The remaining context scan is already the
+memory-sharing grouped-GQA split-K body; serial reduction, warp split, lower
+threshold, and grouped-GQA selection are measured closures. Dense Q8 and
+selected-MoE source/layout experiments are also closed by this pass. Compact
+artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json`.
+Decode is complete pending the final defaults-only parity sweep; next is the
+clean GGUF-only mixed-KV admission gate.
