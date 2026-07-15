@@ -158439,3 +158439,28 @@ is **+0.11%/+0.07%**, tracked peak is unchanged, and all 12 measured final IDs
 are 9707. This confirms that the two independently retained paths compose
 without interference. Artifact:
 `benchmarks/results/2026-07-16-gfx1100-gguf-router-stack-promotion.json`.
+
+## 2026-07-16 — Promote gfx1100 device-prepared prefill metadata through 4K
+
+A cached 512-token `rocprofv3` HIP/API trace on clean `df253cf8` confirms the
+remaining outer-chunk boundary: six consecutive synchronous `hipMemcpy` calls
+for cu-q, cu-k, atomic, GDN cu-seqlens, positions, and context counts consume
+**167.213 us** of host API wall. A cached candidate primitive trace confirms
+`prepare_prefill_chunk_metadata_kernel` at **4.160 us**, 256 threads, 16 VGPR,
+and zero LDS/scratch. The six resulting arrays match the CPU reference exactly.
+
+Hermetic therock HIP 7.15 balanced same-session 1+3 A/Bs on the retained router
+stack measure:
+
+- 512/128 prefill **2793.871 -> 2805.451 tok/s (+0.41%)**, paired median
+  **+0.26%**; graph decode **+0.032%**.
+- 4K/128 prefill **3069.782 -> 3144.263 tok/s (+2.43%)**, paired median
+  **+2.26%**; graph decode **+0.163%**.
+- Tracked peak remains 21.228/21.670 GiB and all 12 measured final IDs remain
+  9707.
+
+RED first expected the missing gfx1100 4K package ceiling and failed. GREEN adds
+`GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS=4096`; focused primitive/policy/backend
+validation passes. Retain the synchronous path and explicit `=0` rollback above
+4K pending independent long-context evidence. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json`.

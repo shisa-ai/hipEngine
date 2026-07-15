@@ -1,0 +1,123 @@
+{
+  "kind": "hipengine_gfx1100_gguf_convergence_screen",
+  "schema_version": 1,
+  "date": "2026-07-16",
+  "candidate": {
+    "id": "LCP-M2-gfx1100",
+    "description": "Replace six synchronous per-chunk metadata H2D copies with one stream-ordered device kernel",
+    "scope": "hip_gfx1100 prompts through 4096 tokens",
+    "source": "existing in-tree gfx1151 LCP-M2 implementation; no kernel-body change",
+    "rollback": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0",
+    "explicit_candidate": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_measurement_commit": "df253cf88205478fc87ca5a800136c032f811c52",
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompt": "repeated token 9707",
+    "workloads": ["512/128", "4096/128"],
+    "session": "one right-sized resident process per shape; explicit host/device metadata modes interleaved in the same session",
+    "warmups": "one full discarded run per mode",
+    "measured_repetitions": 3,
+    "order": ["control,candidate", "candidate,control", "control,candidate"],
+    "prefill": "retained router stack, production bulk attention, automatic chunks, WMMA requested/effective",
+    "decode": "one eager warmup token; fresh state-bound graph per measured reset; capture excluded",
+    "build": "all kernels prebuilt; cached builds required",
+    "environment": "hermetic therock HIP 7.15; HIP_VISIBLE_DEVICES=0; HIPENGINE_BACKEND=hip_gfx1100; HIPENGINE_HIP_ARCH=gfx1100"
+  },
+  "control_trace": {
+    "workload": "one cached 512-token production prefill after two one-second isolation gaps",
+    "hip_memcpy_correlations": [1836, 1837, 1838, 1839, 1840, 1841],
+    "hip_memcpy_api_duration_us": [37.191, 27.05, 24.99, 24.681, 26.96, 26.341],
+    "hip_memcpy_api_total_us": 167.213,
+    "source_contract": "cu_q, cu_k, atomic, gdn_cu_seqlens, positions, context_counts"
+  },
+  "candidate_trace": {
+    "kernel": "prepare_prefill_chunk_metadata_kernel(int*, int*, int*, int*, long*, long*, long, long)",
+    "rows": 4096,
+    "duration_us": 4.16,
+    "workgroup_size": 256,
+    "grid_size": 4096,
+    "vgpr": 16,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0
+  },
+  "correctness": {
+    "primitive": "prepare_prefill_chunk_metadata matches CPU arrays for cu_q, cu_k, atomic, GDN cu-seqlens, positions, and context counts",
+    "focused_tests_passed": 5,
+    "control_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "candidate_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "finite_final_logits": true
+  },
+  "measurements": {
+    "512": {
+      "control_prefill_tok_s": [2767.3690195750805, 2798.289365840383, 2793.870575081204],
+      "candidate_prefill_tok_s": [2806.0734168358954, 2805.4510130913413, 2794.7090409314605],
+      "control_prefill_median": 2793.870575081204,
+      "candidate_prefill_median": 2805.4510130913413,
+      "prefill_delta_percent": 0.41449443340089154,
+      "paired_prefill_delta_percent": [1.3985990660095649, 0.25592947385579823, 0.030010905219968187],
+      "paired_prefill_delta_median_percent": 0.25592947385579823,
+      "control_decode_median_tok_s": 92.50773648656099,
+      "candidate_decode_median_tok_s": 92.53759009489053,
+      "decode_delta_percent": 0.03227147205562275,
+      "tracked_peak_gib": 21.228173956274986
+    },
+    "4096": {
+      "control_prefill_tok_s": [3088.637195298817, 3069.7824635702955, 3061.0174215436473],
+      "candidate_prefill_tok_s": [3158.309768341755, 3144.263058732823, 3128.739439432716],
+      "control_prefill_median": 3069.7824635702955,
+      "candidate_prefill_median": 3144.263058732823,
+      "prefill_delta_percent": 2.426249939414382,
+      "paired_prefill_delta_percent": [2.255770705247806, 2.426249939414382, 2.2124022363426255],
+      "paired_prefill_delta_median_percent": 2.255770705247806,
+      "control_decode_median_tok_s": 100.31257288173335,
+      "candidate_decode_median_tok_s": 100.47642403292295,
+      "decode_delta_percent": 0.16334059279168311,
+      "tracked_peak_gib": 21.670319117605686
+    }
+  },
+  "decision": "Promote device-prepared metadata automatically on gfx1100 through 4096 prompt tokens. Aggregate prefill improves by 0.41%/2.43% and paired medians by 0.26%/2.26% at 512/4K; decode is non-regressive, memory is unchanged, primitive metadata is exact, and all timed final IDs match. Retain the synchronous path above 4K pending independent long-context evidence.",
+  "sources": {
+    "ab_512": {
+      "path": "/tmp/gfx1100-device-metadata-ab-512.json",
+      "sha256": "0e89ffefebe6471964ae9e19fa64685a8de65519cb5aeae0a1b7354835adb022"
+    },
+    "ab_4096": {
+      "path": "/tmp/gfx1100-device-metadata-ab-4k.json",
+      "sha256": "75338ee53b31980b921b2dfada942a5d5c508271999d6430c45c91360b123f62"
+    },
+    "control_hip_api_trace": {
+      "path": "/tmp/gfx1100-metadata-trace/metadata512_hip_api_trace.csv",
+      "sha256": "35436ea20c2bd977e640ec1407c18a83b81bb807c52358e402d1e4f1abaddcf8"
+    },
+    "control_kernel_trace": {
+      "path": "/tmp/gfx1100-metadata-trace/metadata512_kernel_trace.csv",
+      "sha256": "e891a664be74ac85616bb750e7f5eb38682103685fcf6a77d4c9f2c43dbd1932"
+    },
+    "candidate_kernel_trace": {
+      "path": "/tmp/gfx1100-metadata-primitive-trace/metadata-primitive_kernel_trace.csv",
+      "sha256": "c75955364f9701b0f66617ee1693fab7e8e3f46f2a5a14738c978de2ba9636da"
+    }
+  }
+}
