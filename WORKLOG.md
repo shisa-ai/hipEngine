@@ -156800,3 +156800,52 @@ graphless decode launch-collapse path without regressing target/serial parity.
   screen must change the body: prequantized Q8_1 activations plus T16-native
   integer WMMA is the source-backed direction, with standalone kernel/quality
   gates required before runtime quantization or routing.
+
+## 2026-07-15 - Predeclare LCP-3B T16-native Q8_1 integer-WMMA screen
+
+- The four-wave result shows additional activation sharing is not the missing
+  mechanism. LCP-3B instead tests llama.cpp's body-level idea against the
+  resident Q8T16 layout: prequantize BF16 rows to existing GGML-compatible
+  Q8_1 blocks, consume the signed Q8 activation and signed Q8T16 weight payload
+  directly with RDNA3 `wmma_i32_16x16x16_iu8_w32`, multiply each 32-K dot by
+  the two FP16 block scales, and accumulate FP32 before BF16 output.
+- The first candidate is standalone and never runtime-routed. A 64-thread block
+  retains the current 64-output x 32-row geometry as two wave32 groups; each
+  wave computes two 16-column by two 16-row integer-WMMA tiles. Production
+  FP16-WMMA remains the registered fallback. Reuse the existing q8_1 quantizer
+  for correctness and later included-cost timing; do not add scratch or model
+  policy before the body clears its gate.
+- RED requires a separately registered/callable prequantized variant. GREEN
+  must match an independent Q8_0 x Q8_1 block-dot CPU oracle with relative L2
+  <= 0.02, and must pass mean KL <= 0.05 plus top-1 >= 90% against the exact
+  Q8_0/BF16 primitive on ordinary and tail shapes. These thresholds are frozen
+  before implementation.
+- The first speed gate is the W7900 `512x2048x8192` cycling-pool leaf: compare
+  prequantized body versus current two-wave FP16-WMMA, then repeat with Q8_1
+  quantization inside the timed leg. A body loss removes the candidate. An
+  included-cost win proceeds to all four measured pp512 shape classes and a
+  cached profiler resource/name check before any model routing.
+
+## 2026-07-15 - Reject LCP-3B direct T16 integer-WMMA body
+
+- RED failed collection because the prequantized wrapper/key did not exist.
+  GREEN passed the two frozen ordinary/tail fixtures against the independent
+  Q8_0 x Q8_1 block-dot oracle and exact-path KL/top-1 gates. An initial
+  output-scale indexing bug produced relative L2 around 0.24-0.27; indexing
+  each WMMA accumulator by its actual output row fixed both cases before any
+  timing.
+- The sequential primary W7900 cycling-pool gate rejects the corrected body:
+  production two-wave FP16-WMMA is **0.521342 ms**, the prequantized integer
+  body is **0.754182 ms (+44.66%)**, and Q8_1 quantization plus the body is
+  **0.770183 ms (+47.73%)**. Quantization adds only **0.016001 ms**; the loss is
+  in the direct T16 integer body's packing/per-32-K scale accumulation, not the
+  conversion launch.
+- The predeclared body-loss rule stops the lane before profiler or model
+  routing. Removed the candidate kernel, wrapper, key, and tests; production
+  source/defaults are unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-q8-1-i8-wmma-rejected.json`.
+- Direct Q8_1 over the current K-major T16 layout does not reproduce llama.cpp
+  MMQ. Do not route the slower raw-sidecar dp4a diagnostics as a substitute.
+  Any further dense-Q8 attempt must first reproduce llama.cpp's actual shared
+  MMQ tile/decomposition in a standalone microbenchmark or identify a
+  different exact body-level limiter.
