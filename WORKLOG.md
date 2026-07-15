@@ -156849,3 +156849,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Any further dense-Q8 attempt must first reproduce llama.cpp's actual shared
   MMQ tile/decomposition in a standalone microbenchmark or identify a
   different exact body-level limiter.
+
+## 2026-07-15 - Complete LCP-3C llama.cpp Q8_0 MMQ source/layout audit
+
+- Audited the exact measured llama.cpp HIP source at `1ebf790cda38` (build
+  9648); the current local source matches the measured commit for `mmq.cu`,
+  `mmq.cuh`, and the Q8_0 instance. The source path is materially different
+  from rejected LCP-3B. RDNA3 chooses `mmq_x=128`, `mmq_y=128`, eight wave32
+  groups, and a 256-thread block. Wave pairs own 32 output rows and alternate
+  16-token column slices across the full 128-token tile.
+- Each K256 outer iteration cooperatively stages 128 output rows x eight raw
+  Q8_0 blocks into a padded shared weight tile, then stages and consumes two
+  128-K `block_q8_1_mmq` activation halves. Q8_0 selects the D4 activation
+  layout: four FP32 scales plus 128 int8 values. The exact dynamic-LDS budget is
+  **512 B ids + 38,912 B weight + 18,432 B activation = 57,856 B**. Per 32-K
+  scale interval, the dot body emits two signed RDNA3 integer-WMMA K16 calls,
+  multiplies by the FP16 weight and FP32 activation scales, and accumulates
+  FP32.
+- The retained pp512 trace confirms `mul_mat_q<Q8_0,128,false>` at block
+  `(32,8)`, **232 VGPR**, zero scratch, **30.425833 ms / 250 calls**. Shape
+  totals are **11.542008 ms / 40** at width 8192, **4.558555 / 30** at width
+  4096, **8.625106 / 80** at width 2048 (long+short K), and **5.700164 / 100**
+  at width 512. This aligns exactly with the family residual; it is not an
+  instruction-only hypothesis.
+- hipEngine's resident Q8T16 is byte-lossless and contains the same 34,816
+  unique Q8_0 bytes per 128-output x K256 tile, but in 16-column/K-major slabs.
+  A cooperative T16-to-shared transpose can populate llama.cpp's logical tile
+  without retaining a raw sidecar. LCP-3D is therefore predeclared as exactly
+  one standalone MMQ128+D4 screen over resident T16 bytes.
+- RED requires a separately callable/registered MMQ128 D4 variant. GREEN must
+  pass ordinary/tail Q8_0 x D4 CPU-oracle relative L2 <=0.02 and exact-path KL
+  <=0.05/top-1 >=90%. On the primary W7900 `512x2048x8192` leaf, both the
+  prequantized body and D4-pack-plus-body must beat production two-wave FP16
+  WMMA. Only then may it expand to the four measured pp512 shape classes,
+  profiler resources, and unchanged semantic/decode plus 512/4K model floors.
+- Published the source/profile/layout evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json`. Do not
+  reopen direct T16 integer WMMA, independent-wave widening, raw-sidecar dp4a,
+  selected Q4/Q5, or generic launch-count work in this lane.
