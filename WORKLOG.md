@@ -157126,3 +157126,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   GDN evidence. Do not reopen dense-Q8, selected-MoE, Conv, full-attention, or
   generic launch-count experiments to explain the production gap. Any future
   peer promotion must rerun the full semantic/decode contract.
+
+## 2026-07-15 — LCP-5A predeclaration: Q5/Q6T16 HIP 7.2 spill removal
+
+The clean post-LCP-4A peer trace leaves only **3.071 ms** versus llama.cpp HIP,
+but its largest repeated gap group is SiLU -> selected Q5 (**1.177 ms / 37**).
+The destination `gguf_k_t16_selected_wmma_prefill_compact_kernel<uint16_t,5>`
+also consumes **51.222 ms / 37** in that trace and is reported at **256 VGPR,
+176 private bytes/thread**.
+
+A cache/code-object audit isolates compiler behavior rather than a new quant
+layout or arithmetic hypothesis. Identical current source compiles as follows:
+
+- HIP 7.2.53211: Q5 BF16 **256 VGPR, 176 private bytes, 75 spills**; Q5 FP16
+  **256 VGPR, 208 private bytes, 99 spills**.
+- HIP 7.15.0: Q5 BF16/FP16 **66 VGPR, zero private bytes/spills**.
+- The current peer trace matches the HIP 7.2 BF16 resource row exactly.
+
+This is genuinely new evidence relative to the closed raw-Q5 tile/decode-hoist
+lanes: it concerns the replacement-layout T16 instantiation and a compiler-
+induced spill. LCP-5A is therefore bounded to (1) the existing unroll-600 build
+ablation and, only if needed, (2) one rolled-subblock source variant. No math,
+layout, scheduler ABI, or GDN changes are allowed. Go/no-go requires byte-exact
+Q4/Q5/Q6 focused fixtures, static plus rocprof zero-scratch evidence, a real
+selected-MoE replay win, and clean peer 512/4K plus the full semantic/decode
+promotion contract. Remove and record any rejected source candidate.
