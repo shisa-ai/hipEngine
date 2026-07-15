@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_prefill_router_select_threads128_promotion",
+  "status": "accepted",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "profile_control_commit": "37b3926951c38f58c2545f995a0c659e331b0914",
+    "candidate_commit": "c10c794c",
+    "promotion_commit": "89443a1fcb78aaa32b18f331e9e1bdd30edfd74f",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1 (automatic gfx1151 process default)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "profile_trigger": {
+    "workload": "4096-token prefill only",
+    "total_kernel_ms": 3066.360803,
+    "total_dispatches": 4799,
+    "router_logits_ms": 135.322,
+    "router_logits_share_percent": 4.41,
+    "router_select_ms": 12.53861,
+    "router_select_dispatches": 130,
+    "router_select_share_percent": 0.4089085011696192,
+    "decision": "Do not replace the dominant exact logits geometry with cross-block logits+top-k fusion; screen the existing select launch width first."
+  },
+  "candidate": {
+    "kernel": "qwen35_router_select_kernel",
+    "scope": "GGUF bulk prefill only",
+    "control_threads": 512,
+    "candidate_threads": 128,
+    "automatic_backend": "hip_gfx1151",
+    "gfx1100_threads": 512,
+    "decode_threads": 256,
+    "rollback": "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=512"
+  },
+  "primitive_screen": {
+    "shape": {"tokens": 512, "experts": 256, "top_k": 8},
+    "protocol": "10 warmup launches; nine samples of 100 launches; synchronized batch wall divided by 100",
+    "median_ms": {
+      "512": 0.043686499702744186,
+      "256": 0.02283966983668506,
+      "128": 0.015052550006657839,
+      "64": 0.010306540061719716
+    },
+    "all_selected_and_routing_exact_to_512": true,
+    "full_model_64_rejection": "4K token/logit/hidden state is not exact: 43/60 Conv/GDN and 14/20 KV parts match",
+    "full_model_128_acceptance": "512 and 4K are 83/83 exact"
+  },
+  "clean_balanced_ab": {
+    "protocol": "one resident max-4K session; one warmup per geometry; five alternating measured pairs; device synchronize in timed wall",
+    "512": {
+      "control_ms": [403.1193960108794, 402.5561820017174, 401.29950596019626, 401.8642480368726, 401.5857560443692],
+      "candidate_ms": [400.1703179674223, 400.49620997160673, 400.4166829981841, 400.57205501943827, 400.6173820234835],
+      "control_median_tok_s": 1274.0620806681516,
+      "candidate_median_tok_s": 1278.414095444994,
+      "delta_percent": 0.3415857706525749
+    },
+    "4096": {
+      "control_ms": [3005.1635450217873, 3010.695517004933, 3008.8067650212906, 3018.700740998611, 3008.5458130342886],
+      "candidate_ms": [2997.427301015705, 2999.313816020731, 2998.0688839568757, 2998.1566349742934, 3001.6194859636016],
+      "control_median_tok_s": 1361.3370082844174,
+      "candidate_median_tok_s": 1366.172785043674,
+      "delta_percent": 0.35522260320761667
+    },
+    "correctness": {
+      "512": {"exact_parts": 83, "total_parts": 83, "all_exact": true},
+      "4096": {"exact_parts": 83, "total_parts": 83, "all_exact": true},
+      "all_final_token_ids": 9707
+    }
+  },
+  "clean_automatic_confirmation": {
+    "protocol": "clean promotion commit; selector unset; one max-4K resident session; one warmup plus three measured runs per shape; graph replay decode",
+    "512": {"prefill_median_tok_s": 1288.0740216435313, "decode_median_tok_s": 49.047403607105444},
+    "1024": {"prefill_median_tok_s": 1357.4797285372415, "decode_median_tok_s": 51.60944183482035},
+    "4096": {"prefill_median_tok_s": 1354.6394998183516, "decode_median_tok_s": 52.43439279404253},
+    "automatic_vs_explicit_128_threads_exact_parts": 83,
+    "automatic_vs_explicit_total_parts": 83,
+    "final_token_ids": [9707, 9707, 9707],
+    "tracked_peak_gib": 22.99488216638565
+  },
+  "clean_profile_confirmation": {
+    "workload": "4096-token prefill only",
+    "control_router_select_ms": 12.53861,
+    "candidate_router_select_ms": 3.740737,
+    "router_select_delta_percent": -70.16625447318323,
+    "dispatches": 130,
+    "control_workgroup_size": 512,
+    "candidate_workgroup_size": 128,
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "control_total_kernel_ms": 3066.360803,
+    "candidate_total_kernel_ms": 3057.488267,
+    "total_kernel_delta_percent": -0.28935068538964437
+  },
+  "sources": {
+    "control_profile_summary_sha256": "5d9dde3eb9f47063f3b156138964802634fe0f0414c83181d1de72531b7b8529",
+    "control_kernel_trace_sha256": "5ea9c3ca0193664ab83eedeaad2706e8811964df668421b4977315e386a95cd8",
+    "primitive_screen_sha256": "bf53377d8f3e726754c601fac3d6ed36610d5abf457cb0757aed1c6fcd45d043",
+    "full_model_geometry_matrix_sha256": "ccf83287dd9b34d4de09e73866842f30bb939def6ce6e9ab079c34b3148ab147",
+    "balanced_ab_sha256": "0750038436625499edece2ba275298aa37360fba1da425fa0fa94039db039f14",
+    "automatic_exact_sha256": "a80bc4b1c82535102221d643b658d6ad1f5f14871a8df0910aeb1cc139c31bc1",
+    "automatic_sweep_sha256": "4fff9d3e302437fb480e7ca4b5f75e9d4875a10384afd0fe5113742c2e75dc12",
+    "candidate_profile_summary_sha256": "63c9bf27f190ba545bbb853e0483db4a238f4caa1cc0fcf13c33316e0ae27bcb",
+    "candidate_kernel_trace_sha256": "a0bc9a559ff35ebdae19be62739f37dd72575db7d5c9f3a7ff9334c217a9f54f"
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked",
+    "reason": "manifest reference checkout /home/lhl/amd-gpu-tuning/nano-vllm-amd is absent",
+    "kernel_body_changed": false
+  },
+  "decision": "Promote 128-thread GGUF bulk-prefill router select on gfx1151. Retain 512 as explicit rollback, keep gfx1100 at 512, keep decode at 256, and reject 64 despite its primitive speed because full-model state is not exact."
+}

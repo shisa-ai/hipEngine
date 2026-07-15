@@ -9,6 +9,7 @@ Machine-readable evidence:
 - [`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json)
 - [`2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json)
 - [`2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json)
+- [`2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -469,6 +470,16 @@ under one queue, so gfx1151 selects device metadata only through 4K and retains
 the synchronous path above it. This is a scoped exact win, not evidence that
 the queue workaround fixed every scheduling trigger.
 
+### Post-profile LCP-4B router-select closure
+
+The required final 4K profile measures router select at **12.539 ms / 130
+launches (0.41%)**. That does not justify replacing LCP-4A's dominant exact
+logits geometry with cross-block logits+top-k fusion. A launch-only screen is
+safer and retained: 128 threads cuts the named family to **3.741 ms (-70.17%)**
+and improves clean balanced 512/4K prefill **+0.34%/+0.36%**, with 83/83
+full-model state parts exact. The faster 64-thread primitive is rejected because
+4K full-model logits/hidden, Conv/GDN, and KV state differ.
+
 ## Explicit non-targets
 
 - Do not replace hipEngine selected Q4/Q5 with generic llama.cpp MMQ; the
@@ -486,12 +497,12 @@ the queue workaround fixed every scheduling trigger.
 
 ## Next parity targets
 
-LCP-1, LCP-D1, LCP-2A, scoped LCP-M2, LCP-3, and LCP-4A close the currently
-actionable exact convolution, GDN, metadata, dense-Q8, and router-logit prefill
-bodies. Use the
-promoted gfx1151 one-queue process default for subsequent production/profile
-runs. Refresh the 4K family profile before attempting router-select fusion; do
-not disturb the already-faster selected Q4/Q5 families. For decode, the clean 128K trace still
+LCP-1, LCP-D1, LCP-2A, scoped LCP-M2, LCP-3, LCP-4A, and LCP-4B close the
+currently actionable exact convolution, GDN, metadata, dense-Q8, router-logit,
+and router-select prefill bodies. Use the promoted gfx1151 one-queue process
+default for subsequent production/profile runs. The required 4K refresh is
+complete and does not justify router-select fusion; do not disturb the already-
+faster selected Q4/Q5 families. For decode, the clean 128K trace still
 leaves the grouped-GQA context body at **15.502 ms/token** and dense Q8 at
 **8.546 ms/token**. Any follow-up must target one of those measured families and
 preserve the current BF16-KV, `KVLiveSpans`, and exact state/token contracts.

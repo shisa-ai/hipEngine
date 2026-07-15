@@ -156106,3 +156106,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   gfx1100 remains 512 and decode remains 256. Explicit `512` is the rollback.
   The focused bundle remains **31 passed**. Clean selector-unset confirmation
   and profiler-name/resource evidence follow from the promotion commit.
+
+## 2026-07-15 - Promote LCP-4B prefill router select
+
+- Clean detached `89443a1f` with the selector unset matches explicit 128 threads
+  **83/83** at 512, 1K, and 4K. Its max-4K 1+3 confirmation records prefill
+  **1288.074/1357.480/1354.639 tok/s** and graph decode
+  **49.047/51.609/52.434 tok/s**; all IDs are `9707`, tracked peak is unchanged
+  at **22.995 GiB**.
+- Cached `rocprofv3` confirms 130 named select launches at workgroup 128, 24
+  VGPR, 128 SGPR, 512 B LDS, and zero scratch. The family falls **12.539 ->
+  3.741 ms (-70.17%)** and total traced 4K kernel time falls **3066.361 ->
+  3057.488 ms (-0.289%)** with dispatch count unchanged at 4,799.
+- Synchronized the benchmark rollup/changelog, kernel/env/refactor catalogs,
+  prefill/parity handoffs, and compact artifact
+  `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json`.
+  Exact prefill closure is complete; next optimization work is the measured
+  decode tranche.
