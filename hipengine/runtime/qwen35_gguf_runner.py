@@ -1611,7 +1611,14 @@ class Qwen35GGUFFullStackRunner:
                 mode = "auto"
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
-        use_k2 = mode == "chain_k2"
+        use_normalized_chain = mode in {"chain_k2", "chain_peer_wave32"}
+        normalized_prepare = plan.prepare
+        normalized_recurrent = plan.recurrent
+        normalized_recurrent_segments = plan.recurrent_segments
+        if mode == "chain_peer_wave32":
+            normalized_prepare = plan.prepare_peer_normalized
+            normalized_recurrent = plan.recurrent_peer_wave32
+            normalized_recurrent_segments = plan.recurrent_segments_peer_wave32
         use_direct_lds32 = mode == "chain_lds32_direct"
         if mode == "chain_tile64":
             exact_recurrent = plan.exact_recurrent_tile64
@@ -1646,6 +1653,12 @@ class Qwen35GGUFFullStackRunner:
                 "explicit GGUF GDN prefill mode 'chain_k2' is unavailable; "
                 "the normalized prepare, K2 recurrent, and RMSNorm-gate kernels "
                 "must all be registered"
+            )
+        if requested_mode == "chain_peer_wave32" and not plan.has_chain_peer_wave32:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_peer_wave32' is unavailable; "
+                "the normalized prepare, peer wave32 recurrent, and RMSNorm-gate "
+                "kernels must all be registered"
             )
         if requested_mode == "chain_tile64" and not plan.has_exact_chain_tile64:
             raise RuntimeError(
@@ -1696,6 +1709,7 @@ class Qwen35GGUFFullStackRunner:
         use_chain = mode in {
             "chain",
             "chain_k2",
+            "chain_peer_wave32",
             "chain_tile64",
             "chain_tile32",
             "chain_lds64",
@@ -1803,7 +1817,7 @@ class Qwen35GGUFFullStackRunner:
                 )
                 return
             if (
-                not use_k2
+                not use_normalized_chain
                 and plan.exact_prepare is not None
                 and exact_recurrent is not None
                 and plan.rmsnorm_gate is not None
@@ -1888,7 +1902,7 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
                 return
-            plan.prepare(
+            normalized_prepare(
                 scratch.conv_out.ptr,
                 scratch.linear_alpha.ptr,
                 scratch.linear_beta.ptr,
@@ -1909,13 +1923,13 @@ class Qwen35GGUFFullStackRunner:
             )
             segment_threshold = _gguf_gdn_prefill_segment_threshold()
             use_segments = (
-                plan.recurrent_segments is not None
+                normalized_recurrent_segments is not None
                 and rows >= segment_threshold
                 and getattr(scratch, "gdn_cu_seqlens", None) is not None
                 and getattr(scratch, "gdn_state_indices", None) is not None
             )
             if use_segments:
-                plan.recurrent_segments(
+                normalized_recurrent_segments(
                     scratch.prefill_query.ptr,
                     scratch.prefill_key.ptr,
                     scratch.prefill_value.ptr,
@@ -1934,7 +1948,7 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
-                plan.recurrent(
+                normalized_recurrent(
                     scratch.prefill_query.ptr,
                     scratch.prefill_key.ptr,
                     scratch.prefill_value.ptr,
@@ -14373,6 +14387,12 @@ _COMPACT_MOE_REQUIRED_SCRATCH = (
 _GDN_PREFILL_PREPARE_KEY = KernelKey(
     "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
 )
+_GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_prefill_prepare",
+    "gguf_qwen35",
+    "f32_peer_normalized_bf16",
+)
 _GDN_PREFILL_RECURRENT_K2_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"
 )
@@ -14493,6 +14513,18 @@ _GDN_PREFILL_RECURRENT_SEGMENTS_WAVE32_TREE_KEY = KernelKey(
     "gguf_qwen35",
     "f32_decode_order_segments_wave32_tree",
 )
+_GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_normalized_wave32_xor",
+)
+_GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_normalized_segments_wave32_xor",
+)
 _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 1025
 _GGUF_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
 _GGUF_GDN_PREFILL_MODES = frozenset(
@@ -14501,6 +14533,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "fused",
         "chain",
         "chain_k2",
+        "chain_peer_wave32",
         "chain_tile64",
         "chain_tile32",
         "chain_lds64",
@@ -14556,6 +14589,7 @@ class _GGUFGDNPrefillPlan:
     recurrent_segments: object | None
     rmsnorm_gate: object | None
     fused_decode_order: object | None
+    prepare_peer_normalized: object | None = None
     exact_prepare: object | None = None
     exact_prepare_compact: object | None = None
     exact_recurrent: object | None = None
@@ -14574,6 +14608,8 @@ class _GGUFGDNPrefillPlan:
     exact_recurrent_segments_wave32: object | None = None
     recurrent_wave32_tree: object | None = None
     recurrent_segments_wave32_tree: object | None = None
+    recurrent_peer_wave32: object | None = None
+    recurrent_segments_peer_wave32: object | None = None
     auto_mode: str = "fused"
 
     @property
@@ -14585,6 +14621,14 @@ class _GGUFGDNPrefillPlan:
         return (
             self.prepare is not None
             and self.recurrent is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_chain_peer_wave32(self) -> bool:
+        return (
+            self.prepare_peer_normalized is not None
+            and self.recurrent_peer_wave32 is not None
             and self.rmsnorm_gate is not None
         )
 
@@ -14664,6 +14708,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
         "fused": plan.has_fused,
         "chain": plan.has_chain,
         "chain_k2": plan.has_chain_k2,
+        "chain_peer_wave32": plan.has_chain_peer_wave32,
         "chain_tile64": plan.has_exact_chain_tile64,
         "chain_tile32": plan.has_exact_chain_tile32,
         "chain_lds64": plan.has_exact_chain_lds64,
@@ -14887,6 +14932,7 @@ def _resolve_gguf_gdn_prefill_plan(
         recurrent_segments=_resolve(_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY),
         rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
         fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
+        prepare_peer_normalized=_resolve(_GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY),
         exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
         exact_prepare_compact=_resolve(_GDN_PREFILL_EXACT_PREPARE_COMPACT_KEY),
         exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
@@ -14920,6 +14966,10 @@ def _resolve_gguf_gdn_prefill_plan(
         recurrent_wave32_tree=_resolve(_GDN_PREFILL_RECURRENT_WAVE32_TREE_KEY),
         recurrent_segments_wave32_tree=_resolve(
             _GDN_PREFILL_RECURRENT_SEGMENTS_WAVE32_TREE_KEY
+        ),
+        recurrent_peer_wave32=_resolve(_GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY),
+        recurrent_segments_peer_wave32=_resolve(
+            _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY
         ),
         auto_mode=_gguf_gdn_prefill_backend_auto_mode(backend),
     )

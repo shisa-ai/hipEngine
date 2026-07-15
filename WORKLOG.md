@@ -156470,3 +156470,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   nano-vllm-amd drift (`qwen35_expert.hip`, `smoke.hip`, and PARO loader files);
   the planned code uses llama.cpp only as the read-only schedule source and
   records source path/commit.
+
+## 2026-07-15 - Implement GPF-9C llama.cpp-HIP-shaped GDN candidate
+
+- RED added a plain/segmented primitive gate for the missing normalized-Q/K,
+  one-wave32 schedule; collection failed on the absent wrappers as expected.
+- Added explicit `chain_peer_wave32` without changing the production
+  `chain_lds32_direct` default. The recurrence follows read-only llama.cpp HIP
+  `1ebf790cda38`, `ggml/src/ggml-cuda/gated_delta_net.cu`: four state rows per
+  lane remain register-resident across the serial token loop, each wave owns one
+  value column, four waves share a 128-thread block, reductions use the peer XOR
+  tree, scalar decay is applied after the normalized `S^T @ k` reduction, and a
+  peer-only prepare keeps Q unit-normalized so `1/sqrt(128)` is applied after the
+  output reduction rather than folded into each Q product.
+  Vulkan `263cc04a5405` remains a distinct eight-lane clustered fallback only if
+  this HIP-shaped schedule fails the frozen product gate.
+- GREEN plain and segmented 64-token Qwen3.6-shaped fixtures pass the in-tree
+  CPU-reference output/state budgets. Focused kernel/routing/gate bundle passes
+  **98/98**. `git diff --check` and Python compilation pass.
+- Required rocprofv3 trace names both expected kernels. Plain/segmented launches
+  are **94.000/81.281 us** on the synthetic fixture, workgroup 128, **40 VGPR**,
+  zero LDS, and zero scratch. Trace command used a precomputed hipcc version file
+  and the already-built cache under
+  `/tmp/hipengine-gpf9c-rocprof/gpf9c_kernel_trace.csv`.
+- The prospective admission contract remains unchanged: clean full 18-prompt
+  teacher-forced KL/top-1/determinism/decode gate first, then 512/4K speed floors
+  only if semantics pass.

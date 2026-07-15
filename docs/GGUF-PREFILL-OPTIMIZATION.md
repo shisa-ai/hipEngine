@@ -485,7 +485,7 @@ select current code without a fresh profile.
 | 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
 | 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
 | 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
-| 16 | `GPF-9C` | **Active:** combine llama.cpp HIP's normalized-Q/K input contract with one-wave32-per-column register residency | Match gfx1100 llama.cpp reduction geometry, then require primitive, 18-prompt, decode, and both 512/4K gates |
+| 16 | `GPF-9C` | **Active; primitive admitted:** `chain_peer_wave32` combines llama.cpp HIP's normalized-Q/K input contract with one-wave32-per-column register residency | XOR/post-reduction-decay schedule passes CPU-reference fixtures at 40 VGPR and zero LDS/scratch; 18-prompt, decode, and 512/4K gates remain |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1145,9 +1145,12 @@ The source audit narrows the missing candidate. On gfx1100 llama.cpp HIP uses
 wave32, four state rows per lane resident across the serial token loop, and four
 value columns per 128-thread block. K2 already has llama.cpp's materialized
 normalized inputs but reduces over two waves; `chain_wave32_tree` has one-wave
-register residency but applies raw Q/K scales inside the recurrence. GPF-9C
-combines normalized inputs with the one-wave resident schedule before trying a
-new algebra. Evidence:
+register residency but applies raw Q/K scales inside the recurrence. GPF-9C's
+explicit `chain_peer_wave32` now combines unit-normalized inputs with llama.cpp
+HIP `1ebf790cda38`'s XOR reduction, post-reduction scalar decay/output scale,
+and four columns per 128-thread block. Plain and segmented CPU-reference fixtures pass; rocprof
+reports 40 VGPR and zero LDS/scratch. The full 18-prompt gate remains the next
+admission step. Evidence:
 [`2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json).
 
 ## Correctness And Promotion Contract

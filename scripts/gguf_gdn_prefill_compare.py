@@ -588,6 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--candidate-mode",
         choices=(
             "chain",
+            "chain_peer_wave32",
             "chain_tile64",
             "chain_tile32",
             "chain_wave32",

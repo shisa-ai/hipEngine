@@ -69,10 +69,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
+    qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
     qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
+    qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
     qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
@@ -83,6 +85,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
+    qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
     qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
     qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
@@ -717,7 +720,11 @@ def _run_lowp_fp16_segments(
 
 
 def _run_chain(
-    inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    use_segments: bool,
+    recurrent_variant: str = "k2",
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -744,7 +751,12 @@ def _run_chain(
     cu = _to_device(cu_arr)
     state_indices = _to_device(state_indices_arr)
     try:
-        qwen35_linear_attn_prefill_prepare_f32_bf16(
+        prepare = (
+            qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16
+            if recurrent_variant == "normalized_wave32_xor"
+            else qwen35_linear_attn_prefill_prepare_f32_bf16
+        )
+        prepare(
             conv_out.ptr,
             a.ptr,
             b.ptr,
@@ -761,8 +773,16 @@ def _run_chain(
             inputs.head_k_dim,
             inputs.head_v_dim,
         )
+        recurrent = {
+            "k2": qwen35_gdn_prefill_recurrent_k2_f32,
+            "normalized_wave32_xor": qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
+        }[recurrent_variant]
+        recurrent_segments = {
+            "k2": qwen35_gdn_prefill_recurrent_segments_k2_f32,
+            "normalized_wave32_xor": qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+        }[recurrent_variant]
         if use_segments:
-            qwen35_gdn_prefill_recurrent_segments_k2_f32(
+            recurrent_segments(
                 query.ptr,
                 key.ptr,
                 value.ptr,
@@ -779,7 +799,7 @@ def _run_chain(
                 inputs.head_v_dim,
             )
         else:
-            qwen35_gdn_prefill_recurrent_k2_f32(
+            recurrent(
                 query.ptr,
                 key.ptr,
                 value.ptr,
@@ -1727,6 +1747,32 @@ def test_gdn_prefill_direct_conv_lds32_is_bit_exact_to_materialized_chain(
     np.testing.assert_array_equal(state_direct, state_materialized)
     _assert_output_close(out_direct, out_cpu, label="direct LDS32 vs CPU")
     _assert_state_close(state_direct, state_cpu, label="direct LDS32 vs CPU")
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_normalized_wave32_xor_stays_within_correctness_budget(
+    use_segments: bool,
+) -> None:
+    """The llama.cpp HIP schedule must satisfy the peer numerical contract."""
+
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=31,
+    )
+    expected_out, expected_state = _cpu_full_chain(inputs, _RMS_EPS)
+    out_peer, state_peer = _run_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        recurrent_variant="normalized_wave32_xor",
+    )
+    _assert_output_close(out_peer, expected_out, label="normalized wave32 XOR vs CPU")
+    _assert_state_close(state_peer, expected_state, label="normalized wave32 XOR vs CPU")
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
