@@ -1,0 +1,115 @@
+{
+  "kind": "hipengine_gfx1100_gguf_decode_current_attribution",
+  "schema_version": 1,
+  "created_at": "2026-07-15T23:16:00+09:00",
+  "status": "diagnostic_complete_no_new_candidate",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "commit": "11051aec894bada9ff6da2c6342aeefffadc7539",
+    "branch": "gfx1100-gguf-optimization",
+    "dirty": false
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "software": {
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "profiler": "rocprofv3 1.3.2"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt_source": "repeated token 9707"
+  },
+  "protocol": {
+    "mode": "rocprofv3 kernel+ROCTx marker trace",
+    "route": "production decode repack, GEMV decode, eager graph-off profiling child",
+    "warmup_steps": 4,
+    "require_cached_build": true,
+    "selection": "Only kernels fully contained in one synchronized measured-step marker window are counted.",
+    "correctness": "All prefill, warmup, and measured IDs are exactly 9707."
+  },
+  "profiles": {
+    "4K": {
+      "prompt_tokens": 4096,
+      "timed_steps": 24,
+      "selected_kernels": 15072,
+      "gpu_us_per_token": 8652.384833,
+      "buckets_us_per_token": {
+        "dense_q8_0_gemv": 3413.300042,
+        "moe_selected_gemv": 1852.425042,
+        "attn_core": 783.457083,
+        "lm_head": 627.319125,
+        "rmsnorm_rope": 583.721625,
+        "gdn_linear_attn": 525.672417,
+        "moe_router": 416.031875
+      },
+      "bucket_shares_percent": {
+        "dense_q8_0_gemv": 39.449,
+        "moe_selected_gemv": 21.409,
+        "attn_core": 9.055,
+        "lm_head": 7.250,
+        "rmsnorm_rope": 6.746,
+        "gdn_linear_attn": 6.075,
+        "moe_router": 4.808
+      },
+      "largest_leaves_us_per_token": {
+        "q8_0_t16_dual_split_gemv": 1410.239125,
+        "q8_0_t16_gemv": 1220.423792,
+        "q4_k_t16_selected_dual_silu_direct_gemv": 964.794083,
+        "qk_t16_selected_direct_gemv": 887.631792,
+        "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa": 681.818875,
+        "q6_k_t16_gemv": 619.066875
+      },
+      "kernel_trace_sha256": "00c940f0d2158cb493c0d59a10b60d3796008e7f23211631d0bf9788674631ed",
+      "marker_trace_sha256": "98638f0d37b355376ccb41ae8a7451ef4f26b2f671c55d70149685b47ec1d7a8",
+      "summary_sha256": "f2f1ccaa9c86dd23f9b4379f7636d008d70516449d6d0cbfcf0e15daf65eb8e4"
+    },
+    "32K": {
+      "prompt_tokens": 32768,
+      "timed_steps": 16,
+      "selected_kernels": 10208,
+      "gpu_us_per_token": 9724.4325,
+      "buckets_us_per_token": {
+        "dense_q8_0_gemv": 3441.644125,
+        "moe_selected_gemv": 1927.347125,
+        "attn_core": 1688.583688,
+        "lm_head": 624.507938,
+        "rmsnorm_rope": 601.27775,
+        "gdn_linear_attn": 535.027,
+        "moe_router": 448.013938
+      },
+      "bucket_shares_percent": {
+        "dense_q8_0_gemv": 35.392,
+        "moe_selected_gemv": 19.820,
+        "attn_core": 17.364,
+        "lm_head": 6.422,
+        "rmsnorm_rope": 6.183,
+        "gdn_linear_attn": 5.502,
+        "moe_router": 4.607
+      },
+      "attention_leaves_us_per_token": {
+        "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa": 1569.135875,
+        "qwen35_paged_full_attn_decode_split_k_parallel_output_gate": 50.855375,
+        "qwen35_paged_full_attn_decode_split_k_prepare_weights": 40.022688,
+        "all_other_attention": 28.56975
+      },
+      "retained_parallel_reducer_share_of_attention_percent": 5.382,
+      "kernel_trace_sha256": "36731310ad0484c8b719d285429cdc5794183c57e3f4e5acdc82d61a6c1e3a99",
+      "marker_trace_sha256": "dc9f03061cd1b3279e47d9183a6627b3ef49f1165d5b233168e22c551ee9a9f8",
+      "summary_sha256": "f14341d569f9ac9fdaa495732a163101cf9b2df5e72153a65e65617ad20f491c"
+    }
+  },
+  "decision": {
+    "new_candidate": false,
+    "reason": "At 32K the retained prepare+parallel-output reducer is only 90.878 us/token, or 5.38% of attention. The remaining long-context cost is the already grouped-GQA split-K context scan (1.569 ms/token). Existing threshold, warp-split, serial reducer, and grouped-GQA alternatives are measured closures; this trace supplies no new source/layout evidence for another bounded kernel candidate.",
+    "decode_lane": "closed_pending_final_defaults_only_sweep",
+    "next_lane": "GGUF tail-four Hadamard-group32 mixed-KV clean admission gate"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_q8t16_waveblock_extension_screen",
+  "status": "rejected",
+  "created_at": "2026-07-14T17:35:00+00:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "baseline_commit": "ce2a831a",
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "clang": "22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "candidate": "Extend the retained dual-split compile-time wave/block K traversal to separately callable BF16 single, concatenated-dual, and triple-split Q8T16 kernels while preserving each thread's K and FP32 operation order.",
+  "source_scope": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py",
+    "tests/test_gguf_q8_0_t16_gemv_decode.py"
+  ],
+  "correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py -k waveblock --tb=short",
+    "result": "6 passed",
+    "contract": "Candidate and current outputs byte-identical at production shapes with both 64- and 128-thread workgroups."
+  },
+  "micro_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 /tmp/q8_waveblock_micro.py",
+    "threads": 128,
+    "warmups_per_leg": 80,
+    "timed_calls_per_leg": 400,
+    "alternating_order_rounds": 6,
+    "weight_cycle_mib": 107.0,
+    "timing": "HIP events; median of six per-call leg means",
+    "raw_output": "/tmp/q8_waveblock_micro.json"
+  },
+  "results": [
+    {
+      "body": "single",
+      "shape": "rows=1, in=2048, out=2048",
+      "exact_us_samples": [13.970354795455933, 11.564044952392578, 11.61584734916687, 11.591345071792603, 11.594452857971191, 11.601758003234863],
+      "candidate_us_samples": [11.755048036575317, 11.771847009658813, 11.722245216369629, 11.727147102355957, 11.722157001495361, 11.725157499313354],
+      "exact_median_us": 11.598105430603027,
+      "candidate_median_us": 11.726152300834656,
+      "latency_delta_pct": 1.10403264565746
+    },
+    {
+      "body": "concatenated_dual",
+      "shape": "rows=1, in=2048, out_a=4096, out_b=4096",
+      "exact_us_samples": [24.014225006103516, 23.64192485809326, 23.614022731781006, 23.536536693572998, 23.573737144470215, 23.573436737060547],
+      "candidate_us_samples": [23.981924057006836, 23.820524215698242, 23.68892192840576, 23.675334453582764, 23.654537200927734, 23.661036491394043],
+      "exact_median_us": 23.59387993812561,
+      "candidate_median_us": 23.682128190994263,
+      "latency_delta_pct": 0.37403027013820367
+    },
+    {
+      "body": "triple_split",
+      "shape": "rows=1, in=2048, out_a=4096, out_b=1024, out_c=1024",
+      "exact_us_samples": [21.05452537536621, 20.698325634002686, 20.76622486114502, 20.690224170684814, 20.715327262878418, 20.637025833129883],
+      "candidate_us_samples": [21.063125133514404, 20.85742473602295, 20.95402479171753, 20.88362455368042, 20.802927017211914, 20.736727714538574],
+      "exact_median_us": 20.70682644844055,
+      "candidate_median_us": 20.870524644851685,
+      "latency_delta_pct": 0.79055183477168
+    }
+  ],
+  "decision": "Reject all three bodies at the predeclared cache-cycled micro gate and remove candidate symbols, wrappers, and tests before full-model timing. The retained dual-split wave/block result does not generalize to these gfx1100 bodies."
+}

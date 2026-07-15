@@ -40,6 +40,17 @@ __device__ inline float scalar_to_float_qwen35<uint16_t>(uint16_t value) {
   return bf16_bits_to_float(value);
 }
 
+__device__ __forceinline__ float mul_add_decode_order_f32(float acc, float lhs, float rhs) {
+  float product;
+  float result;
+  asm volatile(
+      "v_mul_f32_e32 %[product], %[lhs], %[rhs]\n\t"
+      "v_add_f32_e32 %[result], %[acc], %[product]"
+      : [product] "=&v"(product), [result] "=v"(result)
+      : [lhs] "v"(lhs), [rhs] "v"(rhs), [acc] "v"(acc));
+  return result;
+}
+
 __global__ void qwen35_linear_attn_conv_decode_kernel(
     const float* hidden_states,
     float* conv_state,
@@ -91,6 +102,52 @@ __global__ void qwen35_linear_attn_conv_decode_lowp_kernel(
   out[channel] = silu_f32(acc);
 }
 
+
+__global__ void qwen35_linear_attn_conv_prefill_no_state_rows_kernel(
+    const float* __restrict__ hidden_states,
+    const float* __restrict__ conv_state,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size) {
+  const int64_t size = tokens * channels;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < size;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t token = idx / channels;
+    const int64_t channel = idx - token * channels;
+    const int64_t offset = channel * kernel_size;
+    float acc = 0.0f;
+    if (kernel_size == 4) {
+      const int64_t padded0 = token;
+      const int64_t padded1 = token + 1;
+      const int64_t padded2 = token + 2;
+      const int64_t padded3 = token + 3;
+      const float value0 = (
+          padded0 < 3 ? conv_state[offset + padded0 + 1] : hidden_states[(padded0 - 3) * channels + channel]);
+      const float value1 = (
+          padded1 < 3 ? conv_state[offset + padded1 + 1] : hidden_states[(padded1 - 3) * channels + channel]);
+      const float value2 = (
+          padded2 < 3 ? conv_state[offset + padded2 + 1] : hidden_states[(padded2 - 3) * channels + channel]);
+      const float value3 = hidden_states[(padded3 - 3) * channels + channel];
+      acc = mul_add_decode_order_f32(acc, value0, conv_weight[offset]);
+      acc = mul_add_decode_order_f32(acc, value1, conv_weight[offset + 1]);
+      acc = mul_add_decode_order_f32(acc, value2, conv_weight[offset + 2]);
+      acc = mul_add_decode_order_f32(acc, value3, conv_weight[offset + 3]);
+    } else {
+      for (int64_t k = 0; k < kernel_size; ++k) {
+        const int64_t padded = token + k;
+        const float value = (
+            padded < kernel_size - 1
+                ? conv_state[offset + padded + 1]
+                : hidden_states[(padded - (kernel_size - 1)) * channels + channel]);
+        acc = mul_add_decode_order_f32(acc, value, conv_weight[offset + k]);
+      }
+    }
+    out[idx] = silu_f32(acc);
+  }
+}
 
 __global__ void qwen35_linear_attn_conv_prefill_kernel(
     const float* __restrict__ hidden_states,
@@ -852,14 +909,13 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
   const int64_t output_blocks64 = (output_size + threads - 1) / threads;
   const int output_blocks = static_cast<int>(output_blocks64 < 65535 ? output_blocks64 : 65535);
   hipLaunchKernelGGL(
-      qwen35_linear_attn_conv_prefill_kernel,
+      qwen35_linear_attn_conv_prefill_no_state_rows_kernel,
       dim3(static_cast<unsigned int>(output_blocks)),
       dim3(threads),
       0,
       stream,
       hidden_states,
       conv_state,
-      nullptr,
       conv_weight,
       out,
       tokens,

@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_chunkwise_wy8_screen",
+  "status": "rejected_removed",
+  "created_at": "2026-07-15T03:35:00Z",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "candidate_retained": false,
+  "conclusion": "The C=8 direct-conv chunkwise/WY candidate passes its CPU/primitive/resource gates and reduces the synthetic 30-layer 512-token GDN stage to 47.491 ms, but fails the frozen clean semantic, exact-trajectory, and two-shape speed contract. Clean teacher-forced KL reaches 0.056522 > 0.05, top-1 is 445/450 = 98.889% < 99%, and only 5/18 free-running 128-transition trajectories remain exact. Clean prefill reaches 2003.399 tok/s at 512 and 2280.244 tok/s at 4K, so 512 remains 16.951% below the 2412.320 llama.cpp HIP floor even though 4K is 1.116% above its floor. All HIP kernels, wrappers, registry entries, runtime selectors, and candidate-specific tests were removed; the CPU algebra oracle remains as rejected-design evidence and chain_lds32_direct remains production default.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "candidate_commit": "37d28fdbeb859d052c33c09a07ae26af68ea0219",
+    "kernel_commit": "0cbc0853",
+    "cpu_oracle_commit": "912ef70d"
+  },
+  "predeclared_contract": {
+    "chunk_size": 8,
+    "baseline_mode": "chain_lds32_direct",
+    "candidate_mode": "chain_wy8",
+    "primitive_atol": 0.0005,
+    "primitive_rtol": 0.005,
+    "one_token_byte_exact_required": true,
+    "resource": {
+      "workgroup_size": 256,
+      "max_vgpr": 128,
+      "scratch_bytes_per_thread": 0,
+      "max_lds_bytes": 32768
+    },
+    "max_complete_512_gdn_family_ms": 66.0,
+    "semantic": {
+      "prompts": 18,
+      "transitions": 450,
+      "max_kl": 0.05,
+      "min_top1_agreement": 0.99
+    },
+    "free_running_trajectories_exact_required": true,
+    "decode_nonregression_required": true,
+    "llamacpp_hip_prefill_floors_tok_s": {
+      "512/128": 2412.32,
+      "4K/128": 2255.08
+    },
+    "both_speed_floors_required": true
+  },
+  "primitive_and_resource": {
+    "cpu_oracle_tests_passed": 34,
+    "focused_gpu_tests_passed": 33,
+    "plain_one_token_byte_exact": true,
+    "segmented_one_token_byte_exact": true,
+    "full_chunk_and_17_token_tail_within_frozen_tolerance": true,
+    "plain_and_segment_workgroup_size": 256,
+    "plain_and_segment_vgpr_count": 48,
+    "plain_and_segment_scratch_bytes_per_thread": 0,
+    "plain_and_segment_lds_bytes": 28672,
+    "resource_gate_passed": true,
+    "synthetic_30_layer_512_gdn_family_ms": {
+      "prepare": 0.865603,
+      "recurrence": 43.847903,
+      "rmsnorm_gate": 2.777085,
+      "total": 47.490591
+    },
+    "synthetic_family_gate_passed": true
+  },
+  "semantic_and_trajectory": {
+    "measurement_valid": true,
+    "source_clean": true,
+    "status": "rejected_semantic_correctness",
+    "prompts": 18,
+    "transitions": 450,
+    "kl_max": 0.056522326204740715,
+    "kl_threshold": 0.05,
+    "kl_passed": false,
+    "top1_matches": 445,
+    "top1_total": 450,
+    "top1_agreement": 0.9888888888888889,
+    "top1_threshold": 0.99,
+    "top1_passed": false,
+    "teacher_forced_mismatch_prompts": [
+      "code_lru_cache",
+      "mixed_ja_en_review",
+      "heldout_code_rate_limiter",
+      "heldout_general_ja_speculative",
+      "heldout_mixed_summary"
+    ],
+    "free_running_exact_prompts": 5,
+    "free_running_total_prompts": 18,
+    "free_running_trajectories_exact": false,
+    "decode_baseline_median_wall_sum_ms": 22541.156221999998,
+    "decode_candidate_median_wall_sum_ms": 22530.790031,
+    "decode_wall_delta_percent": -0.045987840632061364,
+    "decode_non_regressive": true,
+    "decision": "rejected_semantic_and_exact_trajectory"
+  },
+  "clean_full_model_speed": {
+    "measurement_valid": true,
+    "source_clean": true,
+    "protocol": "one warmup plus three measured runs in one resident max-4K session; per-shape reset; graph decode with one-step replay; cached builds",
+    "512/128": {
+      "prefill_samples_tok_s": [
+        2009.7015358063882,
+        2003.398585632479,
+        1997.0795910572194
+      ],
+      "prefill_median_tok_s": 2003.398585632479,
+      "llamacpp_hip_floor_tok_s": 2412.32,
+      "delta_vs_floor_percent": -16.95137520592298,
+      "floor_passed": false,
+      "decode_median_tok_s": 92.52658848556386,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "4K/128": {
+      "prefill_samples_tok_s": [
+        2285.519483446857,
+        2280.243824261159,
+        2270.2497535926686
+      ],
+      "prefill_median_tok_s": 2280.243824261159,
+      "llamacpp_hip_floor_tok_s": 2255.08,
+      "delta_vs_floor_percent": 1.115872796581896,
+      "floor_passed": true,
+      "decode_median_tok_s": 99.41320316228718,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "tracked_peak_gib": 21.543610133230686,
+    "both_floors_passed": false,
+    "decision": "rejected_512_speed_floor"
+  },
+  "commands": {
+    "semantic": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --baseline-mode chain_lds32_direct --candidate-mode chain_wy8 --correctness-decode-steps 24 --performance-decode-steps 128 --performance-repetitions 2 --kl-threshold 0.05 --top1-threshold 0.99 --bulk-attention-mode bulk --graph-replay-decode --decode-repack --use-wmma-prefill --use-gemv-decode --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf8-semantic-clean.json",
+    "speed": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wy8 PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gpf8-speed-clean.json"
+  },
+  "raw_local_artifact_sha256": {
+    "gpf8-semantic-clean.json": "ed68d8b9c3376405e0df16c3a5b49671e45fbd9d09f1c4d31cb42b5032915016",
+    "gpf8-speed-clean.json": "75f8f00ab72e29276e252e9d3df30b364c8a19a25529edc82910efd27c87f54f",
+    "gpf8-wy8-integrated-tail-resource-trace.csv": "2435b25b0ca67eabf94a313e1eaa41e7d94f444b5aa788f21166cd8b6fc307fb",
+    "gpf8-512-family-trace.csv": "4f52da234dd1587009bcaa79afc218aa4a6ac5cec631ea5f259ab025589230e1"
+  },
+  "cleanup": {
+    "hip_kernel_bodies_removed": true,
+    "python_wrappers_removed": true,
+    "registry_entries_removed": true,
+    "runtime_mode_removed": true,
+    "candidate_specific_tests_removed": true,
+    "cpu_oracle_retained": true,
+    "production_default": "chain_lds32_direct"
+  },
+  "notes": [
+    "Thresholds and prompt suites were frozen before the HIP candidate was implemented and were not changed after observing results.",
+    "The semantic and speed measurements were collected from clean candidate commit 37d28fdb on the W7900 with cached builds.",
+    "Stable final ID 9707 in the repeated-token speed sweep does not override the failed multi-prompt semantic and exact free-running trajectory gates.",
+    "The candidate is not a retained performance path and no benchmark topline is updated from these diagnostic measurements."
+  ]
+}

@@ -139,12 +139,13 @@ uv run python scripts/gguf_eager_teacher_forced_oracle.py \
 ```
 
 For `SOL-G2` and any GGUF GDN prefill math/routing change, compare explicit
-`fused` and `chain` production bulk prefill on the exact 17-token greeting.
-The exact split chain keeps raw Q/K and their normalization scales separate so
-the recurrence can preserve the fused decode-order arithmetic. The all-layer
+`fused` and `chain` production bulk prefill on the 17-token greeting. The exact
+split chain keeps raw Q/K and their normalization scales separate so the
+recurrence can preserve the fused decode-order arithmetic. The all-layer
 diagnostic lane identifies the first hidden-output and resident Conv/GDN
-divergence. A mismatch exits nonzero unless `--allow-mismatch` is used to
-retain a pre-fix diagnostic artifact; such an artifact is not an acceptance:
+divergence. Candidates claiming the exact contract must pass byte-for-byte. A
+reassociated but algebraically equivalent candidate may use `--allow-mismatch`
+for diagnosis, but that comparator artifact alone is not an acceptance:
 
 ```bash
 uv run python scripts/gguf_gdn_prefill_compare.py \
@@ -154,22 +155,50 @@ uv run python scripts/gguf_gdn_prefill_compare.py \
   --require-cached-build --json /tmp/sol-g2-gfx1151-greeting.json
 ```
 
-Acceptance also runs repeated token `9707` at 512, 1024, 1025, 4095, and 4096
-rows. The 1024/1025 pair crosses the exact recurrent-segment threshold; the
-4095/4096 pair exercises the retained 1024-row layer-chunk tail/exact boundary.
-Greeting and 512 retain the all-layer bisect; longer cases may use
-`--skip-layer-bisect` because production hidden seed and all resident Conv/GDN
-states are still compared exactly. Single-order wall fields from this driver
-are correctness diagnostics only and cannot select the G3 default.
+Exact-contract acceptance also runs repeated token `9707` at 512, 1024, 1025,
+4095, and 4096 rows. The 1024/1025 pair crosses the exact recurrent-segment
+threshold; the 4095/4096 pair exercises the retained 1024-row layer-chunk
+boundary. Greeting and 512 retain the all-layer bisect; longer cases may use
+`--skip-layer-bisect`. Single-order wall fields from this driver are
+correctness diagnostics only and cannot select the default.
 
-Default selection uses `scripts/gguf_gdn_prefill_ab.py`, not comparator wall
-fields. Its contract gate requires unique positive contexts, a passing G2
-artifact that covers each context, balanced even repetitions, exact timed
-tokens, clean provenance, and a win at both 512 and 4096 before returning a
-candidate-promotion decision. `--baseline-mode` defaults to `fused`; use an
-explicit already-promoted exact mode for incremental A/Bs. Candidate
-correctness may remain qualified directly against the fused byte-exact oracle,
-and the emitted artifact records correctness and timing mode pairs separately.
+**Peer-aligned reassociated GDN contract (adopted 2026-07-15).** llama.cpp HIP,
+llama.cpp Vulkan, and hipEngine PARO all evaluate the same F32 recurrence with
+parallel/tree reductions that are not guaranteed bit-exact to a scalar decode-
+order contraction. GGUF candidates using the same class of algebraically
+equivalent reassociation are admitted by the repository product gate, not by
+state-byte or greedy-token identity: CPU-reference primitive numerics, the full
+18-prompt multi-category plus heldout semantic suite with KL <= 0.05 and top-1
+agreement >= 90%, deterministic execution, decode non-regression, and the
+predeclared speed floors at both 512 and 4096. Teacher-forced comparisons must
+keep token history matched. Exact resident state, exact sampled tokens, and
+free-running trajectory identity remain reported diagnostics, but are not
+promotion blockers. Changing this contract does not retroactively admit a
+candidate that failed KL, primitive, determinism, decode, or speed gates.
+
+Run the semantic gate before the speed gate:
+
+```bash
+python3 scripts/gguf_gdn_semantic_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --baseline-mode chain_lds32_direct \
+  --candidate-mode chain_k2 --correctness-decode-steps 24 \
+  --performance-decode-steps 128 --performance-repetitions 2 \
+  --kl-threshold 0.05 --top1-threshold 0.90 \
+  --bulk-attention-mode bulk --graph-replay-decode --decode-repack \
+  --use-wmma-prefill --use-gemv-decode --attn-aotriton-min-tokens 512 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/gdn-semantic.json
+```
+
+Exact default selection continues to use `scripts/gguf_gdn_prefill_ab.py`, not
+comparator wall fields. Its contract gate requires unique positive contexts, a
+passing exact G2 artifact that covers each context, balanced even repetitions,
+exact timed tokens, clean provenance, and a win at both 512 and 4096. For a
+reassociated candidate, use the semantic artifact above plus the same balanced
+two-shape speed protocol; do not mislabel the G2 byte comparator as failed
+product correctness. `--baseline-mode` defaults to `fused`; use the current
+promoted mode explicitly for incremental A/Bs.
 
 ### 2. CPU deterministic bundle
 

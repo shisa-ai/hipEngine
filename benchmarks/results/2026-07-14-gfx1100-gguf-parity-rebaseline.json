@@ -1,0 +1,853 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_parity_rebaseline",
+  "status": "diagnostic_retained",
+  "created_at": "2026-07-14T23:55:00+00:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "conclusion": "hipEngine already exceeds llama.cpp HIP decode at all six shapes, but needs 16.3-87.0% prefill uplift to match HIP, 5.9-20.1% decode uplift to match Vulkan, and a 1.31-1.40 GiB tracked-memory reduction at 4K-128K to reach the HIP whole-device rows. Exact GDN dominates prefill. Bulk-prefill scratch is 1.75-1.76 GiB at 4K+, large enough to close the HIP memory gap if its liveness is reduced to about 0.35-0.45 GiB. Current 4K decode is 39.3% dense Q8 T16 GEMV and 20.3% selected-MoE GEMV; launch count is already only about 708 kernels/token.",
+  "sources": {
+    "hipengine_topline": "benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json",
+    "llamacpp_hip": "benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json",
+    "llamacpp_vulkan": "benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json",
+    "prefill_profile": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json",
+    "raw_memory_components": "/tmp/gfx1100-gguf-opt/final-defaults/<shape>-128.json",
+    "raw_4k_decode_trace": "/tmp/gfx1100-gguf-parity-rebaseline/trace-4k/current-4k_kernel_trace.csv",
+    "source_grounded_vulkan_analysis": "/home/lhl/amd-gpu-tuning/docs/LLAMACPP-VULKAN.md and /home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md lines 326-710"
+  },
+  "protocol_notes": [
+    "Topline rates and memory are retained values copied without remeasurement.",
+    "hipEngine memory is owned/tracked allocation high-water; llama.cpp memory is absolute whole-device DRM VRAM. Cross-scope deltas are directional capacity evidence, not allocator-efficiency ratios.",
+    "The new 4K decode trace used a prebuilt cached-only child, 4 warmup decode steps, and 8 timed eager steps. rocprof did not emit marker CSV through the system roctx shim, so the final 8 state-update/embedding-delimited 708-dispatch cycles were selected from the trace tail. It is diagnostic family attribution only."
+  ],
+  "rows": [
+    {
+      "workload": "512/128",
+      "prefill": {
+        "hipengine_tok_s": 1290.246,
+        "llamacpp_hip_tok_s": 2412.32,
+        "hipengine_over_llamacpp_hip": 0.5348569012402998,
+        "uplift_to_llamacpp_hip_pct": 86.96589642595288,
+        "llamacpp_vulkan_tok_s": 2627.99,
+        "hipengine_over_llamacpp_vulkan": 0.49096305541497504,
+        "uplift_to_llamacpp_vulkan_pct": 103.68131348595537
+      },
+      "decode": {
+        "hipengine_tok_s": 89.727,
+        "llamacpp_hip_tok_s": 80.756,
+        "hipengine_over_llamacpp_hip": 1.1110877210362078,
+        "llamacpp_vulkan_tok_s": 107.786,
+        "hipengine_over_llamacpp_vulkan": 0.8324550498209415,
+        "uplift_to_llamacpp_vulkan_pct": 20.12660626121456
+      },
+      "memory_gib": {
+        "hipengine_tracked": 21.478,
+        "llamacpp_hip_whole_device": 21.606,
+        "hipengine_minus_llamacpp_hip": -0.1280000000000001,
+        "llamacpp_vulkan_whole_device": 21.26,
+        "hipengine_minus_llamacpp_vulkan": 0.21799999999999997,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 0.07973908260464668,
+        "hipengine_session_buffers": 0.3368547149002552,
+        "hipengine_bulk_prefill_scratch": 0.3300514854490757,
+        "hipengine_nonbulk_session_buffers": 0.006803229451179504,
+        "base_without_bulk_prefill_scratch": 21.14772481098771,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.4582751890122907,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 0
+      }
+    },
+    {
+      "workload": "1K/128",
+      "prefill": {
+        "hipengine_tok_s": 1395.244,
+        "llamacpp_hip_tok_s": 2389.67,
+        "hipengine_over_llamacpp_hip": 0.5838647177225307,
+        "uplift_to_llamacpp_hip_pct": 71.2725516110444,
+        "llamacpp_vulkan_tok_s": 2631.75,
+        "hipengine_over_llamacpp_vulkan": 0.5301582597131186,
+        "uplift_to_llamacpp_vulkan_pct": 88.62292186886309
+      },
+      "decode": {
+        "hipengine_tok_s": 95.117,
+        "llamacpp_hip_tok_s": 80.805,
+        "hipengine_over_llamacpp_hip": 1.1771177526143184,
+        "llamacpp_vulkan_tok_s": 107.555,
+        "hipengine_over_llamacpp_vulkan": 0.8843568406861606,
+        "uplift_to_llamacpp_vulkan_pct": 13.076526803831069
+      },
+      "memory_gib": {
+        "hipengine_tracked": 21.71,
+        "llamacpp_hip_whole_device": 21.618,
+        "hipengine_minus_llamacpp_hip": 0.0920000000000023,
+        "llamacpp_vulkan_whole_device": 21.22,
+        "hipengine_minus_llamacpp_vulkan": 0.490000000000002,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 0.08977961167693138,
+        "hipengine_session_buffers": 0.5594194121658802,
+        "hipengine_bulk_prefill_scratch": 0.5487061180174351,
+        "hipengine_nonbulk_session_buffers": 0.01071329414844513,
+        "base_without_bulk_prefill_scratch": 21.16167540475726,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.4563245952427373,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 0.0923815227746978
+      }
+    },
+    {
+      "workload": "4K/128",
+      "prefill": {
+        "hipengine_tok_s": 1401.632,
+        "llamacpp_hip_tok_s": 2255.08,
+        "hipengine_over_llamacpp_hip": 0.6215442467672988,
+        "uplift_to_llamacpp_hip_pct": 60.88959156183647,
+        "llamacpp_vulkan_tok_s": 2521.77,
+        "hipengine_over_llamacpp_vulkan": 0.555812782291803,
+        "uplift_to_llamacpp_vulkan_pct": 79.91669710737197
+      },
+      "decode": {
+        "hipengine_tok_s": 97.292,
+        "llamacpp_hip_tok_s": 79.768,
+        "hipengine_over_llamacpp_hip": 1.2196870925684484,
+        "llamacpp_vulkan_tok_s": 103.066,
+        "hipengine_over_llamacpp_vulkan": 0.9439776453922729,
+        "uplift_to_llamacpp_vulkan_pct": 5.934712000986719
+      },
+      "memory_gib": {
+        "hipengine_tracked": 22.995,
+        "llamacpp_hip_whole_device": 21.674,
+        "hipengine_minus_llamacpp_hip": 1.3210000000000015,
+        "llamacpp_vulkan_whole_device": 21.278,
+        "hipengine_minus_llamacpp_vulkan": 1.7170000000000023,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 0.15002278611063957,
+        "hipengine_session_buffers": 1.7836768813431263,
+        "hipengine_bulk_prefill_scratch": 1.7514582313597202,
+        "hipengine_nonbulk_session_buffers": 0.03221864998340607,
+        "base_without_bulk_prefill_scratch": 21.24342393502593,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.4305760649740691,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 1.3208821663856511
+      }
+    },
+    {
+      "workload": "32K/128",
+      "prefill": {
+        "hipengine_tok_s": 1221.716,
+        "llamacpp_hip_tok_s": 1667.64,
+        "hipengine_over_llamacpp_hip": 0.7326017605718259,
+        "uplift_to_llamacpp_hip_pct": 36.499808466124705,
+        "llamacpp_vulkan_tok_s": 1943.92,
+        "hipengine_over_llamacpp_vulkan": 0.6284805959092966,
+        "uplift_to_llamacpp_vulkan_pct": 59.1139020852637
+      },
+      "decode": {
+        "hipengine_tok_s": 85.898,
+        "llamacpp_hip_tok_s": 74.304,
+        "hipengine_over_llamacpp_hip": 1.1560346683893195,
+        "llamacpp_vulkan_tok_s": 91.835,
+        "hipengine_over_llamacpp_vulkan": 0.9353514455273044,
+        "uplift_to_llamacpp_vulkan_pct": 6.911685953107161
+      },
+      "memory_gib": {
+        "hipengine_tracked": 23.559,
+        "llamacpp_hip_whole_device": 22.216,
+        "hipengine_minus_llamacpp_hip": 1.343,
+        "llamacpp_vulkan_whole_device": 21.855,
+        "hipengine_minus_llamacpp_vulkan": 1.7040000000000006,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 0.7122924141585827,
+        "hipengine_session_buffers": 1.7853858657181263,
+        "hipengine_bulk_prefill_scratch": 1.7531672157347202,
+        "hipengine_nonbulk_session_buffers": 0.03221864998340607,
+        "base_without_bulk_prefill_scratch": 21.805693563073874,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.41030643692612756,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 1.3428607788085927
+      }
+    },
+    {
+      "workload": "64K/128",
+      "prefill": {
+        "hipengine_tok_s": 1021.693,
+        "llamacpp_hip_tok_s": 1291.82,
+        "hipengine_over_llamacpp_hip": 0.7908942422318899,
+        "uplift_to_llamacpp_hip_pct": 26.439155401867296,
+        "llamacpp_vulkan_tok_s": 1414.47,
+        "hipengine_over_llamacpp_vulkan": 0.7223150720764667,
+        "uplift_to_llamacpp_vulkan_pct": 38.44373994928028
+      },
+      "decode": {
+        "hipengine_tok_s": 75.012,
+        "llamacpp_hip_tok_s": 69.01,
+        "hipengine_over_llamacpp_hip": 1.0869729024779016,
+        "llamacpp_vulkan_tok_s": 83.746,
+        "hipengine_over_llamacpp_vulkan": 0.8957084517469491,
+        "uplift_to_llamacpp_vulkan_pct": 11.643470378072829
+      },
+      "memory_gib": {
+        "hipengine_tracked": 24.203,
+        "llamacpp_hip_whole_device": 22.895,
+        "hipengine_minus_llamacpp_hip": 1.3079999999999998,
+        "llamacpp_vulkan_whole_device": 22.512,
+        "hipengine_minus_llamacpp_vulkan": 1.690999999999999,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 1.3548862747848034,
+        "hipengine_session_buffers": 1.7873389907181263,
+        "hipengine_bulk_prefill_scratch": 1.7551203407347202,
+        "hipengine_nonbulk_session_buffers": 0.03221864998340607,
+        "base_without_bulk_prefill_scratch": 22.448287423700094,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.44671257629990535,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 1.3084077644348149
+      }
+    },
+    {
+      "workload": "128K/128",
+      "prefill": {
+        "hipengine_tok_s": 766.892,
+        "llamacpp_hip_tok_s": 891.949,
+        "hipengine_over_llamacpp_hip": 0.8597935532188501,
+        "uplift_to_llamacpp_hip_pct": 16.306989771701865,
+        "llamacpp_vulkan_tok_s": 1079.28,
+        "hipengine_over_llamacpp_vulkan": 0.7105588911125936,
+        "uplift_to_llamacpp_vulkan_pct": 40.73428853084917
+      },
+      "decode": {
+        "hipengine_tok_s": 61.264,
+        "llamacpp_hip_tok_s": 60.933,
+        "hipengine_over_llamacpp_hip": 1.005432196018578,
+        "llamacpp_vulkan_tok_s": 70.833,
+        "hipengine_over_llamacpp_vulkan": 0.8649075995651745,
+        "uplift_to_llamacpp_vulkan_pct": 15.619287020109685
+      },
+      "memory_gib": {
+        "hipengine_tracked": 25.493,
+        "llamacpp_hip_whole_device": 24.089,
+        "hipengine_minus_llamacpp_hip": 1.404,
+        "llamacpp_vulkan_whole_device": 23.824,
+        "hipengine_minus_llamacpp_vulkan": 1.668999999999997,
+        "hipengine_weights": 21.061182498931885,
+        "hipengine_decode_scratch": 2.640073996037245,
+        "hipengine_session_buffers": 1.7912452407181263,
+        "hipengine_bulk_prefill_scratch": 1.7590265907347202,
+        "hipengine_nonbulk_session_buffers": 0.03221864998340607,
+        "base_without_bulk_prefill_scratch": 23.733475144952536,
+        "max_bulk_scratch_for_llamacpp_hip_total": 0.355524855047463,
+        "bulk_scratch_reduction_for_llamacpp_hip_total": 1.4035017356872572
+      }
+    }
+  ],
+  "prefill_attribution": {
+    "512": {
+      "total_gpu_ms": 358.274,
+      "exact_gdn_ms": 211.487,
+      "exact_gdn_share_pct": 59.0
+    },
+    "4K": {
+      "total_gpu_ms": 2701.741,
+      "exact_gdn_ms": 1652.114,
+      "exact_gdn_share_pct": 61.1
+    },
+    "source": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json"
+  },
+  "decode_4k_profile": {
+    "workload": "4K prompt + 4 warmup + 8 timed eager decode steps",
+    "generated_token_exact": true,
+    "expected_token_id": 9707,
+    "selection": "final 8 state-update/embedding-delimited decode cycles from cached-only rocprof trace",
+    "summary": {
+      "total_kernels": 5664,
+      "total_gpu_us": 71317.649,
+      "gpu_us_per_token": 8914.706125,
+      "buckets": [
+        {
+          "name": "dense_q8_0_gemv",
+          "calls": 1280,
+          "calls_per_token": 160.0,
+          "total_us": 28013.668,
+          "gpu_us_per_token": 3501.7085,
+          "share_pct": 39.280133869808296,
+          "us_per_call": 21.885678125,
+          "amdahl_speedup_if_2x": 1.2444012356132084,
+          "amdahl_speedup_if_4x": 1.4176374019582567,
+          "amdahl_speedup_if_infinite": 1.6469074517652313
+        },
+        {
+          "name": "moe_selected_gemv",
+          "calls": 640,
+          "calls_per_token": 80.0,
+          "total_us": 14478.391,
+          "gpu_us_per_token": 1809.798875,
+          "share_pct": 20.301273531885496,
+          "us_per_call": 22.622485937500002,
+          "amdahl_speedup_if_2x": 1.112973942169188,
+          "amdahl_speedup_if_4x": 1.17960633087238,
+          "amdahl_speedup_if_infinite": 1.2547251936328936
+        },
+        {
+          "name": "attn_core",
+          "calls": 240,
+          "calls_per_token": 30.0,
+          "total_us": 6445.921,
+          "gpu_us_per_token": 805.740125,
+          "share_pct": 9.038325141649018,
+          "us_per_call": 26.858004166666667,
+          "amdahl_speedup_if_2x": 1.0473305711648861,
+          "amdahl_speedup_if_4x": 1.0727167186610613,
+          "amdahl_speedup_if_infinite": 1.0993641020322442
+        },
+        {
+          "name": "lm_head",
+          "calls": 24,
+          "calls_per_token": 3.0,
+          "total_us": 5130.917,
+          "gpu_us_per_token": 641.364625,
+          "share_pct": 7.194456171711437,
+          "us_per_call": 213.78820833333333,
+          "amdahl_speedup_if_2x": 1.0373145710899203,
+          "amdahl_speedup_if_4x": 1.0570359934510372,
+          "amdahl_speedup_if_infinite": 1.0775218362495975
+        },
+        {
+          "name": "moe_router",
+          "calls": 960,
+          "calls_per_token": 120.0,
+          "total_us": 4742.551,
+          "gpu_us_per_token": 592.818875,
+          "share_pct": 6.649898119888949,
+          "us_per_call": 4.940157291666666,
+          "amdahl_speedup_if_2x": 1.0343930417166902,
+          "amdahl_speedup_if_4x": 1.052492246588394,
+          "amdahl_speedup_if_infinite": 1.0712361099340777
+        },
+        {
+          "name": "rmsnorm_rope",
+          "calls": 728,
+          "calls_per_token": 91.0,
+          "total_us": 4602.349,
+          "gpu_us_per_token": 575.293625,
+          "share_pct": 6.4533100355004684,
+          "us_per_call": 6.321907967032968,
+          "amdahl_speedup_if_2x": 1.0333423942134279,
+          "amdahl_speedup_if_4x": 1.0508615136391664,
+          "amdahl_speedup_if_infinite": 1.0689849105077847
+        },
+        {
+          "name": "gdn_linear_attn",
+          "calls": 480,
+          "calls_per_token": 60.0,
+          "total_us": 4354.912,
+          "gpu_us_per_token": 544.364,
+          "share_pct": 6.106359451080615,
+          "us_per_call": 9.072733333333334,
+          "amdahl_speedup_if_2x": 1.0314933457012478,
+          "amdahl_speedup_if_4x": 1.0479957925960888,
+          "amdahl_speedup_if_infinite": 1.065034856624812
+        },
+        {
+          "name": "moe_combine_silu",
+          "calls": 640,
+          "calls_per_token": 80.0,
+          "total_us": 1509.686,
+          "gpu_us_per_token": 188.71075,
+          "share_pct": 2.1168476824018696,
+          "us_per_call": 2.358884375,
+          "amdahl_speedup_if_2x": 1.0106974629098509,
+          "amdahl_speedup_if_4x": 1.0161324826823452,
+          "amdahl_speedup_if_infinite": 1.0216262720629736
+        },
+        {
+          "name": "dense_gemv_bf16",
+          "calls": 480,
+          "calls_per_token": 60.0,
+          "total_us": 1506.45,
+          "gpu_us_per_token": 188.30625,
+          "share_pct": 2.112310236138042,
+          "us_per_call": 3.1384375,
+          "amdahl_speedup_if_2x": 1.010674288222065,
+          "amdahl_speedup_if_4x": 1.016097346189516,
+          "amdahl_speedup_if_infinite": 1.0215789160131743
+        },
+        {
+          "name": "other",
+          "calls": 176,
+          "calls_per_token": 22.0,
+          "total_us": 486.844,
+          "gpu_us_per_token": 60.8555,
+          "share_pct": 0.6826416838277998,
+          "us_per_call": 2.766159090909091,
+          "amdahl_speedup_if_2x": 1.0034248983108884,
+          "amdahl_speedup_if_4x": 1.0051461600036848,
+          "amdahl_speedup_if_infinite": 1.006873337102409
+        },
+        {
+          "name": "memcpy_fill",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 24.36,
+          "gpu_us_per_token": 3.045,
+          "share_pct": 0.03415704295019596,
+          "us_per_call": 3.045,
+          "amdahl_speedup_if_2x": 1.000170814387323,
+          "amdahl_speedup_if_4x": 1.0002562434660196,
+          "amdahl_speedup_if_infinite": 1.000341687139725
+        },
+        {
+          "name": "embedding",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 21.6,
+          "gpu_us_per_token": 2.7,
+          "share_pct": 0.030287033157809225,
+          "us_per_call": 2.7,
+          "amdahl_speedup_if_2x": 1.0001514581018718,
+          "amdahl_speedup_if_4x": 1.000227204358778,
+          "amdahl_speedup_if_infinite": 1.0003029620898067
+        }
+      ],
+      "top_kernels": [
+        {
+          "name": "q8_0_t16_dual_split_gemv",
+          "calls": 240,
+          "calls_per_token": 30.0,
+          "total_us": 11960.403,
+          "gpu_us_per_token": 1495.050375,
+          "share_pct": 16.770607511192637,
+          "us_per_call": 49.8350125,
+          "vgpr_counts": [
+            64
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "q8_0_t16_gemv",
+          "calls": 640,
+          "calls_per_token": 80.0,
+          "total_us": 9832.426,
+          "gpu_us_per_token": 1229.05325,
+          "share_pct": 13.786806124245626,
+          "us_per_call": 15.363165624999999,
+          "vgpr_counts": [
+            56,
+            64
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "q4_k_t16_selected_dual_silu_direct_gemv",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 7757.021,
+          "gpu_us_per_token": 969.627625,
+          "share_pct": 10.876720010778818,
+          "us_per_call": 24.240690625,
+          "vgpr_counts": [
+            200
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qk_t16_selected_direct_gemv",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 6721.37,
+          "gpu_us_per_token": 840.17125,
+          "share_pct": 9.424553521106676,
+          "us_per_call": 21.00428125,
+          "vgpr_counts": [
+            104,
+            128
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 5661.797,
+          "gpu_us_per_token": 707.724625,
+          "share_pct": 7.938844142212259,
+          "us_per_call": 70.77246249999999,
+          "vgpr_counts": [
+            80
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "q6_k_t16_gemv",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 5062.955,
+          "gpu_us_per_token": 632.869375,
+          "share_pct": 7.099161387106297,
+          "us_per_call": 632.869375,
+          "vgpr_counts": [
+            72
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+          "calls": 240,
+          "calls_per_token": 30.0,
+          "total_us": 3622.825,
+          "gpu_us_per_token": 452.853125,
+          "share_pct": 5.079843560182417,
+          "us_per_call": 15.095104166666665,
+          "vgpr_counts": [
+            56
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "q8_0_t16_dual_gemv",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 3207.901,
+          "gpu_us_per_token": 400.987625,
+          "share_pct": 4.4980464793504344,
+          "us_per_call": 10.024690625,
+          "vgpr_counts": [
+            64
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "q8_0_t16_triple_split_gemv",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 3012.938,
+          "gpu_us_per_token": 376.61725,
+          "share_pct": 4.2246737550196025,
+          "us_per_call": 37.661725,
+          "vgpr_counts": [
+            64
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_router_logits",
+          "calls": 640,
+          "calls_per_token": 80.0,
+          "total_us": 2721.057,
+          "gpu_us_per_token": 340.132125,
+          "share_pct": 3.815404795522634,
+          "us_per_call": 4.2516515625,
+          "vgpr_counts": [
+            24
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_router_select",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 2021.494,
+          "gpu_us_per_token": 252.68675,
+          "share_pct": 2.8344933243663153,
+          "us_per_call": 6.3171687499999996,
+          "vgpr_counts": [
+            40
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 1988.37,
+          "gpu_us_per_token": 248.54625,
+          "share_pct": 2.78804759814783,
+          "us_per_call": 6.21365625,
+          "vgpr_counts": [
+            24
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight",
+          "calls": 328,
+          "calls_per_token": 41.0,
+          "total_us": 1739.693,
+          "gpu_us_per_token": 217.461625,
+          "share_pct": 2.4393583136763244,
+          "us_per_call": 5.303942073170732,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "dense_gemv_bf16_f32w_bf16_out",
+          "calls": 480,
+          "calls_per_token": 60.0,
+          "total_us": 1506.45,
+          "gpu_us_per_token": 188.30625,
+          "share_pct": 2.112310236138042,
+          "us_per_call": 3.1384375,
+          "vgpr_counts": [
+            24
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 874.286,
+          "gpu_us_per_token": 109.28575,
+          "share_pct": 1.2259041236763146,
+          "us_per_call": 10.928575,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "weighted_sum_shared_gate_combine_residual_out",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 869.204,
+          "gpu_us_per_token": 108.6505,
+          "share_pct": 1.2187782578194635,
+          "us_per_call": 2.7162625,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_linear_attn_conv_decode_lowp",
+          "calls": 240,
+          "calls_per_token": 30.0,
+          "total_us": 732.087,
+          "gpu_us_per_token": 91.510875,
+          "share_pct": 1.0265158908981984,
+          "us_per_call": 3.0503625000000003,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "silu_mul_dual_out",
+          "calls": 320,
+          "calls_per_token": 40.0,
+          "total_us": 640.482,
+          "gpu_us_per_token": 80.06025,
+          "share_pct": 0.898069424582406,
+          "us_per_call": 2.00150625,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 555.802,
+          "gpu_us_per_token": 69.47525,
+          "share_pct": 0.7793330371841057,
+          "us_per_call": 6.947525,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_split_qgate_bf16",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 281.481,
+          "gpu_us_per_token": 35.185125,
+          "share_pct": 0.39468631390246756,
+          "us_per_call": 3.5185125,
+          "vgpr_counts": [
+            24
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 228.322,
+          "gpu_us_per_token": 28.54025,
+          "share_pct": 0.32014796225265363,
+          "us_per_call": 2.854025,
+          "vgpr_counts": [
+            8
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "bf16_to_f32",
+          "calls": 80,
+          "calls_per_token": 10.0,
+          "total_us": 173.483,
+          "gpu_us_per_token": 21.685375,
+          "share_pct": 0.24325395246834344,
+          "us_per_call": 2.1685375,
+          "vgpr_counts": [
+            8
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "argmax_stage1",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 43.002,
+          "gpu_us_per_token": 5.37525,
+          "share_pct": 0.06029643517833853,
+          "us_per_call": 5.37525,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "argmax_stage2",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 24.96,
+          "gpu_us_per_token": 3.12,
+          "share_pct": 0.03499834942680177,
+          "us_per_call": 3.12,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 24.36,
+          "gpu_us_per_token": 3.045,
+          "share_pct": 0.03415704295019596,
+          "us_per_call": 3.045,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 21.6,
+          "gpu_us_per_token": 2.7,
+          "share_pct": 0.030287033157809225,
+          "us_per_call": 2.7,
+          "vgpr_counts": [
+            16
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "set_i64_scalar",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 18.56,
+          "gpu_us_per_token": 2.32,
+          "share_pct": 0.02602441367633978,
+          "us_per_call": 2.32,
+          "vgpr_counts": [
+            8
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        },
+        {
+          "name": "set_decode_position_i64",
+          "calls": 8,
+          "calls_per_token": 1.0,
+          "total_us": 13.32,
+          "gpu_us_per_token": 1.665,
+          "share_pct": 0.018677003780649022,
+          "us_per_call": 1.665,
+          "vgpr_counts": [
+            8
+          ],
+          "scratch_sizes": [
+            0
+          ]
+        }
+      ]
+    }
+  },
+  "vulkan_decode_attribution": {
+    "established_source_factors": [
+      "smaller one-subgroup workgroups and no cross-wave LDS reduction",
+      "RADV/ACO register allocation, waitcnt scheduling, and packed-dot scheduling",
+      "q8_1 activation load coalescing and block-shaped weight unpack",
+      "backend graph-level MoE/post-op fusion"
+    ],
+    "ruled_out": [
+      "Vulkan cooperative-matrix/WMMA decode",
+      "a wider-than-dp4a Vulkan dot instruction",
+      "generic attention as the main short-context explanation",
+      "generic launch-count reduction as hipEngine already uses about 708 kernels/token versus the roughly 1600/token llama.cpp HIP trace"
+    ],
+    "first_hipengine_families": [
+      "dense Q8 T16 GEMV",
+      "selected-MoE T16 GEMV",
+      "short-context full attention only after matched family evidence"
+    ]
+  },
+  "next_gates": {
+    "memory": "Reduce/alias bulk-prefill scratch from about 1.75 GiB to <=0.35-0.45 GiB at 4K+ while preserving exact state/tokens and throughput.",
+    "prefill": "Exact chunked/prefix GDN or a predeclared quality-safe register-resident alternative; do not rerun rejected LDS16/two-lane/tree defaults unchanged.",
+    "decode": "At 4K, a 5.93% throughput uplift closes Vulkan; profile-directed dense-Q8/selected-GEMV work. At 512, the required uplift is 20.13% and likely needs multiple family wins."
+  }
+}

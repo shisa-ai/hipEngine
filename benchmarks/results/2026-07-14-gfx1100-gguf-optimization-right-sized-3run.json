@@ -1,0 +1,635 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_optimization_right_sized_model_sweep_rollup",
+  "status": "accepted_topline",
+  "created_at": "2026-07-14T07:47:54.960370+00:00",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV six-shape prefill and graph-decode sweep",
+  "correctness_claim": true,
+  "candidate": "promoted gfx1100 GPF-2E direct GDN + GPF-3A shared-X + GPF-5A through 4K + LCP-D2 from 32K",
+  "conclusion": "The clean defaults-only right-sized sweep replaces the July 12 gfx1100 hipEngine GGUF column. Prefill medians are 1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s and graph-decode medians are 89.727/95.117/97.292/85.898/75.012/61.264 tok/s. All 18 measured final IDs are 9707.",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-14T07:20:54.794648+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "ef3e97dd42f1f91ac19b6d297a032d1d4734163c",
+    "git_branch": "gfx1100-gguf-optimization",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "six independent commands; see protocol.executed_command_template and components[].command"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "six independent right-sized resident processes; one warmup plus three measurements per shape",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_host_reported": "7.2.4"
+  },
+  "software": {
+    "hipengine_commit": "ef3e97dd42f1f91ac19b6d297a032d1d4734163c",
+    "hipengine_dirty": false,
+    "hipcc": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "warmups": 1,
+    "measured_repetitions": 3,
+    "decode": "warmup eager; each measured repetition captures, replays, and closes a fresh state-bound graph; capture excluded from decode throughput",
+    "graph_steps_per_replay": 1,
+    "decode_tokens": 128,
+    "prompt": "repeated token 9707",
+    "prefill": "production bulk attention, automatic chunk policy, WMMA requested and effective",
+    "build": "TheRock HIP 7.15 compiler boundary; kernels prebuilt before retained runs; cached builds required",
+    "selectors": "GDN, Q4T16, and LCP-D2 selectors absent; backend-package automatic defaults only",
+    "executed_command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads <one-shape>/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <component.json>"
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          1292.9007610059882,
+          1290.2463266636414,
+          1281.8548278596859
+        ],
+        "median": 1290.2463266636414,
+        "stdev": 5.765933184478145,
+        "stdev_over_median_percent": 0.44688623135923755
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          89.72682093873203,
+          89.75064585685213,
+          89.70726842529693
+        ],
+        "median": 89.72682093873203,
+        "stdev": 0.02172375456109926,
+        "stdev_over_median_percent": 0.024210993250204243
+      },
+      "tracked_peak_allocated_gib": 21.477776296436787,
+      "hip_used_peak_sampled_gib": 21.95886993408203,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "390a618659afd7eaca83828e55077084bcc40652d2175168befff33a345ed6a5"
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          1399.5661924202632,
+          1395.2443529461937,
+          1394.54479432158
+        ],
+        "median": 1395.2443529461937,
+        "stdev": 2.7197462373769477,
+        "stdev_over_median_percent": 0.19492974342694452
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          95.17496881031478,
+          95.11746103042418,
+          95.0802093866699
+        ],
+        "median": 95.11746103042418,
+        "stdev": 0.04773918390562347,
+        "stdev_over_median_percent": 0.05018971636590853
+      },
+      "tracked_peak_allocated_gib": 21.710381522774696,
+      "hip_used_peak_sampled_gib": 22.230972290039062,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "76378c21789d178837d4b7b65e4e005ee22b51c9c0578c3ea9647abde6b434c9"
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          1403.920617024918,
+          1401.6316147967812,
+          1401.236498231542
+        ],
+        "median": 1401.6316147967812,
+        "stdev": 1.449145840227757,
+        "stdev_over_median_percent": 0.10338992249670857
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          97.36603789086449,
+          97.29204534188668,
+          97.22198721614967
+        ],
+        "median": 97.29204534188668,
+        "stdev": 0.07203429180120957,
+        "stdev_over_median_percent": 0.074039240873269
+      },
+      "tracked_peak_allocated_gib": 22.99488216638565,
+      "hip_used_peak_sampled_gib": 23.516845703125,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "52aeab38e9bdc86e33e968b4c0aaa86013b4de422c758da76ea1bcabf8fcbb81"
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          1226.5081903519424,
+          1221.4597139768414,
+          1221.7156003944303
+        ],
+        "median": 1221.7156003944303,
+        "stdev": 2.843750752952431,
+        "stdev_over_median_percent": 0.23276700011314644
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          85.92476679246347,
+          85.8958442014352,
+          85.89842073193368
+        ],
+        "median": 85.89842073193368,
+        "stdev": 0.016006611585206026,
+        "stdev_over_median_percent": 0.018634349093749277
+      },
+      "tracked_peak_allocated_gib": 23.558860778808594,
+      "hip_used_peak_sampled_gib": 24.089111328125,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "2136b289948b70ede0b89f4636733deaa3d6108e6d2f9211614351da10417ec3"
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          1023.8338977474361,
+          1021.6933599851532,
+          1019.6421292152895
+        ],
+        "median": 1021.6933599851532,
+        "stdev": 2.0960428196202443,
+        "stdev_over_median_percent": 0.2051538065834844
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          75.09992844874319,
+          75.01197057641755,
+          74.93579749724704
+        ],
+        "median": 75.01197057641755,
+        "stdev": 0.08213595896784047,
+        "stdev_over_median_percent": 0.1094971353727675
+      },
+      "tracked_peak_allocated_gib": 24.203407764434814,
+      "hip_used_peak_sampled_gib": 24.733642578125,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "7788d03f2b422a31bc2dac2fb048e8eb313d61a0cdb79d590c7cce6c355569a9"
+    },
+    "128K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "samples": [
+          767.1744109979508,
+          766.8921084692363,
+          766.813691265265
+        ],
+        "median": 766.8921084692363,
+        "stdev": 0.1897202770511318,
+        "stdev_over_median_percent": 0.024738848523272083
+      },
+      "decode_tok_s": {
+        "count": 3,
+        "samples": [
+          61.331925453820084,
+          61.264171182532095,
+          61.252060244428954
+        ],
+        "median": 61.264171182532095,
+        "stdev": 0.04304216492888786,
+        "stdev_over_median_percent": 0.07025666731154641
+      },
+      "tracked_peak_allocated_gib": 25.492501735687256,
+      "hip_used_peak_sampled_gib": 26.022705078125,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "source_sha256": "883d01ca2460e7be8dca535fe7da23901880f5759e1c59e213a14422254af8e5"
+    }
+  },
+  "components": [
+    {
+      "workload": "512/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/512-128.json",
+      "source_sha256": "390a618659afd7eaca83828e55077084bcc40652d2175168befff33a345ed6a5",
+      "collected_at": "2026-07-14T07:20:54.794648+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "512/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/512-128.json"
+      ],
+      "clean": true
+    },
+    {
+      "workload": "1K/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/1K-128.json",
+      "source_sha256": "76378c21789d178837d4b7b65e4e005ee22b51c9c0578c3ea9647abde6b434c9",
+      "collected_at": "2026-07-14T07:23:08.839718+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "1K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/1K-128.json"
+      ],
+      "clean": true
+    },
+    {
+      "workload": "4K/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/4K-128.json",
+      "source_sha256": "52aeab38e9bdc86e33e968b4c0aaa86013b4de422c758da76ea1bcabf8fcbb81",
+      "collected_at": "2026-07-14T07:24:40.798248+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "4K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/4K-128.json"
+      ],
+      "clean": true
+    },
+    {
+      "workload": "32K/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/32K-128.json",
+      "source_sha256": "2136b289948b70ede0b89f4636733deaa3d6108e6d2f9211614351da10417ec3",
+      "collected_at": "2026-07-14T07:27:48.822591+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "32K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/32K-128.json"
+      ],
+      "clean": true
+    },
+    {
+      "workload": "64K/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/64K-128.json",
+      "source_sha256": "7788d03f2b422a31bc2dac2fb048e8eb313d61a0cdb79d590c7cce6c355569a9",
+      "collected_at": "2026-07-14T07:33:26.280418+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "64K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/64K-128.json"
+      ],
+      "clean": true
+    },
+    {
+      "workload": "128K/128",
+      "local_source": "/tmp/gfx1100-gguf-opt/final-defaults/128K-128.json",
+      "source_sha256": "883d01ca2460e7be8dca535fe7da23901880f5759e1c59e213a14422254af8e5",
+      "collected_at": "2026-07-14T07:46:11.765893+00:00",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--workloads",
+        "128K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/gfx1100-gguf-opt/final-defaults/128K-128.json"
+      ],
+      "clean": true
+    }
+  ],
+  "correctness": {
+    "passed": true,
+    "finite_final_logits_all": true,
+    "all_measured_final_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "all_final_token_ids_exact": true,
+    "effective_use_wmma_prefill_all": true,
+    "effective_use_gemv_decode_all": true,
+    "prefill_schedule_transfer_gate": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json",
+    "prefill_schedule_result": "GPF-2E passes 250/250 natural logits at KL=0/top-1=100%; GPF-3A full logits and trajectories are byte-exact; GPF-5A primitive bytes are exact.",
+    "decode_split_reduction_gate": "benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json",
+    "decode_split_reduction_result": "64K teacher-forced KL max 1.904e-6, top-1 100%, all generated IDs exact; 8,448-token/33-split NumPy attention oracle exact."
+  },
+  "profiler": {
+    "prefill_trace": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json",
+    "prefill_result": "Expected direct LDS32 GDN route traced; exact GDN is 59.0%/61.1% of 512/4K kernel time.",
+    "decode_trace": "benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json",
+    "decode_result": "Expected prepare and coalesced output kernels traced at 6.280 + 18.720 us for 513 splits."
+  },
+  "variance_gate": {
+    "threshold": "sample stdev <= 5% of median",
+    "passed": true,
+    "largest_prefill_stdev_over_median_percent": 0.44688623135923755,
+    "largest_decode_stdev_over_median_percent": 0.1094971353727675
+  },
+  "descriptive_comparisons": {
+    "warning": "These compare separately retained revisions/protocol runs and are not same-session causal A/B claims.",
+    "versus_2026_07_12_public_gguf_prefill_percent": {
+      "512/128": 100.12537658478209,
+      "1K/128": 106.34306593483562,
+      "4K/128": 106.84686870726297,
+      "32K/128": 94.42800675952637,
+      "64K/128": 78.42681606133878,
+      "128K/128": 58.37940994218158
+    },
+    "versus_2026_07_12_public_gguf_decode_percent": {
+      "512/128": -0.16265069739295202,
+      "1K/128": 0.3867621771001639,
+      "4K/128": 0.7675170033315748,
+      "32K/128": 2.659664087499758,
+      "64K/128": 4.700980649346143,
+      "128K/128": 7.963998911854953
+    },
+    "versus_llamacpp_hip_prefill_percent": {
+      "512/128": -46.51429633449785,
+      "1K/128": -41.61351345808444,
+      "4K/128": -37.84559240484678,
+      "32K/128": -26.739847905157575,
+      "64K/128": -20.910547910300725,
+      "128K/128": -14.020632517191412
+    },
+    "versus_llamacpp_hip_decode_percent": {
+      "512/128": 11.108550372395909,
+      "1K/128": 17.71234580833385,
+      "4K/128": 21.968766099045567,
+      "32K/128": 15.604033069462853,
+      "64K/128": 8.697247611096293,
+      "128K/128": 0.543500537528252
+    },
+    "versus_hipengine_paro_prefill_percent": {
+      "512/128": -55.77913507259606,
+      "1K/128": -53.427833697182606,
+      "4K/128": -52.37466812196169,
+      "32K/128": -42.067706447514475,
+      "64K/128": -35.50449047552551,
+      "128K/128": -27.394967444394304
+    }
+  },
+  "acceptance": {
+    "decision": "replace_gfx1100_gguf_public_column",
+    "reason": "Clean automatic-route provenance, linked exactness/logit gates, expected profiler kernels, stable finite IDs, and six-shape variance below threshold."
+  }
+}

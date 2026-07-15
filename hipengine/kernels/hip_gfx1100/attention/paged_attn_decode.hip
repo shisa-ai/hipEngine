@@ -2272,6 +2272,94 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel(
 }
 
 
+__global__ void qwen35_paged_full_attn_decode_split_k_prepare_weights_kernel(
+    float* __restrict__ partial_m,           // [num_q_heads, num_splits], overwritten with normalized weights
+    const float* __restrict__ partial_l,     // [num_q_heads, num_splits]
+    int64_t num_splits) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t base = q_head * num_splits;
+  __shared__ float reduction[256];
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t s = threadIdx.x; s < num_splits; s += blockDim.x) {
+    local_max = fmaxf(local_max, partial_m[base + s]);
+  }
+  reduction[threadIdx.x] = local_max;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      reduction[threadIdx.x] = fmaxf(reduction[threadIdx.x], reduction[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+  const float m_global = reduction[0];
+
+  float local_l = 0.0f;
+  for (int64_t s = threadIdx.x; s < num_splits; s += blockDim.x) {
+    const float li = partial_l[base + s];
+    const float weight = (li > 0.0f) ? expf(partial_m[base + s] - m_global) : 0.0f;
+    partial_m[base + s] = weight;
+    local_l += li * weight;
+  }
+  reduction[threadIdx.x] = local_l;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      reduction[threadIdx.x] += reduction[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_l = 1.0f / fmaxf(reduction[0], 1.0e-20f);
+  for (int64_t s = threadIdx.x; s < num_splits; s += blockDim.x) {
+    partial_m[base + s] *= inv_l;
+  }
+}
+
+
+template <typename scalar_t>
+__global__ void qwen35_paged_full_attn_decode_split_k_parallel_output_gate_kernel(
+    const float* __restrict__ partial_out,   // [num_q_heads, num_splits, head_dim]
+    const float* __restrict__ split_weights, // [num_q_heads, num_splits]
+    const scalar_t* __restrict__ gate,       // [1, num_q_heads, head_dim] view-compatible
+    scalar_t* __restrict__ out,              // [1, num_q_heads * head_dim]
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2) {
+  constexpr int dims_per_block = 32;
+  constexpr int split_workers = 8;
+  const int lane = threadIdx.x % dims_per_block;
+  const int worker = threadIdx.x / dims_per_block;
+  const int64_t q_head = blockIdx.x;
+  const int64_t dim = static_cast<int64_t>(blockIdx.y) * dims_per_block + lane;
+  const int64_t splits_per_worker = (num_splits + split_workers - 1) / split_workers;
+  const int64_t split_begin = static_cast<int64_t>(worker) * splits_per_worker;
+  const int64_t split_end = min(num_splits, split_begin + splits_per_worker);
+  const int64_t split_base = q_head * num_splits;
+
+  float acc = 0.0f;
+  if (dim < head_dim) {
+    for (int64_t s = split_begin; s < split_end; ++s) {
+      acc += partial_out[(split_base + s) * head_dim + dim] * split_weights[split_base + s];
+    }
+  }
+  __shared__ float partial[split_workers * dims_per_block];
+  partial[worker * dims_per_block + lane] = acc;
+  __syncthreads();
+
+  if (worker == 0 && dim < head_dim) {
+    float total = partial[lane];
+#pragma unroll
+    for (int split_worker = 1; split_worker < split_workers; ++split_worker) {
+      total += partial[split_worker * dims_per_block + lane];
+    }
+    const int64_t gate_idx = q_head * gate_stride1 + dim * gate_stride2;
+    const float gate_v = scalar_to_float_qwen35(gate[gate_idx]);
+    out[q_head * head_dim + dim] = static_cast<scalar_t>(total * sigmoid_f32(gate_v));
+  }
+}
+
+
 template <typename scalar_t>
 __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel(
     const float* __restrict__ partial_out,   // [rows, num_q_heads, num_splits, head_dim]
@@ -4277,6 +4365,56 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16(
       partial_out,
       partial_m,
       partial_l,
+      reinterpret_cast<const hip_bfloat16*>(gate),
+      reinterpret_cast<hip_bfloat16*>(out),
+      num_splits,
+      head_dim,
+      gate_stride1,
+      gate_stride2);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_parallel_reduce_gate_bf16(
+    const float* partial_out,
+    float* partial_m,
+    const float* partial_l,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t num_q_heads,
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    hipStream_t stream) {
+  if (num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
+      gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_paged_full_attn_decode_split_k_prepare_weights_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(256),
+      0,
+      stream,
+      partial_m,
+      partial_l,
+      num_splits);
+  const hipError_t prepare_error = hipGetLastError();
+  if (prepare_error != hipSuccess) {
+    return static_cast<int>(prepare_error);
+  }
+  constexpr int reduce_threads = 256;
+  constexpr int dims_per_block = 32;
+  const int dim_blocks =
+      (static_cast<int>(head_dim) + dims_per_block - 1) / dims_per_block;
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_parallel_output_gate_kernel<hip_bfloat16>),
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(dim_blocks)),
+      dim3(reduce_threads),
+      0,
+      stream,
+      partial_out,
+      partial_m,
       reinterpret_cast<const hip_bfloat16*>(gate),
       reinterpret_cast<hip_bfloat16*>(out),
       num_splits,

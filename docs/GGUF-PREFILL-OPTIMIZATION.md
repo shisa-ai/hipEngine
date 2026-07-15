@@ -1,26 +1,31 @@
 # GGUF Prefill Optimization
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-16.
 
-Status: `SOL-R5` plus the bounded GGUF half of `SOL-R6` are retained and
-published on gfx1151 through 64K; repeated 128K production is blocked by the
-residual gfx11 scheduler/firmware lifecycle failure.
+Status: `SOL-R5` and the architecture-local gfx1100 optimization pass are
+published. gfx1151's bounded `SOL-R6` production refresh is retained through
+64K while repeated 128K remains blocked by the residual gfx11
+scheduler/firmware lifecycle failure; the final W7900 defaults-only 1+3 rollup
+is public through 128K.
 `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
-tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
-trajectory gate. Register-resident ordered `GPF-2C` retains byte identity but
+tree-reduced `GPF-2B` is fast but failed its historical natural greedy-
+trajectory gate; it now requires fresh evaluation under the 2026-07-15
+peer-aligned contract rather than retroactive relabeling. Register-resident
+ordered `GPF-2C` retains byte identity but
 is 12.98%-14.58% slower than fused at 512/1K/4K. Scalar-exact, LDS-resident
 `GPF-2D` now passes its clean six-case byte-exact state matrix and balanced
 512/4K wall gate. It improves clean prefill by 79.09%/68.44%, with all timed
 tokens exact. The ten-prompt gate is also exact across all 250 checked logits
 and every timed trajectory, with decode +0.023%. GPF-2D is accepted for a
-gfx1151-scoped `auto` promotion and is now the scoped default; gfx1100 remains
-fused pending an independent transfer gate. A clean max-context six-shape
+gfx1151-scoped `auto` promotion and became that architecture's scoped default;
+gfx1100 remained fused until the independent transfer gate below. A clean max-context six-shape
 stress run confirms the automatic route from 512 through 128K. Exact Q4T16
 shared-activation `GPF-3A` also passes its clean full-model gate: 512/1K/4K
 prefill improves **747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s**
 with byte-identical logits and trajectories and neutral aggregate decode.
-`shared_x` is now the gfx1151-scoped automatic route; gfx1100 stays baseline.
+`shared_x` became the gfx1151-scoped automatic route; gfx1100 stayed baseline
+until its independent transfer gate.
 A clean selector-unset four-run confirmation at promoted commit `431fe1e4`
 reproduces **774.653/823.149/701.389 tok/s** with stable IDs; it is a focus
 diagnostic, not the final right-sized memory rollup. `GPF-2E` removes
@@ -30,7 +35,8 @@ improves 512/1K/4K prefill **776.428/825.319/700.824 ->
 823.093/889.209/744.577 tok/s** (**+6.01%/+7.74%/+6.24%**). The six-case
 full-model matrix and all 250 natural logit transitions are byte-exact; every
 timed decode trajectory matches and weighted decode is **+0.075%**. GPF-2E is
-now the gfx1151-scoped automatic route; gfx1100 remains fused. A clean
+now the gfx1151-scoped automatic route; gfx1100 remained fused until its
+independent transfer gate. A clean
 selector-unset focus confirmation at `b8949477` reproduces
 **821.755/897.160/750.896 tok/s** at 512/1K/4K with stable IDs. That first
 clean right-sized 1+3 publication window recorded
@@ -53,6 +59,74 @@ measured-pass-1 stall. Explicit metadata-off/router-512 and
 `HSA_ENABLE_SDMA=0` full controls reproduce it, proving neither recent LCP
 launch policy is causal nor SDMA disable a reliable fix. The earlier complete
 `71e61524` row is historical and is not carried into the current topline.
+
+The independent W7900 transfer gate at clean `bc5600e2` now admits GPF-2E
+`chain_lds32_direct` and GPF-3A `shared_x` as gfx1100 automatic routes. GPF-2E
+improves clean balanced 512/4K prefill **649.131/677.888 ->
+1291.225/1401.330 tok/s** (**1.9892x/2.0672x**) and passes all **250/250**
+natural logit transitions with exact timed trajectories and non-regressive
+decode. The predeclared GPF-3A borderline repeat improves 512/4K
+**640.876/672.866 -> 646.499/678.395 tok/s**, with byte-exact logits and
+trajectories and aggregate decode wall -0.081%. GPF-5A improves focused 512/4K
+prefill **645.901/676.444 -> 654.872/683.164 tok/s** and is conservatively
+scoped through 4096 prompt tokens; the later 32K/64K screen regresses
+1.62%/0.22%, so longer gfx1100 requests keep production Q8T16. The clean
+combined transfer screen moves 512/4K from **648.512/682.172 -> 1352.908/1463.668 tok/s** with stable
+IDs. Evidence is
+[`2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json).
+
+The clean post-transfer W7900 profile then invalidates the old LCP-1 hotspot
+premise: 512/4K convolution is only **3.101/29.552 ms (0.87%/1.09%)**, while
+exact GDN recurrence is **211.487/1652.114 ms (59.0%/61.1%)**. An exact
+32-token/128-channel LDS convolution prototype passes six output/final-state
+byte fixtures but is neutral at 512 and regresses full-model 4K **0.192%**; all
+candidate code and routing were removed. Evidence is
+[`2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json).
+
+The independent `LCP-D1/D2` decode addendum is also complete on gfx1100. The
+128K profile isolates **5.067 ms/token** grouped-GQA context plus
+**1.621 ms/token** serial split reduction. Replacing only the reduction with a
+parallel prepare and coalesced output stage moves the 513-split leaf
+**194.881 -> 25.000 us (7.80x)**. Clean graph decode improves
+**84.525 -> 85.561 tok/s (+1.23%)** at 32K, **72.446 -> 75.307 (+3.95%)** at
+64K, and **56.927 -> 61.367 (+7.80%)** at 128K. The 64K logit gate records max
+KL **1.904e-6**, top-1 100%, and exact generated IDs; memory is unchanged.
+The gfx1100 backend selects the candidate from 32K onward while gfx1151 retains
+serial reduction pending independent evidence. See
+[`2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json).
+
+The final clean W7900 defaults-only right-sized 1+3 publication records
+**2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s** prefill,
+**92.833/98.148/100.522/88.240/76.691/62.669 tok/s** graph decode, and
+**21.228/21.295/21.670/22.234/22.879/24.168 GiB** tracked memory at
+512/1K/4K/32K/64K/128K. All 18 measured IDs are `9707`; maximum
+prefill/decode stdev over median is **0.658%/0.223%**. This replaces the July
+12 gfx1100 GGUF column and closes llama.cpp HIP parity; see the
+[`final optimization rollup`](../benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
+
+Task #98 / `GPF-8` completed as a clean rejection: the eight-token FP32
+chunkwise/WY recurrence passed primitive/resource gates but failed frozen
+semantic, exact-trajectory, and 512 speed gates. Candidate code was removed;
+the high-precision CPU algebra and full contract remain below as evidence.
+Published defaults are unchanged.
+
+On 2026-07-15, after reviewing the actual peer implementations, the numerical
+contract changed prospectively. PARO K2 forms two wave32 partial reductions;
+llama.cpp HIP uses register-sharded wave reductions; and llama.cpp Vulkan
+`263cc04a5405` specializes the 128-state RADV path to eight lanes per value
+column, 16 state rows per lane, and `subgroupClusteredAdd`. These schedules are
+algebraically equivalent F32 recurrences but are not guaranteed bit-exact to a
+scalar/decode-order contraction. llama.cpp's backend test uses CPU-reference
+NMSE <= 1e-7 for F32 GDN rather than byte identity.
+
+GGUF may therefore admit a reassociated GDN under the same class of contract:
+CPU-reference primitive numerics; the complete 18-prompt category plus heldout
+semantic suite at KL <= 0.05 and top-1 >= 90%; deterministic execution; decode
+non-regression; and both 512/4K speed floors. Exact state bytes and exact free-
+running trajectories remain diagnostics, not blockers. This is not a
+retroactive acceptance: GPF-8 still fails KL <= 0.05 and the 512 floor. Existing
+K2 and register-resident tree paths require fresh measurement under this
+predeclared contract before promotion.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. LCP-D1 records the bounded 128K GGUF decode
@@ -80,10 +154,12 @@ The first implementation therefore:
 5. beat the fused production path in balanced full-prefill wall at both 512 and
    4096 rows.
 
-This is a scheduling/layout change, not a math relaxation. A llama.cpp-style
-wave-reduced recurrence is the next diagnostic lane if simple exact tiling is
-insufficient, but it is not promotion-eligible unless it also satisfies the
-current exact state contract or that contract is explicitly changed.
+Those were the tranche's original exact-schedule requirements. The 2026-07-15
+peer review above explicitly supersedes byte identity as a universal promotion
+requirement: a llama.cpp/PARO-style reassociated recurrence may instead pass
+the peer-aligned numerical/semantic contract. Exact candidates still use the
+stronger matrix, and prior failures remain historical evidence rather than
+being relabeled after the fact.
 
 `GPF-1` answered that question negatively on gfx1151. At 512/128, tile64
 measured **388.300 tok/s** and tile32 **374.206 tok/s** versus the clean fused
@@ -111,8 +187,9 @@ provenance is clean at `31d4204d`, and the measured process took approximately
 108 seconds including model/session setup. This completes the performance
 portion of the promotion gate, not the numerical-contract decision.
 
-The numerical-contract decision is now explicit: do not relax the gate after
-observing a failure. On all ten prompts from the four-category suite, only
+Under the then-predeclared exact-trajectory contract, the decision was not to
+relax the gate after observing a failure. On all ten prompts from the four-
+category suite, only
 **7/10** retain the first 25 fused samples and only **3/10** retain the complete
 129-token (prefill sample plus 128 transitions) trajectory. First divergence is
 transition 4 for `code_lru_cache`, 6 for `general_en_explain`, 18 for
@@ -174,8 +251,8 @@ This tranche correctly did not start with AOTriton tuning, generic chunk
 sweeps, graph capture, compiler flags, or another attempt to enable WMMA.
 Full-attention prefill was only 0.54% of its starting 512-token GPU profile,
 WMMA prefill was already enabled, and the existing exact split chain was
-slower than fused. The next tranche must reprofile the published route rather
-than treating that historical 512 share as a permanent exclusion.
+slower than fused. The later gfx1100 tranche correctly reprofiled the published
+route rather than treating that historical 512 share as a permanent exclusion.
 
 ## Current Gap
 
@@ -191,18 +268,19 @@ comparator.
 
 ### W7900 / gfx1100
 
-Clean 2026-07-12 hipEngine `8116c453`, TheRock HIP 7.15; llama.cpp HIP
-`1ebf790cd` build 9648. Values are medians after two discarded hipEngine
-warmups and five measured repetitions per shape.
+Clean 2026-07-14 hipEngine `ef3e97dd`, TheRock HIP 7.15; llama.cpp HIP
+`1ebf790cd` build 9648 remains the matched reference. GGUF values are medians
+from one discarded warmup and three measured repetitions in independent
+right-sized processes. PARO remains the July 12 row.
 
 | Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 644.719 | 2412.320 | 26.7% | 2917.732 | 22.1% |
-| 1K/128 | 676.177 | 2389.670 | 28.3% | 2995.876 | 22.6% |
-| 4K/128 | 677.618 | 2255.080 | 30.0% | 2943.038 | 23.0% |
-| 32K/128 | 628.364 | 1667.640 | 37.7% | 2108.868 | 29.8% |
-| 64K/128 | 572.612 | 1291.820 | 44.3% | 1584.131 | 36.1% |
-| 128K/128 | 484.212 | 891.949 | 54.3% | 1056.252 | 45.8% |
+| 512/128 | 1290.246 | 2412.320 | 53.5% | 2917.732 | 44.2% |
+| 1K/128 | 1395.244 | 2389.670 | 58.4% | 2995.876 | 46.6% |
+| 4K/128 | 1401.632 | 2255.080 | 62.2% | 2943.038 | 47.6% |
+| 32K/128 | 1221.716 | 1667.640 | 73.3% | 2108.868 | 57.9% |
+| 64K/128 | 1021.693 | 1291.820 | 79.1% | 1584.131 | 64.5% |
+| 128K/128 | 766.892 | 891.949 | 86.0% | 1056.252 | 72.6% |
 
 ### Radeon 8060S / gfx1151
 
@@ -233,9 +311,9 @@ has a much smaller long-context deficit than prefill:
 
 | GPU | Workload | hipEngine GGUF | llama.cpp HIP | GGUF delta |
 | --- | --- | ---: | ---: | ---: |
-| W7900 / gfx1100 | 512/128 | 89.873 | 80.756 | +11.3% |
-| W7900 / gfx1100 | 4K/128 | 96.551 | 79.768 | +21.0% |
-| W7900 / gfx1100 | 128K/128 | 56.745 | 60.933 | -6.9% |
+| W7900 / gfx1100 | 512/128 | 92.833 | 80.756 | +15.0% |
+| W7900 / gfx1100 | 4K/128 | 100.522 | 79.768 | +26.0% |
+| W7900 / gfx1100 | 128K/128 | 62.669 | 60.933 | +2.8% |
 | Radeon 8060S / gfx1151 | 512/128 | 49.041 | 50.939 | -3.7% |
 | Radeon 8060S / gfx1151 | 4K/128 | 52.422 | 50.126 | +4.6% |
 | Radeon 8060S / gfx1151 | 128K/128 | blocked | 32.114 | — |
@@ -266,9 +344,10 @@ baseline to restore verbatim.
 | `GPF-2E` compact-scale direct-conv LDS32 | [`clean balanced A/B`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-balanced-ab.json): current default `776.428/825.319/700.824 -> 823.093/889.209/744.577 tok/s` at 512/1K/4K (+6.01%/+7.74%/+6.24%); [`automatic focus`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-default-focus.json): `821.755/897.160/750.896 tok/s`; [`right-sized 1+3 rollup`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json): `819.641/893.266/752.308/640.096/540.850/387.334 tok/s` | Plain/segment primitive and [`six-case full-model matrix`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-exact-matrix.json) are byte-exact; [`natural gate`](../benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2e-trajectory-decode-gate.json) passes 250/250 exact logits and all timed trajectories with decode +0.075%; first-three serialized IDs are stable through 64K and the log-recovered 128K row links the stronger independent gates without inventing missing IDs | **Promoted and published on gfx1151**; gfx1100 stays fused; later 128K no-progress is a separate lifecycle soak |
 
 The old route proves that substantially more parallel recurrence was possible;
-it does not prove that its normalized-Q/K materialization or reduction tree is
-acceptable. The useful recovery question is how much of that parallelism can
-be recovered while keeping the production arithmetic contract.
+it does not by itself prove that its normalized-Q/K materialization or
+reduction tree passes the GGUF product gate. The useful recovery question is
+how much of that parallelism passes the peer-aligned numerical and semantic
+contract.
 
 ## Current Implementation Comparison
 
@@ -291,7 +370,7 @@ GDN choices are:
 | --- | --- | --- | --- |
 | Fused decode-order | grid `num_v_heads`, block 128 | Serial tokens; one thread owns one value column and serially accumulates all 128 state rows; Q/K normalization and RMSNorm remain in the same head block | Production default |
 | Exact split | prepare grid `tokens × num_v_heads`; recurrence grid `num_v_heads`, block 128; RMSNorm grid `tokens × num_v_heads` | Raw Q/K and scales stay separate; recurrence preserves the fused eight-wide multiplication/accumulation order | Exact fallback; 5.19%-6.70% slower in full wall |
-| Fast K2 split | recurrence grid `num_v_heads × head_v_dim`, block 64 | Two wave32 shards reduce the 128 state rows | PARO path and historical GGUF idea; not GGUF target-exact |
+| Fast K2 split | recurrence grid `num_v_heads × head_v_dim`, block 64 | Two wave32 shards reduce the 128 state rows | PARO path and first GPF-9 GGUF candidate under the peer-aligned contract |
 
 The serial dependency across prompt tokens is real, but value columns are
 independent until RMSNorm. The exact split already creates the synchronization
@@ -304,9 +383,10 @@ PARO's current implementation in
 [`qwen35_paro.py`](../hipengine/runtime/qwen35_paro.py) uses prepare +
 `qwen35_gdn_prefill_recurrent_k2_f32` + RMSNorm/gate. It assigns an independent
 block to each value column and distributes the 128 state rows over two wave32
-reductions. That is structurally much more parallel than the GGUF fused path,
-but PARO's quant/model contract is different and its reduction order is not an
-oracle for byte-exact GGUF state.
+reductions. That is structurally much more parallel than the GGUF fused path. PARO's
+quant/model contract is different, so its reduction order is implementation
+evidence rather than a GGUF correctness oracle; the GGUF CPU and 18-prompt
+gates still own admission.
 
 PARO's retained 256-row gfx1151 chunks and isolated AOTriton stream are useful
 scheduling precedents, not direct GDN fixes. They should transfer only after a
@@ -327,10 +407,23 @@ parallelism and uses a different reduction tree. Its source still contains a
 TODO for a chunked prefill kernel, so the current llama.cpp number is not an
 algorithmic ceiling.
 
-The local instrumentation tree defaults fused GDN on and the CUDA/HIP backend
-supports the op, but the retained topline artifact is not a kernel trace. Before
-using this source difference as causal proof, capture a llama.cpp HIP trace and
-confirm the fused GDN kernel is active in the measured prefill phase.
+The retained gfx1100 pp512 family trace confirms the fused HIP kernel is active
+and attributes **15.534 ms** to GDN, versus hipEngine GGUF's current **211.487
+ms** at 512. The hardware and full stacks are not a publication-grade matched
+A/B, but source plus trace are decisive implementation evidence. See
+[`2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json`](../benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json).
+
+### llama.cpp Vulkan
+
+Vulkan commit `263cc04a5405` uses the same serial token recurrence with a
+different state-row reduction schedule. On a 64-lane RADV subgroup and
+`S_v=128`, the pipeline selects eight lanes per value column, so one subgroup
+processes eight columns concurrently. Each lane retains 16 state rows in
+registers; `subgroupClusteredAdd(..., 8)` forms the K and Q contractions. The
+backend-op oracle compares F32 output with the CPU backend at the default NMSE
+<= 1e-7; it does not require byte identity. This independently confirms that
+fast peer GDN is quality-tolerant F32 reassociation, not a hidden bit-exact
+schedule.
 
 ## Current Bottleneck Attribution
 
@@ -383,7 +476,7 @@ select current code without a fresh profile.
 | WMMA prefill is disabled | The retained command and artifact both report `effective_use_wmma_prefill=true` | No enablement work |
 | Full attention/AOTriton is the 512 bottleneck | Ten full-attention launches are 0.54% of traced GPU time | Revisit only at 4K/128K if a fresh profile activates it |
 | Select the existing exact chain | Balanced full wall loses 5.19% at 512 and 6.70% at 4K | Rejected unchanged; keep as fallback/oracle |
-| Restore the old K2 chain | It changes normalized-Q/K and contraction order and failed target/serial recurrent parity | Invalid under the current contract |
+| Restore the old K2 chain without a fresh gate | It changes contraction order but is the retained PARO schedule and previously passed primitive numerics | Re-evaluate first under the 2026-07-15 peer-aligned full semantic and two-shape speed contract |
 | Copy PARO's chunk sizes | PARO's wins affect different layer/quant paths; current GGUF GDN remains serial inside each layer launch | No broad threshold sweep |
 | Prefill graph replay or host submission first | Traced kernels account for 90.69% of wall and GDN alone accounts for 72.11% | Kernel geometry first |
 | Blind compiler flags or `__launch_bounds__` | No retained resource/ISA comparison identifies a compiler-only cause; source geometry exposes too few blocks directly | Collect VGPR/scratch/occupancy, then change a named constraint |
@@ -396,7 +489,7 @@ select current code without a fresh profile.
 | 0 | `GPF-M0` | **Complete:** published-route 512/4K full traces, bounded 128K family sample, and matched llama.cpp 512/4K/128K traces | GPF-4 is selected from the measured residual; the full hipEngine 128K trace remains a rocprof lifecycle limitation, not missing selection evidence |
 | 1 | `GPF-1` | **Rejected:** exact split recurrence with 64/32 value columns per block | Both full wall and tile64 recurrence regress; do not promote |
 | 2 | `GPF-1B` | **Skipped:** fuse GPF-1 prepare/materialization only if recurrence wins | Tile64 recurrence itself loses 8.58%, so fusion cannot close this lane |
-| 3 | `GPF-2B` | **Default rejected:** register-resident tree wins wall by 2.266x/2.058x but keeps only 3/10 complete natural 128-step trajectories | Keep as an explicit diagnostic; do not weaken the predeclared gate after failure |
+| 3 | `GPF-2B` | **Rejected under the historical exact-trajectory contract:** register-resident tree wins wall by 2.266x/2.058x but keeps only 3/10 complete natural 128-step trajectories | Eligible only for a fresh 18-prompt re-evaluation under the prospectively changed 2026-07-15 contract; do not retroactively relabel the old artifact |
 | 4 | `GPF-2C` | **Rejected:** register-resident exact ordered-wave recurrence | Byte-exact, but focused 512/1K/4K prefill loses 12.98%-14.58% and recurrence loses 16.86% |
 | 5 | `GPF-2D` | **Promoted on gfx1151:** scalar-exact value columns with recurrent state resident in a 32-column LDS tile | Automatic route passes the clean six-shape stress gate and final rollup; keep gfx1100 fused pending transfer evidence |
 | 6 | `GPF-M1` | **Default profile complete:** exact GDN 221.873 ms, dense Q8T16 156.474 ms, Q4T16 selected 116.075 ms, Q5T16 selected 56.181 ms at 512 | These measured families select GPF-3A and its successors |
@@ -414,8 +507,26 @@ select current code without a fresh profile.
 | 18 | `LCP-4B` | **Promoted on gfx1151:** exact 128-thread bulk-prefill router selection | Fresh 4K family -70.17%; 512/4K full-model +0.34%/+0.36% with 83/83 exact state. Reject 64 threads because 4K full-model state differs; gfx1100 stays 512 and decode stays 256 |
 | 19 | `LCP-PUB` | **Retained through 64K; 128K blocked:** final selector-unset production refresh | Five clean right-sized 1+3 rows improve prefill +25.11%..+46.10%, all 15 IDs exact, memory unchanged. One-queue, launch-rollback, and SDMA-disabled 128K full gates reproduce the firmware/scheduler stall; publish no stale current 128K number. |
 
+### gfx1100 architecture-local continuation
+
+| Original order | ID | Work | Activation / exit |
+| ---: | --- | --- | --- |
+| 12 | `GPF-6` | **Rejected:** wave/group register-resident direct-input schedules | Fast group4 misses the frozen semantic gate; exact group3 misses the speed floors; do not reopen reduction-width sweeps |
+| 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
+| 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
+| 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
+| 16 | `GPF-9C` | **Rejected on 512 speed:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | Semantics/decode pass; 4K beats llama.cpp by 11.45%, but 512 reaches `2210.729 tok/s`, 8.36% below the required floor |
+| 17 | `GPF-9D` | **Rejected on strict decode:** `chain_peer_cluster8` reproduces llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | KL `0.028689` and top-1 `444/450` pass, but decode regresses `0.001286%` with no predeclared tolerance; no speed gate |
+| 18 | `LCP-3A` | **Rejected and removed:** four exact 32-column Q8T16 FP16-WMMA waves share one activation tile | Byte-exact, but width 4096 and short-K width 2048 regress 2.24%/8.87%; the pp512 mix projects about +0.3 ms. Stop independent-wave widening |
+| 19 | `LCP-3B` | **Rejected and removed:** direct prequantized Q8_1 x Q8T16 integer-WMMA body | Primitive numerics/quality pass, but the body is 44.66% slower before quantization; quantization adds only 0.016 ms. Any continuation must reproduce the actual shared MMQ tile/decomposition, not route raw dp4a or retry direct T16 |
+| 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
+| 21 | `LCP-3E` | **Rejected and removed:** source-compatible MMQ128 directly over output-major `block_q8_0` rows | Correctness passes and the final WGP body is spill-free with source-matched fragment/WMMA counts, but prequantized/included rows are +3.95%/+5.32% vs production. The frozen gate fails before profiler/runtime work; raw+T16 dual residency remains forbidden |
+| 22 | `LCP-4A` | **Promoted:** capture-free normal FP32 Conv prefill with explicit sequential ISA multiply/add | Removes 20 private bytes/thread while preserving byte-exact Conv output/state; pp512 body -77.71%, clean production 512/4K prefill +1.44%/+1.86% |
+| 23 | `LCP-5A` | **Promoted on gfx1100:** roll only the outer Q4/Q5/Q6 T16 quant-block loops and make quality-admitted peer GDN automatic | Removes HIP 7.2's Q5 256-VGPR/176-byte/75-spill code object while preserving byte-exact outputs; Q5 trace -42.08%, total peer kernels/span 184.513/194.886 ms. The clean 18-prompt contract passes and selector-unset 512/4K reaches 2588.231/2757.752 tok/s with 21.670 GiB tracked peak; gfx1151 and explicit exact rollback are unchanged |
+
 There is no invented minimum full-model percentage. Under the project evidence
-policy, every exact, measured, non-regressive improvement is retainable. The
+policy, every correctness-admitted, measured, non-regressive improvement is
+retainable. The
 512-and-4K requirement prevents selecting a shape-local regression; repetition
 and variance gates decide whether a measured delta is real.
 
@@ -513,9 +624,11 @@ is **100%**, and KL is **3.48e-6..5.39e-5**, well inside the repository gate.
 It is not byte-exact: layer-0 recurrence diverges first and accumulated hidden
 and state fingerprints differ. The clean balanced performance gate passes at
 **2.266x/2.058x** for 512/4K with exact timed IDs. The subsequent natural gate
-rejects it: only **3/10** prompts keep the full fused 128-transition trajectory.
-`auto` therefore remains fused, and `chain_wave32_tree` remains an explicit
-diagnostic rather than a promotion candidate.
+rejected it under the historical contract: only **3/10** prompts keep the full
+fused 128-transition trajectory. `auto` therefore remained fused and
+`chain_wave32_tree` remained an explicit diagnostic. The prospective 2026-07-15
+contract change permits a fresh 18-prompt re-evaluation; it does not relabel
+this old artifact.
 
 `GPF-2C` changes only the exact ordered kernel's state lifetime: each lane
 loads its four FP32 rows before the token loop, updates them in registers, and
@@ -1106,6 +1219,175 @@ threads, 32 VGPR, 128 SGPR, and zero scratch. gfx1151 therefore overrides only
 512 threads pending hardware-local evidence. Clean evidence is
 [`2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json).
 
+## GPF-8: Eight-Token Chunkwise/WY GDN
+
+Status: rejected and removed on gfx1100. The CPU algebra/oracle remains as
+rejected-design evidence; all HIP, registry, runtime-selector, and candidate-
+specific test surfaces are gone, and no performance claim exists. The source
+ideas are Atlas
+`gated_delta_rule_wy{,64_prefill}.cu` at `8d187c7`/`37513bf` and the FLA-derived
+vLLM `chunk.py`, `chunk_scaled_dot_kkt.py`, and `wy_fast.py` at their registered
+file commits. hipEngine does not copy their CUDA/Triton bodies, BF16 matrix
+contract, gate clamp, or Torch API. It independently applies the triangular
+identity to the retained direct-conv FP32 Q/K/V and compact-scale ABI.
+
+For a chunk starting at state `H0`, let `P[t]` be the product of decays from
+chunk start through token `t`, and `R[t,s]` the product after source token `s`
+through `t` (`R[t,t] = 1`). The exact real-number recurrence is:
+
+```text
+delta[t] = beta[t] * (
+    value[t]
+    - P[t] * key[t] @ H0
+    - sum_{s<t} R[t,s] * (key[t] @ key[s]) * delta[s]
+)
+
+out[t] = P[t] * query[t] @ H0
+         + sum_{s<=t} R[t,s] * (query[t] @ key[s]) * delta[s]
+
+H1 = P[last] * H0
+     + sum_s R[last,s] * outer(key[s], delta[s])
+```
+
+This is the direct lower-triangular/Woodbury-Young form. The committed
+`gdn_prefill_chunkwise_wy_segments` oracle evaluates it in float64 and crosses
+to float32 only at its output/state boundary. The hand-checked three-token
+fixture and random packed-segment tests cover chunk sizes 1/2/3/8/16, an odd
+17-token tail, slot remapping, and the current FP32 primitive budget.
+
+### HIP schedule selected before implementation
+
+- Keep the retained compact-scale prepare and read canonical FP32
+  `conv_out` Q/K/V directly. Do not materialize prompt-sized normalized Q/K/V.
+- Use `C=8`; one 256-thread block owns `(segment, v_head, value_tile32)` and
+  keeps the same 128x32 FP32 state tile in 16 KiB LDS across the segment.
+- Per chunk, stage normalized `Q[8,128]` and `K[8,128]` in LDS. Sixty-four
+  threads compute the 8x8 K-K and Q-K coefficients; all 256 threads compute
+  eight token/state projections in parallel; 32 value lanes solve the small
+  triangular system; all threads update the chunk-final state tile.
+- Target LDS is at most 32 KiB: 16 KiB state, 8 KiB Q/K, and bounded
+  projection/delta/coefficient scratch. The first candidate uses FP32 scalar
+  contractions, not low-precision WMMA, so the algebra change is isolated from
+  a dtype change.
+- Full eight-token chunks use WY algebra. A remainder is processed token-
+  serially in the same block with the retained direct arithmetic; a pure
+  one-token segment must be byte-exact to `chain_lds32_direct`.
+- Register separate plain and segment-aware variants. `chain_lds32_direct`
+  remains the registered unfused/default fallback throughout admission.
+
+The schedule preserves the current number of GDN-stage launches (compact
+prepare, recurrence, RMSNorm+gate), exposes eight prompt tokens to 256 threads,
+and adds no `O(tokens * v_heads * C^2)` global coefficient arena. At the clean
+512 trace, non-GDN kernels consume about 145.6 ms and llama.cpp's 2412.320 tok/s
+floor implies about 212.2 ms total wall. Therefore the complete 30-layer GDN
+family must fall from 210.501 ms to roughly 66 ms or less. Eight-way token
+parallelism makes the design plausible; a serial WY implementation does not.
+
+### Numerical and performance contract (predeclared)
+
+1. **CPU algebra:** all committed chunk sizes and packed tails match the
+   independent float64 serial recurrence within `atol=rtol=2e-6`; the
+   production-shaped FP32 comparison must remain within `atol=3e-5,
+   rtol=3e-4`. These thresholds are frozen before HIP work.
+2. **Primitive HIP:** one-token/tail arithmetic is byte-exact. Full C=8 plain
+   and segmented production-head fixtures must be finite and match the
+   high-precision oracle within `atol=5e-4, rtol=5e-3` for recurrent output and
+   final FP32 state. The ordinary project gate (KL <=0.05, top-1 >=90%) also
+   applies; neither check substitutes for the model gates below.
+3. **Resources and trace:** expected plain and segment symbols, workgroup 256,
+   zero scratch, at most 128 VGPR, and at most 32 KiB LDS. The cached 512 trace
+   must put the complete 30-layer GDN stage at <=66 ms before full-model
+   promotion timing. Failure stops the lane without routing.
+4. **Semantic gate:** all 18 frozen code/general-English/general-Japanese/mixed
+   prompts in `gguf_gdn_semantic_gate.py` must be finite, have max KL <=0.05,
+   and aggregate top-1 agreement >=99% on identical teacher-forced contexts.
+   Thresholds may not be changed after seeing a result.
+5. **Free-running trajectory:** every baseline/candidate repetition for the
+   ten category-suite prompts must retain the same complete 128-transition
+   generated-ID trajectory. The semantic harness currently reports this as a
+   diagnostic; GPF-8 promotion treats `free_running_trajectories_exact` as
+   required. Aggregate decode wall must be non-regressive.
+6. **Full-model speed:** clean, fresh-process, balanced 512/4K timing must reach
+   at least **2412.320/2255.080 tok/s**, the matched W7900 llama.cpp HIP floors,
+   with the same model fingerprint, TheRock HIP 7.15, cached builds, and exact
+   timed IDs. A win at only one shape is rejected.
+7. **Publication:** only after all prior gates pass, rerun the defaults-only
+   six-shape sweep, update the compact artifact/README/changelog, and promote
+   through backend package metadata rather than an engine backend/quant branch.
+
+### GPF-8 result (gfx1100, 2026-07-15)
+
+The candidate passed every pre-model gate. Plain/segmented C=8 and 17-token-tail
+fixtures met the frozen primitive bounds; cached traces reported **256 threads,
+48 VGPR, zero scratch, and 28 KiB LDS**. A synthetic production-shape trace put
+compact prepare + recurrence + RMSNorm/gate across 30 layers at **47.491 ms**,
+below the predeclared 66 ms ceiling.
+
+The clean W7900 model gates reject it. Across all 18 frozen prompts, teacher-
+forced KL reaches **0.056522 > 0.05**, top-1 is **445/450 = 98.889% < 99%**,
+and only **5/18** complete 128-transition free-running trajectories remain
+exact. Aggregate decode wall is non-regressive (**-0.046%**) but cannot override
+correctness. Clean 1+3 prefill measures **2003.399 tok/s at 512** and
+**2280.244 tok/s at 4K**: 4K exceeds its llama.cpp HIP floor by 1.116%, while
+512 misses by 16.951%, and both floors were required. The candidate kernels,
+wrappers, registry entries, `chain_wy8` selector, and candidate tests were
+removed. The float64 CPU oracle remains, and `chain_lds32_direct` stays the
+production default. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json).
+
+### GPF-9 existing-route result (gfx1100, 2026-07-15)
+
+The prospective peer-aligned gate was applied without changing its 0.05/0.90
+thresholds. Existing normalized-Q/K `chain_k2` fails only KL: **0.059031** max,
+**445/450 = 98.889%** top-1, and decode wall **-0.063%**. Existing raw-Q/K-
+plus-scale register-resident `chain_wave32_tree` also fails KL: **0.068757**
+max, **443/450 = 98.444%** top-1, and decode wall **-0.039%**. Free-running
+trajectory differences are diagnostic and do not cause either rejection. No
+speed gate was run.
+
+The source audit narrows the missing candidate. On gfx1100 llama.cpp HIP uses
+wave32, four state rows per lane resident across the serial token loop, and four
+value columns per 128-thread block. K2 already has llama.cpp's materialized
+normalized inputs but reduces over two waves; `chain_wave32_tree` has one-wave
+register residency but applies raw Q/K scales inside the recurrence. GPF-9C's
+explicit `chain_peer_wave32` now combines unit-normalized inputs with llama.cpp
+HIP `1ebf790cda38`'s XOR reduction, post-reduction scalar decay/output scale,
+and four columns per 128-thread block. Plain and segmented CPU-reference
+fixtures pass; rocprof reports 40 VGPR and zero LDS/scratch. The clean W7900
+18-prompt gate also passes: KL max **0.041737 <= 0.05**, aggregate top-1
+**445/450 = 98.889%**, and decode median-wall sum **22524.379 -> 22513.178 ms
+(-0.050%)**. Free-running trajectory mismatch remains diagnostic. Production
+stays on `chain_lds32_direct`. The subsequent clean speed gate reaches
+**2210.729 tok/s** at 512 (**-8.357%** versus llama.cpp HIP) and **2513.374
+tok/s** at 4K (**+11.454%**). Because both floors are required, GPF-9C is
+rejected for promotion. GPF-9D now tests Vulkan's distinct eight-lane clustered
+schedule, whose higher column concurrency specifically targets the failed 512
+shape. GPF-9D passes teacher-forced quality at KL max **0.028689** and top-1
+**444/450 = 98.667%**, but aggregate decode wall is **22508.498 -> 22508.787
+ms (+0.001286%)**. The prospectively frozen rule had zero tolerance, so no
+speed gate follows and the peer-schedule lane closes without promotion. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json).
+
+The final GPF-9C residual profile changes what should be optimized next, without
+changing that rejection. A same-W7900 current-stack pp512 trace puts
+`chain_peer_wave32` at **207.253 ms / 1645 dispatches** of summed GPU work,
+versus llama.cpp HIP at **203.301 ms / 2259 dispatches**. The peer recurrence
+itself is effectively at parity (**17.134 versus 16.522 ms**); its separate
+prepare + recurrence + RMSNorm/gate chain is only **3.689 ms** over llama.cpp's
+fused-family bucket. The decisive trace-span difference is instead idle queue
+time between launches: **28.061 versus 8.935 ms**, an excess **19.126 ms** that
+explains **82.9%** of the first-to-last-kernel span delta despite hipEngine
+launching 614 fewer kernels. The largest bubbles occur at copy-to-RMSNorm,
+copy-to-copy, copy-to-selected-Q4, RMSNorm-to-dense-Q8, and copy-to-attention
+boundaries. Dense Q8 is the largest positive kernel-family residual
+(**+20.825 ms**), while selected Q4/Q5 is already **21.819 ms faster** and
+cancels it. Further recurrence algebra, selected Q4/Q5, full attention, and
+raw launch-count reduction are therefore not the measured pp512 targets. Keep
+production on the exact route; use the explicit peer route only to test
+copy-boundary queue-bubble reduction first and a genuinely new dense-Q8 path
+second. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1113,46 +1395,34 @@ lineage check. Add the candidate as a registered variant; do not branch on a
 backend or quant string in engine/dispatch code. Keep the exact split chain as
 the required unfused fallback.
 
-### GDN exactness
+### GDN numerical contracts
 
-Extend the existing comparator so `fused`, `chain`, and the named candidate can
-be selected without an untracked source edit. Require:
+Candidates claiming exactness use the six-case byte comparator: 17-token
+greeting; repeated token `9707` at 512; 1024/1025 around the segment threshold;
+and 4095/4096 around the retained chunk boundary. They require exact sampled
+token, FP32 hidden seed, resident Conv/GDN state, and the named all-layer rows.
 
-- 17-token real greeting;
-- repeated token `9707` at 512;
-- 1024 and 1025 around the segment threshold;
-- 4095 and 4096 around the retained 1024-row chunk boundary;
-- exact sampled token, FP32 hidden seed, and all resident Conv/GDN state for all
-  six cases; and
-- all-layer output identity at greeting and 512.
-
-The repository-wide new-kernel floor remains KL <= 0.05 and top-1 >= 90%, but
-that floor does not silently supersede the stronger current GGUF GDN state
-contract. `GPF-2B` passes the floor but not byte identity. Changing the default
-therefore requires an explicit decision recorded here, a multi-prompt greedy
-trajectory/decode gate, and retention of fused plus the exact unfused chain as
-rollback/oracle paths.
-
-The executable promotion gate is
-[`scripts/gguf_gdn_trajectory_gate.py`](../scripts/gguf_gdn_trajectory_gate.py).
-It uses all prompts in `mtpbench-code-general-ja.jsonl`, covering
-`code/general_en/general_ja/mixed_ja_en`. For each prompt it compares baseline
-and candidate own-token greedy prefill samples plus 24 decoded transitions,
-requiring exact IDs and the project KL/top-1 thresholds at every transition.
-It then runs two balanced 128-transition production decode windows per mode and
-prompt. `--baseline-mode` defaults to fused for historical gates; incremental
-candidates name the shipped exact route explicitly. Candidate decode passes
-only when all measured trajectories are exact and the sum of per-prompt
-candidate median walls does not exceed baseline; there is no percentage
-regression allowance.
+Algebraically equivalent reassociated candidates instead use the prospectively
+adopted peer-aligned contract. The existing PARO schedule is selected explicitly
+as `chain_k2`; `chain` remains the exact split. Candidates must pass CPU-
+reference primitive numerics and
+[`scripts/gguf_gdn_semantic_gate.py`](../scripts/gguf_gdn_semantic_gate.py)
+on all 18 category and heldout prompts, with identical teacher-forced token
+history, KL <= 0.05, aggregate top-1 >= 90%, finite deterministic execution,
+and non-regressive decode. Free-running token equality and state bytes are
+reported diagnostics, not blockers. Fused and the exact unfused chain remain
+rollback/oracle paths. A historical candidate is never relabeled; promotion
+requires a fresh artifact under this predeclared contract.
 
 ### Performance
 
 Use one resident session, reset state before every leg, balance candidate/control
 ordering, discard at least one warmup per context, and collect at least four
-measured repetitions per mode at 512 and 4096. Record tokens and require exact
-timed IDs. Retain an exact improvement if the distribution supports a real win
-and neither primary context regresses; do not apply an arbitrary 5% threshold.
+measured repetitions per mode at 512 and 4096. Exact candidates require exact
+timed IDs; reassociated candidates require deterministic IDs plus the separate
+semantic pass. Retain an admitted improvement if the distribution supports a
+real win and neither primary context regresses; do not apply an arbitrary 5%
+threshold.
 
 Trace the candidate after a cache-only warmup and record kernel name, dispatch
 count, duration, workgroup size, VGPR/SGPR, LDS, and scratch. A kernel-only win
@@ -1286,9 +1556,8 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   prompts restore synchronous metadata; prompts above 64K also restore the
   production Q8T16 wrapper while retaining LCP-4A.
   Before HIP loads, gfx1151 now also defaults to `GPU_MAX_HW_QUEUES=1`; explicit
-  user values win, and gfx1100/mixed recognized arches are unchanged. gfx1100
-  remains on its prior fused/baseline/production routes pending hardware-local
-  transfer evidence.
+  user values win, and gfx1100/mixed recognized arches are unchanged. The
+  independent gfx1100 defaults are summarized below.
 - Causal retained wins are the clean GPF-2D, GPF-3A, GPF-2E, scoped GPF-5A,
   LCP-1, LCP-D1, LCP-2A, scoped LCP-M2, scoped LCP-3, LCP-4A, and LCP-4B gates above. GPF-1, GPF-2A, GPF-2B,
   and GPF-2C are closed rejections; do not
@@ -1327,12 +1596,12 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - LCP-1 is retained on gfx1151 at all six shapes. Its clean 4K body falls
   **954.134 -> 49.790 ms**, its 512/4K focus is **+1.73%/+22.91%**, and the
   final right-sized prefill refresh is **+1.10%..+24.04%** through 64K plus
-  **+12.00%** at 128K. gfx1100 stays on the production convolution pending its
-  hardware-local transfer gate.
+  **+12.00%** at 128K. gfx1100 independently rejected tiled convolution after
+  its post-transfer profile made Conv non-material.
 - LCP-2A is promoted on gfx1151: all six state cases and 250/250 natural
   transitions are exact; balanced 512/1K/4K prefill improves
-  **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100 stays
-  fused pending its own transfer gate.
+  **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100
+  independently progressed from direct LDS32 to its retained peer-wave route.
 - LCP-M2 is promoted on gfx1151 through 4K. Clean balanced 512/1K/4K prefill
   improves **+1.56%/+0.90%/+0.53%** and automatic-vs-explicit state is 83/83
   exact at all three shapes. Explicit 128K under the one-queue process policy
@@ -1364,6 +1633,55 @@ The post-LCP-4A/M2 profile and router-select closure are complete. Further
 speculative fusion. Repeated 128K is owned by the gfx11 firmware/scheduler
 blocker; do not retune exact kernels or the grouped-GQA decode body to hide a
 prefill lifecycle failure.
+
+- gfx1100 automatic GGUF prefill selects quality-admitted
+  `chain_peer_wave32` GDN, Q4T16 `shared_x`, two-wave Q8T16 through 4,096
+  prompt tokens, the liveness-aliased prefill arena, and the spill-free
+  selected-Q4/Q5/Q6 source schedule. Decode selects the persistent cooperative
+  router and LCP-D2 parallel split reduction from 32K; explicit
+  `chain_lds32_direct` and serial reduction remain rollback paths.
+- The final clean W7900 defaults-only publication is
+  **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s** prefill,
+  **92.833/98.148/100.522/88.240/76.691/62.669 tok/s** graph decode, and
+  **21.228/21.295/21.670/22.234/22.879/24.168 GiB** tracked memory from
+  512 through 128K. All 18 IDs are `9707`; this closes llama.cpp HIP parity.
+- The peer semantic gate remains KL max **0.041737**, top-1 **445/450**, and
+  decode wall **-0.103%**. Tail-four Hadamard-group32 INT8 KV passes quality
+  and saves 18.75% persistent K/V but remains explicit because 4K/128K speed
+  and a 1.002 GiB prefill transient fail promotion.
+
+Keep GPF-4 explicit/default-off. LCP-3 owns the gfx1151 BF16/BF16 Q8T16
+prefill aliases through 65,536 prompt tokens with GPF-5A as rollback; GPF-5A
+owns gfx1100 only through 4,096 tokens. Request-scoped package policy restores
+production above each architecture's bound. The long-context gfx1100 screen
+confirms that cap. The gfx1151 512-64K refresh is final; investigate its 128K
+lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
+do not revisit LCP-1 without a new hotspot profile. LCP-5A now makes
+`chain_peer_wave32` automatic; `chain_lds32_direct` remains explicit scalar-
+exact rollback and rejected GPF-9D remains diagnostic-only pending cleanup.
+The post-LCP-4A exact/peer/llama.cpp profile shows that
+GPF-9C removes the shipped first-order deficit: peer and llama.cpp summed GPU
+work differ by only **0.507 ms**, with **2.564 ms** excess queue idle. Do not
+reopen dense-Q8, selected-MoE, Conv, full-attention, or generic launch-count
+experiments without genuinely new measured evidence. LCP-5A supplied that
+evidence and is promoted on gfx1100. HIP 7.2 compiled the Q5T16 BF16 body at
+256 VGPR, 176 private bytes, and 75 spills; rolling only the outer quant-block
+loop gives 91 static VGPR and zero private bytes/spills while retaining the
+inner K16 unroll and all operation order. Q4/Q5/Q6 BF16/FP16 CPU-oracle GPU
+fixtures pass byte-exact. Matched real routing moves Q5 **50.863 -> 31.725 ms**,
+Q6 **3.475 -> 2.630 ms**, and selected-MoE **98.538 -> 78.358 ms**. Cached
+pp512 trace moves Q5 **51.009 -> 29.544 ms** and the complete peer route from
+**203.808/215.307 -> 184.513/194.886 ms** kernels/span, now faster than the
+matched llama.cpp HIP trace. The clean 18-prompt semantic contract remains KL
+max **0.041737**, top-1 **445/450**, deterministic/finite, with aggregate decode
+wall **-0.103%**. Clean selector-unset liveness-aliased 512/4K reaches
+**2588.231/2757.752 tok/s**, clears both floors by **7.29%/22.29%**, and
+restores the tracked peak from the dedicated peer diagnostic's 22.995 GiB
+to **21.670 GiB**. gfx1100 package policy now selects `chain_peer_wave32`;
+explicit `chain_lds32_direct` remains the scalar-exact rollback, and gfx1151
+keeps its independently admitted `chain_lds32_direct_nonvolatile` default. Exact state and free-
+running token identity remain diagnostics under the prospectively frozen peer
+contract.
 
 ## Document Ownership
 

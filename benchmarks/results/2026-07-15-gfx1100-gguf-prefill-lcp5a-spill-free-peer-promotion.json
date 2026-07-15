@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_prefill_lcp5a_spill_free_peer_promotion",
+  "created_at": "2026-07-15T13:40:00Z",
+  "status": "retained_and_promoted_gfx1100",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "conclusion": "Rolling only the gfx1100 outer Q4/Q5/Q6 T16 selected-prefill quant-block loops removes HIP 7.2 compiler spills without changing outputs. The resulting peer-GDN route passes the full semantic/decode contract, clears both llama.cpp HIP prefill floors, and becomes the gfx1100 automatic route while scalar-exact direct-LDS32 remains an explicit rollback.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "487e658cde2ee87415db132711988db44d6ec5d0",
+    "source_clean": true,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
+    "scope": "gfx1100 only; gfx1151 retains the fully-unrolled source schedule",
+    "schedule": "outer Q4/Q5 eight-subblock and Q6 sixteen-K-tile loops rolled; inner K16 construction and WMMA order unchanged",
+    "package_policy": {
+      "gfx1100_auto": "chain_peer_wave32",
+      "gfx1151_auto": "chain_lds32_direct",
+      "gfx1100_exact_rollback": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct"
+    },
+    "liveness": "normalized peer Q/K/V use explicit linear-phase lifetimes in the admitted liveness arena"
+  },
+  "compiler_resources": {
+    "spilled_control_hip72": {
+      "q4_bf16": {"vgpr": 256, "private_bytes": 156, "vgpr_spills": 62},
+      "q5_bf16": {"vgpr": 256, "private_bytes": 176, "vgpr_spills": 75},
+      "q6_bf16": {"vgpr": 256, "private_bytes": 188, "vgpr_spills": 70}
+    },
+    "rolled_candidate_static_hip72": {
+      "q4_bf16": {"sgpr": 30, "vgpr": 70, "private_bytes": 0, "vgpr_spills": 0},
+      "q5_bf16": {"sgpr": 30, "vgpr": 91, "private_bytes": 0, "vgpr_spills": 0},
+      "q6_bf16": {"sgpr": 30, "vgpr": 73, "private_bytes": 0, "vgpr_spills": 0}
+    },
+    "rolled_candidate_rocprof": {
+      "workgroup_size": 32,
+      "q4_bf16": {"vgpr_allocated": 56, "sgpr_allocated": 128, "scratch_bytes": 0, "lds_bytes": 0},
+      "q5_bf16": {"vgpr_allocated": 96, "sgpr_allocated": 128, "scratch_bytes": 0, "lds_bytes": 0},
+      "q6_bf16": {"vgpr_allocated": 80, "sgpr_allocated": 128, "scratch_bytes": 0, "lds_bytes": 0}
+    }
+  },
+  "focused_correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt uv run --with pytest pytest tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q --tb=short",
+    "passed": 46,
+    "contract": "Q4/Q5/Q6 BF16/FP16 selected-MoE outputs byte-exact to CPU reference on uneven/empty experts, padding, and multi-block K"
+  },
+  "matched_selected_moe_replay": {
+    "protocol": "same current process tree, model/session/routing; control injects only the known spilled baseline shared object; one warmup, five groups of five launches",
+    "spilled_control_ms": {"q4": 44.200269968714565, "q5": 50.863480244297534, "q6": 3.4745605615898967, "total": 98.538310774602},
+    "rolled_candidate_ms": {"q4": 44.00305007584393, "q5": 31.724612035322934, "q6": 2.6298761181533337, "total": 78.3575382293202},
+    "delta_percent": {"q4": -0.4461963401689095, "q5": -37.62791715598407, "q6": -24.31054023850574, "total": -20.480128375088135},
+    "control_raw_sha256": "9a559f0492888763aae4613529a17fde5c09c42141888e9f81e56a2d01225b97",
+    "candidate_raw_sha256": "7f40e025d8c6de8288508de3358acac179fb14a07bc95e3fdb46f3299e980e1"
+  },
+  "pp512_profile": {
+    "spilled_peer": {
+      "q5_ms": 51.008658,
+      "q6_ms": 3.349784,
+      "summed_kernel_ms": 203.808,
+      "first_to_last_span_ms": 215.307,
+      "queue_idle_ms": 11.499
+    },
+    "rolled_peer": {
+      "q5_ms": 29.543962,
+      "q6_ms": 2.383259,
+      "summed_kernel_ms": 184.51335,
+      "first_to_last_span_ms": 194.88607,
+      "queue_idle_ms": 10.37272,
+      "q5_delta_percent": -42.08049543275575,
+      "q6_delta_percent": -28.853352932607002,
+      "kernel_delta_percent": -9.467071950070649,
+      "span_delta_percent": -9.484563901777465
+    },
+    "llamacpp_hip_reference": {
+      "summed_kernel_ms": 203.301,
+      "first_to_last_span_ms": 212.236,
+      "rolled_hipengine_kernel_delta_percent": -9.241297386633606,
+      "rolled_hipengine_span_delta_percent": -8.174828963983494
+    },
+    "trace_sha256": "b926fb214ad4b8db6a5551456570dfb76ae26dab22ab5d31c6e2ddd31e3077df",
+    "profile_result_sha256": "ad8e8e6ea756b99b2684307c74ab5bb416851e90efb013924d4ed67dba315cea",
+    "note": "The cache-only trace was collected from the final gfx1100 kernel source before the policy/liveness commit; the committed source bytes and code-object resources are equivalent. Clean host-wall and semantic gates below own promotion."
+  },
+  "clean_semantic_decode_gate": {
+    "status": "accepted_semantic_and_decode_nonregression",
+    "prompts": 18,
+    "transitions": 450,
+    "kl_max": 0.04173686920338883,
+    "kl_threshold": 0.05,
+    "top1_matches": 445,
+    "top1_total": 450,
+    "top1_agreement": 0.9888888888888889,
+    "top1_threshold": 0.9,
+    "baseline_decode_median_wall_sum_ms": 22781.2100645,
+    "candidate_decode_median_wall_sum_ms": 22757.634764,
+    "decode_wall_delta_percent": -0.10348572544325917,
+    "free_running_trajectories_exact_diagnostic": false,
+    "raw_path": "/tmp/lcp5a-peer-semantic-clean-487e658c.json",
+    "raw_sha256": "bade49ef1eecdc863ecf64c3e82bf20d2cdf08a6bbdb2f1f4626f3f07c96769e"
+  },
+  "clean_selector_unset_speed_gate": {
+    "protocol": "single max-4K resident session; one discarded warmup and three measured repetitions; fresh state-bound graph decode per measured repetition; graph capture excluded",
+    "rows": {
+      "512/128": {
+        "prefill_median_tok_s": 2588.2311311954154,
+        "prefill_stdev_tok_s": 29.7191482682824,
+        "decode_median_tok_s": 92.66421625411672,
+        "tracked_peak_gib": 21.670319117605686,
+        "final_ids": [9707, 9707, 9707],
+        "llamacpp_floor_tok_s": 2412.32,
+        "delta_vs_floor_percent": 7.292197187579386,
+        "delta_vs_post_lcp4a_peer_percent": 8.490406611495072
+      },
+      "4K/128": {
+        "prefill_median_tok_s": 2757.7518604518154,
+        "prefill_stdev_tok_s": 3.6043763004904075,
+        "decode_median_tok_s": 99.74686342016835,
+        "tracked_peak_gib": 21.670319117605686,
+        "final_ids": [9707, 9707, 9707],
+        "llamacpp_floor_tok_s": 2255.08,
+        "delta_vs_floor_percent": 22.290644254386336,
+        "delta_vs_post_lcp4a_peer_percent": 6.668703379116581
+      }
+    },
+    "dedicated_peer_peak_gib": 22.99488217383623,
+    "liveness_peak_savings_gib": 1.324563056230545,
+    "raw_path": "/tmp/lcp5a-auto-peer-clean-487e658c.json",
+    "raw_sha256": "3a9a33293d652465df9e5360c05c16210fedbd2d7e940fda2061b378655cc213"
+  },
+  "commands": {
+    "semantic": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_wave32 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/lcp5a-peer-semantic-clean-487e658c.json",
+    "speed": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/lcp5a-auto-peer-clean-487e658c.json"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1100_default_changed": true,
+    "gfx1151_default_changed": false,
+    "exact_rollback_retained": true,
+    "prefill_parity_gap_closed": true,
+    "next": "Refresh the post-promotion decode profile, then run the clean GGUF mixed-KV gate before the final six-shape sweep."
+  }
+}

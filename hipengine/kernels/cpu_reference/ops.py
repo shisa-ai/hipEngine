@@ -1726,6 +1726,135 @@ def gdn_prefill_recurrent_segments(
     return out, state
 
 
+def gdn_prefill_chunkwise_wy_segments(
+    query: ArrayLike,
+    key: ArrayLike,
+    value: ArrayLike,
+    beta: ArrayLike,
+    decay: ArrayLike,
+    recurrent_state: ArrayLike,
+    cu_seqlens: ArrayLike,
+    state_indices: ArrayLike,
+    *,
+    chunk_size: int = 8,
+) -> tuple[np.ndarray, np.ndarray]:
+    """High-precision chunkwise/WY oracle for packed GDN prefill segments.
+
+    For a chunk starting from state ``H0``, define ``P[t]`` as the product of
+    decays from the chunk start through token ``t`` and ``R[t, s]`` as the
+    product after source token ``s`` through token ``t``.  The token-serial
+    recurrence is then the lower-triangular system::
+
+        delta[t] = beta[t] * (
+            value[t]
+            - P[t] * key[t] @ H0
+            - sum(R[t, s] * (key[t] @ key[s]) * delta[s], s < t)
+        )
+
+    Outputs and the chunk-final state follow from the same deltas::
+
+        out[t] = P[t] * query[t] @ H0
+                 + sum(R[t, s] * (query[t] @ key[s]) * delta[s], s <= t)
+        H1 = P[-1] * H0 + sum(R[-1, s] * outer(key[s], delta[s]), s)
+
+    This is the direct triangular form of the Woodbury-Young representation
+    used by FLA chunked Gated Delta Rule implementations.  Float64 arithmetic
+    intentionally makes this an algebra oracle rather than an emulation of any
+    candidate GPU reduction schedule; results cross the public float32 boundary
+    only on return.
+    """
+
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    q = np.asarray(query, dtype=np.float64)
+    k_arr = np.asarray(key, dtype=np.float64)
+    v_arr = np.asarray(value, dtype=np.float64)
+    beta_arr = np.asarray(beta, dtype=np.float64)
+    decay_arr = np.asarray(decay, dtype=np.float64)
+    state = np.asarray(recurrent_state, dtype=np.float64).copy()
+    cu = np.asarray(cu_seqlens, dtype=np.int64)
+    slots = np.asarray(state_indices, dtype=np.int64)
+    if q.ndim != 3:
+        raise ValueError("query must have shape [T_total, num_v_heads, head_k_dim]")
+    if k_arr.shape != q.shape:
+        raise ValueError("key must match query shape")
+    if v_arr.ndim != 3 or v_arr.shape[:2] != q.shape[:2]:
+        raise ValueError("value must have shape [T_total, num_v_heads, head_v_dim]")
+    if beta_arr.shape != q.shape[:2] or decay_arr.shape != q.shape[:2]:
+        raise ValueError("beta and decay must have shape [T_total, num_v_heads]")
+    expected_state_shape = (q.shape[1], q.shape[2], v_arr.shape[2])
+    if state.ndim != 4 or state.shape[1:] != expected_state_shape:
+        raise ValueError(
+            "recurrent_state must have shape "
+            "[state_slots, num_v_heads, head_k_dim, head_v_dim]"
+        )
+    _validate_segments(cu, slots, q.shape[0], state.shape[0])
+
+    out = np.empty_like(v_arr, dtype=np.float64)
+    for segment, slot in enumerate(slots):
+        start = int(cu[segment])
+        end = int(cu[segment + 1])
+        for chunk_start in range(start, end, chunk_size):
+            chunk_end = min(chunk_start + chunk_size, end)
+            for v_head in range(q.shape[1]):
+                q_chunk = q[chunk_start:chunk_end, v_head]
+                k_chunk = k_arr[chunk_start:chunk_end, v_head]
+                v_chunk = v_arr[chunk_start:chunk_end, v_head]
+                beta_chunk = beta_arr[chunk_start:chunk_end, v_head]
+                decay_chunk = decay_arr[chunk_start:chunk_end, v_head]
+                state_start = state[slot, v_head].copy()
+                chunk_tokens = chunk_end - chunk_start
+
+                prefix_decay = np.cumprod(decay_chunk, dtype=np.float64)
+                transition = np.zeros((chunk_tokens, chunk_tokens), dtype=np.float64)
+                for target in range(chunk_tokens):
+                    transition[target, target] = 1.0
+                    product = 1.0
+                    for source in range(target - 1, -1, -1):
+                        product *= decay_chunk[source + 1]
+                        transition[target, source] = product
+
+                key_state = k_chunk @ state_start
+                query_state = q_chunk @ state_start
+                key_key = k_chunk @ k_chunk.T
+                query_key = q_chunk @ k_chunk.T
+                delta = np.empty_like(v_chunk, dtype=np.float64)
+
+                for target in range(chunk_tokens):
+                    correction = np.zeros(v_arr.shape[2], dtype=np.float64)
+                    if target:
+                        correction = (
+                            transition[target, :target]
+                            * key_key[target, :target]
+                        ) @ delta[:target]
+                    delta[target] = beta_chunk[target] * (
+                        v_chunk[target]
+                        - prefix_decay[target] * key_state[target]
+                        - correction
+                    )
+                    out[chunk_start + target, v_head] = (
+                        prefix_decay[target] * query_state[target]
+                        + (
+                            transition[target, : target + 1]
+                            * query_key[target, : target + 1]
+                        )
+                        @ delta[: target + 1]
+                    )
+
+                state[slot, v_head] = (
+                    prefix_decay[-1] * state_start
+                    + np.einsum(
+                        "s,sk,sv->kv",
+                        transition[-1],
+                        k_chunk,
+                        delta,
+                        optimize=False,
+                    )
+                )
+
+    return out.astype(np.float32), state.astype(np.float32)
+
+
 def full_attn_prefill(
     query: ArrayLike,
     gate: ArrayLike,

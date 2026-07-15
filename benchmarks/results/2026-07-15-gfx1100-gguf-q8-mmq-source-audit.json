@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_llamacpp_q8_mmq_source_audit",
+  "status": "research_complete_candidate_predeclared",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hipengine_base_commit": "a1008e6d",
+  "reference": {
+    "repository": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "measured_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "build_number": 9648,
+    "source_tree_matches_measured_files": true,
+    "files": {
+      "ggml/src/ggml-cuda/mmq.cu": "fc2b0053ffe878ff5a26934bdb555681f15bc699",
+      "ggml/src/ggml-cuda/mmq.cuh": "fc2b0053ffe878ff5a26934bdb555681f15bc699",
+      "ggml/src/ggml-cuda/mma.cuh": "3e037f313c2c4cfce897d9be8f43954283a61de1",
+      "ggml/src/ggml-cuda/quantize.cu": "9e58d4d692ed3d350591cc86d06c73c61c122509",
+      "ggml/src/ggml-cuda/template-instances/mmq-instance-q8_0.cu": "f3f65429c44bb195a9195bfdc19a30a79709db7b"
+    }
+  },
+  "source_map": {
+    "selection": "mmq.cu:267-374 selects MMQ on RDNA3; Q8_0 falls through the always-true RDNA3 default",
+    "activation_layout": "mmq.cuh:22-58 and 61-97 select block_q8_1_mmq D4 for Q8_0: four FP32 scales followed by 128 int8 values",
+    "activation_quantizer": "quantize.cu:277-372 quantizes four F32 values per thread, computes one FP32 scale per 32 values, and writes the transposed 144-byte D4 block",
+    "weight_staging": "mmq.cuh:774-833 loads eight raw Q8_0 blocks (256 K values) for 128 output rows into a padded row-major shared tile",
+    "dot_body": "mmq.cuh:1159-1214 loads 16x8 signed-int tiles and accumulates a 16x16 int tile; mma.cuh:1306-1335 emits two RDNA3 wmma_i32_16x16x16_iu8_w32 calls per 32-K scale interval",
+    "outer_tile": "mmq.cuh:3446-3520 stages one 256-K weight tile and two 128-K activation tiles, then accumulates FP32 scaled dots",
+    "launch": "mmq.cuh:3930-4138 chooses mmq_x=128 subject to shared-memory fit and launches block=(32,8,1), mmq_y=128 on RDNA3"
+  },
+  "decomposition": {
+    "workgroup_threads": 256,
+    "waves": 8,
+    "physical_wave_size": 32,
+    "output_rows_per_workgroup": 128,
+    "token_columns_per_workgroup": 128,
+    "k_values_per_outer_iteration": 256,
+    "activation_blocks_per_outer_iteration": 2,
+    "q8_scale_interval": 32,
+    "wmma_k_per_call": 16,
+    "wmma_calls_per_scale_interval": 2,
+    "wave_mapping": "For mmq_x=128, waves are paired. A pair owns 32 output rows; the two waves own alternating 16-token column slices. Each wave walks four 32-token groups and two 16-row output minitiles.",
+    "accumulation": "Integer WMMA products are multiplied by the FP32 D4 activation scale and FP16 Q8_0 weight scale for each 32-K interval, then accumulated in FP32."
+  },
+  "shared_layout_bytes": {
+    "ids": 512,
+    "padded_q8_weight_tile": 38912,
+    "one_d4_activation_tile": 18432,
+    "total_dynamic_lds": 57856,
+    "unique_raw_q8_weight_bytes_per_k256": 34816,
+    "unique_d4_activation_bytes_per_k256": 36864,
+    "note": "Only one 128-K activation half is resident at a time; the outer loop loads and consumes two halves around synchronization boundaries."
+  },
+  "measured_profile": {
+    "hardware": "AMD Radeon Pro W7900 / gfx1100",
+    "software": "TheRock HIP 7.15 reference binary, llama.cpp build 9648",
+    "command": "HIP_VISIBLE_DEVICES=0 rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file llama-pp512 --log-level error -- /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -p 512 -n 0 -r 1 -o json -dev ROCm0",
+    "measured_trace_sha256": "d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67",
+    "kernel": "mul_mat_q<(ggml_type)8, 128, false>",
+    "dispatches": 250,
+    "total_ms": 30.425833,
+    "workgroup": [32, 8, 1],
+    "vgpr": 232,
+    "scratch_bytes": 0,
+    "shape_groups": [
+      {"out_features": 8192, "grid_x": 2048, "count": 40, "total_ms": 11.542008, "median_us": 291.0625},
+      {"out_features": 4096, "grid_x": 1024, "count": 30, "total_ms": 4.558555, "median_us": 152.901},
+      {"out_features": 2048, "grid_x": 512, "count": 80, "total_ms": 8.625106, "median_us": 97.661, "note": "Contains 40 long-K and 40 short-K calls."},
+      {"out_features": 512, "grid_x": 128, "count": 100, "total_ms": 5.700164, "median_us": 56.8005}
+    ]
+  },
+  "layout_crosswalk": {
+    "raw_q8_0": "llama.cpp starts from output-major raw block_q8_0[output, k_block] and transposes/pads each 128x256 tile into shared memory.",
+    "hipengine_q8t16": "hipEngine stores the same bytes losslessly as tiles[out_tile16, k_block, 16 fp16 scales + 32x16 int8]. It can populate the same logical shared tile without a resident raw sidecar, but requires a cooperative T16-to-shared transpose.",
+    "rejected_lcp3b_difference": "LCP-3B used two waves and a 64-output x 32-token direct geometry with ordinary 36-byte Q8_1 blocks. It did not stage/reuse a 128x256 weight tile or a 128-token D4 activation tile and therefore did not test the source MMQ schedule."
+  },
+  "candidate": {
+    "id": "LCP-3D",
+    "scope": "standalone dense Q8T16 BF16-output diagnostic; no runtime routing before all leaf gates",
+    "design": "Reproduce the source 128-output x 128-token, 256-thread, K256 shared MMQ decomposition over resident Q8T16 bytes and a source-compatible D4 activation pack.",
+    "red": "A separately callable/registered MMQ128 D4 variant must not exist before implementation.",
+    "correctness_gates": {
+      "q8_0_x_d4_cpu_oracle_relative_l2_max": 0.02,
+      "exact_q8_0_bf16_mean_kl_max": 0.05,
+      "exact_q8_0_bf16_top1_min": 0.9,
+      "ordinary_and_tail_shapes_required": true
+    },
+    "performance_gates": [
+      "On W7900 512x2048x8192, the prequantized body must beat production two-wave FP16 WMMA in a cache-cycled HIP-event A/B.",
+      "D4 quantization plus the body must also beat production on the primary leaf.",
+      "An advancing candidate must then win all measured pp512 dense-Q8 shape classes and show the expected 256-thread kernel, zero scratch, bounded shared memory, and plausible register count under rocprofv3.",
+      "Only then may model routing and unchanged semantic/decode plus 512/4K full-model floors be tested."
+    ]
+  },
+  "decision": "Proceed with exactly one standalone source-faithful MMQ128 screen. Do not retry direct T16 integer WMMA, independent-wave widening, raw-sidecar dp4a, selected Q4/Q5 retuning, or generic launch-count work."
+}

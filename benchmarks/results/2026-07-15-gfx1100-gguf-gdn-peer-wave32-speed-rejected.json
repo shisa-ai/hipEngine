@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_peer_wave32_speed_gate",
+  "status": "rejected_512_speed_floor",
+  "created_at": "2026-07-15T04:48:29Z",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_retained": true,
+  "conclusion": "The llama.cpp-HIP-shaped chain_peer_wave32 route passes primitive, resource, 18-prompt semantic, and decode gates, but fails the prospectively frozen two-shape prefill speed contract. Clean W7900 prefill reaches 2210.729 tok/s at 512, 8.357% below the 2412.320 llama.cpp HIP floor, while 4K reaches 2513.374 tok/s, 11.454% above the 2255.080 floor. It is not promoted. The explicit route remains temporarily for comparison while the Vulkan 8-lane clustered schedule targets the failed short-prompt shape; chain_lds32_direct remains production default.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "7a586b74375c5a8a5ffa6f6b8c461f100a057e41",
+    "source_clean": true,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "predeclared_contract": {
+    "candidate_mode": "chain_peer_wave32",
+    "semantic_artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json",
+    "llamacpp_hip_prefill_floors_tok_s": {
+      "512/128": 2412.32,
+      "4K/128": 2255.08
+    },
+    "both_speed_floors_required": true,
+    "stable_final_token_required": true
+  },
+  "clean_full_model_speed": {
+    "measurement_valid": true,
+    "source_clean": true,
+    "protocol": "one discarded warmup plus three measured runs in one resident max-4K session; per-shape reset; graph decode with one-step replay; cached builds",
+    "512/128": {
+      "prefill_samples_tok_s": [2219.856042610842, 2210.729499343275, 2208.675563670334],
+      "prefill_median_tok_s": 2210.729499343275,
+      "llamacpp_hip_floor_tok_s": 2412.32,
+      "ratio_vs_floor": 0.9164329356566604,
+      "delta_vs_floor_percent": -8.35670643433396,
+      "floor_passed": false,
+      "decode_samples_tok_s": [92.65908292579273, 92.63434224247376, 92.52705172829816],
+      "decode_median_tok_s": 92.63434224247376,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "4K/128": {
+      "prefill_samples_tok_s": [2521.3743447092156, 2513.373885809011, 2502.5193637404686],
+      "prefill_median_tok_s": 2513.373885809011,
+      "llamacpp_hip_floor_tok_s": 2255.08,
+      "ratio_vs_floor": 1.1145386796960688,
+      "delta_vs_floor_percent": 11.453867969606879,
+      "floor_passed": true,
+      "decode_samples_tok_s": [100.16444458618462, 99.9782456708819, 99.86823907194974],
+      "decode_median_tok_s": 99.9782456708819,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "tracked_peak_allocated_gib": 22.99488217383623,
+    "both_floors_passed": false,
+    "decision": "rejected_512_speed_floor"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_peer_wave32 PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/gpf9c-peer-wave32-speed-clean-7a586b74.json",
+  "raw_artifact": {
+    "path": "/tmp/gpf9c-peer-wave32-speed-clean-7a586b74.json",
+    "sha256": "9cb328eb508949c9ab0e47c4c6c36d8581d80ebf4cbd6a6d6ad25eef4a55a989"
+  },
+  "decision": {
+    "default_changed": false,
+    "candidate_role": "explicit comparison diagnostic pending clustered8 screen",
+    "production_default": "chain_lds32_direct",
+    "next": "Implement the llama.cpp Vulkan S_v=128 schedule: eight lanes per value column, clustered XOR-equivalent reduction, 16 recurrent-state rows per lane, and maximum physical-wave column concurrency. Run the unchanged primitive, 18-prompt, decode, and 512/4K gates."
+  }
+}

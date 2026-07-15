@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_prefill_post_transfer_profile_and_lcp1_rejection",
+  "created_at": "2026-07-14T02:33:00+00:00",
+  "status": "profile_retained_lcp1_rejected",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "clean_promoted_profile": {
+    "hipengine_commit": "16395fe5e8efb030501be2209eb535a7e3fe1633",
+    "hipengine_dirty": false,
+    "protocol": "One prefill-only persistent-session pass under rocprofv3 kernel trace after a non-profiled cache warmup; cached builds required; normal caller stream.",
+    "contexts": {
+      "512": {
+        "host_prefill_tok_s_under_profiler": 1132.6950353376799,
+        "total_kernel_ms": 358.274475,
+        "dispatches": 2009,
+        "families": {
+          "gdn_recurrent_ms": 211.486978,
+          "gdn_recurrent_share_percent": 59.02931767606386,
+          "dense_q8_ms": 49.736147,
+          "dense_q8_share_percent": 13.882135198160572,
+          "selected_q4_ms": 33.901215,
+          "selected_q5_ms": 23.166809,
+          "router_ms": 12.618833,
+          "full_attention_ms": 3.748792,
+          "linear_attn_conv_ms": 3.101387,
+          "linear_attn_conv_share_percent": 0.8656455361493447
+        },
+        "summary_sha256": "7be1e318b52828fd02939d901c3496cf4c351e3101fdfd068c8b9f688a8b40f6",
+        "kernel_trace_sha256": "e49b717ee2d46d291aadaf29333dce90e054d25c5b419756541d3a985ae81a39",
+        "bench_sha256": "a6021bbd51df57510f34c7c2666a0b7ff0496a4365729a75e5b8f00404549553"
+      },
+      "4096": {
+        "host_prefill_tok_s_under_profiler": 1442.6072433347897,
+        "total_kernel_ms": 2701.740545,
+        "dispatches": 5495,
+        "families": {
+          "gdn_recurrent_ms": 1652.113572,
+          "gdn_recurrent_share_percent": 61.14997145293979,
+          "dense_q8_ms": 307.93539,
+          "dense_q8_share_percent": 11.397666980638958,
+          "selected_q4_ms": 225.292145,
+          "selected_q5_ms": 173.755574,
+          "router_ms": 96.167915,
+          "full_attention_ms": 83.898587,
+          "linear_attn_conv_ms": 29.551691,
+          "linear_attn_conv_share_percent": 1.0938019586925214
+        },
+        "summary_sha256": "695f076df2a182cf2580b82ac5d4e47786928f7df266a67785fce07342d04e4b",
+        "kernel_trace_sha256": "4584ab5e845245e09da9dbf6c3e5d9c01e7c03b431b137ee39e344be35dcb794",
+        "bench_sha256": "8af69c80fa936a2b22b80572a64a330aefc17dedfb10d49f357c45ab8c26c81c"
+      }
+    },
+    "conclusion": "The gfx1100 transfer removes the old convolution queue cliff: convolution is now only 0.87%/1.09% of traced 512/4K kernel time. Exact GDN recurrence owns 59.0%/61.1% and remains the dominant prefill target."
+  },
+  "lcp1": {
+    "candidate": "exact 32-token by 128-channel LDS convolution",
+    "source_lineage": "Schedule derived from llama.cpp ssm-conv long-token structure; product/add order and the existing separate state update were preserved. Candidate code was removed after rejection.",
+    "correctness": {
+      "token_lengths": [
+        4,
+        31,
+        32,
+        33,
+        512,
+        4096
+      ],
+      "channels": 137,
+      "output_raw_bytes_exact": true,
+      "final_state_raw_bytes_exact": true,
+      "tests_passed": 6
+    },
+    "dirty_diagnostic_full_model": {
+      "protocol": "Separate explicit-off/on max-4K resident sessions; one warmup plus three prefill-only measurements per 512/4K shape; normal caller stream; cached builds required.",
+      "contexts": {
+        "512": {
+          "baseline_samples_tok_s": [
+            1353.791166163757,
+            1356.6835602799713,
+            1352.0786503045524
+          ],
+          "candidate_samples_tok_s": [
+            1356.9314562356062,
+            1347.116754830253,
+            1354.3743751964153
+          ],
+          "baseline_median_tok_s": 1353.791166163757,
+          "candidate_median_tok_s": 1354.3743751964153,
+          "candidate_delta_percent": 0.04307968963270792
+        },
+        "4096": {
+          "baseline_samples_tok_s": [
+            1471.631284492652,
+            1468.7275524544032,
+            1467.5079638559641
+          ],
+          "candidate_samples_tok_s": [
+            1467.5932334167726,
+            1465.9095728611085,
+            1464.3444178608177
+          ],
+          "baseline_median_tok_s": 1468.7275524544032,
+          "candidate_median_tok_s": 1465.9095728611085,
+          "candidate_delta_percent": -0.19186537275653892
+        }
+      },
+      "off_sha256": "9efa7f2ac8964e8d0affdecf472bead36aca378e6aa2a737e6f0c95e732b4a3d",
+      "on_sha256": "b423fb617f75c803e71ed310aac1f089b469e60b01e79fef15094af569b50169"
+    },
+    "decision": "reject_and_remove",
+    "reason": "The post-transfer profile invalidates the old hotspot premise and the full-model 4K gate regresses 0.192%. No candidate kernel, selector, or duplicate route is retained."
+  },
+  "next": {
+    "prefill": "Do not continue LCP-1 tuning. Exact GDN recurrence is the only first-order 512/4K prefill family; new work must preserve the established six-case state and 250/250 natural-trajectory contract.",
+    "decode": "Run the bounded 128K decode attribution from LCP-D1 independently; do not infer its cause from this prefill-only profile."
+  }
+}

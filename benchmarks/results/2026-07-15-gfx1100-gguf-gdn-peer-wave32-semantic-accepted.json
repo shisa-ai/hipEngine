@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_peer_wave32_semantic_gate",
+  "status": "accepted_semantic_pending_prefill_speed",
+  "created_at": "2026-07-15T04:42:51Z",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "conclusion": "The llama.cpp-HIP-shaped chain_peer_wave32 route passes the prospectively frozen 18-prompt product gate: KL max 0.041737 <= 0.05, aggregate top-1 445/450 = 98.889% >= 90%, deterministic finite execution, and aggregate decode wall -0.050%. Exact state and free-running trajectories remain diagnostic. The production default is unchanged pending the predeclared 512/4K prefill speed floors.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "1e7b659241c7f0f5e295e1992ae495d624556074",
+    "source_clean": true,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "mode": "chain_peer_wave32",
+    "source": "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/gated_delta_net.cu",
+    "source_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "schedule": "unit-normalized Q/K, post-reduction 1/sqrt(128) output scale, post-reduction scalar decay, one XOR-reduced wave32 per value column, four columns per 128-thread block, four recurrent-state rows per lane resident across the serial token loop",
+    "resource_trace": {
+      "workgroup_size": 128,
+      "vgpr_count": 40,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "contract": {
+    "baseline_mode": "chain_lds32_direct",
+    "prompt_suites": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompts": 18,
+    "teacher_forced_transitions": 450,
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "decode_nonregression_required": true,
+    "deterministic_execution_required": true,
+    "exact_state_required": false,
+    "exact_free_running_trajectory_required": false,
+    "prefill_speed_gate_after_semantic_pass": [512, 4096]
+  },
+  "result": {
+    "measurement_valid": true,
+    "passed": true,
+    "kl_max": 0.04173686920338883,
+    "kl_passed": true,
+    "kl_max_prompt": "heldout_code_rate_limiter",
+    "top1_matches": 445,
+    "top1_total": 450,
+    "top1_agreement": 0.9888888888888889,
+    "top1_passed": true,
+    "decode_baseline_median_wall_sum_ms": 22524.3793525,
+    "decode_candidate_median_wall_sum_ms": 22513.177735,
+    "decode_wall_delta_percent": -0.04973108170794369,
+    "decode_speedup": 1.0004975582581834,
+    "decode_non_regressive": true,
+    "free_running_trajectories_exact_diagnostic": false
+  },
+  "prompt_results": [
+    {"id": "code_merge_intervals", "kl_max": 0.0027644921971783495, "top1_matches": 25, "decode_wall_delta_percent": -0.6969842524827597},
+    {"id": "code_topological_sort", "kl_max": 0.0030350963878358244, "top1_matches": 25, "decode_wall_delta_percent": -0.026277442618683117},
+    {"id": "code_lru_cache", "kl_max": 0.02019437526530436, "top1_matches": 24, "decode_wall_delta_percent": -0.05374593097741897},
+    {"id": "code_markdown_table", "kl_max": 0.006519046199079659, "top1_matches": 25, "decode_wall_delta_percent": 0.08595594150930062},
+    {"id": "general_en_plan", "kl_max": 0.006358214224110546, "top1_matches": 25, "decode_wall_delta_percent": 0.004346296454813548},
+    {"id": "general_en_explain", "kl_max": 0.004417302178547949, "top1_matches": 24, "decode_wall_delta_percent": -0.041565654946735746},
+    {"id": "general_ja_plan", "kl_max": 0.004162590589862231, "top1_matches": 25, "decode_wall_delta_percent": 0.017128188801781553},
+    {"id": "general_ja_explain", "kl_max": 0.020290462814632013, "top1_matches": 25, "decode_wall_delta_percent": -0.12274869226193436},
+    {"id": "mixed_ja_en_translate", "kl_max": 0.009735565079462632, "top1_matches": 25, "decode_wall_delta_percent": 0.005075557867308785},
+    {"id": "mixed_ja_en_review", "kl_max": 0.007067708570023882, "top1_matches": 24, "decode_wall_delta_percent": 0.15940100802445478},
+    {"id": "heldout_code_rate_limiter", "kl_max": 0.04173686920338883, "top1_matches": 24, "decode_wall_delta_percent": -0.016316994922143547},
+    {"id": "heldout_code_interval_schedule", "kl_max": 0.004868129964023822, "top1_matches": 25, "decode_wall_delta_percent": -0.02160887699714998},
+    {"id": "heldout_general_en_incident", "kl_max": 0.007057849373050308, "top1_matches": 25, "decode_wall_delta_percent": -0.0648791475792917},
+    {"id": "heldout_general_en_quant", "kl_max": 0.008570567250637864, "top1_matches": 25, "decode_wall_delta_percent": -0.05356822019579391},
+    {"id": "heldout_general_ja_migration", "kl_max": 0.0023596710353431267, "top1_matches": 25, "decode_wall_delta_percent": 0.0491869806906395},
+    {"id": "heldout_general_ja_speculative", "kl_max": 0.015680628365121116, "top1_matches": 24, "decode_wall_delta_percent": -0.06383556303600191},
+    {"id": "heldout_mixed_summary", "kl_max": 0.015408785705588277, "top1_matches": 25, "decode_wall_delta_percent": -0.10808613659948982},
+    {"id": "heldout_mixed_review", "kl_max": 0.016399308704601333, "top1_matches": 25, "decode_wall_delta_percent": 0.046463730433875416}
+  ],
+  "raw_artifact": {
+    "path": "/tmp/gdn-peer-wave32-peer-aligned-clean-1e7b6592.json",
+    "sha256": "e218d8282f52816442cadbed5d81ed3c44feb15523bd4aae8044599c2935c550"
+  },
+  "command": "PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_wave32 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/gdn-peer-wave32-peer-aligned-clean-1e7b6592.json",
+  "decision": {
+    "default_changed": false,
+    "semantic_gate_passed": true,
+    "decode_gate_passed": true,
+    "prefill_speed_gate_run": false,
+    "next": "Run clean interleaved 512/4K prefill A/B against chain_lds32_direct and the frozen llama.cpp parity floors; promote only if both pass."
+  }
+}

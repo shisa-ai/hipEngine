@@ -857,6 +857,37 @@ python3 scripts/qwen35_paro_kv_functional_mc.py \
   --json /tmp/hipengine-kv-functional-mc-32k.json
 ```
 
+### Clean native GGUF tail-four closure
+
+The current committed GGUF-only gate at `c971262f` uses therock HIP 7.15 and
+keeps `tail4_hadamard_group32` explicit. The fixed layout preserves BF16 K/V on
+full-attention model layers `3,7,11,15,19,23` and stores layers `27,31,35,39`
+as normalized Hadamard-group32 INT8 K/V with FP16 scales.
+
+Quality is not the blocker. All 11 committed natural/category/heldout prompts
+pass at 512/8 (max KL `0.007455`, top-1 100%) and 4K/16 (mean/max KL
+`0.0001369/0.009926`, aggregate top-1 `99.47%`, minimum prompt `94.12%`). The
+bounded `mixed_v1` 128K/16 row also passes (max KL `5.19e-5`, top-1 100%).
+Every layout audit finds six BF16 and four INT8 layers with zero persistent
+BF16 mirror/oracle buffers.
+
+At 128K, persistent K/V falls from `2,689,597,440` to `2,185,297,920` bytes
+(**-18.75%**) and live owned session memory falls from `24.168` to
+`23.698 GiB`. Promotion still rejects on speed and high-water memory:
+
+| Shape | BF16 prefill/decode tok/s | Tail-four prefill/decode tok/s | Delta |
+| --- | ---: | ---: | ---: |
+| 512/128, 1+3 | `2667.455 / 92.576` | `2635.391 / 95.677` | `-1.20% / +3.35%` |
+| 4K/128, 1+3 | `2920.268 / 100.204` | `2900.706 / 99.451` | `-0.67% / -0.75%` |
+| 128K/128, one-shot | `1045.362 / 62.631` | `1041.368 / 60.240` | `-0.38% / -3.82%` |
+
+Production mixed prefill allocates and frees `1,075,838,976` bytes, raising
+allocator high water from `24.168` to `24.700 GiB`; that byte count is exactly
+four BF16 full-attention layer caches, so the attribution is inferred as a
+four-layer prefill transient rather than a persistent shadow. Before repeating
+the gate, remove that transient and optimize the long-context group32 attention
+body. Do not make the layout a GGUF default from quality/storage alone.
+
 ### Artifact index
 
 | Evidence | Artifact |
@@ -870,6 +901,8 @@ python3 scripts/qwen35_paro_kv_functional_mc.py \
 | Repeated/mixed prompt + native K/V arithmetic isolation | [`2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json`](../benchmarks/results/2026-07-13-w7900-gguf-q8-kv-protocol-arithmetic-isolation.json) |
 | Same-weight hipEngine/llama.cpp GGUF bridge | [`2026-07-13-w7900-gguf-llamacpp-matched-parity.json`](../benchmarks/results/2026-07-13-w7900-gguf-llamacpp-matched-parity.json) |
 | Same-weight hipEngine GGUF Hadamard/KIVI screen | [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json) |
+| Native GGUF/PARO tail-four implementation outcome | [`2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`](../benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json) |
+| Clean current-stack GGUF tail-four quality/perf/memory closure | [`2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) |
 | July 12 independent rollout and FP32-scale control | [`2026-07-12-w7900-v030-paro-context-capacity.json`](../benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json) |
 
 Format/policy development tools:

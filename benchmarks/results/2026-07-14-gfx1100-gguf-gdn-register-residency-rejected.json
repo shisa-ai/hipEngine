@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_register_residency_screen",
+  "status": "rejected_removed",
+  "created_at": "2026-07-14T17:01:12Z",
+  "updated_at": "2026-07-14T17:12:00Z",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "candidate_retained": false,
+  "conclusion": "The direct wave32 and contiguous-group4 register-resident schedules produce large prefill gains but fail the frozen 18-prompt semantic gate; irregular group3 fails the predeclared speed floor. A final strict-exact scalar-column candidate passes byte equality but compiles at 256 VGPR with about 1.04 KiB scratch/thread, failing its zero-scratch residency gate before timing. All temporary candidate kernels, registry entries, selectors, routing, and candidate tests were removed. Exact chain_lds32_direct remains the production route.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP 7.15.0",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "hipengine_base_commit": "6464a820"
+  },
+  "predeclared_contract": {
+    "baseline_mode": "chain_lds32_direct",
+    "semantic_protocol": "same-context teacher-forced logits on the complete mtpbench code/general_en/general_ja/mixed_ja_en suite plus frozen category-heldouts",
+    "prompt_count": 18,
+    "transitions": 450,
+    "kl_max_threshold": 0.05,
+    "aggregate_top1_threshold": 0.99,
+    "decode_rule": "candidate aggregate wall must not exceed baseline; no tolerance",
+    "speed_rule": "512/4K must each reach llama.cpp HIP",
+    "llamacpp_hip_prefill_tok_s": {
+      "512/128": 2412.320,
+      "4K/128": 2255.080
+    }
+  },
+  "results": [
+    {
+      "candidate": "direct wave32 tree, one value column per wave",
+      "primitive_cpu_budget_passed": true,
+      "prefill_tok_s": {
+        "512/128": 2181.777567944775,
+        "4K/128": 2473.971942780131
+      },
+      "prefill_delta_vs_exact_percent": {
+        "512/128": 69.10,
+        "4K/128": 76.51
+      },
+      "prefill_delta_vs_llamacpp_hip_percent": {
+        "512/128": -9.56,
+        "4K/128": 9.71
+      },
+      "semantic": {
+        "kl_max": 0.06875725568112254,
+        "top1_matches": 443,
+        "top1_total": 450,
+        "top1_agreement": 0.9844444444444445,
+        "decode_wall_delta_percent": -0.027991912214527112,
+        "kl_passed": false,
+        "top1_passed": false,
+        "decode_non_regressive": true
+      },
+      "decision": "rejected_semantic_and_512_speed"
+    },
+    {
+      "candidate": "direct contiguous group4, 32 state rows per lane",
+      "primitive_cpu_budget_passed": true,
+      "prefill_tok_s": {
+        "512/128": 2281.3825308951036,
+        "4K/128": 2661.670890644987
+      },
+      "prefill_delta_vs_llamacpp_hip_percent": {
+        "512/128": -5.43,
+        "4K/128": 18.03
+      },
+      "semantic": {
+        "kl_max": 0.06518350917092089,
+        "top1_matches": 445,
+        "top1_total": 450,
+        "top1_agreement": 0.9888888888888889,
+        "decode_wall_delta_percent": -0.056454880022760466,
+        "kl_passed": false,
+        "top1_passed": false,
+        "decode_non_regressive": true
+      },
+      "geometry_controls": {
+        "threads64_prefill_tok_s": {
+          "512/128": 2276.939013676978,
+          "4K/128": 2649.0014281205454
+        },
+        "cross_column_qk_shuffle_prefill_tok_s": {
+          "512/128": 1811.5168577286063,
+          "4K/128": 2035.79214238989
+        }
+      },
+      "decision": "rejected_semantic_and_512_speed"
+    },
+    {
+      "candidate": "direct irregular contiguous group3, 43/43/42 state rows",
+      "primitive_cpu_budget_passed": true,
+      "prefill_tok_s": {
+        "512/128": 1804.4599129460364,
+        "4K/128": 2019.6964087707613
+      },
+      "prefill_delta_vs_llamacpp_hip_percent": {
+        "512/128": -25.20,
+        "4K/128": -10.44
+      },
+      "semantic_gate_run": false,
+      "decision": "rejected_speed_before_semantic_gate"
+    },
+    {
+      "candidate": "strict-exact scalar register32 direct, 128 FP32 state rows per thread",
+      "source_lineage": "atlas@37513bf kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu (scheduling reference only)",
+      "plain_byte_exact": true,
+      "segmented_byte_exact": true,
+      "workgroup_size": 32,
+      "lds_bytes": 0,
+      "plain_vgpr_count": 256,
+      "segmented_vgpr_count": 256,
+      "plain_scratch_bytes_per_thread": 1064,
+      "segmented_scratch_bytes_per_thread": 1060,
+      "resource_gate": {
+        "max_vgpr": 192,
+        "required_scratch_bytes_per_thread": 0,
+        "passed": false
+      },
+      "full_model_timing_run": false,
+      "semantic_gate_run": false,
+      "decision": "rejected_compile_resource_before_timing"
+    }
+  ],
+  "semantic_category_diagnostics": {
+    "wave32_tree": {
+      "code": {"top1": 0.98, "kl_max": 0.026873900855268737},
+      "general_en": {"top1": 0.99, "kl_max": 0.010132674572004544},
+      "general_ja": {"top1": 0.98, "kl_max": 0.06875725568112254},
+      "mixed_ja_en": {"top1": 0.99, "kl_max": 0.0521284605677073}
+    },
+    "group4": {
+      "code": {"top1": 0.98, "kl_max": 0.021843069209682858},
+      "general_en": {"top1": 0.99, "kl_max": 0.01205943462912282},
+      "general_ja": {"top1": 1.0, "kl_max": 0.06518350917092089},
+      "mixed_ja_en": {"top1": 0.99, "kl_max": 0.023768351051023616}
+    }
+  },
+  "commands": {
+    "speed": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=<candidate> PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <output>",
+    "semantic": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --backend hip_gfx1100 --candidate-mode <candidate> --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <output>"
+  },
+  "raw_local_artifact_sha256": {
+    "gpf6-direct-tree-smoke.json": "4fa34a798221b1d1c6f1f33b6bd829beda44960052797a2def31ddff3a5ee0a0",
+    "gpf6-semantic-full-dirty.json": "4c2fa538c050edde0ff44083c7961fedc765f79dfe9db4aaa3bb9dbdb4b55eac",
+    "gpf6b-group4-smoke.json": "feb42a2c9ebeaf5bea42f8d67d0dda4a50a48db0590fedd661b60fd122f3f818",
+    "gpf6b-group4-semantic-full-dirty.json": "c01e2acc826e6aeadd13f3240987d4f808494add87875aa4c49c6189e095392b",
+    "gpf6c-group3-smoke.json": "153db1a063324e42f5b9e9720170eee4e7afcde2aa10fb21fa2f38309d3c778c",
+    "gfx1100-gdn-register32-trace_kernel_trace.csv": "22207adaafd1495f1481f9833fb4093a028a1fa28d0c4c25b9e605b83e1ad3cb"
+  },
+  "notes": [
+    "All candidate measurements were dirty development diagnostics and are not retained performance claims.",
+    "Prompt contents were frozen before the semantic measurements and include eight category-heldouts in addition to the canonical ten-prompt suite.",
+    "No prompt-conditioned branch, token-specific logic, or post-measurement threshold change was used.",
+    "The strict-exact scalar-column candidate was removed after failing the predeclared compile/resource gate; no full-model performance claim was measured."
+  ]
+}

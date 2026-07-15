@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gpf9c_residual_attribution",
+  "created_at": "2026-07-15T05:45:00+00:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "hipengine_kv_dtype": "bf16",
+    "llamacpp_kv_dtype": "f16"
+  },
+  "software": {
+    "hipengine_commit": "51d9477759e5a58dae3fef9b8a6311b313a0211c",
+    "hipengine_dirty": false,
+    "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "llamacpp_commit": "1ebf790cd",
+    "llamacpp_build_number": 9648
+  },
+  "purpose": "Attribute GPF-9C's remaining 512-token short-prompt deficit after its peer-wave32 recurrence nearly removes the production GDN bottleneck. This diagnostic does not overturn GPF-9C's frozen two-shape rejection.",
+  "commands": {
+    "hipengine": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_peer_wave32 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt HIPENGINE_PROFILE_TARGET_START_SECONDS=120 HIPENGINE_PROFILE_WARMUP_LEAD_SECONDS=5 PYTHONPATH=/home/lhl/hipEngine-main rocprofv3 --kernel-trace --output-format csv --collection-period 119:10:1 --output-directory <tmp> --output-file candidate --log-level error -- python3 /tmp/profile_gpf9c_collection_window.py",
+    "hipengine_summary": "python3 scripts/qwen35_gguf_rocprof_summary.py --csv <candidate_kernel_trace.csv> --tokens-prefill 512 --top 80 --json <candidate_summary.json>",
+    "llamacpp": "HIP_VISIBLE_DEVICES=0 rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file llama-pp512 --log-level error -- /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -p 512 -n 0 -r 1 -o json -dev ROCm0",
+    "llamacpp_summary": "Extract the second 2259-dispatch pass after the first mul_mat_vec_q Q6_K lm-head terminator, then run python3 scripts/llamacpp_kernel_trace_summary.py --csv <measured_kernel_trace.csv> --json <measured_summary.json> --label current-w7900-llamacpp-hip-pp512 --top 50"
+  },
+  "protocol": {
+    "hipengine": "Create one cached-only resident max-512 session, run an initialization prefill, reset, warm the identical prefill five seconds before the target, reset, and collect only the final synchronized 512-token prefill in a bounded rocprof collection window.",
+    "llamacpp": "llama-bench -r 1 emits one warmup and one measured pp512 pass. The measured pass is isolated after the first lm-head terminator, reproducing the established 2259-dispatch extraction rule.",
+    "raw_csv_committed": false,
+    "timing_note": "Profiler wall and kernel-family values are diagnostic. The prospectively frozen non-profiled 1+3 throughput floor remains the performance verdict. Cross-engine family names are structural crosswalks rather than claims of identical fused math."
+  },
+  "profiled_rows": {
+    "hipengine_chain_peer_wave32": {
+      "prefill_tok_s": 2164.6025321077177,
+      "host_wall_ms": 236.533032002626,
+      "token_id": 9707,
+      "dispatches": 1645,
+      "summed_kernel_ms": 207.253129,
+      "first_to_last_kernel_span_ms": 235.313867,
+      "queue_idle_gap_ms": 28.060738,
+      "outside_trace_boundary_ms": 1.219165002626,
+      "gaps_over_10us": 450,
+      "gaps_over_10us_total_ms": 22.198829,
+      "gaps_over_50us": 154,
+      "max_gap_us": 231.232,
+      "kernel_trace_sha256": "8ea695693d2fd7d809ef8c65f1e26d8d98019a6ee3de4d1fd8b749c3f74fcd73",
+      "summary_sha256": "0c741be7c02c719ce554e8caa19d3027dc7397446c445dbe49f4cdde8a8072a3"
+    },
+    "llamacpp_hip": {
+      "prefill_tok_s": 2373.105704,
+      "host_wall_ms": 215.75103,
+      "dispatches": 2259,
+      "summed_kernel_ms": 203.301476,
+      "first_to_last_kernel_span_ms": 212.236294,
+      "queue_idle_gap_ms": 8.934818,
+      "outside_trace_boundary_ms": 3.514736,
+      "gaps_over_10us": 6,
+      "gaps_over_10us_total_ms": 0.184022,
+      "gaps_over_50us": 1,
+      "max_gap_us": 68.061,
+      "measured_kernel_trace_sha256": "d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67",
+      "summary_sha256": "3033dc5c2686ea0f3057bd52205f7cdf69cd4ffc4c005a09f6ce597cdb1f7da5"
+    },
+    "candidate_minus_llamacpp": {
+      "host_wall_ms": 20.782002002626,
+      "host_wall_percent": 9.632399902158518,
+      "summed_kernel_ms": 3.951653,
+      "first_to_last_kernel_span_ms": 23.077573,
+      "queue_idle_gap_ms": 19.12592,
+      "queue_idle_share_of_span_delta_percent": 82.8766525838744,
+      "outside_trace_boundary_ms": -2.295570997374
+    }
+  },
+  "family_crosswalk_ms": [
+    {
+      "family": "selected_q4_q5",
+      "hipengine_ms": 90.003825,
+      "llamacpp_ms": 111.822579,
+      "hipengine_minus_llamacpp_ms": -21.818754,
+      "interpretation": "hipEngine advantage; not a target"
+    },
+    {
+      "family": "dense_q8",
+      "hipengine_ms": 51.251257,
+      "llamacpp_ms": 30.425833,
+      "hipengine_minus_llamacpp_ms": 20.825424,
+      "interpretation": "largest positive kernel-family residual"
+    },
+    {
+      "family": "gdn_full_chain",
+      "hipengine_ms": 20.211148,
+      "llamacpp_ms": 16.52237,
+      "hipengine_minus_llamacpp_ms": 3.688778,
+      "interpretation": "hipEngine includes separate prepare, recurrence, and RMSNorm/gate; llama.cpp's named GDN bucket is fused differently"
+    },
+    {
+      "family": "gdn_recurrence_only",
+      "hipengine_ms": 17.134291,
+      "llamacpp_ms": 16.52237,
+      "hipengine_minus_llamacpp_ms": 0.611921,
+      "interpretation": "peer-wave32 recurrence itself is effectively at parity"
+    },
+    {
+      "family": "router_f32_gemm_and_moe_scheduler",
+      "hipengine_ms": 18.055935,
+      "llamacpp_ms": 15.309844,
+      "hipengine_minus_llamacpp_ms": 2.746091,
+      "interpretation": "crosswalk groups hipEngine router plus scheduler against llama.cpp rocBLAS, mm_ids_helper, and top-k"
+    },
+    {
+      "family": "linear_attention_convolution",
+      "hipengine_ms": 9.430347,
+      "llamacpp_ms": 1.282169,
+      "hipengine_minus_llamacpp_ms": 8.148178,
+      "interpretation": "GPF-9C-specific short-shape residual; larger than the production-route 3.101 ms prior profile"
+    },
+    {
+      "family": "full_attention",
+      "hipengine_ms": 3.63295,
+      "llamacpp_ms": 3.298423,
+      "hipengine_minus_llamacpp_ms": 0.334527,
+      "interpretation": "effectively at parity"
+    },
+    {
+      "family": "q6_and_lm_head",
+      "hipengine_ms": 3.926348,
+      "llamacpp_ms": 4.495795,
+      "hipengine_minus_llamacpp_ms": -0.569447,
+      "interpretation": "hipEngine advantage"
+    },
+    {
+      "family": "remaining_layout_norm_postops",
+      "hipengine_ms": 10.741319,
+      "llamacpp_ms": 20.144463,
+      "hipengine_minus_llamacpp_ms": -9.403144,
+      "interpretation": "hipEngine advantage; balances the positive dense-Q8/convolution residuals"
+    }
+  ],
+  "largest_hipengine_queue_gap_transitions": [
+    {
+      "transition": "copy_to_rmsnorm",
+      "gap_ms": 6.334,
+      "count": 41,
+      "max_gap_us": 231.232
+    },
+    {
+      "transition": "copy_to_copy",
+      "gap_ms": 6.01,
+      "count": 264,
+      "max_gap_us": 91.2
+    },
+    {
+      "transition": "copy_to_selected_q4",
+      "gap_ms": 3.173,
+      "count": 40,
+      "max_gap_us": 104.0
+    },
+    {
+      "transition": "rmsnorm_to_dense_q8",
+      "gap_ms": 2.668,
+      "count": 40,
+      "max_gap_us": 110.8
+    },
+    {
+      "transition": "silu_to_selected_q5",
+      "gap_ms": 1.184,
+      "count": 37,
+      "max_gap_us": 121.6
+    },
+    {
+      "transition": "copy_to_full_attention",
+      "gap_ms": 1.181,
+      "count": 10,
+      "max_gap_us": 121.4
+    }
+  ],
+  "prior_controls": {
+    "production_gguf_profile": {
+      "source": "benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json",
+      "commit": "16395fe5e8efb030501be2209eb535a7e3fe1633",
+      "total_kernel_ms": 358.274475,
+      "dispatches": 2009,
+      "gdn_recurrent_ms": 211.486978,
+      "dense_q8_ms": 49.736147,
+      "selected_q4_ms": 33.901215,
+      "selected_q5_ms": 23.166809,
+      "linear_attn_conv_ms": 3.101387
+    },
+    "paro_k2_profile": {
+      "source": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "total_kernel_ms": 196.880556,
+      "dispatches": 1312,
+      "gdn_recurrent_ms": 40.315364,
+      "linear_attn_conv_ms": 3.525191,
+      "note": "Schedule control only: model, quantization, and software revision differ from the GGUF row."
+    }
+  },
+  "frozen_nonprofiled_speed_context": {
+    "candidate_median_tok_s": 2210.729,
+    "candidate_wall_ms": 231.5978123053527,
+    "llamacpp_floor_tok_s": 2412.32,
+    "llamacpp_floor_wall_ms": 212.24381508257608,
+    "candidate_minus_llamacpp_wall_ms": 19.353997222776613,
+    "candidate_status": "rejected_512_speed_floor",
+    "source": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json"
+  },
+  "conclusion": "The production route remains GDN-bound, but GPF-9C removes that first-order bottleneck: its peer recurrence is only 0.612 ms slower than llama.cpp and the full named GDN chain only 3.689 ms slower. The GPF-9C and llama.cpp summed GPU work is nearly equal (207.253 versus 203.301 ms). The decisive short-prompt residual is queue starvation: hipEngine leaves 28.061 ms idle between kernels versus 8.935 ms for llama.cpp, a 19.126 ms excess and 82.9% of the trace-span delta, despite launching 614 fewer kernels. The largest kernel-family excess is dense Q8 (+20.825 ms), followed by convolution (+8.148 ms), while selected Q4/Q5 (-21.819 ms) and remaining layout/post-ops (-9.403 ms) compensate. Further GDN recurrence algebra is not the measured 512 target. The next retained work should attack copy-boundary queue bubbles first and a genuinely new dense-Q8 path second; do not retune selected Q4/Q5, full attention, or generic launch count."
+}

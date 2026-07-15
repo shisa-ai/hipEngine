@@ -1,0 +1,119 @@
+{
+  "kind": "hipengine_gfx1100_gguf_residual_prefill_schedule_screens",
+  "schema_version": 1,
+  "created_at": "2026-07-14T15:55:00+09:00",
+  "status": "rejected_no_code_retained",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "source": {
+    "baseline_commit": "54346596",
+    "branch": "gfx1100-gguf-optimization",
+    "dirty_diagnostics": true,
+    "final_tree_clean": true
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "software": {
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt_source": "repeated token 9707"
+  },
+  "screens": [
+    {
+      "id": "LCP-2-LDS16",
+      "hypothesis": "A 16-column exact direct-conv LDS tile may improve latency hiding on the 96-CU W7900 by exposing 256 half-wave blocks instead of 128 one-wave blocks.",
+      "correctness": {
+        "plain_and_segmented_direct_conv_fixtures": 2,
+        "output_and_final_state_byte_exact": true
+      },
+      "protocol": "dirty same-source max-4K resident prefill-only screen; one warmup plus three measurements per shape and mode in separate sessions",
+      "results": [
+        {
+          "workload": "512/0",
+          "lds32_prefill_tok_s": 1294.527105529937,
+          "lds16_prefill_tok_s": 1292.5245629477822,
+          "delta_percent": -0.15469298198549364
+        },
+        {
+          "workload": "4K/0",
+          "lds32_prefill_tok_s": 1404.1829077174375,
+          "lds16_prefill_tok_s": 1410.2740902365265,
+          "delta_percent": 0.4337883964839362
+        }
+      ],
+      "decision": "reject_mixed_shape_performance",
+      "notes": [
+        "The diagnostic templated the direct body and perturbed retained LDS32 code generation, so neither absolute row is a publication baseline.",
+        "The paired dirty screen remains valid as a rejection gate because both modes used the same source and 512 failed the predeclared all-shape rule.",
+        "Candidate kernel, environment selector, and template changes were removed."
+      ],
+      "local_artifacts": [
+        "/tmp/gfx1100-gguf-opt/lcp2-lds16-off.json",
+        "/tmp/gfx1100-gguf-opt/lcp2-lds16-on.json"
+      ]
+    },
+    {
+      "id": "GPF-5A-LONG",
+      "hypothesis": "The exact two-wave dense-Q8 schedule promoted through 4K may transfer to longer W7900 contexts.",
+      "correctness": {
+        "final_token_ids": [9707, 9707, 9707, 9707],
+        "stable": true,
+        "schedule_math": "Previously byte-exact GPF-5A kernel; only the request-scoped ceiling changed."
+      },
+      "protocol": "dirty same-session one-shot screen with a shared max-64K resident session; 32K ran baseline then candidate and 64K ran candidate then baseline",
+      "results": [
+        {
+          "workload": "32K/0",
+          "max_4k_prefill_tok_s": 1246.5656401895615,
+          "max_64k_prefill_tok_s": 1226.4008392086982,
+          "delta_percent": -1.6176284930969898
+        },
+        {
+          "workload": "64K/0",
+          "max_4k_prefill_tok_s": 1026.8724388251571,
+          "max_64k_prefill_tok_s": 1024.6168437386193,
+          "delta_percent": -0.21965679487108147
+        }
+      ],
+      "decision": "retain_4096_token_cap",
+      "local_artifact": "/tmp/gfx1100-gguf-opt/q8-long-screen.json"
+    },
+    {
+      "id": "LCP-2-GROUP2",
+      "hypothesis": "Two lanes per value column can keep 64 contiguous state rows each in VGPRs and preserve scalar row order across two ordered owner phases.",
+      "correctness": {
+        "plain_output_mismatches": 11,
+        "segmented_output_mismatches": 11,
+        "elements_per_fixture": 69632,
+        "mismatch_percent": 0.01579733455882353,
+        "max_abs": 0.00097656,
+        "final_state_comparison_reached": false
+      },
+      "decision": "reject_before_timing",
+      "notes": [
+        "The candidate failed the first BF16 byte-equality assertion in both dispatch forms.",
+        "Candidate body, wrappers, and environment selector were removed without a performance run."
+      ]
+    }
+  ],
+  "final_decision": {
+    "retained_code_change": false,
+    "gfx1100_q8_two_wave_max_tokens": 4096,
+    "gdn_default": "chain_lds32_direct",
+    "next_gdn_boundary": "High-effort exact chunked/prefix research requiring the six-case state matrix and 250/250 natural-transition gate."
+  },
+  "commands": {
+    "lds16_correctness": "HIPENGINE_GGUF_GDN_LDS16_DIRECT=1 PYTHONPATH=$PWD uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py -k direct_conv_lds32_is_bit_exact_to_materialized_chain",
+    "lds16_performance_family": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/0 4K/0 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build",
+    "q8_long_screen": "PYTHONPATH=$PWD python3 /tmp/gfx1100-gguf-opt/q8-long-screen.py",
+    "group2_correctness": "HIPENGINE_GGUF_GDN_GROUP2_DIRECT=1 PYTHONPATH=$PWD uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py -k direct_conv_lds32_is_bit_exact_to_materialized_chain"
+  }
+}

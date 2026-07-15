@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.kernels.cpu_reference import linear_attn_conv_prefill_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_prefill_f32,
     qwen35_linear_attn_conv_prefill_f32_state_rows,
@@ -23,6 +25,7 @@ def _hip_available() -> bool:
 
 
 HIP_AVAILABLE = _hip_available()
+_CONV_SOURCE = Path(__file__).parents[1] / "hipengine/kernels/hip_gfx1100/linear_attn/conv.hip"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -194,6 +197,45 @@ def _run_packed_conv_mutating(
     finally:
         for buf in (hidden_buf, state_buf, weight_buf, cu_buf, state_indices_buf, out_buf):
             buf.free()
+
+
+def test_normal_conv_prefill_has_vgpr_exact_math_specialization() -> None:
+    source = _CONV_SOURCE.read_text()
+    assert "qwen35_linear_attn_conv_prefill_no_state_rows_kernel" in source
+    assert "v_mul_f32_e32" in source
+    assert "v_add_f32_e32" in source
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("tokens", [1, 3, 4, 9, 31])
+def test_normal_conv_prefill_matches_segment_kernel_and_cpu_reference(tokens: int) -> None:
+    rng = np.random.default_rng(404 + tokens)
+    channels = 19
+    kernel_size = 4
+    hidden = rng.normal(0.0, 0.5, size=(tokens, channels)).astype(np.float32)
+    conv_state = rng.normal(0.0, 0.25, size=(channels, kernel_size)).astype(np.float32)
+    conv_weight = rng.normal(0.0, 0.2, size=(channels, kernel_size)).astype(np.float32)
+
+    normal_out, normal_state = _run_single_conv_mutating(hidden, conv_state, conv_weight)
+    segment_out, segment_state = _run_packed_conv_mutating(
+        hidden,
+        conv_state[None, ...],
+        conv_weight,
+        np.asarray([0, tokens], dtype=np.int32),
+        np.asarray([0], dtype=np.int64),
+    )
+    reference_out, reference_state = linear_attn_conv_prefill_segments(
+        hidden,
+        conv_state[None, ...],
+        conv_weight,
+        [0, tokens],
+        [0],
+    )
+
+    np.testing.assert_array_equal(normal_out, segment_out)
+    np.testing.assert_array_equal(normal_state, segment_state[0])
+    np.testing.assert_allclose(normal_out, reference_out, rtol=2e-6, atol=2e-6)
+    np.testing.assert_array_equal(normal_state, reference_state[0])
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

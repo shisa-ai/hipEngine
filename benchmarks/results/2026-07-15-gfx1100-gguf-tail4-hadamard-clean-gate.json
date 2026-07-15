@@ -1,0 +1,162 @@
+{
+  "kind": "hipengine_gfx1100_gguf_tail4_hadamard_clean_gate",
+  "schema_version": 1,
+  "created_at": "2026-07-15T23:55:00+09:00",
+  "status": "accepted_explicit_diagnostic_rejected_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Clean repeated 512/128 and 4K/128 production graph A/B plus one-shot 128K/128 characterization on W7900; 128K is not a repeated topline claim.",
+  "correctness_claim": true,
+  "source": {
+    "commit": "c971262f6ada100eee063de85f5457fe2b480362",
+    "branch": "gfx1100-gguf-optimization",
+    "dirty": false
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "software": {
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_version_file_sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "candidate": {
+    "storage": "tail4_hadamard_group32",
+    "scale_dtype": "fp16",
+    "bf16_model_layers": [3, 7, 11, 15, 19, 23],
+    "int8_model_layers": [27, 31, 35, 39],
+    "bf16_full_attention_indices": [0, 1, 2, 3, 4, 5],
+    "int8_full_attention_indices": [6, 7, 8, 9]
+  },
+  "validation": {
+    "focused_tests": {
+      "command": "therock-7.15 env python3.12 -m pytest -q tests/test_kv_hadamard_group32.py tests/test_kv_dispatch.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py --tb=short",
+      "passed": 43,
+      "failed": 0
+    },
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "quality_protocol": "Native BF16 reference and tail-four sessions; candidate decode is teacher-forced with BF16 reference tokens; every prompt independently requires mean KL <=0.05 and top-1 >=90%.",
+    "quality": {
+      "512_d8_full_11_prompt": {
+        "passed": true,
+        "positions": 99,
+        "mean_kl": 0.00013769117644122768,
+        "max_kl": 0.007454519059757787,
+        "top1_agreement": 1.0,
+        "minimum_prompt_top1_agreement": 1.0,
+        "raw_sha256": "04f427057f30c941d74f43ef5df0c02289f0062d0394832ef0ce21395793bf3d"
+      },
+      "4096_d16_full_11_prompt": {
+        "passed": true,
+        "positions": 187,
+        "mean_kl": 0.00013690652984317867,
+        "max_kl": 0.009925984391592374,
+        "top1_agreement": 0.9946524064171123,
+        "minimum_prompt_top1_agreement": 0.9411764705882353,
+        "raw_sha256": "036e438bf7522963befebccba4d16d211f4e9e675574fe6db164fb25de5547a0"
+      },
+      "128k_d16_bounded_mixed_v1": {
+        "passed": true,
+        "positions": 17,
+        "mean_kl": 3.5500831095924163e-06,
+        "max_kl": 5.191787513580937e-05,
+        "top1_agreement": 1.0,
+        "minimum_prompt_top1_agreement": 1.0,
+        "raw_sha256": "3fc5fbbe6726fc6cf222e7c3a3a88ce76e201fdd06b3deaa9f5c214037ef2228"
+      }
+    },
+    "layout_audit": {
+      "passed": true,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_int8_prefill_oracle_buffer_count": 0,
+      "all_quality_layouts": "six BF16 plus four INT8 full-attention layers"
+    }
+  },
+  "performance": {
+    "protocol": "Production WMMA bulk prefill and GEMV graph decode; repeated rows use one discarded eager warmup and three fresh state-bound measured graph runs per layout; graph capture excluded.",
+    "512_128": {
+      "bf16_prefill_tok_s": 2667.4548439925616,
+      "tail4_prefill_tok_s": 2635.3906741300716,
+      "prefill_delta_percent": -1.2020510838150589,
+      "bf16_decode_tok_s": 92.57575531235425,
+      "tail4_decode_tok_s": 95.67664179646336,
+      "decode_delta_percent": 3.34956649680751,
+      "all_ids_exact": true
+    },
+    "4096_128": {
+      "bf16_prefill_tok_s": 2920.267715187617,
+      "tail4_prefill_tok_s": 2900.7055235140197,
+      "prefill_delta_percent": -0.6698766545224277,
+      "bf16_decode_tok_s": 100.20410189758218,
+      "tail4_decode_tok_s": 99.45109962302136,
+      "decode_delta_percent": -0.7514685130659116,
+      "all_ids_exact": true,
+      "sample_ranges_overlap": false
+    },
+    "128k_128_one_shot": {
+      "bf16_prefill_tok_s": 1045.3624575081628,
+      "tail4_prefill_tok_s": 1041.3675019205389,
+      "prefill_delta_percent": -0.3821598488572775,
+      "bf16_decode_tok_s": 62.63059215417268,
+      "tail4_decode_tok_s": 60.240412539808375,
+      "decode_delta_percent": -3.8163132937983346,
+      "all_ids_exact": true
+    },
+    "raw_sha256": {
+      "512_4k_bf16": "f7923d373aeaa48acecfa07caabea564f061688fb5b34f32bd21ad2bc9943141",
+      "512_4k_tail4": "3459ca2c4ac504449619482a584e8638f8bc94b8004ff5ac970850ee75de2b6e",
+      "128k_bf16": "67aef2535f78f6b3ac0d27548d446b84549786873fcfb7bf43200bc21a82d06c",
+      "128k_tail4": "bffd5492bc69907e706867b7b9e7f562876f9adc11227f0e5c83c19f90fec9fa"
+    }
+  },
+  "memory_128k": {
+    "max_positions": 131328,
+    "bf16_kv_payload_bytes": 2689597440,
+    "tail4_kv_payload_bytes": 2151677952,
+    "tail4_scale_bytes": 33619968,
+    "tail4_total_kv_bytes": 2185297920,
+    "saved_persistent_kv_bytes": 504299520,
+    "kv_reduction_percent": 18.75,
+    "bf16_live_owned_gib": 24.16793868690729,
+    "tail4_live_owned_gib": 23.69827315956354,
+    "live_owned_savings_gib": 0.46966552734375,
+    "bf16_phase_sampled_hip_used_gib": 24.68359375,
+    "tail4_phase_sampled_hip_used_gib": 24.23046875,
+    "phase_sampled_savings_gib": 0.453125,
+    "bf16_allocator_high_water_gib": 24.16793868690729,
+    "tail4_allocator_high_water_gib": 24.70022628456354,
+    "tail4_high_water_regression_gib": 0.53228759765625,
+    "tail4_transient_prefill_bytes": 1075838976,
+    "transient_attribution": "Inferred: the transient is byte-exact to four BF16 full-attention K/V layer caches (4 * 268,959,744 bytes). It is freed before decode and is not a persistent shadow, but prevents allocator-high-water savings.",
+    "persistent_bf16_shadow_bytes": 0
+  },
+  "commands": {
+    "therock_environment_prefix": "TRPY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($TRPY -m rocm_sdk path --root); CORE=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib; LIBS=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib; env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=$ROOT/lib:$CORE:$LIBS HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-gguf-opt/hipcc-version.txt PYTHONPATH=.",
+    "quality_512_4k_family": "$TRPY scripts/qwen35_native_mixed_kv_suite.py --engine gguf --gguf-model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length {512|4096} --decode-steps {8|16} --candidate-kv-storage tail4_hadamard_group32 --kl-threshold 0.05 --top1-threshold 0.90 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <raw.json>",
+    "quality_128k": "$TRPY /tmp/lcp_mixed_kv_128k_quality.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --json /tmp/lcp-mixed-kv-128k-d16-715-clean.json",
+    "quality_128k_driver_sha256": "e25078609d5ab7170c74f7a6e763d9e147bf83956e36289f05273595cf414f31",
+    "performance_family": "$TRPY scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --token-id 9707 --workloads <shape>/128 --warmup-runs <1 short|0 128K> --measured-runs <3 short|1 128K> --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --kv-storage <bf16|tail4_hadamard_group32> [--kv-scale-dtype fp16] --json <raw.json>"
+  },
+  "decision": {
+    "promote_gguf_default": false,
+    "supported_status_changed": false,
+    "keep_explicit_diagnostic": true,
+    "quality_gate_passed": true,
+    "persistent_storage_gate_passed": true,
+    "performance_gate_passed": false,
+    "allocator_high_water_gate_passed": false,
+    "blockers": [
+      "4K production prefill regresses 0.67% and graph decode regresses 0.75%, with non-overlapping repeated sample ranges.",
+      "128K one-shot graph decode regresses 3.82%.",
+      "Production mixed prefill allocates a 1,075,838,976-byte transient, raising allocator high water by 0.532 GiB despite saving 0.470 GiB persistently."
+    ],
+    "next_if_revisited": "Remove the inferred four-layer BF16 prefill transient and optimize long-context group32 attention before repeating the same full gate."
+  }
+}

@@ -21,7 +21,22 @@ _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lo
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
 _SYMBOL_PREFILL_SEGMENTS_K2 = "hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32"
+_SYMBOL_PREFILL_NORMALIZED_WAVE32_XOR = (
+    "hipengine_qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32"
+)
+_SYMBOL_PREFILL_NORMALIZED_SEGMENTS_WAVE32_XOR = (
+    "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32"
+)
+_SYMBOL_PREFILL_NORMALIZED_CLUSTER8 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_normalized_cluster8_f32"
+)
+_SYMBOL_PREFILL_NORMALIZED_SEGMENTS_CLUSTER8 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32"
+)
 _SYMBOL_PREFILL_PREPARE = "hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16"
+_SYMBOL_PREFILL_PREPARE_PEER_NORMALIZED = (
+    "hipengine_qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16"
+)
 _SYMBOL_PREFILL_PREPARE_FP16 = "hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16"
 _SYMBOL_PREFILL_PREPARE_RAW_SCALES = (
     "hipengine_qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16"
@@ -641,6 +656,82 @@ def qwen35_gdn_prefill_recurrent_k2_f32(
     )
 
 
+def qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the llama.cpp-shaped normalized-Q/K wave32 recurrence."""
+
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL_NORMALIZED_WAVE32_XOR,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_normalized_cluster8_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the Vulkan-shaped normalized-Q/K eight-lane recurrence."""
+
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL_NORMALIZED_CLUSTER8,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_gdn_prefill_recurrent_segments_k2_f32(
     query_ptr: int,
     key_ptr: int,
@@ -668,6 +759,95 @@ def qwen35_gdn_prefill_recurrent_segments_k2_f32(
     """
 
     _launch_prefill_recurrent_segments(
+        _SYMBOL_PREFILL_SEGMENTS_K2,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the segment-aware normalized-Q/K wave32 XOR recurrence."""
+
+    _launch_prefill_recurrent_segments(
+        _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_WAVE32_XOR,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the segment-aware normalized-Q/K eight-lane recurrence."""
+
+    _launch_prefill_recurrent_segments(
+        _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_CLUSTER8,
         query_ptr,
         key_ptr,
         value_ptr,
@@ -709,50 +889,75 @@ def qwen35_linear_attn_prefill_prepare_f32_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Prepare normalized Q/K, value, beta, and decay for native prefill GDN."""
+    """Prepare output-scaled Q, normalized K, value, beta, and decay."""
 
-    _check_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-    library = library or build_qwen35_linear_attn_gdn(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PREFILL_PREPARE)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(query_ptr),
-        ctypes.c_void_p(key_ptr),
-        ctypes.c_void_p(value_ptr),
-        ctypes.c_void_p(beta_ptr),
-        ctypes.c_void_p(decay_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
+    _launch_linear_attn_prefill_prepare(
+        _SYMBOL_PREFILL_PREPARE,
+        conv_out_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
-    _check_launch(runtime, err)
+
+
+def qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16(
+    conv_out_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prepare unit-normalized Q/K for the peer wave32 recurrence."""
+
+    _launch_linear_attn_prefill_prepare(
+        _SYMBOL_PREFILL_PREPARE_PEER_NORMALIZED,
+        conv_out_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def _launch_linear_attn_prefill_prepare(
@@ -2625,6 +2830,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "linear_attn_prefill_prepare",
             "gguf_qwen35",
+            "f32_peer_normalized_bf16",
+        ),
+        qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_prefill_prepare",
+            "gguf_qwen35",
             "f32_bf16_raw_scales",
         ),
         qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
@@ -2658,6 +2873,46 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_decode_order_exact_segments",
         ),
         qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_normalized_wave32_xor",
+        ),
+        qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_normalized_segments_wave32_xor",
+        ),
+        qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_normalized_cluster8",
+        ),
+        qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_normalized_segments_cluster8",
+        ),
+        qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
         replace=replace,
     )
     register(
@@ -3056,6 +3311,7 @@ def _launch_prefill_recurrent(
 
 
 def _launch_prefill_recurrent_segments(
+    symbol: str,
     query_ptr: int,
     key_ptr: int,
     value_ptr: int,
@@ -3084,7 +3340,7 @@ def _launch_prefill_recurrent_segments(
         raise ValueError("head_k_dim must be 128 for native prefill GDN")
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PREFILL_SEGMENTS_K2)
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
