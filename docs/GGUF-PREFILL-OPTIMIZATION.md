@@ -486,7 +486,7 @@ select current code without a fresh profile.
 | 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
 | 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
 | 16 | `GPF-9C` | **Rejected on 512 speed:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | Semantics/decode pass; 4K beats llama.cpp by 11.45%, but 512 reaches `2210.729 tok/s`, 8.36% below the required floor |
-| 17 | `GPF-9D` | **Active:** reproduce llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | Target the failed short-prompt shape with four value columns per wave and 16 resident state rows per lane; unchanged gates |
+| 17 | `GPF-9D` | **Active; primitive admitted:** `chain_peer_cluster8` reproduces llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | Four columns/wave, 32/block, 16 resident rows/lane; CPU fixtures pass at 96 VGPR/zero LDS/scratch and synthetic recurrence is about half GPF-9C; semantic/speed gates remain |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is

@@ -156535,3 +156535,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `263cc04a5405`'s distinct S_v=128 schedule: eight lanes per column, 16 state
   rows per lane, and clustered reduction. This specifically targets the failed
   short-prompt shape before closing the peer-schedule lane.
+
+## 2026-07-15 - Implement GPF-9D Vulkan-clustered GDN candidate
+
+- RED added plain/segmented CPU-reference tests for the absent normalized-Q/K
+  eight-lane clustered recurrence; collection failed on the missing wrappers.
+- Added explicit `chain_peer_cluster8` without changing production. The body
+  follows read-only llama.cpp Vulkan `263cc04a5405`,
+  `ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp`: each value column
+  uses eight contiguous lanes, each lane retains 16 state rows, decay remains
+  inside the `S^T @ k` products, reduction is an eight-lane XOR cluster, and
+  output scaling remains post-reduction. Four columns share each physical
+  wave32 and 32 columns share each 256-thread block.
+- Plain and segmented 64-token Qwen3.6-shaped CPU-reference output/state gates
+  pass. Focused kernel/routing/gate bundle passes **102/102**; Python compilation
+  and `git diff --check` pass.
+- Cached rocprofv3 trace names both expected kernels. Plain/segmented recurrence
+  is **41.840/44.801 us** on the synthetic fixture, workgroup 256, **96 VGPR**,
+  zero LDS, and zero scratch. This is about half the GPF-9C fixture duration and
+  clears the resource gate. Trace is local at
+  `/tmp/hipengine-gpf9d-rocprof/gpf9d_kernel_trace.csv`.
+- The unchanged 18-prompt KL/top-1/determinism/decode gate runs next; 512/4K
+  speed follows only if semantics pass.

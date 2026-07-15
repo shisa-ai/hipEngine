@@ -33,10 +33,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
@@ -155,6 +157,15 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32
     )
     assert plan.has_chain_peer_wave32
+    assert (
+        plan.recurrent_peer_cluster8
+        is qwen35_gdn_prefill_recurrent_normalized_cluster8_f32
+    )
+    assert (
+        plan.recurrent_segments_peer_cluster8
+        is qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32
+    )
+    assert plan.has_chain_peer_cluster8
     assert plan.auto_mode == "chain_lds32_direct"
 
 
@@ -460,10 +471,19 @@ def test_run_gdn_prefill_explicit_chain_k2_bypasses_exact_split(
     ]
 
 
-def test_run_gdn_prefill_explicit_peer_wave32_uses_normalized_prepare(
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("chain_peer_wave32", "peer_wave32"),
+        ("chain_peer_cluster8", "peer_cluster8"),
+    ],
+)
+def test_run_gdn_prefill_explicit_peer_route_uses_normalized_prepare(
     monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected: str,
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_peer_wave32")
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
     runner = _new_runner()
     calls: list[tuple[str, object]] = []
     runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
@@ -476,6 +496,8 @@ def test_run_gdn_prefill_explicit_peer_wave32_uses_normalized_prepare(
         exact_prepare=_recorder(calls, "exact_prepare"),
         recurrent_peer_wave32=_recorder(calls, "peer_wave32"),
         recurrent_segments_peer_wave32=_recorder(calls, "segments_peer_wave32"),
+        recurrent_peer_cluster8=_recorder(calls, "peer_cluster8"),
+        recurrent_segments_peer_cluster8=_recorder(calls, "segments_peer_cluster8"),
     )
 
     runner._run_gdn_prefill(
@@ -490,7 +512,7 @@ def test_run_gdn_prefill_explicit_peer_wave32_uses_normalized_prepare(
 
     assert [name for name, _ in calls] == [
         "peer_prepare",
-        "peer_wave32",
+        expected,
         "rmsnorm_gate",
     ]
 
@@ -665,6 +687,13 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
                 None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
             ),
             "explicit GGUF GDN prefill mode 'chain_peer_wave32' is unavailable",
+        ),
+        (
+            "chain_peer_cluster8",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_peer_cluster8' is unavailable",
         ),
         (
             "chain_tile64",
