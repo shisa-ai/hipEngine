@@ -8864,14 +8864,18 @@ class Qwen35GGUFResidentSession:
                     )
                     src = self._prefill_hidden_a
                     dst = self._prefill_hidden_b
+                    # Chunk metadata is request/chunk scoped, not layer scoped.
+                    # Re-uploading the same six host arrays before every layer
+                    # serialized the default stream and created hundreds of
+                    # copy dispatches in pp512.
+                    bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                        chunk_start,
+                        chunk_rows,
+                        total_tokens=rows,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                     for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-                        bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                            chunk_start,
-                            chunk_rows,
-                            total_tokens=rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
                         if bulk_attention_mode == "native":
                             self.runner._run_native_attention_bulk_ffn_layer_rows(
                                 layer_id,
@@ -8912,13 +8916,7 @@ class Qwen35GGUFResidentSession:
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         src, dst = dst, src
-                    last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                        rows - 1,
-                        1,
-                        total_tokens=rows,
-                        runtime=runtime,
-                        stream=stream,
-                    )
+                    last_bulk_scratch = bulk_scratch
                     last_src_ptr = src.ptr + (chunk_rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
                 if last_bulk_scratch is None:
                     raise RuntimeError("GGUF chunked prefill did not process any chunks")
@@ -8932,6 +8930,8 @@ class Qwen35GGUFResidentSession:
                 )
                 src = self._prefill_hidden_a
                 dst = self._prefill_hidden_b
+                active_chunk_key: tuple[int, int, int] | None = None
+                active_bulk_scratch = None
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                     expert_sidecar = None
                     if (
@@ -8954,13 +8954,19 @@ class Qwen35GGUFResidentSession:
                             chunk_rows = end - start
                             src_chunk_ptr = src.ptr + start * self.runner.hidden_size * DType.BF16.itemsize
                             dst_chunk_ptr = dst.ptr + start * self.runner.hidden_size * DType.BF16.itemsize
-                            bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                                start,
-                                chunk_rows,
-                                total_tokens=rows,
-                                runtime=runtime,
-                                stream=stream,
-                            )
+                            chunk_key = (int(start), int(chunk_rows), int(rows))
+                            if chunk_key != active_chunk_key:
+                                active_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                                    start,
+                                    chunk_rows,
+                                    total_tokens=rows,
+                                    runtime=runtime,
+                                    stream=stream,
+                                )
+                                active_chunk_key = chunk_key
+                            if active_bulk_scratch is None:
+                                raise RuntimeError("GGUF bulk prefill chunk metadata was not prepared")
+                            bulk_scratch = active_bulk_scratch
                             if bulk_attention_mode == "native":
                                 self.runner._run_native_attention_bulk_ffn_layer_rows(
                                     layer_id,
@@ -9004,13 +9010,17 @@ class Qwen35GGUFResidentSession:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
                     src, dst = dst, src
-                last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                    rows - 1,
-                    1,
-                    total_tokens=rows,
-                    runtime=runtime,
-                    stream=stream,
-                )
+                last_bulk_scratch = active_bulk_scratch
+                if last_bulk_scratch is None:
+                    # Empty synthetic layer stacks still need the shared norm
+                    # workspace used by the output head.
+                    last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                        rows - 1,
+                        1,
+                        total_tokens=rows,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
 
             if hidden_seed_buf is not None:
