@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [promoted gfx1151 LCP-M2 device metadata on gfx1100 through 4K] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: replacing six synchronous H2D metadata copies with one exact stream-ordered kernel moves 512/4K prefill **2793.871 -> 2805.451 (+0.41%)** and **3069.782 -> 3144.263 tok/s (+2.43%)** (paired **+0.26%/+2.26%**); graph decode is non-regressive, memory unchanged, and all IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json`.
+
 - [confirmed retained gfx1100 router stack] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV package 256-thread logits + 128-thread select versus legacy 512/512: balanced paired 512/4K prefill improves **+3.87%/+4.16%**, graph decode **+0.11%/+0.07%**, memory unchanged, constituent primitives bit-exact, and all IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-router-stack-promotion.json`.
 
 - [promoted gfx1151 LCP-4B router-select geometry on gfx1100] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: exact 128-thread bulk selector moves aggregate 512/4K prefill **2789.516 -> 2798.564 (+0.32%)** and **3055.119 -> 3079.801 tok/s (+0.81%)** (paired medians **+0.30%/+0.12%**); graph decode is **-0.068%/+0.216%**, memory unchanged, selected IDs/routing weights bit-exact, and all final IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json`.

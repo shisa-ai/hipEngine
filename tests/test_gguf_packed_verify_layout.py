@@ -31,8 +31,11 @@ def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
     assert not gguf_runner._gguf_prefill_device_metadata_enabled(
         backend="hip_gfx1151", prompt_tokens=4097
     )
+    assert gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1100", prompt_tokens=4096
+    )
     assert not gguf_runner._gguf_prefill_device_metadata_enabled(
-        backend="hip_gfx1100", prompt_tokens=512
+        backend="hip_gfx1100", prompt_tokens=4097
     )
 
     monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", "1")
