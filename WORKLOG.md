@@ -156270,3 +156270,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and updated the benchmark index/changelog plus kernel/refactor handoff. The
   public six-shape table remains on clean `ef3e97dd` until a complete defaults-
   only refresh measures every shape at one revision.
+
+## 2026-07-14 - Start GPF-8 with chunkwise/WY CPU algebra and frozen gates
+
+- Claimed task #98 from clean `57fefa40`. ROCm sees both gfx1100 devices; the
+  W7900 remains the target. The required lineage audit now registers Atlas
+  small-K/C32 WY sources (`8d187c7`, `37513bf`) and the FLA-derived vLLM
+  chunk/KKT/WY files (`ed582b6`, `adb6d96`, `cb10b7e`). The lineage report is
+  clean for all six new/reference GDN files; older nano-vllm DRIFT remains the
+  previously catalogued unrelated parent drift.
+- Selected a real algorithmic change rather than another storage/reduction
+  variant: C=8 direct lower-triangular/Woodbury-Young algebra over the retained
+  FP32 direct-conv Q/K/V ABI. The future HIP block is predeclared as 256 threads
+  per `(segment,v_head,value_tile32)`, <=32 KiB LDS, zero scratch, <=128 VGPR,
+  scalar direct remainder, and no prompt-sized coefficient arena. Current
+  registry defaults remain unchanged.
+- Added the independent float64 CPU oracle
+  `gdn_prefill_chunkwise_wy_segments`, including packed segment/state-slot
+  semantics. The hand-checked three-token fixture and random tests cover chunk
+  sizes 1/2/3/8/16, a 17-token tail, untouched slots, shape/error handling, and
+  a production-shaped FP32 comparison. RED failed collection on the missing
+  export as expected; GREEN passes.
+- Froze admission before HIP work: CPU `2e-6` algebra bound, primitive HIP
+  `atol=5e-4/rtol=5e-3`, one-token byte identity, cached workgroup/resource
+  trace, complete 512 GDN family <=66 ms, 18-prompt KL <=0.05 and top-1 >=99%,
+  exact free-running 128-transition trajectories, decode nonregression, and
+  clean W7900 512/4K prefill floors **2412.320/2255.080 tok/s**. Thresholds may
+  not be changed after observing a candidate.
+- Validation: `PYTHONPATH=$PWD uv run pytest -q
+  tests/test_gdn_chunkwise_wy_cpu.py tests/test_cpu_reference.py
+  tests/test_cpu_reference_moe_ffn.py tests/test_cpu_reference_paro_moe_ffn.py
+  tests/test_cpu_reference_paro_primitives.py` passes **34/34**;
+  `python3 -m compileall -q ...`, fixture/lineage JSON validation,
+  `scripts/check_lineage.py --kind kernel --diff stat`, and `git diff --check`
+  pass. The broad `scripts/check_fixtures.py` still encounters the pre-existing
+  custom MoE fixture schema at
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`; that file
+  and checker are unchanged, and its dedicated CPU MoE tests pass above.
