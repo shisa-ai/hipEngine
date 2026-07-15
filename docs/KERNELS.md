@@ -304,8 +304,12 @@ placement; it launches four columns per 128-thread block and compiles at 40
 VGPR with zero LDS/scratch. Plain and segmented primitive
 fixtures pass the CPU-reference numerical budgets. The clean W7900 18-prompt
 product gate passes at KL max `0.041737`, top-1 `445/450`, and aggregate decode
-wall `-0.050%`; the 512/4K prefill speed floors now own final admission. See
-`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json`.
+wall `-0.050%`. Its clean speed gate then rejects promotion: 512 reaches
+`2210.729 tok/s`, `-8.357%` below llama.cpp HIP, while 4K reaches `2513.374
+tok/s`, `+11.454%`; both floors were required. GPF-9D therefore ports the
+remaining peer geometry from llama.cpp Vulkan `263cc04a5405`: eight lanes per
+value column, 16 state rows per lane, and clustered reduction. See
+`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
 registers without changing shuffles, explicit FMA sites, token order, or the
