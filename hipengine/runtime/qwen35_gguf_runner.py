@@ -266,6 +266,10 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
+from hipengine.runtime.prefill_flight_recorder import (
+    FlightRecorderPhase,
+    PrefillFlightRecorder,
+)
 
 
 def _add_sync_stage_timing(
@@ -7718,6 +7722,8 @@ class Qwen35GGUFResidentSession:
     use_gemv_decode: bool | None = None
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
+    prefill_flight_recorder_path: str | Path | None = None
+    prefill_flight_recorder_granularity: str = "chunk"
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
@@ -7775,6 +7781,7 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _prefill_flight_recorder: PrefillFlightRecorder | None = field(default=None, init=False)
     _prefill_aotriton_stream: int = field(default=0, init=False)
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
@@ -8019,6 +8026,13 @@ class Qwen35GGUFResidentSession:
         # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
         self._moe_graph: MoeGraphCache | None = None
         self.reset()
+        if self.prefill_flight_recorder_path is not None:
+            self._prefill_flight_recorder = PrefillFlightRecorder(
+                self.prefill_flight_recorder_path,
+                runtime=runtime,
+                marker_library=self._runtime_state_library,
+                granularity=self.prefill_flight_recorder_granularity,
+            )
         self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
 
     @property
@@ -8996,7 +9010,23 @@ class Qwen35GGUFResidentSession:
             if self._verify_hidden_seed_buf is None:
                 raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
             hidden_seed_buf = self._verify_hidden_seed_buf
+        recorder = self._prefill_flight_recorder
+        prefill_id = 0
+        reset_sequence = 0
+        if recorder is not None:
+            prefill_id = recorder.begin_prefill(total_rows=rows, stream=stream)
+            reset_sequence = recorder.submit(
+                phase=FlightRecorderPhase.RESET,
+                prefill_id=prefill_id,
+                chunk_start=0,
+                chunk_end=rows,
+                layer_id=-1,
+                layer_type=0,
+                stream=stream,
+            )
         self.reset(stream=stream)
+        if recorder is not None:
+            recorder.complete(reset_sequence, stream=stream)
         alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
         chunk_outer = alloc_capacity < rows
         if hidden_seed_buf is not None and chunk_outer:
@@ -9014,6 +9044,27 @@ class Qwen35GGUFResidentSession:
                 for chunk_start, chunk_end in ranges:
                     chunk_rows = chunk_end - chunk_start
                     chunk_tokens = tokens[chunk_start:chunk_end]
+                    chunk_sequence = 0
+                    embedding_sequence = 0
+                    if recorder is not None:
+                        chunk_sequence = recorder.submit(
+                            phase=FlightRecorderPhase.CHUNK,
+                            prefill_id=prefill_id,
+                            chunk_start=chunk_start,
+                            chunk_end=chunk_end,
+                            layer_id=-1,
+                            layer_type=0,
+                            stream=stream,
+                        )
+                        embedding_sequence = recorder.submit(
+                            phase=FlightRecorderPhase.EMBEDDING,
+                            prefill_id=prefill_id,
+                            chunk_start=chunk_start,
+                            chunk_end=chunk_end,
+                            layer_id=-1,
+                            layer_type=0,
+                            stream=stream,
+                        )
                     self._copy_token_embeddings_to_device(
                         chunk_tokens,
                         self._prefill_hidden_a.ptr,
@@ -9021,6 +9072,8 @@ class Qwen35GGUFResidentSession:
                         token_ids_device_ptr=self._prefill_token_buf.ptr,
                         stream=stream,
                     )
+                    if recorder is not None and recorder.should_complete_layers:
+                        recorder.complete(embedding_sequence, stream=stream)
                     src = self._prefill_hidden_a
                     dst = self._prefill_hidden_b
                     # Chunk metadata is request/chunk scoped, not layer scoped.
@@ -9035,6 +9088,21 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                     )
                     for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                        layer_sequence = 0
+                        if recorder is not None:
+                            layer_sequence = recorder.submit(
+                                phase=(
+                                    FlightRecorderPhase.LINEAR_ATTENTION_LAYER
+                                    if layer_type == LINEAR_ATTENTION
+                                    else FlightRecorderPhase.FULL_ATTENTION_LAYER
+                                ),
+                                prefill_id=prefill_id,
+                                chunk_start=chunk_start,
+                                chunk_end=chunk_end,
+                                layer_id=layer_id,
+                                layer_type=(1 if layer_type == LINEAR_ATTENTION else 2),
+                                stream=stream,
+                            )
                         if bulk_attention_mode == "native":
                             self.runner._run_native_attention_bulk_ffn_layer_rows(
                                 layer_id,
@@ -9074,12 +9142,37 @@ class Qwen35GGUFResidentSession:
                             )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                        if recorder is not None and recorder.should_complete_layers:
+                            recorder.complete(layer_sequence, stream=stream)
                         src, dst = dst, src
+                    if recorder is not None and not recorder.should_complete_layers:
+                        recorder.complete(chunk_sequence, stream=stream)
                     last_bulk_scratch = bulk_scratch
                     last_src_ptr = src.ptr + (chunk_rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
                 if last_bulk_scratch is None:
                     raise RuntimeError("GGUF chunked prefill did not process any chunks")
             else:
+                chunk_sequence = 0
+                embedding_sequence = 0
+                if recorder is not None:
+                    chunk_sequence = recorder.submit(
+                        phase=FlightRecorderPhase.CHUNK,
+                        prefill_id=prefill_id,
+                        chunk_start=0,
+                        chunk_end=rows,
+                        layer_id=-1,
+                        layer_type=0,
+                        stream=stream,
+                    )
+                    embedding_sequence = recorder.submit(
+                        phase=FlightRecorderPhase.EMBEDDING,
+                        prefill_id=prefill_id,
+                        chunk_start=0,
+                        chunk_end=rows,
+                        layer_id=-1,
+                        layer_type=0,
+                        stream=stream,
+                    )
                 self._copy_token_embeddings_to_device(
                     tokens,
                     self._prefill_hidden_a.ptr,
@@ -9087,6 +9180,8 @@ class Qwen35GGUFResidentSession:
                     token_ids_device_ptr=self._prefill_token_buf.ptr,
                     stream=stream,
                 )
+                if recorder is not None and recorder.should_complete_layers:
+                    recorder.complete(embedding_sequence, stream=stream)
                 src = self._prefill_hidden_a
                 dst = self._prefill_hidden_b
                 active_chunk_key: tuple[int, int, int] | None = None
@@ -9111,6 +9206,21 @@ class Qwen35GGUFResidentSession:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         for start, end in layer_ranges:
                             chunk_rows = end - start
+                            layer_sequence = 0
+                            if recorder is not None:
+                                layer_sequence = recorder.submit(
+                                    phase=(
+                                        FlightRecorderPhase.LINEAR_ATTENTION_LAYER
+                                        if layer_type == LINEAR_ATTENTION
+                                        else FlightRecorderPhase.FULL_ATTENTION_LAYER
+                                    ),
+                                    prefill_id=prefill_id,
+                                    chunk_start=start,
+                                    chunk_end=end,
+                                    layer_id=layer_id,
+                                    layer_type=(1 if layer_type == LINEAR_ATTENTION else 2),
+                                    stream=stream,
+                                )
                             src_chunk_ptr = src.ptr + start * self.runner.hidden_size * DType.BF16.itemsize
                             dst_chunk_ptr = dst.ptr + start * self.runner.hidden_size * DType.BF16.itemsize
                             chunk_key = (int(start), int(chunk_rows), int(rows))
@@ -9165,10 +9275,14 @@ class Qwen35GGUFResidentSession:
                                 )
                             else:
                                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                            if recorder is not None and recorder.should_complete_layers:
+                                recorder.complete(layer_sequence, stream=stream)
                     finally:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
                     src, dst = dst, src
+                if recorder is not None and not recorder.should_complete_layers:
+                    recorder.complete(chunk_sequence, stream=stream)
                 last_bulk_scratch = active_bulk_scratch
                 if last_bulk_scratch is None:
                     # Empty synthetic layer stacks still need the shared norm
@@ -9182,6 +9296,17 @@ class Qwen35GGUFResidentSession:
                     )
                 last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
 
+            finalize_sequence = 0
+            if recorder is not None:
+                finalize_sequence = recorder.submit(
+                    phase=FlightRecorderPhase.PREFILL_FINALIZE,
+                    prefill_id=prefill_id,
+                    chunk_start=rows - 1,
+                    chunk_end=rows,
+                    layer_id=-1,
+                    layer_type=0,
+                    stream=stream,
+                )
             if hidden_seed_buf is not None:
                 final_scratch = self._bulk_prefill_scratch.for_chunk(
                     0,
@@ -9239,10 +9364,28 @@ class Qwen35GGUFResidentSession:
                 library=self._runtime_state_library,
                 runtime=runtime,
             )
+            if recorder is not None:
+                recorder.complete(finalize_sequence, stream=stream)
+                sample_sequence = recorder.submit(
+                    phase=FlightRecorderPhase.SAMPLE,
+                    prefill_id=prefill_id,
+                    chunk_start=rows - 1,
+                    chunk_end=rows,
+                    layer_id=-1,
+                    layer_type=0,
+                    stream=stream,
+                )
+            else:
+                sample_sequence = 0
             if enqueue_sample_only:
                 self._sample_device_from_hidden(last_hidden_ptr, stream=stream)
+                if recorder is not None:
+                    recorder.complete(sample_sequence, stream=stream)
                 return None
-            return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits, stream=stream)
+            result = self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits, stream=stream)
+            if recorder is not None:
+                recorder.complete(sample_sequence, stream=stream)
+            return result
         finally:
             self._release_int8_prefill_oracle_buffers()
 
@@ -13083,6 +13226,14 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        recorder = self._prefill_flight_recorder
+        if recorder is not None:
+            # Never unmap the GPU-visible cursor until all queued markers retire.
+            # If synchronization fails, leave the mapping registered and abort
+            # teardown rather than creating a device use-after-unmap.
+            runtime.device_synchronize()
+            recorder.close()
+            self._prefill_flight_recorder = None
         if (
             int(getattr(self, "_prefill_aotriton_stream", 0))
             or int(getattr(self, "_prefill_aotriton_input_ready_event", 0))

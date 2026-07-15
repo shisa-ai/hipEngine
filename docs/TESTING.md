@@ -218,7 +218,17 @@ The torch audit may show docstrings/comments, but executable hot-path imports/us
 
 ### 3. GPU smoke bundle
 
-Run only when the GPU is explicitly clear:
+Run only when the GPU is explicitly clear. The default-off prefill flight
+recorder has a HIP-availability-guarded host-mapping test: it publishes a
+same-stream completion marker into file-backed mapped host memory and verifies
+that a separate decoder process sees the retired sequence. Its device kernel
+also requires a cached `rocprofv3 --kernel-trace` smoke under the name
+`prefill_flight_recorder_mark_i64_kernel`.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_prefill_flight_recorder.py tests/test_hip_runtime.py -q
+```
 
 ```bash
 python3 scripts/smoke.py --mode smoke-add-hip --n 1024
