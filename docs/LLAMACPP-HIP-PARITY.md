@@ -465,9 +465,18 @@ gfx1100 is unchanged.
 That policy is risk reduction, not lifecycle safety. The current publication
 attempt later reproduces the same stall under one queue after a 509.708 tok/s
 warmup; router rollback and `HSA_ENABLE_SDMA=0` do not survive the full gate.
+A matched user-space-stack matrix does not supply a downgrade workaround. HIP
+7.13 completes two full gates at **509.659/499.895 tok/s** with all six IDs
+exact, but a post-HIP-7.15 third gate stalls after measured pass 1. HIP 7.15
+stalls in both controls. All persistent states remain 100%/2.9 GHz at only
+42-48 W with no amdgpu/KFD journal fault. Because the full stacks include
+runtime, HSA, compiler, and AOTriton differences, the small matrix cannot claim
+an incidence rate; reproduction under both leaves the common gfx11
+firmware/kernel scheduler path as the leading cause.
 Evidence:
 [`2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json),
 [`2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
+[`2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`](../benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json),
 the [initial ROCm comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824),
 and the [follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043).
 

@@ -156213,3 +156213,60 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **29/29**, and `uv run --extra dev pytest -q` then completes at **100%** with
   exit 0. `python3 scripts/sync_benchmark_readme.py --check`, the focused
   benchmark README test, JSON validation, and `git diff --check` also pass.
+
+## 2026-07-15 - A/B 128K lifecycle under HIP 7.13 and 7.15
+
+- The machine has no system `/opt/rocm` installation. The available independent
+  user-space stacks are TheRock HIP **7.13.60980-c76140fa27** in the `vllm`
+  environment (clang `7beee31b`, AOTriton 0.11.2) and HIP **7.15.0-0000000** in
+  `therock` (clang `aa451e1f`, AOTriton 0.11.1). Both see the same gfx1151,
+  kernel `7.1.3-2-cachyos`, MES `0x88`, MES KIQ `0x6f`, model fingerprint,
+  clean detached hipEngine `61a27d72`, and explicit `GPU_MAX_HW_QUEUES=1`.
+- Hermetic HIP 7.13 device/prebuild validation passes. A 512/128 1+1 screen is
+  exact at **1380.283 prefill / 49.661 decode tok/s**, ID `9707`. The wrapper's
+  final reporting snippet raises `KeyError: samples` because a one-sample
+  summary exposes aggregate fields rather than a `samples` list; the benchmark
+  and JSON complete correctly, so this is not a GPU/runtime failure.
+- Two independent HIP 7.13 128K warmup+3 processes complete:
+  - A: **510.075 warmup**, **509.659/510.112/508.983 measured prefill tok/s**,
+    median **509.659**; median decode **28.241 tok/s**.
+  - B: **500.964 warmup**, **499.895/499.844/500.275 measured prefill tok/s**,
+    median **499.895**; median decode **28.249 tok/s**.
+  All six measured IDs are `9707`, tracked peak is **25.493 GiB**, and the
+  relevant kernel-journal extracts are empty.
+- The first two HIP 7.15 matrix legs are excluded: both fail before GPU work
+  because the exact detached-worktree JIT cache entry is absent. Rebuilt the
+  HIP 7.15 cache outside measurement, then ran two clean matched controls:
+  - A times out at 1800 seconds before warmup completes. Normal work at
+    115-126 W collapses 150 seconds after start and remains at **100%/2.9 GHz,
+    42-44 W socket, 8.7-9.4 W average gfx power** through termination.
+  - B completes **503.471 tok/s warmup** and **501.676 tok/s measured pass 1**,
+    then stalls during the next prefill. At 840 seconds, power collapses and
+    remains at **100%/2.9 GHz, 45-46 W socket, 17.3-17.7 W gfx** through the
+    1800-second bound.
+  Both kernel-journal extracts are empty; termination restores idle without a
+  GPU reset.
+- A post-failure HIP 7.13 control rejects downgrade as a lifecycle-safe fix. It
+  first enters a 40-second low-power interval at 100 seconds, recovers, and
+  completes its slowed warmup at **433.250 tok/s** plus measured pass 1 at
+  **508.715 tok/s**. During the next prefill it enters a persistent low-power
+  state at 840 seconds and remains at **100%/2.9 GHz, 47-48 W socket,
+  8.8-9.0 W gfx** through the 1801-second timeout. Its kernel journal is also
+  silent.
+- Result: HIP 7.13's observed **2/3** process completion versus HIP 7.15's
+  **0/2** is too small and timing-sensitive for an incidence claim, and the
+  full stacks differ in HIP/HSA/compiler/AOTriton. Reproduction under both
+  stacks means HIP 7.15 alone is not causal and HIP 7.13 is not a supported
+  workaround. The unchanged kernel/firmware scheduler path remains the leading
+  common cause. Keep one queue only as risk reduction and keep the public 128K
+  cell blocked.
+- Added compact non-topline artifact
+  `benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json` and
+  synchronized the root/benchmark READMEs, changelog, environment contract,
+  kernel/refactor catalogs, prefill/parity/Vulkan handoffs, and SOL coordinator.
+- Validation: artifact JSON parses; canonical provenance validates with
+  `require_model=True`; a source-check reproduces both successful sample arrays,
+  all six IDs, and every retained raw SHA-256; `python3
+  scripts/sync_benchmark_readme.py --check` passes; `uv run --extra dev pytest
+  -q tests/test_benchmark_provenance.py tests/test_benchmark_readme_sync.py`
+  passes **13/13**; `git diff --check` passes.
