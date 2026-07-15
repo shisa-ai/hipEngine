@@ -157450,3 +157450,14 @@ evidence.
 Final mechanical checks: `python3 scripts/sync_benchmark_readme.py --check`
 passed, the compact artifact parses as JSON, all 21 newly added Markdown link
 targets exist, and `git diff --check` passed.
+
+## 2026-07-16 — Prevent redundant long validation reruns
+
+Updated `AGENTS.md` after the unnecessary second milestone-suite invocation.
+When a completed broad run has one scoped failure and establishes that all
+other tests passed, the required evidence is now the original broad result plus
+the repaired failing node/file and genuinely affected narrow bundle. Another
+full run is allowed only for credible cross-suite impact, multiple unrelated
+failures, an explicit release requirement, or user approval. Any repeat test or
+benchmark expected to exceed five minutes when equivalent broad evidence
+already exists now requires advance reason, duration, and explicit approval.
