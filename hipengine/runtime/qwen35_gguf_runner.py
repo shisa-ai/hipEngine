@@ -6188,8 +6188,27 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     return raw.lower() not in {"0", "false", "off", "no"}
 
 
-def _gguf_prefill_device_metadata_enabled() -> bool:
-    return _env_flag(_GGUF_PREFILL_DEVICE_METADATA_ENV, False)
+def _gguf_prefill_device_metadata_enabled(
+    *,
+    backend: str | None = None,
+    prompt_tokens: int | None = None,
+) -> bool:
+    raw = _env_value(_GGUF_PREFILL_DEVICE_METADATA_ENV)
+    if raw is not None:
+        return _env_flag(_GGUF_PREFILL_DEVICE_METADATA_ENV, False)
+    if backend is None or prompt_tokens is None:
+        return False
+    try:
+        max_tokens = int(
+            backend_package_capability(
+                backend,
+                "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
+                0,
+            )
+        )
+    except (TypeError, ValueError):
+        return False
+    return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
 def _gguf_linear_attn_conv_prefill_mode(backend: str) -> str:
@@ -12964,6 +12983,7 @@ class Qwen35GGUFResidentSession:
 @dataclass(frozen=True)
 class _GGUFFullAttentionPrefillScratch:
     rows: int
+    backend: str
     norm: object
     full_q: object
     full_k: object
@@ -13257,6 +13277,7 @@ class _GGUFFullAttentionPrefillScratch:
         return cls(
             **fields,
             rows=rows,
+            backend=runner.backend,
             block_table_tensor=block_table_tensor,
             positions_tensor=positions_tensor,
             context_counts_tensor=context_tensor,
@@ -13290,7 +13311,10 @@ class _GGUFFullAttentionPrefillScratch:
             raise ValueError(
                 f"chunk bounds [{start}, {start+rows}) must be within total_tokens={total_tokens} and max_positions={self.max_positions}"
             )
-        if _gguf_prefill_device_metadata_enabled():
+        if _gguf_prefill_device_metadata_enabled(
+            backend=self.backend,
+            prompt_tokens=total_tokens,
+        ):
             prepare_prefill_chunk_metadata(
                 self.cu_q.ptr,
                 self.cu_k.ptr,
