@@ -180,13 +180,17 @@ Continuation order is now:
    Q8T16 integer-WMMA body passes its primitive numerical gate but is **44.66%
    slower** than production before quantization; quantization adds only 0.016
    ms. The candidate was removed before profiler/model routing.
-3. `LCP-3C`: before more code, map llama.cpp's actual MMQ shared tile and
-   decomposition against the retained T16 bytes. Current hipEngine dense Q8 is
-   about **52.0 ms** versus llama.cpp HIP's **30.4 ms**, while total queue-idle
-   excess is only **2.699 ms**. Proceed only with a standalone schedule that is
-   materially different from both rejected direct T16 integer WMMA and the
-   existing raw-sidecar dp4a diagnostics. Do not retune selected Q4/Q5, short
-   full attention, or generic launch count.
+3. `LCP-3C` is complete. llama.cpp's measured Q8_0 MMQ uses a **256-thread,
+   128-output x 128-token** workgroup, stages K256 weights plus one D4-Q8 K128
+   activation half in **57,856 B** dynamic LDS, and issues two signed-int WMMA
+   K16 calls per 32-K scale interval. The measured kernel is **232 VGPR, zero
+   scratch**. Its pp512 width totals are 11.542/4.559/8.625/5.700 ms at
+   8192/4096/2048/512, exactly resolving the ~30.4 ms family. This is materially
+   different from LCP-3B's direct 64-output x32-token body. `LCP-3D` is now
+   predeclared as one standalone MMQ128+D4 reproduction over byte-lossless
+   resident T16 weights. Its prequantized body and quantization-included primary
+   leaf must both beat production before shape expansion or model routing. Do
+   not retune selected Q4/Q5, short full attention, or generic launch count.
 4. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
