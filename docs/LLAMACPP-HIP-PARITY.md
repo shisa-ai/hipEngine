@@ -186,11 +186,15 @@ Continuation order is now:
    K16 calls per 32-K scale interval. The measured kernel is **232 VGPR, zero
    scratch**. Its pp512 width totals are 11.542/4.559/8.625/5.700 ms at
    8192/4096/2048/512, exactly resolving the ~30.4 ms family. This is materially
-   different from LCP-3B's direct 64-output x32-token body. `LCP-3D` is now
-   predeclared as one standalone MMQ128+D4 reproduction over byte-lossless
-   resident T16 weights. Its prequantized body and quantization-included primary
-   leaf must both beat production before shape expansion or model routing. Do
-   not retune selected Q4/Q5, short full attention, or generic launch count.
+   different from LCP-3B's direct 64-output x32-token body. `LCP-3D` reproduced
+   that tile over byte-lossless resident T16 and passed D4 bytes plus primitive
+   quality, but failed the primary body gate **0.523062 -> 1.144524 ms
+   (+118.81%)**; D4 packing adds only 0.007061 ms. T16's K-major 16-column
+   bytes require four-byte gather/packing to fill llama.cpp's output-major
+   shared fragments, so the candidate is removed. Any continuation must first
+   use a source-compatible output-major replacement layout and account for
+   decode/memory tradeoffs. Do not retune selected Q4/Q5, short full attention,
+   or generic launch count.
 4. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
