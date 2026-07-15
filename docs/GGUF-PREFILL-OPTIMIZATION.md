@@ -485,7 +485,8 @@ select current code without a fresh profile.
 | 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
 | 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
 | 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
-| 16 | `GPF-9C` | **Active; semantic admitted:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | CPU fixtures pass at 40 VGPR/zero LDS/scratch; 18 prompts pass KL `0.041737`, top-1 `445/450`, decode `-0.050%`; 512/4K speed gates remain |
+| 16 | `GPF-9C` | **Rejected on 512 speed:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | Semantics/decode pass; 4K beats llama.cpp by 11.45%, but 512 reaches `2210.729 tok/s`, 8.36% below the required floor |
+| 17 | `GPF-9D` | **Active:** reproduce llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | Target the failed short-prompt shape with four value columns per wave and 16 resident state rows per lane; unchanged gates |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1153,8 +1154,13 @@ fixtures pass; rocprof reports 40 VGPR and zero LDS/scratch. The clean W7900
 18-prompt gate also passes: KL max **0.041737 <= 0.05**, aggregate top-1
 **445/450 = 98.889%**, and decode median-wall sum **22524.379 -> 22513.178 ms
 (-0.050%)**. Free-running trajectory mismatch remains diagnostic. Production
-stays on `chain_lds32_direct` until the frozen 512/4K speed floors pass. Evidence:
-[`2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json).
+stays on `chain_lds32_direct`. The subsequent clean speed gate reaches
+**2210.729 tok/s** at 512 (**-8.357%** versus llama.cpp HIP) and **2513.374
+tok/s** at 4K (**+11.454%**). Because both floors are required, GPF-9C is
+rejected for promotion. GPF-9D now tests Vulkan's distinct eight-lane clustered
+schedule, whose higher column concurrency specifically targets the failed 512
+shape. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json).
 
 ## Correctness And Promotion Contract
 

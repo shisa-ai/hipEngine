@@ -156515,3 +156515,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   This is not yet a retained prefill performance claim, so benchmark toplines
   remain unchanged. Production remains `chain_lds32_direct`; clean interleaved
   512/4K prefill floors are next.
+
+## 2026-07-15 - Reject GPF-9C on the frozen 512 speed floor
+
+- Clean W7900 commit `7a586b74`, one discarded warmup plus three measured runs
+  in one resident max-4K session, produces stable final ID `9707` throughout.
+- `chain_peer_wave32` 512 prefill is **2219.856/2210.729/2208.676 tok/s**,
+  median **2210.729**, which is **8.357% below** the frozen llama.cpp HIP
+  **2412.320 tok/s** floor. 4K is **2521.374/2513.374/2502.519 tok/s**, median
+  **2513.374**, or **11.454% above** the **2255.080 tok/s** floor. Both shapes
+  were prospectively required, so the candidate is not promoted.
+- Exact command is recorded in
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`;
+  raw `/tmp/gpf9c-peer-wave32-speed-clean-7a586b74.json` SHA256 is
+  `9cb328eb508949c9ab0e47c4c6c36d8581d80ebf4cbd6a6d6ad25eef4a55a989`.
+  No benchmark topline/changelog changes because this is a rejected path.
+- Production remains `chain_lds32_direct`. Keep `chain_peer_wave32` only as a
+  short-lived comparison while GPF-9D implements llama.cpp Vulkan
+  `263cc04a5405`'s distinct S_v=128 schedule: eight lanes per column, 16 state
+  rows per lane, and clustered reduction. This specifically targets the failed
+  short-prompt shape before closing the peer-schedule lane.
