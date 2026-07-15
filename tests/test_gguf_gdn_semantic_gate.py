@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
+import pytest
 
 from scripts.gguf_gdn_semantic_gate import (
     _aggregate_gate,
     _compare_teacher_forced,
+    _configure_gate_environment,
     build_parser,
 )
 
@@ -33,6 +37,26 @@ def test_parser_accepts_full_suite_plus_heldout_and_registered_candidate() -> No
     assert len(args.prompts) == 2
     assert args.baseline_mode == "chain_lds32_direct"
     assert args.candidate_mode == "chain_wave32_tree"
+
+
+def test_parser_accepts_explicit_k2_candidate() -> None:
+    args = build_parser().parse_args(
+        ["--candidate-mode", "chain_k2", "--json", "/tmp/out.json"]
+    )
+
+    assert args.candidate_mode == "chain_k2"
+
+
+def test_gate_environment_disables_compact_scratch_aliasing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
+
+    _configure_gate_environment(decode_repack=True)
+
+    assert os.environ["HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE"] == "1"
+    assert os.environ["HIPENGINE_GGUF_DECODE_REPACK"] == "1"
 
 
 def test_teacher_forced_comparison_uses_aggregate_top1_contract() -> None:

@@ -1611,6 +1611,7 @@ class Qwen35GGUFFullStackRunner:
                 mode = "auto"
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
+        use_k2 = mode == "chain_k2"
         use_direct_lds32 = mode == "chain_lds32_direct"
         if mode == "chain_tile64":
             exact_recurrent = plan.exact_recurrent_tile64
@@ -1639,6 +1640,12 @@ class Qwen35GGUFFullStackRunner:
             raise RuntimeError(
                 "explicit GGUF GDN prefill mode 'chain' is unavailable; "
                 "the prepare, recurrent, and RMSNorm-gate kernels must all be registered"
+            )
+        if requested_mode == "chain_k2" and not plan.has_chain_k2:
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_k2' is unavailable; "
+                "the normalized prepare, K2 recurrent, and RMSNorm-gate kernels "
+                "must all be registered"
             )
         if requested_mode == "chain_tile64" and not plan.has_exact_chain_tile64:
             raise RuntimeError(
@@ -1688,6 +1695,7 @@ class Qwen35GGUFFullStackRunner:
         use_fused = plan.has_fused and mode == "fused"
         use_chain = mode in {
             "chain",
+            "chain_k2",
             "chain_tile64",
             "chain_tile32",
             "chain_lds64",
@@ -1795,7 +1803,8 @@ class Qwen35GGUFFullStackRunner:
                 )
                 return
             if (
-                plan.exact_prepare is not None
+                not use_k2
+                and plan.exact_prepare is not None
                 and exact_recurrent is not None
                 and plan.rmsnorm_gate is not None
             ):
@@ -14491,6 +14500,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "auto",
         "fused",
         "chain",
+        "chain_k2",
         "chain_tile64",
         "chain_tile32",
         "chain_lds64",
@@ -14568,7 +14578,11 @@ class _GGUFGDNPrefillPlan:
 
     @property
     def has_chain(self) -> bool:
-        return self.has_exact_chain or (
+        return self.has_exact_chain or self.has_chain_k2
+
+    @property
+    def has_chain_k2(self) -> bool:
+        return (
             self.prepare is not None
             and self.recurrent is not None
             and self.rmsnorm_gate is not None
@@ -14649,6 +14663,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
     return {
         "fused": plan.has_fused,
         "chain": plan.has_chain,
+        "chain_k2": plan.has_chain_k2,
         "chain_tile64": plan.has_exact_chain_tile64,
         "chain_tile32": plan.has_exact_chain_tile32,
         "chain_lds64": plan.has_exact_chain_lds64,

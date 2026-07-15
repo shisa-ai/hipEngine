@@ -34,6 +34,7 @@ SCHEMA_VERSION = 2
 BASELINE_MODE = "fused"
 CANDIDATE_MODES = (
     "chain",
+    "chain_k2",
     "chain_tile64",
     "chain_tile32",
     "chain_wave32",

@@ -156391,3 +156391,50 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check`. The lineage report contains only the previously catalogued
   unrelated parent drift; the registered Atlas/vLLM GDN references remain
   clean.
+
+## 2026-07-15 - Adopt peer-aligned GDN numerical contract
+
+- Reviewed hipEngine PARO K2, llama.cpp HIP `1ebf790cda38`, and llama.cpp
+  Vulkan `263cc04a5405`. None promises bit identity with a scalar/decode-order
+  contraction. PARO K2 combines two wave32 partials; llama.cpp HIP keeps state
+  row shards in registers and uses wave reductions; the Vulkan 128-state RADV
+  path uses eight lanes per value column, 16 rows per lane, and clustered
+  subgroup reductions. llama.cpp's F32 GDN backend oracle accepts CPU-reference
+  NMSE <= 1e-7 rather than exact bytes.
+- User decision: do not impose a stronger universal exact-state/exact-greedy-
+  trajectory contract on GGUF than peer implementations. Prospectively admit
+  algebraically equivalent reassociated GDN with CPU-reference primitive
+  numerics, the complete 18-prompt category plus heldout semantic suite at KL
+  <= 0.05 and top-1 >= 90%, deterministic execution, decode non-regression,
+  and both 512/4K speed floors. State bytes and free-running trajectory identity
+  remain diagnostics. Historical artifacts remain classified under their
+  original frozen contracts.
+- This does not restore GPF-8: its clean KL 0.056522 still fails the repository
+  gate and its 512 result still misses the llama.cpp HIP floor. Existing K2 is
+  the first re-evaluation because its implementation and fallback already
+  exist; register-resident peer geometry follows only if K2 does not close the
+  gap.
+- Narrow K2 CPU-oracle/boundary/drift validation passes **6/6**:
+  `HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest
+  tests/test_qwen35_gguf_gdn_prefill_correctness.py -q -k
+  'paths_match_cpu_oracle or segment_boundary_paths_agree or
+  chain_matches_decode_order_within_drift_budget'`.
+- The first clean cached W7900 attempt (`bg-140`) incorrectly named candidate
+  `chain`, which now means the materialized **exact** split rather than K2. The
+  production direct route had allocated compact scratch with null materialized
+  Q/K/V views; switching modes inside the resident semantic session passed a
+  null pointer to the exact prepare kernel and reproducibly raised a GPU VM page
+  fault. No JSON or quality result exists. W7900 health is intact: a post-fault
+  cached smoke reports `n=1024 max_abs=0.0`.
+- Added explicit fail-closed `chain_k2` routing to the already-registered PARO
+  prepare + K2/segments-K2 + RMSNorm chain. The semantic harness now sets an
+  internal `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` before resident-session
+  allocation, forcing dedicated materialized scratch while it switches modes.
+  RED failed import/routing; GREEN passes **53/53** routing/semantic/trajectory
+  tests and **82/82** with the GDN CPU/GPU and scratch-liveness suites included.
+- A dirty one-prompt W7900 runtime screen now completes through `chain_k2`:
+  `code_merge_intervals` KL **0.0181531**, top-1 **24/25 = 96%**, decode wall
+  **1247.251 -> 1235.878 ms (-0.912%)**, with non-exact free-running trajectory
+  reported diagnostically. It is implementation evidence only; dirty provenance
+  correctly returns `invalid_dirty_measurement`. The clean 18-prompt gate still
+  owns admission after this logical unit is committed.

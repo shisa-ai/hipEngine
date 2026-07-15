@@ -273,6 +273,19 @@ def _load_suites(paths: Sequence[Path]) -> list[dict[str, Any]]:
     return rows
 
 
+def _configure_gate_environment(*, decode_repack: bool) -> None:
+    """Reserve diagnostic scratch before the resident session is allocated.
+
+    The production direct-GDN route omits materialized Q/K/V buffers. Semantic
+    gates switch modes inside one session, so they must disable that compact
+    allocation before constructing the session or a materialized candidate
+    would receive null device pointers.
+    """
+
+    os.environ["HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE"] = "1"
+    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1" if decode_repack else "0"
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     baseline_mode = str(args.baseline_mode)
     candidate_mode = str(args.candidate_mode)
@@ -295,7 +308,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not prompt_rows:
         raise GateError("selected prompt suites are empty")
 
-    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1" if args.decode_repack else "0"
+    _configure_gate_environment(decode_repack=bool(args.decode_repack))
 
     from hipengine.loading.gguf import scan_gguf
     from hipengine.runtime.prefill import PrefillConfig
@@ -409,6 +422,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ),
             "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get(
                 "HIPENGINE_GGUF_DECODE_REPACK"
+            ),
+            "HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE": os.environ.get(
+                "HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE"
             ),
         },
         build_profile="gguf_gdn_teacher_forced_semantic_gate",
