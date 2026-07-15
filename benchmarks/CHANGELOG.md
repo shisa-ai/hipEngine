@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-15
 
+- [promoted gfx1100 spill-free T16 selected prefill and peer GDN] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV HIP 7.2 outer-loop unroll -> rolled quant-block loop: Q5 **51.009 -> 29.544 ms (-42.08%)**, complete pp512 peer kernels/span **203.808/215.307 -> 184.513/194.886 ms**, and clean selector-unset 512/4K prefill **2385.677/2585.343 -> 2588.231/2757.752 tok/s (+8.49%/+6.67%)** with KL **0.041737**, top-1 **445/450**, decode wall **-0.103%**, stable IDs, and **21.670 GiB** tracked peak; `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json`.
+
 - [diagnosed gfx1100 GGUF post-Conv residual; peer GDN still 512-blocked] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV clean exact/peer/llama.cpp pp512 kernels **369.285/203.808/203.301 ms** and GDN **199.030/20.840/16.522 ms** identify exact scalar-order GDN as the shipped gap; LCP-4A moves clean peer 512/4K **2334.451/2519.871 -> 2385.677/2585.343 tok/s (+2.19%/+2.60%)**, but 512 remains **1.104%** below the frozen floor, so production is unchanged; `benchmarks/results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json`.
 
 - [promoted gfx1100 GGUF normal-prefill Conv no-scratch exact math] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV normal FP32 Conv prefill volatile scratch -> explicit VGPR sequential multiply/add: pp512 Conv body **8.496 -> 1.894 ms / 30 (-77.71%)** and clean balanced production-route 512/4K prefill **1298.018/1386.682 -> 1316.663/1412.496 tok/s (+1.44%/+1.86%)**, with **20 -> 0 private bytes/thread**, byte-exact boundary output/state, and all final IDs `9707`; `benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json`.
