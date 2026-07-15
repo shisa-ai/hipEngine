@@ -158399,3 +158399,31 @@ Promoted `qwen35_router_logits_bf16_f32w_auto_256` as the gfx1100
 capability. RED first failed on the missing gfx1100 capability; the focused
 backend/router bundle then passed **8/8**. Artifact:
 `benchmarks/results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json`.
+
+## 2026-07-16 — Promote 128-thread gfx1100 prefill router select
+
+The second transfer screen also passes. On clean `cd4cfa8c`, hermetic therock
+HIP 7.15 same-session 1+3 A/Bs on top of the retained 256-thread logits default
+measure:
+
+- 512/128 aggregate prefill **2789.516 -> 2798.564 tok/s (+0.32%)**,
+  balanced paired median **+0.30%**; graph decode **-0.068%**.
+- 4K/128 aggregate prefill **3055.119 -> 3079.801 tok/s (+0.81%)**,
+  balanced paired median **+0.12%**; graph decode **+0.216%**.
+- All measured final IDs remain 9707 and tracked peak remains 21.228/21.670
+  GiB. A 4K x 256-expert primitive compares 32,768 selected IDs and 32,768
+  FP32 routing weights with zero integer or bit mismatch between 512 and 128
+  threads.
+
+RED first asserted the missing gfx1100 package policy and failed 512 versus
+128. GREEN adds `GGUF_PREFILL_ROUTER_SELECT_THREADS=128`; the focused policy and
+backend tests pass **4/4**. Keep explicit 512-thread rollback for one release.
+Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json`.
+
+Follow-up on the gfx1151 Conv question: the promoted `tile32x128` body already
+contains the same explicit separately rounded `v_mul_f32_e32` technique later
+used by gfx1100 LCP-4A and was promoted with zero private scratch/spills. The
+remaining separate state update measured only 0.241 ms across 120 launches in
+the 4K trace. There is no missing tiled-plus-no-scratch combination; reopening
+Conv would target only that negligible state-update tail and is not selected.

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [promoted gfx1151 LCP-4B router-select geometry on gfx1100] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: exact 128-thread bulk selector moves aggregate 512/4K prefill **2789.516 -> 2798.564 (+0.32%)** and **3055.119 -> 3079.801 tok/s (+0.81%)** (paired medians **+0.30%/+0.12%**); graph decode is **-0.068%/+0.216%**, memory unchanged, selected IDs/routing weights bit-exact, and all final IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json`.
+
 - [promoted gfx1151 LCP-4A router geometry on gfx1100] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: exact 256-thread F32-weight/BF16-hidden router logits move 512/4K prefill **2689.171 -> 2795.242 (+3.94%)** and **2955.867 -> 3070.905 tok/s (+3.89%)**; graph decode is **-0.022%/+0.159%**, memory unchanged, the 4K primitive is bit-exact, and all IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json`.
 
 - [published final gfx1100 GGUF optimization sweep] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV defaults-only therock-7.15 right-sized 1+3: prefill **1290.246-766.892 -> 2716.648-1037.378 tok/s (+35.27% to +118.78%)**, graph decode **89.727-61.264 -> 92.833-62.669 tok/s (+2.24% to +3.46%)**, and tracked memory **21.228-24.168 GiB**. Prefill beats llama.cpp HIP at all six shapes (**+12.62% to +30.95%**) and Vulkan through 64K; decode beats HIP everywhere and is closest to Vulkan at 4K (**-2.47%**). All 18 IDs are exact; `benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json`.

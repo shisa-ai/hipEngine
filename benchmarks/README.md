@@ -3,11 +3,11 @@
 Last reviewed: **2026-07-16**
 
 Latest retained hipEngine revisions in this scoreboard:
-`d05bdb758dd8fa53bb97972bfd386ca8d84d756f` for the focused post-sweep gfx1100
-GGUF router convergence gate and `61a27d7279549843bb3fb0464cb8b120689b9ff1`
+`cd4cfa8c468d01f3c5e5487daaf2dba5415a4887` for the focused post-sweep gfx1100
+GGUF router convergence gates and `61a27d7279549843bb3fb0464cb8b120689b9ff1`
 for the current gfx1151 GGUF refresh. The gfx1151 production refresh is retained
-through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler lifecycle failure rather
-than carrying a stale number.
+through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler
+lifecycle failure rather than carrying a stale number.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -390,8 +390,9 @@ eager warmup plus three measured runs in an independent resident process; every
 measurement captures and closes a fresh state-bound decode graph. Package
 automatic policy selects peer-wave GDN, spill-free selected prefill, the
 persistent cooperative router, and the long-context parallel reducer while KV
-remains default BF16. A focused post-sweep transfer now also selects the exact
-256-thread F32-weight router-logits wrapper on gfx1100.
+remains default BF16. Focused post-sweep transfers now also select the exact
+256-thread F32-weight router-logits wrapper and 128-thread bulk router selector
+on gfx1100.
 
 Prefill is now
 **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, graph decode is
@@ -402,7 +403,11 @@ is **0.658%/0.223%**. The six-shape values remain the last clean publication
 sweep. A same-session balanced W7900 gate for the newly retained router default
 moves focused 512/4K prefill **2689.171 -> 2795.242 (+3.94%)** and **2955.867 ->
 3070.905 tok/s (+3.89%)**; graph decode is **-0.022%/+0.159%**, tracked memory
-is unchanged, the 4K primitive is bit-exact, and all timed final IDs match.
+is unchanged, the 4K primitive is bit-exact, and all timed final IDs match. An
+incremental 128-thread selector gate on top improves aggregate 512/4K medians
+another **+0.32%/+0.81%** (paired medians **+0.30%/+0.12%**), with graph decode
+**-0.068%/+0.216%**, unchanged memory, bit-exact selected IDs/routing weights,
+and matching final IDs.
 
 Relative to the July 14 GGUF table, prefill improves **+35.27% to +118.78%**
 and decode improves **+2.24% to +3.46%**. Prefill now beats llama.cpp HIP at
@@ -416,6 +421,7 @@ claims.
 
 Evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
 [`256-thread router transfer`](results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json),
+[`128-thread router-select transfer`](results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json),
 [`peer-GDN promotion`](results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json),
 [`decode attribution`](results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json),
 [`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
