@@ -35,6 +35,7 @@ BASELINE_MODE = "fused"
 CANDIDATE_MODES = (
     "chain",
     "chain_k2",
+    "chain_peer_wave32",
     "chain_tile64",
     "chain_tile32",
     "chain_wave32",

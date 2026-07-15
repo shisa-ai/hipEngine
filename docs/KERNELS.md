@@ -297,7 +297,13 @@ The existing normalized-Q/K two-wave `chain_k2` also rejects at KL `0.059031`,
 with `445/450` top-1 and non-regressive decode. GPF-9C therefore combines
 normalized-Q/K input materialization with the one-wave32-per-column,
 four-register-rows-per-lane schedule used by llama.cpp HIP on gfx1100; neither
-existing rejected route has both properties. See
+existing rejected route has both properties. The explicit `chain_peer_wave32`
+implementation follows llama.cpp `1ebf790cda38`'s unit-Q normalization,
+post-reduction output scale, XOR reduction, and post-reduction scalar-decay
+placement; it launches four columns per 128-thread block,
+and compiles at 40 VGPR with zero LDS/scratch. Plain and segmented primitive
+fixtures pass the CPU-reference numerical budgets; the 18-prompt product gate
+still owns admission. See
 `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
