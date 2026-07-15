@@ -1311,9 +1311,14 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   while `GPU_MAX_HW_QUEUES=1` once completes warmup+3 at **499.755** and
   **500.210/500.873/500.687 prefill tok/s**, exact IDs, unchanged memory. The
   final current route later fails under one queue after a **509.708 tok/s**
-  warmup; launch rollback and SDMA disable also fail their full gates. Keep one
-  queue as risk reduction, not lifecycle safety; both findings are posted to
-  ROCm#5107.
+  warmup; launch rollback and SDMA disable also fail their full gates. A clean
+  HIP 7.13 versus 7.15 lifecycle matrix rejects downgrade as a fix: 7.13 passes
+  two warmup+3 gates at **509.659/499.895 tok/s**, then a third stalls after
+  measured pass 1; 7.15 stalls in both controls. Persistent telemetry is
+  100%/2.9 GHz at **42-48 W** and every kernel journal is silent. Keep one queue
+  as risk reduction, not lifecycle safety; the original findings are posted to
+  ROCm#5107 and the cross-stack evidence is
+  `benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`.
 - GPF-4 remains rejected. LCP-3 supersedes GPF-5A through 64K with clean
   512/4K gains of **+0.53%/+1.57%** and 83/83 exact state. The predecessor
   two-wave schedule's same-commit 128K rejection remains **382.041 vs

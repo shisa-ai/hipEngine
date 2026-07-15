@@ -103,9 +103,12 @@ correctness/performance.
 On gfx1151, hipEngine sets `GPU_MAX_HW_QUEUES=1` before HIP loads because it
 reduces a retained gfx11 low-power queue failure and is non-regressive at short
 context. It is not a repeated-128K lifecycle guarantee: current production can
-still hit the firmware/scheduler stall. Explicit values are preserved; set
-`GPU_MAX_HW_QUEUES=4` before process start to restore ROCm's documented default
-for diagnosis. gfx1100 is unchanged. See [`docs/ENVS.md`](docs/ENVS.md).
+still hit the firmware/scheduler stall. A matched follow-up reproduces the stall
+under both HIP 7.15 and HIP 7.13, so downgrading ROCm is not a safe workaround.
+Explicit values are preserved; set `GPU_MAX_HW_QUEUES=4` before process start to
+restore ROCm's documented default for diagnosis. gfx1100 is unchanged. See
+[`docs/ENVS.md`](docs/ENVS.md) and the
+[cross-stack lifecycle artifact](benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json).
 
 Wave32 is the default for `hip_gfx1100` device code; wave64 is treated as an
 isolated experiment with its own gates (see

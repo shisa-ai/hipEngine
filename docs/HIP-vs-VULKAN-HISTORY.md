@@ -76,9 +76,15 @@ clean default-queue 128K stall and matched one-queue warmup+3 completion. The
 512/4K check is non-regressive, so the risk-reducing default remains. It is not
 a lifecycle guarantee: later current-production, router-rollback, and
 SDMA-disabled full 128K gates all reproduce the low-power measured-pass-1
-stall. Both the initial evidence and correction are posted to ROCm#5107. This
-is a gfx11 HIP scheduler/firmware limitation, not a reason to begin a Vulkan
-backend.
+stall. HIP 7.13 is not a safe workaround: it completes two exact warmup+3 gates
+but a third post-HIP-7.15 control reproduces the persistent stall; HIP 7.15
+stalls in both matched controls. Both user-space stacks keep the same kernel and
+MES firmware, and all persistent states remain 100%/2.9 GHz at 42-48 W with no
+journal fault. The initial evidence and correction are posted to ROCm#5107; the
+cross-stack artifact is
+[`2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`](../benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json).
+This remains a gfx11 HIP scheduler/firmware limitation, not a reason to begin a
+Vulkan backend.
 
 ## Measurement Reset: 2026-07-10
 

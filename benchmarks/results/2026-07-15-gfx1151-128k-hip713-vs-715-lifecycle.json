@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_128k_hip713_vs_715_lifecycle",
+  "status": "diagnostic_both_user_space_stacks_reproduce",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "A HIP 7.13 downgrade is not a lifecycle-safe workaround. HIP 7.13 completed two independent 128K warmup+3 gates exactly, but a third post-HIP-7.15 control completed warmup and measured pass 1 before reproducing the persistent low-power stall. HIP 7.15 reproduced in both matched controls: one failed during warmup and one after warmup plus measured pass 1. The unchanged kernel and MES firmware plus reproduction under both user-space stacks keep the gfx11 scheduler/firmware lifecycle issue as the leading common cause; sample incidence may differ but is not established by this small timing-sensitive matrix.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "tuned_profile": "accelerator-performance"
+  },
+  "measurement": {
+    "hipengine_commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "tracked_peak_gib": 25.492501735687256,
+    "gpu_max_hw_queues": "1",
+    "protocol": "one independent resident process per leg; one discarded 128K warmup plus three measured 128K prefills; fresh graph decode per measured repetition; 128 decode tokens; cached builds required; 1800-second process bound",
+    "command_template": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file <stack-version> --require-cached-build --json <result>"
+  },
+  "stacks": {
+    "hip713": {
+      "environment": "/home/lhl/miniforge3/envs/vllm",
+      "hip": "7.13.60980-c76140fa27",
+      "clang_revision": "7beee31bc454a713137a7194c43f61c4525ebff4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3",
+      "torch_packaging_version": "2.12.0a0+rocm7.13.0a20260411",
+      "aotriton_soname_version": "0.11.2",
+      "libamdhip64_sha256": "988d874cb5ba5cf0b9a3230518294b06589892641f43e4255f008cc02eb93b4d",
+      "libhsa_runtime64_sha256": "595f9eb168fd5aefd5aae97cce040b05287fcd1120cff69f423bf6666fe5634f",
+      "libaotriton_v2_sha256": "f8b3d86587806e2164452b57fec22b66bbb9b1e551a95c90d52d0e79bf699bc5"
+    },
+    "hip715": {
+      "environment": "/home/lhl/miniforge3/envs/therock",
+      "hip": "7.15.0-0000000",
+      "clang_revision": "aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+      "aotriton_soname_version": "0.11.1",
+      "libamdhip64_sha256": "886a091fc9fab9a5f52a441aaa0b56a17f259b177005f6492a2da82a28ce1e74",
+      "libhsa_runtime64_sha256": "845ac6319c5ab56066c785cf1e487dc596532e0368e996f175c20ad5e1fa40ff",
+      "libaotriton_v2_sha256": "655b6e5e7a5a9f4ee410514cb2988bd31264af3bc19d30ee0442afffe14f8535"
+    }
+  },
+  "legs": {
+    "hip713_a": {
+      "status": "completed",
+      "elapsed_seconds": 1102,
+      "warmup_prefill_tok_s": 510.0746704532935,
+      "measured_prefill_tok_s": [509.6592861500947, 510.1118236075948, 508.9829554347346],
+      "median_prefill_tok_s": 509.6592861500947,
+      "measured_decode_tok_s": [28.241100039550123, 28.242325243927176, 28.238952916168863],
+      "median_decode_tok_s": 28.241100039550123,
+      "final_token_ids": [9707, 9707, 9707],
+      "kernel_journal_relevant_lines": 0
+    },
+    "hip713_b": {
+      "status": "completed",
+      "elapsed_seconds": 1121,
+      "warmup_prefill_tok_s": 500.96413529992714,
+      "measured_prefill_tok_s": [499.89530279040747, 499.8437479318577, 500.2746125046362],
+      "median_prefill_tok_s": 499.89530279040747,
+      "measured_decode_tok_s": [28.248972745798447, 28.26002915890351, 28.24893404903208],
+      "median_decode_tok_s": 28.248972745798447,
+      "final_token_ids": [9707, 9707, 9707],
+      "kernel_journal_relevant_lines": 0
+    },
+    "hip715_a": {
+      "status": "timeout_in_warmup_prefill",
+      "elapsed_seconds": 1800,
+      "completed_warmups": 0,
+      "completed_measured_runs": 0,
+      "low_power_interval": {
+        "start_seconds": 150,
+        "duration_through_bound_seconds": 1650,
+        "gfx_activity_percent": 100,
+        "socket_power_w_steady": "42-44",
+        "apu_average_gfx_power_w_steady": "8.7-9.4",
+        "average_gfx_clock_mhz": 2900,
+        "recovered": false
+      },
+      "kernel_journal_relevant_lines": 0
+    },
+    "hip715_b": {
+      "status": "timeout_after_measured_run_1",
+      "elapsed_seconds": 1800,
+      "warmup_prefill_tok_s": 503.470944,
+      "warmup_decode_tok_s": 28.029361,
+      "measured_run_1_prefill_tok_s": 501.676103,
+      "measured_run_1_decode_tok_s": 28.093262,
+      "completed_measured_runs": 1,
+      "low_power_interval": {
+        "start_seconds": 840,
+        "duration_through_bound_seconds": 960,
+        "gfx_activity_percent": 100,
+        "socket_power_w_steady": "45-46",
+        "apu_average_gfx_power_w_steady": "17.3-17.7",
+        "average_gfx_clock_mhz": 2900,
+        "recovered": false
+      },
+      "kernel_journal_relevant_lines": 0
+    },
+    "hip713_c": {
+      "status": "timeout_after_measured_run_1",
+      "elapsed_seconds": 1801,
+      "warmup_prefill_tok_s": 433.250296,
+      "warmup_decode_tok_s": 28.142390,
+      "measured_run_1_prefill_tok_s": 508.714815,
+      "measured_run_1_decode_tok_s": 28.224682,
+      "completed_measured_runs": 1,
+      "transient_low_power_interval": {
+        "start_seconds": 100,
+        "duration_seconds": 40,
+        "socket_power_w": "47-48",
+        "average_gfx_clock_mhz": 2900,
+        "recovered": true
+      },
+      "persistent_low_power_interval": {
+        "start_seconds": 840,
+        "duration_through_bound_seconds": 961,
+        "gfx_activity_percent": 100,
+        "socket_power_w_steady": "47-48",
+        "apu_average_gfx_power_w_steady": "8.8-9.0",
+        "average_gfx_clock_mhz": 2900,
+        "recovered": false
+      },
+      "kernel_journal_relevant_lines": 0
+    }
+  },
+  "excluded_attempts": {
+    "hip715_cache_miss_a_b": "Two initial HIP 7.15 legs exited before GPU execution because an exact detached-worktree JIT cache artifact was missing. They are not lifecycle observations. The cache was rebuilt outside measurement before hip715_a and hip715_b above."
+  },
+  "correctness": {
+    "completed_hip713_gates": 2,
+    "completed_hip713_measured_runs": 6,
+    "all_completed_measured_final_ids_9707": true,
+    "tracked_memory_unchanged": true,
+    "incomplete_legs_have_no_topline_claim": true
+  },
+  "interpretation": {
+    "hip713_is_safe_workaround": false,
+    "hip715_only_root_cause": false,
+    "firmware_or_kernel_common_cause_eliminated": false,
+    "leading_common_cause": "gfx11 MES/CP scheduler or queue/fence lifecycle under long repeated prefill",
+    "possible_stack_effect": "HIP/HSA/compiler/AOTriton version may change incidence or recovery timing, but 2/3 versus 0/2 process completion is too small and timing-sensitive for a rate claim",
+    "production_decision": "Keep GPU_MAX_HW_QUEUES=1 as risk reduction. Do not recommend downgrading to HIP 7.13 as a 128K lifecycle fix. Keep the current 128K topline blocked pending a fixed gfx11 stack or stronger production-quality workaround."
+  },
+  "source_hashes": {
+    "hip713_a_result_json": "9e80e57e16b1ea03034e1bda7c3dbb1214ae4fd6adba2e49620f066a4bdd077b",
+    "hip713_b_result_json": "47c72c6b80e352f41ddb69e5d5baf437e7b1f5d68fa82281c920f81d9a8a17a6",
+    "hip715_a_telemetry_csv": "2bb543422209f3d9ec431e6b555286a448893498bedde6b578bc5b5a039b93e4",
+    "hip715_b_run_log": "856c1287d4afd2cc5fa5808062d0f49b8c606972d085e6ed01598c7685244322",
+    "hip715_b_telemetry_csv": "0b2a5e2b88be68451c7f585dfbbd3d7e4da4fae8371725774decec1743240bec",
+    "hip713_c_run_log": "9c3e6ed8f541f9044b38d984b13c7c253eb5d39550db3bd0238faa1f9f947f9e",
+    "hip713_c_telemetry_csv": "95927a289740bbb2cff5f1ecb6053db4982c6f1133c71bd09e232214ab849878"
+  },
+  "causal_evidence": {
+    "current_publication_blocker": "benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json",
+    "one_queue_gate": "benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json",
+    "upstream_initial": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824",
+    "upstream_correction": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043",
+    "amd_gfx11_status": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4800268515"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-15T13:27:28.702326+00:00",
+    "repo_root": "/tmp/hipengine-final-gfx1151-61a27d72",
+    "hipengine_commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": ["scripts/qwen35_readme_sweep.py", "--engine", "gguf", "--backend", "hip_gfx1151", "--workloads", "128K/128", "--warmup-runs", "1", "--measured-runs", "3", "--graph-replay-decode", "--require-cached-build"],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP 7.13.60980 and HIP 7.15.0 matched lifecycle matrix",
+    "hipcc_version": "See stacks and per-leg source hashes",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "independent 128K warmup+3 resident processes with cached builds and 1800-second bounds",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "lifecycle host-wall matrix with amd-smi telemetry and kernel journal capture"
+    }
+  }
+}
