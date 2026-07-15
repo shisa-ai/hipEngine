@@ -158494,3 +158494,22 @@ same compact liveness as volatile direct. A cached `exact` alias 512/1
 integration smoke returns token 9707 at 21.204 GiB tracked peak. Keep the long
 explicit nonvolatile name and volatile symbol for one rollback release. Artifact:
 `benchmarks/results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json`.
+
+## 2026-07-16 — Close the bounded gfx1100 convergence screen
+
+Clean selector-unset package-default confirmation on `666a72db`, hermetic
+therock HIP 7.15, one independent right-sized process per shape, and one warmup
+plus three measured runs:
+
+- 512/128: **2808.249 prefill / 92.697 graph-decode tok/s**, 21.228 GiB tracked
+  peak, IDs 9707/9707/9707.
+- 4K/128: **3173.723 / 100.905 tok/s**, 21.670 GiB, IDs 9707/9707/9707.
+
+Against the same-protocol pre-screen `1355fc8d` baseline, package prefill is
+**+4.04%/+6.75%** at 512/4K, graph decode is **-0.26%/+0.24%** (flat), and
+tracked memory is unchanged. The retained automatic changes are 256-thread F32
+router logits, 128-thread bulk router select, and device-prepared metadata
+through 4K. Peer-wave GDN production is unchanged; only the strict-exact
+rollback converged to nonvolatile direct-LDS32. Per the bounded protocol, no
+six-shape or broad-suite rerun was performed. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json`.
