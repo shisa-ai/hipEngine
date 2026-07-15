@@ -156080,3 +156080,25 @@ graphless decode launch-collapse path without regressing target/serial parity.
   rollup/changelog, kernel catalog, env contract, refactor ledger, parity audit,
   and prefill handoff. Compact evidence is
   `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`.
+
+## 2026-07-15 - LCP-4B prefill router-select geometry candidate
+
+- Fresh clean `37b39269` 4K prefill profile records **3066.361 ms / 4,799
+  dispatches**. Router logits are **135.322 ms (4.41%)** after LCP-4A;
+  `qwen35_router_select_kernel` is **12.539 ms / 130 (0.41%)**. That remainder
+  is measurable, but too small to justify a cross-block logits+top-k fusion
+  that would replace the dominant exact logits geometry.
+- The existing select body admits a safer launch-only screen. A 512-token random
+  primitive is byte-exact at 256/128/64 threads and falls **43.686 ->
+  22.840/15.053/10.307 us**. Full-model state rejects the fastest 64-thread
+  form at 4K (only 43/60 Conv/GDN and 14/20 KV parts exact); 256 and 128 remain
+  fully exact. This is why the primitive-only result is not sufficient.
+- Added a default-off prefill-only env candidate and routed only the bulk-prefill
+  select launch through it; decode keeps its existing explicit 256-thread
+  geometry. RED failed on the missing resolver; GREEN is **31 passed** across
+  policy, router, and gfx1151 backend tests. Five balanced pairs with 128 versus
+  512 threads remain **83/83 exact** and improve 512 prefill **1274.062 ->
+  1278.414 tok/s (+0.34%)** and 4K **1361.337 -> 1366.173 tok/s (+0.36%)**;
+  all 20 timed IDs are `9707`. `scripts/check_lineage.py` cannot run because the
+  manifest's read-only `/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout is
+  absent; this candidate changes no inherited kernel body.

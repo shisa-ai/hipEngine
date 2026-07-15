@@ -5514,6 +5514,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.expert_count,
             cfg.expert_count,
             top_k,
+            threads=_gguf_prefill_router_select_threads(self.backend),
             stream=stream,
             runtime=runtime,
         )
@@ -6141,6 +6142,7 @@ _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_ST
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
+_GGUF_PREFILL_ROUTER_SELECT_THREADS_ENV = "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
 _GGUF_LINEAR_ATTN_CONV_PREFILL_MODE_ENV = "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE"
 _GGUF_LINEAR_ATTN_CONV_PREFILL_MODES = frozenset({"baseline", "tile32x128"})
@@ -6186,6 +6188,30 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if raw is None:
         return default
     return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _gguf_prefill_router_select_threads(backend: str) -> int:
+    raw = _env_value(_GGUF_PREFILL_ROUTER_SELECT_THREADS_ENV)
+    value = (
+        backend_package_capability(
+            backend,
+            "GGUF_PREFILL_ROUTER_SELECT_THREADS",
+            512,
+        )
+        if raw is None
+        else raw
+    )
+    try:
+        threads = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"prefill router-select threads must be one of 64, 128, 256, 512, got {value!r}"
+        ) from exc
+    if threads not in {64, 128, 256, 512}:
+        raise ValueError(
+            f"prefill router-select threads must be one of 64, 128, 256, 512, got {threads}"
+        )
+    return threads
 
 
 def _gguf_prefill_device_metadata_enabled(
