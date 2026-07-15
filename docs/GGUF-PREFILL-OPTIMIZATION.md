@@ -1411,9 +1411,17 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   by **0.001286%**. The current same-W7900 GPF-9C residual trace puts its
   recurrence at practical llama.cpp parity (**17.134 vs 16.522 ms**) and
   attributes **19.126 ms** of excess trace span to between-kernel queue idle.
-  Dense Q8 remains the largest positive kernel-family residual at **+20.825
-  ms**. Evidence is the
-  [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
+  LCP-2A/B then remove all 280 identified synchronous copy boundaries:
+  request-scoped chunk metadata plus a tight routing-independent compact-WMMA
+  tile bound reduce matched queue idle **27.956 -> 11.634 ms (-58.39%)** and
+  move clean GPF-9C pp512 **2210.729 -> 2334.451 tok/s (+5.60%)**. The route
+  still misses the frozen 512 floor by **3.23%**, so production remains exact
+  direct-LDS32. Dense Q8 is now the next target at **~52.0 ms** versus
+  llama.cpp HIP **30.4 ms**; remaining total queue-idle excess is only
+  **2.699 ms**. Evidence:
+  [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
+  [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json), and
+  [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the

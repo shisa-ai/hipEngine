@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-15
 
+- [retained gfx1100 GGUF pp512 compact-WMMA tight no-read; GPF-9C still diagnostic] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV scalar `wmma_total` D2H per layer -> tight routing-independent tile upper bound through 4,096 selected rows: matched `hipMemcpy`/dispatches **48/1405 -> 8/1365**, queue idle **15.163 -> 11.634 ms (-23.27%)**, and clean 512 prefill **2292.186 -> 2334.451 tok/s (+1.84%)** with stable IDs, unchanged **22.995 GiB** peak, and decode **93.108 -> 93.059 tok/s (-0.053%)**. Clean 4K prefill/decode improve **+0.70%/+0.24%**; 512 remains 3.23% below the frozen floor, so production GDN selection is unchanged. `benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json`.
+
 - [retained gfx1100 GGUF pp512 chunk-metadata reuse; GPF-9C still diagnostic] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV per-layer synchronous metadata uploads -> one request/chunk-scoped upload: matched `hipMemcpy`/dispatches **1645/288 -> 1405/48** and queue idle **27.956 -> 15.163 ms (-45.76%)**; clean 512 prefill **2210.729 -> 2292.186 tok/s (+3.68%)**, decode **92.634 -> 93.108 tok/s (+0.51%)**, stable IDs and unchanged **22.995 GiB** peak. Clean 4K prefill is **2513.374 -> 2502.269 tok/s (-0.44%)**; 512 remains 4.98% below the frozen floor, so production selection is unchanged. `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json`.
 
 ## 2026-07-14
