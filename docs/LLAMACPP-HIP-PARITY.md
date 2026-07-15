@@ -171,11 +171,19 @@ the required floor. Production therefore remains on exact direct-LDS32.
 
 Continuation order is now:
 
-1. `LCP-3`: pursue a genuinely new dense-Q8 prefill path. Current hipEngine
-   dense Q8 is about **52.0 ms** versus llama.cpp HIP's **30.4 ms**, while the
-   remaining total queue-idle excess is only **2.699 ms**. Do not retune
-   selected Q4/Q5, short full attention, or generic launch count.
-2. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
+1. `LCP-3A` is closed as a rejection: extending exact activation sharing from
+   two to four independent FP16-WMMA waves is flat at width 8192 (-0.185%) but
+   regresses width 4096 (+2.24%) and short-K width 2048 (+8.87%). The measured
+   pp512 family mix projects about a 0.3 ms loss, so all candidate code was
+   removed before model routing.
+2. `LCP-3B`: screen a genuinely new dense-Q8 body. Current hipEngine dense Q8
+   is about **52.0 ms** versus llama.cpp HIP's **30.4 ms**, while the remaining
+   total queue-idle excess is only **2.699 ms**. The source-backed direction is
+   prequantized Q8_1 activations plus T16-native integer WMMA; require a
+   standalone body win and numerical gate before adding quantization scratch or
+   runtime routing. Do not retune selected Q4/Q5, short full attention, or
+   generic launch count.
+3. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
 
@@ -546,7 +554,7 @@ change makes hipEngine exceed the retained HIP capacity row again.
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
 | 3 | `LCP-2A/B` | **Closed/retained on gfx1100:** reuse request/chunk metadata and replace compact-WMMA total-row D2H reads with a tight static bound | 280 synchronous copies removed cumulatively; queue idle **27.956 -> 11.634 ms (-58.39%)**; clean pp512 **2210.729 -> 2334.451 tok/s (+5.60%)**, but remains 3.23% below the floor | Keep gfx1151 scalar pending its independent transfer gate; preserve the rollback env through one defaults-only refresh |
-| 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Queue idle is now within 2.699 ms of llama.cpp; dense Q8 remains **~52.0 vs 30.4 ms** and is the largest positive kernel family | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
+| 4 | `LCP-3A/B` | Four-wave widening rejected; next screen is a T16-native Q8_1/integer-WMMA body | Four-wave exact sharing is mixed and projects +0.3 ms on pp512; dense Q8 remains **~52.0 vs 30.4 ms** with queue idle already within 2.699 ms | Standalone body speed + numerical gate first; only then dominant-shape trace and 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
 

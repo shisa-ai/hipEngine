@@ -156751,3 +156751,52 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **11.634 ms** versus llama.cpp HIP **8.935 ms**, leaving only **2.699 ms**
   excess. The next profile-selected target is the dense Q8 prefill family,
   currently **~52.0 ms** on hipEngine versus **30.4 ms** in llama.cpp HIP.
+
+## 2026-07-15 - Predeclare LCP-3 four-wave dense-Q8 prefill screen
+
+- The final pp512 trace resolves the **51.998 ms / 250-dispatch** dense-Q8
+  family by geometry. The two-wave body spends **20.586 ms / 40** at output
+  width 8192, **8.468 ms / 30** at width 4096, and **17.044 ms / 80** at width
+  2048; the latter separates into 40 long-K calls around 339-417 us and 40
+  short-K calls around 51-59 us. The exact one-wave width-512 body is only
+  **5.921 ms / 100**. This selects the existing activation-sharing body rather
+  than tile retuning, Q4/Q5, attention, or more host-boundary work.
+- Screen one exact four-wave/128-column diagnostic. Four independent wave32
+  groups retain the production 32-column K traversal, WMMA calls, FP32
+  accumulators, and BF16 stores while sharing the same 32-row FP16 activation
+  tile through 1 KiB LDS. The candidate may cover only BF16/BF16, TN32, output
+  width at least 2048, and widths divisible by 128; production/two-wave remain
+  registered fallbacks.
+- RED requires a separately registered/callable `wmma_prefill_4wave` variant
+  and byte-exact tail-row/output fixtures versus the current `32x32` body. The
+  first exit gate is a cached W7900 production-shape micro A/B at
+  `512x2048x8192` plus profiler confirmation of workgroup 128, zero scratch,
+  bounded LDS, and plausible VGPRs. Any leaf regression removes the candidate
+  before model routing; an advancing candidate must then win the matched pp512
+  dense-Q8 trace and clean 512/4K full-model wall without changing IDs/state.
+
+## 2026-07-15 - Reject LCP-3A four-wave dense-Q8 widening
+
+- RED failed collection because the four-wave wrapper/key did not exist. The
+  temporary GREEN candidate passed all **83** Q8T16 prefill tests, including
+  three byte-exact tail-row/output cases versus production `32x32`. It was
+  never routed into the model.
+- Sequential W7900 cache-cycled HIP-event A/Bs used eight weight copies, three
+  warmup cycles, and 60 alternating repetitions per mode. The four-wave body is
+  effectively flat on `512x2048x8192` (**0.564581 -> 0.563539 ms, -0.185%**)
+  and `512x4096x2048` (**0.393461 -> 0.392242 ms, -0.310%**), but regresses
+  `512x2048x4096` **0.288998 -> 0.295457 ms (+2.24%)** and the short-K
+  `512x512x2048` leaf **0.066960 -> 0.072900 ms (+8.87%)**. Two accidentally
+  simultaneous-process repeats were recognized as contention-invalid and are
+  excluded from every result.
+- Weighted against the measured pp512 family mix, this would add roughly
+  **0.3 ms** rather than close the **~21.6 ms** llama.cpp dense-Q8 residual.
+  The predeclared shape gate therefore rejects the candidate before profiler or
+  full-model routing. Removed the kernel, wrapper, registry entry, and tests;
+  production source is byte-for-byte unchanged.
+- Published rejected evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-four-wave-rejected.json`.
+  Independent-wave FP16-WMMA widening is now exhausted. The next dense-Q8
+  screen must change the body: prequantized Q8_1 activations plus T16-native
+  integer WMMA is the source-backed direction, with standalone kernel/quality
+  gates required before runtime quantization or routing.
