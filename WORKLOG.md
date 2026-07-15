@@ -157211,3 +157211,27 @@ prior clean semantic artifact exactly. A clean post-commit rerun remains
 required before publication. gfx1100 package policy now selects
 `chain_peer_wave32`; gfx1151 remains exact `chain_lds32_direct`, and explicit
 direct-LDS32 remains the gfx1100 rollback.
+
+## 2026-07-15 — Clean LCP-5A promotion confirmation and publication
+
+At clean `487e658c`, reran both required promotion gates with the selector
+unset and cached builds only:
+
+- Full 18-prompt/450-transition semantic/decode gate: accepted, KL max
+  **0.041736869**, top-1 **445/450 = 98.889%**, baseline/candidate aggregate
+  decode wall **22781.210 -> 22757.635 ms (-0.10349%)**. Source provenance is
+  clean and the raw SHA256 is
+  `bade49ef1eecdc863ecf64c3e82bf20d2cdf08a6bbdb2f1f4626f3f07c96769e`.
+- Selector-unset max-4K 1+3 speed gate: 512 **2588.231 tok/s**, 4K
+  **2757.752 tok/s**, respectively **7.29% / 22.29% above** the frozen
+  llama.cpp HIP floors. All six final IDs are `9707`; decode medians are
+  **92.664/99.747 tok/s** and tracked peak is **21.670 GiB**. Raw SHA256:
+  `3a9a33293d652465df9e5360c05c16210fedbd2d7e940fda2061b378655cc213`.
+
+Published compact evidence at
+`benchmarks/results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json`
+and updated the benchmark index/changelog plus prefill/refactor handoff.
+The prior post-LCP-4A peer row was **2385.677/2585.343 tok/s**, so the clean
+retained delta is **+8.49%/+6.67%**. The gfx1100 prefill parity task is closed;
+the final six-shape public table remains deferred to the end-of-pass sweep so
+decode and mixed-KV work can settle first.
