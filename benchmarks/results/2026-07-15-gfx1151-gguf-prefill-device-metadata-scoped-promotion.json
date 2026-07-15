@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_prefill_device_metadata_scoped_promotion",
+  "status": "accepted_through_4096_tokens",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "measurement_commit": "6131e891aa270cdc742061a9250d40ca1eafc862",
+    "policy_commit": "37b39269",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1 (automatic gfx1151 process default)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "selector": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0|1",
+    "kernel": "prepare_prefill_chunk_metadata_kernel",
+    "change": "replace six synchronous per-chunk metadata H2D copies with one stream-ordered device kernel",
+    "automatic_backend": "hip_gfx1151",
+    "automatic_max_prompt_tokens": 4096,
+    "long_context_fallback": "synchronous host-prepared metadata",
+    "explicit_override_preserved": true
+  },
+  "correctness": {
+    "explicit_candidate_vs_control": {
+      "512": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "token": 9707},
+      "4096": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "token": 9707}
+    },
+    "automatic_vs_explicit_candidate": {
+      "512": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "token": 9707},
+      "1024": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "token": 9707},
+      "4096": {"exact_parts": 83, "total_parts": 83, "all_exact": true, "token": 9707}
+    },
+    "parts": "sampled token, FP32 logits, FP32 hidden seed, 30 Conv/GDN state pairs, and 10 BF16 K/V pairs"
+  },
+  "clean_balanced_ab": {
+    "protocol": "one resident max-shape session; one warmup per mode; five alternating measured pairs; device synchronize in timed wall",
+    "512": {
+      "control_ms": [405.81988100893795, 405.5867539718747, 406.3268839963712, 406.0735880048014, 405.29860300011933],
+      "candidate_ms": [399.5869599748403, 398.9272019825876, 398.84550898568705, 399.9309259816073, 399.8853010125458],
+      "control_median_tok_s": 1261.6434629251776,
+      "candidate_median_tok_s": 1281.3230943077765,
+      "delta_percent": 1.559840950387903
+    },
+    "1024": {
+      "control_ms": [769.0410359646194, 765.9547929652035, 767.2175130574033, 767.6868039998226, 770.255745970644],
+      "candidate_ms": [760.640777007211, 761.7789939977229, 759.6639539697208, 763.1927879992872, 760.8131510205567],
+      "control_median_tok_s": 1333.877298222045,
+      "candidate_median_tok_s": 1345.9283644432326,
+      "delta_percent": 0.9034613781380596
+    },
+    "4096": {
+      "control_ms": [3015.4699840350077, 3016.426668036729, 3018.569680978544, 3020.4581729485653, 3023.193388013169],
+      "candidate_ms": [2997.7382560027763, 2998.86539200088, 3002.9356800368987, 3003.2188419718295, 3002.706397033762],
+      "control_median_tok_s": 1356.9340558248039,
+      "candidate_median_tok_s": 1364.1027321373322,
+      "delta_percent": 0.5282995353942166
+    },
+    "all_final_token_ids": 9707
+  },
+  "clean_automatic_confirmation": {
+    "protocol": "clean policy commit; selector unset; one max-4K resident session; one warmup plus three measured runs per shape; graph replay decode",
+    "512": {"prefill_median_tok_s": 1283.6816019487444, "decode_median_tok_s": 49.11209651744895},
+    "1024": {"prefill_median_tok_s": 1375.6773300205612, "decode_median_tok_s": 51.66333484925887},
+    "4096": {"prefill_median_tok_s": 1371.4068508709308, "decode_median_tok_s": 52.523065602887286},
+    "final_token_ids": [9707, 9707, 9707],
+    "tracked_peak_gib": 22.99488216638565
+  },
+  "128k_rejection": {
+    "protocol": "explicit device metadata; automatic one-queue process policy; one warmup plus three measured requested",
+    "warmup_prefill_tok_s": 483.438828,
+    "current_production_warmup_prefill_tok_s": 499.755238,
+    "stalled_phase": "measured pass 1 prefill",
+    "observed_state": "100% GPU, 2900 MHz SCLK, approximately 49 W, no forward progress",
+    "kernel_journal_faults": false,
+    "termination_restored_idle": true,
+    "json_emitted": false,
+    "decision": "never select device metadata automatically above 4096 tokens"
+  },
+  "sources": {
+    "explicit_exact_sha256": "c2cdb0d31422ffda7b719d91db2db3b1b41946d1066cc46e6e6a3b6287fa2a67",
+    "explicit_512_4k_ab_sha256": "3480658607d5fe206085f6263a7511fea1bb424af15f93a39b1b80dc860a099f",
+    "explicit_1k_ab_sha256": "5014942ef8cf225e8d3e15257b33d638352145c7a120783c9bb16f527b4ed9c0",
+    "automatic_exact_sha256": "a80bc4b1c82535102221d643b658d6ad1f5f14871a8df0910aeb1cc139c31bc1",
+    "automatic_sweep_sha256": "82dcb8051381d804890c5ebad252e948bd71bfb919a6674422fc0ed123b6227b",
+    "128k_rejection_log_sha256": "f571c5dee32365da335b8cc32447cebcbb1b56ec83d18bbd82117b8ca853b75e"
+  },
+  "decision": "Promote device-prepared metadata automatically on gfx1151 through 4096 prompt tokens. Retain the synchronous metadata chain above 4K and the explicit selector for rollback/diagnosis."
+}

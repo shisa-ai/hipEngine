@@ -1,13 +1,14 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **audit complete; LCP-1, LCP-2A prefill and LCP-D1 decode retained on gfx1151**
-Date: **2026-07-14**
+Status: **audit complete; exact prefill tranche retained through scoped LCP-M2 on gfx1151**
+Date: **2026-07-15**
 Machine-readable evidence:
 
 - [`2026-07-14-gfx1151-llamacpp-hip-parity-audit.json`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json)
 - [`2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-prefill-lcp1-clean-promotion.json)
 - [`2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json)
 - [`2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json)
+- [`2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -456,6 +457,18 @@ gfx1100 is unchanged. Evidence:
 [`2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json)
 and the [ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824).
 
+### Scoped LCP-M2 metadata closure
+
+Under the promoted one-queue policy, the stream-ordered contiguous metadata
+kernel remains full-model exact and wins at the short/mid shapes: clean five-
+pair 512/1K/4K prefill improves **1261.643/1333.877/1356.934 ->
+1281.323/1345.928/1364.103 tok/s (+1.56%/+0.90%/+0.53%)**. Clean automatic-
+vs-explicit state is **83/83 exact** at all three shapes. The explicit 128K
+route still enters the low-power no-progress state on its first measured pass
+under one queue, so gfx1151 selects device metadata only through 4K and retains
+the synchronous path above it. This is a scoped exact win, not evidence that
+the queue workaround fixed every scheduling trigger.
+
 ## Explicit non-targets
 
 - Do not replace hipEngine selected Q4/Q5 with generic llama.cpp MMQ; the
@@ -473,8 +486,9 @@ and the [ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecommen
 
 ## Next parity targets
 
-LCP-1, LCP-D1, LCP-2A, LCP-3, and LCP-4A close the currently actionable
-exact convolution, GDN, dense-Q8, and router-logit prefill bodies. Use the
+LCP-1, LCP-D1, LCP-2A, scoped LCP-M2, LCP-3, and LCP-4A close the currently
+actionable exact convolution, GDN, metadata, dense-Q8, and router-logit prefill
+bodies. Use the
 promoted gfx1151 one-queue process default for subsequent production/profile
 runs. Refresh the 4K family profile before attempting router-select fusion; do
 not disturb the already-faster selected Q4/Q5 families. For decode, the clean 128K trace still

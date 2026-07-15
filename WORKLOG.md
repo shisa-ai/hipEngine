@@ -156068,3 +156068,15 @@ graphless decode launch-collapse path without regressing target/serial parity.
   runtime/backend/metadata bundle is GREEN at **41 passed**. Clean automatic
   selector confirmation and the retained artifact/rollup update follow from the
   candidate commit.
+
+## 2026-07-15 - Promote scoped LCP-M2 metadata
+
+- Clean detached `37b39269` with the selector unset matches explicit device
+  metadata **83/83** at 512, 1K, and 4K. The max-4K one-session 1+3 confirmation
+  records prefill **1283.682/1375.677/1371.407 tok/s** and graph decode
+  **49.112/51.663/52.523 tok/s**; all nine measured final IDs are `9707` and
+  tracked peak is unchanged at **22.995 GiB**.
+- Retained the 4,096-token gfx1151 package ceiling and synchronized the benchmark
+  rollup/changelog, kernel catalog, env contract, refactor ledger, parity audit,
+  and prefill handoff. Compact evidence is
+  `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`.
