@@ -34,6 +34,10 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
+# Clean LCP-M2 512/1K/4K full-state and balanced-wall gates admit stream-ordered
+# device metadata through 4K. Explicit opt-in remains available for diagnosis;
+# the 128K one-queue escalation still enters the low-power GPU-active state.
+GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS = 4096
 # Clean LCP-1 primitive/full-state, same-stream trace, and fresh-process wall
 # gates admit the exact 32-token shared-memory convolution schedule on gfx1151.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
@@ -118,6 +122,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
+    "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

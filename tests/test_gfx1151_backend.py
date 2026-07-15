@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100 import (
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
     GGUF_Q8_T16_PREFILL_FOUR_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
@@ -141,6 +142,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
 
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GGUF_Q8_T16_PREFILL_FOUR_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
@@ -149,6 +151,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
+        )
+        == 4096
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",

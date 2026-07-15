@@ -20,15 +20,29 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
-def test_prefill_device_metadata_is_default_off_and_explicitly_selectable(
+def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", raising=False)
     assert not gguf_runner._gguf_prefill_device_metadata_enabled()
+    assert gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1151", prompt_tokens=4096
+    )
+    assert not gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1151", prompt_tokens=4097
+    )
+    assert not gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1100", prompt_tokens=512
+    )
+
     monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", "1")
-    assert gguf_runner._gguf_prefill_device_metadata_enabled()
+    assert gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1151", prompt_tokens=131072
+    )
     monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_DEVICE_METADATA", "0")
-    assert not gguf_runner._gguf_prefill_device_metadata_enabled()
+    assert not gguf_runner._gguf_prefill_device_metadata_enabled(
+        backend="hip_gfx1151", prompt_tokens=512
+    )
 
 
 def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> None:
@@ -230,6 +244,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         ffn_size=12,
         linear_qkv_width=10,
         ssm_value_dim=2,
+        backend="hip_gfx1151",
         weights=SimpleNamespace(config=cfg),
     )
     scratch = _GGUFFullAttentionPrefillScratch.allocate(

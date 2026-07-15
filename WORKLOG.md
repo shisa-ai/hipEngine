@@ -156042,3 +156042,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Benchmark/env/backend docs, the Vulkan/HIP history, rollup, and changelog are
   synchronized. Compact retained evidence is
   `benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`.
+
+## 2026-07-15 - LCP-M2 scoped device-metadata candidate
+
+- Re-gated the existing stream-ordered `prepare_prefill_chunk_metadata` path
+  from clean `6131e891` under the promoted gfx1151 one-queue process policy.
+  Current LCP-2A/LCP-3/LCP-4A full-state capture remains **83/83 exact** at both
+  512 and 4K, including token, FP32 logits/hidden, all 30 Conv/GDN pairs, and
+  ten BF16 K/V pairs.
+- Five balanced pairs are positive at every right-sized short shape checked:
+  512 prefill **1261.643 -> 1281.323 tok/s (+1.56%)**, 1K
+  **1333.877 -> 1345.928 (+0.90%)**, and 4K **1356.934 -> 1364.103 tok/s
+  (+0.53%)**. Every timed ID is `9707`.
+- The explicit 128K escalation rejects an all-context default even with one
+  hardware queue. Warmup completes at only **483.439 tok/s** versus the current
+  production warmup **499.755 tok/s**; measured pass 1 then enters the familiar
+  100%/2.9 GHz, roughly 49 W no-progress state. No amdgpu/KFD fault appears;
+  bounded termination immediately restores idle. This proves the queue cap is
+  necessary for current production but does not make the device-metadata route
+  lifecycle-safe at 128K.
+- Added a gfx1151 backend ceiling of **4,096 prompt tokens**. Selector-unset
+  requests through 4K use device metadata; longer requests retain the proven
+  synchronous metadata fallback. Explicit env `0|1` still overrides for
+  rollback/diagnosis. RED failed on the missing backend capability; the focused
+  runtime/backend/metadata bundle is GREEN at **41 passed**. Clean automatic
+  selector confirmation and the retained artifact/rollup update follow from the
+  candidate commit.
