@@ -54,17 +54,22 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
-from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
+from hipengine.kernels.cpu_reference import (
+    gdn_prefill_chunkwise_wy_segments,
+    gdn_prefill_recurrent_segments,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+    qwen35_gdn_prefill_recurrent_chunkwise_wy8_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_f32,
+    qwen35_gdn_prefill_recurrent_chunkwise_wy8_segments_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
@@ -1050,6 +1055,145 @@ def _run_exact_split_chain(
             buf.free()
 
 
+def _run_direct_recurrence_only(
+    inputs: _GDNInputs,
+    *,
+    use_segments: bool,
+    chunkwise_wy8: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run compact prepare plus either direct LDS32 recurrence body."""
+
+    conv_out = _to_device(inputs.conv_out_f32)
+    a = _to_device(inputs.a_u16)
+    b = _to_device(inputs.b_u16)
+    dt_bias = _to_device(inputs.dt_bias_f32)
+    a_log = _to_device(inputs.a_log_f32)
+    state = _to_device(inputs.init_state_f32)
+    scalar_shape = (inputs.tokens, inputs.num_v_heads)
+    scale_shape = (inputs.tokens, inputs.num_k_heads)
+    recurrent_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    beta = _Buf(int(np.prod(scalar_shape)) * np.dtype(np.float32).itemsize)
+    decay = _Buf(int(np.prod(scalar_shape)) * np.dtype(np.float32).itemsize)
+    query_scale = _Buf(int(np.prod(scale_shape)) * np.dtype(np.float32).itemsize)
+    key_scale = _Buf(int(np.prod(scale_shape)) * np.dtype(np.float32).itemsize)
+    recurrent_out = _Buf(
+        int(np.prod(recurrent_shape)) * np.dtype(np.float32).itemsize
+    )
+    cu = _to_device(np.asarray([0, inputs.tokens], dtype=np.int32))
+    state_indices = _to_device(np.asarray([0], dtype=np.int64))
+    try:
+        qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16(
+            conv_out.ptr,
+            a.ptr,
+            b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            beta.ptr,
+            decay.ptr,
+            query_scale.ptr,
+            key_scale.ptr,
+            inputs.tokens,
+            inputs.num_k_heads,
+            inputs.num_v_heads,
+            inputs.head_k_dim,
+            inputs.head_v_dim,
+        )
+        if use_segments:
+            recurrent = (
+                qwen35_gdn_prefill_recurrent_chunkwise_wy8_segments_lds32_direct_f32
+                if chunkwise_wy8
+                else qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
+            )
+            recurrent(
+                conv_out.ptr,
+                beta.ptr,
+                decay.ptr,
+                query_scale.ptr,
+                key_scale.ptr,
+                state.ptr,
+                recurrent_out.ptr,
+                cu.ptr,
+                state_indices.ptr,
+                inputs.tokens,
+                1,
+                inputs.num_k_heads,
+                inputs.num_v_heads,
+                inputs.head_k_dim,
+                inputs.head_v_dim,
+            )
+        else:
+            recurrent = (
+                qwen35_gdn_prefill_recurrent_chunkwise_wy8_lds32_direct_f32
+                if chunkwise_wy8
+                else qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32
+            )
+            recurrent(
+                conv_out.ptr,
+                beta.ptr,
+                decay.ptr,
+                query_scale.ptr,
+                key_scale.ptr,
+                state.ptr,
+                recurrent_out.ptr,
+                inputs.tokens,
+                inputs.num_k_heads,
+                inputs.num_v_heads,
+                inputs.head_k_dim,
+                inputs.head_v_dim,
+            )
+        return (
+            _from_device(recurrent_out, recurrent_shape, np.float32),
+            _from_device(
+                state,
+                (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim),
+                np.float32,
+            ),
+        )
+    finally:
+        for buf in (
+            conv_out,
+            a,
+            b,
+            dt_bias,
+            a_log,
+            state,
+            beta,
+            decay,
+            query_scale,
+            key_scale,
+            recurrent_out,
+            cu,
+            state_indices,
+        ):
+            buf.free()
+
+
+def _cpu_chunkwise_recurrence(inputs: _GDNInputs) -> tuple[np.ndarray, np.ndarray]:
+    query, key, value, beta, decay = _cpu_prepare(
+        inputs.conv_out_f32,
+        inputs.a_u16,
+        inputs.b_u16,
+        inputs.dt_bias_f32,
+        inputs.a_log_f32,
+        num_k_heads=inputs.num_k_heads,
+        num_v_heads=inputs.num_v_heads,
+        head_k_dim=inputs.head_k_dim,
+        head_v_dim=inputs.head_v_dim,
+    )
+    out, state = gdn_prefill_chunkwise_wy_segments(
+        query,
+        key,
+        value,
+        beta,
+        decay,
+        inputs.init_state_f32[np.newaxis, ...],
+        np.asarray([0, inputs.tokens], dtype=np.int32),
+        np.asarray([0], dtype=np.int64),
+        chunk_size=8,
+    )
+    return out, state[0]
+
+
 # ---------------------------------------------------------------------------
 # No-GPU registry surface.
 # ---------------------------------------------------------------------------
@@ -1215,6 +1359,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             backend="hip_gfx1100",
             layer="gdn_prefill_recurrent",
             quant="gguf_qwen35",
+            variant="f32_chunkwise_wy8_lds32_direct",
+        )
+        is qwen35_gdn_prefill_recurrent_chunkwise_wy8_lds32_direct_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
             variant="f32_decode_order_exact_segments_lds64",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds64_f32
@@ -1236,6 +1389,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="f32_decode_order_exact_segments_lds32_direct",
         )
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_chunkwise_wy8_segments_lds32_direct",
+        )
+        is qwen35_gdn_prefill_recurrent_chunkwise_wy8_segments_lds32_direct_f32
     )
     assert (
         resolve(
@@ -1290,6 +1452,58 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
 
 
 _RMS_EPS = 1.0e-6
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_chunkwise_wy8_one_token_is_bit_exact_to_direct(
+    use_segments: bool,
+) -> None:
+    inputs = _GDNInputs(
+        tokens=1,
+        num_k_heads=4,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=8101,
+    )
+    direct_out, direct_state = _run_direct_recurrence_only(
+        inputs, use_segments=use_segments, chunkwise_wy8=False
+    )
+    chunk_out, chunk_state = _run_direct_recurrence_only(
+        inputs, use_segments=use_segments, chunkwise_wy8=True
+    )
+    np.testing.assert_array_equal(chunk_out, direct_out)
+    np.testing.assert_array_equal(chunk_state, direct_state)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+@pytest.mark.parametrize("tokens", [8, 17])
+def test_gdn_chunkwise_wy8_matches_high_precision_oracle(
+    use_segments: bool,
+    tokens: int,
+) -> None:
+    inputs = _GDNInputs(
+        tokens=tokens,
+        num_k_heads=4,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=8200 + tokens,
+    )
+    expected_out, expected_state = _cpu_chunkwise_recurrence(inputs)
+    actual_out, actual_state = _run_direct_recurrence_only(
+        inputs, use_segments=use_segments, chunkwise_wy8=True
+    )
+    assert np.isfinite(actual_out).all()
+    assert np.isfinite(actual_state).all()
+    np.testing.assert_allclose(
+        actual_out, expected_out, atol=5.0e-4, rtol=5.0e-3
+    )
+    np.testing.assert_allclose(
+        actual_state, expected_state, atol=5.0e-4, rtol=5.0e-3
+    )
 
 
 def _assert_state_close(

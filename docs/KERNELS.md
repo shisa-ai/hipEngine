@@ -381,19 +381,21 @@ SM121's register-file result does not transfer mechanically to RDNA3. Future
 exact GDN work must use chunkwise/WY algebra, not another storage or reduction
 micro-variant. The rejection is recorded in the GPF-6/7 artifact above.
 
-GPF-8 begins that algorithmic lane with a high-precision CPU oracle, before a
-HIP body exists. `gdn_prefill_chunkwise_wy_segments` implements the direct
-lower-triangular/Woodbury-Young identity in float64 and is checked against an
-independent token-serial definition for chunk sizes 1/2/3/8/16, packed segment
-remapping, and an odd tail. The selected future HIP schedule is C=8, one
-256-thread block per `(segment,v_head,value_tile32)`, the retained 16 KiB FP32
-state tile plus at most 16 KiB bounded Q/K/coefficient scratch, direct FP32
-`conv_out` inputs, scalar token-serial remainder, no prompt-sized coefficient
-arena, and separate plain/segment registry variants. Admission is zero scratch,
-<=128 VGPR, <=32 KiB LDS, complete 512 GDN stage <=66 ms, the frozen 18-prompt
-KL/top-1 gate, exact free-running trajectories, and clean W7900 512/4K floors
-of 2412.320/2255.080 tok/s. Current defaults are unchanged. See
-`docs/GGUF-PREFILL-OPTIMIZATION.md` for the derivation and frozen contract.
+GPF-8 begins that algorithmic lane with a high-precision CPU oracle and a
+callable, default-off HIP candidate. `gdn_prefill_chunkwise_wy_segments`
+implements the direct lower-triangular/Woodbury-Young identity in float64 and
+is checked against an independent token-serial definition for chunk sizes
+1/2/3/8/16, packed segment remapping, and an odd tail. The HIP schedule is C=8,
+one 256-thread block per `(segment,v_head,value_tile32)`, the retained 16 KiB
+FP32 state tile plus bounded Q/K/coefficient scratch, direct FP32 `conv_out`
+inputs, an in-kernel scalar token-serial remainder, no prompt-sized coefficient
+arena, and separate plain/segment registry variants. Plain and segmented C=8
+plus 17-token-tail fixtures pass the frozen primitive bounds; cached W7900
+traces report **48 VGPR, zero scratch, 28 KiB LDS**, and the complete synthetic
+30-layer 512 GDN stage is **47.491 ms**, below the predeclared 66 ms gate.
+Semantic, trajectory, and clean 512/4K model gates remain; current defaults are
+unchanged. See `docs/GGUF-PREFILL-OPTIMIZATION.md` for the derivation and frozen
+contract.
 
 ## DFlash / MTP lineage map
 

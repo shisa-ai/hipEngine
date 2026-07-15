@@ -974,8 +974,9 @@ in-tree schedule experiment over the catalogued T16 body.
 
 ## GPF-8: Eight-Token Chunkwise/WY GDN
 
-Status: CPU algebra/oracle implemented; HIP candidate not yet implemented and
-no performance claim exists. The source ideas are Atlas
+Status: CPU algebra/oracle and a callable, default-off HIP candidate are
+implemented; semantic/trajectory/full-model admission remains and no retained
+performance claim exists. The source ideas are Atlas
 `gated_delta_rule_wy{,64_prefill}.cu` at `8d187c7`/`37513bf` and the FLA-derived
 vLLM `chunk.py`, `chunk_scaled_dot_kkt.py`, and `wy_fast.py` at their registered
 file commits. hipEngine does not copy their CUDA/Triton bodies, BF16 matrix
@@ -1065,6 +1066,19 @@ parallelism makes the design plausible; a serial WY implementation does not.
 7. **Publication:** only after all prior gates pass, rerun the defaults-only
    six-shape sweep, update the compact artifact/README/changelog, and promote
    through backend package metadata rather than an engine backend/quant branch.
+
+### Initial HIP gate result (W7900, 2026-07-15)
+
+The callable plain and segmented registry variants pass the predeclared
+one-token byte-identity and C=8/17-token high-precision primitive fixtures. The
+final integrated-tail bodies use one 256-thread launch for both full chunks and
+the scalar remainder. Cached traces observe the expected plain and segment
+symbols at **48 VGPR, zero scratch, and 28 KiB LDS**. A cached synthetic
+production-shape trace of compact prepare, recurrence, and RMSNorm+gate across
+30 layers measures **47.491 ms total** at 512 tokens: **0.866 ms prepare,
+43.848 ms recurrence, and 2.777 ms RMSNorm+gate**. This passes the frozen 66 ms
+pre-routing gate. Published runtime defaults are still unchanged; the candidate
+must now pass the semantic, exact-trajectory, decode, and clean 512/4K floors.
 
 ## Correctness And Promotion Contract
 

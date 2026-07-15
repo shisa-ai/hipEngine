@@ -156307,3 +156307,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   custom MoE fixture schema at
   `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`; that file
   and checker are unchanged, and its dedicated CPU MoE tests pass above.
+
+## 2026-07-15 - Pass GPF-8 primitive and resource admission
+
+- Implemented callable, default-off plain and segment-aware C=8 direct-conv
+  chunkwise/WY recurrence variants. Each 256-thread block retains a 128x32
+  state tile, stages eight FP32 Q/K rows and bounded coefficients/projections in
+  28 KiB LDS, evaluates the triangular delta/output system, updates the
+  chunk-final state, and handles a short scalar direct tail in the same launch.
+  The exact direct LDS32 route remains registered and unchanged as fallback.
+- RED first failed collection on the intentionally absent Python wrappers. The
+  final one-token candidate is byte-identical to direct LDS32 for plain and
+  segmented entry points; C=8 and 17-token-tail cases are finite and satisfy
+  the frozen `atol=5e-4, rtol=5e-3` high-precision oracle bound. The complete
+  focused GPU file passes **33/33**.
+- The first resource trace appeared to report 176 VGPR because
+  `__launch_bounds__(256, N)` inflated the gfx1100 kernel descriptor despite a
+  40-VGPR disassembly. Removing the blind launch bound makes descriptor,
+  disassembly, and `rocprofv3` agree. The final integrated-tail plain and
+  segment symbols run at **256 threads, 48 VGPR, zero scratch, 28 KiB LDS**.
+  Trace: `/tmp/gpf8-wy8-integrated-tail-resource/trace_kernel_trace.csv`.
+- A cached W7900 synthetic production-shape trace launches compact prepare,
+  candidate recurrence, and RMSNorm+gate 30 times at 512 tokens. The complete
+  family is **47.490591 ms**, below the frozen 66 ms admission ceiling:
+  **0.865603 ms prepare + 43.847903 ms recurrence + 2.777085 ms gate**. Trace:
+  `/tmp/gpf8-512-family-trace-final/trace_kernel_trace.csv`. This is a kernel-
+  family gate, not a retained full-model performance claim.
+- Validation: `HIP_VISIBLE_DEVICES=0 ... uv run pytest -q
+  tests/test_qwen35_gguf_gdn_prefill_correctness.py` passes **33/33**;
+  `python3 -m compileall -q hipengine ...` and `git diff --check` pass. Runtime
+  selection/defaults are intentionally untouched until the semantic and
+  trajectory gates can exercise the candidate explicitly.
