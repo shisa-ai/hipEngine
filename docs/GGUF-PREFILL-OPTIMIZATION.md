@@ -1077,8 +1077,9 @@ symbols at **48 VGPR, zero scratch, and 28 KiB LDS**. A cached synthetic
 production-shape trace of compact prepare, recurrence, and RMSNorm+gate across
 30 layers measures **47.491 ms total** at 512 tokens: **0.866 ms prepare,
 43.848 ms recurrence, and 2.777 ms RMSNorm+gate**. This passes the frozen 66 ms
-pre-routing gate. Published runtime defaults are still unchanged; the candidate
-must now pass the semantic, exact-trajectory, decode, and clean 512/4K floors.
+pre-routing gate. Published runtime defaults are still unchanged; the explicit
+`chain_wy8` mode exists only for admission harnesses. The candidate must now
+pass the semantic, exact-trajectory, decode, and clean 512/4K floors.
 
 ## Correctness And Promotion Contract
 

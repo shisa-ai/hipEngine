@@ -156338,3 +156338,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m compileall -q hipengine ...` and `git diff --check` pass. Runtime
   selection/defaults are intentionally untouched until the semantic and
   trajectory gates can exercise the candidate explicitly.
+
+## 2026-07-15 - Add explicit GPF-8 admission routing
+
+- Added fail-closed `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wy8` resolution
+  through registered plain/segment recurrence keys, compact-scale preparation,
+  and the existing RMSNorm+gate fallback chain. `auto` and both backend package
+  defaults remain `chain_lds32_direct`; there is no backend/quant branch.
+- The route shares the admitted compact-direct scratch-liveness arena and is
+  available in the compare, interleaved-wall, semantic, and trajectory
+  harnesses. Missing candidate components fail closed. Added the temporary path
+  and its rejection/promotion removal trigger to `docs/REFACTOR.md`.
+- RED routing/parser tests failed in nine expected places before the mode and
+  plan members existed. GREEN passes **78/78** across routing, semantic,
+  trajectory, A/B, and compare harness tests.
+- Cached W7900 source-dirty route smoke command:
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wy8 python3
+  scripts/qwen35_gguf_bench.py ... --prompt-length 512 --decode-tokens 0
+  --warmup-runs 0 --measured-runs 1 --require-cached-build`. It completes with
+  prefill sample ID `9707`, **1589.982 tok/s**, and **21.204 GiB** tracked peak.
+  The warmupless dirty smoke only proves live route execution; it is not a
+  retained performance/correctness claim and does not satisfy any clean floor.
