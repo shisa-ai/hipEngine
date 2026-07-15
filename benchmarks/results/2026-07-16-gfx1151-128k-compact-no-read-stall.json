@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_compact_no_read_stall",
+  "status": "diagnostic_remaining_scalar_d2h_removed_but_stall_reproduces",
+  "created_at": "2026-07-16T04:06:26+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "Removing the remaining per-layer compact-WMMA wmma_total scalar D2H synchronization does not clear the gfx1151 128K lifecycle failure. A cached 4K/1 smoke is exact and the recorder-enabled 128K warmup completes at 507.552 prefill / 28.100 decode tok/s, but measured prefill 1 enters the same persistent 100%-activity, 2.9-GHz, low-power state. The last retired marker certifies all work through token 36864. Without the per-layer readback, the host rapidly queues all 40 layers for chunk [36864,40960), enters the next chunk and publishes its embedding checkpoint, then stops in the following synchronous token-id H2D boundary. The scalar readback and metadata copies therefore act as observation/fencing points but are not necessary to trigger the failure. Chunk markers still cannot identify the exact last retired user dispatch or exclude one queued nonterminating kernel, but the shifting chunk/layer/host boundary across three captures remains more consistent with timing-sensitive user-queue/fence lifecycle no-progress than with one deterministic layer location.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "d1b9e581c674b5a5b28836b09813e8f279d66bec",
+    "source_tree": "tracked-clean main; unrelated pre-existing untracked benchmark files present",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "hsa_enable_sdma": "unset",
+    "prefill_device_metadata_override": "unset; gfx1151 package default is host metadata above 4K",
+    "compact_wmma_no_read_max_selected_rows": 32768,
+    "flight_recorder_granularity": "chunk"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "candidate_scope": {
+    "mechanism": "Use the exact tight routing-independent compact-WMMA tile upper bound instead of copying the device wmma_total scalar to the host before every layer's selected-MoE launches.",
+    "selected_rows_per_outer_chunk": 32768,
+    "upper_padded_rows": 36608,
+    "allocated_capacity_rows": 36864,
+    "safety": "The upper bound fits the allocated scratch; unused tile IDs are initialized to -1 and rejected by selected kernels.",
+    "prior_decision": "Performance-rejected on gfx1151: the same upper-bound route improved 512 by 0.16% but regressed 4K by 0.56% from empty tile work. This run is lifecycle diagnosis only and cannot promote the route."
+  },
+  "preflight": {
+    "workload": "4K/1",
+    "require_cached_build": true,
+    "prefill_tok_s": 1358.8879060368506,
+    "decode_tok_s": 51.947720009151695,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "status": "exact cached smoke only; one-shot rate is not a performance row",
+    "local_result": "/tmp/gfx1151-merged-no-read-4k-smoke.json"
+  },
+  "protocol": {
+    "workload": "128K/128",
+    "warmups": 1,
+    "requested_measured_runs": 3,
+    "completed_warmups": 1,
+    "completed_measured_runs": 0,
+    "process_bound_seconds": 1800,
+    "actual_elapsed_seconds": 1805,
+    "exit_status": 124,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=32768 python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity chunk --json <out>/result.json"
+  },
+  "completed_warmup": {
+    "prefill_tok_s": 507.551587,
+    "decode_tok_s": 28.100299,
+    "tracked_peak_gib": 25.492502,
+    "note": "Recorder-enabled warmup is diagnostic and not a retained performance row. Measured run 1 did not complete."
+  },
+  "flight_recorder": {
+    "prefill_id": 2,
+    "capacity": 8192,
+    "submitted_sequence": 1772,
+    "completed_sequence": 1687,
+    "retirement_lag": 85,
+    "overwritten_entries": 0,
+    "last_completed": {
+      "sequence": 1687,
+      "phase": "chunk",
+      "chunk_start": 32768,
+      "chunk_end": 36864,
+      "layer_id": -1,
+      "interpretation": "The same-stream marker is enqueued after all 40 layers and certifies complete retirement through token 36864."
+    },
+    "host_progress": {
+      "completed_host_entries_for_chunk": "all layers 0-39 in [36864,40960)",
+      "next_chunk_checkpoint_sequence": 1771,
+      "next_embedding_checkpoint_sequence": 1772,
+      "next_chunk_start": 40960,
+      "next_chunk_end": 45056,
+      "interpretation": "The host published chunk and embedding checkpoints, then entered _copy_token_embeddings_to_device(). The embedding checkpoint precedes the synchronous default-stream token-ID H2D copy and embedding launch, so neither is proven complete."
+    },
+    "strongest_safe_localization": {
+      "definitely_retired": "all device work through token 36864",
+      "definitely_host_enqueued": "all 40 layer calls for chunk [36864,40960) returned",
+      "unresolved_window": [
+        "retirement of queued work from chunk [36864,40960)",
+        "the next chunk's synchronous token-ID H2D copy",
+        "the next chunk embedding launch, which may not have been reached"
+      ],
+      "not_established": [
+        "which kernel in chunk [36864,40960) last retired",
+        "that the next embedding kernel launched",
+        "a nonterminating kernel rather than a scheduler/queue/fence failure"
+      ]
+    }
+  },
+  "telemetry": {
+    "persistent_low_power_start": "2026-07-16T03:42:21+09:00",
+    "persistent_low_power_duration_through_bound_seconds": 1437,
+    "gfx_activity_percent": 100,
+    "gfx_clock_mhz": {
+      "min": 2899,
+      "median": 2900,
+      "max": 2900
+    },
+    "socket_power_w": {
+      "min": 53,
+      "median": 54,
+      "max": 58
+    },
+    "vram_used_mib": 26662,
+    "after_process_termination_sample": {
+      "power_w": 20,
+      "gfx_clock_mhz": 821,
+      "gfx_activity_percent": 10,
+      "vram_used_mib": 17
+    }
+  },
+  "process_state": {
+    "sample_interval_seconds": 15,
+    "main_thread_samples": 119,
+    "main_thread_state": "RN/RNl with no kernel wait channel; executing or polling in user space",
+    "background_threads": "most threads wait in futex_wait; one runtime thread is runnable and one event thread waits in kfd_wait_on_events",
+    "interpretation": "As in the merged control, the main thread is not sleeping in a kernel wait channel. This is compatible with user-space polling inside the synchronous copy boundary but is not a user-space backtrace."
+  },
+  "system_observability": {
+    "kernel_journal_relevant_amdgpu_kfd_fault_reset_hang_mes_lines": 0,
+    "amdgpu_fence_info": {
+      "gfx_ring_0_first_and_last_signaled_emitted": "0x00009889 / 0x00009889",
+      "ring_0_unique_values": 1,
+      "emitted_equals_signaled_on_sampled_kernel_rings": true,
+      "mes_and_sdma_monitor_activity_continued": true,
+      "interpretation": "No sampled kernel-ring mismatch was exposed; KFD user queues remain absent from this view."
+    }
+  },
+  "comparison": {
+    "premerge_capture": "measured prefill 1; retired through 28672; host at layer-11 entry; median 49 W",
+    "merged_metadata_capture": "first warmup; retired through 61440; host inside layer-18 call; median 45 W",
+    "compact_no_read_capture": "measured prefill 1; retired through 36864; host reaches next chunk embedding boundary after queueing all 40 prior-chunk layers; median 54 W",
+    "shared_signature": "persistent 100% reported activity, approximately 2.9 GHz, low package power, fixed memory residency, clean kernel journal, immediate resource release on process termination",
+    "decision": "Reject compact-WMMA scalar D2H as a necessary trigger or lifecycle fix. Removing synchronous boundaries changes host submission depth and where the wait becomes visible, but does not prevent device no-progress."
+  },
+  "next_diagnostic": {
+    "candidate": "Use layer-granularity retirement markers on merged main to locate the last retired layer inside a failing chunk, accepting that marker launches may perturb incidence; alternatively use rocprofv3 KFD tracing in a separate instrumentation-sensitive run.",
+    "production_boundary": "Do not promote the no-read route. Its prior gfx1151 4K performance rejection remains valid."
+  },
+  "source_hashes": {
+    "flight_final_json": "4e5489428f31b8ab5d411f9c898eed4cb18e9de5b2501c3989edb55c913fd697",
+    "telemetry_csv": "9331a71ec7830bcba8a58428eff6dd074e063c031e181f8cbc1550b0b970fd9b",
+    "amdgpu_fences_log": "230ca3f0032ba942a031214f2d69b6bff8fe8dcc728a21c9de29acea5471ca65",
+    "kernel_journal_log": "aee08f73e6ef3e4b588640592f152477b3ce337d72ffd0ba915ae86dbb6abad7",
+    "process_stacks_log": "3ddef0ad8cc08498f964ec11e206b0f4a40751c1e8a5589c76c76e6461236696",
+    "run_log": "741b55f07d811445d178fd3d3d1360798ccca33da4af071f8fd520e6d15f2f46",
+    "provenance_txt": "832a506dd38a4e3c7c2807f24306d79998bfa89d9ad95a813fb16cb7e1e87407"
+  },
+  "local_raw_directory": "/tmp/gfx1151-no-read-flight-d1b9e581-20260715T183621Z"
+}
