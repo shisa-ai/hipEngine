@@ -200,7 +200,14 @@ Continuation order is now:
    forbidden: the traced dense-Q8 weights are about **1.390 GiB**. Close
    dense-Q8 prefill tile/layout experiments pending genuinely new evidence; do
    not retune selected Q4/Q5, short full attention, or generic launch count.
-4. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
+4. `LCP-4A` is promoted. The apparent post-Q8 convolution residual was mostly
+   the normal prefill body's **20 private bytes/thread**, forced by `volatile`
+   products used to prevent FP32 contraction. A capture-free body emits explicit
+   sequential `v_mul_f32_e32`/`v_add_f32_e32`, keeps output/final-state bytes
+   exact, and uses zero scratch. Cached pp512 Conv falls **8.496 -> 1.894 ms / 30
+   (-77.71%)**; clean production direct-LDS32 prefill improves **+1.44%/+1.86%**
+   at 512/4K with stable IDs. Reprofile before naming another prefill residual.
+5. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
 
@@ -213,8 +220,9 @@ Machine-readable evidence:
 [`GPF-9C residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
 [`LCP-2A metadata reuse`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
 [`LCP-2B tight no-read`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
+[`LCP-3E raw MMQ rejection`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json),
 and
-[`LCP-3E raw MMQ rejection`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json).
+[`LCP-4A no-scratch Conv`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json).
 
 ## gfx1151 post-merge transfer plan
 

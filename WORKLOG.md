@@ -157061,3 +157061,24 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, whose
   schema lacks the runner's required top-level `expected`; this change does not
   touch that fixture or runner.
+
+## 2026-07-15 - Retain and publish LCP-4A no-scratch Conv prefill
+
+- The exact implementation landed at clean `683ddab6`. Repeated the frozen
+  production `chain_lds32_direct` full-model gate from that commit in one
+  max-4096 W7900 session, one warmup plus four balanced old/new shared-object
+  repetitions per context. Canonical provenance records clean staged,
+  unstaged, and untracked axes; model sampled SHA256 remains
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`.
+  The old/new libraries are pinned by SHA256
+  `9fa651c23b9c940a2bc80f348489a01244849f80c39cc5fa5858a7c14af85e8c`
+  and `d1c7930a54f450964c2b898ec6385693d58ad0a3938071cccf4f79a1e7416c70`.
+- At 512 tokens, median wall falls **394.448 -> 388.862 ms** and prefill rises
+  **1298.018 -> 1316.663 tok/s (+1.44%)**. At 4K, median wall falls
+  **2953.813 -> 2899.832 ms** and prefill rises **1386.682 -> 1412.496 tok/s
+  (+1.86%)**. All 16 measured final IDs are `9707`.
+- Published the retained artifact at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json` and updated
+  the benchmark rollup, changelog, prefill plan, and llama.cpp parity handoff.
+  The next action is a clean post-LCP-4A pp512 profile; the old Conv family
+  total is no longer a valid basis for selecting the next optimization.
