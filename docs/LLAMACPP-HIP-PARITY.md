@@ -154,15 +154,21 @@ kernels versus llama.cpp's **8.935 ms**. That **+19.126 ms** queue starvation is
 **1645 versus 2259** dispatches. Copy-to-RMSNorm and copy-to-copy boundaries
 alone contribute **12.344 ms** of the hipEngine gaps. Dense Q8 is the largest
 positive kernel residual (**+20.825 ms**), but selected Q4/Q5 is already
-**21.819 ms faster** and offsets it. This does not promote GPF-9C: the frozen
-non-profiled row remains **2210.729 tok/s**, 8.36% below the required 512 floor,
-and production remains on exact direct-LDS32.
+**21.819 ms faster** and offsets it. `LCP-2A` has now removed the first measured
+submission defect: request/chunk metadata was synchronously uploaded before all
+40 layers at pp512. Retained `e03e5a34` removes exactly **240 copies**, reducing
+matched dispatches **1645 -> 1405**, queue idle **27.956 -> 15.163 ms
+(-45.76%)**, and trace span **235.907 -> 224.511 ms (-4.83%)**. Clean pp512
+improves **2210.729 -> 2292.186 tok/s (+3.68%)** with stable IDs and unchanged
+memory, but remains **4.98% below** the required floor. Production therefore
+remains on exact direct-LDS32.
 
 Continuation order is now:
 
-1. `LCP-2A`: preserve the quality-admitted peer-wave recurrence and remove its
-   measured copy-boundary queue bubbles; require the unchanged semantic/decode
-   gate and both 512/4K speed floors before any automatic route change.
+1. `LCP-2B`: remove the remaining 40 compact-WMMA total-row D2H reads that
+   serialize the copy-to-selected-Q4 boundary; require the unchanged
+   semantic/decode gate and both 512/4K speed floors before any automatic route
+   change.
 2. `LCP-3`: if a kernel-family change is still needed, pursue a genuinely new
    dense-Q8 prefill path. Do not retune selected Q4/Q5, short full attention,
    or generic launch count.
@@ -175,9 +181,10 @@ until the measured peer-route integration and dense-Q8 residuals are exhausted;
 do not rerun rejected LDS16, two-lane, tree, or WY8 designs unchanged.
 
 Machine-readable evidence:
-[`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json)
+[`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json),
+[`GPF-9C residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
 and
-[`GPF-9C residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
+[`LCP-2A metadata reuse`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json).
 
 ## gfx1151 post-merge transfer plan
 
@@ -534,7 +541,7 @@ change makes hipEngine exceed the retained HIP capacity row again.
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
-| 3 | `LCP-2A` | Remove copy-boundary queue bubbles around the quality-admitted peer-wave route | GPF-9C recurrence is at practical llama.cpp parity, but between-kernel idle is +19.126 ms and 82.9% of its pp512 trace-span delta | Preserve the full 18-prompt/decode contract and beat both frozen 512/4K floors before automatic selection |
+| 3 | `LCP-2A/B` | **A retained; B next:** reuse request/chunk metadata, then remove compact-WMMA total-row D2H reads around the quality-admitted peer-wave route | LCP-2A removes 240 copies and cuts queue idle 45.76%; clean pp512 improves 3.68% but remains 4.98% below the floor; 40 copy-to-selected-Q4 boundaries remain | Preserve the full 18-prompt/decode contract and beat both frozen 512/4K floors before automatic selection |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | GPF-9C residual dense Q8 is +20.825 ms versus llama.cpp and is the largest positive kernel family | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
