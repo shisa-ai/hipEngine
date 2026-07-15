@@ -157325,3 +157325,48 @@ artifact:
 `benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json`.
 Decode is complete pending the final defaults-only parity sweep; next is the
 clean GGUF-only mixed-KV admission gate.
+
+## 2026-07-15 — Close clean GGUF tail-four mixed-KV admission gate
+
+Ran the complete current-stack gate at source-clean `c971262f` on the W7900
+with the full therock HIP 7.15 stack. The 43-test Hadamard/policy/dispatch/plan
+bundle passes. All quality and performance runs require cached builds and retain
+the exact Q4_K_M and prompt-suite identities.
+
+Native BF16-teacher-forced quality passes:
+
+- full 11-prompt 512/8: 99 positions, mean/max KL
+  **0.000137691/0.00745452**, top-1 **100%**;
+- full 11-prompt 4K/16: 187 positions, mean/max KL
+  **0.000136907/0.00992598**, aggregate top-1 **99.465%**, minimum prompt
+  **94.118%**;
+- bounded `mixed_v1` 128K/16: 17 positions, mean/max KL
+  **3.550e-6/5.192e-5**, top-1 **100%**.
+
+Every layout audit reports full-attention indices 0-5 in BF16 and 6-9 in
+Hadamard-group32 INT8, zero persistent BF16 mirror bytes, and zero persistent
+INT8-prefill oracle buffers. At 128K, BF16 K/V is **2,689,597,440 bytes**;
+mixed payload+scales is **2,185,297,920 bytes**, exactly **18.75% lower**.
+Live owned memory falls **24.168 -> 23.698 GiB (-0.470 GiB)** and phase-sampled
+HIP use falls **24.684 -> 24.230 GiB (-0.453 GiB)**.
+
+Production WMMA-prefill/GEMV-graph A/B rejects default promotion:
+
+| Shape | BF16 prefill/decode | Tail-four prefill/decode | Delta |
+| --- | ---: | ---: | ---: |
+| 512/128, 1+3 | `2667.455 / 92.576` | `2635.391 / 95.677` | `-1.20% / +3.35%` |
+| 4K/128, 1+3 | `2920.268 / 100.204` | `2900.706 / 99.451` | `-0.67% / -0.75%` |
+| 128K/128, one-shot | `1045.362 / 62.631` | `1041.368 / 60.240` | `-0.38% / -3.82%` |
+
+The 4K sample ranges do not overlap. Mixed production prefill also allocates
+and frees **1,075,838,976 bytes**; this is byte-exact to four BF16
+full-attention layer caches, so the attribution is inferred as a prefill
+transient rather than a persistent shadow. It raises allocator high water
+**24.168 -> 24.700 GiB (+0.532 GiB)** despite the lower live residency.
+
+Decision: keep `tail4_hadamard_group32` implemented and explicit, but do not
+change GGUF supported/default status. The concrete blockers are 4K and 128K
+speed plus transient high-water memory. Revisit only after removing the
+four-layer prefill transient and optimizing long-context group32 attention.
+Compact artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`.
