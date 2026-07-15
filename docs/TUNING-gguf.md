@@ -268,7 +268,7 @@ VGPR/SGPR/scratch/LDS/workgroup/grid summaries per bucket and per kernel.
 | prefill | dense Q8_0 WMMA | `0/8 B` | `96/128/192` | `0` | mostly scratch-free, with one tiny-spill shape; do tile-specific census before changing tile policy. |
 | prefill | full-attn prefill | `3200 B` | `256` | `0` | AOTriton/full-attn spill exists but is only `~4%` of the 4K prefill trace. |
 | decode | dense Q8_0 T16 GEMV | `0 B` | `64` | `512` | top decode bucket is scratch-free; blind launch-bound retuning has little evidence now. |
-| decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; LCP-D3 admits one half-sequential accumulator screen after the current 4K trace made this the largest selected-MoE leaf. |
+| decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; LCP-D3 half-sequential pressure cut was exact but regressed canonical graph decode 2.79%, so the production body remains unchanged. |
 | decode | Q6 lm-head T16 GEMV | `0 B` | `72` | `512` | scratch-free; prior Q6 d-load/lb variants stayed no-hold. |
 
 G-P1 ISA audit for the selected dual Q4T16 WMMA prefill kernel is recorded in
@@ -284,18 +284,24 @@ the original per-lane store bounds guard, reducing the metadata to
 Further selected-WMMA work should now target the remaining 256-VGPR cap or a
 true 16-column code-object variant without giving back the prefill win.
 
-The 2026-07-15 LCP-D3 post-router/post-prefill-promotion decode refresh narrows
-the current gfx1100 4K profile to `8.673 ms` GPU/token. Dense Q8T16 remains
-`39.55%`, selected-MoE is `21.04%`, full attention is `9.27%`, and lm-head is
-`7.41%`; the persistent router is down to `416.7 us/token`. The active fused
-selected-Q4T16 c=1 leaf alone is `975.3 us/token` (`11.24%`) at 200 allocated
-VGPR and zero scratch. Static source screening found one bounded pressure cut:
-compute the two eight-column halves sequentially while preserving each output's
-K order and reduction topology. On HIP 7.2 this reduces static VGPR
-`195 -> 115` with zero private bytes/spills. LCP-D3 permits only this candidate;
-it must be bit-exact, faster on the real selected-MoE/full-model route, and
-trace at zero scratch before retention. Do not reopen q8_1/dp4a, raw selected
-layouts, or broad selected-MoE geometry sweeps in this pass.
+The 2026-07-15 LCP-D3 post-router/post-prefill-promotion system-7.2 decode
+refresh narrows the current gfx1100 4K profile to `8.673 ms` GPU/token. Dense
+Q8T16 remains `39.55%`, selected-MoE is `21.04%`, full attention is `9.27%`,
+and lm-head is `7.41%`; the persistent router is down to `416.7 us/token`. The
+active fused selected-Q4T16 c=1 leaf alone is `975.3 us/token` (`11.24%`) at
+200 allocated VGPR and zero scratch.
+
+The one admitted pressure cut computed the two eight-column halves sequentially
+while preserving each output's K and reduction order. It passed all 88 focused
+tests and reduced static VGPR `195 -> 115` on system HIP 7.2 and `195 -> 114`
+on therock HIP 7.15, with zero private bytes/spills. The repeated K/x traversal
+cost more than the occupancy gain: system-7.2 balanced eager wall regressed
+`1.05%`, and canonical therock-7.15 4K/128 graph decode fell
+`100.146 -> 97.348 tok/s (-2.79%)`. IDs and 21.670 GiB tracked peak were
+unchanged. The source candidate was removed. Do not reopen half-sequential
+accumulators, q8_1/dp4a, raw selected layouts, or broad selected-MoE geometry
+sweeps without genuinely new evidence. Artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-q4t16-halfseq-rejected.json`.
 
 G-D2 ISA/code-object audit for the active Q8_0 T16 GEMV decode family is
 recorded in
