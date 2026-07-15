@@ -156736,3 +156736,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   (**50 passed, 9 skipped**); `compileall`, registry smoke, all seven canonical
   CPU fixtures, smoke-add plan, and `git diff --check` pass. No kernel body or
   numerical reduction changed.
+- Clean committed `31c9cdc5` 1+3 confirmation measures
+  **2334.451/2519.871 tok/s** prefill and **93.059/100.783 tok/s** decode at
+  512/4K, with all IDs `9707` and unchanged **22.995 GiB** tracked peak. Versus
+  clean `e03e5a34`, pp512 is **+1.84%** and 4K is **+0.70%**; decode is
+  **-0.053%/+0.244%**. The cumulative two-boundary queue work moves pp512
+  **2210.729 -> 2334.451 tok/s (+5.60%)**, but GPF-9C remains **3.23% below**
+  the 2412.320 tok/s floor. Production therefore stays exact direct-LDS32.
+  Published evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json`;
+  raw clean sweep SHA256 is
+  `fbca2d3f73044e22f62468bf230ae22ad5df820a6d39c616af7b6d64c0bd5935`.
+- Copy-boundary work is now effectively closed: hipEngine queue idle is
+  **11.634 ms** versus llama.cpp HIP **8.935 ms**, leaving only **2.699 ms**
+  excess. The next profile-selected target is the dense Q8 prefill family,
+  currently **~52.0 ms** on hipEngine versus **30.4 ms** in llama.cpp HIP.
