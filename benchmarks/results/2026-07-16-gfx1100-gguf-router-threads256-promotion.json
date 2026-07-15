@@ -1,0 +1,98 @@
+{
+  "kind": "hipengine_gfx1100_gguf_convergence_screen",
+  "schema_version": 1,
+  "date": "2026-07-16",
+  "candidate": {
+    "id": "LCP-4A-gfx1100",
+    "description": "Use the existing exact 256-thread BF16-hidden/F32-weight router-logits wrapper for gfx1100",
+    "scope": "hip_gfx1100 router_logits/f32/bf16_hidden registry default",
+    "source": "existing in-tree gfx1151 LCP-4A wrapper; no kernel-body change"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_measurement_commit": "d05bdb758dd8fa53bb97972bfd386ca8d84d756f",
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompt": "repeated token 9707",
+    "workloads": ["512/128", "4096/128"],
+    "session": "one right-sized resident process per shape; control and candidate interleaved in the same session",
+    "warmups": "one full discarded run per mode",
+    "measured_repetitions": 3,
+    "order": ["control,candidate", "candidate,control", "control,candidate"],
+    "prefill": "production bulk attention, automatic chunks, WMMA requested/effective",
+    "decode": "one eager warmup token; fresh state-bound graph per measured reset; capture excluded",
+    "build": "all kernels prebuilt; cached builds required",
+    "environment": "hermetic therock HIP 7.15; HIP_VISIBLE_DEVICES=0; HIPENGINE_BACKEND=hip_gfx1100; HIPENGINE_HIP_ARCH=gfx1100"
+  },
+  "correctness": {
+    "primitive": {
+      "shape": [4096, 2048, 256],
+      "compared_elements": 1048576,
+      "control_threads": 512,
+      "candidate_threads": 256,
+      "bit_mismatch": 0,
+      "max_abs": 0.0,
+      "exact": true
+    },
+    "control_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "candidate_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "finite_final_logits": true
+  },
+  "measurements": {
+    "512": {
+      "control_prefill_tok_s": [2690.0333897621813, 2688.9810500417793, 2689.1709942600214],
+      "candidate_prefill_tok_s": [2795.2416379656897, 2795.9961681398545, 2781.6857960904913],
+      "control_prefill_median": 2689.1709942600214,
+      "candidate_prefill_median": 2795.2416379656897,
+      "prefill_delta_percent": 3.9443621819539976,
+      "control_decode_median_tok_s": 92.96583434303913,
+      "candidate_decode_median_tok_s": 92.94539472678308,
+      "decode_delta_percent": -0.021986159109410597,
+      "tracked_peak_gib": 21.228173956274986
+    },
+    "4096": {
+      "control_prefill_tok_s": [2966.3235109612674, 2955.8667124804974, 2941.200891137497],
+      "candidate_prefill_tok_s": [3078.900285067295, 3070.904583817209, 3054.3470354595242],
+      "control_prefill_median": 2955.8667124804974,
+      "candidate_prefill_median": 3070.904583817209,
+      "prefill_delta_percent": 3.8918490759745517,
+      "control_decode_median_tok_s": 100.43157180178609,
+      "candidate_decode_median_tok_s": 100.59166729472668,
+      "decode_delta_percent": 0.15940753496972437,
+      "tracked_peak_gib": 21.670319117605686
+    }
+  },
+  "decision": "Promote the 256-thread wrapper for gfx1100 F32-weight/BF16-hidden router logits. Both focused prefill shapes improve by about 3.9%, decode is flat/non-regressive, memory is unchanged, primitive output is bit-exact, and all timed final IDs match.",
+  "sources": {
+    "ab_512": {
+      "path": "/tmp/gfx1100-router-logits256-ab-512.json",
+      "sha256": "de07355898981c30109feb2ffa95517c2769e708745de6c3f76f3d69a38c3c24"
+    },
+    "ab_4096": {
+      "path": "/tmp/gfx1100-router-logits256-ab-4k.json",
+      "sha256": "2ddd0b9b9c3fc80025f4b151cb182cfa85ca13e346483e2e74cf3e2115a149b8"
+    },
+    "primitive": {
+      "path": "/tmp/gfx1100-router-logits256-primitive.json",
+      "sha256": "d8efc867e25011b32e5d6baab3a87e2e47530f0e2be578da8dcb6b9db2c597ce"
+    }
+  }
+}

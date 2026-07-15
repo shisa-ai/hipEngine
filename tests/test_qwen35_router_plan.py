@@ -65,7 +65,7 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert resolve(backend="hip_gfx1100", layer="router_logits", quant="fp16") is qwen35_router_logits_fp16
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="bf16_hidden")
-        is qwen35_router_logits_bf16_f32w
+        is qwen35_router_logits_bf16_f32w_auto_256
     )
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="fp16_hidden")

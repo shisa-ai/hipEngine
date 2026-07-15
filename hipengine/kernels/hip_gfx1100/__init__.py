@@ -18,6 +18,9 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
+# Clean W7900 LCP-4A transfer evidence admits the exact 256-thread
+# BF16-hidden/F32-weight router-logits geometry for bulk prefill and decode.
+GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
 # Clean W7900 LCP-D2 correctness and 32K/64K/128K graph-decode gates admit the
 # split-parallel gated reduction from 32K onward. Shorter contexts retain the
 # single-launch serial reducer because the extra prepare launch is neutral/down.
@@ -41,4 +44,5 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
 ]

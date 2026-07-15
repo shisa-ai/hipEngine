@@ -158375,3 +158375,27 @@ processes were running, `origin/main` advanced to `3ef3926f` with the
 runtime-gated gfx1151 prefill flight recorder; candidate acceptance will use
 same-process/interleaved controls on the live commit so that unrelated default-
 off instrumentation cannot bias the decision.
+
+## 2026-07-16 — Promote 256-thread gfx1100 F32 router logits
+
+The first transfer screen passes decisively. The existing in-tree LCP-4A
+wrapper changes only launch geometry: for Qwen3.6's `hidden_size=2048`, the
+upper 256 lanes of the former 512-thread block contributed zero partials.
+A W7900 primitive at `tokens=4096, hidden=2048, rows=256` compared 1,048,576
+FP32 outputs with **zero bit mismatches** between 512 and 256 threads.
+
+Hermetic therock HIP 7.15 balanced same-session 1+3 results on clean
+`d05bdb75`:
+
+- 512/128 prefill: **2689.171 -> 2795.242 tok/s (+3.94%)**; graph decode
+  **92.966 -> 92.945 tok/s (-0.022%)**.
+- 4K/128 prefill: **2955.867 -> 3070.905 tok/s (+3.89%)**; graph decode
+  **100.432 -> 100.592 tok/s (+0.159%)**.
+- All 12 measured final IDs are 9707 and tracked peak is unchanged at
+  21.228/21.670 GiB.
+
+Promoted `qwen35_router_logits_bf16_f32w_auto_256` as the gfx1100
+`router_logits/f32/bf16_hidden` registry default and added the matching backend
+capability. RED first failed on the missing gfx1100 capability; the focused
+backend/router bundle then passed **8/8**. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json`.
