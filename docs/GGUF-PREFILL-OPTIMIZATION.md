@@ -492,6 +492,7 @@ select current code without a fresh profile.
 | 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
 | 21 | `LCP-3E` | **Rejected and removed:** source-compatible MMQ128 directly over output-major `block_q8_0` rows | Correctness passes and the final WGP body is spill-free with source-matched fragment/WMMA counts, but prequantized/included rows are +3.95%/+5.32% vs production. The frozen gate fails before profiler/runtime work; raw+T16 dual residency remains forbidden |
 | 22 | `LCP-4A` | **Promoted:** capture-free normal FP32 Conv prefill with explicit sequential ISA multiply/add | Removes 20 private bytes/thread while preserving byte-exact Conv output/state; pp512 body -77.71%, clean production 512/4K prefill +1.44%/+1.86% |
+| 23 | `LCP-5A` | **Predeclared:** remove the HIP 7.2 Q5/Q6T16 selected-prefill compiler spills without changing math | The clean peer trace's repeated SiLU->Q5 gaps enter a Q5 body reported at 256 VGPR/176 private bytes; identical source is 66 VGPR/zero private bytes under HIP 7.15 but 256 VGPR/176 bytes/75 spills under 7.2. First screen the existing unroll-600 ablation, then at most one rolled-subblock source variant if required. Require byte-exact fixtures, zero scratch, a real selected-MoE replay win, and clean peer 512/4K plus semantic/decode gates before retention |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1488,12 +1489,20 @@ post-merge gfx1151 gate. The post-LCP-4A exact/peer/llama.cpp profile shows that
 GPF-9C removes the shipped first-order deficit: peer and llama.cpp summed GPU
 work differ by only **0.507 ms**, with **2.564 ms** excess queue idle. Do not
 reopen dense-Q8, selected-MoE, Conv, full-attention, or generic launch-count
-experiments to explain the production gap. Any continuation must preserve
-GPF-9C's quality-admitted recurrence and remove its final approximately 3 ms
-span residual, or bring genuinely new exact-parallel GDN evidence. Its
-predeclared CPU, 18-prompt 0.05/0.90 semantic, determinism, decode, and 512/4K
-parity-floor contract remains authoritative; rerun the full gate before future
-promotion. Exact state and free-running token identity remain diagnostics.
+experiments without genuinely new measured evidence. LCP-5A has that evidence:
+the current HIP 7.2 code object for the Q5T16 selected-prefill body has 256 VGPR,
+176 private bytes, and 75 spills, while identical source compiled by HIP 7.15
+has 66 VGPR and zero private bytes/spills. The bounded screen changes no math:
+first remove this family's unroll-600 profile flag; if it still spills, try at
+most one rolled-subblock source variant. Retain only if byte-exact fixtures,
+static and traced zero-scratch evidence, selected-MoE replay, and clean peer
+512/4K plus semantic/decode gates all pass. Otherwise remove the source
+candidate and close the compiler lane. Any continuation must preserve GPF-9C's
+quality-admitted recurrence and remove its final approximately 3 ms span
+residual, or bring genuinely new exact-parallel GDN evidence. Its predeclared
+CPU, 18-prompt 0.05/0.90 semantic, determinism, decode, and 512/4K parity-floor
+contract remains authoritative; rerun the full gate before future promotion.
+Exact state and free-running token identity remain diagnostics.
 
 ## Document Ownership
 
