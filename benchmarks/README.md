@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-16**
 
 Latest retained hipEngine revisions in this scoreboard:
-`d2d1c6fcc5d6ef69ccb060c36da180900e2024d7` for the focused post-sweep gfx1100
+`666a72dbac0af1d27661860e7f09facb77dd1299` for the focused post-sweep gfx1100
 GGUF router convergence gates and `61a27d7279549843bb3fb0464cb8b120689b9ff1`
 for the current gfx1151 GGUF refresh. The gfx1151 production refresh is retained
 through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler
@@ -415,7 +415,10 @@ stream-ordered metadata path adds aggregate **+0.41%/+2.43%** at 512/4K
 and an exact metadata primitive. Production peer-wave GDN remains unchanged;
 the strict-exact rollback now resolves to nonvolatile direct-LDS32, which moves
 volatile-direct 512/4K prefill **+73.01%/+82.46%**, halves VGPR **64 -> 32**,
-and preserves byte-exact state, decode, and compact-scratch memory.
+and preserves byte-exact state, decode, and compact-scratch memory. A final clean
+selector-unset confirmation moves the pre-screen 512/4K package baseline
+**2699.283/2972.935 -> 2808.249/3173.723 tok/s (+4.04%/+6.75%)**; graph decode
+is **-0.26%/+0.24%**, tracked memory unchanged, and all IDs exact.
 
 Relative to the July 14 GGUF table, prefill improves **+35.27% to +118.78%**
 and decode improves **+2.24% to +3.46%**. Prefill now beats llama.cpp HIP at
@@ -427,7 +430,8 @@ ahead by **2.47-13.87%**. The tracked-memory count is within **-0.378 to
 practical parity but small cross-scope differences are not allocator-efficiency
 claims.
 
-Evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+Evidence: [`focused convergence confirmation`](results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json),
+[`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
 [`256-thread router transfer`](results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json),
 [`128-thread router-select transfer`](results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json),
 [`retained router stack`](results/2026-07-16-gfx1100-gguf-router-stack-promotion.json),

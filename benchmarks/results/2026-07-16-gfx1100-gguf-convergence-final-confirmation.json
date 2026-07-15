@@ -1,0 +1,90 @@
+{
+  "kind": "hipengine_gfx1100_gguf_convergence_final_confirmation",
+  "schema_version": 1,
+  "date": "2026-07-16",
+  "status": "accepted",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "baseline_commit": "1355fc8ddbaf3b57f5b624b56bc7f81db6992222",
+    "final_commit": "666a72dbac0af1d27661860e7f09facb77dd1299",
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "retained_package_defaults": [
+    "256-thread BF16-hidden/F32-weight router logits",
+    "128-thread bulk-prefill router select",
+    "stream-ordered device-prepared prefill metadata through 4096 tokens"
+  ],
+  "retained_nonproduction_rollback": "HIPENGINE_GGUF_GDN_PREFILL_MODE=exact resolves to nonvolatile direct-LDS32; automatic production remains chain_peer_wave32",
+  "protocol": {
+    "workloads": ["512/128", "4096/128"],
+    "processes": "one independent right-sized resident process per workload",
+    "warmups": 1,
+    "measured_repetitions": 3,
+    "prompt": "repeated token 9707",
+    "prefill": "selector-unset package defaults; production bulk attention; automatic chunks; WMMA requested/effective",
+    "decode": "one eager warmup token; fresh state-bound graph per measured reset; graph capture excluded",
+    "build": "all kernels prebuilt; cached builds required",
+    "environment": "hermetic therock HIP 7.15; candidate selectors explicitly unset"
+  },
+  "measurements": {
+    "512": {
+      "baseline_prefill_tok_s": 2699.282533137208,
+      "final_prefill_tok_s": [2808.2488166755747, 2803.0221306084572, 2814.273355205614],
+      "final_prefill_median_tok_s": 2808.2488166755747,
+      "prefill_delta_percent": 4.036860988083468,
+      "baseline_decode_tok_s": 92.94060790484072,
+      "final_decode_tok_s": [92.69748726995182, 92.68859099130876, 92.69854648198755],
+      "final_decode_median_tok_s": 92.69748726995182,
+      "decode_delta_percent": -0.2615870934885911,
+      "tracked_peak_gib": 21.228173956274986,
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "4096": {
+      "baseline_prefill_tok_s": 2972.9348366819454,
+      "final_prefill_tok_s": [3180.921395065868, 3173.7233755252955, 3165.7679722079897],
+      "final_prefill_median_tok_s": 3173.7233755252955,
+      "prefill_delta_percent": 6.7538829430734415,
+      "baseline_decode_tok_s": 100.66318962136042,
+      "final_decode_tok_s": [100.95768244775218, 100.9047182491476, 100.79366300450546],
+      "final_decode_median_tok_s": 100.9047182491476,
+      "decode_delta_percent": 0.23993738793266495,
+      "tracked_peak_gib": 21.670319117605686,
+      "final_token_ids": [9707, 9707, 9707]
+    }
+  },
+  "correctness": {
+    "all_final_ids_stable": true,
+    "constituent_primitives": "router logits bit-exact; router selection IDs/weights bit-exact; device metadata exact; strict-exact GDN primitive/state byte-exact",
+    "tracked_memory_unchanged_from_baseline": true
+  },
+  "decision": "Retain the converged package defaults. Against the pre-screen same-protocol baseline, final 512/4K prefill improves by 4.04%/6.75%; graph decode is -0.26%/+0.24% (flat), tracked memory is unchanged, and all final IDs match. No six-shape rerun was authorized because the bounded transfer objective was fully answered by the predeclared focused gates.",
+  "sources": {
+    "baseline_512": {
+      "path": "/tmp/gfx1100-converge-baseline-512.json",
+      "sha256": "f9c42de9be3e53aab400abd5dbee24fe0da7add8dc7c348a0c12f12658957442"
+    },
+    "baseline_4096": {
+      "path": "/tmp/gfx1100-converge-baseline-4k.json",
+      "sha256": "7bd6a27c252494b72039509018fe5ad73ffaf8e464ec2a66542dda5eb9861ae5"
+    },
+    "final_512": {
+      "path": "/tmp/gfx1100-convergence-final-512.json",
+      "sha256": "82658905e90f917795545a68077ad8ce155fd3505337be205de35990b5399787"
+    },
+    "final_4096": {
+      "path": "/tmp/gfx1100-convergence-final-4k.json",
+      "sha256": "50ff26e0815ad57b5c787961608cd8cab6cef9e82b45d649d333660989682d7d"
+    }
+  }
+}
