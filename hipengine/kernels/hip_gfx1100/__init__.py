@@ -21,6 +21,9 @@ GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
 # Clean W7900 LCP-4A transfer evidence admits the exact 256-thread
 # BF16-hidden/F32-weight router-logits geometry for bulk prefill and decode.
 GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
+# Clean W7900 LCP-4B transfer evidence admits 128 threads for the bulk-prefill
+# top-k selector. Decode keeps its independently selected launch geometry.
+GGUF_PREFILL_ROUTER_SELECT_THREADS = 128
 # Clean W7900 LCP-D2 correctness and 32K/64K/128K graph-decode gates admit the
 # split-parallel gated reduction from 32K onward. Shorter contexts retain the
 # single-launch serial reducer because the extra prepare launch is neutral/down.
@@ -40,6 +43,7 @@ __all__ = [
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+    "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
