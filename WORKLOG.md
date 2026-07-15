@@ -158283,3 +158283,66 @@ nonvolatile/peer GDN correctness cases **6 passed**; the focused runner/policy
 bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
 `python3 scripts/sync_benchmark_readme.py --check`, Python compilation, and
 `git diff --check` passed. No broad suite or benchmark was repeated.
+
+## 2026-07-15 - Persistent GGUF prefill flight recorder for silent gfx1151 stalls
+
+- Independently checked the actionable parts of the supplied external research
+  instead of treating hipEngine's own upstream comments as confirmation.
+  ROCm#6165 is a public same-hardware report: gfx1151 long/sustained prefill can
+  silently stop, its sampled MES scheduler-ring counters stop while emitted
+  equals signaled, KFD doorbell queues remain outside `amdgpu_fence_info`, and
+  verbose vLLM logging changes incidence. ROCm#2625 / amdgpu#153 is an older,
+  materially different high-power/false-busy RDNA3 case, but it independently
+  ties process-lifetime pathology to MES hardware-queue creation and reports a
+  `sched_policy=2` effect. Official HIP docs confirm that
+  `GPU_MAX_HW_QUEUES=1` only caps/reuses per-process hardware queues and that
+  kernel/copy serialization are separate probes. Current rocprofiler-sdk docs
+  confirm HIP/HSA/kernel/copy traces but do not document the research note's
+  exact `--kfd-trace` spelling; verify the installed `rocprofv3 --help` before
+  relying on that option.
+- Added default-off `PrefillFlightRecorder`: an 8,192-entry fixed binary ring in
+  a file-backed mmap. Host code publishes monotonic prefill/chunk/embedding/
+  layer/finalize/sample submissions without per-event logging. HIP registers
+  the mmap as mapped host memory; `prefill_flight_recorder_mark_i64_kernel`
+  advances a completion cursor on the measured stream and executes
+  `__threadfence_system()`. A separate decoder can read the live or immediate
+  post-termination file without loading HIP.
+- Integrated the recorder with GGUF bulk prefill. `chunk` is the default and
+  least-perturbing diagnostic: it records each layer submission but emits only
+  one GPU retirement marker per reset/outer 4K chunk plus finalize/sample boundaries.
+  `layer` adds per-layer retirement markers for a second-stage bisect and is
+  explicitly treated as Heisenberg-prone. CLI:
+  `scripts/qwen35_readme_sweep.py --prefill-flight-recorder PATH
+  --prefill-flight-recorder-granularity chunk|layer`; decoder:
+  `python3 scripts/qwen35_prefill_flight_recorder.py PATH --entries 8
+  [--watch-seconds 1]`. Recorder-enabled timing is diagnostic, not retainable.
+- RED/GREEN: the new targeted bundle initially failed collection with
+  `ModuleNotFoundError: hipengine.runtime.prefill_flight_recorder`; after the
+  implementation, `HIPENGINE_HIP_ARCH=gfx1151 ... pytest -q
+  tests/test_prefill_flight_recorder.py tests/test_hip_runtime.py` passes
+  **13/13**, including a HIP-availability-guarded cross-process mapped-memory
+  visibility gate. Import/decoder tests prove the diagnostic does not load the
+  default HIP runtime.
+- Cached gfx1151 `rocprofv3 --kernel-trace` confirms
+  `(anonymous namespace)::prefill_flight_recorder_mark_i64_kernel(long*, long)`
+  at **3.206 us**, one work-item, 8 VGPR, and zero LDS/scratch. The profiled
+  process used a prebuilt `runtime_state.so` under `require_cached`.
+- Current-code full-model chunk-mode smoke on gfx1151 / HIP 7.15, Qwen3.6
+  35B-A3B Q4_K_M, 512/1, exact production options, completes at **1233.080
+  prefill / 48.520 decode tok/s**, finite final logits and exact ID `9707`.
+  Recorder cursors end at submitted/completed **46/46** with zero lag. This is a
+  one-run instrumentation smoke and not a performance baseline.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
+  because this checkout's manifest points to missing read-only reference
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd`; no upstream kernel was copied. The
+  new marker is an in-tree diagnostic addition to `runtime/state.hip`.
+- Final guards: targeted recorder/HIP/runtime-state/chunked-prefill/README bundle
+  passes (three existing skips); `compileall`, registry, CPU-fixture, and
+  smoke-add-plan smokes pass; benchmark README sync and `git diff --check` pass.
+  The monolithic `uv run --extra dev pytest -q` shows no failure through 84%
+  before the 1,200-second command bound; rerunning the collected test-file tail
+  from that boundary completes at 100% with only expected skips. The standalone
+  `scripts/check_fixtures.py` still stops on the pre-existing tracked nested MoE
+  fixture schema (`moe_ffn_selected_gguf_q4_k.json` has `expected_block` /
+  `expected_selected`, not the runner's required top-level `expected`); the
+  schema-aware `smoke.py --mode cpu-fixtures` passes all standard fixtures.

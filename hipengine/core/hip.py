@@ -12,6 +12,7 @@ from enum import IntEnum
 from typing import Final
 
 HIP_SUCCESS: Final[int] = 0
+HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 
 
@@ -52,6 +53,41 @@ class HipRuntime:
 
     def free(self, ptr: int) -> None:
         self.check(self.library.hipFree(ctypes.c_void_p(ptr)))
+
+    def host_register(self, ptr: int, nbytes: int, *, flags: int = 0) -> None:
+        """Page-lock a host range and optionally map it into the device address space."""
+
+        if ptr <= 0:
+            raise ValueError("ptr must be positive")
+        if nbytes <= 0:
+            raise ValueError("nbytes must be positive")
+        self.check(
+            self.library.hipHostRegister(
+                ctypes.c_void_p(ptr),
+                ctypes.c_size_t(nbytes),
+                ctypes.c_uint(flags),
+            )
+        )
+
+    def host_unregister(self, ptr: int) -> None:
+        if ptr <= 0:
+            raise ValueError("ptr must be positive")
+        self.check(self.library.hipHostUnregister(ctypes.c_void_p(ptr)))
+
+    def host_get_device_pointer(self, ptr: int, *, flags: int = 0) -> int:
+        """Return the device-visible address for a registered mapped host range."""
+
+        if ptr <= 0:
+            raise ValueError("ptr must be positive")
+        device_ptr = ctypes.c_void_p()
+        self.check(
+            self.library.hipHostGetDevicePointer(
+                ctypes.byref(device_ptr),
+                ctypes.c_void_p(ptr),
+                ctypes.c_uint(flags),
+            )
+        )
+        return 0 if device_ptr.value is None else int(device_ptr.value)
 
     def memcpy(self, dst: int, src: int, nbytes: int, kind: HipMemcpyKind | int) -> None:
         if nbytes < 0:
@@ -199,6 +235,16 @@ class HipRuntime:
         self.library.hipMalloc.restype = ctypes.c_int
         self.library.hipFree.argtypes = [ctypes.c_void_p]
         self.library.hipFree.restype = ctypes.c_int
+        self.library.hipHostRegister.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint]
+        self.library.hipHostRegister.restype = ctypes.c_int
+        self.library.hipHostUnregister.argtypes = [ctypes.c_void_p]
+        self.library.hipHostUnregister.restype = ctypes.c_int
+        self.library.hipHostGetDevicePointer.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_void_p,
+            ctypes.c_uint,
+        ]
+        self.library.hipHostGetDevicePointer.restype = ctypes.c_int
         self.library.hipMemcpy.argtypes = [
             ctypes.c_void_p,
             ctypes.c_void_p,

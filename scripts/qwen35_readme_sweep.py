@@ -80,6 +80,18 @@ def main() -> int:
     parser.add_argument("--no-bulk-prefill", action="store_true", help="GGUF: pass use_bulk=False")
     parser.add_argument("--bulk-prefill-attention-mode", choices=("bulk", "native"), default="bulk")
     parser.add_argument("--prefill-chunk-size", type=int, default=0, help="GGUF all-layer chunk override")
+    parser.add_argument(
+        "--prefill-flight-recorder",
+        type=Path,
+        default=None,
+        help="GGUF: persistent binary submission/retirement ring for stall diagnosis",
+    )
+    parser.add_argument(
+        "--prefill-flight-recorder-granularity",
+        choices=("chunk", "layer"),
+        default="chunk",
+        help="GGUF: GPU completion marker cadence (chunk is least perturbing)",
+    )
     parser.add_argument("--use-expert-sidecar", action="store_true")
     parser.add_argument("--expert-sidecar-cache-dir", type=Path, default=None)
     parser.add_argument("--require-expert-sidecar", action="store_true")
@@ -121,6 +133,8 @@ def main() -> int:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     if args.force_bulk_prefill and args.no_bulk_prefill:
         raise ValueError("--force-bulk-prefill and --no-bulk-prefill are mutually exclusive")
+    if args.engine != "gguf" and args.prefill_flight_recorder is not None:
+        raise ValueError("--prefill-flight-recorder is GGUF-only")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     model = args.model or (DEFAULT_PARO_MODEL if args.engine == "paro" else DEFAULT_GGUF_MODEL)
@@ -425,6 +439,8 @@ def _run_gguf_sweep(
         use_gemv_decode=args.use_gemv_decode,
         prefill_chunk_size=args.prefill_chunk_size,
         prefill_config=prefill_config,
+        prefill_flight_recorder_path=args.prefill_flight_recorder,
+        prefill_flight_recorder_granularity=args.prefill_flight_recorder_granularity,
         kv_policy=kv_policy.create_policy(),
         kv_scale_dtype=kv_policy.scale_dtype,
         kv_scale_granularity=kv_policy.scale_granularity,
@@ -510,6 +526,14 @@ def _run_gguf_sweep(
             "kv_storage_dtype": kv_policy.storage_dtype.value,
             "kv_policy": kv_policy_json(kv_policy),
             "prefill_chunk_sizes_session": _gguf_prefill_chunk_sizes(session.prefill_config),
+            "prefill_flight_recorder": (
+                None
+                if args.prefill_flight_recorder is None
+                else {
+                    "path": str(args.prefill_flight_recorder),
+                    "granularity": args.prefill_flight_recorder_granularity,
+                }
+            ),
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
         },

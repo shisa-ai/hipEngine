@@ -84,7 +84,12 @@ journal fault. The initial evidence and correction are posted to ROCm#5107; the
 cross-stack artifact is
 [`2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`](../benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json).
 This remains a gfx11 HIP scheduler/firmware limitation, not a reason to begin a
-Vulkan backend.
+Vulkan backend. A default-off persistent prefill flight recorder now records a
+host submission ring plus same-stream GPU retirement cursor. Its least-invasive
+`chunk` mode can identify the last retired 4K chunk and last host-submitted
+layer on the next bounded reproduction; `layer` mode is a deliberately more
+perturbing second-stage bisect. This closes the evidence-collection gap but does
+not change the root-cause attribution until a failed run is captured.
 
 ## Measurement Reset: 2026-07-10
 

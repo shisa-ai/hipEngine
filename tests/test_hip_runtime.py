@@ -35,6 +35,11 @@ class FakeHipLibrary:
         self.sets = []
         self.hipMalloc = FakeFunction(self._malloc)
         self.hipFree = FakeFunction(self._free)
+        self.hipHostRegister = FakeFunction(self._host_register)
+        self.hipHostUnregister = FakeFunction(self._host_unregister)
+        self.hipHostGetDevicePointer = FakeFunction(self._host_get_device_pointer)
+        self.host_registered = []
+        self.host_unregistered = []
         self.hipMemcpy = FakeFunction(self._memcpy)
         self.hipMemcpyAsync = FakeFunction(self._memcpy_async)
         self.hipMemset = FakeFunction(self._memset)
@@ -65,6 +70,18 @@ class FakeHipLibrary:
 
     def _free(self, ptr):
         self.freed.append(ptr.value)
+        return 0
+
+    def _host_register(self, ptr, nbytes, flags):
+        self.host_registered.append((ptr.value, nbytes.value, flags.value))
+        return 0
+
+    def _host_unregister(self, ptr):
+        self.host_unregistered.append(ptr.value)
+        return 0
+
+    def _host_get_device_pointer(self, out_ptr, host_ptr, flags):
+        out_ptr._obj.value = host_ptr.value + 0x100000
         return 0
 
     def _memcpy(self, dst, src, nbytes, kind):
@@ -145,6 +162,9 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     runtime._configure()
 
     ptr = runtime.malloc(16)
+    runtime.host_register(0x4000, 4096, flags=2)
+    mapped_ptr = runtime.host_get_device_pointer(0x4000)
+    runtime.host_unregister(0x4000)
     runtime.memcpy(ptr, 0x2000, 16, HipMemcpyKind.HOST_TO_DEVICE)
     runtime.memset(ptr, 0, 16)
     free_bytes, total_bytes = runtime.mem_get_info()
@@ -164,6 +184,9 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     runtime.free(ptr)
 
     assert ptr == 0x1000
+    assert mapped_ptr == 0x104000
+    assert lib.host_registered == [(0x4000, 4096, 2)]
+    assert lib.host_unregistered == [0x4000]
     assert stream == 0x5001
     assert graph == 0x6000
     assert graph_exec == 0x7000

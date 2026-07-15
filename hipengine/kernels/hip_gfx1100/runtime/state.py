@@ -18,6 +18,7 @@ _SYMBOL_EMBEDDING_LOOKUP_FP16 = "hipengine_embedding_lookup_fp16_i64"
 _SYMBOL_EMBEDDING_LOOKUP_BATCH_FP16 = "hipengine_embedding_lookup_batch_fp16_i64"
 _SYMBOL_EMBEDDING_LOOKUP_BATCH_MAPPED_FP16 = "hipengine_embedding_lookup_batch_mapped_fp16_i64"
 _SYMBOL_SET_I64 = "hipengine_set_i64_scalar"
+_SYMBOL_PREFILL_FLIGHT_RECORDER_MARK_I64 = "hipengine_prefill_flight_recorder_mark_i64"
 _SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
@@ -304,6 +305,29 @@ def set_i64_scalar(
     library = library or build_runtime_state(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SET_I64)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(ctypes.c_void_p(out_i64_ptr), ctypes.c_int64(value), ctypes.c_void_p(stream))
+    _check_launch(runtime, err)
+
+
+def flight_recorder_mark_i64(
+    out_i64_ptr: int,
+    value: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Publish a same-stream completion sequence to mapped host memory."""
+
+    if out_i64_ptr <= 0:
+        raise ValueError("out_i64_ptr must be positive")
+    if value <= 0:
+        raise ValueError("value must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_FLIGHT_RECORDER_MARK_I64)
     fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(ctypes.c_void_p(out_i64_ptr), ctypes.c_int64(value), ctypes.c_void_p(stream))

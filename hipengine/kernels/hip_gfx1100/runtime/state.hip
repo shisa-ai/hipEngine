@@ -78,6 +78,16 @@ __global__ void set_i64_scalar_kernel(int64_t* out, int64_t value) {
   }
 }
 
+__global__ void prefill_flight_recorder_mark_i64_kernel(int64_t* out, int64_t value) {
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    out[0] = value;
+    // The destination is HIP-registered mapped host memory.  A system fence
+    // makes the completion cursor visible to a CPU-side/postmortem reader only
+    // after all preceding work on this stream has retired.
+    __threadfence_system();
+  }
+}
+
 __global__ void set_decode_position_i64_kernel(
     int64_t* position,
     int64_t* context,
@@ -361,6 +371,21 @@ extern "C" int hipengine_embedding_lookup_batch_mapped_fp16_i64(
 extern "C" int hipengine_set_i64_scalar(int64_t* out, int64_t value, hipStream_t stream) {
   hipLaunchKernelGGL(
       set_i64_scalar_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      out,
+      value);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_prefill_flight_recorder_mark_i64(
+    int64_t* out,
+    int64_t value,
+    hipStream_t stream) {
+  hipLaunchKernelGGL(
+      prefill_flight_recorder_mark_i64_kernel,
       dim3(1),
       dim3(1),
       0,

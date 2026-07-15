@@ -685,6 +685,39 @@ or scheduler diagnostic, launch a fresh process with `GPU_MAX_HW_QUEUES=4`
 (ROCm's documented default); never compare queue policies inside one resident
 HIP process. gfx1100 and mixed recognized architecture sets remain unchanged.
 
+For a bounded 128K stall reproduction, add the default-off persistent prefill
+flight recorder to the same production command:
+
+```bash
+--prefill-flight-recorder /tmp/gfx1151-128k.flight \
+--prefill-flight-recorder-granularity chunk
+```
+
+`chunk` is the least-perturbing first pass: host submissions are appended to a
+fixed binary mmap at embedding/layer/finalize/sample boundaries, while one tiny
+same-stream system-fenced marker retires after reset and each 4K outer chunk
+(plus final sample boundaries). It therefore distinguishes the last host-submitted layer
+from the last fully retired chunk without calling HIP from the observer. Decode
+one snapshot, or watch only cursor changes from a separate process:
+
+```bash
+python3 scripts/qwen35_prefill_flight_recorder.py \
+  /tmp/gfx1151-128k.flight --entries 8
+python3 scripts/qwen35_prefill_flight_recorder.py \
+  /tmp/gfx1151-128k.flight --entries 8 --watch-seconds 1
+```
+
+On a stalled run, preserve the external watcher output before terminating the
+benchmark. The mmap normally remains readable immediately after process exit,
+but it is not a crash/reboot durability format. Interpret `last_submitted` as
+where the CPU most recently entered submission and `last_completed` as a
+same-stream retirement boundary; neither alone proves that the named kernel is
+faulty. Escalate to `layer` only after a chunk interval repeats: it adds one
+marker dispatch per layer and is substantially more likely to move a
+timing-sensitive bug. Recorder-enabled runs are diagnostics, never retained
+performance rows. Pair them with the independent `amdgpu_fence_info` sampler so
+kernel-ring and KFD-user-queue blind spots remain explicit.
+
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
 `mem_info_gtt_{total,used}`. Whole-device llama.cpp peak rows on gfx1151 must
