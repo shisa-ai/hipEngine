@@ -30,6 +30,11 @@
       "path": "/home/lhl/amd-gpu-tuning/reference/atlas",
       "baseline_ref": "71d8ffd",
       "baseline_note": "Atlas reference head when scalar register-resident GDN prefill lineage was registered."
+    },
+    "vllm": {
+      "path": "/home/lhl/amd-gpu-tuning/reference/vllm",
+      "baseline_ref": "28ee78a",
+      "baseline_note": "vLLM reference head when the FLA chunkwise/WY GDN algebra lineage was registered."
     }
   },
   "files": [
@@ -39,6 +44,41 @@
       "kind": "kernel",
       "family": "Qwen3.6 scalar-column register-resident GDN prefill",
       "baseline_ref": "37513bf"
+    },
+    {
+      "repo": "atlas",
+      "path": "kernels/gb10/common/gated_delta_rule_wy.cu",
+      "kind": "kernel",
+      "family": "GDN small-K two-pass Woodbury-Young algebra",
+      "baseline_ref": "8d187c7"
+    },
+    {
+      "repo": "atlas",
+      "path": "kernels/gb10/common/gated_delta_rule_wy64_prefill.cu",
+      "kind": "kernel",
+      "family": "GDN C32 persistent Woodbury-Young prefill prototype",
+      "baseline_ref": "37513bf"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/chunk.py",
+      "kind": "kernel",
+      "family": "FLA chunkwise Gated Delta Rule composition",
+      "baseline_ref": "ed582b6"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/chunk_scaled_dot_kkt.py",
+      "kind": "kernel",
+      "family": "FLA gated KKT coefficient construction",
+      "baseline_ref": "adb6d96"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/wy_fast.py",
+      "kind": "kernel",
+      "family": "FLA Woodbury-Young representation",
+      "baseline_ref": "cb10b7e"
     },
     {
       "repo": "nano-vllm-amd",

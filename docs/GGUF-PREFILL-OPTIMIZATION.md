@@ -88,6 +88,12 @@ prefill/decode stdev over median is **0.447%/0.109%**, and tracked memory is
 unchanged. This replaces the July 12 gfx1100 GGUF column; see the
 [`final optimization rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
+Task #98 / `GPF-8` is the next active lane: a true eight-token FP32
+chunkwise/WY recurrence, not another state-storage or reduction-width variant.
+The high-precision CPU algebra and its contract are defined below before any
+HIP implementation or timing. Published defaults remain unchanged while this
+candidate is developed.
+
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
 replace the separate decode, MTP, concurrency, or long-context memory plans.
@@ -437,7 +443,9 @@ select current code without a fresh profile.
 | 9 | `GPF-L1` | **Parked lifecycle diagnostic:** isolate intermittent 128K fresh-graph/session no-progress after the three-run timing window | Add phase markers and bounded lifecycle tests separately; do not lengthen the performance sweep or block the retained row |
 | 10 | `GPF-4` | **Rejected as a default; retained explicit diagnostic:** event-link GGUF AOTriton to an isolated stream while pre/post math stays on the caller queue | Exact and often fast, but the required final gate exposed severe intermittent GPU-active stalls at 32K/128K; both gfx1151 and gfx1100 stay same-stream |
 | 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there; final automatic 128K rerun remains |
-| 12 | `GPF-6` | Chunked/token-parallel GDN prefix algorithm | High-effort fallback only if the new profile still finds material GDN wall and an exact schedule is plausible |
+| 12 | `GPF-6` | **Rejected:** wave/group register-resident direct-input schedules | Fast group4 misses the frozen semantic gate; exact group3 misses the speed floors; do not reopen reduction-width sweeps |
+| 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
+| 14 | `GPF-8` | **Active:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | CPU algebra and gates first; implement only the 256-thread, zero-prompt-matrix design below |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -964,6 +972,100 @@ The external lineage checkout is absent in this environment, so the required
 lineage command cannot resolve it; no external code is copied, and GPF-5A is an
 in-tree schedule experiment over the catalogued T16 body.
 
+## GPF-8: Eight-Token Chunkwise/WY GDN
+
+Status: CPU algebra/oracle implemented; HIP candidate not yet implemented and
+no performance claim exists. The source ideas are Atlas
+`gated_delta_rule_wy{,64_prefill}.cu` at `8d187c7`/`37513bf` and the FLA-derived
+vLLM `chunk.py`, `chunk_scaled_dot_kkt.py`, and `wy_fast.py` at their registered
+file commits. hipEngine does not copy their CUDA/Triton bodies, BF16 matrix
+contract, gate clamp, or Torch API. It independently applies the triangular
+identity to the retained direct-conv FP32 Q/K/V and compact-scale ABI.
+
+For a chunk starting at state `H0`, let `P[t]` be the product of decays from
+chunk start through token `t`, and `R[t,s]` the product after source token `s`
+through `t` (`R[t,t] = 1`). The exact real-number recurrence is:
+
+```text
+delta[t] = beta[t] * (
+    value[t]
+    - P[t] * key[t] @ H0
+    - sum_{s<t} R[t,s] * (key[t] @ key[s]) * delta[s]
+)
+
+out[t] = P[t] * query[t] @ H0
+         + sum_{s<=t} R[t,s] * (query[t] @ key[s]) * delta[s]
+
+H1 = P[last] * H0
+     + sum_s R[last,s] * outer(key[s], delta[s])
+```
+
+This is the direct lower-triangular/Woodbury-Young form. The committed
+`gdn_prefill_chunkwise_wy_segments` oracle evaluates it in float64 and crosses
+to float32 only at its output/state boundary. The hand-checked three-token
+fixture and random packed-segment tests cover chunk sizes 1/2/3/8/16, an odd
+17-token tail, slot remapping, and the current FP32 primitive budget.
+
+### HIP schedule selected before implementation
+
+- Keep the retained compact-scale prepare and read canonical FP32
+  `conv_out` Q/K/V directly. Do not materialize prompt-sized normalized Q/K/V.
+- Use `C=8`; one 256-thread block owns `(segment, v_head, value_tile32)` and
+  keeps the same 128x32 FP32 state tile in 16 KiB LDS across the segment.
+- Per chunk, stage normalized `Q[8,128]` and `K[8,128]` in LDS. Sixty-four
+  threads compute the 8x8 K-K and Q-K coefficients; all 256 threads compute
+  eight token/state projections in parallel; 32 value lanes solve the small
+  triangular system; all threads update the chunk-final state tile.
+- Target LDS is at most 32 KiB: 16 KiB state, 8 KiB Q/K, and bounded
+  projection/delta/coefficient scratch. The first candidate uses FP32 scalar
+  contractions, not low-precision WMMA, so the algebra change is isolated from
+  a dtype change.
+- Full eight-token chunks use WY algebra. A remainder is processed token-
+  serially in the same block with the retained direct arithmetic; a pure
+  one-token segment must be byte-exact to `chain_lds32_direct`.
+- Register separate plain and segment-aware variants. `chain_lds32_direct`
+  remains the registered unfused/default fallback throughout admission.
+
+The schedule preserves the current number of GDN-stage launches (compact
+prepare, recurrence, RMSNorm+gate), exposes eight prompt tokens to 256 threads,
+and adds no `O(tokens * v_heads * C^2)` global coefficient arena. At the clean
+512 trace, non-GDN kernels consume about 145.6 ms and llama.cpp's 2412.320 tok/s
+floor implies about 212.2 ms total wall. Therefore the complete 30-layer GDN
+family must fall from 210.501 ms to roughly 66 ms or less. Eight-way token
+parallelism makes the design plausible; a serial WY implementation does not.
+
+### Numerical and performance contract (predeclared)
+
+1. **CPU algebra:** all committed chunk sizes and packed tails match the
+   independent float64 serial recurrence within `atol=rtol=2e-6`; the
+   production-shaped FP32 comparison must remain within `atol=3e-5,
+   rtol=3e-4`. These thresholds are frozen before HIP work.
+2. **Primitive HIP:** one-token/tail arithmetic is byte-exact. Full C=8 plain
+   and segmented production-head fixtures must be finite and match the
+   high-precision oracle within `atol=5e-4, rtol=5e-3` for recurrent output and
+   final FP32 state. The ordinary project gate (KL <=0.05, top-1 >=90%) also
+   applies; neither check substitutes for the model gates below.
+3. **Resources and trace:** expected plain and segment symbols, workgroup 256,
+   zero scratch, at most 128 VGPR, and at most 32 KiB LDS. The cached 512 trace
+   must put the complete 30-layer GDN stage at <=66 ms before full-model
+   promotion timing. Failure stops the lane without routing.
+4. **Semantic gate:** all 18 frozen code/general-English/general-Japanese/mixed
+   prompts in `gguf_gdn_semantic_gate.py` must be finite, have max KL <=0.05,
+   and aggregate top-1 agreement >=99% on identical teacher-forced contexts.
+   Thresholds may not be changed after seeing a result.
+5. **Free-running trajectory:** every baseline/candidate repetition for the
+   ten category-suite prompts must retain the same complete 128-transition
+   generated-ID trajectory. The semantic harness currently reports this as a
+   diagnostic; GPF-8 promotion treats `free_running_trajectories_exact` as
+   required. Aggregate decode wall must be non-regressive.
+6. **Full-model speed:** clean, fresh-process, balanced 512/4K timing must reach
+   at least **2412.320/2255.080 tok/s**, the matched W7900 llama.cpp HIP floors,
+   with the same model fingerprint, TheRock HIP 7.15, cached builds, and exact
+   timed IDs. A win at only one shape is rejected.
+7. **Publication:** only after all prior gates pass, rerun the defaults-only
+   six-shape sweep, update the compact artifact/README/changelog, and promote
+   through backend package metadata rather than an engine backend/quant branch.
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1193,8 +1295,9 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - No benchmark process is intentionally left running. Clean defaults-only
   `ef3e97dd` publishes **1290.246/1395.244/1401.632/1221.716/1021.693/766.892
   tok/s** prefill and **89.727/95.117/97.292/85.898/75.012/61.264 tok/s**
-  graph decode across 512-128K, all 18 measured IDs `9707`. The gfx1100
-  optimization/publication pass is complete.
+  graph decode across 512-128K, all 18 measured IDs `9707`. That publication
+  pass is complete; task #98 / GPF-8 is now the only active GDN research lane,
+  starting from its committed CPU algebra rather than changing current defaults.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
@@ -1202,10 +1305,10 @@ gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
 production above each architecture's bound. The long-context gfx1100 screen
 confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
 lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
-do not revisit LCP-1 without a new hotspot profile. Further exact GDN work is a
-high-effort chunked/prefix lane and still requires the six-case state matrix plus
-250/250 natural-transition gate; do not weaken that contract after the group2
-failure.
+do not revisit LCP-1 without a new hotspot profile. GPF-8 is the active
+high-effort chunked/prefix lane. Its stronger predeclared CPU, resource,
+18-prompt semantic, exact free-running trajectory, and 512/4K
+parity-floor contract is authoritative; do not weaken it after a measurement.
 
 ## Document Ownership
 

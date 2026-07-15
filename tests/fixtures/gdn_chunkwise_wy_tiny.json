@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "name": "gdn_chunkwise_wy_tiny",
+  "metadata": {
+    "purpose": "Hand-checkable high-precision oracle for the GDN chunkwise triangular/WY algebra",
+    "dtype": "float32 inputs and outputs; float64 analytic oracle",
+    "edge": "Three-token chunk with a nonzero state in selected slot 1 and untouched slot 0"
+  },
+  "chunk_size": 3,
+  "inputs": {
+    "query": {
+      "dtype": "float32",
+      "data": [[[1.0, 0.0]], [[0.0, 1.0]], [[1.0, 1.0]]]
+    },
+    "key": {
+      "dtype": "float32",
+      "data": [[[1.0, 0.0]], [[0.0, 1.0]], [[0.6000000238418579, 0.800000011920929]]]
+    },
+    "value": {
+      "dtype": "float32",
+      "data": [[[2.0, -1.0]], [[1.0, 3.0]], [[-2.0, 0.5]]]
+    },
+    "beta": {
+      "dtype": "float32",
+      "data": [[0.5], [0.25], [0.75]]
+    },
+    "decay": {
+      "dtype": "float32",
+      "data": [[0.800000011920929], [0.8999999761581421], [0.699999988079071]]
+    },
+    "recurrent_state": {
+      "dtype": "float32",
+      "data": [[[[0.0, 0.0], [0.0, 0.0]]], [[[1.0, 2.0], [3.0, 4.0]]]]
+    },
+    "cu_seqlens": {
+      "dtype": "int32",
+      "data": [0, 3]
+    },
+    "state_indices": {
+      "dtype": "int64",
+      "data": [1]
+    }
+  },
+  "expected": {
+    "out": {
+      "dtype": "float32",
+      "data": [[[1.399999976158142, 0.30000001192092896]], [[1.8700000047683716, 2.9100000858306885]], [[-1.5642201900482178, 0.9208499193191528]]]
+    },
+    "state": {
+      "dtype": "float32",
+      "data": [[[[0.0, 0.0], [0.0, 0.0]]], [[[-0.727380096912384, -0.3703500032424927], [-0.836840033531189, 1.2911999225616455]]]]
+    }
+  },
+  "tolerances": {
+    "atol": 1e-6,
+    "rtol": 1e-6
+  }
+}

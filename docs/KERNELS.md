@@ -381,6 +381,20 @@ SM121's register-file result does not transfer mechanically to RDNA3. Future
 exact GDN work must use chunkwise/WY algebra, not another storage or reduction
 micro-variant. The rejection is recorded in the GPF-6/7 artifact above.
 
+GPF-8 begins that algorithmic lane with a high-precision CPU oracle, before a
+HIP body exists. `gdn_prefill_chunkwise_wy_segments` implements the direct
+lower-triangular/Woodbury-Young identity in float64 and is checked against an
+independent token-serial definition for chunk sizes 1/2/3/8/16, packed segment
+remapping, and an odd tail. The selected future HIP schedule is C=8, one
+256-thread block per `(segment,v_head,value_tile32)`, the retained 16 KiB FP32
+state tile plus at most 16 KiB bounded Q/K/coefficient scratch, direct FP32
+`conv_out` inputs, scalar token-serial remainder, no prompt-sized coefficient
+arena, and separate plain/segment registry variants. Admission is zero scratch,
+<=128 VGPR, <=32 KiB LDS, complete 512 GDN stage <=66 ms, the frozen 18-prompt
+KL/top-1 gate, exact free-running trajectories, and clean W7900 512/4K floors
+of 2412.320/2255.080 tok/s. Current defaults are unchanged. See
+`docs/GGUF-PREFILL-OPTIMIZATION.md` for the derivation and frozen contract.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
@@ -398,6 +412,9 @@ python3 scripts/check_lineage.py --file '*pack8 small-row*' --diff patch
 | Source | Baseline | Role | Port note |
 | --- | --- | --- | --- |
 | `atlas/kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu` | `37513bf` | Scalar-column register-resident GDN prefill | Scheduling/launch-bounds reference only: independently implement raw-pointer HIP against hipEngine's exact direct-conv arithmetic and byte gate; do not copy CUDA/BF16/clamp semantics. |
+| `atlas/kernels/gb10/common/gated_delta_rule_wy.cu` | `8d187c7` | Small-K two-pass WY identity | Algebra/traffic reference only; its CUDA BF16, gate clamp, intermediate-state, and reduction semantics are not hipEngine's contract. |
+| `atlas/kernels/gb10/common/gated_delta_rule_wy64_prefill.cu` | `37513bf` | C=32 persistent WY prefill prototype | Chunk schedule and state-residency reference only; 84.5 KiB shared memory and SM121-specific choices do not transfer to RDNA3. |
+| `vllm/vllm/model_executor/layers/fla/ops/{chunk.py,chunk_scaled_dot_kkt.py,wy_fast.py}` | `ed582b6` / `adb6d96` / `cb10b7e` | FLA triangular solve and WY representation | Equation/oracle reference only. hipEngine remains Torch/Triton-free and uses direct-conv FP32 inputs with a C=8 raw-pointer HIP design. |
 | `nano-vllm-amd/csrc/amd/qwen35_expert.hip` | `b95eaa5` | R1 single-launch tree Conv/GDN t-loop kernels | Kernel source for DFlash tree/chain linear-attention verification; port as raw-pointer HIP with CPU or parent oracle fixtures. |
 | `nano-vllm-amd/csrc/amd/extension.cpp` | `b95eaa5` | R1 extension bindings | Binding shape only; hipEngine wrappers stay torch-free and do not copy PyBind/Tensor signatures. |
 | `nano-vllm-amd/csrc/amd/smoke.hip` | `b95eaa5` | R1 smoke fixtures | Fixture/oracle reference for t-loop kernels, not an E2E runtime dependency. |
