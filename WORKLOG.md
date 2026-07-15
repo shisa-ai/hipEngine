@@ -158497,3 +158497,46 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `/tmp/gfx1151-no-read-flight-d1b9e581-20260715T183621Z`; the artifact records
   hashes for recorder, telemetry, fences, journal, process stacks, run log, and
   provenance.
+
+## 2026-07-16 — Layer-marker perturbation completes one 128K warmup+3 gate
+
+- At tracked-clean `9e4e7c37`, returned to the production compact-MoE scalar
+  readback route and changed only persistent flight-recorder granularity from
+  chunk to layer. Layer mode enqueues a same-stream `prefill_flight_marker`
+  kernel after each layer; the kernel writes host-mapped memory and executes
+  `__threadfence_system()`, but does not synchronize the host.
+- Cached 512/1 instrumentation preflight is exact (ID `9707`, finite logits),
+  with recorder cursors **46/46** and zero lag. The one-shot rate is
+  **1211.678/49.664 prefill/decode tok/s** and is not a performance row.
+- The bounded HIP 7.15 one-queue 128K process completes warmup+3 (`rc=0`) in
+  1,165 seconds. Warmup is **429.827/28.148 tok/s**. Measured prefill values are
+  **503.605, 503.732, 503.827 tok/s** (median 503.732, stdev 0.111); decode is
+  **28.2491, 28.2455, 28.2461 tok/s** (median 28.2461). All four runs return
+  token `9707` with finite logits and peak tracked memory is 25.492502 GiB.
+  These are instrumentation-enabled diagnostic rates, not topline performance.
+- Across the four prefills, 5,392 checkpoint entries are submitted and 5,260
+  completion-marker kernels are launched. The final sample marker advances the
+  cursor to **5,392/5,392** for prefill 4 with zero cursor lag and no overwritten
+  entries, proving all prior device work retired. No
+  persistent 100%-activity/low-power state appears; the longest <=70 W /
+  >=95%-activity interval is only 40 seconds during early load/warmup. Kernel
+  logs remain clean.
+- This is the first current-stack marker process in this sequence to complete
+  all four prefill passes, contrasting with three preceding chunk-marker
+  processes that fail in the first warmup or measured prefill 1. The contrast is
+  a real **queue-perturbation signal**: a tiny same-stream system-fence marker at
+  every layer boundary may alter MES/KFD packetization or maintain queue
+  progress. It is not yet a fix. The failure is intermittent, only one process
+  completed, and recorder mode combines extra launch, system fence, and
+  host-mapped write effects.
+- Do not enable layer recording or a heartbeat by default. Per the repeat policy,
+  another equivalent >5-minute gate requires explicit approval and a stated
+  reason. Recommended evidence is at least two additional independent
+  warmup+3 layer-marker processes (~20 minutes each), followed only then by a
+  decoupled tiny heartbeat A/B to isolate launch versus system-fence behavior.
+- Compact evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-completion.json`.
+  Raw local bundle:
+  `/tmp/gfx1151-layer-flight-9e4e7c37-20260715T191409Z`; artifact hashes cover
+  recorder, result, telemetry, fences, journal, process stacks, run log, and
+  provenance.
