@@ -484,7 +484,8 @@ select current code without a fresh profile.
 | 12 | `GPF-6` | **Rejected:** wave/group register-resident direct-input schedules | Fast group4 misses the frozen semantic gate; exact group3 misses the speed floors; do not reopen reduction-width sweeps |
 | 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
 | 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
-| 15 | `GPF-9` | **Active:** re-evaluate existing K2 through explicit `chain_k2` first under the peer-aligned contract, then the faster register-resident peer schedule if needed | Require CPU primitive pass, all 18 prompts at KL <= 0.05/top-1 >= 90%, deterministic execution, decode non-regression, and both 512/4K floors |
+| 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
+| 16 | `GPF-9C` | **Active:** combine llama.cpp HIP's normalized-Q/K input contract with one-wave32-per-column register residency | Match gfx1100 llama.cpp reduction geometry, then require primitive, 18-prompt, decode, and both 512/4K gates |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1130,6 +1131,25 @@ removed. The float64 CPU oracle remains, and `chain_lds32_direct` stays the
 production default. Evidence:
 [`2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json).
 
+### GPF-9 existing-route result (gfx1100, 2026-07-15)
+
+The prospective peer-aligned gate was applied without changing its 0.05/0.90
+thresholds. Existing normalized-Q/K `chain_k2` fails only KL: **0.059031** max,
+**445/450 = 98.889%** top-1, and decode wall **-0.063%**. Existing raw-Q/K-
+plus-scale register-resident `chain_wave32_tree` also fails KL: **0.068757**
+max, **443/450 = 98.444%** top-1, and decode wall **-0.039%**. Free-running
+trajectory differences are diagnostic and do not cause either rejection. No
+speed gate was run.
+
+The source audit narrows the missing candidate. On gfx1100 llama.cpp HIP uses
+wave32, four state rows per lane resident across the serial token loop, and four
+value columns per 128-thread block. K2 already has llama.cpp's materialized
+normalized inputs but reduces over two waves; `chain_wave32_tree` has one-wave
+register residency but applies raw Q/K scales inside the recurrence. GPF-9C
+combines normalized inputs with the one-wave resident schedule before trying a
+new algebra. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json).
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1146,8 +1166,9 @@ token, FP32 hidden seed, resident Conv/GDN state, and the named all-layer rows.
 
 Algebraically equivalent reassociated candidates instead use the prospectively
 adopted peer-aligned contract. The existing PARO schedule is selected explicitly
-as `chain_k2`; `chain` remains the exact split. Candidates must pass CPU-reference primitive numerics
-and [`scripts/gguf_gdn_semantic_gate.py`](../scripts/gguf_gdn_semantic_gate.py)
+as `chain_k2`; `chain` remains the exact split. Candidates must pass CPU-
+reference primitive numerics and
+[`scripts/gguf_gdn_semantic_gate.py`](../scripts/gguf_gdn_semantic_gate.py)
 on all 18 category and heldout prompts, with identical teacher-forced token
 history, KL <= 0.05, aggregate top-1 >= 90%, finite deterministic execution,
 and non-regressive decode. Free-running token equality and state bytes are
@@ -1349,9 +1370,9 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   **1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** prefill and
   **89.727/95.117/97.292/85.898/75.012/61.264 tok/s** graph decode across
   512-128K, all 18 measured IDs `9707`. Task #98 / GPF-8 is complete as a KL
-  and 512-floor rejection. GPF-9 first re-evaluates existing K2 under the new
-  contract before implementing another kernel; its W7900 semantic gate may be
-  the only intentionally running process during this handoff.
+  and 512-floor rejection. GPF-9A/B also reject existing K2 and register-tree
+  routes on KL. GPF-9C owns the normalized-input, one-wave32 register-resident
+  schedule that matches llama.cpp HIP's gfx1100 structure.
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
@@ -1359,11 +1380,11 @@ gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
 production above each architecture's bound. The long-context gfx1100 screen
 confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
 lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
-do not revisit LCP-1 without a new hotspot profile. GPF-9 is the active GDN
-lane: existing K2 first, then a register-resident llama.cpp/Vulkan-shaped
-schedule only if needed. Its predeclared CPU, 18-prompt 0.05/0.90 semantic,
-determinism, decode, and 512/4K parity-floor contract is authoritative; exact
-state and free-running token identity are diagnostics.
+do not revisit LCP-1 without a new hotspot profile. GPF-9C is the active GDN
+lane: normalized Q/K plus one-wave32 register residency matching llama.cpp HIP
+on gfx1100. Its predeclared CPU, 18-prompt 0.05/0.90 semantic, determinism,
+decode, and 512/4K parity-floor contract is authoritative; exact state and
+free-running token identity are diagnostics.
 
 ## Document Ownership
 
