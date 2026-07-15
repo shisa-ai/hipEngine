@@ -70,11 +70,13 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_segments_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_wave32_tree_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
@@ -753,7 +755,7 @@ def _run_chain(
     try:
         prepare = (
             qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16
-            if recurrent_variant == "normalized_wave32_xor"
+            if recurrent_variant in {"normalized_wave32_xor", "normalized_cluster8"}
             else qwen35_linear_attn_prefill_prepare_f32_bf16
         )
         prepare(
@@ -776,10 +778,12 @@ def _run_chain(
         recurrent = {
             "k2": qwen35_gdn_prefill_recurrent_k2_f32,
             "normalized_wave32_xor": qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
+            "normalized_cluster8": qwen35_gdn_prefill_recurrent_normalized_cluster8_f32,
         }[recurrent_variant]
         recurrent_segments = {
             "k2": qwen35_gdn_prefill_recurrent_segments_k2_f32,
             "normalized_wave32_xor": qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+            "normalized_cluster8": qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
         }[recurrent_variant]
         if use_segments:
             recurrent_segments(
@@ -1773,6 +1777,32 @@ def test_gdn_prefill_normalized_wave32_xor_stays_within_correctness_budget(
     )
     _assert_output_close(out_peer, expected_out, label="normalized wave32 XOR vs CPU")
     _assert_state_close(state_peer, expected_state, label="normalized wave32 XOR vs CPU")
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("use_segments", [False, True])
+def test_gdn_prefill_normalized_cluster8_stays_within_correctness_budget(
+    use_segments: bool,
+) -> None:
+    """The Vulkan clustered schedule must satisfy the peer numerical contract."""
+
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=37,
+    )
+    expected_out, expected_state = _cpu_full_chain(inputs, _RMS_EPS)
+    out_peer, state_peer = _run_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=use_segments,
+        recurrent_variant="normalized_cluster8",
+    )
+    _assert_output_close(out_peer, expected_out, label="normalized cluster8 vs CPU")
+    _assert_state_close(state_peer, expected_state, label="normalized cluster8 vs CPU")
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

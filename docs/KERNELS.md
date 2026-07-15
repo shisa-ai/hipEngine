@@ -301,14 +301,19 @@ existing rejected route has both properties. The explicit `chain_peer_wave32`
 implementation follows llama.cpp `1ebf790cda38`'s unit-Q normalization,
 post-reduction output scale, XOR reduction, and post-reduction scalar-decay
 placement; it launches four columns per 128-thread block and compiles at 40
-VGPR with zero LDS/scratch. Plain and segmented primitive
-fixtures pass the CPU-reference numerical budgets. The clean W7900 18-prompt
+VGPR with zero LDS/scratch. Plain and segmented primitive fixtures pass the
+CPU-reference numerical budgets. The clean W7900 18-prompt
 product gate passes at KL max `0.041737`, top-1 `445/450`, and aggregate decode
 wall `-0.050%`. Its clean speed gate then rejects promotion: 512 reaches
 `2210.729 tok/s`, `-8.357%` below llama.cpp HIP, while 4K reaches `2513.374
 tok/s`, `+11.454%`; both floors were required. GPF-9D therefore ports the
 remaining peer geometry from llama.cpp Vulkan `263cc04a5405`: eight lanes per
-value column, 16 state rows per lane, and clustered reduction. See
+value column, 16 state rows per lane, and clustered reduction. The explicit
+`chain_peer_cluster8` implementation maps each physical wave32 to four
+contiguous eight-lane clusters and each 256-thread block to 32 value columns;
+plain/segmented CPU-reference fixtures pass, and rocprof reports 96 VGPR with
+zero LDS/scratch and `41.840/44.801 us` recurrence on the synthetic fixture.
+The unchanged semantic and speed gates still own admission. See
 `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
