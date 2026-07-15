@@ -411,8 +411,17 @@ The independent gfx1100 transfer first promoted the same exact
 transition gates; W7900 512/4K moved `649.131/677.888 -> 1291.225/1401.330
 tok/s`. The later LCP-5A gate superseded that gfx1100 automatic policy with
 quality-admitted `chain_peer_wave32`; gfx1151 remains on compiler-cacheable
-`chain_lds32_direct_nonvolatile`. See `docs/REFACTOR.md` for the rollback window and
-`benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`.
+`chain_lds32_direct_nonvolatile`. A final W7900 strict-exact screen now compares
+the volatile and nonvolatile direct routes byte-exact. Nonvolatile halves VGPR
+**64 -> 32** and moves the 512 trace-family median **7.172 -> 1.837 ms
+(-74.39%)**. Balanced full-model 512/4K prefill improves **1400.079 -> 2422.276
+(+73.01%)** and **1487.611 -> 2714.284 tok/s (+82.46%)**, with flat decode,
+unchanged compact-scratch memory, and exact IDs. `HIPENGINE_GGUF_GDN_PREFILL_MODE=exact`
+therefore resolves through backend capability to nonvolatile direct-LDS32 on
+both gfx11 backends; gfx1100 production remains peer-wave. Keep the volatile
+direct symbol for one exact-route rollback release. See `docs/REFACTOR.md` and
+evidence `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`,
+`benchmarks/results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json`.
 
 GPF-6 screened three distinct gfx1100 register-resident/direct-input schedules
 without retaining any kernel. One-wave/value and contiguous group4 reached

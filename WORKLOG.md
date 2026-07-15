@@ -158464,3 +158464,33 @@ RED first expected the missing gfx1100 4K package ceiling and failed. GREEN adds
 validation passes. Retain the synchronous path and explicit `=0` rollback above
 4K pending independent long-context evidence. Artifact:
 `benchmarks/results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json`.
+
+## 2026-07-16 — Converge the gfx1100 strict-exact GDN rollback
+
+The final candidate passes without changing production. On clean `d2d1c6fc`, a
+compact-scratch same-session gate compares volatile
+`chain_lds32_direct` against `chain_lds32_direct_nonvolatile`; gfx1100 automatic
+production remains quality-admitted `chain_peer_wave32`.
+
+Hermetic therock HIP 7.15 balanced 1+3 results:
+
+- 512/128 prefill **1400.079 -> 2422.276 tok/s (+73.01%)**, paired median
+  **+72.33%**; graph decode **-0.062%**.
+- 4K/128 prefill **1487.611 -> 2714.284 tok/s (+82.46%)**, paired median
+  **+81.48%**; graph decode **-0.003%**.
+- Tracked peak is identical within each A/B at 21.204/21.544 GiB and all 12
+  measured final IDs remain 9707.
+
+A cached 512 profile records 120 calls per route: nonvolatile cuts family total
+**856.870 -> 219.641 ms** and median **7.172 -> 1.837 ms (-74.39%, 3.90x)**,
+while halving VGPR **64 -> 32** with the same 16 KiB LDS and zero scratch. GPU
+plain/segment fixtures preserve output and final FP32 state byte-exact.
+
+RED first showed that nonvolatile direct did not receive compact liveness and
+that `HIPENGINE_GGUF_GDN_PREFILL_MODE=exact` was unrecognized. GREEN adds the
+architecture-scoped `GGUF_GDN_PREFILL_EXACT_MODE` capability on both gfx11
+packages, resolves the `exact` alias fail-closed, and gives nonvolatile exact the
+same compact liveness as volatile direct. A cached `exact` alias 512/1
+integration smoke returns token 9707 at 21.204 GiB tracked peak. Keep the long
+explicit nonvolatile name and volatile symbol for one rollback release. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json`.

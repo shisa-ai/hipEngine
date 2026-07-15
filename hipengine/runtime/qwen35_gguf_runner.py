@@ -1612,11 +1612,13 @@ class Qwen35GGUFFullStackRunner:
         keyed by ``(resolved_backend, ..., gguf_qwen35, ...)``.
         ``HIPENGINE_GGUF_GDN_PREFILL_MODE`` selects the fused route, the
         128-column exact chain, or its registered value-tiled/wave diagnostic
-        schedules; ``auto`` resolves the architecture-scoped backend-package
-        policy and falls back to the correctness-certified fused route when
-        that preferred schedule is unavailable. The raw-scale chains keep raw
-        Q/K and normalization scales separate so their recurrent kernels
-        preserve fused decode-order arithmetic. Whether the matching single-
+        schedules; ``auto`` resolves the architecture-scoped production policy,
+        while ``exact`` resolves the architecture-scoped strict-exact
+        rollback/oracle. Automatic production falls back to the
+        correctness-certified fused route when its preferred schedule is
+        unavailable; the explicit exact route fails closed. The raw-scale
+        chains keep raw Q/K and normalization scales separate so their
+        recurrent kernels preserve fused decode-order arithmetic. Whether the matching single-
         sequence or segment-aware recurrence runs is controlled by
         ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
         per-quant/per-backend branch.
@@ -1624,7 +1626,12 @@ class Qwen35GGUFFullStackRunner:
 
         plan = self._gdn_prefill_plan()
         requested_mode = _gguf_gdn_prefill_mode()
-        mode = plan.auto_mode if requested_mode == "auto" else requested_mode
+        if requested_mode == "auto":
+            mode = plan.auto_mode
+        elif requested_mode == "exact":
+            mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
+        else:
+            mode = requested_mode
         if requested_mode == "auto" and not _gguf_gdn_prefill_plan_has_mode(
             plan, mode
         ):
@@ -1634,6 +1641,13 @@ class Qwen35GGUFFullStackRunner:
                 mode = "chain"
             else:
                 mode = "auto"
+        elif requested_mode == "exact" and not _gguf_gdn_prefill_plan_has_mode(
+            plan, mode
+        ):
+            raise RuntimeError(
+                "backend GGUF GDN prefill exact mode is unavailable; "
+                f"required route {mode!r} is not fully registered for {self.backend!r}"
+            )
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
         use_normalized_chain = mode in {
@@ -13517,12 +13531,16 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     if not admitted:
         return None
     requested_mode = _gguf_gdn_prefill_mode()
-    effective_mode = (
-        backend_package_capability(backend, "GGUF_GDN_PREFILL_AUTO_MODE", "fused")
-        if requested_mode == "auto"
-        else requested_mode
-    )
-    if effective_mode == "chain_lds32_direct":
+    if requested_mode == "auto":
+        effective_mode = _gguf_gdn_prefill_backend_auto_mode(backend)
+    elif requested_mode == "exact":
+        effective_mode = _gguf_gdn_prefill_backend_exact_mode(backend)
+    else:
+        effective_mode = requested_mode
+    if effective_mode in {
+        "chain_lds32_direct",
+        "chain_lds32_direct_nonvolatile",
+    }:
         disabled_fields = _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
     elif effective_mode == "chain_peer_wave32":
         disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
@@ -14929,6 +14947,7 @@ _GGUF_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
 _GGUF_GDN_PREFILL_MODES = frozenset(
     {
         "auto",
+        "exact",
         "fused",
         "chain",
         "chain_k2",
@@ -14942,6 +14961,19 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain_lds32_direct_nonvolatile",
         "chain_wave32",
         "chain_wave32_tree",
+    }
+)
+_GGUF_GDN_PREFILL_EXACT_MODES = frozenset(
+    {
+        "fused",
+        "chain",
+        "chain_tile64",
+        "chain_tile32",
+        "chain_lds64",
+        "chain_lds32",
+        "chain_lds32_direct",
+        "chain_lds32_direct_nonvolatile",
+        "chain_wave32",
     }
 )
 _GGUF_Q4_T16_SELECTED_PREFILL_MODE_ENV = (
@@ -15151,10 +15183,28 @@ def _gguf_gdn_prefill_backend_auto_mode(backend: str) -> str:
         "fused",
     )
     mode = str(raw).strip().lower()
-    if mode == "auto" or mode not in _GGUF_GDN_PREFILL_MODES:
-        choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES - {"auto"}))
+    if mode in {"auto", "exact"} or mode not in _GGUF_GDN_PREFILL_MODES:
+        choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES - {"auto", "exact"}))
         raise RuntimeError(
             "backend GGUF GDN prefill automatic mode must be one of "
+            f"{choices}, got {mode!r} for {backend!r}"
+        )
+    return mode
+
+
+def _gguf_gdn_prefill_backend_exact_mode(backend: str) -> str:
+    """Resolve and validate one backend package's strict-exact GDN route."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_GDN_PREFILL_EXACT_MODE",
+        "chain",
+    )
+    mode = str(raw).strip().lower()
+    if mode not in _GGUF_GDN_PREFILL_EXACT_MODES:
+        choices = "|".join(sorted(_GGUF_GDN_PREFILL_EXACT_MODES))
+        raise RuntimeError(
+            "backend GGUF GDN prefill exact mode must be one of "
             f"{choices}, got {mode!r} for {backend!r}"
         )
     return mode

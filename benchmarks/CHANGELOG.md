@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [converged the gfx1100 strict-exact GDN rollback on nonvolatile direct-LDS32] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: versus volatile direct, exact nonvolatile moves 512/4K prefill **1400.079 -> 2422.276 (+73.01%)** and **1487.611 -> 2714.284 tok/s (+82.46%)**, halves VGPR **64 -> 32**, keeps decode/memory flat, and preserves byte-exact primitive state and final IDs; gfx1100 peer-wave production remains unchanged; `benchmarks/results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json`.
+
 - [promoted gfx1151 LCP-M2 device metadata on gfx1100 through 4K] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV balanced therock-7.15 1+3: replacing six synchronous H2D metadata copies with one exact stream-ordered kernel moves 512/4K prefill **2793.871 -> 2805.451 (+0.41%)** and **3069.782 -> 3144.263 tok/s (+2.43%)** (paired **+0.26%/+2.26%**); graph decode is non-regressive, memory unchanged, and all IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json`.
 
 - [confirmed retained gfx1100 router stack] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV package 256-thread logits + 128-thread select versus legacy 512/512: balanced paired 512/4K prefill improves **+3.87%/+4.16%**, graph decode **+0.11%/+0.07%**, memory unchanged, constituent primitives bit-exact, and all IDs match; `benchmarks/results/2026-07-16-gfx1100-gguf-router-stack-promotion.json`.

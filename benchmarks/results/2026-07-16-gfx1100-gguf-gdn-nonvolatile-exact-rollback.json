@@ -1,0 +1,131 @@
+{
+  "kind": "hipengine_gfx1100_gguf_exact_rollback_convergence",
+  "schema_version": 1,
+  "date": "2026-07-16",
+  "candidate": {
+    "id": "LCP-2A-exact-gfx1100",
+    "description": "Use the nonvolatile direct-LDS32 GDN route as the architecture-scoped strict-exact rollback/oracle",
+    "control": "chain_lds32_direct",
+    "candidate": "chain_lds32_direct_nonvolatile",
+    "public_selector": "HIPENGINE_GGUF_GDN_PREFILL_MODE=exact",
+    "production_default": "chain_peer_wave32 (unchanged)"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_measurement_commit": "d2d1c6fcc5d6ef69ccb060c36da180900e2024d7",
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompt": "repeated token 9707",
+    "workloads": ["512/128", "4096/128"],
+    "session": "one right-sized compact-scratch resident process per shape; volatile and nonvolatile exact modes interleaved in the same session",
+    "warmups": "one full discarded run per mode",
+    "measured_repetitions": 3,
+    "order": ["control,candidate", "candidate,control", "control,candidate"],
+    "prefill": "retained router/device-metadata defaults, production bulk attention and automatic chunks",
+    "decode": "one eager warmup token; fresh state-bound graph per measured reset; capture excluded",
+    "build": "all kernels prebuilt; cached builds required",
+    "environment": "hermetic therock HIP 7.15; HIP_VISIBLE_DEVICES=0; HIPENGINE_BACKEND=hip_gfx1100; HIPENGINE_HIP_ARCH=gfx1100"
+  },
+  "correctness": {
+    "gpu_tests": "plain and segment-aware nonvolatile direct outputs and final FP32 state are byte-exact to volatile direct; exact selector uses compact ABI",
+    "focused_tests_passed": 77,
+    "exact_alias_smoke": {
+      "workload": "512/1",
+      "final_token_id": 9707,
+      "tracked_peak_gib": 21.20421765744686,
+      "prefill_tok_s_diagnostic": 2010.710268314778
+    },
+    "control_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "candidate_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "finite_final_logits": true
+  },
+  "resource_trace_512": {
+    "repetitions_per_mode": 4,
+    "calls_per_mode": 120,
+    "volatile": {
+      "kernel": "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_kernel",
+      "total_ms": 856.87004,
+      "median_ms": 7.1722415,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0
+    },
+    "nonvolatile": {
+      "kernel": "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_kernel",
+      "total_ms": 219.641119,
+      "median_ms": 1.836996,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0
+    },
+    "median_kernel_delta_percent": -74.38742128245403,
+    "median_kernel_speedup": 3.904331582649064
+  },
+  "measurements": {
+    "512": {
+      "control_prefill_tok_s": [1400.0793797151496, 1399.2803445270483, 1413.2827144127205],
+      "candidate_prefill_tok_s": [2412.743053219786, 2422.2762856146373, 2422.871551366527],
+      "control_prefill_median": 1400.0793797151496,
+      "candidate_prefill_median": 2422.2762856146373,
+      "prefill_delta_percent": 73.00992505921036,
+      "paired_prefill_delta_percent": [72.32901849541315, 73.10871942772539, 71.43573091625437],
+      "paired_prefill_delta_median_percent": 72.32901849541315,
+      "control_decode_median_tok_s": 93.03041996967212,
+      "candidate_decode_median_tok_s": 92.97240976834034,
+      "decode_delta_percent": -0.0623561640920145,
+      "tracked_peak_gib": 21.20421765744686
+    },
+    "4096": {
+      "control_prefill_tok_s": [1495.625127614087, 1487.6114300414033, 1485.2749584786884],
+      "candidate_prefill_tok_s": [2714.284351904608, 2719.544014520406, 2688.147882196413],
+      "control_prefill_median": 1487.6114300414033,
+      "candidate_prefill_median": 2714.284351904608,
+      "prefill_delta_percent": 82.4592294124188,
+      "paired_prefill_delta_percent": [81.48159600892777, 82.81279369066932, 80.98654844014757],
+      "paired_prefill_delta_median_percent": 81.48159600892777,
+      "control_decode_median_tok_s": 100.31092303313521,
+      "candidate_decode_median_tok_s": 100.30838700821198,
+      "decode_delta_percent": -0.002528164278170486,
+      "tracked_peak_gib": 21.543610133230686
+    }
+  },
+  "decision": "Converge the strict-exact rollback/oracle on the nonvolatile direct-LDS32 route for gfx1100. The architecture-scoped exact selector improves 512/4K prefill by 73.01%/82.46% versus volatile direct, preserves byte-exact primitive state and timed IDs, keeps decode flat, and shares the compact liveness arena. Production remains the faster quality-admitted peer-wave route.",
+  "sources": {
+    "ab_512": {
+      "path": "/tmp/gfx1100-gdn-nonvolatile-ab-512.json",
+      "sha256": "ad806b77d0fb29bf234061c1faa83e0772de26275c2c433521249bbf05f5b09f"
+    },
+    "ab_4096": {
+      "path": "/tmp/gfx1100-gdn-nonvolatile-ab-4k.json",
+      "sha256": "f5551eb88af193c97772c94a7188c92299158e1d7512f806069ca3862d4ab8ee"
+    },
+    "kernel_trace": {
+      "path": "/tmp/gfx1100-gdn-nonvolatile-trace/gdn-nonvolatile_kernel_trace.csv",
+      "sha256": "5fb04a8d497e799ff56374c76f21f5d91f6ed2c2af9860198c4105364d902ce4"
+    },
+    "exact_alias_smoke": {
+      "path": "/tmp/gfx1100-gdn-exact-alias-smoke.json",
+      "sha256": "a256c704258332d40b3ed19941495a7b36e25ac9bcbf1b048919d54e1c75508d"
+    }
+  }
+}
