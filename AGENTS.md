@@ -81,6 +81,8 @@ Do not drift these casually. They define what hipEngine is.
 ### After Changes (before claiming done)
 
 - Run the narrowest relevant test, then the applicable `docs/TESTING.md` gate before claiming done.
+- **Do not automatically rerun a broad suite after an isolated failure.** If a completed broad run establishes that all other tests passed and the repair is scoped, rerun only the failing node(s), the changed test file, and any genuinely affected narrow bundle. Preserve the original broad-run result plus the repaired focused result as the validation evidence. Repeat the full suite only when the fix can affect previously passing tests (for example shared test infrastructure, collection/order/global-state behavior, or broadly shared production code), multiple unrelated failures indicate wider risk, a release protocol explicitly requires a fresh all-green run, or the user explicitly approves it.
+- **Ask before repeating expensive validation.** Before rerunning a test or benchmark expected to take more than five minutes when equivalent broad evidence already exists, state the concrete reason and expected duration and get explicit user approval.
 - For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible duration (`DurationNs` or `End_Timestamp - Start_Timestamp`). See `docs/KERNELS.md`.
 - For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
 - Update `docs/PLAN.md` if architectural plans shifted.
@@ -96,7 +98,7 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
 | New or ported kernel | CPU-reference correctness gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md` and `docs/TESTING.md`). |
 | Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in `WORKLOG.md`. |
-| Milestone closure | Full `uv run pytest -v` + the phase's named perf target vs prior baseline. |
+| Milestone closure | One full `uv run pytest -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
 
 ## Git Discipline
 
