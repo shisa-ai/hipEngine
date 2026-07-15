@@ -157235,3 +157235,35 @@ The prior post-LCP-4A peer row was **2385.677/2585.343 tok/s**, so the clean
 retained delta is **+8.49%/+6.67%**. The gfx1100 prefill parity task is closed;
 the final six-shape public table remains deferred to the end-of-pass sweep so
 decode and mixed-KV work can settle first.
+
+## 2026-07-15 — LCP-D3 decode refresh and Q4T16 pressure-screen predeclaration
+
+Collected a clean post-router/post-LCP-D2, post-prefill-promotion marked 4K
+decode trace at `edbbb62f` on the W7900. The 24 timed eager steps contain
+15,072 kernels and **208.163 ms** summed GPU work, or **8.673 ms/token**, down
+from the prior retained **8.914 ms/token**. Current family order is dense Q8T16
+**3.430 ms/token (39.55%)**, selected-MoE **1.825 ms/token (21.04%)**,
+full-attention core **0.804 ms/token (9.27%)**, lm-head **0.643 ms/token
+(7.41%)**, RMSNorm/RoPE **0.568 ms/token (6.55%)**, and GDN **0.543 ms/token
+(6.26%)**. The persistent router reduces its prior **592.8 us/token** bucket to
+**416.7 us/token**. All 28 warmup/measured IDs are `9707`; the profile process
+is source-clean.
+
+Most decode variants are already closed. One new source/resource fact admits
+exactly one bounded candidate: the fused selected-Q4T16 c=1 gate/up+SiLU leaf
+is **975.3 us/token (11.24%)**, 40 calls/token, with 200 profiler VGPR and zero
+scratch. Static HIP 7.2 metadata is 195 VGPR, zero private bytes/spills. The
+pre-existing source executes both 16-column gate/up accumulator sets at once.
+A temporary half-sequential source screen processes columns 0-7 then 8-15,
+preserving each output's K order, wave reduction, cross-wave sum, BF16
+round-trip, and SiLU operation. It compiles at **115 VGPR**, zero private
+bytes/spills. This is the only selected-MoE candidate allowed in LCP-D3.
+
+Go/no-go is prospectively frozen: focused GPU tests must be bit-exact to the
+current split-kernel contract; a matched real route must beat the active leaf
+and whole selected-MoE/full-model decode without changing IDs or memory; and a
+cached kernel trace must confirm the candidate name, plausible duration,
+<=120 allocated VGPR, and zero scratch. Any loss or mismatch removes the source
+variant. Do not reopen selected q8_1/dp4a, raw layouts, broader tile/thread
+sweeps, or dense-Q8 experiments during this pass. After this decision, refresh
+the bounded long-context attention attribution and close decode.
