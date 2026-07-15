@@ -208,54 +208,55 @@ commit/build, GPU, full command, and whole-card sampling artifact.
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-**Status: retained.** This clean 2026-07-12 refresh measured hipEngine
-`8116c453` (rebased-equivalent reachable `8708304f`; runtime and benchmark code
-identical), TheRock HIP 7.15, right-sized resident sessions, production graph decode, two
-discarded plus five measured hipEngine runs, and five llama.cpp samples per
-phase. The W7900-local GGUF oracle passes external tokens and byte-exact
-hidden/Conv/GDN/KV state. All six rows pass clean provenance, stable finite
-outputs, exact Q4_K_M identity, corrected W7900 VRAM scope, and sample-variance
-gates. PARO remains W4 PARO/BF16 KV; the other columns use Q4_K_M with
-BF16/F16 KV, so bold values are descriptive rather than same-quant wins.
+**Status: retained.** The GGUF column is the clean 2026-07-16 final
+selector-unset BF16-KV sweep at `28b37356` on therock HIP 7.15: independent
+right-sized sessions, one discarded warmup, three measured runs, and production
+graph decode. All 18 GGUF final IDs are exact and maximum prefill/decode stdev
+over median is `0.658%/0.223%`. PARO and llama.cpp retain their clean July 12
+protocols. PARO is W4 PARO/BF16 KV; the other columns use Q4_K_M with BF16/F16
+KV, so bold values are descriptive rather than same-quant wins. GGUF prefill now
+beats llama.cpp HIP at every shape and Vulkan through 64K; GGUF decode beats HIP
+everywhere and is closest to Vulkan at 4K (`-2.47%`).
 
 <!-- BEGIN TOPLINE:W7900_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | 1290.246 | 2412.320 | 2627.990 |
-| 1K/128 | **2995.876** | 1395.244 | 2389.670 | 2631.750 |
-| 4K/128 | **2943.038** | 1401.632 | 2255.080 | 2521.770 |
-| 32K/128 | **2108.868** | 1221.716 | 1667.640 | 1943.920 |
-| 64K/128 | **1584.131** | 1021.693 | 1291.820 | 1414.470 |
-| 128K/128 | 1056.252 | 766.892 | 891.949 | **1079.280** |
+| 512/128 | **2917.732** | 2716.648 | 2412.320 | 2627.990 |
+| 1K/128 | 2995.876 | **3052.541** | 2389.670 | 2631.750 |
+| 4K/128 | 2943.038 | **2953.101** | 2255.080 | 2521.770 |
+| 32K/128 | **2108.868** | 2078.038 | 1667.640 | 1943.920 |
+| 64K/128 | **1584.131** | 1559.878 | 1291.820 | 1414.470 |
+| 128K/128 | 1056.252 | 1037.378 | 891.949 | **1079.280** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.599** | 89.727 | 80.756 | 107.786 |
-| 1K/128 | 103.238 | 95.117 | 80.805 | **107.555** |
-| 4K/128 | **105.943** | 97.292 | 79.768 | 103.066 |
-| 32K/128 | **92.438** | 85.898 | 74.304 | 91.835 |
-| 64K/128 | 78.260 | 75.012 | 69.010 | **83.746** |
-| 128K/128 | 60.663 | 61.264 | 60.933 | **70.833** |
+| 512/128 | **115.599** | 92.833 | 80.756 | 107.786 |
+| 1K/128 | 103.238 | 98.148 | 80.805 | **107.555** |
+| 4K/128 | **105.943** | 100.522 | 79.768 | 103.066 |
+| 32K/128 | **92.438** | 88.240 | 74.304 | 91.835 |
+| 64K/128 | 78.260 | 76.691 | 69.010 | **83.746** |
+| 128K/128 | 60.663 | 62.669 | 60.933 | **70.833** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.144** | 21.204 | 21.606 | 21.260 |
-| 1K/128 | **18.367** | 21.256 | 21.618 | 21.220 |
-| 4K/128 | **19.161** | 21.544 | 21.674 | 21.278 |
-| 32K/128 | **19.864** | 22.108 | 22.216 | 21.855 |
-| 64K/128 | **20.403** | 22.752 | 22.895 | 22.512 |
-| 128K/128 | **22.124** | 24.041 | 24.089 | 23.824 |
+| 512/128 | **18.144** | 21.228 | 21.606 | 21.260 |
+| 1K/128 | **18.367** | 21.295 | 21.618 | 21.220 |
+| 4K/128 | **19.161** | 21.670 | 21.674 | 21.278 |
+| 32K/128 | **19.864** | 22.234 | 22.216 | 21.855 |
+| 64K/128 | **20.403** | 22.879 | 22.895 | 22.512 |
+| 128K/128 | **22.124** | 24.168 | 24.089 | 23.824 |
 <!-- END TOPLINE:W7900_SWEEP -->
 
-W7900 row sources: [accepted summary](benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json),
+W7900 row sources: [final hipEngine GGUF sweep](benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[July 12 accepted summary](benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json),
 [hipEngine PARO](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
-[hipEngine GGUF](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
+[superseded July 12 hipEngine GGUF](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
 [llama.cpp HIP](benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json),
 [llama.cpp Vulkan](benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json),
 and [W7900 correctness oracle](benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).

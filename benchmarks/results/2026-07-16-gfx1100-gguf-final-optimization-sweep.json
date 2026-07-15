@@ -1,0 +1,1012 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_final_optimization_right_sized_model_sweep_rollup",
+  "status": "accepted_topline",
+  "created_at": "2026-07-16T00:30:00+09:00",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV six-shape prefill, graph-decode, and tracked-memory sweep",
+  "correctness_claim": true,
+  "candidate": "Final gfx1100 package defaults after LCP-M1, persistent router, LCP-5A spill-free selected prefill, peer-wave GDN promotion, and LCP-D2 long-context reduction",
+  "conclusion": {
+    "summary": "Prefill parity with llama.cpp HIP is closed at all six shapes and Vulkan prefill is exceeded from 512 through 64K; only 128K Vulkan prefill remains 3.88% ahead. Decode remains above llama.cpp HIP at all shapes and below Vulkan at all shapes, closest at 4K by 2.47%. Tracked memory is within -0.378 to +0.079 GiB of the llama.cpp HIP whole-device readings despite the narrower scope.",
+    "prefill_tok_s": [
+      2716.6483550231787,
+      3052.5411155958677,
+      2953.1005726849044,
+      2078.038375776602,
+      1559.8782746987395,
+      1037.3780498779927
+    ],
+    "decode_tok_s": [
+      92.8330617178404,
+      98.14838004817472,
+      100.52232318014667,
+      88.23997517695385,
+      76.6906606657929,
+      62.669499146116
+    ],
+    "tracked_memory_gib": [
+      21.228173956274986,
+      21.295400612056255,
+      21.670319117605686,
+      22.23429773002863,
+      22.87884471565485,
+      24.16793868690729
+    ],
+    "prefill_vs_llamacpp_hip_delta_percent_range": [
+      12.615588107016418,
+      30.95325100151234
+    ],
+    "prefill_vs_llamacpp_vulkan_delta_percent_range": [
+      -3.8823984621235708,
+      17.10427884719481
+    ],
+    "decode_vs_llamacpp_hip_delta_percent_range": [
+      2.849850074862559,
+      26.018357211095513
+    ],
+    "decode_vs_llamacpp_vulkan_delta_percent_range": [
+      -13.87280192433118,
+      -2.4680077036591475
+    ],
+    "tracked_minus_llamacpp_hip_whole_device_gib_range": [
+      -0.3778260437250154,
+      0.07893868690729278
+    ],
+    "tracked_minus_llamacpp_vulkan_whole_device_gib_range": [
+      -0.031826043725015296,
+      0.3923191176056875
+    ],
+    "all_18_final_ids_exact": true
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-15T15:07:19.561366+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "28b37356ee27a874fe510d50a0c2f92eeaa4cf9c",
+    "git_branch": "gfx1100-gguf-optimization",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--backend",
+      "hip_gfx1100",
+      "--token-id",
+      "9707",
+      "--workloads",
+      "512/128",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--warmup-decode-tokens",
+      "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--graph-steps-per-replay",
+      "1",
+      "--compiler-version-file",
+      "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/lcp-final-default-512-715-clean.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_commit": "28b37356ee27a874fe510d50a0c2f92eeaa4cf9c",
+    "hipengine_dirty": false,
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "protocol": {
+    "session": "six independent right-sized resident processes; one shape per process",
+    "warmups": 1,
+    "measured_repetitions": 3,
+    "decode": "warmup eager; each measured repetition captures/replays/closes a fresh state-bound graph; capture excluded",
+    "decode_tokens": 128,
+    "prompt": "repeated token 9707",
+    "prefill": "production bulk attention, automatic chunks, WMMA requested/effective",
+    "build": "complete therock HIP 7.15 stack; all kernels prebuilt; cached builds required",
+    "selectors": "No experimental GDN, selected-prefill, attention-reducer, KV, or compiler-policy environment overrides; package automatic defaults only.",
+    "environment_prefix": "TRPY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($TRPY -m rocm_sdk path --root); CORE=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib; LIBS=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib; env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=$ROOT/lib:$CORE:$LIBS HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-gguf-opt/hipcc-version.txt PYTHONPATH=.",
+    "executed_command_template": "$TRPY scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --token-id 9707 --workloads <one-shape>/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <raw.json>"
+  },
+  "references": {
+    "previous_hipengine": "benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json plus LCP-M1 memory row",
+    "llamacpp_hip": "benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json",
+    "llamacpp_vulkan": "benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json",
+    "hipengine_paro": "benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json",
+    "memory_scope_note": "hipEngine memory is tracked allocator high-water; llama.cpp memory is sampled absolute whole-device DRM VRAM. Cross-scope differences are directional, not allocator-efficiency ratios."
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "samples": [
+          2697.723932492885,
+          2722.0861716482436,
+          2716.6483550231787
+        ],
+        "median": 2716.6483550231787,
+        "stdev": 12.78816063406439,
+        "stdev_over_median_percent": 0.4707330122582346
+      },
+      "decode_tok_s": {
+        "samples": [
+          92.52431641774403,
+          92.8646390945018,
+          92.8330617178404
+        ],
+        "median": 92.8330617178404,
+        "stdev": 0.18803382468941546,
+        "stdev_over_median_percent": 0.20255049355253535
+      },
+      "tracked_peak_allocated_gib": 21.228173956274986,
+      "hip_used_peak_sampled_gib": 21.69007110595703,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 1290.246,
+          "prefill_delta_percent": 110.55274381964205,
+          "decode_tok_s": 89.727,
+          "decode_delta_percent": 3.4616801161750477,
+          "tracked_memory_gib": 21.204,
+          "tracked_memory_delta_gib": 0.024173956274985642
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 2412.32,
+          "prefill_delta_percent": 12.615588107016418,
+          "decode_tok_s": 80.756,
+          "decode_delta_percent": 14.955002374858072,
+          "whole_device_memory_gib": 21.606,
+          "tracked_minus_whole_device_gib": -0.3778260437250154
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 2627.99,
+          "prefill_delta_percent": 3.3736184316979445,
+          "decode_tok_s": 107.786,
+          "decode_delta_percent": -13.87280192433118,
+          "whole_device_memory_gib": 21.26,
+          "tracked_minus_whole_device_gib": -0.031826043725015296
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 2917.732,
+          "prefill_delta_percent": -6.891779127651931,
+          "decode_tok_s": 115.599,
+          "decode_delta_percent": -19.693888599520413
+        }
+      },
+      "raw_sha256": "060ecf0c8f8f77702a12f4df178a7bb79dfca9da7d63c075433ce0d59f748a8a"
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          3086.68403804361,
+          3052.5411155958677,
+          3051.2426890462575
+        ],
+        "median": 3052.5411155958677,
+        "stdev": 20.09773736655213,
+        "stdev_over_median_percent": 0.6583936663087001
+      },
+      "decode_tok_s": {
+        "samples": [
+          98.14838004817472,
+          98.16299286009362,
+          97.88258989720532
+        ],
+        "median": 98.14838004817472,
+        "stdev": 0.15784156625186418,
+        "stdev_over_median_percent": 0.16081932903466153
+      },
+      "tracked_peak_allocated_gib": 21.295400612056255,
+      "hip_used_peak_sampled_gib": 21.786392211914062,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 1395.244,
+          "prefill_delta_percent": 118.78188442995406,
+          "decode_tok_s": 95.117,
+          "decode_delta_percent": 3.187001322765348,
+          "tracked_memory_gib": 21.256,
+          "tracked_memory_delta_gib": 0.03940061205625511
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 2389.67,
+          "prefill_delta_percent": 27.739023195498437,
+          "decode_tok_s": 80.805,
+          "decode_delta_percent": 21.46325109606424,
+          "whole_device_memory_gib": 21.618,
+          "tracked_minus_whole_device_gib": -0.3225993879437432
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 2631.75,
+          "prefill_delta_percent": 15.989023106141076,
+          "decode_tok_s": 107.555,
+          "decode_delta_percent": -8.74586951032057,
+          "whole_device_memory_gib": 21.22,
+          "tracked_minus_whole_device_gib": 0.07540061205625648
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 2995.876,
+          "prefill_delta_percent": 1.8914372823130021,
+          "decode_tok_s": 103.238,
+          "decode_delta_percent": -4.929986973619482
+        }
+      },
+      "raw_sha256": "e6e73e14814a7b42642f59bc9072bb65102a934ee4a39f473b38da65b95bff2c"
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          2960.01666079649,
+          2953.1005726849044,
+          2949.5869806969354
+        ],
+        "median": 2953.1005726849044,
+        "stdev": 5.306534186016791,
+        "stdev_over_median_percent": 0.1796936492817171
+      },
+      "decode_tok_s": {
+        "samples": [
+          100.49989172535415,
+          100.54307343639044,
+          100.52232318014667
+        ],
+        "median": 100.52232318014667,
+        "stdev": 0.021596309354121736,
+        "stdev_over_median_percent": 0.021484092956565337
+      },
+      "tracked_peak_allocated_gib": 21.670319117605686,
+      "hip_used_peak_sampled_gib": 22.1796875,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 1401.632,
+          "prefill_delta_percent": 110.69015067327972,
+          "decode_tok_s": 97.292,
+          "decode_delta_percent": 3.320235147953232,
+          "tracked_memory_gib": 21.544,
+          "tracked_memory_delta_gib": 0.1263191176056857
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 2255.08,
+          "prefill_delta_percent": 30.95325100151234,
+          "decode_tok_s": 79.768,
+          "decode_delta_percent": 26.018357211095513,
+          "whole_device_memory_gib": 21.674,
+          "tracked_minus_whole_device_gib": -0.0036808823943133007
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 2521.77,
+          "prefill_delta_percent": 17.10427884719481,
+          "decode_tok_s": 103.066,
+          "decode_delta_percent": -2.4680077036591475,
+          "whole_device_memory_gib": 21.278,
+          "tracked_minus_whole_device_gib": 0.3923191176056875
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 2943.038,
+          "prefill_delta_percent": 0.3419110689329985,
+          "decode_tok_s": 105.943,
+          "decode_delta_percent": -5.116597434331038
+        }
+      },
+      "raw_sha256": "82461ef206ba4ad02051e1340567db9bb1ae68683be646856afcd85fd4726ea1"
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          2096.9401972292103,
+          2078.038375776602,
+          2074.4175787343315
+        ],
+        "median": 2078.038375776602,
+        "stdev": 12.09447097722377,
+        "stdev_over_median_percent": 0.582013841428883
+      },
+      "decode_tok_s": {
+        "samples": [
+          88.5174652385883,
+          88.23997517695385,
+          88.13670569987269
+        ],
+        "median": 88.23997517695385,
+        "stdev": 0.19691078585890553,
+        "stdev_over_median_percent": 0.22315371855446067
+      },
+      "tracked_peak_allocated_gib": 22.23429773002863,
+      "hip_used_peak_sampled_gib": 22.751953125,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 1221.716,
+          "prefill_delta_percent": 70.09177057324307,
+          "decode_tok_s": 85.898,
+          "decode_delta_percent": 2.7264606591001606,
+          "tracked_memory_gib": 22.108,
+          "tracked_memory_delta_gib": 0.12629773002862876
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 1667.64,
+          "prefill_delta_percent": 24.60953058073696,
+          "decode_tok_s": 74.304,
+          "decode_delta_percent": 18.755349882851323,
+          "whole_device_memory_gib": 22.216,
+          "tracked_minus_whole_device_gib": 0.018297730028628223
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 1943.92,
+          "prefill_delta_percent": 6.899377329139167,
+          "decode_tok_s": 91.835,
+          "decode_delta_percent": -3.914656528606897,
+          "whole_device_memory_gib": 21.855,
+          "tracked_minus_whole_device_gib": 0.3792977300286289
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 2108.868,
+          "prefill_delta_percent": -1.4619039325077576,
+          "decode_tok_s": 92.438,
+          "decode_delta_percent": -4.54144921249503
+        }
+      },
+      "raw_sha256": "33d5e327ba5233d73109bf63b809abccfc83ccc2299b3f65210996151aecb2fa"
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1562.2974377864612,
+          1559.8782746987395,
+          1558.205952156341
+        ],
+        "median": 1559.8782746987395,
+        "stdev": 2.057071842542561,
+        "stdev_over_median_percent": 0.13187386964151707
+      },
+      "decode_tok_s": {
+        "samples": [
+          76.76821642321323,
+          76.6906606657929,
+          76.67695454366445
+        ],
+        "median": 76.6906606657929,
+        "stdev": 0.04921294536944713,
+        "stdev_over_median_percent": 0.06417071510690227
+      },
+      "tracked_peak_allocated_gib": 22.87884471565485,
+      "hip_used_peak_sampled_gib": 23.396484375,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 1021.693,
+          "prefill_delta_percent": 52.67583067504029,
+          "decode_tok_s": 75.012,
+          "decode_delta_percent": 2.2378561640709504,
+          "tracked_memory_gib": 22.752,
+          "tracked_memory_delta_gib": 0.12684471565485111
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 1291.82,
+          "prefill_delta_percent": 20.750435408860323,
+          "decode_tok_s": 69.01,
+          "decode_delta_percent": 11.129779257778427,
+          "whole_device_memory_gib": 22.895,
+          "tracked_minus_whole_device_gib": -0.016155284345149568
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 1414.47,
+          "prefill_delta_percent": 10.280053638376163,
+          "decode_tok_s": 83.746,
+          "decode_delta_percent": -8.424688145352722,
+          "whole_device_memory_gib": 22.512,
+          "tracked_minus_whole_device_gib": 0.36684471565484955
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 1584.131,
+          "prefill_delta_percent": -1.5309797801609015,
+          "decode_tok_s": 78.26,
+          "decode_delta_percent": -2.0052892080336115
+        }
+      },
+      "raw_sha256": "55c07a5034bebe2f4dded1286ab01d7d858d87cb8557767f32571b554b47e434"
+    },
+    "128K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1037.7340305457471,
+          1037.2371500992408,
+          1037.3780498779927
+        ],
+        "median": 1037.3780498779927,
+        "stdev": 0.2560810944432708,
+        "stdev_over_median_percent": 0.02468541670737961
+      },
+      "decode_tok_s": {
+        "samples": [
+          62.710675288804765,
+          62.642042788891416,
+          62.669499146116
+        ],
+        "median": 62.669499146116,
+        "stdev": 0.03454404512870795,
+        "stdev_over_median_percent": 0.05512098484809552
+      },
+      "tracked_peak_allocated_gib": 24.16793868690729,
+      "hip_used_peak_sampled_gib": 24.685546875,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "effective_use_wmma_prefill_all": true,
+      "effective_use_gemv_decode_all": true,
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "default_bf16",
+        "storage_layout": "uniform",
+        "quantized_tail_layers": 0
+      },
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "comparison": {
+        "previous_2026_07_14": {
+          "prefill_tok_s": 766.892,
+          "prefill_delta_percent": 35.27042267724694,
+          "decode_tok_s": 61.264,
+          "decode_delta_percent": 2.294168102174199,
+          "tracked_memory_gib": 24.041,
+          "tracked_memory_delta_gib": 0.12693868690729104
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": 891.949,
+          "prefill_delta_percent": 16.30463735908585,
+          "decode_tok_s": 60.933,
+          "decode_delta_percent": 2.849850074862559,
+          "whole_device_memory_gib": 24.089,
+          "tracked_minus_whole_device_gib": 0.07893868690729278
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": 1079.28,
+          "prefill_delta_percent": -3.8823984621235708,
+          "decode_tok_s": 70.833,
+          "decode_delta_percent": -11.524996617232075,
+          "whole_device_memory_gib": 23.824,
+          "tracked_minus_whole_device_gib": 0.3439386869072898
+        },
+        "hipengine_paro": {
+          "prefill_tok_s": 1056.252,
+          "prefill_delta_percent": -1.7868794683472577,
+          "decode_tok_s": 60.663,
+          "decode_delta_percent": 3.3076160857788306
+        }
+      },
+      "raw_sha256": "cf18e9a7028df07ea08da796ab0b747cb0e3c6675ea6828dbd618a7c6df06555"
+    }
+  },
+  "components": [
+    {
+      "workload": "512/128",
+      "raw_path": "/tmp/lcp-final-default-512-715-clean.json",
+      "raw_sha256": "060ecf0c8f8f77702a12f4df178a7bb79dfca9da7d63c075433ce0d59f748a8a",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "512/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-512-715-clean.json"
+      ],
+      "source_clean": true
+    },
+    {
+      "workload": "1K/128",
+      "raw_path": "/tmp/lcp-final-default-1k-715-clean.json",
+      "raw_sha256": "e6e73e14814a7b42642f59bc9072bb65102a934ee4a39f473b38da65b95bff2c",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "1K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-1k-715-clean.json"
+      ],
+      "source_clean": true
+    },
+    {
+      "workload": "4K/128",
+      "raw_path": "/tmp/lcp-final-default-4k-715-clean.json",
+      "raw_sha256": "82461ef206ba4ad02051e1340567db9bb1ae68683be646856afcd85fd4726ea1",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "4K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-4k-715-clean.json"
+      ],
+      "source_clean": true
+    },
+    {
+      "workload": "32K/128",
+      "raw_path": "/tmp/lcp-final-default-32k-715-clean.json",
+      "raw_sha256": "33d5e327ba5233d73109bf63b809abccfc83ccc2299b3f65210996151aecb2fa",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "32K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-32k-715-clean.json"
+      ],
+      "source_clean": true
+    },
+    {
+      "workload": "64K/128",
+      "raw_path": "/tmp/lcp-final-default-64k-715-clean.json",
+      "raw_sha256": "55c07a5034bebe2f4dded1286ab01d7d858d87cb8557767f32571b554b47e434",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "64K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-64k-715-clean.json"
+      ],
+      "source_clean": true
+    },
+    {
+      "workload": "128K/128",
+      "raw_path": "/tmp/lcp-final-default-128k-715-clean.json",
+      "raw_sha256": "cf18e9a7028df07ea08da796ab0b747cb0e3c6675ea6828dbd618a7c6df06555",
+      "command": [
+        "scripts/qwen35_readme_sweep.py",
+        "--engine",
+        "gguf",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--backend",
+        "hip_gfx1100",
+        "--token-id",
+        "9707",
+        "--workloads",
+        "128K/128",
+        "--warmup-runs",
+        "1",
+        "--measured-runs",
+        "3",
+        "--warmup-decode-tokens",
+        "1",
+        "--force-bulk-prefill",
+        "--bulk-prefill-attention-mode",
+        "bulk",
+        "--use-wmma-prefill",
+        "--use-gemv-decode",
+        "--graph-replay-decode",
+        "--graph-steps-per-replay",
+        "1",
+        "--compiler-version-file",
+        "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/lcp-final-default-128k-715-clean.json"
+      ],
+      "source_clean": true
+    }
+  ]
+}

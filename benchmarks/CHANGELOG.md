@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-16
+
+- [published final gfx1100 GGUF optimization sweep] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV defaults-only therock-7.15 right-sized 1+3: prefill **1290.246-766.892 -> 2716.648-1037.378 tok/s (+35.27% to +118.78%)**, graph decode **89.727-61.264 -> 92.833-62.669 tok/s (+2.24% to +3.46%)**, and tracked memory **21.228-24.168 GiB**. Prefill beats llama.cpp HIP at all six shapes (**+12.62% to +30.95%**) and Vulkan through 64K; decode beats HIP everywhere and is closest to Vulkan at 4K (**-2.47%**). All 18 IDs are exact; `benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json`.
+
 ## 2026-07-15
 
 - [closed clean gfx1100 GGUF tail-four mixed-KV gate; explicit-only] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16 vs six-BF16/four-Hadamard-group32-INT8 KV on therock 7.15: full 512/8 and 4K/16 quality plus bounded 128K/16 pass (4K mean/max KL **0.0001369/0.009926**, aggregate/min-prompt top-1 **99.47%/94.12%**), and persistent 128K K/V **2,689,597,440 -> 2,185,297,920 bytes (-18.75%)** with zero persistent shadow; default rejects because 4K prefill/decode regress **0.67%/0.75%**, one-shot 128K decode regresses **3.82%**, and a **1.002 GiB** prefill transient raises allocator high water **24.168 -> 24.700 GiB** despite **0.470 GiB** lower live owned memory; `benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`.

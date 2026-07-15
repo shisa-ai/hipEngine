@@ -1,12 +1,13 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **gfx1151 audit complete and post-merge transfer queued; gfx1100 HIP memory parity closed, compute parity open**
-Date: **2026-07-15**
+Status: **gfx1151 audit complete and post-merge transfer queued; gfx1100 llama.cpp HIP prefill/decode parity closed, Vulkan decode and 128K prefill remain**
+Date: **2026-07-16**
 Machine-readable evidence:
 [`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json),
-[`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json),
-[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
-[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json), and
+[`gfx1100 final optimization sweep`](../benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[`gfx1100 peer-GDN promotion`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json),
+[`gfx1100 decode attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json),
+[`gfx1100 LCP-D2 gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json), and
 [`gfx1100 LCP-M1 memory gate`](../benchmarks/results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json).
 
 This document answers a narrow question: after the retained GPF-5A work, what
@@ -77,64 +78,60 @@ segmented fixtures before timing. Extending GPF-5A two-wave dense Q8 beyond its
 removed. See the
 [`residual-screen artifact`](../benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json).
 
-The clean final gfx1100 defaults-only publication then records
-**1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s** prefill and
-**89.727/95.117/97.292/85.898/75.012/61.264 tok/s** graph decode from
-512 through 128K. The prefill gap versus llama.cpp HIP narrows from **46.5% at
-512 to 14.0% at 128K**; hipEngine decode is now ahead at every listed shape,
-including **+0.54% at 128K**. All 18 measured final IDs are `9707`. Evidence:
-[`gfx1100 final rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
+The July 14 defaults-only publication is superseded by the clean final
+right-sized 1+3 sweep at `28b37356` on the complete therock HIP 7.15 stack.
+Package defaults now include the admitted phase-liveness arena, persistent
+cooperative router, peer-wave GDN, spill-free selected prefill, and the scoped
+long-context parallel reducer. The final sweep records
+**2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s** prefill and
+**92.833/98.148/100.522/88.240/76.691/62.669 tok/s** graph decode from 512
+through 128K. All 18 final IDs are `9707`; maximum prefill/decode stdev over
+median is **0.658%/0.223%**.
 
-`LCP-M1` closes the retained HIP memory target without changing model math.
-The gfx1100 production Qwen3.6 MoE/direct-LDS32 route now owns one aligned
-phase-liveness arena instead of every attention/GDN/MoE intermediate at once.
-A clean six-shape right-sized allocation census moves tracked memory from
-**21.478/21.710/22.995/23.559/24.203/25.493** to
-**21.204/21.256/21.544/22.108/22.752/24.041 GiB**. Every row is now
-**0.048-0.402 GiB below** the retained llama.cpp HIP whole-device reading.
-Residual memory versus Vulkan is only **0.036-0.266 GiB** from 1K through
-128K, while 512 is 0.056 GiB lower. These remain different allocator scopes,
-but the prior stronger condition—a narrower hipEngine count exceeding the
-broader HIP count—is gone.
+This closes llama.cpp HIP compute parity: prefill is **12.62-30.95% faster**
+at all six shapes and decode is **2.85-26.02% faster** everywhere. Prefill also
+beats llama.cpp Vulkan by **3.37-17.10%** from 512 through 64K; only 128K
+Vulkan remains ahead by **3.88%**. Vulkan decode remains ahead at every shape,
+with the smallest gap now **2.47% at 4K**.
 
-Correctness and wall gates are exact/non-regressive. A same-weight,
-same-process 4K dedicated-versus-aliased A/B preserves all **248,320 FP32
-logits byte-for-byte**. Clean 4K 1+3 prefill is
-**1401.632 -> 1403.619 tok/s (+0.14%)**, and graph decode is
-**97.292 -> 97.669 tok/s (+0.39%)**. Diagnostics, non-direct GDN modes,
-non-MoE configs, and unvalidated backends retain dedicated buffers.
+Final tracked right-sized memory is
+**21.228/21.295/21.670/22.234/22.879/24.168 GiB**. Against the broader
+llama.cpp HIP whole-device readings, differences are only **-0.378/-0.323/
+-0.004/+0.018/-0.016/+0.079 GiB**. This is practical capacity parity, not an
+allocator-efficiency claim: the scopes still differ, and 32K/128K sit slightly
+above HIP by 18/79 MiB. The peer route's additional Q/K/V live interval explains
+the small increase from the post-LCP-M1 direct-GDN census without reopening a
+material memory lane.
 
-## gfx1100 parity continuation
+Evidence:
+[`gfx1100 final optimization sweep`](../benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
 
-Parity remains the target; the final optimization rollup is a new baseline, not
-closure. Re-expressing the gaps as the uplift hipEngine still needs makes the
-remaining work explicit:
+## gfx1100 residuals after closure
 
-- Prefill needs **+86.97%/+71.27%/+60.89%/+36.50%/+26.44%/+16.31%** to
-  match llama.cpp HIP from 512 through 128K.
-- Decode already exceeds llama.cpp HIP at every shape, but needs
-  **+20.13%/+13.08%/+5.93%/+6.91%/+11.64%/+15.62%** to match llama.cpp
-  Vulkan.
-- `LCP-M1` has closed the retained llama.cpp HIP memory target at all six
-  shapes. hipEngine now sits **0.402/0.362/0.130/0.108/0.143/0.048 GiB below**
-  the HIP whole-device rows. Small cross-scope efficiency claims remain invalid;
-  this result establishes capacity parity, not allocator equivalence.
+The final pass closes the llama.cpp HIP target and leaves two concrete reference
+residuals rather than a broad GGUF deficit:
 
-The closed memory lane confirms the original attribution. At 4K+, the prior
-**1.751-1.759 GiB** bulk-prefill bucket falls to **0.300-0.308 GiB**, below the
-predeclared **0.35-0.45 GiB** ceiling. The reduction is approximately 1.45 GiB
-at every 4K+ shape because context-dependent KV/state and metadata are unchanged.
-No KV-format change is involved.
+- Vulkan prefill remains **3.88% ahead only at 128K**. hipEngine wins 512-64K.
+- Vulkan graph decode remains **13.87/8.75/2.47/3.91/8.42/11.52% ahead** from
+  512 through 128K. The 4K row is the nearest promotion boundary.
+- Tracked memory is within **-0.378 to +0.079 GiB** of llama.cpp HIP's broader
+  whole-device reading. Do not chase the remaining cross-scope MiB as a
+  performance optimization without a same-scope capacity failure.
 
-A cached-only current-tree 4K decode trace adds the missing middle-shape
-attribution. Its final eight state-update/embedding-delimited exact decode
-cycles contain about **708 dispatches/token** and **8.914 ms GPU time/token**. Dense Q8 T16 GEMV is
-**39.28%**, selected-MoE T16 GEMV **20.30%**, full-attention core **9.04%**,
-lm-head **7.19%**, router **6.65%**, and GDN decode **6.11%**. The 4K Vulkan
-wall target is only a **5.93%** throughput uplift away; dense Q8 and selected
-MoE are therefore the first decode families. Generic launch-count work is not
-the explanation: hipEngine is already far below the roughly 1,600
-dispatches/token in the retained llama.cpp HIP source/profile analysis.
+The final clean therock-7.15 4K marked trace contains **8.652 ms GPU/token**.
+Dense Q8 T16 GEMV is **39.45%**, selected-MoE T16 GEMV **21.41%**, attention
+**9.06%**, lm-head **7.25%**, GDN **6.08%**, and the persistent router
+**4.81%**. Exactly one new selected-Q4 pressure candidate reduced static VGPR
+`195 -> 114` but regressed canonical graph decode **2.79%** and was removed.
+Existing dense-Q8, selected-MoE dp4a/layout, and broad geometry screens are
+closed.
+
+At 32K, attention rises to **17.36%** of **9.724 ms GPU/token**, but the retained
+prepare+parallel reducer is only **90.878 us/token (5.38% of attention)**. The
+remaining **1.569 ms/token** is the already grouped-GQA split-K context scan.
+Any further c=1 decode work therefore needs a genuinely new context-scan or
+matrix-family algorithm; generic launch reduction, serial-reducer retuning, and
+unchanged dp4a probes are not justified by the current evidence.
 
 The source-grounded Vulkan advantage remains c=1-specific: smaller
 single-subgroup workgroups, no cross-wave LDS reduction, RADV/ACO scheduling,
@@ -580,16 +577,15 @@ byte-exact 4K A/B above close the capacity gate without a speed regression.
 contract and fallback; reopen memory work only if a resident-allocation/KV/model
 change makes hipEngine exceed the retained HIP capacity row again.
 
-## Ranked parity work
+## Ranked parity outcome and next decisions
 
-| Rank | ID | Work | Why now | Exit gate |
+| Rank | ID | Outcome / next work | Current evidence | Reopen gate |
 | ---: | --- | --- | --- | --- |
-| 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
-| 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
-| 3 | `LCP-2A/B` | **Closed/retained on gfx1100:** reuse request/chunk metadata and replace compact-WMMA total-row D2H reads with a tight static bound | 280 synchronous copies removed cumulatively; queue idle **27.956 -> 11.634 ms (-58.39%)**; clean pp512 **2210.729 -> 2334.451 tok/s (+5.60%)**, but remains 3.23% below the floor | Keep gfx1151 scalar pending its independent transfer gate; preserve the rollback env through one defaults-only refresh |
-| 4 | `LCP-3A/B/C` | Four-wave and direct T16 integer-WMMA bodies rejected; audit a real llama.cpp-style shared MMQ tile before more code | Four-wave projects +0.3 ms; direct prequantized i8 is +44.66%; dense Q8 remains **~52.0 vs 30.4 ms** with queue idle already within 2.699 ms | Source/layout mapping, then standalone body speed + numerical gate; only then dominant-shape trace and 512/4K state/wall |
-| 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
-| 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
+| 1 | `LCP-5A` | **Closed/promoted on gfx1100:** spill-free selected prefill admits peer-wave GDN as package default | Final prefill beats llama.cpp HIP at all six shapes and Vulkan through 64K | Reopen gfx1100 prefill only for the remaining 128K Vulkan gap with a new long-context algorithm |
+| 2 | `LCP-D1/D2/D3` | **Closed for this pass:** parallel reducer and persistent router retained; selected-Q4 pressure candidate rejected | Final decode beats llama.cpp HIP everywhere; Vulkan gap is 2.47-13.87% | Require new dominant-family/context-scan evidence; do not rerun unchanged dp4a/tile/launch-count candidates |
+| 3 | `LCP-M1` | **Closed/promoted:** phase-liveness arena plus peer Q/K/V lifetimes | Final tracked memory is within -0.378..+0.079 GiB of HIP whole-device rows | Reopen only for a same-scope capacity failure, not small cross-scope MiB |
+| 4 | `tail4_hadamard_group32` | **Quality/storage pass; default rejected:** keep explicit | 18.75% persistent K/V saving, but 4K/128K speed regresses and prefill has a 1.002 GiB transient | Remove transient and improve long-context group32 attention, then repeat full suite |
+| 5 | `gfx1151 transfer` | Separate post-merge hardware lane | Shared source is ready; architecture-local policy is not assumed | Follow the transfer plan below with clean gfx1151 correctness/profile/sweep evidence |
 
 There is no invented minimum win. Exact, same-suite non-regressive
 improvements remain retainable under the project evidence policy.
