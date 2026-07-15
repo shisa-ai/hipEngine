@@ -156694,3 +156694,12 @@ graphless decode launch-collapse path without regressing target/serial parity.
   dedicated CPU-fixtures smoke passes all seven canonical fixtures.
 - Next queue target is the remaining 40 per-layer compact-WMMA total-row D2H
   reads (the copy->selected-Q4 bubble), before any dense-Q8 kernel work.
+- Clean `e03e5a34` 1+3 confirmation measures **2292.186/2502.269 tok/s**
+  prefill and **93.108/100.538 tok/s** decode at 512/4K, with all IDs `9707`
+  and unchanged **22.995 GiB** tracked peak. Relative to the prior clean GPF-9C
+  row, 512 prefill is **+3.68%**, 4K is **-0.44%**, and both decode shapes
+  improve **+0.51%/+0.56%**. The 512 leg remains **4.98% below** the floor.
+  Published diagnostic evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json`;
+  raw clean sweep SHA256 is
+  `63e8606d51f17a4baddcd2300c1472f4faefa5a9d74eba27fcad2dbac0452a93`.

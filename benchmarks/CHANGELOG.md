@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-15
+
+- [retained gfx1100 GGUF pp512 chunk-metadata reuse; GPF-9C still diagnostic] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV per-layer synchronous metadata uploads -> one request/chunk-scoped upload: matched `hipMemcpy`/dispatches **1645/288 -> 1405/48** and queue idle **27.956 -> 15.163 ms (-45.76%)**; clean 512 prefill **2210.729 -> 2292.186 tok/s (+3.68%)**, decode **92.634 -> 93.108 tok/s (+0.51%)**, stable IDs and unchanged **22.995 GiB** peak. Clean 4K prefill is **2513.374 -> 2502.269 tok/s (-0.44%)**; 512 remains 4.98% below the frozen floor, so production selection is unchanged. `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json`.
+
 ## 2026-07-14
 
 - [promoted gfx1100 GGUF persistent cooperative-router counter] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV selected-ID counter alias plus 40 four-byte reset nodes/token -> dedicated self-resetting counter: cache-cycled fused leaf **14.667 -> 10.444 us (-28.79%)** and clean 4K graph decode **98.812 -> 100.446 tok/s (+1.65%)**, with production router outputs replay-exact, all nine IDs/final values exact, and only eight added tracked bytes; `benchmarks/results/2026-07-14-gfx1100-gguf-persistent-router-counter.json`.
