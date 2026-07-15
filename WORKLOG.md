@@ -156438,3 +156438,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   reported diagnostically. It is implementation evidence only; dirty provenance
   correctly returns `invalid_dirty_measurement`. The clean 18-prompt gate still
   owns admission after this logical unit is committed.
+
+## 2026-07-15 - Reject existing peer-aligned GDN routes and select GPF-9C
+
+- Clean W7900 `bdfb96e4` full-suite K2 gate rejects on KL only: max
+  **0.05903083 > 0.05**, top-1 **445/450 = 98.889%**, decode median-wall sum
+  **22647.598 -> 22633.350 ms (-0.063%)**. Exact free-running trajectory is
+  false but diagnostic under the prospectively frozen contract. The first KL
+  failure is `mixed_ja_en_translate`.
+- Clean same-commit register-resident `chain_wave32_tree` also rejects on KL:
+  max **0.06875726**, top-1 **443/450 = 98.444%**, decode median-wall sum
+  **22720.713 -> 22711.755 ms (-0.039%)**. Failing prompts are
+  `mixed_ja_en_review` (**0.05212846**) and
+  `heldout_general_ja_speculative` (**0.06875726**). No speed gate follows
+  either semantic rejection.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`;
+  raw artifacts remain local at `/tmp/gdn-{k2,wave32-tree}-peer-aligned-...`
+  with SHA256 values in the compact artifact. No benchmark topline/changelog
+  changes because neither route is a retained performance claim.
+- Source audit corrects the remaining geometry question. llama.cpp HIP
+  `1ebf790cda38` returns physical wave width 32 on RDNA3 (64 only for gfx8/9),
+  then runs four normalized-Q/K register-resident value columns per 128-thread
+  block, four state rows per lane. Existing K2 has normalized inputs but a
+  two-wave contraction; existing tree has one-wave residency but applies raw
+  Q/K scales inside the recurrence. GPF-9C will combine normalized inputs with
+  one-wave32 register residency before considering different algebra.
+- Required lineage audit:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`. Atlas/vLLM GDN
+  references are clean. The report contains only previously catalogued
+  nano-vllm-amd drift (`qwen35_expert.hip`, `smoke.hip`, and PARO loader files);
+  the planned code uses llama.cpp only as the read-only schedule source and
+  records source path/commit.

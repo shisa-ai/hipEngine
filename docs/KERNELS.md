@@ -288,8 +288,17 @@ six-case full-model matrix has identical sampled tokens, KL
 state. The candidate remained explicit while the numerical-contract and
 generated-trajectory gates ran; see
 `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf2-register-resident-candidate.json`.
-The completed gate rejects the tree as a default because only 3/10 natural
-prompts preserve the complete fused 128-step trajectory.
+The historical gate rejected the tree as a default because only 3/10 natural
+prompts preserved the complete fused 128-step trajectory. After the prospective
+2026-07-15 contract change made trajectory equality diagnostic, a fresh clean
+W7900 18-prompt teacher-forced gate still rejects it on product correctness:
+KL max `0.068757 > 0.05`, despite `443/450` top-1 and non-regressive decode.
+The existing normalized-Q/K two-wave `chain_k2` also rejects at KL `0.059031`,
+with `445/450` top-1 and non-regressive decode. GPF-9C therefore combines
+normalized-Q/K input materialization with the one-wave32-per-column,
+four-register-rows-per-lane schedule used by llama.cpp HIP on gfx1100; neither
+existing rejected route has both properties. See
+`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
 registers without changing shuffles, explicit FMA sites, token order, or the

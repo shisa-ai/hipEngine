@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_peer_aligned_existing_route_gate",
+  "status": "rejected_semantic_correctness",
+  "created_at": "2026-07-15T04:20:00Z",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "conclusion": "Under the prospectively frozen peer-aligned contract, both existing non-byte-exact GGUF GDN routes fail KL <= 0.05 while passing aggregate top-1 >= 90% and decode non-regression. Normalized-Q/K K2 reaches KL max 0.059031 and 445/450 top-1; raw-Q/K-plus-scale register-resident wave32 tree reaches KL max 0.068757 and 443/450 top-1. Exact state and free-running trajectory differences are diagnostic only and do not cause either rejection. Neither route proceeds to a speed or default-promotion gate.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "bdfb96e40dfeec73802180c295913c70ee376fba",
+    "source_clean": true,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "predeclared_contract": {
+    "baseline_mode": "chain_lds32_direct",
+    "prompt_suites": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompts": 18,
+    "teacher_forced_transitions": 450,
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "decode_nonregression_required": true,
+    "deterministic_execution_required": true,
+    "exact_state_required": false,
+    "exact_free_running_trajectory_required": false,
+    "speed_gate_only_after_semantic_pass": true
+  },
+  "routes": {
+    "chain_k2": {
+      "description": "PARO normalized-Q/K prepare plus 64-thread two-wave32 K2 recurrence and RMSNorm/gate",
+      "status": "rejected_semantic_correctness",
+      "measurement_valid": true,
+      "kl_max": 0.059030829581659554,
+      "kl_passed": false,
+      "top1_matches": 445,
+      "top1_total": 450,
+      "top1_agreement": 0.9888888888888889,
+      "top1_passed": true,
+      "decode_baseline_median_wall_sum_ms": 22647.598378,
+      "decode_candidate_median_wall_sum_ms": 22633.3501085,
+      "decode_wall_delta_percent": -0.06291293788501975,
+      "decode_non_regressive": true,
+      "free_running_trajectories_exact_diagnostic": false,
+      "first_failing_prompt": "mixed_ja_en_translate",
+      "raw_artifact": "/tmp/gdn-k2-peer-aligned-semantic-clean.json",
+      "raw_artifact_sha256": "3b0f504d767e6896373dbb9762913b620574eed08644f8e7d115277a02eb96a1"
+    },
+    "chain_wave32_tree": {
+      "description": "Raw-Q/K-plus-scale register-resident wave32 tree recurrence, eight value columns per 256-thread block",
+      "status": "rejected_semantic_correctness",
+      "measurement_valid": true,
+      "kl_max": 0.06875725568112254,
+      "kl_passed": false,
+      "top1_matches": 443,
+      "top1_total": 450,
+      "top1_agreement": 0.9844444444444445,
+      "top1_passed": true,
+      "decode_baseline_median_wall_sum_ms": 22720.713360499998,
+      "decode_candidate_median_wall_sum_ms": 22711.7549785,
+      "decode_wall_delta_percent": -0.03942826027448257,
+      "decode_non_regressive": true,
+      "free_running_trajectories_exact_diagnostic": false,
+      "failing_prompts": {
+        "mixed_ja_en_review": 0.0521284605677073,
+        "heldout_general_ja_speculative": 0.06875725568112254
+      },
+      "raw_artifact": "/tmp/gdn-wave32-tree-peer-aligned-semantic-clean.json",
+      "raw_artifact_sha256": "fd11be40cf2d8d7511aa2f84e2d6a3936e4eeb767d0fd13cef1ebcc5efc56ca8"
+    }
+  },
+  "source_review": {
+    "llamacpp_hip_commit": "1ebf790cda38",
+    "llamacpp_hip_source": "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/gated_delta_net.cu",
+    "gfx1100_physical_wave_width": 32,
+    "llamacpp_schedule": "normalized Q/K, one wave32 per value column, four columns per 128-thread block, four state rows per lane resident across the serial token loop, wave tree reductions",
+    "next_candidate": "Combine llama.cpp's normalized-Q/K input contract with hipEngine's register-resident one-wave32-per-column recurrence. Existing K2 has normalized inputs but a two-wave contraction; existing wave32 tree has the one-wave resident schedule but applies raw Q/K scales inside the recurrence."
+  },
+  "commands": {
+    "chain_k2": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. PYTHONUNBUFFERED=1 python3 scripts/gguf_gdn_semantic_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --baseline-mode chain_lds32_direct --candidate-mode chain_k2 --correctness-decode-steps 24 --performance-decode-steps 128 --performance-repetitions 2 --kl-threshold 0.05 --top1-threshold 0.90 --bulk-attention-mode bulk --graph-replay-decode --decode-repack --use-wmma-prefill --use-gemv-decode --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gdn-k2-peer-aligned-semantic-clean.json",
+    "chain_wave32_tree": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. PYTHONUNBUFFERED=1 python3 scripts/gguf_gdn_semantic_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --baseline-mode chain_lds32_direct --candidate-mode chain_wave32_tree --correctness-decode-steps 24 --performance-decode-steps 128 --performance-repetitions 2 --kl-threshold 0.05 --top1-threshold 0.90 --bulk-attention-mode bulk --graph-replay-decode --decode-repack --use-wmma-prefill --use-gemv-decode --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/gdn-wave32-tree-peer-aligned-semantic-clean.json"
+  },
+  "decision": {
+    "default_changed": false,
+    "speed_gate_run": false,
+    "chain_k2_role": "explicit rejected diagnostic",
+    "chain_wave32_tree_role": "explicit rejected diagnostic",
+    "next": "Implement and gate the missing normalized-Q/K register-resident wave32 schedule matching llama.cpp HIP's gfx1100 geometry."
+  }
+}
