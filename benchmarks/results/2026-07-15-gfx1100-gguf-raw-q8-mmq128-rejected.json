@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_gguf_raw_q8_mmq128_prefill_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "f1dc20bc",
+  "candidate": {
+    "id": "LCP-3E",
+    "family": "dense raw Q8_0 prefill",
+    "variant": "mmq128_prefill_q8_1_d4_bf16_bf16_out",
+    "scope": "standalone output-major raw-Q8 leaf only; never model-routed",
+    "lineage": "llama.cpp HIP 1ebf790cda38 ggml/src/ggml-cuda/{mmq.cuh,mma.cuh,quantize.cu}",
+    "design": "A 256-thread, eight-wave WGP workgroup computed a 128-output x 128-token tile over K256. It staged source-compatible output-major block_q8_0 rows and K-major D4 Q8_1 activations in 57,856 bytes of dynamic LDS, used aligned 16-byte LDS fragment loads, issued two signed integer-WMMA K16 operations per 32-K scale interval, accumulated scaled products in FP32, and emitted BF16 output.",
+    "dynamic_lds_bytes": 57856,
+    "runtime_constraint": "A raw sidecar was prospectively inadmissible because the traced dense-Q8 family is about 1.390 GiB; any advancing design would have had to replace T16 byte-neutrally and prove raw-compatible decode."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "kernel": "7.1.3-2-cachyos"
+  },
+  "software": {
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "correctness": {
+    "red": "Collection failed because no callable/registered standalone raw-Q8 MMQ128 D4 module existed.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_mmq_prefill.py -q",
+    "green_result": "3 passed",
+    "shapes": [[32, 256, 128], [17, 256, 80]],
+    "gates": {
+      "d4_pack_matches_cpu_bytes": true,
+      "q8_0_x_d4_cpu_oracle_relative_l2_max": 0.02,
+      "exact_q8_0_bf16_mean_kl_max": 0.05,
+      "exact_q8_0_bf16_top1_min": 0.9,
+      "all_passed": true
+    }
+  },
+  "implementation_validation": {
+    "initial_issue": "The first body accidentally unrolled all four 32-K scale intervals, compiling at 256 VGPR with 418 VGPR spills and 1,388 private bytes per thread. It was not accepted as a valid measurement.",
+    "corrections": [
+      "Kept the four 32-K scale intervals rolled, removing all spills.",
+      "Matched llama.cpp's WGP baseline compile mode instead of forcing -mcumode.",
+      "Replaced scalar LDS gathers with the source's aligned 16-byte fragment loads.",
+      "Instantiated an unchecked full-output body when out_features is divisible by 128 while retaining the checked tail body."
+    ],
+    "final_resources": {
+      "workgroup_threads": 256,
+      "workgroup_processor_mode": 1,
+      "vgpr": 210,
+      "sgpr": 29,
+      "private_segment_bytes_per_thread": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "dynamic_lds_bytes": 57856
+    },
+    "final_static_core": "32 integer-WMMA instructions, 24 ds_load_b128 fragment loads, and 16 two-address LDS loads, matching the source fragment/WMMA counts."
+  },
+  "microbench": {
+    "protocol": "W7900 HIP events, eight cycling weight copies per layout, three warmup cycles, 60 rotated measured repetitions per mode, cached builds. Modes were production Q8T16 two-wave FP16 WMMA, prequantized output-major raw MMQ128, and D4 quantization plus raw MMQ128.",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 /tmp/lcp3e_q8_raw_mmq128_micro.py --rows 512 --in-features 2048 --out-features 8192 --compiler-version-file /tmp/hipengine-hipcc-version-lcp3.txt --json /tmp/lcp3e-q8-primary-unchecked.json",
+    "shape_mkn": [512, 2048, 8192],
+    "medians_ms": {
+      "production_fp16_two_wave": 0.521822988986969,
+      "prequantized_raw_mmq128_body": 0.5424419939517975,
+      "d4_quantize_plus_raw_mmq128_body": 0.549562007188797
+    },
+    "deltas_percent": {
+      "prequantized_body_vs_production": 3.9513408569554986,
+      "included_cost_vs_production": 5.315790754193994
+    },
+    "quantize_increment_ms": 0.007120013236999512,
+    "raw_sha256": "6e9222b1b9922ba69c7d1061462cddf43cf87b5ea5f9285d8d0815f798cd04f5"
+  },
+  "development_trace": {
+    "note": "The final rejection uses only the corrected spill-free source-compatible body. Earlier values are retained here to show that the source-shape implementation gap was closed before applying the frozen gate.",
+    "medians_ms": [
+      {"stage": "invalid_unrolled_spilling", "production": 0.5263600051403046, "body": 1.198903501033783},
+      {"stage": "rolled_scale_loop", "production": 0.5357815027236938, "body": 0.6865609884262085},
+      {"stage": "wgp_baseline_flags", "production": 0.5387230217456818, "body": 0.6587044894695282},
+      {"stage": "aligned_lds_fragments", "production": 0.5159029960632324, "body": 0.5973444879055023},
+      {"stage": "unchecked_full_output", "production": 0.521822988986969, "body": 0.5424419939517975}
+    ]
+  },
+  "decision": {
+    "result": "reject_at_primary_body_and_included_cost_gate",
+    "reason": "After correcting spills, compile mode, fragment loads, and full-tile checks, the source-compatible raw body still missed the required production win by 3.95%; D4 packing increased the loss to 5.32%. The predeclared rule required both rows to beat production, and raw+T16 dual residency was independently forbidden.",
+    "profiler": "No rocprof/model route was run after the prospectively frozen primary gate failed. Static code-object inspection was used only to validate the standalone implementation before timing.",
+    "source_disposition": "Removed the standalone kernel, quantizer, wrappers, registry key, and tests; production source/defaults are unchanged.",
+    "next": "Close dense-Q8 prefill MMQ experiments over T16 or raw replacement layouts. Re-profile the clean pp512 residual and move to the next measured family rather than trying more Q8 tile variants."
+  }
+}

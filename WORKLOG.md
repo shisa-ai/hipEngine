@@ -156938,3 +156938,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   cached kernel trace confirming 256 threads, zero scratch, bounded LDS, and
   plausible VGPRs. Only a same-family win can justify designing raw replacement
   materialization and its strict decode/memory gates.
+
+## 2026-07-15 - Reject LCP-3E raw/output-major Q8 MMQ128
+
+- RED failed collection because the standalone module/key did not exist. The
+  temporary raw `block_q8_0` + D4 Q8_1 MMQ128 implementation then passed three
+  focused tests: exact D4 pack bytes plus ordinary/tail relative-L2 <=0.02,
+  mean KL <=0.05, and top-1 >=90%.
+- The first timing was invalid: unrolling all four 32-K scale intervals compiled
+  at 256 VGPR with 418 VGPR spills and 1,388 private bytes/thread. Keeping that
+  loop rolled removed all spills. Source audit then found two more concrete
+  validity mismatches: the leaf forced CU mode while llama.cpp's object is WGP,
+  and scalar LDS gathers replaced llama.cpp's aligned fragment loads. The final
+  baseline/WGP body emits the source's 24 `ds_load_b128` fragment loads and 32
+  integer-WMMA instructions, uses 210 VGPR/29 SGPR, 57,856 B dynamic LDS, and
+  has zero scratch or spills. A checked tail instantiation preserves the
+  80-output fixture; divisible-by-128 output shapes use the source-equivalent
+  unchecked body.
+- Final correctness command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt
+  PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_mmq_prefill.py -q` ->
+  `3 passed`.
+- The prospectively frozen primary W7900 gate still rejects the corrected body.
+  Command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt
+  PYTHONPATH=. python3 /tmp/lcp3e_q8_raw_mmq128_micro.py --rows 512
+  --in-features 2048 --out-features 8192 --compiler-version-file
+  /tmp/hipengine-hipcc-version-lcp3.txt --json
+  /tmp/lcp3e-q8-primary-unchecked.json`. Across eight cycling weight copies,
+  three warmups, and 60 rotated repetitions, production two-wave FP16 WMMA is
+  **0.521823 ms**, prequantized raw MMQ128 is **0.542442 ms (+3.95%)**, and D4
+  pack+body is **0.549562 ms (+5.32%)**. Packing adds 0.007120 ms.
+- Both candidate rows were required to beat production before shape/profiler or
+  runtime work. They do not, and raw+T16 dual residency would independently add
+  about 1.390 GiB. Removed the standalone kernel, quantizer, wrappers, registry
+  key, and tests; production code/defaults are unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json`;
+  raw measurement SHA256
+  `6e9222b1b9922ba69c7d1061462cddf43cf87b5ea5f9285d8d0815f798cd04f5`.
+- Close dense-Q8 prefill MMQ/layout variants over T16 and raw replacement bytes.
+  Re-profile the clean pp512 residual and move to the next measured family; do
+  not reopen independent-wave widening, direct T16 integer WMMA, T16-to-MMQ
+  transpose, or raw MMQ128 without genuinely new evidence.
