@@ -1,0 +1,548 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_production_refresh_512_64k_128k_blocked",
+  "status": "accepted_512_through_64k_128k_lifecycle_blocked",
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon 8060S/gfx1151 Qwen3.6-35B-A3B Q4_K_M/BF16-KV right-sized 1+3 production prefill and graph decode at 512/1K/4K/32K/64K only; no current 128K topline claim",
+  "correctness_claim": true,
+  "conclusion": "Current automatic production is retained at five shapes: prefill 1294.885/1358.342/1365.720/1034.845/796.083 tok/s and graph decode 49.041/51.623/52.422/43.572/37.622 tok/s. All 15 measured IDs are 9707 and tracked memory is unchanged. Repeated 128K production is blocked: one queue, router rollback, and SDMA-disabled full gates all reproduce the low-power measured-pass-1 stall.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "measurement_commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": "1 (automatic gfx1151 process default; necessary but not sufficient at repeated 128K)"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "repeated token 9707"
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "decode_tokens": 128,
+    "decode": "fresh state-bound graph per measured repetition; capture excluded",
+    "build": "cached builds required",
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <one-shape> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --require-cached-build --json <component>"
+  },
+  "source_components": {
+    "512/128": {
+      "filename": "512-128.json",
+      "sha256": "964aa9c4b618a35609ba497d4de9a7ed7b6696630a7724feda6de804f52cc218",
+      "bytes": 25061,
+      "commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+      "dirty": false,
+      "gpu_max_hw_queues": "1"
+    },
+    "1K/128": {
+      "filename": "1K-128.json",
+      "sha256": "1255e00fb918a8776eb30efe3f1bb217b43b9c330883f38e49be548359223993",
+      "bytes": 26123,
+      "commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+      "dirty": false,
+      "gpu_max_hw_queues": "1"
+    },
+    "4K/128": {
+      "filename": "4K-128.json",
+      "sha256": "cc4c9cb21c457c9e8643413f02cf5b154100cfd61fc848ff8041c0a923243ba7",
+      "bytes": 26100,
+      "commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+      "dirty": false,
+      "gpu_max_hw_queues": "1"
+    },
+    "32K/128": {
+      "filename": "32K-128.json",
+      "sha256": "e189e38bd823c2962de71b2ee6d9b8e49975f6864d0dcf9b71a0ffefa5cce27c",
+      "bytes": 26123,
+      "commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+      "dirty": false,
+      "gpu_max_hw_queues": "1"
+    },
+    "64K/128": {
+      "filename": "64K-128.json",
+      "sha256": "cdd93d5ad98df90bcf7c5562dfdf32c66cb75a341ca66c380f1ec9e9cdce1fe5",
+      "bytes": 26124,
+      "commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+      "dirty": false,
+      "gpu_max_hw_queues": "1"
+    }
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1295.1514719282484,
+          1294.8851973531912,
+          1293.5035987438746
+        ],
+        "count": 3,
+        "median": 1294.8851973531912,
+        "min": 1293.5035987438746,
+        "max": 1295.1514719282484,
+        "mean": 1294.5134226751047,
+        "stdev": 0.884609414597357,
+        "stdev_over_median_percent": 0.06831566353569737
+      },
+      "decode_tok_s": {
+        "samples": [
+          49.011455484164486,
+          49.05905444561746,
+          49.04124635449394
+        ],
+        "count": 3,
+        "median": 49.04124635449394,
+        "min": 49.011455484164486,
+        "max": 49.05905444561746,
+        "mean": 49.03725209475863,
+        "stdev": 0.02404955022397177,
+        "stdev_over_median_percent": 0.04903943519324518
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          21.477776296436787,
+          21.477776296436787,
+          21.477776296436787
+        ],
+        "count": 3,
+        "median": 21.477776296436787,
+        "min": 21.477776296436787,
+        "max": 21.477776296436787,
+        "mean": 21.477776296436787,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "versus_prior_public_percent": {
+        "prefill": 42.769032266611504,
+        "decode": -0.04056335439943659
+      },
+      "versus_llamacpp_hip_percent": {
+        "prefill": 22.01394543779953,
+        "decode": -3.725919616927742
+      },
+      "versus_llamacpp_vulkan_percent": {
+        "prefill": 21.270048545397536,
+        "decode": -21.403094827554458
+      }
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1358.3421779664686,
+          1354.7474200921984,
+          1359.6459181647265
+        ],
+        "count": 3,
+        "median": 1358.3421779664686,
+        "min": 1354.7474200921984,
+        "max": 1359.6459181647265,
+        "mean": 1357.5785054077978,
+        "stdev": 2.536970176074318,
+        "stdev_over_median_percent": 0.18676959437954996
+      },
+      "decode_tok_s": {
+        "samples": [
+          51.62145952427222,
+          51.62265676501921,
+          51.623615438176635
+        ],
+        "count": 3,
+        "median": 51.62265676501921,
+        "min": 51.62145952427222,
+        "max": 51.623615438176635,
+        "mean": 51.622577242489356,
+        "stdev": 0.0010801546488260903,
+        "stdev_over_median_percent": 0.0020924042203849334
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          21.710381522774696,
+          21.710381522774696,
+          21.710381522774696
+        ],
+        "count": 3,
+        "median": 21.710381522774696,
+        "min": 21.710381522774696,
+        "max": 21.710381522774696,
+        "mean": 21.710381522774696,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "versus_prior_public_percent": {
+        "prefill": 46.10158766053176,
+        "decode": 0.10458173553702377
+      },
+      "versus_llamacpp_hip_percent": {
+        "prefill": 30.205436765283643,
+        "decode": 1.583009168013061
+      },
+      "versus_llamacpp_vulkan_percent": {
+        "prefill": 26.96329254642795,
+        "decode": -16.920158031841016
+      }
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1366.5556052724469,
+          1362.5489400417475,
+          1365.7199841386443
+        ],
+        "count": 3,
+        "median": 1365.7199841386443,
+        "min": 1362.5489400417475,
+        "max": 1366.5556052724469,
+        "mean": 1364.941509817613,
+        "stdev": 2.1137308885245507,
+        "stdev_over_median_percent": 0.1547704443863487
+      },
+      "decode_tok_s": {
+        "samples": [
+          52.43523714274734,
+          52.40879712450127,
+          52.42195709823839
+        ],
+        "count": 3,
+        "median": 52.42195709823839,
+        "min": 52.40879712450127,
+        "max": 52.43523714274734,
+        "mean": 52.421997121829,
+        "stdev": 0.0132200545622546,
+        "stdev_over_median_percent": 0.025218544468838335
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          22.99488216638565,
+          22.99488216638565,
+          22.99488216638565
+        ],
+        "count": 3,
+        "median": 22.99488216638565,
+        "min": 22.99488216638565,
+        "max": 22.99488216638565,
+        "mean": 22.99488216638565,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "versus_prior_public_percent": {
+        "prefill": 44.312074917108845,
+        "decode": -0.019204212576029445
+      },
+      "versus_llamacpp_hip_percent": {
+        "prefill": 35.32162658422617,
+        "decode": 4.581206206486077
+      },
+      "versus_llamacpp_vulkan_percent": {
+        "prefill": 34.344565517582915,
+        "decode": -12.771527009968187
+      }
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          1035.5323809451388,
+          1034.8453408347352,
+          1033.0997902175686
+        ],
+        "count": 3,
+        "median": 1034.8453408347352,
+        "min": 1033.0997902175686,
+        "max": 1035.5323809451388,
+        "mean": 1034.4925039991476,
+        "stdev": 1.2540912193200913,
+        "stdev_over_median_percent": 0.12118634252230447
+      },
+      "decode_tok_s": {
+        "samples": [
+          43.57182584477516,
+          43.59395502097975,
+          43.5713070407925
+        ],
+        "count": 3,
+        "median": 43.57182584477516,
+        "min": 43.5713070407925,
+        "max": 43.59395502097975,
+        "mean": 43.57902930218247,
+        "stdev": 0.012928654245693958,
+        "stdev_over_median_percent": 0.02967205067731692
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          23.558860778808594,
+          23.558860778808594,
+          23.558860778808594
+        ],
+        "count": 3,
+        "median": 23.558860778808594,
+        "min": 23.558860778808594,
+        "max": 23.558860778808594,
+        "mean": 23.558860778808594,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "versus_prior_public_percent": {
+        "prefill": 32.950177814083894,
+        "decode": 0.06566001816701306
+      },
+      "versus_llamacpp_hip_percent": {
+        "prefill": 39.17685645086797,
+        "decode": -1.5105620358562444
+      },
+      "versus_llamacpp_vulkan_percent": {
+        "prefill": 26.986885979992614,
+        "decode": -15.096774621731434
+      }
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "samples": [
+          796.0827713744094,
+          796.6161210199767,
+          795.1060909222386
+        ],
+        "count": 3,
+        "median": 796.0827713744094,
+        "min": 795.1060909222386,
+        "max": 796.6161210199767,
+        "mean": 795.9349944388749,
+        "stdev": 0.765784722376784,
+        "stdev_over_median_percent": 0.09619410818986612
+      },
+      "decode_tok_s": {
+        "samples": [
+          37.62574192608269,
+          37.60731404214513,
+          37.62182254734926
+        ],
+        "count": 3,
+        "median": 37.62182254734926,
+        "min": 37.60731404214513,
+        "max": 37.62574192608269,
+        "mean": 37.61829283852569,
+        "stdev": 0.009707773168366103,
+        "stdev_over_median_percent": 0.025803569606837374
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          24.203407764434814,
+          24.203407764434814,
+          24.203407764434814
+        ],
+        "count": 3,
+        "median": 24.203407764434814,
+        "min": 24.203407764434814,
+        "max": 24.203407764434814,
+        "mean": 24.203407764434814,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "versus_prior_public_percent": {
+        "prefill": 25.10527075067226,
+        "decode": 0.15950268340336748
+      },
+      "versus_llamacpp_hip_percent": {
+        "prefill": 38.78443254651835,
+        "decode": -4.333949002575233
+      },
+      "versus_llamacpp_vulkan_percent": {
+        "prefill": 20.440860211507463,
+        "decode": -15.30832052660892
+      }
+    }
+  },
+  "correctness": {
+    "passed_for_claimed_shapes": true,
+    "all_15_measured_final_ids_9707": true,
+    "all_component_final_logits_finite": true,
+    "all_component_provenance_clean": true,
+    "all_component_queue_policy_one": true,
+    "variance_gate": "sample stdev <=5% of median",
+    "largest_prefill_stdev_over_median_percent": 0.18676959437954996,
+    "largest_decode_stdev_over_median_percent": 0.04903943519324518,
+    "tracked_memory_unchanged": true
+  },
+  "blocked_128k": {
+    "topline_eligible": false,
+    "automatic_one_queue": {
+      "warmup_prefill_tok_s": 509.707807,
+      "warmup_decode_tok_s": 28.036265,
+      "failed_phase": "measured pass 1 prefill",
+      "symptom": "100% utilization, 2900 MHz SCLK, 44-46 W, no progress >7 minutes",
+      "kernel_journal_faults": false,
+      "termination_restored_idle": true
+    },
+    "router512_metadata0_control": {
+      "warmup_prefill_tok_s": 503.454714,
+      "warmup_decode_tok_s": 27.913746,
+      "failed_phase": "measured pass 1 prefill",
+      "decision": "LCP-4B and scoped LCP-M2 are not causal"
+    },
+    "hsa_enable_sdma_0": {
+      "screen_1plus1_prefill_tok_s": [
+        498.491924,
+        498.6882586142875
+      ],
+      "screen_decode_tok_s": [
+        27.998026,
+        28.137140030205323
+      ],
+      "screen_final_id": 9707,
+      "full_warmup_prefill_tok_s": 499.838029,
+      "full_failed_phase": "measured pass 1 prefill",
+      "decision": "one successful 1+1 does not survive the full lifecycle gate; reject as a default"
+    },
+    "log_sources": {
+      "automatic_one_queue_failed": {
+        "sha256": "32d8f3088ba2de40bfd196a0ac2c65272c26d50567ef3a09713d6458fe5729ea",
+        "bytes": 89
+      },
+      "router512_metadata0_failed": {
+        "sha256": "b087ee501ec4a38af70ec5e2841a35e32b72fce34eb75bfb9e7ef9ff4442b058",
+        "bytes": 89
+      },
+      "sdma0_screen_passed": {
+        "sha256": "047489b74b8566edbf08d7068f7a63ff3f66c798fd74b7ea1ef92748c716ae42",
+        "bytes": 90911
+      },
+      "sdma0_screen_json": {
+        "sha256": "16618b328edd304cd913049b87a4fa0fb6298423999106f3c4214a6ca16c51aa",
+        "bytes": 90731
+      },
+      "sdma0_full_failed": {
+        "sha256": "90840717db62c991f2d61848c477f1d2f8d135e9af6e9ae992bbaeca8a27d218",
+        "bytes": 89
+      }
+    },
+    "upstream_followup": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043",
+    "decision": "Keep GPU_MAX_HW_QUEUES=1 as a risk-reducing gfx1151 default, but remove lifecycle-safe wording. Publish no current 128K number until fixed gfx11 firmware/kernel or a production-quality stronger workaround completes warmup+3."
+  },
+  "causal_evidence": {
+    "queue_policy": "benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json",
+    "lcp2a": "benchmarks/results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json",
+    "lcp3": "benchmarks/results/2026-07-15-gfx1151-gguf-q8-t16-four-wave-clean-promotion.json",
+    "lcp4a": "benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json",
+    "lcpm2": "benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json",
+    "lcp4b": "benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json",
+    "decode_closure": "benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json"
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json",
+    "replaces_512_through_64k": "benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json",
+    "current_128k_status": "blocked; prior numeric row is not carried into the current production table"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-15T09:06:27.888813+00:00",
+    "repo_root": "/tmp/hipengine-final-gfx1151-61a27d72",
+    "hipengine_commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/tmp/hipengine-final-gfx1151-61a27d72/scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--backend",
+      "hip_gfx1151",
+      "--workloads",
+      "512/128",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--warmup-decode-tokens",
+      "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--compiler-version-file",
+      "/tmp/gfx1151-final-publication-61a27d72/hipcc-version-gfx1151.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1151-final-publication-61a27d72/components/512-128.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "provenance_note": "Canonical provenance is the clean 512 component. The other four accepted components share its clean commit/model/backend/compiler/automatic-one-queue identity and are source-bound above. 128K logs are diagnostic only and explicitly excluded from the performance claim."
+}

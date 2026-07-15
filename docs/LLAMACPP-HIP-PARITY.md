@@ -11,6 +11,7 @@ Machine-readable evidence:
 - [`2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json)
 - [`2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json)
 - [`2026-07-15-gfx1151-gguf-decode-closure-profile.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json)
+- [`2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -339,8 +340,9 @@ accounting and no-regression gates.
 | 2 | `LCP-D1` | **Retained:** bounded 128K attribution plus exact long-split gated reduction | Attention is 50.95% at 128K; parallelizing only independent work above 256 splits cuts the reducer 234.714 -> 196.466 us/call | Complete for GGUF BF16 KV; PARO/KV-dtype work remains separate |
 | 3 | `LCP-2A` | **Retained:** compiler-cacheable exact direct LDS32 GDN state | Clean balanced 512/1K/4K prefill is +34.76%/+36.63%/+36.58%; direct tree port remains invalid | Six-case state and 250/250 natural transitions pass byte-exactly; gfx1151 promoted |
 | 4 | `LCP-3` | **Retained:** four exact Q8T16 waves share one activation tile | Clean 512/4K full-model prefill is +0.53%/+1.57%; dominant 4K shapes are 7.50%-14.08% faster than GPF-5A | Complete on gfx1151 through 64K; two-wave and production remain rollback paths |
-| 5 | `LCP-4A` | **Retained:** remove idle half of exact F32 router reduction on gfx1151 | Clean 512/4K full-model prefill is +2.76%/+3.28%; graph decode is exact/+0.071% | 256-thread trace passes; refresh profile before deciding whether select fusion remains material |
-| 6 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
+| 5 | `LCP-4A` | **Retained:** remove idle half of exact F32 router reduction on gfx1151 | Clean 512/4K full-model prefill is +2.76%/+3.28%; graph decode is exact/+0.071% | Complete on gfx1151; 256-thread trace passes |
+| 6 | `LCP-4B` | **Retained:** right-size the existing exact prefill router-select launch | Clean 512/4K full-model prefill is +0.34%/+0.36%; named select wall falls 70.17% | Complete on gfx1151 at 128 threads; 64 threads rejected by full-state exactness |
+| 7 | `LCP-M1` | Bulk-scratch liveness/alias plan | Capacity opportunity; not a current speed claim | Tracked allocation reduction, exact state, no perf regression |
 
 There is no invented minimum win. Exact, same-suite non-regressive
 improvements remain retainable under the project evidence policy.
@@ -426,20 +428,23 @@ selects the 256-thread wrapper through the registry; gfx1100 remains at 512
 pending independent evidence. Evidence:
 [`2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json).
 
-### Right-sized publication gate
+### Current right-sized publication gate
 
-The clean automatic one-warmup/three-measurement sweep is complete at
-`71e61524`. Prefill is
-**906.979/929.724/946.366/778.371/636.330/433.811 tok/s** at
-512/1K/4K/32K/64K/128K, improving the prior public rows by
-**1.92%/1.10%/24.04%/19.94%/16.48%/12.00%**. Graph decode is
-**49.061/51.569/52.432/43.543/37.562/28.047 tok/s**; the 128K row improves
-**1.06%**. All 18 measured IDs are `9707`, tracked memory is unchanged, and
-maximum prefill/decode sample stdev over median is only **0.140%/0.113%**, so no
-five-sample escalation is justified. At 32K, 64K, and 128K, hipEngine prefill
-now exceeds the retained llama.cpp HIP rows by **4.68%/10.93%/11.11%**. The
-single eager marker-profile rate above remains kernel evidence; this 1+3 graph-
-decode sweep supplies the publication medians.
+The clean selector-unset 2026-07-15 production refresh at `61a27d72` is
+retained at 512/1K/4K/32K/64K. Prefill is
+**1294.885/1358.342/1365.720/1034.845/796.083 tok/s**, improving the previous
+public row by **42.77%/46.10%/44.31%/32.95%/25.11%**. Graph decode is
+**49.041/51.623/52.422/43.572/37.622 tok/s**. All 15 measured IDs are `9707`,
+tracked memory is unchanged, and maximum prefill/decode stdev over median is
+only **0.187%/0.049%**. hipEngine now exceeds the retained llama.cpp HIP
+prefill row by **22.01%-39.18%** at every claimed shape.
+
+The current 128K row is blocked rather than carried from `71e61524`. Automatic
+one-queue production completes warmup at **509.708 tok/s**, then enters the
+low-power measured-pass-1 stall. Metadata-off/router-512 and SDMA-disabled full
+controls reproduce it. The earlier complete 128K number remains historical;
+there is no current topline performance claim until a fixed gfx11 stack or a
+stronger production-quality workaround completes warmup+3.
 
 ### gfx1151 hardware-queue stability gate
 
@@ -449,15 +454,22 @@ power fell from roughly 122-127 W to 41-43 W while utilization/SCLK remained
 100%/2.9 GHz. Four seven-minute host dumps stayed in synchronous metadata
 `hipMemcpy`, the kernel journal recorded no amdgpu/KFD fault, and terminating
 the process restored idle without reset. Changing only
-`GPU_MAX_HW_QUEUES=1` completed warmup+3 at **499.755 warmup** and
+`GPU_MAX_HW_QUEUES=1` completed that matched warmup+3 at **499.755 warmup** and
 **500.210/500.873/500.687 measured prefill tok/s**, with exact token `9707`,
 unchanged memory, and normal active power. Clean 512/4K checks are also
 non-regressive at **+0.35%/+0.46% prefill** and **+0.066%/+0.072% decode**.
-hipEngine therefore applies one queue before `libamdhip64` loads when gfx1151 is
+hipEngine therefore retains one queue before `libamdhip64` loads when gfx1151 is
 the only recognized visible HIP backend; explicit values are preserved and
-gfx1100 is unchanged. Evidence:
-[`2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json)
-and the [ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824).
+gfx1100 is unchanged.
+
+That policy is risk reduction, not lifecycle safety. The current publication
+attempt later reproduces the same stall under one queue after a 509.708 tok/s
+warmup; router rollback and `HSA_ENABLE_SDMA=0` do not survive the full gate.
+Evidence:
+[`2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json),
+[`2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
+the [initial ROCm comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824),
+and the [follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043).
 
 ### Scoped LCP-M2 metadata closure
 
@@ -520,5 +532,7 @@ faster selected Q4/Q5 families. The current decode profile and launch-only
 screens are also complete; graph replay remains admitted and no new exact kernel
 is promoted. Any future decode work must bring a new grouped-GQA or dense-Q8
 algorithm/layout and preserve the current BF16-KV, `KVLiveSpans`, and exact
-state/token contracts. The immediate next step is the final selector-unset
-six-shape publication sweep, not another unprofiled kernel experiment.
+state/token contracts. The final selector-unset publication is complete through
+64K. Repeated 128K is an external gfx11 scheduler/firmware blocker, not an
+invitation to retune exact kernels: restore that row only after a fixed stack or
+stronger production-quality workaround completes the same warmup+3 gate.

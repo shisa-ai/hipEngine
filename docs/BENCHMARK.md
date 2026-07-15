@@ -664,15 +664,22 @@ stdev/median, and every available first-three median equalled its five-sample
 median. Escalate GGUF to five measured runs only for a named variance,
 stability, or borderline-decision trigger; lifecycle soaks are separate tests,
 not extra performance repetitions. A merge gate rejects incomplete, dirty,
-unstable, non-finite, or high-variance components before emitting the
-six-shape rollup. Discarded runs warm kernels eagerly. Every measured reset
+unstable, non-finite, or high-variance components before emitting a numeric
+six-shape rollup. If a reproduced external lifecycle blocker prevents one
+shape, never carry its stale value or bypass that gate: publish only completed
+components plus an explicit blocked cell, a compact causal artifact, and a
+fixed-stack rerun condition. Discarded runs warm kernels eagerly. Every measured reset
 captures a fresh state-bound graph, excludes capture from decode timing, and
 destroys it before the next reset.
 
 On gfx1151, hipEngine applies `GPU_MAX_HW_QUEUES=1` before loading
-`libamdhip64`. This is the retained lifecycle-safe process default after the
-clean 128K default-queue failure and one-queue completion recorded in
-`benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`.
+`libamdhip64`. This remains the risk-reducing process default after the clean
+matched 128K default-queue failure and one-queue completion recorded in
+`benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`,
+but it is **not** a repeated-128K lifecycle guarantee. Current production,
+router-rollback, and SDMA-disabled full gates later reproduce the same low-power
+measured-pass-1 stall; see
+`benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`.
 Artifact provenance must capture `GPU_MAX_HW_QUEUES`. For an explicit rollback
 or scheduler diagnostic, launch a fresh process with `GPU_MAX_HW_QUEUES=4`
 (ROCm's documented default); never compare queue policies inside one resident

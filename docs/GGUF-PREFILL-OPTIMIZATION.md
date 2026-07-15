@@ -3,7 +3,8 @@
 Last updated: 2026-07-15.
 
 Status: `SOL-R5` plus the bounded GGUF half of `SOL-R6` are retained and
-published on gfx1151.
+published on gfx1151 through 64K; repeated 128K production is blocked by the
+residual gfx11 scheduler/firmware lifecycle failure.
 `GPF-1` exact value-column tiling
 and `GPF-2A` non-resident wave sharding are rejected. Register-resident
 tree-reduced `GPF-2B` is fast but fails the predeclared natural greedy-
@@ -36,21 +37,22 @@ clean right-sized 1+3 publication window recorded
 **819.641/893.266/752.308/640.096/540.850/387.334 tok/s**. Scoped two-wave
 Q8T16 GPF-5A then refreshed 512-64K to
 **889.904/919.598/762.940/648.948/546.296 tok/s** while restoring the
-production wrapper at 128K. The post-GPF-5A llama.cpp parity tranche is now
-complete: exact tiled convolution LCP-1 and long-split reducer LCP-D1 publish
-**906.979/929.724/946.366/778.371/636.330/433.811 prefill tok/s** and
-**49.061/51.569/52.432/43.543/37.562/28.047 graph-decode tok/s** at
-512/1K/4K/32K/64K/128K. All 18 measured IDs are `9707`; tracked memory is
-unchanged; maximum prefill/decode stdev over median is **0.140%/0.113%**. The
-separate 128K lifecycle-soak issue is not reproduced inside this calibrated
-1+3 window. LCP-2A exact cacheable GDN, scoped LCP-3 four-wave Q8T16, and
-LCP-4A's 256-thread F32 router are now promoted. The final LCP-M2 metadata gate
-also retains the exact short-context win: stream-ordered metadata is automatic
-through 4K, while longer requests keep synchronous metadata after the explicit
-128K one-queue route still reproduced the low-power no-progress state. The
-post-LCP-M2 4K profile closes the remaining router-select question with LCP-4B:
-128 threads cuts that exact family 70.17% and improves 512/4K wall 0.34%/0.36%;
-the faster 64-thread primitive is rejected by full-model state.
+production wrapper at 128K. The post-GPF-5A llama.cpp parity tranche is complete. LCP-1/LCP-D1, LCP-2A,
+scoped LCP-M2/LCP-3, and LCP-4A/LCP-4B now publish current selector-unset
+512/1K/4K/32K/64K prefill of
+**1294.885/1358.342/1365.720/1034.845/796.083 tok/s** and graph decode of
+**49.041/51.623/52.422/43.572/37.622 tok/s**. All 15 measured IDs are `9707`,
+tracked memory is unchanged, and maximum prefill/decode stdev over median is
+**0.187%/0.049%**. Stream-ordered metadata stays automatic only through 4K;
+LCP-3 remains scoped through 64K; and the faster 64-thread router-select
+primitive remains rejected by full-model state.
+
+Repeated 128K production is not published. The current automatic one-queue
+route completes warmup at **509.708 tok/s** and then enters the same low-power
+measured-pass-1 stall. Explicit metadata-off/router-512 and
+`HSA_ENABLE_SDMA=0` full controls reproduce it, proving neither recent LCP
+launch policy is causal nor SDMA disable a reliable fix. The earlier complete
+`71e61524` row is historical and is not carried into the current topline.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. LCP-D1 records the bounded 128K GGUF decode
@@ -204,19 +206,20 @@ warmups and five measured repetitions per shape.
 
 ### Radeon 8060S / gfx1151
 
-The hipEngine GGUF column is the clean 2026-07-13 right-sized 1+3 rollup at
-`28b45d38`, TheRock HIP 7.15, kernel 7.1.3-2-cachyos, and TuneD
-`accelerator-performance`. llama.cpp remains the clean July 11 matched
-reference; PARO is the separately retained HIP 7.15 recovery.
+The hipEngine GGUF column is the clean 2026-07-15 right-sized 1+3 production
+refresh at `61a27d72`, TheRock HIP 7.15, kernel 7.1.3-2-cachyos, TuneD
+`accelerator-performance`, and automatic one-queue process policy. llama.cpp
+remains the clean July 11 matched reference; PARO is the separately retained
+HIP 7.15 recovery. Repeated 128K is blocked and has no current ratio.
 
 | Workload | hipEngine GGUF | llama.cpp HIP | GGUF / llama HIP | hipEngine PARO | GGUF / PARO |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 819.641 | 1061.260 | 77.2% | 1140.101 | 71.9% |
-| 1K/128 | 893.266 | 1043.230 | 85.6% | 1208.343 | 73.9% |
-| 4K/128 | 752.308 | 1009.240 | 74.5% | 1089.031 | 69.1% |
-| 32K/128 | 640.096 | 743.547 | 86.1% | 906.145 | 70.6% |
-| 64K/128 | 540.850 | 573.611 | 94.3% | 716.775 | 75.5% |
-| 128K/128 | 387.334 | 390.441 | 99.2% | 474.641 | 81.6% |
+| 512/128 | 1294.885 | 1061.260 | 122.0% | 1140.101 | 113.6% |
+| 1K/128 | 1358.342 | 1043.230 | 130.2% | 1208.343 | 112.4% |
+| 4K/128 | 1365.720 | 1009.240 | 135.3% | 1089.031 | 125.4% |
+| 32K/128 | 1034.845 | 743.547 | 139.2% | 906.145 | 114.2% |
+| 64K/128 | 796.083 | 573.611 | 138.8% | 716.775 | 111.1% |
+| 128K/128 | blocked | 390.441 | — | 474.641 | — |
 
 The published route does include the measured GDN improvement. Its additional
 ratio narrowing at long context does not imply another context-dependent GDN
@@ -233,13 +236,14 @@ has a much smaller long-context deficit than prefill:
 | W7900 / gfx1100 | 512/128 | 89.873 | 80.756 | +11.3% |
 | W7900 / gfx1100 | 4K/128 | 96.551 | 79.768 | +21.0% |
 | W7900 / gfx1100 | 128K/128 | 56.745 | 60.933 | -6.9% |
-| Radeon 8060S / gfx1151 | 512/128 | 49.067 | 50.939 | -3.7% |
-| Radeon 8060S / gfx1151 | 4K/128 | 52.498 | 50.126 | +4.7% |
-| Radeon 8060S / gfx1151 | 128K/128 | 27.753 | 32.114 | -13.6% |
+| Radeon 8060S / gfx1151 | 512/128 | 49.041 | 50.939 | -3.7% |
+| Radeon 8060S / gfx1151 | 4K/128 | 52.422 | 50.126 | +4.6% |
+| Radeon 8060S / gfx1151 | 128K/128 | blocked | 32.114 | — |
 
 That control makes a model-wide GGUF loader, quant, or HIP runtime explanation
-unlikely. The remaining throughput deficit is specific to bulk prefill
-execution.
+unlikely. The retained 512-64K prefill deficit is closed against the listed llama.cpp HIP
+reference. The missing current 128K row is a lifecycle/scheduler blocker, not a
+measured kernel-throughput deficit.
 
 ## Evidence Timeline And Validity
 
@@ -408,6 +412,7 @@ select current code without a fresh profile.
 | 16 | `LCP-3` | **Promoted on gfx1151 through 64K:** four exact Q8T16 waves share one activation tile | Clean 512/4K state is 83/83 exact; five-pair full-model prefill +0.53%/+1.57%; two-wave and production remain rollback paths |
 | 17 | `LCP-4A` | **Promoted on gfx1151:** exact 256-thread BF16-hidden/F32-weight router logits | Clean 512/4K state is 83/83 exact; prefill +2.76%/+3.28%; graph decode exact/+0.071%; gfx1100 remains 512-thread |
 | 18 | `LCP-4B` | **Promoted on gfx1151:** exact 128-thread bulk-prefill router selection | Fresh 4K family -70.17%; 512/4K full-model +0.34%/+0.36% with 83/83 exact state. Reject 64 threads because 4K full-model state differs; gfx1100 stays 512 and decode stays 256 |
+| 19 | `LCP-PUB` | **Retained through 64K; 128K blocked:** final selector-unset production refresh | Five clean right-sized 1+3 rows improve prefill +25.11%..+46.10%, all 15 IDs exact, memory unchanged. One-queue, launch-rollback, and SDMA-disabled 128K full gates reproduce the firmware/scheduler stall; publish no stale current 128K number. |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -1291,24 +1296,24 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - Correctness is anchored by the six-case byte-exact matrices and the GPF-2E
   ten-prompt gate: 250/250 natural logits and every measured trajectory are
   exact. Do not weaken that contract after seeing a faster tree reduction.
-- The public gfx1151 GGUF prefill row is now
-  **906.979/929.724/946.366/778.371/636.330/433.811 tok/s** and graph decode is
-  **49.061/51.569/52.432/43.543/37.562/28.047 tok/s** at
-  512/1K/4K/32K/64K/128K. Clean `71e61524` supplies all six independent
-  right-sized components on TheRock HIP 7.15, kernel 7.1.3-2-cachyos, and
-  TuneD `accelerator-performance`.
+- The current public gfx1151 GGUF prefill row is
+  **1294.885/1358.342/1365.720/1034.845/796.083 tok/s** and graph decode is
+  **49.041/51.623/52.422/43.572/37.622 tok/s** at
+  512/1K/4K/32K/64K. Clean `61a27d72` supplies five independent right-sized
+  components on TheRock HIP 7.15, kernel 7.1.3-2-cachyos, and TuneD
+  `accelerator-performance`. Current 128K is blocked, not carried forward.
 - The calibrated publication protocol remains one discarded warmup plus three
   measured repetitions. Five is a variance/stability/borderline escalation,
-  not a default. The LCP sweep's largest prefill/decode stdev over median is
-  only **0.140%/0.113%**; all 18 measured IDs are `9707`.
-- The 128K no-progress state is now mitigated by a matched hardware-queue A/B.
-  On clean current production, ROCm's default four queues enter the state in the
-  first warmup at 100%/2.9 GHz but only 41-43 W; four host dumps remain in the
-  same synchronous metadata H2D and the kernel journal has no fault. Changing
-  only `GPU_MAX_HW_QUEUES=1` completes warmup+3 at **499.755 warmup** and
-  **500.210/500.873/500.687 prefill tok/s**, with exact IDs, unchanged memory,
-  and no low-power collapse. Treat this as a gfx11 scheduler/firmware workaround,
-  not a kernel fix; evidence is posted to ROCm#5107.
+  not a default. The current claimed rows' largest prefill/decode stdev over
+  median is **0.187%/0.049%**; all 15 measured IDs are `9707`.
+- The 128K no-progress state is reduced but not eliminated by one hardware
+  queue. The original matched A/B remains valid: four queues fail in warmup,
+  while `GPU_MAX_HW_QUEUES=1` once completes warmup+3 at **499.755** and
+  **500.210/500.873/500.687 prefill tok/s**, exact IDs, unchanged memory. The
+  final current route later fails under one queue after a **509.708 tok/s**
+  warmup; launch rollback and SDMA disable also fail their full gates. Keep one
+  queue as risk reduction, not lifecycle safety; both findings are posted to
+  ROCm#5107.
 - GPF-4 remains rejected. LCP-3 supersedes GPF-5A through 64K with clean
   512/4K gains of **+0.53%/+1.57%** and 83/83 exact state. The predecessor
   two-wave schedule's same-commit 128K rejection remains **382.041 vs
@@ -1340,19 +1345,20 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   logits+top-k fusion. The fresh exact-decode tranche also closes launch-only
   grouped-GQA and dense-Q8 screens without a new promotion; graph replay remains
   admitted. Any future decode attempt needs a new exact algorithm/layout.
-- No benchmark process is intentionally left running. The one-queue stability
-  artifact, rollup, upstream comment, and root README export are complete. The
-  public six-shape throughput table still carries the earlier right-sized row;
-  its next refresh must use the new gfx1151 queue default and current LCP-4B
-  selector-unset production path.
+- No benchmark process is intentionally left running. The current 512-64K
+  artifact, rollup, changelog, upstream correction, and root README export are
+  synchronized. The 128K table cells are explicitly blocked until the same
+  warmup+3 protocol completes on a fixed gfx11 stack or stronger production-
+  quality workaround.
 
 Keep GPF-4 explicit/default-off and LCP-3 request-scoped through 65,536 tokens,
 with GPF-5A as its first rollback. Keep the exact production convolution
 fallback while LCP-1's selector survives one release and gfx1100 transfer.
 The post-LCP-4A/M2 profile and router-select closure are complete. Further
-prefill work needs a new measured dominant family rather than speculative
-fusion. Decode starts from the measured 128K grouped-GQA body, not from a
-wholesale llama.cpp port or the rejected GDN tree.
+512-64K prefill work needs a new measured dominant family rather than
+speculative fusion. Repeated 128K is owned by the gfx11 firmware/scheduler
+blocker; do not retune exact kernels or the grouped-GQA decode body to hide a
+prefill lifecycle failure.
 
 ## Document Ownership
 

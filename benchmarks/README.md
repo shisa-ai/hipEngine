@@ -3,9 +3,9 @@
 Last reviewed: **2026-07-15**
 
 Latest retained hipEngine revision in this scoreboard:
-`89443a1fcb78aaa32b18f331e9e1bdd30edfd74f`. The July 14 mixed-KV diagnostic
-records exact source-file hashes atop `9d0bb4e2`; its dirty-source speed rows do
-not replace that retained revision.
+`61a27d7279549843bb3fb0464cb8b120689b9ff1`. The current gfx1151 production
+refresh is retained through 64K; repeated 128K is explicitly blocked by the
+residual gfx11 scheduler lifecycle failure rather than carrying a stale number.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -240,17 +240,19 @@ exact. One warmup plus four balanced repetitions moves 512/1K/4K prefill
 **900.814/940.736/941.462 -> 1213.912/1285.266/1285.888 tok/s**
 (**+34.76%/+36.63%/+36.58%**); every pair and timed ID matches. Weighted
 decode is **53.348 -> 53.359 tok/s (+0.021%)**. The named kernel uses 32 VGPR,
-16 KiB LDS, and zero scratch versus 64 VGPR for GPF-2E. gfx1151 `auto` now uses
-LCP-2A; gfx1100 remains fused. The canonical six-shape throughput table still
-awaits its selector-unset right-sized 1+3 refresh. Evidence:
+16 KiB LDS, and zero scratch versus 64 VGPR for GPF-2E. gfx1151 `auto` uses
+LCP-2A; gfx1100 remains fused. It is included in the current clean 512-64K
+production refresh. Evidence:
 [`2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json`](results/2026-07-14-gfx1151-gguf-gdn-lcp2a-clean-promotion.json).
 
-The follow-up device-metadata candidate remains default-off. Replacing six
-synchronous per-chunk uploads with one stream-ordered kernel is **83/83** exact
-and improves clean balanced 512/4K prefill by **+1.47%/+0.65%**, but the 128K
-variance escalation reproduces the separately tracked low-power GPU-active
-lifecycle state. This blocked diagnostic does not scope or revert LCP-2A:
-[`2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json`](results/2026-07-15-gfx1151-gguf-prefill-device-metadata-clean-gate.json).
+The follow-up LCP-M2 device-metadata path is promoted only through 4K. Clean
+512/1K/4K automatic-vs-explicit state is **83/83** exact and balanced prefill
+improves **+1.56%/+0.90%/+0.53%**; longer prompts retain synchronous metadata.
+That scoped fallback is not the remaining 128K trigger: the final current
+production run and an explicit metadata-off/router-rollback control both
+complete one warmup then enter the same low-power measured-pass-1 stall. The
+current 512-64K refresh is retained, while 128K is withheld from the topline:
+[`2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`](results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json).
 
 SOL-G4 is accepted on gfx1151 in
 [`2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json`](results/2026-07-11-sol-g4-gfx1151-gguf-eager-decode-audit.json).
@@ -327,7 +329,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained comparison reference**: all six shapes passed the then-current four-column gate. The current composite table replaces PARO with the July 12 recovery and hipEngine GGUF with the July 14 LCP-1/LCP-D1 right-sized 1+3 rollup; llama.cpp remains this matched reference. | Yes, reference columns | Rerun llama columns after a build/stack/path change; rerun all four together when a fully matched refresh is required. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B matched four-engine reference | 2026-07-11 | clean hipEngine `d1231ee0`; TheRock HIP `7.13.60980-c76140fa27`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `6e9007ae6` build 9641 | **Retained comparison reference**: all six shapes passed the then-current four-column gate. The current composite table replaces PARO with the July 12 recovery and hipEngine GGUF with the July 15 production refresh through 64K plus an explicit blocked 128K cell; llama.cpp remains this matched reference. | Yes, reference columns | Rerun llama columns after a build/stack/path change; rerun all four together when a fully matched refresh is required. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1 prefill recovery | 2026-07-12 | clean control `240c5daf` and candidate `9944e481`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained**: exact linear/MoE 256-row architecture profile improves all six prefill shapes by **14.35%-51.11%**, leaves decode within **-0.25%..+0.26%**, and matches final hidden plus all Conv/GDN/KV state at 512/4K/128K. | Yes, PARO column | Rerun after PARO prefill chunk/staging/math, compiler, model, prompt, or tuned/clock policy changes; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO 4K-128K AOTriton queue isolation | 2026-07-12 | clean same-commit control/candidate `01e2cec5`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained at 4K/32K/64K/128K**: event-linked isolated AOTriton queue improves matched prefill by **13.32%-23.03%**, leaves decode within **-0.16%..+0.12%**, holds tracked peak unchanged, and matches final hidden plus all 30 Conv/GDN and 10 K/V families at every retained shape. The 1K 256-query negative control does not enter isolation and is unchanged. | Yes, PARO column | Validate separately on gfx1100 before transfer; 512/1K remain on the proven-safe caller-stream route. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-12 | clean detached hipEngine `3ce60e56`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: the repeated external and production token stream matches; four hidden/layer/30-Conv-GDN/10-KV transitions are finite and byte-exact. `performance_claim=false`. | Diagnostic link only | Rerun after eager math/state/KV, model, compiler/runtime, or device changes. |
@@ -338,13 +340,14 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2E compact-scale/direct-conv GDN and right-sized rollup | 2026-07-13 | clean exact matrix `c3a065ee`, balanced A/B `ffbcc4d9`, trajectory/decode `5501aeb9`, automatic focus `b8949477`, clean measured sweep `28b45d38`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted and published on gfx1151**: clean 512/1K/4K A/B is +6.01%/+7.74%/+6.24%; the final 1+3 right-sized prefill row is **819.641/893.266/752.308/640.096/540.850/387.334 tok/s** with <=0.132% stdev/median. Six-case state and 250/250 natural logits are exact. The log-recovered 128K row discloses that the interrupted process did not serialize IDs and links those stronger independent gates. | Superseded by LCP-1/LCP-D1 | Keep gfx1100 fused; investigate later-pass 128K lifecycle no-progress separately from the calibrated performance protocol. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-5A two-wave dense Q8T16 prefill | 2026-07-14 | clean candidate `4a1fff53`, clean promoted sweep `e9baf563`, final scoped policy `6418b278`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted through 64K and published**: the clean kernel is byte-exact, uses 80 VGPR/1 KiB LDS/zero scratch, and improves the prior right-sized 512/1K/4K/32K/64K prefill row to **889.904/919.598/762.940/648.948/546.296 tok/s (+1.01% to +8.57%)** with unchanged memory. Stable same-commit 128K rejects two-wave at **-2.59%**, so package policy restores production above 65,536 tokens and carries forward the accepted **387.334 tok/s** row. | Superseded by LCP-1/LCP-D1 | Keep the env rollback and 64K ceiling for one release; validate independently on gfx1100; treat later-pass 128K no-progress as lifecycle diagnosis, not extra timing repetitions. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-1 tiled convolution and LCP-D1 long-split decode reduction | 2026-07-14 | clean focus/promotion `3ff8e2d7`/`631498dd`, clean reducer `71e61524`, final six-shape sweep `71e61524`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted and published on gfx1151**: LCP-1's clean 4K body falls **954.134 -> 49.790 ms** and its 512/4K focus is **+1.73%/+22.91%** with 82/82 exact state parts. LCP-D1 cuts the clean 128K reducer **234.714 -> 196.466 us/call (-16.30%)**. Final right-sized prefill is **906.979/929.724/946.366/778.371/636.330/433.811 tok/s** and graph decode is **49.061/51.569/52.432/43.543/37.562/28.047 tok/s**; all 18 IDs are exact, memory unchanged, and variance <=0.140%. | Superseded by LCP-2A prefill promotion | Keep LCP-1's production fallback for one release and validate gfx1100 independently; continue decode only from the measured grouped-GQA context or dense-Q8 residual. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-2A compiler-cacheable exact GDN | 2026-07-14 | clean detached candidate `53928aaf`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151; canonical refresh pending**: six-case state and 250/250 natural transitions are exact. Balanced 512/1K/4K prefill improves **900.814/940.736/941.462 -> 1213.912/1285.266/1285.888 tok/s (+34.76%/+36.63%/+36.58%)**; decode is +0.021%. The kernel uses 32 VGPR/16 KiB LDS/zero scratch. | Superseded within targeted prefill gate by LCP-3 | Keep volatile GPF-2E rollback for one release; validate gfx1100 independently. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-3 four-wave dense Q8T16 prefill | 2026-07-15 | clean detached candidate `d34476da`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151 through 64K; canonical refresh pending**: clean 512/4K full-model capture is **83/83 exact**. Five balanced pairs improve automatic GPF-5A **1214.510 -> 1220.993 tok/s (+0.53%)** and **1269.030 -> 1288.986 tok/s (+1.57%)**; all 20 timed IDs are `9707`. The named kernel uses 128 threads, 80 VGPR, 1 KiB LDS, and zero scratch. | Superseded within targeted prefill gate by LCP-4A | Keep two-wave then production as rollback paths; validate gfx1100 independently. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-4A exact F32 router launch geometry | 2026-07-15 | clean detached candidate `3ef55ad4`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151; canonical refresh pending**: clean 512/4K full-model state is **83/83 exact**. Five balanced pairs improve **1218.536 -> 1252.147 tok/s (+2.76%)** and **1290.923 -> 1333.229 tok/s (+3.28%)**. Clean 512/128 graph decode is exact and **48.987 -> 49.021 tok/s (+0.071%)**. Trace confirms 256 threads, 32 VGPR, and zero scratch. | Superseded within targeted prefill gate by LCP-4B | The 4K refresh is complete; it rejects risky logits+top-k fusion in favor of exact select geometry. Validate gfx1100 independently. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP one-hardware-queue lifecycle stabilization | 2026-07-15 | clean current production `4d0aa281`; TheRock HIP `7.15.0-0000000`; MES `0x88`, MES KIQ `0x6f`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted as gfx1151 process default**: default ROCm queue policy enters a reproducible first-warmup 128K stall at 100%/2.9 GHz but only 41-43 W, with four identical host stacks in synchronous metadata H2D and no kernel fault. Changing only `GPU_MAX_HW_QUEUES=1` completes 128K warmup+3 at **499.755 warmup** and **500.210/500.873/500.687 tok/s measured**, all IDs `9707`. Clean 512/4K A/B is non-regressive at **+0.35%/+0.46% prefill** and **+0.066%/+0.072% decode**. | Yes, stability/process-policy gate | Preserve explicit `GPU_MAX_HW_QUEUES` overrides; `=4` restores ROCm's documented default. Remove after a fixed gfx11 firmware/runtime passes the same 128K gate. Upstream evidence: [ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824). |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-M2 stream-ordered contiguous prefill metadata | 2026-07-15 | clean explicit A/B `6131e891`, clean scoped policy `37b39269`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted through 4K; canonical refresh pending**: full-model 512/1K/4K automatic-vs-explicit state is **83/83 exact**. Five balanced pairs improve prefill **1261.643 -> 1281.323 tok/s (+1.56%)**, **1333.877 -> 1345.928 (+0.90%)**, and **1356.934 -> 1364.103 (+0.53%)**. The explicit 128K one-queue gate completes warmup at only 483.439 tok/s, then re-enters the low-power GPU-active no-progress state on measured pass 1, so automatic policy retains synchronous metadata above 4K. | Yes, scoped prefill promotion gate | Keep `HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0|1` for rollback/diagnosis; never extend the 4K ceiling without a completed long-context lifecycle gate. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-4B exact prefill router-select geometry | 2026-07-15 | clean profiles `37b39269`/`89443a1f`, balanced candidate `c10c794c`, clean promoted policy `89443a1f`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151; canonical refresh pending**: the fresh 4K profile leaves router select at 12.539 ms / 0.41%, so a launch-only screen replaces risky logits+top-k fusion. 128 threads is **83/83 exact** and improves five-pair 512/4K prefill **1274.062 -> 1278.414 tok/s (+0.34%)** and **1361.337 -> 1366.173 (+0.36%)**. Clean trace cuts the named select family **12.539 -> 3.741 ms (-70.17%)** with 24 VGPR, 512 B LDS, zero scratch. Faster 64 threads is rejected because 4K full-model state is not exact. | Yes, final targeted prefill gate | Keep `HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=512` for rollback; gfx1100 stays 512 and decode stays 256. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF current decode closure profile and graph admission | 2026-07-15 | clean current code `89443a1f`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained diagnostic / no new kernel promotion**: exact 16-step marker profiles confirm 512/4K dense Q8 at **8.560/8.541 ms/token** and 128K attention/dense-Q8 at **17.504/8.555 ms/token**. Grouped-GQA chunk 128 is +2.89% in isolation but changes one BF16 output; chunk 512 is inexact and slower. Dense-Q8 64 threads is 15.8% slower than 128. Current graph replay remains admitted over eager at **+1.00%/+0.86%** on 512/4K 1+3 and **+0.36%** in the bounded 128K confirmation, all IDs exact. | Diagnostic link; final six-shape graph row pending | Retain chunk-256 LCP-D1 attention, 128-thread Q8, and graph replay. A future decode attempt needs a new exact algorithm/layout, not another launch-only sweep. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-2A compiler-cacheable exact GDN | 2026-07-14 | clean detached candidate `53928aaf`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151 and included in the current 512-64K production refresh**: six-case state and 250/250 natural transitions are exact. Balanced 512/1K/4K prefill improves **900.814/940.736/941.462 -> 1213.912/1285.266/1285.888 tok/s (+34.76%/+36.63%/+36.58%)**; decode is +0.021%. The kernel uses 32 VGPR/16 KiB LDS/zero scratch. | Superseded within targeted prefill gate by LCP-3 | Keep volatile GPF-2E rollback for one release; validate gfx1100 independently. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-3 four-wave dense Q8T16 prefill | 2026-07-15 | clean detached candidate `d34476da`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151 through 64K and included in the current production refresh**: clean 512/4K full-model capture is **83/83 exact**. Five balanced pairs improve automatic GPF-5A **1214.510 -> 1220.993 tok/s (+0.53%)** and **1269.030 -> 1288.986 tok/s (+1.57%)**; all 20 timed IDs are `9707`. The named kernel uses 128 threads, 80 VGPR, 1 KiB LDS, and zero scratch. | Superseded within targeted prefill gate by LCP-4A | Keep two-wave then production as rollback paths; validate gfx1100 independently. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-4A exact F32 router launch geometry | 2026-07-15 | clean detached candidate `3ef55ad4`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151 and included in the current 512-64K production refresh**: clean 512/4K full-model state is **83/83 exact**. Five balanced pairs improve **1218.536 -> 1252.147 tok/s (+2.76%)** and **1290.923 -> 1333.229 tok/s (+3.28%)**. Clean 512/128 graph decode is exact and **48.987 -> 49.021 tok/s (+0.071%)**. Trace confirms 256 threads, 32 VGPR, and zero scratch. | Superseded within targeted prefill gate by LCP-4B | The 4K refresh is complete; it rejects risky logits+top-k fusion in favor of exact select geometry. Validate gfx1100 independently. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | HIP one-hardware-queue lifecycle stabilization | 2026-07-15 | clean current production `4d0aa281`; TheRock HIP `7.15.0-0000000`; MES `0x88`, MES KIQ `0x6f`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained as a risk-reducing gfx1151 process default; not lifecycle-safe for repeated 128K**: default ROCm queue policy enters a reproducible first-warmup 128K stall at 100%/2.9 GHz but only 41-43 W, with four identical host stacks in synchronous metadata H2D and no kernel fault. Changing only `GPU_MAX_HW_QUEUES=1` completes 128K warmup+3 at **499.755 warmup** and **500.210/500.873/500.687 tok/s measured**, all IDs `9707`. Clean 512/4K A/B is non-regressive at **+0.35%/+0.46% prefill** and **+0.066%/+0.072% decode**. | Yes, stability/process-policy gate | Preserve explicit `GPU_MAX_HW_QUEUES` overrides; `=4` restores ROCm's documented default. Current production later reproduces the stall under one queue, so 128K remains blocked. Remove after a fixed gfx11 firmware/runtime passes the same 128K gate. Upstream evidence: [initial ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824) and [follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043). |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-M2 stream-ordered contiguous prefill metadata | 2026-07-15 | clean explicit A/B `6131e891`, clean scoped policy `37b39269`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted through 4K and included in the current 512-64K production refresh**: full-model 512/1K/4K automatic-vs-explicit state is **83/83 exact**. Five balanced pairs improve prefill **1261.643 -> 1281.323 tok/s (+1.56%)**, **1333.877 -> 1345.928 (+0.90%)**, and **1356.934 -> 1364.103 (+0.53%)**. The explicit 128K one-queue gate completes warmup at only 483.439 tok/s, then re-enters the low-power GPU-active no-progress state on measured pass 1, so automatic policy retains synchronous metadata above 4K. | Yes, scoped prefill promotion gate | Keep `HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0|1` for rollback/diagnosis; never extend the 4K ceiling without a completed long-context lifecycle gate. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-4B exact prefill router-select geometry | 2026-07-15 | clean profiles `37b39269`/`89443a1f`, balanced candidate `c10c794c`, clean promoted policy `89443a1f`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted on gfx1151 and included in the current 512-64K production refresh**: the fresh 4K profile leaves router select at 12.539 ms / 0.41%, so a launch-only screen replaces risky logits+top-k fusion. 128 threads is **83/83 exact** and improves five-pair 512/4K prefill **1274.062 -> 1278.414 tok/s (+0.34%)** and **1361.337 -> 1366.173 (+0.36%)**. Clean trace cuts the named select family **12.539 -> 3.741 ms (-70.17%)** with 24 VGPR, 512 B LDS, zero scratch. Faster 64 threads is rejected because 4K full-model state is not exact. | Yes, final targeted prefill gate | Keep `HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=512` for rollback; gfx1100 stays 512 and decode stays 256. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF current decode closure profile and graph admission | 2026-07-15 | clean current code `89443a1f`; TheRock HIP `7.15.0-0000000`; one HIP hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained diagnostic / no new kernel promotion**: exact 16-step marker profiles confirm 512/4K dense Q8 at **8.560/8.541 ms/token** and 128K attention/dense-Q8 at **17.504/8.555 ms/token**. Grouped-GQA chunk 128 is +2.89% in isolation but changes one BF16 output; chunk 512 is inexact and slower. Dense-Q8 64 threads is 15.8% slower than 128. Current graph replay remains admitted over eager at **+1.00%/+0.86%** on 512/4K 1+3 and **+0.36%** in the bounded 128K confirmation, all IDs exact. | Diagnostic link; current graph rows retained through 64K, 128K topline blocked by prefill lifecycle | Retain chunk-256 LCP-D1 attention, 128-thread Q8, and graph replay. A future decode attempt needs a new exact algorithm/layout, not another launch-only sweep. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF final production refresh and residual 128K lifecycle gate | 2026-07-15 | clean detached `61a27d72`; TheRock HIP `7.15.0-0000000`; automatic one hardware queue; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained at 512-64K; 128K blocked**: clean right-sized 1+3 prefill is **1294.885/1358.342/1365.720/1034.845/796.083 tok/s** and graph decode is **49.041/51.623/52.422/43.572/37.622 tok/s**. All 15 IDs are `9707`, memory is unchanged, and variance is <=0.187%. Current automatic one-queue, router-512/metadata-off, and SDMA-disabled full 128K gates all complete warmup then enter the low-power measured-pass-1 stall. | Yes at 512-64K only; no current 128K number | Keep one queue as risk reduction, not a lifecycle guarantee. Require fixed gfx11 firmware/kernel or a stronger production-quality workaround before restoring 128K. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF correct eager baseline, revision bisect, and decode-only Amdahl | 2026-07-11 | clean detached hipEngine `5f4c6561`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Retained**: p512/d128 exact eager is 49.285 tok/s; `4499fb13` is the direct-parent 3.088x speed boundary; 24 exact marker windows isolate the current family profile. | Yes, named repeated-token protocol | Rerun after eager decode math, route, dispatch/build caching, or a material family-kernel change; run separately on W7900. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q8T16 dual-split wave/block indexing | 2026-07-12 | clean scalar `8184355c` and promoted `e20cdc13`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Retained**: clean p512/d128 eager **20.5342 -> 20.4709 ms/token** (-0.308%); marked dual-split leaf **4245.4 -> 4188.2 us/token** (-1.349%); graph route **20.5736 -> 20.5324 ms/token** (-0.200%); every token/state gate exact. | Yes, named repeated-token protocol | Rerun after Q8T16 indexing/layout, compiler, graph policy, or gfx1151 launch geometry changes; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF state-bound production decode graph | 2026-07-11 historical; 2026-07-12 refresh | clean detached hipEngine `7f611fe3` on HIP 7.13; clean `8184355c`/`e20cdc13` on HIP 7.15; exact Q4_K_M fingerprint retained | **Historical retained / current speed-policy stale**: all 128 graph launches remain byte-exact. HIP 7.13 measured +0.112% over eager; both current HIP 7.15 reruns reject at -0.246%/-0.293%. | Current table reports exact diagnostic wall, not a graph-over-eager win | Run a scoped balanced current-stack A/B; restore eager default if graph does not reproduce a win. Validate separately on gfx1100 before any admission. |
@@ -432,52 +435,50 @@ and [W7900 GGUF oracle](results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).
 
 ### gfx1151 model throughput
 
-The GGUF column is the clean 2026-07-14 LCP-1/LCP-D1 automatic sweep at
-hipEngine `71e61524`. LCP-1's exact tiled convolution is active at all six
-shapes; LCP-D1 enters only above 256 attention splits, so shorter reducers keep
-the original serial body. llama.cpp remains the clean 2026-07-11 matched
-reference at `d1231ee0`. PARO 512/1K are the clean exact recovery at `9944e481`;
-4K and 32K-128K are the clean scoped AOTriton queue-isolation refresh at
-`01e2cec5`, all on TheRock HIP 7.15 and TuneD `accelerator-performance`.
-Each hipEngine shape uses its own right-sized resident session. PARO uses two
-discarded warmups plus five measurements; GGUF uses one discarded warmup plus
-three measurements. The largest GGUF prefill/decode stdev over median is
-**0.140%/0.113%**, all 18 measured IDs are `9707`, and tracked memory is
-unchanged. The 128K row now has a complete serialized 1+3 component rather
-than a carried durable-log value. The older intermittent later-pass 128K
-lifecycle issue remains a separate bounded diagnostic and is not a reason to
-add timing repetitions. llama.cpp uses one internal warmup plus five samples
-per split prefill/decode phase. Linked artifacts validate clean provenance,
-model/build/device identity, exact state/token gates, and sample variance.
-Because the PARO quant/path differs from the other columns, this is a throughput
-rollup, not a same-math four-engine A/B.
+The current GGUF column is the clean 2026-07-15 selector-unset production
+refresh at hipEngine `61a27d72`, TheRock HIP 7.15, TuneD
+`accelerator-performance`, and the automatic one-hardware-queue gfx1151 policy.
+Each accepted shape uses one independent right-sized resident process, one
+discarded warmup, and three measured runs with fresh production graph decode.
+512 through 64K pass clean provenance, finite logits, exact final IDs, and the
+5% variance gate; the largest prefill/decode stdev over median is only
+**0.187%/0.049%**. All 15 measured IDs are `9707`, and tracked memory is
+unchanged. Those five prefill rows improve **25.11%-46.10%** over the previous
+public GGUF column and are the highest raw prefill values in the composite.
 
-Bold marks the best raw value in each row (highest throughput or lowest
-reported peak memory). It is descriptive only: PARO uses W4 PARO rather than
-Q4_K_M, and the memory columns do not share one allocator scope.
+Repeated 128K production is **blocked**, not carried forward. The current route
+completes warmup at 509.708 tok/s, then enters the same 100%/2.9 GHz, 44-46 W
+no-progress state on measured pass 1 despite `GPU_MAX_HW_QUEUES=1`. Explicit
+metadata-off/router-512 and `HSA_ENABLE_SDMA=0` full-gate controls reproduce the
+failure. Therefore no current hipEngine GGUF 128K throughput or memory number
+appears in the topline; first-pass rates remain diagnostics only. llama.cpp
+stays the clean July 11 matched reference. PARO retains the July 12 exact
+recovery and scoped AOTriton queue-isolation rows. Since PARO uses W4 PARO
+rather than Q4_K_M and memory scopes differ, bold values are descriptive raw
+leaders rather than same-math allocator claims.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **1140.101** | 906.979 | 1061.260 | 1067.770 |
-| 1K/128 | **1208.343** | 929.724 | 1043.230 | 1069.870 |
-| 4K/128 | **1089.031** | 946.366 | 1009.240 | 1016.580 |
-| 32K/128 | **906.145** | 778.371 | 743.547 | 814.923 |
-| 64K/128 | **716.775** | 636.330 | 573.611 | 660.974 |
-| 128K/128 | 474.641 | 433.811 | 390.441 | **476.788** |
+| 512/128 | 1140.101 | **1294.885** | 1061.260 | 1067.770 |
+| 1K/128 | 1208.343 | **1358.342** | 1043.230 | 1069.870 |
+| 4K/128 | 1089.031 | **1365.720** | 1009.240 | 1016.580 |
+| 32K/128 | 906.145 | **1034.845** | 743.547 | 814.923 |
+| 64K/128 | 716.775 | **796.083** | 573.611 | 660.974 |
+| 128K/128 | 474.641 | — (blocked) | 390.441 | **476.788** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **66.767** | 49.061 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 51.569 | 50.818 | **62.136** |
-| 4K/128 | **62.715** | 52.432 | 50.126 | 60.097 |
-| 32K/128 | 50.342 | 43.543 | 44.240 | **51.319** |
-| 64K/128 | 42.094 | 37.562 | 39.326 | **44.422** |
-| 128K/128 | 30.386 | 28.047 | 32.114 | **34.948** |
+| 512/128 | **66.767** | 49.041 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 51.623 | 50.818 | **62.136** |
+| 4K/128 | **62.715** | 52.422 | 50.126 | 60.097 |
+| 32K/128 | 50.342 | 43.572 | 44.240 | **51.319** |
+| 64K/128 | 42.094 | 37.622 | 39.326 | **44.422** |
+| 128K/128 | 30.386 | — (blocked) | 32.114 | **34.948** |
 
 #### Peak memory GiB
 
@@ -488,26 +489,23 @@ Q4_K_M, and the memory columns do not share one allocator scope.
 | 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
 | 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
 | 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
-| 128K/128 | **22.124** | 25.493 | 23.862 | 24.254 |
+| 128K/128 | **22.124** | — (blocked) | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 The PARO column is W4 PARO/BF16 KV. The other three columns use the same
 Q4_K_M GGUF; hipEngine uses BF16 KV and llama.cpp uses f16 KV. Peak-memory
 scopes differ: hipEngine reports its tracked allocator high-water, while
 llama.cpp reports absolute whole-device amdgpu GTT used, sampled every 10 ms.
-Use the memory table for within-column context growth; small cross-column
-deltas are not allocator-efficiency claims. hipEngine load and graph capture
-are excluded from phase throughput, while the separate SOL-G5 row below is the
-capture-inclusive GGUF graph proof.
+Use memory values for within-column context growth; small cross-column deltas
+are not allocator-efficiency claims. hipEngine load and graph capture are
+excluded from phase throughput.
 
-Artifacts: [PARO exact prefill recovery](results/2026-07-12-gfx1151-paro-prefill-recovery.json),
+Artifacts: [current hipEngine GGUF 512-64K refresh and 128K blocker](results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
+[PARO exact prefill recovery](results/2026-07-12-gfx1151-paro-prefill-recovery.json),
 [PARO 4K-128K AOTriton queue isolation](results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
-[hipEngine GGUF LCP-1/LCP-D1 right-sized 1+3 refresh](results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json),
-[LCP-D1 clean 128K profile](results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json),
-[GGUF later-pass lifecycle soak](results/2026-07-13-gfx1151-gguf-prefill-gpf2e-lifecycle-soak.json),
+[previous GGUF LCP-1/LCP-D1 rollup](results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json),
+[queue-stall follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043),
 [accepted July 11 matched summary](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
-[hipEngine PARO](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
-[July 11 hipEngine GGUF reference](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
 [llama.cpp HIP](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json),
 and [llama.cpp Vulkan](results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json).
 
