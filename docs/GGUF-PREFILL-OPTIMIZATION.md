@@ -1165,6 +1165,26 @@ ms (+0.001286%)**. The prospectively frozen rule had zero tolerance, so no
 speed gate follows and the peer-schedule lane closes without promotion. Evidence:
 [`2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json).
 
+The final GPF-9C residual profile changes what should be optimized next, without
+changing that rejection. A same-W7900 current-stack pp512 trace puts
+`chain_peer_wave32` at **207.253 ms / 1645 dispatches** of summed GPU work,
+versus llama.cpp HIP at **203.301 ms / 2259 dispatches**. The peer recurrence
+itself is effectively at parity (**17.134 versus 16.522 ms**); its separate
+prepare + recurrence + RMSNorm/gate chain is only **3.689 ms** over llama.cpp's
+fused-family bucket. The decisive trace-span difference is instead idle queue
+time between launches: **28.061 versus 8.935 ms**, an excess **19.126 ms** that
+explains **82.9%** of the first-to-last-kernel span delta despite hipEngine
+launching 614 fewer kernels. The largest bubbles occur at copy-to-RMSNorm,
+copy-to-copy, copy-to-selected-Q4, RMSNorm-to-dense-Q8, and copy-to-attention
+boundaries. Dense Q8 is the largest positive kernel-family residual
+(**+20.825 ms**), while selected Q4/Q5 is already **21.819 ms faster** and
+cancels it. Further recurrence algebra, selected Q4/Q5, full attention, and
+raw launch-count reduction are therefore not the measured pp512 targets. Keep
+production on the exact route; use the explicit peer route only to test
+copy-boundary queue-bubble reduction first and a genuinely new dense-Q8 path
+second. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
+
 ## Correctness And Promotion Contract
 
 Before editing a kernel, read [`KERNELS.md`](KERNELS.md) and run the required
@@ -1386,8 +1406,14 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   **89.727/95.117/97.292/85.898/75.012/61.264 tok/s** graph decode across
   512-128K, all 18 measured IDs `9707`. Task #98 / GPF-8 is complete as a KL
   and 512-floor rejection. GPF-9A/B also reject existing K2 and register-tree
-  routes on KL. GPF-9C owns the normalized-input, one-wave32 register-resident
-  schedule that matches llama.cpp HIP's gfx1100 structure.
+  routes on KL. GPF-9C passes semantics/decode and 4K speed but is rejected
+  **8.36%** below the 512 floor; GPF-9D passes quality but fails strict decode
+  by **0.001286%**. The current same-W7900 GPF-9C residual trace puts its
+  recurrence at practical llama.cpp parity (**17.134 vs 16.522 ms**) and
+  attributes **19.126 ms** of excess trace span to between-kernel queue idle.
+  Dense Q8 remains the largest positive kernel-family residual at **+20.825
+  ms**. Evidence is the
+  [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
@@ -1395,11 +1421,13 @@ gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
 production above each architecture's bound. The long-context gfx1100 screen
 confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
 lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
-do not revisit LCP-1 without a new hotspot profile. GPF-9C is the active GDN
-lane: normalized Q/K plus one-wave32 register residency matching llama.cpp HIP
-on gfx1100. Its predeclared CPU, 18-prompt 0.05/0.90 semantic, determinism,
-decode, and 512/4K parity-floor contract is authoritative; exact state and
-free-running token identity are diagnostics.
+do not revisit LCP-1 without a new hotspot profile. Production remains exact
+`chain_lds32_direct`; GPF-9C/9D remain explicit-only through the planned
+post-merge gfx1151 gate. For any gfx1100 continuation, preserve GPF-9C's
+quality-admitted recurrence and attack the measured copy-boundary queue bubbles
+before a new dense-Q8 path. Its predeclared CPU, 18-prompt 0.05/0.90 semantic,
+determinism, decode, and 512/4K parity-floor contract remains authoritative;
+exact state and free-running token identity are diagnostics.
 
 ## Document Ownership
 

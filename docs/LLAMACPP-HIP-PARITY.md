@@ -144,19 +144,40 @@ advantage. Existing hipEngine dp4a diagnostics also show that changing the dot
 instruction alone is insufficient; any new decode candidate must improve the
 actual dominant family and full-model wall.
 
+The post-GPF-9C pp512 residual trace now closes the missing short-shape
+attribution. On the same W7900, current `chain_peer_wave32` and llama.cpp HIP
+sum to **207.253 versus 203.301 ms** of GPU kernels. Peer GDN recurrence is only
+**17.134 versus 16.522 ms**; recurrence algebra is no longer the candidate's
+short-shape blocker. hipEngine instead leaves **28.061 ms** of idle gaps between
+kernels versus llama.cpp's **8.935 ms**. That **+19.126 ms** queue starvation is
+**82.9%** of the first-to-last-kernel span delta, despite hipEngine issuing
+**1645 versus 2259** dispatches. Copy-to-RMSNorm and copy-to-copy boundaries
+alone contribute **12.344 ms** of the hipEngine gaps. Dense Q8 is the largest
+positive kernel residual (**+20.825 ms**), but selected Q4/Q5 is already
+**21.819 ms faster** and offsets it. This does not promote GPF-9C: the frozen
+non-profiled row remains **2210.729 tok/s**, 8.36% below the required 512 floor,
+and production remains on exact direct-LDS32.
+
 Continuation order is now:
 
-1. `LCP-2`: pursue exact chunked/prefix GDN or a separately predeclared
-   quality-safe register-resident design; do not rerun rejected LDS16,
-   two-lane, or tree defaults unchanged.
-2. Profile-directed dense-Q8/selected-MoE decode work for Vulkan parity,
-   retaining 4K first and escalating to the 512 and 128K endpoints.
+1. `LCP-2A`: preserve the quality-admitted peer-wave recurrence and remove its
+   measured copy-boundary queue bubbles; require the unchanged semantic/decode
+   gate and both 512/4K speed floors before any automatic route change.
+2. `LCP-3`: if a kernel-family change is still needed, pursue a genuinely new
+   dense-Q8 prefill path. Do not retune selected Q4/Q5, short full attention,
+   or generic launch count.
+3. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
+   parity independently, retaining 4K first and escalating to the 512 and 128K
+   endpoints.
 
-`LCP-M1` is complete and promoted.
+`LCP-M1` is complete and promoted. New chunked/prefix GDN research is deferred
+until the measured peer-route integration and dense-Q8 residuals are exhausted;
+do not rerun rejected LDS16, two-lane, tree, or WY8 designs unchanged.
 
-Machine-readable ratios, allocation buckets, the diagnostic 4K family trace,
-and source boundary:
-[`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json).
+Machine-readable evidence:
+[`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json)
+and
+[`GPF-9C residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json).
 
 ## gfx1151 post-merge transfer plan
 
@@ -513,8 +534,8 @@ change makes hipEngine exceed the retained HIP capacity row again.
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
-| 3 | `LCP-2` | Peer-aligned GDN transfer, then new chunked/prefix research only if needed | Largest family and >4.6x gap; existing GPF-9C/9D have gfx1100-local speed/decode blockers but are already available for an independent gfx1151 gate | Full 18-prompt numerical/semantic gate before architecture-local speed; exact candidates retain the stronger byte/state matrix |
-| 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
+| 3 | `LCP-2A` | Remove copy-boundary queue bubbles around the quality-admitted peer-wave route | GPF-9C recurrence is at practical llama.cpp parity, but between-kernel idle is +19.126 ms and 82.9% of its pp512 trace-span delta | Preserve the full 18-prompt/decode contract and beat both frozen 512/4K floors before automatic selection |
+| 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | GPF-9C residual dense Q8 is +20.825 ms versus llama.cpp and is the largest positive kernel family | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
 
@@ -531,8 +552,9 @@ improvements remain retainable under the project evidence policy.
   stability gate remains rejected.
 - Do not label llama.cpp's GDN tree reduction exact or automatic without the
   numerical/semantic, decode, and architecture-local speed gates.
-- Do not prioritize generic graph or launch-count work for prefill; llama.cpp
-  launches more kernels and wins inside specific families.
+- Do not prioritize generic graph or raw launch-count reduction for prefill;
+  llama.cpp launches more kernels. The measured exception is specific
+  copy-boundary queue starvation, not dispatch count itself.
 - Do not infer memory efficiency from the public cross-column peak values; the
   scopes differ.
 
