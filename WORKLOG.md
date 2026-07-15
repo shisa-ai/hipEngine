@@ -156604,3 +156604,14 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Q4/Q6/Q8 indexing experiments will not be rerun unchanged.
 - Durable plan is in `docs/LLAMACPP-HIP-PARITY.md`; no runtime default or
   performance claim changed in this planning unit.
+
+## 2026-07-15 - Retain peer GDN diagnostics through the gfx1151 gate
+
+- Superseded the immediate all-route cleanup recorded at GPF-9 gfx1100 closure.
+  By user direction, `chain_peer_wave32`, `chain_peer_cluster8`, and their
+  normalized scratch support remain explicit-only long enough to run the
+  post-merge gfx1151 transfer gate; neither architecture's `auto` policy changes.
+- `chain_k2` and the raw `chain_wave32_tree` remain cleanup targets after final
+  gfx1100 residual attribution. Once gfx1151 is measured, promote only a passing
+  architecture-local peer route or remove both rejected peer candidates. Updated
+  `docs/REFACTOR.md` with this bounded removal trigger.
