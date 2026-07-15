@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_layer_marker_completion",
+  "status": "instrumented_single_process_warmup_plus_three_completed",
+  "created_at": "2026-07-16T04:33:34+09:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "conclusion": "A single current-main HIP 7.15 one-queue process with same-stream retirement markers after every prefill layer completes the full 128K warmup+3 protocol exactly, whereas each of the three preceding chunk-marker processes entered persistent no-progress within zero or one measured pass. All four layer-marked prefills retire through the final sample marker with no cursor lag; the three measured passes are tightly grouped at 503.732 median prefill and 28.246 median decode tok/s, and every pass returns token 9707. This is evidence that the layer-marker perturbation may suppress the failure by altering queue packetization/progress, but it does not establish stability or a production workaround: only one process was run, the defect is intermittent, and each marker is a tiny system-fence kernel writing host-mapped memory. A repeated-process gate and a decoupled heartbeat A/B require separate approval/evidence.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "9e4e7c3766e5b9f5dd2aed5734447bd2c20f07df",
+    "source_tree": "tracked-clean main; unrelated pre-existing untracked benchmark files present",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "hsa_enable_sdma": "unset",
+    "compact_wmma_no_read_max_selected_rows": "unset; production scalar-readback route",
+    "flight_recorder_granularity": "layer"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "instrumentation": {
+    "flight_recorder": "persistent host-mapped buffer",
+    "layer_granularity_effect": "After every layer call, launch_prefill_flight_marker enqueues a tiny same-stream kernel that stores the marker sequence, executes __threadfence_system(), and publishes completed_sequence in host-mapped memory.",
+    "host_synchronization": false,
+    "checkpoint_entries_per_128k_prefill": 1348,
+    "completion_marker_kernels_per_128k_prefill": 1315,
+    "checkpoint_entries_across_four_prefills": 5392,
+    "completion_marker_kernels_across_four_prefills": 5260,
+    "known_perturbation": "Additional kernel launches, system-scope fences, and host-visible memory writes can change MES/KFD queue packetization and timing even without host synchronization.",
+    "interpretation_boundary": "One completed instrumented process is not a reliability result and cannot prove that markers fixed the lifecycle defect."
+  },
+  "preflight": {
+    "workload": "512/1",
+    "require_cached_build": true,
+    "prefill_tok_s": 1211.6775557373578,
+    "decode_tok_s": 49.664269537015805,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "flight_submitted_sequence": 46,
+    "flight_completed_sequence": 46,
+    "flight_retirement_lag": 0,
+    "status": "exact cached instrumentation smoke only; one-shot rate is not a performance row"
+  },
+  "protocol": {
+    "workload": "128K/128",
+    "warmups": 1,
+    "measured_runs": 3,
+    "completed_warmups": 1,
+    "completed_measured_runs": 3,
+    "process_bound_seconds": 1800,
+    "actual_elapsed_seconds": 1165,
+    "exit_status": 0,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity layer --json <out>/result.json"
+  },
+  "warmup": {
+    "prefill_tok_s": 429.827416876284,
+    "decode_tok_s": 28.14806515335326,
+    "tracked_peak_gib": 25.492501743137836,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "note": "Discarded recorder-enabled warmup; no performance claim."
+  },
+  "measured_summary": {
+    "prefill_tok_s": {
+      "values": [503.6049589563488, 503.732346059809, 503.8265837818879],
+      "median": 503.732346059809,
+      "min": 503.6049589563488,
+      "max": 503.8265837818879,
+      "stdev": 0.11122483661921972
+    },
+    "decode_tok_s": {
+      "values": [28.24909076369772, 28.24548419543919, 28.246138773982302],
+      "median": 28.246138773982302,
+      "min": 28.24548419543919,
+      "max": 28.24909076369772,
+      "stdev": 0.0019213732481596986
+    },
+    "tracked_peak_gib": 25.492501743137836,
+    "final_token_ids": [9707, 9707, 9707],
+    "finite_final_logits": [true, true, true],
+    "performance_status": "Instrumentation-enabled diagnostic rates only; not a topline or marker-overhead claim."
+  },
+  "flight_recorder_final": {
+    "prefill_id": 4,
+    "capacity": 8192,
+    "submitted_sequence": 5392,
+    "completed_sequence": 5392,
+    "retirement_lag": 0,
+    "overwritten_entries": 0,
+    "last_completed": {
+      "sequence": 5392,
+      "phase": "sample",
+      "chunk_start": 131071,
+      "chunk_end": 131072,
+      "layer_id": -1
+    },
+    "interpretation": "The final sample completion kernel advances the cursor over all 5392 checkpoint entries, proving all prior work from all four prefills retired; there is no stalled layer to localize in this process."
+  },
+  "telemetry": {
+    "persistent_stall_signature_observed": false,
+    "longest_100_percent_activity_below_or_equal_70_w_run_seconds": 40,
+    "longest_low_power_run_context": "early load/warmup interval, not persistent no-progress",
+    "active_sample_power_w": {
+      "min": 43,
+      "median": 118.5,
+      "max": 136
+    },
+    "resource_release_after_exit": "final sample shows 17 MiB VRAM"
+  },
+  "process_state": {
+    "sample_interval_seconds": 15,
+    "main_thread_samples": 77,
+    "main_thread_states": ["RN", "RNl"],
+    "note": "The process was actively progressing, so runnable main-thread samples do not localize a wait."
+  },
+  "system_observability": {
+    "kernel_journal_relevant_amdgpu_kfd_fault_reset_hang_mes_lines": 0
+  },
+  "comparison": {
+    "preceding_chunk_marker_processes": [
+      "pre-merge: warmup completes, measured prefill 1 stalls after token 28672",
+      "merged metadata reuse: first warmup stalls after token 61440",
+      "compact no-read: warmup completes, measured prefill 1 stalls after token 36864"
+    ],
+    "layer_marker_process": "warmup plus all three measured prefills complete; the final completion cursor covers all 5392 submitted checkpoint entries",
+    "causal_signal": "Changing only recorder granularity from chunk to layer adds same-stream system-fence marker kernels at each layer boundary and coincides with completion of this process.",
+    "not_established": [
+      "that layer markers make repeated processes reliable",
+      "whether launch packetization, system fence, or host-mapped write is the relevant perturbation",
+      "that marker insertion is an acceptable production workaround",
+      "that the underlying defect is firmware-only or MES-specific"
+    ]
+  },
+  "next_step": {
+    "requires_explicit_repeat_approval": true,
+    "recommended_gate": "Run at least two additional independent 128K warmup+3 layer-marker processes on the same fixed stack, then implement a decoupled tiny queue-heartbeat experiment only if repeated completion supports the signal.",
+    "estimated_duration": "about 20 minutes per warmup+3 process on this hardware",
+    "production_admission": "Do not enable recorder/markers by default from this single process."
+  },
+  "source_hashes": {
+    "flight_final_json": "90bb092c0f8718fe51a7d654b98f5768ca5302dbb5aa285d3c1cda6a2a7f8eac",
+    "result_json": "fb8280abaff7e338a6f3ed3de32509a84b145779f3e38cc8e94aca1417405600",
+    "telemetry_csv": "a935f988ebcdc8ec1882d4d988ba2a468c6326c0d041b2150b12df989ebcf0b7",
+    "amdgpu_fences_log": "e75916811951cb5f0055c11d0cfbf9f9083f663172b9131c022af658f8b39ca7",
+    "kernel_journal_log": "1f415191a16030b03f4828abcd24083300e7134e52e9cc9d58944ee2917c4378",
+    "process_stacks_log": "43314c3df48391a123548542e145500c88a59268ba8959638d8c9b885ec2888d",
+    "run_log": "98e8c019ccce280862980585ad00fcd407cd5ae359219c7d022bb8fa921d2077",
+    "provenance_txt": "5285f4689d6e4c913ac6057e962551c9a123f605644a71487ae3820ad259613b"
+  },
+  "local_raw_directory": "/tmp/gfx1151-layer-flight-9e4e7c37-20260715T191409Z"
+}
