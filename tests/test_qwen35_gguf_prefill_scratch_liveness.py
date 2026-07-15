@@ -70,7 +70,7 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
-def test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
+def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
     allocations = _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)
 
@@ -83,11 +83,11 @@ def test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena(monkeypa
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
-    assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
-    assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
-    assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 512 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 512 * _MIB
+    assert scratch.prefill_query.ptr != 0
+    assert scratch.prefill_key.ptr != 0
+    assert scratch.prefill_value.ptr != 0
     assert scratch.linear_z_f32 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
 
@@ -115,6 +115,25 @@ def test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena(monkeypa
         field = getattr(scratch, name)
         assert field.ptr == arena.ptr + offset
         assert field.nbytes == size
+
+
+def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct")
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner(),
+        rows=4096,
+        capacity=4352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
 
 
 def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_backend(monkeypatch) -> None:

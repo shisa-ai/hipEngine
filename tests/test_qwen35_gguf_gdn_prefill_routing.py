@@ -166,7 +166,7 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32
     )
     assert plan.has_chain_peer_cluster8
-    assert plan.auto_mode == "chain_lds32_direct"
+    assert plan.auto_mode == "chain_peer_wave32"
 
 
 def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:

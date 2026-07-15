@@ -96,7 +96,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
     assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
     assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
-    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
@@ -150,7 +150,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "chain_lds32_direct"
+        == "chain_peer_wave32"
     )
     assert (
         backend_package_capability(

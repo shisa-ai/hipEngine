@@ -3,9 +3,10 @@
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
-# Clean W7900 GPF-2E exactness, balanced wall, and all-category natural
-# trajectory/decode gates admit compact-scale direct-conv LDS32 GDN prefill.
-GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct"
+# LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
+# the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.
+# Scalar-exact direct LDS32 remains available through the explicit selector.
+GGUF_GDN_PREFILL_AUTO_MODE = "chain_peer_wave32"
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
