@@ -487,6 +487,7 @@ select current code without a fresh profile.
 | 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
 | 16 | `GPF-9C` | **Rejected on 512 speed:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | Semantics/decode pass; 4K beats llama.cpp by 11.45%, but 512 reaches `2210.729 tok/s`, 8.36% below the required floor |
 | 17 | `GPF-9D` | **Rejected on strict decode:** `chain_peer_cluster8` reproduces llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | KL `0.028689` and top-1 `444/450` pass, but decode regresses `0.001286%` with no predeclared tolerance; no speed gate |
+| 18 | `LCP-3A` | **Rejected and removed:** four exact 32-column Q8T16 FP16-WMMA waves share one activation tile | Byte-exact, but width 4096 and short-K width 2048 regress 2.24%/8.87%; the pp512 mix projects about +0.3 ms. Stop independent-wave widening; next body-level screen is T16-native Q8_1/integer WMMA |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1418,10 +1419,14 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   still misses the frozen 512 floor by **3.23%**, so production remains exact
   direct-LDS32. Dense Q8 is now the next target at **~52.0 ms** versus
   llama.cpp HIP **30.4 ms**; remaining total queue-idle excess is only
-  **2.699 ms**. Evidence:
+  **2.699 ms**. LCP-3A's exact four-wave widening is already rejected and
+  removed: the primary width-8192 leaf is flat (-0.185%), width 4096 regresses
+  2.24%, and short-K width 2048 regresses 8.87%. The next screen must change
+  the body rather than add independent FP16-WMMA waves. Evidence:
   [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
-  [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json), and
-  [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json).
+  [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
+  [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json), and
+  [`LCP-3A`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-four-wave-rejected.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the

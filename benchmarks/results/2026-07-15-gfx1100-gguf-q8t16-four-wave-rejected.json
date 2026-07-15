@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_gguf_q8t16_four_wave_prefill_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "4673f0e8be00ddc4ffa44d83ae7975c1d6ef9f09",
+  "candidate": {
+    "id": "LCP-3A",
+    "family": "dense Q8T16 WMMA prefill",
+    "variant": "wmma_prefill_4wave_bf16_bf16_out",
+    "scope": "diagnostic BF16/BF16 TN32 kernel only; never routed into the model default",
+    "design": "Four independent production-order 32-column wave32 groups share one 32-row FP16 activation tile through 1 KiB LDS. Each wave retains the two-wave baseline's K traversal, WMMA calls, FP32 accumulators, and BF16 stores."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "kernel": "7.1.3-2-cachyos"
+  },
+  "software": {
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "selection_profile": {
+    "source": "benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json",
+    "dense_q8_total_ms": 51.998,
+    "llamacpp_hip_dense_q8_ms": 30.4,
+    "matched_trace_breakdown_ms": {
+      "out8192_40_dispatches": 20.585645,
+      "out4096_30_dispatches": 8.467547,
+      "out2048_80_dispatches": 17.043738,
+      "out512_100_dispatches": 5.920528
+    }
+  },
+  "correctness": {
+    "red": "Collection failed because the four-wave wrapper and registry key did not exist.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py -q",
+    "green_result": "83 tests collected and passed, including three four-wave tail-row/output byte-exact comparisons against production 32x32.",
+    "math_contract": "Candidate outputs were byte-identical to the existing exact BF16/BF16 32x32 body."
+  },
+  "microbench": {
+    "protocol": "W7900 HIP events, eight cycling weight copies (>96 MiB for the primary shape), three warmup cycles, 60 alternating measured repetitions per mode, cached build. The two simultaneous-process repeats were recognized as GPU-contention-invalid and excluded; only subsequent sequential runs are retained.",
+    "command_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 /tmp/lcp3_q8_t16_prefill_micro.py --rows 512 --in-features <K> --out-features <N> --repetitions 60 --compiler-version-file /tmp/hipengine-hipcc-version-lcp3.txt --json <OUT>",
+    "rows": [
+      {
+        "shape_mkn": [512, 2048, 8192],
+        "two_wave_median_ms": 0.5645810067653656,
+        "four_wave_median_ms": 0.5635389983654022,
+        "four_wave_delta_percent": -0.18456313398378388,
+        "raw_sha256": "2a4fbf432acec58b9db1c95c449d831dfeb52059683359a7d375101c3662508a"
+      },
+      {
+        "shape_mkn": [512, 2048, 4096],
+        "two_wave_median_ms": 0.288998007774353,
+        "four_wave_median_ms": 0.29545749723911285,
+        "four_wave_delta_percent": 2.235132869775125,
+        "raw_sha256": "38dcedff20cd24f524e5f3ff6b3ff67ebf0f7d7990e4edf0504ec0bee0e5d82b"
+      },
+      {
+        "shape_mkn": [512, 4096, 2048],
+        "two_wave_median_ms": 0.3934609889984131,
+        "four_wave_median_ms": 0.392241507768631,
+        "four_wave_delta_percent": -0.30993701126161843,
+        "raw_sha256": "3c81109246cf6304f44fd713b56c13b3547433cdf04b538750764abeb981911d"
+      },
+      {
+        "shape_mkn": [512, 512, 2048],
+        "two_wave_median_ms": 0.06695999950170517,
+        "four_wave_median_ms": 0.07289950177073479,
+        "four_wave_delta_percent": 8.87022448212289,
+        "raw_sha256": "ef2931afd71d0e4f179df73a9f36ab7ee10ae4362638817dd34b86df928f9972"
+      }
+    ]
+  },
+  "decision": {
+    "result": "reject_before_model_routing",
+    "reason": "The primary width-8192 leaf improves only 0.185%, while width-4096 regresses 2.24% and the short-K width-2048 leaf regresses 8.87%. Weighted against the measured pp512 family mix, the candidate is expected to add roughly 0.3 ms rather than close the 21.6 ms llama.cpp family gap.",
+    "profiler": "Skipped after the predeclared family-shape leaf gate failed; no model or rocprof run was warranted.",
+    "source_disposition": "Remove candidate kernel, wrapper, registry key, and candidate-specific tests. Production two-wave and one-wave routes remain unchanged.",
+    "next": "Stop widening independent FP16-WMMA waves. The next dense-Q8 candidate must change the body, with prequantized Q8_1 activations plus T16-native integer WMMA as the source-backed direction; gate its standalone body before adding runtime quantization or routing."
+  }
+}
