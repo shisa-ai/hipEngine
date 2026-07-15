@@ -156270,3 +156270,2016 @@ graphless decode launch-collapse path without regressing target/serial parity.
   scripts/sync_benchmark_readme.py --check` passes; `uv run --extra dev pytest
   -q tests/test_benchmark_provenance.py tests/test_benchmark_readme_sync.py`
   passes **13/13**; `git diff --check` passes.
+## 2026-07-14 - Transfer-gate exact gfx1151 GGUF schedules on W7900
+
+- Created clean branch `gfx1100-gguf-optimization` from `bc5600e2` and reviewed
+  `docs/GGUF-PREFILL-OPTIMIZATION.md`, `docs/LLAMACPP-HIP-PARITY.md`, the
+  gfx1151 package policy, and retained profiler/benchmark evidence. TheRock HIP
+  7.15 is healthy on the AMD Radeon Pro W7900. The required
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` reports the
+  already-catalogued parent qwen35/PARO drift and clean DFlash R1 entries; this
+  tranche copies no external code.
+- Fresh clean current-default 1+3 measurements at `bc5600e2`, repeated token
+  `9707`, Q4_K_M/BF16 KV, bulk prefill, decode repack, and state-bound graph
+  decode record **648.512/90.107 tok/s** prefill/decode at 512/128 and
+  **682.172/97.413 tok/s** at 4K/128. Explicitly enabling all three already
+  exact gfx1151 schedules reaches **1352.908/90.234** and
+  **1463.668/97.210 tok/s**, respectively: prefill **+108.62%/+114.56%**, all
+  measured IDs `9707`, and unchanged tracked memory. This screen selects
+  isolated gates rather than promoting the combined environment directly.
+- GPF-2E is the dominant transfer. Clean same-session balanced 1+4 fused versus
+  `chain_lds32_direct` improves **649.131 -> 1291.225 tok/s (1.9892x)** at 512
+  and **677.888 -> 1401.330 tok/s (2.0672x)** at 4K; every timed ID is `9707`.
+  The full ten-prompt/four-category gate passes **250/250** own-token logit
+  transitions with `KL=0`, top-1 100%, and exact 128-step timed trajectories.
+  Weighted decode is non-regressive at **97.972 -> 98.061 tok/s (+0.091%)**.
+- GPF-3A `shared_x` is byte-exact and wins prefill at both contexts. The initial
+  1+4 gate triggered the predeclared borderline repeat because aggregate decode
+  measured +0.00148% wall. The clean 1+8 replacement passes: 512 prefill
+  **640.876 -> 646.499 tok/s (+0.877%)**, 4K **672.866 -> 678.395 (+0.822%)**,
+  byte-identical logits/trajectories, and aggregate median decode wall
+  **2763.503 -> 2761.255 ms (-0.081%)**.
+- GPF-5A explicit off/on fresh-process 1+4 prefill-only focus improves
+  **645.901 -> 654.872 tok/s (+1.389%)** at 512 and
+  **676.444 -> 683.164 tok/s (+0.993%)** at 4K. Three W7900 HIP primitive
+  fixtures remain byte-exact to the 32x32 schedule. Automatic selection is
+  conservatively capped at 4096 prompt tokens because no gfx1100 long-context
+  causal A/B has been run; longer requests keep production Q8T16.
+- Added compact promotion artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-schedule-transfer-gate.json`.
+  RED backend-policy collection failed on missing gfx1100 Q8 capability;
+  GREEN exports `chain_lds32_direct`, `shared_x`, and scoped GPF-5A from the
+  gfx1100 package and maps the two BF16/BF16 Q8T16 aliases to the request-scoped
+  auto wrapper. The expanded backend/Q8/GDN/Q4 bundle passes **203/203** and the
+  explicit W7900 GPF-5A byte-exact fixture passes **3/3**. Next commit this
+  policy, then run a clean automatic-route confirmation before LCP-1.
+
+## 2026-07-14 - Confirm the promoted gfx1100 automatic prefill route
+
+- Committed the transfer policy as clean `82b62d5f`, then ran selector-unset,
+  right-sized 1+3 512/128 and 4K/128 sessions with no schedule override. Exact
+  command family: `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1100 --workloads <shape> --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode
+  bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode
+  --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt
+  --require-cached-build` under the clean TheRock environment.
+- Automatic 512/128 records **1344.043 tok/s prefill** and **90.259 tok/s
+  decode**; 4K/128 records **1463.713/97.466 tok/s**. All six measured final
+  IDs are `9707`; tracked peaks remain exactly **21.478/22.995 GiB**; both raw
+  artifacts report commit `82b62d5f` and `dirty=false`. Relative to the clean
+  pre-promotion default this is **+107.25%/+114.57% prefill**.
+- Added compact diagnostic
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-promoted-focus.json` and
+  updated the handoff/changelog narrative. `performance_claim=false`: this
+  confirms automatic routing but intentionally does not replace the public
+  six-shape table before the LCP-1/profile pass completes.
+
+## 2026-07-14 - Reprofile promoted gfx1100 prefill and reject LCP-1
+
+- Prewarmed the exact current cache outside the profiler, then traced clean
+  `16395fe5` with `rocprofv3 --kernel-trace` around direct final
+  `scripts/qwen35_gguf_bench.py` children at 512/0 and 4096/0. Both used normal
+  caller-stream bulk prefill, no graph/decode, zero profiler warmups, one
+  measurement, the precomputed compiler-version file, and
+  `--require-cached-build`.
+- The promoted route changes the family ranking. At 512 the trace is
+  **358.274 ms / 2009 dispatches**: exact GDN **211.487 ms (59.0%)**, dense Q8
+  **49.736 ms**, selected Q4/Q5 **33.901/23.167 ms**, and convolution only
+  **3.101 ms (0.87%)**. At 4K it is **2701.741 ms / 5495 dispatches**: exact GDN
+  **1652.114 ms (61.1%)**, dense Q8 **307.935 ms**, selected Q4/Q5
+  **225.292/173.756 ms**, router **96.168 ms**, full attention **83.899 ms**,
+  and convolution only **29.552 ms (1.09%)**. GPF-2E removed the old 954 ms
+  downstream convolution queue cliff; LCP-1 is no longer a first-order W7900
+  target.
+- Still implemented the bounded LCP-1 schedule to test the source-backed
+  hypothesis: 128 threads stage 32 tokens by 128 channels in 17.5 KiB LDS while
+  preserving the four product/add operations and existing separate final-state
+  update. TheRock W7900 fixtures at token lengths 4, 31, 32, 33, 512, and 4096
+  pass raw output and final-state byte equality (**6/6**).
+- The normal-stream max-4K 1+3 full-model diagnostic rejects it. 512 is noise at
+  **1353.791 -> 1354.374 tok/s (+0.043%)**; 4K regresses
+  **1468.728 -> 1465.910 tok/s (-0.192%)**. The screen is deliberately dirty
+  and `performance_claim=false`; it is a rejection gate, not promotion
+  evidence. Removed the candidate kernel, wrapper, selector, registry entry,
+  exports, and tests, leaving the tree at the exact promoted baseline.
+- Added
+  `benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`
+  and updated both optimization handoffs. Do not tune LCP-1 further on gfx1100
+  without a new profile. Exact GDN is the first-order prefill family; bounded
+  128K decode attribution (`LCP-D1`) remains independent.
+
+## 2026-07-14 - Attribute 128K decode and add the LCP-D2 split-reduction candidate
+
+- `LCP-D1` used the prebuilt TheRock HIP 7.15 attention library and a direct
+  `rocprofv3 --kernel-trace` child with 4 eager warmup steps plus 8 timed eager
+  steps. The phase-marked 128K window contains **119.653 ms** of GPU kernels,
+  or **14.957 ms/token**. Full-attention core is **53.742 ms (44.92%)**:
+  grouped-GQA context is **5.067 ms/token** and the serial gated split reduction
+  is **1.621 ms/token**. The 512 control is **9.549 ms/token** total and attention
+  is only **16.30%**. This identifies the long-context reduction as a bounded
+  target rather than changing short/mid attention policy.
+- RED routing/registry collection initially failed because the new parallel
+  reduction wrapper was not exported. GREEN adds a gfx1100 raw-pointer HIP
+  route with a 16-head parallel max/normalization prepare and a coalesced
+  32-dimension-by-8-split-worker output reduction. The output body reads
+  contiguous dimensions across each wave32, stages only 1 KiB in LDS, and
+  retains the old serial reducer as fallback. Runtime selection is explicit and
+  default-off at contexts >=64K through
+  `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE`.
+- The kernel trace at 513 splits records the old reducer at **194.840 us** and
+  the candidate as **6.679 us prepare + 18.880 us output** with zero scratch;
+  the expected prepare/output kernel names are visible. A direct randomized
+  source-parity probe differs in only **1/4096 BF16 outputs**, max absolute
+  **3.815e-6**. More importantly, the independent NumPy full-attention fixture
+  at 8,448 tokens / 33 non-power-of-two splits is exact for the candidate
+  (`parallel_gate_bf16_mismatch=0`, max abs 0); the two existing reducers are
+  within one BF16 step (max abs `1.22e-4`).
+- Dirty selection screens are strongly positive but are not retained claims.
+  At 64K/128 the current coalesced candidate moves graph decode
+  **72.734 -> 75.576 tok/s (+3.91%)**, with prefill effectively identical,
+  final ID `9707`, and exactly unchanged **24.203 GiB** tracked peak. The prior
+  split-parallel body moved 128K/128 **56.920 -> 61.531 tok/s (+8.10%)**, also
+  with stable ID `9707` and unchanged **25.493 GiB** peak. The coalesced body
+  still needs a clean 64K/128K gate before promotion.
+- Validation: targeted routing/registry tests **11 passed**; the cached W7900
+  8,448-token CPU-oracle smoke passes. Re-ran
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`; only the already
+  catalogued parent qwen35/PARO drift is reported, and this candidate copies no
+  external source. Added the default-off rollback/removal trigger to
+  `docs/REFACTOR.md`.
+
+## 2026-07-14 - Promote LCP-D2 on gfx1100 from 32K
+
+- Committed the candidate as clean `fba8e7a4`, prebuilt outside profiling, and
+  reran every acceptance leg under the hermetic TheRock W7900 environment. The
+  clean 513-split trace records serial **194.881 us** versus candidate
+  **6.280 us prepare + 18.720 us output = 25.000 us (7.80x)**. Both expected
+  candidate kernel names execute with zero scratch; output uses 1 KiB LDS.
+- The clean 64K teacher-forced full-model gate compares 16 decode logits rows
+  after an identical repeated-token prefill. All 17 generated IDs are `9707`,
+  candidate logits are finite, KL mean/max are **4.948e-7/1.904e-6**, and top-1
+  agreement is **100%**. This passes the project `0.05/90%` gate by a wide
+  margin. The 8,448-token/33-split NumPy attention oracle remains exact.
+- A clean one-shot crossover screen with a matched max-64K session finds the
+  extra launch neutral/down through 16K and positive at 32K/64K: decode deltas
+  are **-0.39%/-0.64%/-0.18%/+1.16%/+3.95%** at 4K/8K/16K/32K/64K. The
+  predeclared 32K escalation uses independent right-sized 1+3 processes and
+  confirms **84.525 -> 85.561 tok/s (+1.226%)**. Candidate stdev is only
+  **0.047 tok/s**, all six measured IDs are `9707`, and tracked peak is exactly
+  unchanged at **23.559 GiB**.
+- Clean one-shot confirmations preserve the monotonic gain: 64K is
+  **72.446 -> 75.307 tok/s (+3.949%)**, and right-sized 128K is
+  **56.927 -> 61.367 (+7.800%)**, with IDs `9707` and unchanged
+  **24.203/25.493 GiB** tracked peaks. The 128K candidate is **0.713% above**
+  the retained llama.cpp HIP F16-KV reference (`60.933 tok/s`). These two are
+  scope confirmations, not replacements for the final defaults-only 1+3
+  publication sweep.
+- Backend capability now admits the route only on `hip_gfx1100`, from context
+  32,768 onward. `hip_gfx1151` remains serial pending an independent gate;
+  `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` remains rollback. Updated the
+  parity/prefill handoffs, benchmark narrative/changelog, cleanup ledger, and
+  compact artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json`.
+  Targeted backend/routing/registry tests pass **29/29** before final staging.
+
+## 2026-07-14 - Close residual gfx1100 prefill schedule screens
+
+- Tested a W7900-specific exact 16-column direct-conv LDS GDN tile after the
+  96-CU occupancy audit. Plain and segmented primitive output/final state pass
+  byte equality, but the dirty same-source 1+3 screen is mixed: 512 moves
+  **1294.527 -> 1292.525 tok/s (-0.155%)** while 4K moves
+  **1404.183 -> 1410.274 (+0.434%)**. This fails the predeclared all-shape
+  requirement. Removed the candidate, selector, and template changes; the
+  final source is byte-identical to clean `54346596`.
+- Independently extended exact GPF-5A two-wave dense Q8 only for a bounded
+  same-session long-context screen. It regresses 32K
+  **1246.566 -> 1226.401 tok/s (-1.618%)** and 64K
+  **1026.872 -> 1024.617 (-0.220%)**, all IDs `9707`. The gfx1100 automatic
+  ceiling therefore remains 4096 prompt tokens; no source change was made.
+- Tried a two-lane-per-value exact-residency GDN schedule with 64 contiguous
+  state rows per lane. Both plain and segmented first-gate fixtures differ in
+  **11/69,632 BF16 outputs (0.0158%, max abs 9.77e-4)**, so the candidate was
+  rejected before timing and removed completely. Do not weaken the byte gate.
+- Added compact rejection artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-residual-prefill-screens.json`.
+  The retained residual boundary is unchanged: `chain_lds32_direct` for exact
+  GDN, two-wave dense Q8 through 4K only, and high-effort exact chunked/prefix
+  GDN research only behind the six-case state plus 250/250 natural gate.
+
+## 2026-07-14 - Publish the optimized gfx1100 GGUF six-shape rollup
+
+- Ran the final defaults-only sweep from clean `ef3e97dd` under TheRock HIP
+  7.15. Each of 512/1K/4K/32K/64K/128K used an independent right-sized
+  resident process, one discarded warmup, three measurements, 128 graph-replay
+  decode transitions, repeated token `9707`, production bulk attention,
+  automatic chunk policy, WMMA/GEMV enabled, precomputed compiler version, and
+  `--require-cached-build`. GDN/Q4/LCP-D2 selectors were explicitly absent.
+- The first shell completed a valid clean 512 component and then stopped only
+  because its progress-summary snippet used `summary` instead of the raw
+  artifact's `summary_by_workload` key. Resumed at 1K; no benchmark leg was
+  rerun or discarded and all six component hashes are retained in the rollup.
+- Final prefill medians are
+  **1290.246/1395.244/1401.632/1221.716/1021.693/766.892 tok/s**. Versus the
+  July 12 public GGUF column, deltas are
+  **+100.13%/+106.34%/+106.85%/+94.43%/+78.43%/+58.38%**.
+- Final graph decode medians are
+  **89.727/95.117/97.292/85.898/75.012/61.264 tok/s**, or
+  **-0.16%/+0.39%/+0.77%/+2.66%/+4.70%/+7.96%** versus July 12. The final
+  128K row is **0.54% above** llama.cpp HIP F16-KV (`60.933 tok/s`).
+- All 18 measured final IDs are `9707`, every final logit vector is finite,
+  effective WMMA/GEMV are true, and tracked memory remains
+  **21.478/21.710/22.995/23.559/24.203/25.493 GiB**. Largest prefill/decode
+  stdev over median is only **0.447%/0.109%**. Linked transfer and LCP-D2 gates
+  retain 250/250 exact prefill logits, KL/top-1 correctness, CPU attention
+  oracle, and expected-kernel traces.
+- Added
+  `benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json`
+  and replaced the public W7900 GGUF column. No benchmark process remains.
+
+## 2026-07-14 - Rebaseline gfx1100 GGUF parity continuation
+
+- Confirmed a clean `gfx1100-gguf-optimization` tree at `e60641f9`, TheRock
+  HIP load success, and both local gfx1100 devices; the W7900 remains the
+  selected benchmark target. Reused the accepted July 12 llama.cpp HIP/Vulkan
+  Q4_K_M/F16-KV rows and the clean July 14 hipEngine Q4_K_M/BF16-KV rollup
+  without changing any topline.
+- Expressed residuals as required hipEngine uplift rather than target-minus-
+  current percentages. Prefill needs
+  **+86.97%/+71.27%/+60.89%/+36.50%/+26.44%/+16.31%** to match llama.cpp
+  HIP at 512/1K/4K/32K/64K/128K. Decode already beats llama.cpp HIP at all
+  six shapes but needs **+20.13%/+13.08%/+5.93%/+6.91%/+11.64%/+15.62%**
+  to match llama.cpp Vulkan.
+- Audited the raw right-sized owned-session breakdowns. Weights are fixed at
+  **21.061 GiB**. At 4K/32K/64K/128K the bulk-prefill scratch alone is
+  **1.751/1.753/1.755/1.759 GiB**, while the full tracked totals exceed the
+  broader llama.cpp HIP whole-device readings by
+  **1.321/1.343/1.308/1.404 GiB**. After weights, decode KV/state, and
+  non-bulk session buffers, bulk scratch must fall to at most
+  **0.431/0.410/0.447/0.356 GiB** to fit below those HIP totals. This names
+  `LCP-M1` liveness/aliasing as the first memory lane; the public scope caveat
+  still applies, so these are directional capacity bounds, not allocator-
+  efficiency ratios.
+- Warmed the current 4K eager route outside the profiler with:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=.
+  python3 scripts/gguf_decode_rocprof.py --child-mode warmbuild --source-root .
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100
+  --prompt-length 4096 --max-seq 4352 --steps 1 --warmup-steps 1`.
+  Then ran the same cached-only child under
+  `rocprofv3 --kernel-trace --marker-trace --output-format csv` for four
+  warmup plus eight timed steps. Every generated ID remained `9707`.
+- The system ROCTX shim did not produce a marker CSV, so this new trace is
+  explicitly diagnostic: selected the final eight state-update/embedding-
+  delimited decode cycles from the trace tail, after the four warmup cycles. They contain about
+  **708 dispatches/token** and **8.914 ms GPU time/token**. Family shares are
+  dense Q8 T16 GEMV **39.28%**, selected-MoE T16 GEMV **20.30%**, attention
+  core **9.04%**, lm-head **7.19%**, router **6.65%**, and GDN **6.11%**.
+  At 4K the Vulkan target is only +5.93%, so dense Q8 and selected MoE are the
+  first decode candidates. Generic launch reduction is not the leading issue.
+- Re-read the parent source-grounded Vulkan/HIP audit. Both backends use q8_1
+  plus packed dot4; the retained Vulkan causes are smaller single-subgroup
+  workgroups/no cross-wave LDS reduction, RADV/ACO scheduling, activation-load
+  coalescing/weight unpack shape, and graph-level MoE/post-op fusion. Vulkan
+  WMMA decode, a wider dot instruction, and generic attention remain ruled
+  out. hipEngine's roughly 708 launches/token are already below the retained
+  llama.cpp HIP trace's roughly 1,600/token.
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json` and
+  updated `docs/LLAMACPP-HIP-PARITY.md`. Open order is memory liveness,
+  exact/new-contract GDN, and profile-directed Vulkan decode parity.
+
+## 2026-07-14 - Implement gfx1100 GGUF prefill scratch liveness aliasing
+
+- Added a gfx1100 backend capability for the production Qwen3.6 MoE/direct-
+  LDS32 prefill route. It replaces independently-owned prompt-sized attention,
+  GDN, routing, selected-expert, and shared-expert intermediates with one
+  256-byte-aligned arena whose views may overlap only when their route/phase
+  lifetimes are disjoint. F32/capture diagnostics, other GDN modes, non-MoE
+  models, and unvalidated backends retain dedicated ownership.
+- The 4K arena plus independently-owned metadata is **322,322,468 bytes
+  (0.30019 GiB)** versus **1,880,613,956 bytes (1.75146 GiB)** for the prior
+  dedicated scratch, a **1.45127 GiB** reduction. The allocator RED/GREEN gate
+  also verifies every simultaneously-live pair has disjoint address ranges and
+  that diagnostic/gfx1151 allocation remains dedicated.
+- Same-weight, same-process W7900 4K full-logit A/B compared dedicated and
+  aliased sessions on `[9707] * 4096`: all **248,320 FP32 logits are byte-exact**,
+  token/logit are both `9707` / `28.98980140686035`, and prefill is
+  **1408.266 -> 1409.723 tok/s** in the single interleaved diagnostic.
+- Independent defaults-only right-sized W7900 smokes keep finite token `9707`.
+  At 4K, tracked peak falls **22.995 -> 21.544 GiB (-1.451 GiB)** and the one
+  measured prefill is **1407.887 tok/s** versus the retained **1401.632 tok/s**
+  median. At 512, peak falls **21.478 -> 21.204 GiB** and prefill is
+  **1285.751 tok/s**, within the retained variance band.
+- Validation before the implementation commit: focused scratch test passes
+  **2/2**; backend/GDN/chunked-prefill/runner bundle passes **84** with 12
+  HIP-skipped cases; `git diff --check` and Python compilation pass. Clean
+  post-commit endpoint measurement and benchmark publication remain next.
+
+## 2026-07-14 - Publish gfx1100 GGUF LCP-M1 memory parity
+
+- Clean commit `04b48b67` six-shape right-sized shared-weight allocation census
+  measures **21.204/21.256/21.544/22.108/22.752/24.041 GiB** tracked at
+  512/1K/4K/32K/64K/128K. The pre-LCP-M1 row was
+  **21.478/21.710/22.995/23.559/24.203/25.493 GiB**. Every session uses the
+  `liveness_aliased` mode, each close returns tracked ownership exactly to the
+  shared-weight baseline, and no row is projected.
+- The new row is **0.402/0.362/0.130/0.108/0.143/0.048 GiB below** the retained
+  llama.cpp HIP whole-device totals. The different memory scopes still prohibit
+  allocator-efficiency claims, but the stronger capacity-parity target is met
+  at all six shapes. Versus Vulkan, the residual is **+0.036 to +0.266 GiB**
+  from 1K-128K; hipEngine is **0.056 GiB lower** at 512.
+- Clean 4K/128 1+3 at the same commit records prefill samples
+  **1409.006/1403.619/1401.568 tok/s** (median **1403.619**, +0.142% versus the
+  retained 1401.632) and graph-decode samples
+  **97.725/97.669/97.578 tok/s** (median **97.669**, +0.388%). All measured IDs
+  remain `9707`, the final logit remains `29.407920837402344`, and tracked peak
+  is exactly **21.543610 GiB** in every repetition.
+- Added accepted artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json`,
+  refreshed the benchmark memory table/changelog and parity handoff, and left
+  throughput rows on the full clean six-shape `ef3e97dd` rollup. `LCP-M1` is
+  closed; exact GDN prefill and profile-directed Vulkan decode remain open.
+
+## 2026-07-14 - Predeclare gfx1100 direct register-resident GDN gate
+
+- The next candidate is **not** the rejected materialized `chain_wave32_tree`
+  route. It combines the production compact-scale/direct-`conv_out` ABI with
+  one wave32 per value column and register-resident FP32 state, matching the
+  useful llama.cpp schedule property while retaining hipEngine's current
+  prepare/layout path. It stays explicit until every gate below passes.
+- RED/GREEN primitive admission is plain plus segmented production geometry
+  against `kernels/cpu_reference/`: finite output/state, KL <= 0.05, and top-1
+  agreement >= 90%. Also compare to exact direct LDS32 and record max/mean
+  output and state error; byte identity is not claimed because the wave tree
+  deliberately changes contraction order.
+- Promotion requires same-context (teacher-forced) next-token logits over all
+  four categories in `benchmarks/prompts/mtpbench-code-general-ja.jsonl` plus
+  category-heldouts, using exact direct LDS32 as baseline. Every transition
+  must satisfy KL <= 0.05 and aggregate top-1 agreement must be >= 99%; generated
+  trajectories are reported but are diagnostic rather than an exactness gate.
+  Decode must be aggregate non-regressive, with no tolerance, and 512/4K prefill
+  must each improve enough that the projected/default full-model row is worth
+  a clean retained A/B. No criterion will be relaxed after measurements.
+- A cache-clean `rocprofv3 --kernel-trace` must show the new plain/segmented
+  symbols, plausible duration, workgroup 256, zero scratch, and register-resident
+  state. Final promotion still requires clean right-sized full-model timing and
+  the benchmark artifact/README/changelog rollup; failure at any prior gate
+  removes the candidate rather than changing the contract.
+
+## 2026-07-14 - Reject direct wave32 tree; predeclare contiguous-group4 follow-up
+
+- The direct one-wave/value candidate clears primitive CPU-budget tests and the
+  dirty W7900 speed screen: 512/4K prefill reaches **2181.778/2473.972 tok/s**
+  versus retained exact **1290.246/1401.632** (+69.10%/+76.51%). The 4K row is
+  9.71% above llama.cpp HIP and 1.87% below Vulkan; 512 remains 9.56% below HIP.
+- It fails the predeclared 18-prompt semantic gate and is rejected without
+  changing thresholds: 450 same-context transitions have KL max **0.068757 >
+  0.05** and top-1 **443/450 = 98.444% < 99%**. Aggregate decode is
+  non-regressive (**-0.028%**) and free trajectories differ, but neither fact
+  overrides correctness. The one-wave/value candidate will not become default.
+- Predeclare one distinct follow-up under the unchanged semantic thresholds:
+  four lanes own one value column, each lane keeps one contiguous 32-row state
+  interval in registers, and one wave processes eight independent columns.
+  Lane 0 combines the four contiguous partials in row order. This is neither
+  the rejected 32-lane pairwise tree nor the rejected two-lane byte-exact
+  attempt; it trades parallel reduction width for scalar-order proximity.
+- The new route must pass plain/segmented CPU-budget fixtures, the same 18-prompt
+  KL/top-1 gate, aggregate decode nonregression, and improve **both** 512 and 4K
+  over exact direct LDS32. It must at least reach llama.cpp HIP at 512 while
+  retaining HIP parity at 4K; otherwise it is removed. The initial geometry is
+  128 threads (four waves, 32 value columns/block) to expose >=128 independent
+  blocks at production shape. Trace admission is zero scratch and plausible
+  VGPR occupancy; no gate or threshold changes after measurement.
+
+## 2026-07-14 - Reject group4; predeclare irregular contiguous-group3 screen
+
+- Group4 improves the dirty one-wave/value screen again to
+  **2281.383/2661.671 tok/s** at 512/4K, but misses the predeclared 512
+  llama.cpp HIP floor by **5.43%**. A 64-thread geometry is lower at
+  **2276.939/2649.001**; cross-column Q/K shuffles collapse to
+  **1811.517/2035.792**. Keep neither control.
+- Group4 also fails the unchanged 18-prompt semantic gate: KL max
+  **0.065184 > 0.05** and top-1 **445/450 = 98.889% < 99%**. Aggregate decode
+  remains non-regressive (**-0.056%**), but both semantic and short-shape speed
+  contracts fail, so group4 is rejected and will not be promoted.
+- One final bounded register-resident screen is predeclared before coding:
+  three lanes own contiguous state intervals of 43/43/42 rows. A wave processes
+  eight columns in lanes 0..23; lanes 24..31 participate only in required wave
+  shuffles. Three larger sequential partials should track scalar FP32 order
+  more closely than group4 while retaining eight columns/wave. This irregular
+  group3 schedule is distinct from the rejected two-lane and power-of-two tree
+  paths and is not selected from prompt contents.
+- Thresholds remain KL <= 0.05 per transition, aggregate top-1 >= 99%, and
+  aggregate decode nonregression over the same frozen 18 prompts. The 512/4K
+  floors remain llama.cpp HIP parity at both shapes. Primitive plain/segmented
+  CPU-budget failure, either semantic failure, or either speed-floor failure
+  rejects the lane entirely; no fourth reduction-width sweep follows.
+
+## 2026-07-14 - Close register-resident reduction-width screen
+
+- Group3 passes its plain/segmented production-geometry CPU-budget fixtures but
+  fails the earlier speed floor before semantic timing: dirty 512/4K is only
+  **1804.460/2019.696 tok/s**. It is slower than group4 by
+  **20.90%/24.12%**, below llama.cpp HIP by **25.20%/10.44%**, and therefore
+  rejected under the predeclared stop rule.
+- No register-resident relaxed reduction variant is retainable: wave32 and
+  group4 fail the frozen 18-prompt semantic contract, while group3 fails the
+  speed contract. The temporary kernels, registry entries, selectors, routing,
+  and candidate tests are removed. Keep the teacher-forced semantic harness and
+  frozen category-heldouts as reusable admission infrastructure; they exposed
+  failures that the six-case primitive gate and repeated-token smoke did not.
+- The strict-exact lane remains `chain_lds32_direct`. Further GDN work must be
+  true exact chunked/prefix algebra rather than another reduction-width sweep.
+  In parallel, the short-shape profile must be re-attributed because even the
+  fastest rejected GDN candidate remained 5.43% below llama.cpp HIP at 512.
+
+## 2026-07-14 - Reprofile exact 512 prefill and predeclare scalar-register GDN
+
+- Clean `7e39a515` cached-only W7900 512/0 `rocprofv3 --kernel-trace` records
+  **356.145 ms / 1,948 dispatches**. Exact direct LDS32 recurrence is
+  **210.501 ms / 30 (59.11%)**, dense Q8 WMMA **48.654 ms (13.66%)**, selected
+  MoE WMMA **58.901 ms (16.54%)**, and all remaining families **10.69%**.
+  This reconfirms exact GDN, not generic launch or full attention, as the parity
+  blocker. Trace path: `/tmp/gfx1100-gdn-postscreen-512-prof/trace_kernel_trace.csv`;
+  summary: `/tmp/gfx1100-gdn-postscreen-512-prof/summary.json`.
+- Registered read-only lineage to Atlas `37513bf`,
+  `kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu`. The transferable
+  idea is narrow: one thread owns one 128-row state column, explicit launch
+  bounds permit the FP32 state to remain in registers, and state is loaded and
+  stored once around the serial token loop. hipEngine will independently retain
+  its compact-scale/direct-`conv_out` ABI and exact scalar operation order; it
+  does not copy Atlas CUDA/BF16/gate-clamp semantics.
+- Predeclare `chain_register32_direct` as one final **strict-exact** candidate,
+  not another reduction-width schedule. Compile/trace admission is workgroup 32,
+  zero LDS, zero scratch, and a plausible <=192 VGPR allocation. Any scratch or
+  loss of register residency rejects it before full-model timing.
+- RED/GREEN requires plain and segmented production geometry to be byte-exact
+  for BF16 output and FP32 final state versus `chain_lds32_direct`, plus the CPU
+  correctness budget. Only then run cached expected-symbol trace and dirty
+  512/4K full-model timing. Promotion requires at least
+  **2412.320/2255.080 tok/s** (llama.cpp HIP parity) at 512/4K, 250/250 natural
+  transitions exact, and aggregate decode nonregression. No threshold changes
+  or relaxed semantic fallback are allowed after measurement.
+
+## 2026-07-14 - Reject scalar-register GDN at resource gate
+
+- Plain and segmented production-geometry fixtures become byte-exact to direct
+  LDS32 after making the contraction/update FMA sites explicit, so the scalar
+  arithmetic hypothesis is sound. The cached W7900 trace then fails the earlier
+  compile/resource admission before any full-model timing.
+- Plain/segmented symbols compile at **256 VGPR** with **1064/1060 bytes of
+  scratch per thread**, workgroup 32, and zero LDS. This exceeds the <=192 VGPR
+  ceiling and, decisively, violates zero scratch: the complete 128-row state
+  does not remain register-resident on gfx1100 even with `__launch_bounds__(32,
+  1)`. Trace:
+  `/tmp/gfx1100-gdn-register32-trace/trace_kernel_trace.csv`.
+- Rejected under the predeclared stop rule. The temporary kernel bodies,
+  wrappers, registry variants, and RED test are removed without full-model or
+  trajectory timing. Atlas remains catalogued as a scheduling reference, but
+  its SM121 register-file result does not transfer mechanically to RDNA3.
+- Strict exact GDN has now exhausted direct LDS geometries, ordered/grouped
+  register schedules, relaxed register schedules, and full-column scalar
+  residency. A real future GDN step requires chunkwise/WY algebra with an
+  explicit numerical contract; do not reopen storage/reduction micro-variants.
+
+## 2026-07-14 - Predeclare remaining Q8T16 wave/block indexing screen
+
+- The retained 4K exact-decode profile attributes **22.51%** of GPU time to the
+  three dense-Q8 bodies that still use scalar `k=tid; k+=blockDim`: single
+  **13.79%**, concatenated dual **4.50%**, and triple-split **4.22%**. The
+  largest dual-split leaf already uses the exact wave/block traversal retained
+  on gfx1151 and is not changed by this screen.
+- Extend that existing in-tree traversal only as separately callable BF16 A/B
+  symbols for the single, concatenated-dual, and triple-split kernels. This is
+  an indexing/compiler-scheduling screen, not a claim to remove cross-wave LDS
+  or reproduce Vulkan's one-subgroup shader. Every thread retains the same K
+  sequence and FP32 operation order at 64/128 threads.
+- RED/GREEN requires production-shape candidate output to be byte-identical to
+  each current body at both supported workgroup sizes. Cache-cycled micro A/Bs
+  must show a repeatable positive leaf result before a body can advance. Any
+  advancing subset then requires an expected-symbol trace, exact generated
+  tokens/logits, and a clean 4K full-model decode nonregression gate; retain a
+  measured sub-window win even if aggregate wall is flat within noise, per the
+  repository performance policy. Regressing bodies are removed independently.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` was rerun. Its
+  four DRIFT reports concern external PARO/GDN source families, not this
+  in-tree Q8T16 body; no external code is being ported.
+
+## 2026-07-14 - Reject remaining Q8T16 wave/block extensions
+
+- All six production-shape 64/128-thread RED/GREEN fixtures pass byte-exactly
+  against the current bodies. The W7900 cache-cycled 128-thread micro protocol
+  then rejects every candidate before full-model timing: single
+  **11.5981 -> 11.7262 us (+1.10%)**, concatenated dual
+  **23.5939 -> 23.6821 us (+0.37%)**, and triple split
+  **20.7068 -> 20.8705 us (+0.79%)**. Each median covers six alternating-order
+  legs of 80 warmups + 400 HIP-event-timed calls while cycling about 107 MiB of
+  weights.
+- Removed all temporary symbols, wrappers, and tests. The existing production
+  dual-split wave/block path remains unchanged. This exact indexing cleanup is
+  not the gfx1100 Vulkan-parity lever, and the earlier gfx1151 dual-split result
+  must not be generalized to these bodies.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q8t16-waveblock-extension-rejected.json`.
+  No public benchmark rollup changes because no candidate advanced past its
+  micro gate.
+
+## 2026-07-14 - Predeclare W7900 c1 selected-Q4 dp4a screen
+
+- Test the source-grounded Vulkan mechanism directly on the current normal
+  decode path: enable only the existing Q4T16 selected gate/up q8_1+`sudot4`
+  diagnostic with `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1`. Keep Q5 selected
+  down exact; its existing c1 fixture top-1 of 0.875 misses the repository
+  kernel gate and therefore cannot be promoted in this screen.
+- This is distinct from the prior gfx1151 MTP/B3 evidence: target W7900/gfx1100
+  c1 graph decode at 4K with Qwen3.6-35B-A3B Q4_K_M and BF16 KV. The current Q4
+  selected gate/up+SiLU leaf is **10.88%** of 4K GPU time, so a positive result
+  can explain part of Vulkan's advantage but cannot by itself justify a broad
+  dp4a claim.
+- Admission is one clean cached 4K/128 smoke with finite logits, final IDs
+  unchanged, and positive decode throughput. Only if that passes, run a clean
+  interleaved 1+3 A/B and expected-symbol trace, then require the frozen
+  multi-prompt teacher-forced KL/top-1 gate before any default consideration.
+  A changed token, failed quality gate, or non-positive wall result rejects the
+  route without changing the existing default-off diagnostic flag.
+
+## 2026-07-14 - Reject W7900 c1 selected-Q4 dp4a route
+
+- Source audit after the admission smoke found that the existing narrow flag
+  was a c1 no-op: `_launch_selected_raw_gguf_moe_pair_silu()` forced the exact
+  float-dequant fused-SiLU body before reaching the flag-aware split helper.
+  The clean control/flagged/control samples confirm this: all logits are exactly
+  `29.407920837402344`; the apparent flagged **97.772 tok/s** versus combined
+  control **97.521 tok/s (+0.258%)** follows monotonic run-order drift and is
+  not dp4a evidence.
+- Added a temporary RED/GREEN route that actually quantized the c1 activation
+  and called the existing fused-SiLU q8_1+`sudot4` body under the narrow flag.
+  Its first W7900 4K/128 smoke is decisively negative:
+  **97.521 -> 88.920 tok/s (-8.82%)**. The final ID remains `9707`, but the
+  final logit changes **29.407921 -> 28.891205**.
+- Rejected at the predeclared wall gate; no profiler or teacher-forced quality
+  run is warranted. Removed the temporary runtime route and test change. The
+  flag retains its prior default-off rows>1 behavior. This isolates an
+  important backend difference: q8_1/dp4a as an instruction choice is not
+  enough; hipEngine's present selected-T16 c1 layout/schedule loses badly once
+  activation quantization is included.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-selected-q4-dp4a-c1-rejected.json`.
+
+## 2026-07-14 - Predeclare exact Q6T16 lm-head top-1 fusion screen
+
+- The next bounded Vulkan-gap target is the exact Q6_K lm-head, which is
+  **7.19%** of the retained 4K GPU window. The current c1 greedy path launches
+  the resident Q6T16 projection into a full FP32 vocabulary row, then scans
+  that row with two argmax kernels even when callers explicitly request top-1
+  without logits.
+- Add a separately callable Q6T16 candidate that preserves the existing
+  per-logit dot, wave reduction, cross-wave sum, FP32 value, and minimum-index
+  tie break, but writes one winner per resident 16-column tile and reduces
+  those winners directly. It consumes the existing T16 allocation: no raw/X8
+  sidecar, activation quantization, weight duplication, or sampling narrowing.
+  Full-logit and non-Q6 dispatch remain unchanged fallbacks.
+- RED/GREEN requires candidate IDs and selected FP32 values to be byte-identical
+  to `q6_k_t16_gemv -> argmax` on plain and tied-maximum fixtures. A
+  production-shape W7900 cache-cycled micro A/B must show a positive combined
+  projection+selection result before runtime routing is retained. If it
+  advances, a cached trace must show the expected stage1/stage2 symbols and a
+  clean 4K graph-decode A/B must preserve generated IDs/final selected value
+  and be non-regressive. Exact positive leaf savings are retained even if the
+  aggregate wall is inside noise; a negative leaf result removes the candidate.
+
+## 2026-07-14 - Reject exact Q6T16 lm-head top-1 fusion
+
+- RED/GREEN passed while the candidate existed: the focused Q6 kernel plus
+  runtime-routing bundle was **10/10**, and candidate IDs/selected FP32 values
+  were byte-identical to full Q6T16 logits plus argmax. An all-equal-logit
+  fixture also confirmed the minimum-index tie break.
+- The production `rows=1, in=2048, out=248320` W7900 micro screen was narrowly
+  positive: full-logits+argmax median **877.526 us**, tile-winner fusion
+  **873.801 us** (**0.426% faster**) across six alternating 20-warmup/100-call
+  HIP-event legs. The selected ID/value were exact, so the candidate advanced.
+- The clean cached-only 4K graph control/candidate/control gate reversed the
+  result. Control A was **97.940/97.919/97.789 tok/s**, candidate
+  **97.337/97.206/97.137**, and control B **97.714/97.550/97.365**. Candidate
+  median **97.206** trails the combined-control median **97.751 tok/s** by
+  **0.558%**. All nine measured runs retain final ID `9707` and final logit
+  `29.407920837402344`.
+- Rejected under the predeclared aggregate nonregression rule. Removed the
+  candidate kernel, wrapper, registry route, runtime flag, enlarged scratch,
+  and candidate tests; the existing full-logits Q6T16 route is unchanged. A
+  profiler trace was not retained after the decisive wall rejection because no
+  new kernel remains or is claimed.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q6t16-top1-fusion-rejected.json`.
+
+## 2026-07-14 - Predeclare exact Q8T16 virtual-wave32 dual-split screen
+
+- The next candidate targets only the dominant dense-Q8 dual-split leaf, not
+  the already-rejected all-body block64 or indexing-only extensions. Current
+  Q8T16 dual-split uses four physical waves per 16-output tile, wave-local sums,
+  LDS exchange, and an ordered four-part final sum. This family is about
+  **16.77%** of the retained 4K GPU window.
+- Test a true one-subgroup schedule while preserving exact arithmetic: one
+  physical wave serially executes the same four virtual-wave block-index
+  sequences (`block_idx = virtual_wave; += 4`), performs the same wave reduction
+  for each, stores four partials, then adds them in the current `0..3` order.
+  This is distinct from the historical 64-thread candidate, which changed K
+  ownership/reduction order, changed generated IDs, and regressed throughput.
+- Admission requires byte identity to the current 128-thread body at the
+  production `rows=1, in=2048, out=8192+4096` shape and on a tied fixture. A
+  cache-cycled W7900 micro A/B must improve the complete dual-split launch before
+  runtime routing or full-model timing. Any negative or scratch-spilling leaf
+  result removes the candidate; an advancing candidate then needs expected-
+  symbol trace and clean 4K graph nonregression with exact IDs/final value.
+
+## 2026-07-14 - Reject exact Q8T16 virtual-wave32 dual-split
+
+- The production-shape ordinary and repeated-output fixtures pass byte-exactly
+  versus the current 128-thread dual-split body (**2/2**). The one-wave kernel
+  reproduces each virtual wave's block sequence and reduction plus the final
+  ordered four-part sum, so this result isolates schedule rather than math.
+- The W7900 cache-cycled micro gate is decisively negative. Current 128-thread
+  median is **31.337 us**; exact virtual-wave32 is **48.618 us**, a
+  **55.143% latency regression**, across six alternating 80-warmup/400-call
+  legs cycling about 107 MiB of Q8T16 weights.
+- Rejected before runtime routing, trace, or full-model timing. Eliminating the
+  physical cross-wave exchange cannot pay when the current 16-output T16 map
+  forces one subgroup to execute all four virtual-wave instruction streams
+  serially. Removed the candidate kernel, wrapper, and tests; production is
+  unchanged.
+- Compact rejected artifact:
+  `benchmarks/results/2026-07-14-gfx1100-q8t16-virtual-wave32-rejected.json`.
+
+## 2026-07-14 - Predeclare exact F32-weight cooperative router screen
+
+- The retained 4K graph route spends **6.65%** of GPU time in c=1 router work.
+  Each of 40 MoE layers launches a 512-thread BF16-hidden/F32-weight expert
+  projection, a second one-row shared-gate projection, and a 256-thread
+  top-k/softmax. The older one-launch cooperative route cannot be reused because
+  it contracts router weights to BF16; GGUF now preserves the source F32 router
+  and shared-gate tensors for llama.cpp parity.
+- Add a separately callable split-weight cooperative variant for BF16 hidden and
+  F32 weights. At the production `hidden=2048, experts=256, top_k=8` shape, a
+  256-thread producer has the same nonzero dot-product lanes and reduction order
+  as the current 512-thread projection (the upper 256 control threads contribute
+  zeros), while its last producer block can run the existing 256-thread select
+  order. The candidate must keep the full `[experts + 1]` FP32 logits ABI, raw
+  shared-gate logit, selected IDs, and routing weights byte-exact.
+- RED/GREEN first compares the candidate with the complete current three-kernel
+  chain at production shape, including near-tied logits. Then a cache-cycled
+  W7900 HIP-event A/B compares the complete sequence, including the candidate's
+  required counter reset. A non-positive leaf result removes the variant before
+  runtime routing. A positive leaf may advance behind an explicit diagnostic
+  flag to a cached expected-symbol trace and clean 4K control/candidate/control
+  graph gate; promotion requires exact generated IDs/final value and aggregate
+  decode nonregression. No BF16-weight contraction or relaxed quality gate is
+  permitted.
+- `scripts/check_lineage.py --kind kernel --diff stat` was rerun. Existing DRIFT
+  entries concern external PARO/GDN families; this screen extends the retained
+  in-tree router schedule and ports no new external body.
+
+## 2026-07-14 - Promote exact F32-weight cooperative router on gfx1100
+
+- Added `qwen35_router_topk_split_shared_coop_out_bf16_f32w` under the
+  four-axis `router_topk_split_shared/f32/coop_out_bf16_hidden` key. It preserves
+  the full FP32 logits/raw shared-gate ABI and folds the two 512-thread logits
+  launches plus 256-thread top-k into one 256-thread producer/select kernel;
+  its wrapper includes the required four-byte atomic-counter reset.
+- RED/GREEN at production `hidden=2048, experts=256, top_k=8` is byte-exact for
+  every FP32 logit, selected ID, and routing-weight bit, including an engineered
+  equal-logit lower-ID tie. The exact restriction is explicit: 256 threads and
+  hidden size <=2048; unsupported F32-hidden, backend, quant, or shape routes
+  keep the separate registry-resolved fallback.
+- The cache-cycled W7900 HIP-event gate (128.5 MiB weight pool, six alternating
+  legs, 80 warmups + 400 calls/leg) measures the complete current chain at
+  **17.8448 us** median and the cooperative chain at **14.6663 us**
+  (**-17.812% latency**), with output bytes rechecked before timing.
+- The initial source-dirty but right-sized 4K graph control/candidate/control
+  screen measures combined-control median **97.4553 tok/s** versus candidate
+  **98.0416 tok/s (+0.6016%)**. All nine measured IDs are `9707` and every final
+  value is exactly `29.407920837402344`; tracked memory is unchanged.
+- Cached-only W7900 `rocprofv3` eager-decode trace shows 200 candidate launches
+  over four warmup plus one timed token. The expected kernel runs at workgroup
+  256, 40 VGPR, zero scratch, 512-byte LDS, and **10.600 us** median; the final
+  timed token's 40 router launches total **426.245 us**. No c1 one-token router
+  logits/select kernel remains in that traced route (bulk-prefill select rows
+  are separate and expected).
+- Promote the cooperative path as the default when its registered exact
+  contract resolves. `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` temporarily retains
+  the old three-kernel route for clean post-commit A/B and rollback; its removal
+  trigger is recorded in `docs/REFACTOR.md`. Clean implementation validation and
+  commit come next, followed by clean 4K publication evidence.
+
+## 2026-07-14 - Publish exact gfx1100 F32-weight router default
+
+- Implementation commit `4c743994` is clean and default-on. The clean W7900
+  rollback/default/rollback 4K/128 sequence uses three fresh right-sized
+  processes, each with one discarded warmup and three measured state-bound
+  graph runs. All three child artifacts report commit `4c743994`, clean
+  provenance, gfx1100/W7900, exact Q4_K_M fingerprint, TheRock HIP 7.15, and
+  cached-only builds.
+- Control A is **97.2948/97.2488/97.2501 tok/s** (median **97.2501**), the
+  no-env default is **98.3278/98.2727/98.0825** (median **98.2727**), and
+  control B is **97.1832/97.2197/97.0424** (median **97.1832**). The combined
+  control median is **97.2342 tok/s**; the default improves graph decode by
+  **+1.0680%**. This confirms and strengthens the source-dirty +0.60% screen.
+- All nine measured final IDs are `9707`, all nine final values are exactly
+  `29.407920837402344`, and tracked peak is exactly **21.543610 GiB** in every
+  leg. Prefill drifts monotonically **1455.530/1453.199/1450.387 tok/s** across
+  process order and is not claimed; this change only routes c1 decode.
+- Published accepted scoped artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-f32w-cooperative-router.json`.
+  Updated the benchmark index/changelog and kernel/refactor handoff. The public
+  six-shape throughput table remains on its clean `ef3e97dd` sweep until every
+  shape receives a new defaults-only refresh; the new 4K row is retained as a
+  named exact optimization gate rather than silently mixing revisions.
+
+## 2026-07-14 - Predeclare persistent cooperative-router counter screen
+
+- The clean post-promotion 4K trace contains **40 four-byte `fillBuffer` counter
+  resets per token**, totaling **0.116 ms (1.31% of the GPU window)**. These are
+  launch-DAG overhead, not router math: the cooperative kernel currently aliases
+  its completion counter onto selected-ID output and therefore must clear it
+  before every layer.
+- Test a dedicated four-byte counter initialized once with scratch allocation.
+  The last producer block already observes that every row has incremented the
+  counter; after the existing exact top-k/softmax writes, thread 0 can reset the
+  dedicated counter for the next same-stream graph replay. The old selected-ID
+  alias plus host reset remains a separately registered control/fallback during
+  admission.
+- RED/GREEN requires byte identity for every production-shape FP32 logit,
+  selected ID, and routing-weight bit across **two consecutive launches without
+  a host reset**, plus a zero counter after replay. Admission then requires a
+  cached W7900 leaf A/B, an expected-symbol `rocprofv3` trace with the 40 reset
+  nodes absent, and clean 4K graph control/candidate/control nonregression with
+  exact generated IDs/final value. A negative leaf or wall result removes the
+  candidate, dedicated scratch, flag, and tests.
+
+## 2026-07-14 - Promote persistent cooperative-router counter on gfx1100
+
+- The production-shape RED/GREEN compares the complete current three-kernel
+  chain with the persistent cooperative route at `hidden=2048, experts=256,
+  top_k=8`. Every FP32 logit, selected ID, and routing-weight bit is exact,
+  including the lower-ID equal-logit tie. Poisoning all candidate outputs and
+  launching a second time without touching the counter reproduces the outputs;
+  the counter reads zero after replay.
+- The 128.5 MiB cache-cycled W7900 fused-router A/B (six alternating legs, 80
+  warmups plus 400 calls/leg) measures selected-ID alias plus `hipMemsetAsync`
+  at **14.6673 us** median and the dedicated self-resetting counter at
+  **10.4442 us (-28.7926%)**.
+- Cached-only eager `rocprofv3` over four warmup plus one timed token observes
+  200 expected
+  `qwen35_router_topk_split_shared_coop_out_f32w_kernel<unsigned short, true>`
+  launches at 256 threads, 40 VGPR, zero scratch, 512-byte LDS, and **10.360 us**
+  median. Total `fillBuffer` launches fall **650 -> 450**, exactly **200 fewer =
+  40 removed per token**; all six generated IDs remain `9707`.
+- The source-dirty but right-sized 4K graph control/candidate/control gate
+  measures control A **99.0830/99.0222/98.9412**, candidate
+  **100.7379/100.7105/100.5892**, and control B
+  **98.9301/98.8811/98.7117 tok/s**. Candidate median **100.7105** improves the
+  combined-control median **98.9357 tok/s** by **+1.7939%**. All nine final IDs
+  are `9707`, all final values are exactly `29.407920837402344`, and every leg
+  reports matched tracked peak **21.543610133 GiB** (eight bytes above the prior
+  route for one resident and one prefill completion counter).
+- Promote the persistent registry variant as the gfx1100 exact-contract default.
+  `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` temporarily retains the
+  selected-ID alias/reset route for clean post-commit A/B and rollback. Focused
+  validation and the implementation commit come next; publication still
+  requires the clean rollback/default/rollback gate.
+
+## 2026-07-14 - Publish persistent gfx1100 router counter default
+
+- Implementation commit `0ec2a813` is clean and default-on. The required clean
+  W7900 rollback/default/rollback gate uses three fresh right-sized 4K/128
+  processes, each with one discarded warmup and three measured state-bound
+  graph runs. All child artifacts report clean `0ec2a813`, gfx1100/W7900, the
+  exact Q4_K_M fingerprint, TheRock HIP 7.15, and cached-only builds.
+- Rollback A is **98.9202/98.9234/98.7325 tok/s** (median **98.9202**), the
+  no-env default is **100.4463/100.3104/100.4766** (median **100.4463**), and
+  rollback B is **98.8721/98.7520/98.6264** (median **98.7520**). The combined
+  rollback median is **98.8120 tok/s**; the persistent default improves graph
+  decode by **+1.6539%** and confirms the source-dirty +1.79% admission screen.
+- All nine final IDs are `9707`, all final values are exactly
+  `29.407920837402344`, and tracked peak is exactly **23,132,275,240 bytes
+  (21.543610133 GiB)** in every leg. That is only eight bytes above the prior
+  route: one four-byte counter in resident scratch and one in prefill scratch.
+  Prefill medians are **1452.891/1453.126/1453.967 tok/s** in process order and
+  are not claimed because this change only affects c=1 decode.
+- Published retained artifact
+  `benchmarks/results/2026-07-14-gfx1100-gguf-persistent-router-counter.json`
+  and updated the benchmark index/changelog plus kernel/refactor handoff. The
+  public six-shape table remains on clean `ef3e97dd` until a complete defaults-
+  only refresh measures every shape at one revision.
+
+## 2026-07-14 - Start GPF-8 with chunkwise/WY CPU algebra and frozen gates
+
+- Claimed task #98 from clean `57fefa40`. ROCm sees both gfx1100 devices; the
+  W7900 remains the target. The required lineage audit now registers Atlas
+  small-K/C32 WY sources (`8d187c7`, `37513bf`) and the FLA-derived vLLM
+  chunk/KKT/WY files (`ed582b6`, `adb6d96`, `cb10b7e`). The lineage report is
+  clean for all six new/reference GDN files; older nano-vllm DRIFT remains the
+  previously catalogued unrelated parent drift.
+- Selected a real algorithmic change rather than another storage/reduction
+  variant: C=8 direct lower-triangular/Woodbury-Young algebra over the retained
+  FP32 direct-conv Q/K/V ABI. The future HIP block is predeclared as 256 threads
+  per `(segment,v_head,value_tile32)`, <=32 KiB LDS, zero scratch, <=128 VGPR,
+  scalar direct remainder, and no prompt-sized coefficient arena. Current
+  registry defaults remain unchanged.
+- Added the independent float64 CPU oracle
+  `gdn_prefill_chunkwise_wy_segments`, including packed segment/state-slot
+  semantics. The hand-checked three-token fixture and random tests cover chunk
+  sizes 1/2/3/8/16, a 17-token tail, untouched slots, shape/error handling, and
+  a production-shaped FP32 comparison. RED failed collection on the missing
+  export as expected; GREEN passes.
+- Froze admission before HIP work: CPU `2e-6` algebra bound, primitive HIP
+  `atol=5e-4/rtol=5e-3`, one-token byte identity, cached workgroup/resource
+  trace, complete 512 GDN family <=66 ms, 18-prompt KL <=0.05 and top-1 >=99%,
+  exact free-running 128-transition trajectories, decode nonregression, and
+  clean W7900 512/4K prefill floors **2412.320/2255.080 tok/s**. Thresholds may
+  not be changed after observing a candidate.
+- Validation: `PYTHONPATH=$PWD uv run pytest -q
+  tests/test_gdn_chunkwise_wy_cpu.py tests/test_cpu_reference.py
+  tests/test_cpu_reference_moe_ffn.py tests/test_cpu_reference_paro_moe_ffn.py
+  tests/test_cpu_reference_paro_primitives.py` passes **34/34**;
+  `python3 -m compileall -q ...`, fixture/lineage JSON validation,
+  `scripts/check_lineage.py --kind kernel --diff stat`, and `git diff --check`
+  pass. The broad `scripts/check_fixtures.py` still encounters the pre-existing
+  custom MoE fixture schema at
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`; that file
+  and checker are unchanged, and its dedicated CPU MoE tests pass above.
+
+## 2026-07-15 - Pass GPF-8 primitive and resource admission
+
+- Implemented callable, default-off plain and segment-aware C=8 direct-conv
+  chunkwise/WY recurrence variants. Each 256-thread block retains a 128x32
+  state tile, stages eight FP32 Q/K rows and bounded coefficients/projections in
+  28 KiB LDS, evaluates the triangular delta/output system, updates the
+  chunk-final state, and handles a short scalar direct tail in the same launch.
+  The exact direct LDS32 route remains registered and unchanged as fallback.
+- RED first failed collection on the intentionally absent Python wrappers. The
+  final one-token candidate is byte-identical to direct LDS32 for plain and
+  segmented entry points; C=8 and 17-token-tail cases are finite and satisfy
+  the frozen `atol=5e-4, rtol=5e-3` high-precision oracle bound. The complete
+  focused GPU file passes **33/33**.
+- The first resource trace appeared to report 176 VGPR because
+  `__launch_bounds__(256, N)` inflated the gfx1100 kernel descriptor despite a
+  40-VGPR disassembly. Removing the blind launch bound makes descriptor,
+  disassembly, and `rocprofv3` agree. The final integrated-tail plain and
+  segment symbols run at **256 threads, 48 VGPR, zero scratch, 28 KiB LDS**.
+  Trace: `/tmp/gpf8-wy8-integrated-tail-resource/trace_kernel_trace.csv`.
+- A cached W7900 synthetic production-shape trace launches compact prepare,
+  candidate recurrence, and RMSNorm+gate 30 times at 512 tokens. The complete
+  family is **47.490591 ms**, below the frozen 66 ms admission ceiling:
+  **0.865603 ms prepare + 43.847903 ms recurrence + 2.777085 ms gate**. Trace:
+  `/tmp/gpf8-512-family-trace-final/trace_kernel_trace.csv`. This is a kernel-
+  family gate, not a retained full-model performance claim.
+- Validation: `HIP_VISIBLE_DEVICES=0 ... uv run pytest -q
+  tests/test_qwen35_gguf_gdn_prefill_correctness.py` passes **33/33**;
+  `python3 -m compileall -q hipengine ...` and `git diff --check` pass. Runtime
+  selection/defaults are intentionally untouched until the semantic and
+  trajectory gates can exercise the candidate explicitly.
+
+## 2026-07-15 - Add explicit GPF-8 admission routing
+
+- Added fail-closed `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wy8` resolution
+  through registered plain/segment recurrence keys, compact-scale preparation,
+  and the existing RMSNorm+gate fallback chain. `auto` and both backend package
+  defaults remain `chain_lds32_direct`; there is no backend/quant branch.
+- The route shares the admitted compact-direct scratch-liveness arena and is
+  available in the compare, interleaved-wall, semantic, and trajectory
+  harnesses. Missing candidate components fail closed. Added the temporary path
+  and its rejection/promotion removal trigger to `docs/REFACTOR.md`.
+- RED routing/parser tests failed in nine expected places before the mode and
+  plan members existed. GREEN passes **78/78** across routing, semantic,
+  trajectory, A/B, and compare harness tests.
+- Cached W7900 source-dirty route smoke command:
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_wy8 python3
+  scripts/qwen35_gguf_bench.py ... --prompt-length 512 --decode-tokens 0
+  --warmup-runs 0 --measured-runs 1 --require-cached-build`. It completes with
+  prefill sample ID `9707`, **1589.982 tok/s**, and **21.204 GiB** tracked peak.
+  The warmupless dirty smoke only proves live route execution; it is not a
+  retained performance/correctness claim and does not satisfy any clean floor.
+
+## 2026-07-15 - Reject and remove GPF-8 chunkwise/WY GDN
+
+- Clean candidate commit `37d28fdb` passes the primitive/resource/family gates
+  but fails the frozen model contract. The complete 18-prompt same-context gate
+  measures max KL **0.056522 > 0.05** and aggregate top-1 **445/450 = 98.889%
+  < 99%**. Only **5/18** complete 128-transition free-running trajectories are
+  exact. Aggregate decode wall is non-regressive at **22541.156 -> 22530.790
+  ms (-0.046%)**, but cannot override correctness.
+- Clean cached 1+3 W7900 speed at repeated token `9707` measures 512 prefill
+  **2009.702/2003.399/1997.080 tok/s** (median **2003.399**) and 4K
+  **2285.519/2280.244/2270.250** (median **2280.244**). The candidate beats the
+  4K llama.cpp HIP floor by **+1.116%** but misses the 512 floor by **-16.951%**;
+  both **2412.320/2255.080** floors were mandatory. All six timed final IDs are
+  `9707`; tracked peak is **21.543610133 GiB**.
+- Rejected without changing thresholds. Removed all candidate HIP bodies,
+  wrappers, registry entries, `chain_wy8` runtime/harness routing, refactor
+  debt, and candidate-specific tests. Retained only the independent float64 CPU
+  algebra/oracle from `912ef70d`; production remains `chain_lds32_direct`.
+- Published compact rejection artifact
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`.
+  Raw clean semantic/speed artifacts remain local at
+  `/tmp/gpf8-semantic-clean.json` and `/tmp/gpf8-speed-clean.json`; their SHA256
+  values and exact commands are in the compact artifact. No benchmark topline
+  changes because this is a rejected diagnostic, not a retained performance
+  result.
+- Final cleanup validation passes **144/144** focused GPU/CPU/routing/harness
+  tests, `python3 -m compileall -q hipengine scripts tests`, compact-artifact
+  JSON validation, `scripts/check_lineage.py --kind kernel --diff stat`, and
+  `git diff --check`. The lineage report contains only the previously catalogued
+  unrelated parent drift; the registered Atlas/vLLM GDN references remain
+  clean.
+
+## 2026-07-15 - Adopt peer-aligned GDN numerical contract
+
+- Reviewed hipEngine PARO K2, llama.cpp HIP `1ebf790cda38`, and llama.cpp
+  Vulkan `263cc04a5405`. None promises bit identity with a scalar/decode-order
+  contraction. PARO K2 combines two wave32 partials; llama.cpp HIP keeps state
+  row shards in registers and uses wave reductions; the Vulkan 128-state RADV
+  path uses eight lanes per value column, 16 rows per lane, and clustered
+  subgroup reductions. llama.cpp's F32 GDN backend oracle accepts CPU-reference
+  NMSE <= 1e-7 rather than exact bytes.
+- User decision: do not impose a stronger universal exact-state/exact-greedy-
+  trajectory contract on GGUF than peer implementations. Prospectively admit
+  algebraically equivalent reassociated GDN with CPU-reference primitive
+  numerics, the complete 18-prompt category plus heldout semantic suite at KL
+  <= 0.05 and top-1 >= 90%, deterministic execution, decode non-regression,
+  and both 512/4K speed floors. State bytes and free-running trajectory identity
+  remain diagnostics. Historical artifacts remain classified under their
+  original frozen contracts.
+- This does not restore GPF-8: its clean KL 0.056522 still fails the repository
+  gate and its 512 result still misses the llama.cpp HIP floor. Existing K2 is
+  the first re-evaluation because its implementation and fallback already
+  exist; register-resident peer geometry follows only if K2 does not close the
+  gap.
+- Narrow K2 CPU-oracle/boundary/drift validation passes **6/6**:
+  `HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest
+  tests/test_qwen35_gguf_gdn_prefill_correctness.py -q -k
+  'paths_match_cpu_oracle or segment_boundary_paths_agree or
+  chain_matches_decode_order_within_drift_budget'`.
+- The first clean cached W7900 attempt (`bg-140`) incorrectly named candidate
+  `chain`, which now means the materialized **exact** split rather than K2. The
+  production direct route had allocated compact scratch with null materialized
+  Q/K/V views; switching modes inside the resident semantic session passed a
+  null pointer to the exact prepare kernel and reproducibly raised a GPU VM page
+  fault. No JSON or quality result exists. W7900 health is intact: a post-fault
+  cached smoke reports `n=1024 max_abs=0.0`.
+- Added explicit fail-closed `chain_k2` routing to the already-registered PARO
+  prepare + K2/segments-K2 + RMSNorm chain. The semantic harness now sets an
+  internal `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` before resident-session
+  allocation, forcing dedicated materialized scratch while it switches modes.
+  RED failed import/routing; GREEN passes **53/53** routing/semantic/trajectory
+  tests and **82/82** with the GDN CPU/GPU and scratch-liveness suites included.
+- A dirty one-prompt W7900 runtime screen now completes through `chain_k2`:
+  `code_merge_intervals` KL **0.0181531**, top-1 **24/25 = 96%**, decode wall
+  **1247.251 -> 1235.878 ms (-0.912%)**, with non-exact free-running trajectory
+  reported diagnostically. It is implementation evidence only; dirty provenance
+  correctly returns `invalid_dirty_measurement`. The clean 18-prompt gate still
+  owns admission after this logical unit is committed.
+
+## 2026-07-15 - Reject existing peer-aligned GDN routes and select GPF-9C
+
+- Clean W7900 `bdfb96e4` full-suite K2 gate rejects on KL only: max
+  **0.05903083 > 0.05**, top-1 **445/450 = 98.889%**, decode median-wall sum
+  **22647.598 -> 22633.350 ms (-0.063%)**. Exact free-running trajectory is
+  false but diagnostic under the prospectively frozen contract. The first KL
+  failure is `mixed_ja_en_translate`.
+- Clean same-commit register-resident `chain_wave32_tree` also rejects on KL:
+  max **0.06875726**, top-1 **443/450 = 98.444%**, decode median-wall sum
+  **22720.713 -> 22711.755 ms (-0.039%)**. Failing prompts are
+  `mixed_ja_en_review` (**0.05212846**) and
+  `heldout_general_ja_speculative` (**0.06875726**). No speed gate follows
+  either semantic rejection.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`;
+  raw artifacts remain local at `/tmp/gdn-{k2,wave32-tree}-peer-aligned-...`
+  with SHA256 values in the compact artifact. No benchmark topline/changelog
+  changes because neither route is a retained performance claim.
+- Source audit corrects the remaining geometry question. llama.cpp HIP
+  `1ebf790cda38` returns physical wave width 32 on RDNA3 (64 only for gfx8/9),
+  then runs four normalized-Q/K register-resident value columns per 128-thread
+  block, four state rows per lane. Existing K2 has normalized inputs but a
+  two-wave contraction; existing tree has one-wave residency but applies raw
+  Q/K scales inside the recurrence. GPF-9C will combine normalized inputs with
+  one-wave32 register residency before considering different algebra.
+- Required lineage audit:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`. Atlas/vLLM GDN
+  references are clean. The report contains only previously catalogued
+  nano-vllm-amd drift (`qwen35_expert.hip`, `smoke.hip`, and PARO loader files);
+  the planned code uses llama.cpp only as the read-only schedule source and
+  records source path/commit.
+
+## 2026-07-15 - Implement GPF-9C llama.cpp-HIP-shaped GDN candidate
+
+- RED added a plain/segmented primitive gate for the missing normalized-Q/K,
+  one-wave32 schedule; collection failed on the absent wrappers as expected.
+- Added explicit `chain_peer_wave32` without changing the production
+  `chain_lds32_direct` default. The recurrence follows read-only llama.cpp HIP
+  `1ebf790cda38`, `ggml/src/ggml-cuda/gated_delta_net.cu`: four state rows per
+  lane remain register-resident across the serial token loop, each wave owns one
+  value column, four waves share a 128-thread block, reductions use the peer XOR
+  tree, scalar decay is applied after the normalized `S^T @ k` reduction, and a
+  peer-only prepare keeps Q unit-normalized so `1/sqrt(128)` is applied after the
+  output reduction rather than folded into each Q product.
+  Vulkan `263cc04a5405` remains a distinct eight-lane clustered fallback only if
+  this HIP-shaped schedule fails the frozen product gate.
+- GREEN plain and segmented 64-token Qwen3.6-shaped fixtures pass the in-tree
+  CPU-reference output/state budgets. Focused kernel/routing/gate bundle passes
+  **98/98**. `git diff --check` and Python compilation pass.
+- Required rocprofv3 trace names both expected kernels. Plain/segmented launches
+  are **94.000/81.281 us** on the synthetic fixture, workgroup 128, **40 VGPR**,
+  zero LDS, and zero scratch. Trace command used a precomputed hipcc version file
+  and the already-built cache under
+  `/tmp/hipengine-gpf9c-rocprof/gpf9c_kernel_trace.csv`.
+- The prospective admission contract remains unchanged: clean full 18-prompt
+  teacher-forced KL/top-1/determinism/decode gate first, then 512/4K speed floors
+  only if semantics pass.
+
+## 2026-07-15 - Admit GPF-9C through the clean semantic/decode gate
+
+- Clean W7900 commit `1e7b6592` passes all 18 category/heldout prompts under the
+  prospectively frozen peer-aligned contract: KL max **0.04173687 <= 0.05** on
+  `heldout_code_rate_limiter`, aggregate top-1 **445/450 = 98.889% >= 90%**,
+  finite deterministic execution, and no prompt-level gate failure.
+- Aggregate balanced decode median-wall sum is **22524.379 -> 22513.178 ms
+  (-0.050%, 1.00050x)**, satisfying non-regression. Free-running trajectories
+  are not exact and remain diagnostic only.
+- Exact command:
+  `PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_wave32 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/gdn-peer-wave32-peer-aligned-clean-1e7b6592.json`.
+  Raw SHA256 is
+  `e218d8282f52816442cadbed5d81ed3c44feb15523bd4aae8044599c2935c550`.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json`.
+  This is not yet a retained prefill performance claim, so benchmark toplines
+  remain unchanged. Production remains `chain_lds32_direct`; clean interleaved
+  512/4K prefill floors are next.
+
+## 2026-07-15 - Reject GPF-9C on the frozen 512 speed floor
+
+- Clean W7900 commit `7a586b74`, one discarded warmup plus three measured runs
+  in one resident max-4K session, produces stable final ID `9707` throughout.
+- `chain_peer_wave32` 512 prefill is **2219.856/2210.729/2208.676 tok/s**,
+  median **2210.729**, which is **8.357% below** the frozen llama.cpp HIP
+  **2412.320 tok/s** floor. 4K is **2521.374/2513.374/2502.519 tok/s**, median
+  **2513.374**, or **11.454% above** the **2255.080 tok/s** floor. Both shapes
+  were prospectively required, so the candidate is not promoted.
+- Exact command is recorded in
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`;
+  raw `/tmp/gpf9c-peer-wave32-speed-clean-7a586b74.json` SHA256 is
+  `9cb328eb508949c9ab0e47c4c6c36d8581d80ebf4cbd6a6d6ad25eef4a55a989`.
+  No benchmark topline/changelog changes because this is a rejected path.
+- Production remains `chain_lds32_direct`. Keep `chain_peer_wave32` only as a
+  short-lived comparison while GPF-9D implements llama.cpp Vulkan
+  `263cc04a5405`'s distinct S_v=128 schedule: eight lanes per column, 16 state
+  rows per lane, and clustered reduction. This specifically targets the failed
+  short-prompt shape before closing the peer-schedule lane.
+
+## 2026-07-15 - Implement GPF-9D Vulkan-clustered GDN candidate
+
+- RED added plain/segmented CPU-reference tests for the absent normalized-Q/K
+  eight-lane clustered recurrence; collection failed on the missing wrappers.
+- Added explicit `chain_peer_cluster8` without changing production. The body
+  follows read-only llama.cpp Vulkan `263cc04a5405`,
+  `ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp`: each value column
+  uses eight contiguous lanes, each lane retains 16 state rows, decay remains
+  inside the `S^T @ k` products, reduction is an eight-lane XOR cluster, and
+  output scaling remains post-reduction. Four columns share each physical
+  wave32 and 32 columns share each 256-thread block.
+- Plain and segmented 64-token Qwen3.6-shaped CPU-reference output/state gates
+  pass. Focused kernel/routing/gate bundle passes **102/102**; Python compilation
+  and `git diff --check` pass.
+- Cached rocprofv3 trace names both expected kernels. Plain/segmented recurrence
+  is **41.840/44.801 us** on the synthetic fixture, workgroup 256, **96 VGPR**,
+  zero LDS, and zero scratch. This is about half the GPF-9C fixture duration and
+  clears the resource gate. Trace is local at
+  `/tmp/hipengine-gpf9d-rocprof/gpf9d_kernel_trace.csv`.
+- The unchanged 18-prompt KL/top-1/determinism/decode gate runs next; 512/4K
+  speed follows only if semantics pass.
+
+## 2026-07-15 - Reject GPF-9D on strict decode and close peer schedules
+
+- Clean W7900 commit `239d90db` passes teacher-forced product quality across all
+  18 prompts: KL max **0.02868854 <= 0.05** on `code_lru_cache`, aggregate
+  top-1 **444/450 = 98.667% >= 90%**, and finite deterministic execution.
+- Aggregate balanced decode median-wall sum is **22508.498 -> 22508.787 ms**,
+  candidate minus baseline **0.289 ms**, or **+0.001286%**. The prospectively
+  frozen rule required strict non-regression with zero tolerance, so the gate
+  status is `rejected_decode_regression`; no 512/4K speed measurement follows.
+- Exact command:
+  `PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_cluster8 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9d.txt --require-cached-build --json /tmp/gdn-peer-cluster8-peer-aligned-clean-239d90db.json`.
+  Raw SHA256 is
+  `d8d5469e1820437f0071973bac0916a4a6c6f8578492aa195ebc3461af3d99a4`.
+- Published compact rejection evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`.
+  No benchmark topline/changelog changes. GPF-9 now closes without promotion:
+  HIP peer geometry fails the 512 floor and Vulkan peer geometry fails strict
+  decode. Production remains `chain_lds32_direct`; remove the rejected selector,
+  wrapper, kernel, and candidate-only scratch surfaces next.
+
+## 2026-07-15 - Predeclare the post-merge gfx1151 transfer plan
+
+- Audited `origin/main..HEAD`, backend package policy, and the retained gfx1151
+  llama.cpp parity profile. `hip_gfx1151` aliases the complete gfx1100 registry
+  key space and compiles shared HIP bodies natively for gfx1151, so GPF-9C/9D,
+  LCP-D2, and the cooperative-router kernels need hardware admission rather
+  than a second source port.
+- Kept automatic evidence architecture-local. GPF-9C/9D remain explicit-only
+  behind the existing `chain_peer_wave32`/`chain_peer_cluster8` modes; LCP-D2
+  remains disabled and LCP-M1 remains dedicated-allocation on gfx1151. The
+  globally enabled cooperative F32-weight router and persistent counter are the
+  first post-merge A/B because their gfx1100 win currently lacks a gfx1151
+  package gate.
+- Frozen execution order: clean six-shape merged-main control and router A/B;
+  native gfx1151 GPF-9C then GPF-9D under the same 18-prompt KL/top-1,
+  determinism, strict-decode, and 512/4K llama.cpp-floor contract; fresh 512/4K
+  profile; independent LCP-D2 long-context and LCP-M1 memory gates; then only
+  profile-selected convolution/dense-Q8 work and a final defaults-only 1+3
+  publication.
+- The existing gfx1151 trace remains a prior, not current evidence: GDN was
+  205.570/1700.469 ms, convolution 14.303/954.438 ms, and dense Q8
+  110.526/749.444 ms at 512/4K. LCP-1 is reopened only if a post-GDN profile
+  still shows material convolution. Rejected GPF-6/7/8/9A/9B and rejected
+  Q4/Q6/Q8 indexing experiments will not be rerun unchanged.
+- Durable plan is in `docs/LLAMACPP-HIP-PARITY.md`; no runtime default or
+  performance claim changed in this planning unit.
+
+## 2026-07-15 - Retain peer GDN diagnostics through the gfx1151 gate
+
+- Superseded the immediate all-route cleanup recorded at GPF-9 gfx1100 closure.
+  By user direction, `chain_peer_wave32`, `chain_peer_cluster8`, and their
+  normalized scratch support remain explicit-only long enough to run the
+  post-merge gfx1151 transfer gate; neither architecture's `auto` policy changes.
+- `chain_k2` and the raw `chain_wave32_tree` remain cleanup targets after final
+  gfx1100 residual attribution. Once gfx1151 is measured, promote only a passing
+  architecture-local peer route or remove both rejected peer candidates. Updated
+  `docs/REFACTOR.md` with this bounded removal trigger.
+
+## 2026-07-15 - Attribute the GPF-9C pp512 residual to queue bubbles
+
+- Captured a current same-W7900 bounded 512-token trace of explicit
+  `chain_peer_wave32` after one cache warmup and a second clock warmup outside
+  the collection window. It produces ID `9707`, **2164.603 tok/s** under the
+  profiler, **207.253 ms / 1645 dispatches** summed kernel time, and a
+  **235.314 ms** first-to-last-kernel span.
+- Captured llama.cpp HIP `1ebf790cd` on the same W7900/model with F16 KV and
+  isolated its second 2259-dispatch pp512 pass after the first Q6_K lm-head
+  terminator. It measures **2373.106 tok/s**, **203.301 ms** summed kernel time,
+  and a **212.236 ms** kernel span.
+- The peer recurrence itself is at practical kernel parity:
+  **17.134 vs 16.522 ms**. Adding hipEngine's separate prepare and RMSNorm/gate
+  makes its named GDN chain only **+3.689 ms**. GDN recurrence algebra no longer
+  explains GPF-9C's short-shape miss.
+- The decisive residual is queue starvation. hipEngine has **28.061 ms** of
+  between-kernel idle gaps versus llama.cpp's **8.935 ms**, a **+19.126 ms**
+  excess and **82.9%** of the trace-span delta despite 614 fewer dispatches.
+  hipEngine records 450 gaps over 10 us (22.199 ms total) and 154 over 50 us;
+  llama.cpp records only 6 over 10 us (0.184 ms) and one over 50 us.
+- Largest hipEngine bubble transitions are copy->RMSNorm **6.334 ms / 41**,
+  copy->copy **6.010 ms / 264**, copy->selected-Q4 **3.173 ms / 40**,
+  RMSNorm->dense-Q8 **2.668 ms / 40**, SiLU->selected-Q5 **1.184 ms / 37**,
+  and copy->full-attention **1.181 ms / 10**.
+- The largest positive kernel-family residual is dense Q8
+  (**51.251 vs 30.426 ms, +20.825 ms**), followed by convolution
+  (**9.430 vs 1.282 ms, +8.148 ms**). Selected Q4/Q5 is already
+  **90.004 vs 111.823 ms (-21.819 ms)**, and remaining layout/norm/post-op work
+  is **-9.403 ms**, so those advantages nearly balance the positive families.
+- This is diagnostic, not a promotion: the frozen non-profiled speed verdict
+  remains **2210.729 tok/s**, **19.354 ms** slower than the 2412.320 tok/s
+  llama.cpp floor. Production remains exact direct-LDS32. Next profile-selected
+  work is copy-boundary queue-bubble removal on the explicit peer route, then a
+  genuinely new dense-Q8 path; do not retune recurrence algebra, selected
+  Q4/Q5, short full attention, or raw launch count.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json`.
+  Raw candidate/llama trace SHA256 values are
+  `8ea695693d2fd7d809ef8c65f1e26d8d98019a6ee3de4d1fd8b749c3f74fcd73`
+  and `d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67`.
+
+## 2026-07-15 - Reuse request-scoped GGUF prefill metadata across layers
+
+- HIP API tracing identified the first copy-boundary cause directly:
+  `_GGUFFullAttentionPrefillScratch.for_chunk()` uploaded the same six metadata
+  arrays before every one of 40 layers at pp512, even though the request had one
+  unchanged `(start=0, rows=512, total=512)` chunk. The 288 synchronous
+  `hipMemcpy` calls accounted for the copy->copy and copy->RMSNorm bubble
+  clusters from the preceding residual profile.
+- Moved chunk preparation outside the layer loop for outer-chunk prefill and
+  reused the active `(start, rows, total)` view across consecutive same-shape
+  layers in the normal scheduler. The final output norm now reuses that view
+  instead of uploading a synthetic one-row metadata set. Multi-chunk paths still
+  upload whenever the active chunk changes.
+- Matched HIP API/kernel traces before and after the scoped source change remove
+  exactly **240 synchronous copies / dispatches**: `hipMemcpy 288 -> 48` and
+  total dispatches **1645 -> 1405**. Summed GPU work is noisy
+  (**207.951 -> 209.347 ms**), but first-to-last span improves
+  **235.907 -> 224.511 ms (-4.83%)** and between-kernel idle improves
+  **27.956 -> 15.163 ms (-45.76%, -12.793 ms)**. The pre/post trace SHA256s are
+  `aa471ac628c5ce97332de6b6cafe3fc1e45b150048a904961cf1a030abb51fb2`
+  and `fa51a0ed12bf72b76331d47bb56d3c1318b448674ce414ce9d69a604d7f179e1`.
+- Dirty scoped 1+3 GPF-9C validation is exact on final IDs and improves the
+  prior clean candidate medians **2210.729 -> 2308.847 tok/s (+4.44%)** at 512
+  and **2513.374 -> 2519.051 tok/s (+0.23%)** at 4K. Decode medians are
+  **92.514/100.020 tok/s**, tracked peak remains **22.995 GiB**, and all six
+  final IDs are `9707`. The 512 leg remains **4.29% below** the prospective
+  llama.cpp HIP floor, so this is retained scheduler work but does not promote
+  GPF-9C yet. Raw sweep: `/tmp/gpf9c-metadata-reuse-speed.json`.
+- Validation: RED/GREEN
+  `tests/test_qwen35_gguf_hidden_seed_contract.py` now requires one metadata
+  preparation across two same-shape layers; targeted runner/hidden-seed/batch
+  tests pass (**171 passed, 9 skipped**), `compileall`, registry, CPU-fixtures,
+  and smoke-add plan pass. `scripts/check_fixtures.py` still hits the existing
+  mixed-schema `tests/fixtures/cpu_reference/moe/` `KeyError: expected`; the
+  dedicated CPU-fixtures smoke passes all seven canonical fixtures.
+- Next queue target is the remaining 40 per-layer compact-WMMA total-row D2H
+  reads (the copy->selected-Q4 bubble), before any dense-Q8 kernel work.
+- Clean `e03e5a34` 1+3 confirmation measures **2292.186/2502.269 tok/s**
+  prefill and **93.108/100.538 tok/s** decode at 512/4K, with all IDs `9707`
+  and unchanged **22.995 GiB** tracked peak. Relative to the prior clean GPF-9C
+  row, 512 prefill is **+3.68%**, 4K is **-0.44%**, and both decode shapes
+  improve **+0.51%/+0.56%**. The 512 leg remains **4.98% below** the floor.
+  Published diagnostic evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json`;
+  raw clean sweep SHA256 is
+  `63e8606d51f17a4baddcd2300c1472f4faefa5a9d74eba27fcad2dbac0452a93`.
+
+## 2026-07-15 - Remove the compact-WMMA total-row D2H boundary on gfx1100
+
+- Replaced the old rejected `selected_rows * 16` no-read probe with the tight
+  routing-independent compact-WMMA bound. For `S` selected rows and
+  `A=min(S,E)` active experts, the maximum tile count is exactly
+  `A + floor((S-A)/16)`: one tile per active expert, then every additional tile
+  consumes another 16 rows. The existing tile-map kernel clears the bounded
+  tile-id range to `-1`, and all compact selected kernels reject those inactive
+  tiles before reading expert metadata.
+- Promoted the no-read route only for gfx1100 through 4,096 selected rows (the
+  pp512 model shape). `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0`
+  restores the exact scalar read. gfx1151 remains at zero pending its own
+  transfer gate; the earlier gfx1151 c=8 rejection used the old loose bound and
+  is not reused as gfx1100 evidence.
+- A matched bounded pp512 HIP API/kernel trace against clean `e03e5a34` removes
+  exactly **40 synchronous D2H copies / dispatches**: dispatches **1405 ->
+  1365**, `hipMemcpy` **48 -> 8**, first-to-last kernel span **224.511 ->
+  219.988 ms (-2.01%)**, and queue idle **15.163 -> 11.634 ms (-23.27%)**.
+  Summed GPU work is flat/noisy (**209.347 -> 208.354 ms**), and the affected
+  selected-Q4 body is also flat (**40.631 -> 40.728 ms**), confirming this is a
+  host-boundary removal rather than changed device math. Candidate kernel/HIP
+  API trace SHA256 values are
+  `d45ad79cffcbea10a6d9053dfcf8f62ebfdca1ba5468e5626b23270d1e70dbf2`
+  and `2eb830582bdead55fc43e24eb05096fc002249d909bb91e047fd0d8506cbcc34`.
+- Two non-profiled single-pass screens return the same token `9707` at
+  **2300.843/2299.553 tok/s**, versus clean `e03e5a34`'s three-run median
+  **2292.186 tok/s**. A clean committed 1+3 confirmation remains required
+  before publishing the model-wall delta or reassessing the GPF-9C floor.
+- Validation: focused compact-WMMA/backend/runner/hidden-seed tests pass
+  (**50 passed, 9 skipped**); `compileall`, registry smoke, all seven canonical
+  CPU fixtures, smoke-add plan, and `git diff --check` pass. No kernel body or
+  numerical reduction changed.
+- Clean committed `31c9cdc5` 1+3 confirmation measures
+  **2334.451/2519.871 tok/s** prefill and **93.059/100.783 tok/s** decode at
+  512/4K, with all IDs `9707` and unchanged **22.995 GiB** tracked peak. Versus
+  clean `e03e5a34`, pp512 is **+1.84%** and 4K is **+0.70%**; decode is
+  **-0.053%/+0.244%**. The cumulative two-boundary queue work moves pp512
+  **2210.729 -> 2334.451 tok/s (+5.60%)**, but GPF-9C remains **3.23% below**
+  the 2412.320 tok/s floor. Production therefore stays exact direct-LDS32.
+  Published evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json`;
+  raw clean sweep SHA256 is
+  `fbca2d3f73044e22f62468bf230ae22ad5df820a6d39c616af7b6d64c0bd5935`.
+- Copy-boundary work is now effectively closed: hipEngine queue idle is
+  **11.634 ms** versus llama.cpp HIP **8.935 ms**, leaving only **2.699 ms**
+  excess. The next profile-selected target is the dense Q8 prefill family,
+  currently **~52.0 ms** on hipEngine versus **30.4 ms** in llama.cpp HIP.
+
+## 2026-07-15 - Predeclare LCP-3 four-wave dense-Q8 prefill screen
+
+- The final pp512 trace resolves the **51.998 ms / 250-dispatch** dense-Q8
+  family by geometry. The two-wave body spends **20.586 ms / 40** at output
+  width 8192, **8.468 ms / 30** at width 4096, and **17.044 ms / 80** at width
+  2048; the latter separates into 40 long-K calls around 339-417 us and 40
+  short-K calls around 51-59 us. The exact one-wave width-512 body is only
+  **5.921 ms / 100**. This selects the existing activation-sharing body rather
+  than tile retuning, Q4/Q5, attention, or more host-boundary work.
+- Screen one exact four-wave/128-column diagnostic. Four independent wave32
+  groups retain the production 32-column K traversal, WMMA calls, FP32
+  accumulators, and BF16 stores while sharing the same 32-row FP16 activation
+  tile through 1 KiB LDS. The candidate may cover only BF16/BF16, TN32, output
+  width at least 2048, and widths divisible by 128; production/two-wave remain
+  registered fallbacks.
+- RED requires a separately registered/callable `wmma_prefill_4wave` variant
+  and byte-exact tail-row/output fixtures versus the current `32x32` body. The
+  first exit gate is a cached W7900 production-shape micro A/B at
+  `512x2048x8192` plus profiler confirmation of workgroup 128, zero scratch,
+  bounded LDS, and plausible VGPRs. Any leaf regression removes the candidate
+  before model routing; an advancing candidate must then win the matched pp512
+  dense-Q8 trace and clean 512/4K full-model wall without changing IDs/state.
+
+## 2026-07-15 - Reject LCP-3A four-wave dense-Q8 widening
+
+- RED failed collection because the four-wave wrapper/key did not exist. The
+  temporary GREEN candidate passed all **83** Q8T16 prefill tests, including
+  three byte-exact tail-row/output cases versus production `32x32`. It was
+  never routed into the model.
+- Sequential W7900 cache-cycled HIP-event A/Bs used eight weight copies, three
+  warmup cycles, and 60 alternating repetitions per mode. The four-wave body is
+  effectively flat on `512x2048x8192` (**0.564581 -> 0.563539 ms, -0.185%**)
+  and `512x4096x2048` (**0.393461 -> 0.392242 ms, -0.310%**), but regresses
+  `512x2048x4096` **0.288998 -> 0.295457 ms (+2.24%)** and the short-K
+  `512x512x2048` leaf **0.066960 -> 0.072900 ms (+8.87%)**. Two accidentally
+  simultaneous-process repeats were recognized as contention-invalid and are
+  excluded from every result.
+- Weighted against the measured pp512 family mix, this would add roughly
+  **0.3 ms** rather than close the **~21.6 ms** llama.cpp dense-Q8 residual.
+  The predeclared shape gate therefore rejects the candidate before profiler or
+  full-model routing. Removed the kernel, wrapper, registry entry, and tests;
+  production source is byte-for-byte unchanged.
+- Published rejected evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-four-wave-rejected.json`.
+  Independent-wave FP16-WMMA widening is now exhausted. The next dense-Q8
+  screen must change the body: prequantized Q8_1 activations plus T16-native
+  integer WMMA is the source-backed direction, with standalone kernel/quality
+  gates required before runtime quantization or routing.
+
+## 2026-07-15 - Predeclare LCP-3B T16-native Q8_1 integer-WMMA screen
+
+- The four-wave result shows additional activation sharing is not the missing
+  mechanism. LCP-3B instead tests llama.cpp's body-level idea against the
+  resident Q8T16 layout: prequantize BF16 rows to existing GGML-compatible
+  Q8_1 blocks, consume the signed Q8 activation and signed Q8T16 weight payload
+  directly with RDNA3 `wmma_i32_16x16x16_iu8_w32`, multiply each 32-K dot by
+  the two FP16 block scales, and accumulate FP32 before BF16 output.
+- The first candidate is standalone and never runtime-routed. A 64-thread block
+  retains the current 64-output x 32-row geometry as two wave32 groups; each
+  wave computes two 16-column by two 16-row integer-WMMA tiles. Production
+  FP16-WMMA remains the registered fallback. Reuse the existing q8_1 quantizer
+  for correctness and later included-cost timing; do not add scratch or model
+  policy before the body clears its gate.
+- RED requires a separately registered/callable prequantized variant. GREEN
+  must match an independent Q8_0 x Q8_1 block-dot CPU oracle with relative L2
+  <= 0.02, and must pass mean KL <= 0.05 plus top-1 >= 90% against the exact
+  Q8_0/BF16 primitive on ordinary and tail shapes. These thresholds are frozen
+  before implementation.
+- The first speed gate is the W7900 `512x2048x8192` cycling-pool leaf: compare
+  prequantized body versus current two-wave FP16-WMMA, then repeat with Q8_1
+  quantization inside the timed leg. A body loss removes the candidate. An
+  included-cost win proceeds to all four measured pp512 shape classes and a
+  cached profiler resource/name check before any model routing.
+
+## 2026-07-15 - Reject LCP-3B direct T16 integer-WMMA body
+
+- RED failed collection because the prequantized wrapper/key did not exist.
+  GREEN passed the two frozen ordinary/tail fixtures against the independent
+  Q8_0 x Q8_1 block-dot oracle and exact-path KL/top-1 gates. An initial
+  output-scale indexing bug produced relative L2 around 0.24-0.27; indexing
+  each WMMA accumulator by its actual output row fixed both cases before any
+  timing.
+- The sequential primary W7900 cycling-pool gate rejects the corrected body:
+  production two-wave FP16-WMMA is **0.521342 ms**, the prequantized integer
+  body is **0.754182 ms (+44.66%)**, and Q8_1 quantization plus the body is
+  **0.770183 ms (+47.73%)**. Quantization adds only **0.016001 ms**; the loss is
+  in the direct T16 integer body's packing/per-32-K scale accumulation, not the
+  conversion launch.
+- The predeclared body-loss rule stops the lane before profiler or model
+  routing. Removed the candidate kernel, wrapper, key, and tests; production
+  source/defaults are unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-q8-1-i8-wmma-rejected.json`.
+- Direct Q8_1 over the current K-major T16 layout does not reproduce llama.cpp
+  MMQ. Do not route the slower raw-sidecar dp4a diagnostics as a substitute.
+  Any further dense-Q8 attempt must first reproduce llama.cpp's actual shared
+  MMQ tile/decomposition in a standalone microbenchmark or identify a
+  different exact body-level limiter.
+
+## 2026-07-15 - Complete LCP-3C llama.cpp Q8_0 MMQ source/layout audit
+
+- Audited the exact measured llama.cpp HIP source at `1ebf790cda38` (build
+  9648); the current local source matches the measured commit for `mmq.cu`,
+  `mmq.cuh`, and the Q8_0 instance. The source path is materially different
+  from rejected LCP-3B. RDNA3 chooses `mmq_x=128`, `mmq_y=128`, eight wave32
+  groups, and a 256-thread block. Wave pairs own 32 output rows and alternate
+  16-token column slices across the full 128-token tile.
+- Each K256 outer iteration cooperatively stages 128 output rows x eight raw
+  Q8_0 blocks into a padded shared weight tile, then stages and consumes two
+  128-K `block_q8_1_mmq` activation halves. Q8_0 selects the D4 activation
+  layout: four FP32 scales plus 128 int8 values. The exact dynamic-LDS budget is
+  **512 B ids + 38,912 B weight + 18,432 B activation = 57,856 B**. Per 32-K
+  scale interval, the dot body emits two signed RDNA3 integer-WMMA K16 calls,
+  multiplies by the FP16 weight and FP32 activation scales, and accumulates
+  FP32.
+- The retained pp512 trace confirms `mul_mat_q<Q8_0,128,false>` at block
+  `(32,8)`, **232 VGPR**, zero scratch, **30.425833 ms / 250 calls**. Shape
+  totals are **11.542008 ms / 40** at width 8192, **4.558555 / 30** at width
+  4096, **8.625106 / 80** at width 2048 (long+short K), and **5.700164 / 100**
+  at width 512. This aligns exactly with the family residual; it is not an
+  instruction-only hypothesis.
+- hipEngine's resident Q8T16 is byte-lossless and contains the same 34,816
+  unique Q8_0 bytes per 128-output x K256 tile, but in 16-column/K-major slabs.
+  A cooperative T16-to-shared transpose can populate llama.cpp's logical tile
+  without retaining a raw sidecar. LCP-3D is therefore predeclared as exactly
+  one standalone MMQ128+D4 screen over resident T16 bytes.
+- RED requires a separately callable/registered MMQ128 D4 variant. GREEN must
+  pass ordinary/tail Q8_0 x D4 CPU-oracle relative L2 <=0.02 and exact-path KL
+  <=0.05/top-1 >=90%. On the primary W7900 `512x2048x8192` leaf, both the
+  prequantized body and D4-pack-plus-body must beat production two-wave FP16
+  WMMA. Only then may it expand to the four measured pp512 shape classes,
+  profiler resources, and unchanged semantic/decode plus 512/4K model floors.
+- Published the source/profile/layout evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json`. Do not
+  reopen direct T16 integer WMMA, independent-wave widening, raw-sidecar dp4a,
+  selected Q4/Q5, or generic launch-count work in this lane.
+
+## 2026-07-15 - Reject LCP-3D T16-backed source-scale MMQ128
+
+- RED failed collection because the MMQ128 D4 wrapper/key did not exist. The
+  temporary 256-thread K256 GREEN implementation passed both ordinary/tail
+  fixtures: its K-major D4 pack matched CPU bytes and Q8_0 x D4 output passed
+  relative L2 <=0.02, mean KL <=0.05, and top-1 >=90%.
+- The primary sequential W7900 cycling-pool gate rejects the body decisively.
+  Production two-wave FP16 WMMA is **0.523062 ms**; prequantized MMQ128 is
+  **1.144524 ms (+118.81%)**; D4 packing plus MMQ128 is **1.151586 ms
+  (+120.16%)**. D4 packing adds only **0.007061 ms**, so activation conversion
+  is again not the blocker.
+- The source geometry alone cannot overcome resident T16 ordering. llama.cpp
+  starts from output-major raw Q8_0 rows and copies packed int32 fragments into
+  its padded shared tile. Q8T16 stores quants K-major inside 16-column slabs;
+  reproducing the same logical tile requires four separate byte gathers and a
+  pack for every int32 weight fragment. That gather/transpose cost more than
+  doubles the body even though the unique byte count is unchanged.
+- Per the prospectively frozen body-loss rule, skipped profiler/model routing
+  and removed the candidate kernel, D4 quantizer, wrappers, registry key, and
+  tests. Production source/defaults are byte-for-byte unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json`; raw
+  micro SHA256 `14c041d54784d1c287e99fe5498ddccc222ef9609ef9b0f6e82ae87bc6c09f4f`.
+- Do not attempt another T16-to-MMQ shared transpose. A further dense-Q8 MMQ
+  candidate must use source-compatible output-major/raw resident bytes and
+  predeclare the decode/memory tradeoff, or this family should close in favor
+  of the next measured residual.
+
+## 2026-07-15 - Predeclare LCP-3E raw/output-major Q8 MMQ128 leaf screen
+
+- LCP-3D isolates layout conversion as the blocker rather than the source MMQ
+  decomposition. LCP-3E therefore tests the same 256-thread, 128-output x
+  128-token, K256 D4 integer-WMMA schedule directly against output-major raw
+  `block_q8_0` rows. This is the layout llama.cpp's measured kernel consumes;
+  no T16 gather or resident runtime route is included in the first leaf.
+- A raw sidecar is not an admissible runtime answer. The 250 dense-Q8 tensors
+  represented by the pp512 trace total approximately **1.390 GiB** of raw Q8_0
+  bytes; duplicating byte-neutral T16 would reopen the closed llama.cpp memory
+  parity target. If the standalone body wins, continuation must be a
+  byte-neutral replacement layout plus raw-compatible decode, not dual
+  residency. Decode, memory, and both 512/4K full-model floors remain mandatory.
+- RED requires a new standalone module/key and ordinary/tail D4 CPU-oracle
+  gates at relative L2 <=0.02, mean KL <=0.05, and top-1 >=90%. The primary
+  W7900 `512x2048x8192` cycling-pool gate compares production two-wave FP16
+  WMMA against both prequantized raw MMQ128 and D4-pack-plus-body. A body or
+  included-cost loss removes the candidate before profiler/runtime work.
+- A primary win proceeds to the other measured pp512 shapes
+  (`512x2048x4096`, `512x4096x2048`, `512x512x2048`, and width-512), then a
+  cached kernel trace confirming 256 threads, zero scratch, bounded LDS, and
+  plausible VGPRs. Only a same-family win can justify designing raw replacement
+  materialization and its strict decode/memory gates.
+
+## 2026-07-15 - Reject LCP-3E raw/output-major Q8 MMQ128
+
+- RED failed collection because the standalone module/key did not exist. The
+  temporary raw `block_q8_0` + D4 Q8_1 MMQ128 implementation then passed three
+  focused tests: exact D4 pack bytes plus ordinary/tail relative-L2 <=0.02,
+  mean KL <=0.05, and top-1 >=90%.
+- The first timing was invalid: unrolling all four 32-K scale intervals compiled
+  at 256 VGPR with 418 VGPR spills and 1,388 private bytes/thread. Keeping that
+  loop rolled removed all spills. Source audit then found two more concrete
+  validity mismatches: the leaf forced CU mode while llama.cpp's object is WGP,
+  and scalar LDS gathers replaced llama.cpp's aligned fragment loads. The final
+  baseline/WGP body emits the source's 24 `ds_load_b128` fragment loads and 32
+  integer-WMMA instructions, uses 210 VGPR/29 SGPR, 57,856 B dynamic LDS, and
+  has zero scratch or spills. A checked tail instantiation preserves the
+  80-output fixture; divisible-by-128 output shapes use the source-equivalent
+  unchecked body.
+- Final correctness command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt
+  PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_mmq_prefill.py -q` ->
+  `3 passed`.
+- The prospectively frozen primary W7900 gate still rejects the corrected body.
+  Command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt
+  PYTHONPATH=. python3 /tmp/lcp3e_q8_raw_mmq128_micro.py --rows 512
+  --in-features 2048 --out-features 8192 --compiler-version-file
+  /tmp/hipengine-hipcc-version-lcp3.txt --json
+  /tmp/lcp3e-q8-primary-unchecked.json`. Across eight cycling weight copies,
+  three warmups, and 60 rotated repetitions, production two-wave FP16 WMMA is
+  **0.521823 ms**, prequantized raw MMQ128 is **0.542442 ms (+3.95%)**, and D4
+  pack+body is **0.549562 ms (+5.32%)**. Packing adds 0.007120 ms.
+- Both candidate rows were required to beat production before shape/profiler or
+  runtime work. They do not, and raw+T16 dual residency would independently add
+  about 1.390 GiB. Removed the standalone kernel, quantizer, wrappers, registry
+  key, and tests; production code/defaults are unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json`;
+  raw measurement SHA256
+  `6e9222b1b9922ba69c7d1061462cddf43cf87b5ea5f9285d8d0815f798cd04f5`.
+- Close dense-Q8 prefill MMQ/layout variants over T16 and raw replacement bytes.
+  Re-profile the clean pp512 residual and move to the next measured family; do
+  not reopen independent-wave widening, direct T16 integer WMMA, T16-to-MMQ
+  transpose, or raw MMQ128 without genuinely new evidence.
+
+## 2026-07-15 - Predeclare LCP-4A no-scratch normal convolution prefill
+
+- The clean pp512 comparison initially appears to show linear-attention
+  convolution at **8.496 ms / 30 calls** in hipEngine versus **1.282 ms / 30**
+  in llama.cpp. Per-dispatch inspection changes the diagnosis: hipEngine calls
+  4-30 are already **101-108 us** each (about **2.83 ms** total), while only
+  calls 1-3 cost **2.627/1.514/1.522 ms** after the trace protocol's five-second
+  idle lead. The apparent family residual is therefore mostly a cold/private-
+  memory event, not a missing 30-layer tiled algorithm.
+- Production normal prefill launches
+  `qwen35_linear_attn_conv_prefill_kernel(..., conv_state_rows=nullptr)`. Its
+  four `volatile` products intentionally preserve separate FP32 multiply/add
+  rounding and sequential decode order, but the compiled code object reports
+  **20 bytes private storage/thread** (27 VGPR, zero spills); rocprof reports
+  the same 20-byte scratch allocation over the 4,194,304-thread pp512 launch.
+  The optional verifier row-capture branch is not the source of those bytes;
+  the volatile exactness mechanism is. The source is unchanged from the prior
+  clean profile that measured about 3.1 ms, so this is bounded optimization,
+  not a newly introduced correctness regression.
+- LCP-4A adds one capture-free normal-prefill specialization. Explicit
+  `v_mul_f32_e32` and sequential `v_add_f32_e32` instructions must preserve the
+  existing operation order while keeping products/accumulators in VGPRs. The
+  existing state-row capture kernel, segment kernels, low-precision kernels,
+  wrappers, state update, and decode routes remain semantically untouched.
+- RED/GREEN requires normal-prefill outputs and final Conv state to match the
+  independent CPU decode-order reference numerically and current production
+  byte-for-byte over short-boundary and ordinary shapes. Static code-object
+  metadata must show zero private storage and zero spills for the new body.
+- The frozen W7900 performance ladder first compares old and new cached shared
+  objects on the production `512x8192`, kernel-size-4 leaf: warm median must not
+  regress, and a five-second-idle first-launch screen must improve. It then
+  repeats the cached pp512 kernel trace; the 30-call convolution total and the
+  first-three aggregate must decrease without moving capture/state-row routes.
+  Only then may balanced exact-semantics 512/4K full-model A/B rows select the
+  default. A warm-body loss, remaining private segment, byte mismatch, or
+  either full-model floor regression rejects and removes the specialization.
+
+## 2026-07-15 - Implement LCP-4A no-scratch normal convolution prefill
+
+- RED failed on the required capture-free exact-math body name/instructions.
+  GREEN adds only `qwen35_linear_attn_conv_prefill_no_state_rows_kernel` and
+  routes the existing normal FP32 wrapper to it. A two-instruction inline-ISA
+  helper emits one `v_mul_f32_e32` followed by one `v_add_f32_e32` for every
+  sequential tap. The old optional state-row body, segment bodies, lowp paths,
+  state update, decode wrappers, and registry keys are unchanged.
+- Boundary correctness passes for 1/3/4/9/31 tokens: normal output and final
+  state are byte-exact to the retained segment body and match the independent
+  CPU decode-order reference within `2e-6`. The focused plan/kernel command is
+  **11 passed**; the existing full prefill smoke reports Conv output max abs
+  `1.49e-08` and state max abs zero. Static gfx1100 metadata is **26 VGPR / 49
+  SGPR, zero private bytes, zero spills**; the measured kernel trace reports 32
+  VGPR and zero scratch.
+- The prospectively frozen `512x8192`, K4 shared-object leaf gate passes. HIP
+  event medians move **0.111900 -> 0.070860 ms (-36.68%)** warm and **0.400742
+  -> 0.259321 ms (-35.29%)** after five-second idle, comparing the cached old
+  and new full wrappers including the unchanged state-update launch.
+- The final pp512 pass was extracted after the trace's explicit 750.806 ms
+  pre-target gap. Normal Conv body time moves **8.496307 -> 1.893535 ms / 30
+  (-77.71%)**. The first three cold calls move **5.663766 -> 0.192841 ms
+  (-96.60%)** and calls 4-30 move **2.832541 -> 1.700694 ms (-39.96%)**.
+  Summed GPU work falls **208.353512 -> 199.126 ms (-4.43%)** and profiler host
+  rate rises **2296.173 -> 2416.276 tok/s (+5.23%)**. Candidate trace SHA256 is
+  `7170860bd4c757dd589452f3daaf56edd643a3d053542d31c3d292a8d2ac720c`.
+- Dirty-tree same-session balanced A/B clears both full-model floors with every
+  final ID `9707`. On `chain_peer_wave32`, 512/4K prefill moves **2302.613 ->
+  2352.580 (+2.17%) / 2505.262 -> 2578.163 tok/s (+2.91%)**. On production
+  `chain_lds32_direct`, it moves **1297.387 -> 1317.049 (+1.52%) / 1387.583 ->
+  1410.278 tok/s (+1.64%)**. Raw A/B SHA256 values are
+  `80ff609db3ae1c77bfa5c327e8725876af9a7e9c05c9e04c0a8ff4b543d8593a`
+  and `d15e7557d6bffa950f9e025f51d5d88d186aed35e55bd26ccbf55d52443438a7`.
+  These validate the code unit but do not satisfy clean retained provenance;
+  commit the exact kernel/tests/catalog first, then rerun the balanced direct
+  gate from the clean commit before publishing the benchmark artifact.
+- Validation also passes compileall, registry smoke, and CPU-fixture smoke.
+  `scripts/check_fixtures.py` remains independently broken on pre-existing
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, whose
+  schema lacks the runner's required top-level `expected`; this change does not
+  touch that fixture or runner.
+
+## 2026-07-15 - Retain and publish LCP-4A no-scratch Conv prefill
+
+- The exact implementation landed at clean `683ddab6`. Repeated the frozen
+  production `chain_lds32_direct` full-model gate from that commit in one
+  max-4096 W7900 session, one warmup plus four balanced old/new shared-object
+  repetitions per context. Canonical provenance records clean staged,
+  unstaged, and untracked axes; model sampled SHA256 remains
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`.
+  The old/new libraries are pinned by SHA256
+  `9fa651c23b9c940a2bc80f348489a01244849f80c39cc5fa5858a7c14af85e8c`
+  and `d1c7930a54f450964c2b898ec6385693d58ad0a3938071cccf4f79a1e7416c70`.
+- At 512 tokens, median wall falls **394.448 -> 388.862 ms** and prefill rises
+  **1298.018 -> 1316.663 tok/s (+1.44%)**. At 4K, median wall falls
+  **2953.813 -> 2899.832 ms** and prefill rises **1386.682 -> 1412.496 tok/s
+  (+1.86%)**. All 16 measured final IDs are `9707`.
+- Published the retained artifact at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json` and updated
+  the benchmark rollup, changelog, prefill plan, and llama.cpp parity handoff.
+  The next action is a clean post-LCP-4A pp512 profile; the old Conv family
+  total is no longer a valid basis for selecting the next optimization.
+
+## 2026-07-15 - Attribute the clean post-LCP-4A production residual
+
+- Collected cached-only bounded pp512 traces at clean `c85c2880` on the W7900
+  for production exact `chain_lds32_direct` and quality-admitted explicit
+  `chain_peer_wave32`, using the same max-512 session, initialization pass,
+  five-second pre-target warm pass, and final synchronized collection window.
+  Both produce final ID `9707` and launch 1,365 kernels.
+- Production exact measures **369.285 ms** summed kernels, **392.553 ms**
+  first-to-last span, and **23.268 ms** queue idle. Its GDN prepare + recurrence
+  + gate is **199.030 ms**, of which the 30 recurrent launches are **197.020
+  ms**. The recurrent body uses a 32-thread workgroup, one scalar-order thread
+  per value column, 16 KiB LDS, 40 VGPR, and zero scratch.
+- The peer route measures **203.808 ms** summed kernels, **215.307 ms** span,
+  and **11.499 ms** queue idle. Its full GDN chain is **20.840 ms** and the
+  recurrence is **17.648 ms**: one wave32 per value column, four state rows per
+  lane in VGPRs, llama.cpp's XOR reduction tree, zero LDS/scratch. llama.cpp's
+  retained same-W7900 pp512 row is **203.301 ms** kernels, **212.236 ms** span,
+  **8.935 ms** idle, and **16.522 ms** named GDN. Peer minus llama.cpp is only
+  **+0.507 ms kernels / +3.071 ms span**, so no broad GGUF/MMQ/runtime deficit
+  remains after substituting the peer schedule.
+- The production-minus-llama.cpp GDN excess is **+182.508 ms**, larger than the
+  whole **+180.317 ms** span deficit because hipEngine wins back **26.926 ms**
+  in selected Q4/Q5 and **10.765 ms** in remaining layout/norm/post-ops. Dense
+  Q8 remains **+18.956 ms**, but all screened replacement/tile paths are closed
+  and it is not the explanation for the shipped 180 ms gap. Conv is now only
+  **1.977 ms versus llama.cpp's 1.282 ms** and is closed as a first-order target.
+- Repeated the frozen clean peer 512/4K 1+3 floor after LCP-4A. Prefill moves
+  from the prior **2334.451/2519.871 -> 2385.677/2585.343 tok/s
+  (+2.19%/+2.60%)** with all six IDs `9707`. 4K is **14.645%** above the
+  llama.cpp floor, but 512 remains **1.104%** below **2412.320 tok/s**, so
+  `chain_peer_wave32` stays explicit-only and production remains exact.
+- Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json`.
+  Exact/peer trace SHA256 values are
+  `47d681f9dcf0b72473bd4632eb1613a3a65448ff4e9b353c6a4e95680e1e53f6`
+  and `34fe8283e5def0450acad060c7ff1ab825daf7f55319bc9e3d0faaeeb7d03146`;
+  clean speed-gate SHA256 is
+  `df2392de36a724ca207fa5bc735d0cd64db2c3eaa54bd4088a7b83a55188579a`.
+- Continue only by preserving the admitted peer schedule and removing its final
+  approximately 3 ms queue/span residual, or with genuinely new exact-parallel
+  GDN evidence. Do not reopen dense-Q8, selected-MoE, Conv, full-attention, or
+  generic launch-count experiments to explain the production gap. Any future
+  peer promotion must rerun the full semantic/decode contract.
+
+## 2026-07-15 — LCP-5A predeclaration: Q5/Q6T16 HIP 7.2 spill removal
+
+The clean post-LCP-4A peer trace leaves only **3.071 ms** versus llama.cpp HIP,
+but its largest repeated gap group is SiLU -> selected Q5 (**1.177 ms / 37**).
+The destination `gguf_k_t16_selected_wmma_prefill_compact_kernel<uint16_t,5>`
+also consumes **51.222 ms / 37** in that trace and is reported at **256 VGPR,
+176 private bytes/thread**.
+
+A cache/code-object audit isolates compiler behavior rather than a new quant
+layout or arithmetic hypothesis. Identical current source compiles as follows:
+
+- HIP 7.2.53211: Q5 BF16 **256 VGPR, 176 private bytes, 75 spills**; Q5 FP16
+  **256 VGPR, 208 private bytes, 99 spills**.
+- HIP 7.15.0: Q5 BF16/FP16 **66 VGPR, zero private bytes/spills**.
+- The current peer trace matches the HIP 7.2 BF16 resource row exactly.
+
+This is genuinely new evidence relative to the closed raw-Q5 tile/decode-hoist
+lanes: it concerns the replacement-layout T16 instantiation and a compiler-
+induced spill. LCP-5A is therefore bounded to (1) the existing unroll-600 build
+ablation and, only if needed, (2) one rolled-subblock source variant. No math,
+layout, scheduler ABI, or GDN changes are allowed. Go/no-go requires byte-exact
+Q4/Q5/Q6 focused fixtures, static plus rocprof zero-scratch evidence, a real
+selected-MoE replay win, and clean peer 512/4K plus the full semantic/decode
+promotion contract. Remove and record any rejected source candidate.
+
+## 2026-07-15 — LCP-5A implementation and gfx1100 peer-GDN promotion
+
+The bounded unroll-profile ablation did not change HIP 7.2 resources: Q4/Q5/Q6
+BF16 remained 256 VGPR with 156/176/188 private bytes. The single allowed
+source variant succeeded. On gfx1100 only, the outer 8-subblock Q4/Q5 and
+16-K-tile Q6 loops stay rolled while each inner K16 body remains unrolled;
+gfx1151 retains its independently validated schedule.
+
+Correctness and resources:
+
+- `uv run --with pytest pytest tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q --tb=short`
+  -> **46 passed**. Q4/Q5/Q6 BF16/FP16 outputs remain byte-exact to the CPU
+  selected-MoE reference across uneven/empty experts, padding, and multi-block K.
+- HIP 7.2 static BF16 Q4/Q5/Q6 resources become **70/91/73 VGPR**, **30 SGPR**,
+  and zero private bytes/spills. The cache-only pp512 trace reports allocated
+  **56/96/80 VGPR**, 32-thread workgroups, and zero scratch/LDS.
+- No new RED math fixture was needed because the schedule preserves every
+  operation and the existing CPU-oracle matrix already covers all affected
+  qtypes/dtypes. The later package-default change did produce a real RED in
+  `test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena`: the
+  old allocator correctly rejected non-direct GDN and fell back to dedicated
+  buffers. GREEN adds peer Q/K/V lifetimes to the phase-safe arena while the
+  explicit direct route still exposes null materialized Q/K/V views.
+
+Matched current-process real-routing replay (same model/session/routing; control
+injects only the known spilled shared object):
+
+- Q4 gate/up: **44.200 -> 44.003 ms** (flat).
+- Q5 down: **50.863 -> 31.725 ms (-37.63%)**.
+- Q6 down: **3.475 -> 2.630 ms (-24.31%)**.
+- selected-MoE total: **98.538 -> 78.358 ms (-20.48%)**.
+
+Final cache-only peer pp512 trace:
+
+- Q5: **51.009 -> 29.544 ms (-42.08%)**; Q6 **3.350 -> 2.383 ms (-28.85%)**.
+- complete kernels: **203.808 -> 184.513 ms (-9.47%)**.
+- first-to-last span: **215.307 -> 194.886 ms (-9.48%)**; idle **10.373 ms**.
+- The new row is faster than llama.cpp HIP's retained **203.301 ms kernels /
+  212.236 ms span** by **9.24% / 8.17%**.
+- Trace/profile SHA256:
+  `b926fb214ad4b8db6a5551456570dfb76ae26dab22ab5d31c6e2ddd31e3077df`,
+  `ad8e8e6ea756b99b2684307c74ab5bb416851e90efb013924d4ed67dba315cea`.
+
+The explicit-peer 1+3 speed screen reaches **2696.304/2823.889 tok/s** at
+512/4K. Enabling the package default initially exposed the liveness RED above;
+a dedicated peer session used **22.995 GiB**. The final selector-unset,
+liveness-aliased screen reaches **2595.233/2783.108 tok/s**, still **7.58% /
+23.42% above** the frozen llama.cpp floors, with all six IDs `9707` and tracked
+peak restored to **21.670 GiB** (**-1.325 GiB** versus dedicated peer scratch).
+Decode medians are **93.029/100.362 tok/s**.
+
+The full 18-prompt promotion run reproduces KL max **0.041737**, top-1
+**445/450 = 98.889%**, finite deterministic teacher-forced execution, and
+aggregate decode wall **-0.085%**. Its raw artifact is marked dirty because the
+candidate is necessarily uncommitted; summary checks all pass and match the
+prior clean semantic artifact exactly. A clean post-commit rerun remains
+required before publication. gfx1100 package policy now selects
+`chain_peer_wave32`; gfx1151 remains exact `chain_lds32_direct`, and explicit
+direct-LDS32 remains the gfx1100 rollback.
+
+## 2026-07-15 — Clean LCP-5A promotion confirmation and publication
+
+At clean `487e658c`, reran both required promotion gates with the selector
+unset and cached builds only:
+
+- Full 18-prompt/450-transition semantic/decode gate: accepted, KL max
+  **0.041736869**, top-1 **445/450 = 98.889%**, baseline/candidate aggregate
+  decode wall **22781.210 -> 22757.635 ms (-0.10349%)**. Source provenance is
+  clean and the raw SHA256 is
+  `bade49ef1eecdc863ecf64c3e82bf20d2cdf08a6bbdb2f1f4626f3f07c96769e`.
+- Selector-unset max-4K 1+3 speed gate: 512 **2588.231 tok/s**, 4K
+  **2757.752 tok/s**, respectively **7.29% / 22.29% above** the frozen
+  llama.cpp HIP floors. All six final IDs are `9707`; decode medians are
+  **92.664/99.747 tok/s** and tracked peak is **21.670 GiB**. Raw SHA256:
+  `3a9a33293d652465df9e5360c05c16210fedbd2d7e940fda2061b378655cc213`.
+
+Published compact evidence at
+`benchmarks/results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json`
+and updated the benchmark index/changelog plus prefill/refactor handoff.
+The prior post-LCP-4A peer row was **2385.677/2585.343 tok/s**, so the clean
+retained delta is **+8.49%/+6.67%**. The gfx1100 prefill parity task is closed;
+the final six-shape public table remains deferred to the end-of-pass sweep so
+decode and mixed-KV work can settle first.
+
+## 2026-07-15 — LCP-D3 decode refresh and Q4T16 pressure-screen predeclaration
+
+Collected a clean post-router/post-LCP-D2, post-prefill-promotion marked 4K
+decode trace at `edbbb62f` on the W7900. The 24 timed eager steps contain
+15,072 kernels and **208.163 ms** summed GPU work, or **8.673 ms/token**, down
+from the prior retained **8.914 ms/token**. Current family order is dense Q8T16
+**3.430 ms/token (39.55%)**, selected-MoE **1.825 ms/token (21.04%)**,
+full-attention core **0.804 ms/token (9.27%)**, lm-head **0.643 ms/token
+(7.41%)**, RMSNorm/RoPE **0.568 ms/token (6.55%)**, and GDN **0.543 ms/token
+(6.26%)**. The persistent router reduces its prior **592.8 us/token** bucket to
+**416.7 us/token**. All 28 warmup/measured IDs are `9707`; the profile process
+is source-clean.
+
+Most decode variants are already closed. One new source/resource fact admits
+exactly one bounded candidate: the fused selected-Q4T16 c=1 gate/up+SiLU leaf
+is **975.3 us/token (11.24%)**, 40 calls/token, with 200 profiler VGPR and zero
+scratch. Static HIP 7.2 metadata is 195 VGPR, zero private bytes/spills. The
+pre-existing source executes both 16-column gate/up accumulator sets at once.
+A temporary half-sequential source screen processes columns 0-7 then 8-15,
+preserving each output's K order, wave reduction, cross-wave sum, BF16
+round-trip, and SiLU operation. It compiles at **115 VGPR**, zero private
+bytes/spills. This is the only selected-MoE candidate allowed in LCP-D3.
+
+Go/no-go is prospectively frozen: focused GPU tests must be bit-exact to the
+current split-kernel contract; a matched real route must beat the active leaf
+and whole selected-MoE/full-model decode without changing IDs or memory; and a
+cached kernel trace must confirm the candidate name, plausible duration,
+<=120 allocated VGPR, and zero scratch. Any loss or mismatch removes the source
+variant. Do not reopen selected q8_1/dp4a, raw layouts, broader tile/thread
+sweeps, or dense-Q8 experiments during this pass. After this decision, refresh
+the bounded long-context attention attribution and close decode.
+
+## 2026-07-15 — Reject and remove LCP-D3 Q4T16 half-sequential decode
+
+The candidate passed the complete 88-test selected-T16 decode file, including
+byte equality to the retained split gate/up plus SiLU contract. Static resources
+improved as intended with no private storage or spills: system HIP 7.2
+**195 -> 115 VGPR** and therock HIP 7.15 **195 -> 114 VGPR**. Full-model IDs
+remain `9707`, final logits are finite, and tracked peak stays **21.670 GiB**.
+
+Performance rejects on both toolchains:
+
+- System HIP 7.2 compatibility, one max-4K session, one warmup/library and four
+  balanced eager 4K/128 runs: control **40.712 tok/s**, candidate **40.287
+  tok/s**; candidate wall is **+1.055%** slower.
+- Canonical therock HIP 7.15, the same session/library protocol with a fresh
+  state-bound graph capture per run: control samples
+  `[100.330,100.339,99.961,99.893]`, median **100.146 tok/s**; candidate
+  `[97.759,97.575,97.017,97.121]`, median **97.348 tok/s (-2.794%)**. Candidate
+  wall is **+2.874%** slower.
+
+The second K/x traversal costs more than the occupancy improvement. Removed the
+candidate source exactly; production code and defaults are unchanged. Compact
+evidence is
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-q4t16-halfseq-rejected.json`;
+raw A/B SHA256 values are
+`d9bd6ed79359b678da5595721acd0f9314991592c73e40e3726d63ebd328e683` and
+`7937b60955d1c5b0384ec743fe6d9afbac6153f6f744003370ccdf43c6d35c3d`.
+Close selected-Q4T16 pressure work with the existing body. The final decode
+attribution and promotion sweep use therock 7.15; system 7.2 remains a
+compatibility gate rather than a source of mixed-toolchain topline deltas.
+
+## 2026-07-15 — Close LCP-D3 on clean therock 7.15 attribution
+
+Reran the production body at clean `11051aec` with the complete therock 7.15
+stack and `rocprofv3 1.3.2`, using a profiler-SDK ROCTx override so all measured
+steps have exact marker windows. Both profile children require cached builds and
+all prefill/warmup/measured IDs are `9707`.
+
+- 4K, 24 marked eager steps: **8.652 ms GPU/token**, 15,072 selected kernels.
+  Buckets are Q8T16 **3.413 ms (39.45%)**, selected-MoE **1.852 ms (21.41%)**,
+  attention **0.783 ms (9.06%)**, lm-head **0.627 ms (7.25%)**, RMSNorm/RoPE
+  **0.584 ms (6.75%)**, GDN **0.526 ms (6.08%)**, router **0.416 ms (4.81%)**.
+- 32K, 16 marked eager steps: **9.724 ms GPU/token**, 10,208 selected kernels.
+  Q8T16 is **3.442 ms (35.39%)**, selected-MoE **1.927 ms (19.82%)**, and
+  attention rises to **1.689 ms (17.36%)**.
+- The 32K grouped-GQA split-K context leaf is **1.569 ms/token**. The retained
+  LCP-D2 prepare and parallel output leaves are only **40.023 + 50.855 us/token**,
+  together **5.38%** of attention. The reducer promotion therefore remains
+  correctly scoped and is no longer the long-context target.
+
+No second candidate is admitted. The remaining context scan is already the
+memory-sharing grouped-GQA split-K body; serial reduction, warp split, lower
+threshold, and grouped-GQA selection are measured closures. Dense Q8 and
+selected-MoE source/layout experiments are also closed by this pass. Compact
+artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json`.
+Decode is complete pending the final defaults-only parity sweep; next is the
+clean GGUF-only mixed-KV admission gate.
+
+## 2026-07-15 — Close clean GGUF tail-four mixed-KV admission gate
+
+Ran the complete current-stack gate at source-clean `c971262f` on the W7900
+with the full therock HIP 7.15 stack. The 43-test Hadamard/policy/dispatch/plan
+bundle passes. All quality and performance runs require cached builds and retain
+the exact Q4_K_M and prompt-suite identities.
+
+Native BF16-teacher-forced quality passes:
+
+- full 11-prompt 512/8: 99 positions, mean/max KL
+  **0.000137691/0.00745452**, top-1 **100%**;
+- full 11-prompt 4K/16: 187 positions, mean/max KL
+  **0.000136907/0.00992598**, aggregate top-1 **99.465%**, minimum prompt
+  **94.118%**;
+- bounded `mixed_v1` 128K/16: 17 positions, mean/max KL
+  **3.550e-6/5.192e-5**, top-1 **100%**.
+
+Every layout audit reports full-attention indices 0-5 in BF16 and 6-9 in
+Hadamard-group32 INT8, zero persistent BF16 mirror bytes, and zero persistent
+INT8-prefill oracle buffers. At 128K, BF16 K/V is **2,689,597,440 bytes**;
+mixed payload+scales is **2,185,297,920 bytes**, exactly **18.75% lower**.
+Live owned memory falls **24.168 -> 23.698 GiB (-0.470 GiB)** and phase-sampled
+HIP use falls **24.684 -> 24.230 GiB (-0.453 GiB)**.
+
+Production WMMA-prefill/GEMV-graph A/B rejects default promotion:
+
+| Shape | BF16 prefill/decode | Tail-four prefill/decode | Delta |
+| --- | ---: | ---: | ---: |
+| 512/128, 1+3 | `2667.455 / 92.576` | `2635.391 / 95.677` | `-1.20% / +3.35%` |
+| 4K/128, 1+3 | `2920.268 / 100.204` | `2900.706 / 99.451` | `-0.67% / -0.75%` |
+| 128K/128, one-shot | `1045.362 / 62.631` | `1041.368 / 60.240` | `-0.38% / -3.82%` |
+
+The 4K sample ranges do not overlap. Mixed production prefill also allocates
+and frees **1,075,838,976 bytes**; this is byte-exact to four BF16
+full-attention layer caches, so the attribution is inferred as a prefill
+transient rather than a persistent shadow. It raises allocator high water
+**24.168 -> 24.700 GiB (+0.532 GiB)** despite the lower live residency.
+
+Decision: keep `tail4_hadamard_group32` implemented and explicit, but do not
+change GGUF supported/default status. The concrete blockers are 4K and 128K
+speed plus transient high-water memory. Revisit only after removing the
+four-layer prefill transient and optimizing long-context group32 attention.
+Compact artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`.
+
+## 2026-07-16 — Publish final gfx1100 GGUF optimization sweep
+
+Ran six independent source-clean right-sized processes at `28b37356` on the
+W7900 with the complete therock HIP 7.15 stack. No experimental GDN,
+selected-prefill, reducer, KV, or compiler-policy env selector was set; BF16 KV
+and package automatic policies were used. Each shape ran one discarded eager
+warmup plus three measured repetitions with a fresh state-bound graph per run,
+128 decode tokens, repeated token `9707`, cached builds required, and graph
+capture excluded. Command family:
+
+```bash
+$TRPY scripts/qwen35_readme_sweep.py --engine gguf \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --backend hip_gfx1100 --token-id 9707 \
+  --workloads <one-shape>/128 --warmup-runs 1 --measured-runs 3 \
+  --warmup-decode-tokens 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt \
+  --require-cached-build --json /tmp/lcp-final-default-<shape>-715-clean.json
+```
+
+Final medians:
+
+| Shape | Prefill tok/s | Graph decode tok/s | Tracked peak GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | **2716.648** | **92.833** | **21.228** |
+| 1K/128 | **3052.541** | **98.148** | **21.295** |
+| 4K/128 | **2953.101** | **100.522** | **21.670** |
+| 32K/128 | **2078.038** | **88.240** | **22.234** |
+| 64K/128 | **1559.878** | **76.691** | **22.879** |
+| 128K/128 | **1037.378** | **62.669** | **24.168** |
+
+All 18 final IDs are `9707`; all measured routes report WMMA/GEMV effective and
+default BF16 KV. Largest prefill/decode stdev over median is `0.658%/0.223%`.
+Versus the July 14 table, prefill improves `+35.27%..+118.78%`, decode improves
+`+2.24%..+3.46%`, and peer Q/K/V arena liveness adds `0.024..0.127 GiB` versus
+the post-LCP-M1 direct-GDN census.
+
+Final parity decision:
+
+- llama.cpp HIP prefill is closed at all six shapes: hipEngine is
+  **+12.62%..+30.95%**. Decode is also **+2.85%..+26.02%**.
+- llama.cpp Vulkan prefill is beaten from 512 through 64K by
+  **+3.37%..+17.10%**; Vulkan remains **3.88%** ahead at 128K.
+- Vulkan decode remains ahead at all shapes by
+  **13.87/8.75/2.47/3.91/8.42/11.52%**; 4K is the closest boundary.
+- Tracked hipEngine memory versus llama.cpp HIP whole-device is
+  `-0.378/-0.323/-0.004/+0.018/-0.016/+0.079 GiB`. This is practical capacity
+  parity, not an allocator-efficiency comparison across scopes.
+
+For the user's toolchain question, the same-code/system-7.2 versus therock-7.15
+1+3 comparison is material only in prefill: 512 **2588.231 -> 2667.455
+(+3.06%)**, 4K **2757.752 -> 2920.268 (+5.89%)**; decode is `-0.10%/+0.46%`.
+The complete final publication therefore correctly uses therock 7.15, while
+system 7.2 remains the compatibility/resource gate.
+
+Published compact evidence at
+`benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json` and
+updated the scoreboard, parity/tuning docs, changelog, and root README export.
+The gfx1100 pass is complete. Remaining c=1 avenues are Vulkan decode and 128K
+Vulkan prefill; mixed KV remains explicit until its prefill transient and
+long-context speed blockers are removed. gfx1151 transfer remains the separate
+post-merge plan.
+
+## 2026-07-16 — Final publication validation
+
+The current-tree milestone run completed with **6226 passed, 53 skipped, 1
+failed** in 1849.35 seconds. The only failure was a stale policy assertion that
+still expected gfx1100 GPF-5A to be disabled after this branch promoted its
+backend-package ceiling through 4096 tokens. Updated that regression to cover
+both independent ceilings (gfx1100 4096, gfx1151 65536); the focused file then
+passed **4/4**. A second full-suite run was started unnecessarily and stopped at
+66%; the completed first run plus the repaired focused gate are the final test
+evidence.
+
+Final mechanical checks: `python3 scripts/sync_benchmark_readme.py --check`
+passed, the compact artifact parses as JSON, all 21 newly added Markdown link
+targets exist, and `git diff --check` passed.
+
+## 2026-07-16 — Prevent redundant long validation reruns
+
+Updated `AGENTS.md` after the unnecessary second milestone-suite invocation.
+When a completed broad run has one scoped failure and establishes that all
+other tests passed, the required evidence is now the original broad result plus
+the repaired failing node/file and genuinely affected narrow bundle. Another
+full run is allowed only for credible cross-suite impact, multiple unrelated
+failures, an explicit release requirement, or user approval. Any repeat test or
+benchmark expected to exceed five minutes when equivalent broad evidence
+already exists now requires advance reason, duration, and explicit approval.
+
+## 2026-07-16 — Merge gfx1100 optimization with current gfx1151 main
+
+Pushed `gfx1100-gguf-optimization` to origin, fetched 26 newer gfx1151 commits,
+and fast-forwarded local `main` from `bc5600e2` to `c65e6789`. The three-way
+merge combined architecture-scoped policy rather than selecting either side:
+gfx1151 retains nonvolatile direct-LDS32 GDN, tiled Conv, scoped device
+metadata/four-wave Q8, and right-sized router launches; gfx1100 retains
+peer-wave GDN, scoped two-wave Q8, compact-WMMA no-read, scratch liveness,
+persistent cooperative routing, spill-free selected prefill, and long-context
+parallel reduction. Shared-runner conflict resolution preserves both normalized
+peer and exact direct/nonvolatile GDN dispatch, plus both runtime-state metadata
+and the liveness-arena ownership contract.
+
+Merge validation: `tests/test_gfx1151_backend.py` **22 passed**;
+`tests/test_gguf_q8_0_t16_wmma_prefill.py` **85 passed**; the six merged
+nonvolatile/peer GDN correctness cases **6 passed**; the focused runner/policy
+bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
+`python3 scripts/sync_benchmark_readme.py --check`, Python compilation, and
+`git diff --check` passed. No broad suite or benchmark was repeated.

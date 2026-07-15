@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_gguf_q8t16_q8_1_i8_wmma_prefill_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "7989b41d",
+  "candidate": {
+    "id": "LCP-3B",
+    "family": "dense Q8T16 prefill",
+    "variant": "wmma_prefill_q8_1_i8_bf16_out",
+    "scope": "standalone prequantized diagnostic only; never model-routed",
+    "design": "Two wave32 groups retain the production 64-output x 32-row block geometry. Each consumes GGML-compatible Q8_1 activation blocks and signed Q8T16 payload through RDNA3 integer WMMA, scales every 32-K integer dot into FP32, and writes BF16."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "kernel": "7.1.3-2-cachyos"
+  },
+  "software": {
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "correctness": {
+    "red": "Collection failed because no prequantized Q8_1 x Q8T16 integer-WMMA wrapper or registry key existed.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py -q -k lcp3b",
+    "green_result": "2 passed",
+    "shapes": [[32, 256, 128], [17, 256, 80]],
+    "gates": {
+      "q8_0_x_q8_1_cpu_oracle_relative_l2_max": 0.02,
+      "exact_q8_0_bf16_mean_kl_max": 0.05,
+      "exact_q8_0_bf16_top1_min": 0.9,
+      "all_passed": true
+    },
+    "note": "The initial implementation used the WMMA output lane's input-load row scale and failed relative L2 around 0.24-0.27. Correctly indexing the scale by each accumulator output row fixed both ordinary and tail fixtures before timing."
+  },
+  "microbench": {
+    "protocol": "W7900 HIP events, eight cycling Q8T16 weight copies, three warmup cycles, 60 rotated measured repetitions per mode, cached builds. The prequantized body and quantization-included legs use the existing GGML-compatible BF16-to-Q8_1 kernel.",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 /tmp/lcp3b_q8_t16_i8_micro.py --rows 512 --in-features 2048 --out-features 8192 --compiler-version-file /tmp/hipengine-hipcc-version-lcp3.txt --json /tmp/lcp3b-q8-primary.json",
+    "shape_mkn": [512, 2048, 8192],
+    "medians_ms": {
+      "production_fp16_two_wave": 0.5213415026664734,
+      "prequantized_i8_body": 0.7541820108890533,
+      "q8_1_quantize_plus_i8_body": 0.7701829969882965
+    },
+    "deltas_percent": {
+      "prequantized_i8_body_vs_production": 44.661801723378034,
+      "included_cost_vs_production": 47.73099648677284
+    },
+    "quantize_increment_ms": 0.016000986099243164,
+    "raw_sha256": "bfdca92874ad069b607855004e0ee009bb4616885c7e96effb412eab4f5010e2"
+  },
+  "decision": {
+    "result": "reject_at_primary_body_gate",
+    "reason": "The prequantized integer-WMMA body itself is 44.66% slower; Q8_1 quantization adds only 0.016 ms and is not the blocker. Directly packing the current K-major T16 payload and scaling every 32-K dot does not reproduce llama.cpp MMQ's tiled shared-layout economy.",
+    "profiler": "Skipped after the predeclared primary body gate failed.",
+    "source_disposition": "Remove candidate kernel, wrapper, key, and tests; production source/defaults remain unchanged.",
+    "next": "Do not route the existing raw-sidecar dp4a diagnostics or this direct T16 body. Any further dense-Q8 attempt must first reproduce the actual llama.cpp Q8_1 MMQ shared tile/decomposition in a standalone microbenchmark or identify a different exact body-level bottleneck."
+  }
+}

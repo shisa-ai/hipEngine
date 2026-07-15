@@ -1,11 +1,13 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-15**
+Last reviewed: **2026-07-16**
 
-Latest retained hipEngine revision in this scoreboard:
-`61a27d7279549843bb3fb0464cb8b120689b9ff1`. The current gfx1151 production
-refresh is retained through 64K; repeated 128K is explicitly blocked by the
-residual gfx11 scheduler lifecycle failure rather than carrying a stale number.
+Latest retained hipEngine revisions in this scoreboard:
+`28b37356ee27a874fe510d50a0c2f92eeaa4cf9c` for the final gfx1100 GGUF sweep
+and `61a27d7279549843bb3fb0464cb8b120689b9ff1` for the current gfx1151 GGUF
+refresh. The gfx1151 production refresh is retained through 64K; repeated 128K
+is explicitly blocked by the residual gfx11 scheduler lifecycle failure rather
+than carrying a stale number.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -330,8 +332,14 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | --- | --- | --- | --- | --- | --- | --- |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
-| Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-14 | source base `9d0bb4e2` plus exact recorded implementation hashes; TheRock HIP 7.2.53211; exact Q4_K_M, PARO snapshot, and prompt-suite identities; dirty-source speed rows remain diagnostic | **Split native outcome; no promotion**: the six-BF16/four-INT8 packed layout passes GGUF on all 11 prompts at 512/8 and 4K/16 (**0.00006564/0.001681 mean/max KL, 100% top-1** at 4K) plus bounded `mixed_v1` 128K/16. PARO fails one 512/8 prompt and two 4K/16 prompts (worst prompt **0.08136 KL / 58.82% top-1**). XTX p512/d128 changes GGUF eager by **+0.05% prefill / +0.25% decode** and PARO graph by **-0.40% / -4.11%**. The quality-preserving PARO 256 Ki scratch probe OOMs cleanly at **23.469 GiB tracked peak**; direct streaming allocates at 23.290 GiB but is correctness-rejected. Explicit-only, unsupported/default status unchanged. [`artifact`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Require a PARO-safe layout plus memory-safe prefill to pass the full prompt suite, bounded long-context gate, full physical 256 Ki run, and clean matched performance before promotion. |
-| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
+| Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-15 | clean GGUF closure `c971262f`; therock HIP 7.15; exact Q4_K_M and prompt-suite identities; prior PARO/XTX outcome retained separately | **Quality-safe GGUF explicit diagnostic; no default promotion**: clean GGUF passes all 11 prompts at 512/8 and 4K/16 (**0.0001369/0.009926 mean/max KL, 99.47% aggregate and 94.12% minimum-prompt top-1** at 4K) plus bounded `mixed_v1` 128K/16. Persistent 128K K/V drops **2,689,597,440 -> 2,185,297,920 bytes (-18.75%)** with no persistent BF16 shadow, but production 4K prefill/decode regress **0.67%/0.75%**, 128K decode regresses **3.82%**, and a **1.002 GiB** prefill transient raises allocator high water **24.168 -> 24.700 GiB** despite lowering live owned memory by **0.470 GiB**. Prior PARO quality and 256 Ki capacity blockers remain. Explicit-only; unsupported/default status unchanged. [`clean GGUF gate`](results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) · [`prior split outcome`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Remove the inferred four-layer BF16 prefill transient and optimize long-context group32 attention, then repeat the clean GGUF gate; PARO requires its own quality-safe layout. |
+| Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-16 | clean GGUF `28b37356` on therock HIP 7.15; retained PARO `8116c453`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted current four-column topline**: the GGUF column is the final right-sized 1+3 defaults-only refresh; PARO and llama.cpp columns retain their clean July 12 protocols. All six GGUF shapes have clean provenance, finite/stable IDs, exact Q4_K_M identity, and <=0.658%/0.223% prefill/decode stdev over median. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
+| Radeon Pro W7900, gfx1100 | GGUF final architecture-local prefill/decode/memory optimization | 2026-07-16 | clean right-sized rollup `28b37356`; therock HIP 7.15; exact Q4_K_M fingerprint; selector-unset BF16-KV package defaults | **Accepted final gfx1100 GGUF route**: six-shape prefill is **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, beating llama.cpp HIP by **12.62-30.95%** everywhere and Vulkan from 512-64K; graph decode is **92.833/98.148/100.522/88.240/76.691/62.669 tok/s**, ahead of llama.cpp HIP everywhere and closest to Vulkan at 4K (**-2.47%**). Tracked memory is within **-0.378 to +0.079 GiB** of llama.cpp HIP whole-device readings. All 18 IDs are exact. [`artifact`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json). | Yes | Rerun after model/runtime/default-policy, compiler/runtime, or reference-engine changes; decode-to-Vulkan and 128K Vulkan prefill are the concrete residuals. |
+| Radeon Pro W7900, gfx1100 | GGUF pp512 request-scoped metadata reuse | 2026-07-15 | clean retained scheduler `e03e5a34`; matched HIP API/kernel traces around the identical source change; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained scheduler / diagnostic GPF-9C row**: exactly **240 synchronous copies** are removed, matched queue idle falls **27.956 -> 15.163 ms (-45.76%)**, and clean `chain_peer_wave32` pp512 improves **2210.729 -> 2292.186 tok/s (+3.68%)** with stable IDs, unchanged **22.995 GiB** peak, and decode +0.51%. 4K is within -0.44%, but 512 remains **4.98% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. [`artifact`](results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json). | Diagnostic link only; scheduler code retained | Superseded for the next queue boundary by the compact-WMMA no-read row below; retain as the isolated 240-copy attribution. |
+| Radeon Pro W7900, gfx1100 | GGUF pp512 compact-WMMA tight no-read | 2026-07-15 | clean retained gfx1100 default `31c9cdc5`; matched HIP API/kernel traces against `e03e5a34`; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained gfx1100 scheduler default / diagnostic GPF-9C row**: the tight routing-independent tile bound removes the remaining **40 synchronous D2H copies**, cuts matched queue idle **15.163 -> 11.634 ms (-23.27%)**, and improves clean `chain_peer_wave32` pp512 **2292.186 -> 2334.451 tok/s (+1.84%)** with stable IDs, unchanged **22.995 GiB** peak, and decode within -0.053%. 4K improves +0.70%; pp512 remains **3.23% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. gfx1151 stays scalar pending its independent gate. [`artifact`](results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json). | Diagnostic link only; scheduler code retained | Superseded as the final pp512 residual by the no-scratch Conv row below; retain as the isolated 40-copy attribution. |
+| Radeon Pro W7900, gfx1100 | GGUF normal-prefill Conv no-scratch exact math | 2026-07-15 | clean retained default `683ddab6`; clean post-profile/floor `c85c2880`; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained exact default; residual closed**: explicit sequential `v_mul_f32_e32`/`v_add_f32_e32` removes **20 private bytes/thread**, cuts cached pp512 Conv body **8.496 -> 1.894 ms / 30 (-77.71%)**, and improves clean production 512/4K prefill **+1.44%/+1.86%** with exact state/IDs. The clean follow-up puts production exact / peer / llama.cpp kernels at **369.285/203.808/203.301 ms** and GDN at **199.030/20.840/16.522 ms**: the shipped gap is exact GDN. Peer improves clean 512/4K **2334.451/2519.871 -> 2385.677/2585.343 tok/s (+2.19%/+2.60%)**, but 512 remains **1.104% below** its floor, so production is unchanged. [`win`](results/2026-07-15-gfx1100-gguf-conv-no-scratch.json) · [`residual`](results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json). | Retained exact-kernel win; peer conclusion superseded by LCP-5A below | Preserve as the post-Conv attribution baseline; the next row closes the peer promotion boundary. |
+| Radeon Pro W7900, gfx1100 | GGUF LCP-5A spill-free T16 selected prefill and peer-GDN promotion | 2026-07-15 | clean retained default `487e658c`; system HIP 7.2.53211; exact Q4_K_M/prompt-suite identities retained | **Prefill parity gap closed; gfx1100 default promoted**: rolling only the outer T16 selected-Q4/Q5/Q6 loops removes Q5's 176 private bytes/75 spills, cuts pp512 Q5 **51.009 -> 29.544 ms (-42.08%)**, and moves complete peer kernels/span to **184.513/194.886 ms**, faster than llama.cpp HIP's **203.301/212.236 ms**. The clean 18-prompt gate passes at **0.041737 KL / 445/450 top-1 / -0.103% decode wall**. Selector-unset 512/4K prefill is **2588.231/2757.752 tok/s**, **7.29%/22.29% above** the frozen floors, with stable IDs and **21.670 GiB** tracked peak. [`artifact`](results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json). | Retained default; included in the final `28b37356` six-shape publication above | Rerun after selected-prefill compiler/schedule, peer GDN math, liveness allocation, model, or ROCm changes; keep explicit exact direct-LDS32 rollback for one release. |
+| Radeon Pro W7900, gfx1100 | GGUF exact F32-weight cooperative c1 router | 2026-07-14 | clean hipEngine `4c743994` plus persistent-counter default `0ec2a813`; TheRock HIP 7.15; exact Q4_K_M fingerprint retained | **Retained scoped default**: the cooperative fold first improves its complete leaf **17.845 -> 14.666 us (-17.81%)** and clean 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**. The self-resetting counter then removes 40 reset nodes/token, improves the fused leaf **14.667 -> 10.444 us (-28.79%)**, and cleanly improves 4K graph decode **98.812 -> 100.446 tok/s (+1.65%)**. Every router output bit and all measured IDs/final values are exact; the counters add only eight tracked bytes. | Retained defaults; included in the final `28b37356` six-shape table | Remove temporary cooperative/persistent rollback flags after one release window; rerun after router math, model, compiler/runtime, or graph-policy changes. |
 | Radeon Pro W7900, gfx1100 | PARO gfx1151 optimization transfer gate | 2026-07-12 | clean detached hipEngine `255e5aca`; TheRock HIP `7.15.0-0000000`; exact PARO model fingerprint retained | **Retained scoped-default validation / negative chunk decision**: the balanced global-isolation screen is exact at 512/1K/4K. Its 4K/4096-query leg directly validates the merged scoped default with total wall **-0.562%**; 512/1K used 256-query isolation that the final policy intentionally excludes. The gfx1151 linear/MoE-256 profile is rejected at **-7.72%/-8.78%/-6.40% prefill**. | Linked, not a new topline | Rerun after AOTriton/ROCr stream scheduling, PARO chunks, compiler/runtime, or gfx1100 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF graph AR, exact/default MTP, `llama-compat`, and llama.cpp HIP | 2026-07-12 | clean graph gate `833921ce`, admitted route `ac0adb3f`, clean suites `202bd2f0`; ROCm 7.2.4; exact Q4_K_M/prompt fingerprints; llama.cpp HIP `1ebf790cd` build 9648 | **Current retained AR / corrected MTP economics**: natural24 graph AR is **93.30 tok/s**, exact B3 is **68.50 vs 98.75 AR (0.6936x)**, and accuracy-traded `llama-compat` is **79.70 vs 93.30 AR (0.8542x)**. All 24 repeated-state transitions and all ten natural generated previews/tails are exact. At matched timing boundaries hipEngine AR is **93.30** versus llama.cpp **78.29 tok/s (+19.19%)**. | Yes, qualified | Rerun after graph policy/state, GGUF/MTP route, model/prompt suite, compiler/runtime, or output-horizon changes; keep exact fixed-cycle and natural24 contracts separate. |
 | Radeon Pro W7900, gfx1100 | PARO/llama.cpp/vLLM concurrency | 2026-07-07 | hipEngine `b4edca09`; same TheRock stack; vLLM `0.22.1rc1.dev499+g470229c37.d20260613` | **Stale diagnostic**: cross-quant and mixed timing scopes; source artifacts set `performance_claim=false`; measured PARO code predates the July concurrency changes | Diagnostic link only | Rerun one timing scope with exact generated-token accounting across all engines |
@@ -376,17 +384,43 @@ script copies this marked block into the root README byte-for-byte.
 
 ### gfx1100 model throughput
 
-This is the clean 2026-07-12 W7900 refresh measured at hipEngine `8116c453`
-(rebased-equivalent reachable `8708304f`; only `WORKLOG.md` and
-`docs/PROCESS-IMPROVEMENT.md` differ) on TheRock HIP 7.15. Each hipEngine shape uses its own right-sized resident
-session, two discarded warmups, and five measured repetitions; the tables
-report medians. PARO and GGUF both use their admitted state-bound graph decode
-routes, with capture excluded from steady decode timing. llama.cpp uses one
-internal warmup plus five samples per split prefill/decode phase. The W7900
-four-step GGUF oracle passes external tokens plus byte-exact hidden, all 30
-Conv/GDN state families, and all 10 live K/V families; every measured sweep
-row has finite logits, stable final IDs, clean provenance, and <=5% sample
-variance.
+The GGUF column is the clean 2026-07-16 defaults-only right-sized sweep at
+`28b37356` on the complete therock HIP 7.15 stack. Each shape uses one discarded
+eager warmup plus three measured runs in an independent resident process; every
+measurement captures and closes a fresh state-bound decode graph. Package
+automatic policy selects peer-wave GDN, spill-free selected prefill, the
+persistent cooperative router, and the long-context parallel reducer while KV
+remains default BF16.
+
+Prefill is now
+**2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, graph decode is
+**92.833/98.148/100.522/88.240/76.691/62.669 tok/s**, and tracked right-sized
+memory is **21.228/21.295/21.670/22.234/22.879/24.168 GiB** from 512 through
+128K. All 18 final IDs are `9707`; the largest prefill/decode stdev over median
+is **0.658%/0.223%**.
+
+Relative to the July 14 GGUF table, prefill improves **+35.27% to +118.78%**
+and decode improves **+2.24% to +3.46%**. Prefill now beats llama.cpp HIP at
+all six shapes by **12.62-30.95%** and beats llama.cpp Vulkan from 512 through
+64K by **3.37-17.10%**; only 128K Vulkan prefill remains ahead, by **3.88%**.
+Decode beats llama.cpp HIP everywhere by **2.85-26.02%**, while Vulkan remains
+ahead by **2.47-13.87%**. The tracked-memory count is within **-0.378 to
++0.079 GiB** of llama.cpp HIP's broader whole-device readings, so memory is at
+practical parity but small cross-scope differences are not allocator-efficiency
+claims.
+
+Evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[`peer-GDN promotion`](results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json),
+[`decode attribution`](results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json),
+[`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
+[`LCP-M1 memory gate`](results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json),
+[`persistent router counter`](results/2026-07-14-gfx1100-gguf-persistent-router-counter.json),
+and [`mixed-KV closure`](results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json).
+
+PARO remains the clean 2026-07-12 `8116c453` two-warmup/five-measurement row.
+llama.cpp HIP/Vulkan remain the matched July 12 Q4_K_M/F16-KV references with
+one internal warmup plus five samples per split phase. Every engine uses the
+stated graph/eager route and excludes graph capture from steady decode timing.
 
 Bold marks the best raw value in each row. It is descriptive only: PARO is W4
 PARO/BF16 KV, while the other columns use the same Q4_K_M GGUF with hipEngine
@@ -397,34 +431,34 @@ BF16 KV and llama.cpp F16 KV. Memory scopes also differ.
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | 644.719 | 2412.320 | 2627.990 |
-| 1K/128 | **2995.876** | 676.177 | 2389.670 | 2631.750 |
-| 4K/128 | **2943.038** | 677.618 | 2255.080 | 2521.770 |
-| 32K/128 | **2108.868** | 628.364 | 1667.640 | 1943.920 |
-| 64K/128 | **1584.131** | 572.612 | 1291.820 | 1414.470 |
-| 128K/128 | 1056.252 | 484.212 | 891.949 | **1079.280** |
+| 512/128 | **2917.732** | 2716.648 | 2412.320 | 2627.990 |
+| 1K/128 | 2995.876 | **3052.541** | 2389.670 | 2631.750 |
+| 4K/128 | 2943.038 | **2953.101** | 2255.080 | 2521.770 |
+| 32K/128 | **2108.868** | 2078.038 | 1667.640 | 1943.920 |
+| 64K/128 | **1584.131** | 1559.878 | 1291.820 | 1414.470 |
+| 128K/128 | 1056.252 | 1037.378 | 891.949 | **1079.280** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.599** | 89.873 | 80.756 | 107.786 |
-| 1K/128 | 103.238 | 94.751 | 80.805 | **107.555** |
-| 4K/128 | **105.943** | 96.551 | 79.768 | 103.066 |
-| 32K/128 | **92.438** | 83.673 | 74.304 | 91.835 |
-| 64K/128 | 78.260 | 71.644 | 69.010 | **83.746** |
-| 128K/128 | 60.663 | 56.745 | 60.933 | **70.833** |
+| 512/128 | **115.599** | 92.833 | 80.756 | 107.786 |
+| 1K/128 | 103.238 | 98.148 | 80.805 | **107.555** |
+| 4K/128 | **105.943** | 100.522 | 79.768 | 103.066 |
+| 32K/128 | **92.438** | 88.240 | 74.304 | 91.835 |
+| 64K/128 | 78.260 | 76.691 | 69.010 | **83.746** |
+| 128K/128 | 60.663 | 62.669 | 60.933 | **70.833** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.144** | 21.478 | 21.606 | 21.260 |
-| 1K/128 | **18.367** | 21.710 | 21.618 | 21.220 |
-| 4K/128 | **19.161** | 22.995 | 21.674 | 21.278 |
-| 32K/128 | **19.864** | 23.559 | 22.216 | 21.855 |
-| 64K/128 | **20.403** | 24.203 | 22.895 | 22.512 |
-| 128K/128 | **22.124** | 25.493 | 24.089 | 23.824 |
+| 512/128 | **18.144** | 21.228 | 21.606 | 21.260 |
+| 1K/128 | **18.367** | 21.295 | 21.618 | 21.220 |
+| 4K/128 | **19.161** | 21.670 | 21.674 | 21.278 |
+| 32K/128 | **19.864** | 22.234 | 22.216 | 21.855 |
+| 64K/128 | **20.403** | 22.879 | 22.895 | 22.512 |
+| 128K/128 | **22.124** | 24.168 | 24.089 | 23.824 |
 <!-- END TOPLINE:W7900_SWEEP -->
 
 hipEngine memory is its tracked allocator high-water; llama.cpp is absolute
@@ -434,9 +468,12 @@ artifact validates the 48 GiB W7900 device rather than the idle 24 GiB XTX.
 Use memory values for within-column context growth, not small cross-column
 allocator-efficiency claims.
 
-Artifacts: [accepted summary](results/2026-07-12-w7900-v030-8116c453-summary.json),
+Artifacts: [current hipEngine GGUF throughput and memory](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[superseded July 14 hipEngine GGUF sweep](results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json),
+[LCP-M1 memory gate](results/2026-07-14-gfx1100-gguf-lcp-m1-prefill-scratch-liveness.json),
+[July 12 accepted summary](results/2026-07-12-w7900-v030-8116c453-summary.json),
 [hipEngine PARO](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
-[hipEngine GGUF](results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
+[superseded hipEngine GGUF](results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
 [llama.cpp HIP](results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json),
 [llama.cpp Vulkan](results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json),
 and [W7900 GGUF oracle](results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).
@@ -752,14 +789,25 @@ The native explicit `tail4_hadamard_group32` layout keeps K/V for
 full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
 `27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
 rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
-BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
-while writing packed tail K/V, then releases that oracle before decode. Native
-GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
-KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
-1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
-the mixed policy remains explicit and non-default: its quality-preserving 256
-Ki request scratch OOMs, while the allocation-passing direct route fails
-fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
+BF16 shadow. PARO's quality-preserving prefill uses a temporary BF16 oracle;
+GGUF's post-quality layout audit reports zero persistent oracle/mirror buffers.
+Native PARO still fails 1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82%
+worst-prompt top-1), and its 256 Ki quality-preserving request scratch OOMs.
+
+The clean `c971262f` therock-7.15 GGUF-only closure passes all 11 prompts at
+512/8 (max KL `0.007455`, top-1 100%) and 4K/16 (mean/max KL
+`0.0001369/0.009926`, aggregate/minimum-prompt top-1 `99.47%/94.12%`) plus
+bounded `mixed_v1` at 128K/16 (max KL `5.19e-5`, top-1 100%). At 128K,
+persistent K/V is `2,185,297,920` bytes versus BF16 `2,689,597,440` bytes and
+live owned memory falls `24.168 -> 23.698 GiB`. It still rejects promotion:
+production 4K prefill/decode regress `0.67%/0.75%`, one-shot 128K decode
+regresses `3.82%`, and production prefill allocates then frees
+`1,075,838,976` bytes—byte-exact to four BF16 layer caches—raising allocator
+high water `24.168 -> 24.700 GiB`. The transient attribution is inferred from
+the exact bytes; it is not a persistent shadow. The policy remains explicit
+and non-default. Evidence:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json` and
+`benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The physical-card result differs from the earlier W7900 220 Ki rejection

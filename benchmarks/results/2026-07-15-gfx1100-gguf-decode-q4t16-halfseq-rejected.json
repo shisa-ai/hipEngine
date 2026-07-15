@@ -1,0 +1,96 @@
+{
+  "kind": "hipengine_gfx1100_gguf_decode_candidate",
+  "schema_version": 1,
+  "created_at": "2026-07-15T23:10:00+09:00",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "predeclaration_commit": "98f74602871c7124ecdb81ad2dd7402b34ca20d2",
+    "branch": "gfx1100-gguf-optimization",
+    "production_source_restored": true,
+    "runtime_default_changed": false
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "candidate": {
+    "name": "LCP-D3 selected-Q4T16 half-sequential accumulator",
+    "scope": "q4_k_t16_selected_dual_silu_direct_gemv_kernel<uint16_t> only",
+    "change": "Process columns 0-7 and 8-15 sequentially while preserving per-output K order, wave reduction, cross-wave sum, BF16 round-trip, and SiLU order.",
+    "reason": "The clean system-7.2 4K profile attributed 11.24% of GPU time to the active fused selected-Q4 leaf at 200 profiler VGPR and zero scratch.",
+    "expected_tradeoff": "Lower live accumulator pressure and higher occupancy at the cost of a second K/x traversal."
+  },
+  "resource_screen": {
+    "system_hip_7_2": {
+      "control_static_vgpr": 195,
+      "candidate_static_vgpr": 115,
+      "control_private_bytes": 0,
+      "candidate_private_bytes": 0,
+      "control_vgpr_spills": 0,
+      "candidate_vgpr_spills": 0,
+      "candidate_so_sha256": "bb2773135681102802d7e07c15a1951b800e1493f0dcc01984eb4740cf019d9e",
+      "metadata_sha256": "057c6f1a8cdd5eb3d4211b69dd0665b13a8158ca7b65ead7f0654b22e5ba00a6"
+    },
+    "therock_hip_7_15": {
+      "control_static_vgpr": 195,
+      "candidate_static_vgpr": 114,
+      "control_private_bytes": 0,
+      "candidate_private_bytes": 0,
+      "control_vgpr_spills": 0,
+      "candidate_vgpr_spills": 0,
+      "control_so_sha256": "14977307d0a45d07f5a89ac84a10309664ad02f04472e502508cfdf068afe3b2",
+      "candidate_so_sha256": "a89d019c1f84b846852ae7184509f1c735e61def1f8ae2e1ffada30253566cc8",
+      "metadata_sha256": "c5c8ce4c41fc4b5310d8a0357d3c9f00c7a97db19803e1e158eafc37bc2e2707"
+    }
+  },
+  "correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py --tb=short",
+    "collected_tests": 88,
+    "passed": true,
+    "focused_fused_contract": "Candidate output is byte-exact to the retained split gate/up plus SiLU BF16 contract.",
+    "all_full_model_ids_exact": true,
+    "all_final_logits_finite": true,
+    "tracked_peak_gib_control_and_candidate": 21.67032
+  },
+  "performance": {
+    "system_hip_7_2_compatibility_eager": {
+      "protocol": "One max-4K resident session; one warmup per shared object; four balanced 4K/128 eager runs; switch only selected-T16 CDLL.",
+      "control_tok_s_samples": [40.431955, 40.820917, 40.603717, 40.870873],
+      "candidate_tok_s_samples": [40.308798, 40.250117, 40.732092, 40.265554],
+      "control_median_tok_s": 40.712317,
+      "candidate_median_tok_s": 40.287176,
+      "candidate_wall_delta_percent": 1.054587,
+      "raw_sha256": "d9bd6ed79359b678da5595721acd0f9314991592c73e40e3726d63ebd328e683"
+    },
+    "therock_hip_7_15_canonical_graph": {
+      "protocol": "One max-4K resident session; one warmup per shared object; four balanced 4K/128 state-bound graph runs with fresh capture per run; switch only selected-T16 CDLL.",
+      "control_tok_s_samples": [100.330182, 100.338781, 99.961131, 99.893026],
+      "candidate_tok_s_samples": [97.758945, 97.574738, 97.017218, 97.120853],
+      "control_median_tok_s": 100.145657,
+      "candidate_median_tok_s": 97.347795,
+      "candidate_delta_percent": -2.793793,
+      "candidate_wall_delta_percent": 2.874298,
+      "raw_sha256": "7937b60955d1c5b0384ec743fe6d9afbac6153f6f744003370ccdf43c6d35c3d"
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "The lower VGPR count does not repay the second K/x traversal. The candidate regresses both the system compatibility wall and the canonical therock graph wall.",
+    "action": "Remove the candidate source and keep the existing fused selected-Q4T16 kernel unchanged.",
+    "closed_retries": [
+      "selected-Q4T16 half-sequential accumulators",
+      "selected q8_1/dp4a",
+      "raw selected layouts",
+      "broad selected-MoE tile/thread sweeps"
+    ]
+  }
+}

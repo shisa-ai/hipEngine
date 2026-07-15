@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_q6t16_exact_top1_fusion_screen",
+  "status": "rejected",
+  "created_at": "2026-07-14T18:17:30+00:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "baseline_commit": "bc675311c009ac667b66fd9ba2cd7b4c41f9dd32",
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "Q4_K_M with Q6_K output.weight resident in Q6T16",
+  "candidate": "Preserve the current Q6T16 per-logit arithmetic while emitting one exact winner per 16-column tile and reducing tile winners directly, avoiding the full FP32 vocabulary row plus standalone two-stage argmax for top1-only c1 sampling.",
+  "source_scope_removed_after_rejection": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.py",
+    "hipengine/runtime/qwen35_gguf_runner.py",
+    "tests/test_gguf_q6_k_t16_gemv_decode.py",
+    "tests/test_qwen35_gguf_lm_head_top1_routing.py"
+  ],
+  "correctness": {
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_qwen35_gguf_lm_head_top1_routing.py",
+    "result": "10 passed",
+    "contract": "Candidate token IDs and selected FP32 values were byte-identical to full Q6T16 logits plus argmax, including an all-equal-logit fixture that requires minimum-index tie breaking. Runtime routing kept full-logit requests on the existing fallback.",
+    "full_model": {
+      "final_token_id": 9707,
+      "final_logit": 29.407920837402344,
+      "all_nine_measured_runs_exact": true
+    }
+  },
+  "production_shape_micro": {
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 python3 /tmp/q6_t16_top1_micro.py",
+    "shape": "rows=1, in=2048, out=248320",
+    "resident_weight_bytes_approx": 417000000,
+    "warmups_per_leg": 20,
+    "timed_calls_per_leg": 100,
+    "alternating_order_rounds": 6,
+    "timing": "HIP events; each lm-head read exceeds cache capacity",
+    "control": "Q6T16 full FP32 logits plus argmax_f32",
+    "candidate": "Q6T16 tile winner stage1 plus tile-winner stage2",
+    "control_us_samples": [
+      735.3526306152344,
+      901.0860443115234,
+      884.6809387207031,
+      873.5650634765625,
+      880.8438873291016,
+      874.2085266113281
+    ],
+    "candidate_us_samples": [
+      730.2648162841797,
+      763.7542724609375,
+      873.3466339111328,
+      874.2550659179688,
+      879.7863006591797,
+      874.2634582519531
+    ],
+    "control_median_us": 877.5262069702148,
+    "candidate_median_us": 873.8008499145508,
+    "candidate_latency_delta_pct": -0.42452943582464986,
+    "candidate_speedup_pct": 0.42633937195510896,
+    "selected_id_exact": true,
+    "selected_value_exact": true,
+    "raw_output": "/tmp/q6_t16_top1_micro.out"
+  },
+  "full_model_protocol": {
+    "shape": "4K/128",
+    "prompt": "token 9707 repeated 4096 times",
+    "decode": "128 tokens, one eager warmup token, state-bound HIP graph replay with one step per replay",
+    "process_order": "control / candidate / control",
+    "runs_per_process": "1 discarded warmup plus 3 measured",
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE [HIPENGINE_GGUF_Q6_T16_TOP1=1 for candidate] PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build --json <output>",
+    "raw_artifacts": [
+      "/tmp/gfx1100-q6-top1-control-a.json",
+      "/tmp/gfx1100-q6-top1-candidate.json",
+      "/tmp/gfx1100-q6-top1-control-b.json"
+    ]
+  },
+  "full_model_results": {
+    "control_a_decode_tok_s": [
+      97.94040030516277,
+      97.91919484888663,
+      97.78891927042562
+    ],
+    "candidate_decode_tok_s": [
+      97.33683321545264,
+      97.20601237092053,
+      97.13729899014311
+    ],
+    "control_b_decode_tok_s": [
+      97.71399147683411,
+      97.55009498343426,
+      97.36482193183708
+    ],
+    "control_a_median_tok_s": 97.91919484888663,
+    "candidate_median_tok_s": 97.20601237092053,
+    "control_b_median_tok_s": 97.55009498343426,
+    "combined_control_median_tok_s": 97.75145537362987,
+    "candidate_throughput_delta_pct": -0.5579896489771086,
+    "control_tracked_peak_gib": 21.543610,
+    "candidate_tracked_peak_gib": 21.543778
+  },
+  "decision": "Reject at the predeclared full-model nonregression gate. The isolated combined lm-head micro improved by 0.42%, but the clean graph-decode candidate regressed 0.56% versus the combined controls. Remove the kernel, wrapper, registry route, runtime flag, larger scratch allocation, and candidate tests; retain the existing full-logits Q6T16 path."
+}

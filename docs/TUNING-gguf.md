@@ -268,7 +268,7 @@ VGPR/SGPR/scratch/LDS/workgroup/grid summaries per bucket and per kernel.
 | prefill | dense Q8_0 WMMA | `0/8 B` | `96/128/192` | `0` | mostly scratch-free, with one tiny-spill shape; do tile-specific census before changing tile policy. |
 | prefill | full-attn prefill | `3200 B` | `256` | `0` | AOTriton/full-attn spill exists but is only `~4%` of the 4K prefill trace. |
 | decode | dense Q8_0 T16 GEMV | `0 B` | `64` | `512` | top decode bucket is scratch-free; blind launch-bound retuning has little evidence now. |
-| decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; candidate only if ISA shows an easy pressure cut. |
+| decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; LCP-D3 half-sequential pressure cut was exact but regressed canonical graph decode 2.79%, so the production body remains unchanged. |
 | decode | Q6 lm-head T16 GEMV | `0 B` | `72` | `512` | scratch-free; prior Q6 d-load/lb variants stayed no-hold. |
 
 G-P1 ISA audit for the selected dual Q4T16 WMMA prefill kernel is recorded in
@@ -283,6 +283,37 @@ the original per-lane store bounds guard, reducing the metadata to
 `33` scratch stores while preserving the same `32` WMMA ops.
 Further selected-WMMA work should now target the remaining 256-VGPR cap or a
 true 16-column code-object variant without giving back the prefill win.
+
+The 2026-07-15 LCP-D3 post-router/post-prefill-promotion system-7.2 decode
+refresh narrows the current gfx1100 4K profile to `8.673 ms` GPU/token. Dense
+Q8T16 remains `39.55%`, selected-MoE is `21.04%`, full attention is `9.27%`,
+and lm-head is `7.41%`; the persistent router is down to `416.7 us/token`. The
+active fused selected-Q4T16 c=1 leaf alone is `975.3 us/token` (`11.24%`) at
+200 allocated VGPR and zero scratch.
+
+The one admitted pressure cut computed the two eight-column halves sequentially
+while preserving each output's K and reduction order. It passed all 88 focused
+tests and reduced static VGPR `195 -> 115` on system HIP 7.2 and `195 -> 114`
+on therock HIP 7.15, with zero private bytes/spills. The repeated K/x traversal
+cost more than the occupancy gain: system-7.2 balanced eager wall regressed
+`1.05%`, and canonical therock-7.15 4K/128 graph decode fell
+`100.146 -> 97.348 tok/s (-2.79%)`. IDs and 21.670 GiB tracked peak were
+unchanged. The source candidate was removed. Do not reopen half-sequential
+accumulators, q8_1/dp4a, raw selected layouts, or broad selected-MoE geometry
+sweeps without genuinely new evidence. Artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-q4t16-halfseq-rejected.json`.
+
+A final source-clean therock-7.15 marked trace at `11051aec` confirms
+**8.652 ms GPU/token** at 4K: dense Q8T16 `39.45%`, selected-MoE `21.41%`,
+attention `9.06%`, and lm-head `7.25%`. At 32K, total GPU work is
+**9.724 ms/token** and attention rises to `17.36%`; however, the retained
+LCP-D2 prepare plus parallel output reducer is only **90.878 us/token**
+(`5.38%` of attention). The remaining **1.569 ms/token** is the already
+scoped grouped-GQA split-K context scan. Serial reduction, warp split,
+threshold, and grouped-GQA alternatives are measured closures, so this pass
+adds no second decode candidate. Decode is closed pending the final
+defaults-only sweep. Artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json`.
 
 G-D2 ISA/code-object audit for the active Q8_0 T16 GEMV decode family is
 recorded in
@@ -1448,6 +1479,35 @@ python3 scripts/qwen35_gguf_rocprof_summary.py \
   --tokens-decode 16 \
   --json benchmarks/results/<date>-gpu1-gguf-tuning-rocprof-summary.json
 ```
+
+## gfx1100 final pass outcome — 2026-07-16
+
+The clean selector-unset BF16-KV right-sized 1+3 sweep at `28b37356` closes
+the current gfx1100 pass:
+
+| Shape | Prefill tok/s | Graph decode tok/s | Tracked GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 2716.648 | 92.833 | 21.228 |
+| 1K/128 | 3052.541 | 98.148 | 21.295 |
+| 4K/128 | 2953.101 | 100.522 | 21.670 |
+| 32K/128 | 2078.038 | 88.240 | 22.234 |
+| 64K/128 | 1559.878 | 76.691 | 22.879 |
+| 128K/128 | 1037.378 | 62.669 | 24.168 |
+
+Prefill beats llama.cpp HIP by `12.62-30.95%` at every shape and Vulkan from
+512 through 64K; only 128K Vulkan prefill remains `3.88%` ahead. Decode beats
+llama.cpp HIP everywhere and remains below Vulkan, nearest at 4K (`2.47%`).
+Tracked memory is within `-0.378..+0.079 GiB` of llama.cpp HIP's broader
+whole-device readings. All 18 IDs are exact. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json`.
+
+This pass closes unchanged dense-Q8/MMQ/dp4a, selected-Q4 pressure, broad
+selected-MoE geometry, serial-reducer, generic launch-count, and exact GDN
+algebra retries. The explicit tail-four Hadamard KV layout passes quality and
+saves 18.75% persistent K/V but remains non-default because 4K/128K speed and
+a 1.002 GiB prefill transient fail promotion. New gfx1100 c=1 work should begin
+only from fresh source/layout evidence for Vulkan decode or the 128K context
+scan, not from the historical candidate list below.
 
 ## Tuning lanes
 

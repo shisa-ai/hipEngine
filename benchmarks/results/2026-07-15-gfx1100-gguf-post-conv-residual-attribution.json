@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_post_conv_residual_attribution",
+  "created_at": "2026-07-15T09:50:34+00:00",
+  "status": "diagnostic_retained_peer_still_rejected_on_512_floor",
+  "performance_claim": true,
+  "performance_claim_scope": "Clean W7900 post-LCP-4A chain_peer_wave32 512/4K floor recheck; exact/peer/llama.cpp kernel-family profiles remain diagnostic crosswalks.",
+  "correctness_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "hipengine_kv_dtype": "bf16",
+    "llamacpp_kv_dtype": "f16"
+  },
+  "software": {
+    "hipengine_commit": "c85c288078198154d2067aaaaac8e32a9fecd22b",
+    "lcp4a_implementation_commit": "683ddab6bcaedbe51abbec779b6e6ae0a575d94c",
+    "hipengine_dirty": false,
+    "rocm_version": "7.2.4",
+    "hipcc_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "llamacpp_commit": "1ebf790cd",
+    "llamacpp_build_number": 9648
+  },
+  "purpose": "Reprofile the clean production-exact GGUF route after LCP-4A removed normal Conv private storage, then compare it with the clean quality-admitted peer-GDN route, llama.cpp HIP, and the retained PARO schedule control. This identifies the shipped pp512 deficit without selecting from stale pre-LCP-4A family totals.",
+  "protocol": {
+    "hipengine_profile": "For each route, create one cached-only max-512 resident session, run initialization prefill, reset, run the identical warm prefill five seconds before the target, reset, and collect only the final synchronized pp512 prefill in a bounded rocprofv3 collection window.",
+    "peer_speed_gate": "One clean max-4K resident session; per shape one discarded warmup and three measured prefill/decode runs; graph capture excluded from decode throughput; cached builds required.",
+    "llamacpp_profile": "Retained same-W7900 llama-bench pp512 measured pass isolated as 2,259 dispatches after its warmup pass.",
+    "comparability_note": "hipEngine exact and peer rows use the same commit, model, prompt, device, and profile protocol. llama.cpp uses the same Q4_K_M file but F16 KV and differently fused families. PARO is a different W4 model/quant and older software revision, so it is a schedule control only. Internal routing differences can change selected-MoE row counts; family crosswalks are measured execution totals, not primitive A/Bs."
+  },
+  "commands": {
+    "hipengine_profile_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=<chain_lds32_direct|chain_peer_wave32> HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt HIPENGINE_PROFILE_TARGET_START_SECONDS=120 HIPENGINE_PROFILE_WARMUP_LEAD_SECONDS=5 PYTHONPATH=/home/lhl/hipEngine-main rocprofv3 --kernel-trace --output-format csv --collection-period 119:10:1 --output-directory <tmp> --output-file <route> --log-level error -- python3 /tmp/profile_gpf9c_collection_window.py",
+    "summary_template": "python3 scripts/qwen35_gguf_rocprof_summary.py --csv <kernel_trace.csv> --tokens-prefill 512 --top 80 --json <summary.json>",
+    "peer_speed_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_peer_wave32 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-gpf9c.txt PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/gpf9c-post-lcp4a-clean-c85c2880.json"
+  },
+  "profiled_rows": {
+    "hipengine_production_exact": {
+      "gdn_mode": "chain_lds32_direct",
+      "prefill_tok_s_under_profiler": 1300.523420308026,
+      "host_wall_ms": 393.6876429943368,
+      "token_id": 9707,
+      "dispatches": 1365,
+      "summed_kernel_ms": 369.28517,
+      "first_to_last_kernel_span_ms": 392.553241,
+      "queue_idle_gap_ms": 23.268071,
+      "gaps_over_10us": 387,
+      "gaps_over_50us": 157,
+      "max_gap_us": 206.191,
+      "kernel_trace_sha256": "47d681f9dcf0b72473bd4632eb1613a3a65448ff4e9b353c6a4e95680e1e53f6",
+      "summary_sha256": "7c94640d8e9d524788d964f17559899b8c32a75e6bc578829d26ddfe791b8db0",
+      "result_sha256": "8d56a88aa7388660b2ecfa4e53ea3f3f27a898f2699c9046ef91a984e56e4f91"
+    },
+    "hipengine_peer_wave32": {
+      "gdn_mode": "chain_peer_wave32",
+      "prefill_tok_s_under_profiler": 2343.546012489984,
+      "host_wall_ms": 218.47234800225124,
+      "token_id": 9707,
+      "dispatches": 1365,
+      "summed_kernel_ms": 203.808456,
+      "first_to_last_kernel_span_ms": 215.307397,
+      "queue_idle_gap_ms": 11.498941,
+      "gaps_over_10us": 137,
+      "gaps_over_50us": 30,
+      "max_gap_us": 216.781,
+      "kernel_trace_sha256": "34fe8283e5def0450acad060c7ff1ab825daf7f55319bc9e3d0faaeeb7d03146",
+      "summary_sha256": "4f1dbb1212c9ae8cf9f591ac9d6e1e60465abbca259db549da614c71a449edd2",
+      "result_sha256": "059eb1636dbd6a42f685cfc5f301cb5fa2b83e2feb13c11cfca1d35d8f50b233"
+    },
+    "llamacpp_hip": {
+      "prefill_tok_s_under_profiler": 2373.105704,
+      "host_wall_ms": 215.75103,
+      "dispatches": 2259,
+      "summed_kernel_ms": 203.301476,
+      "first_to_last_kernel_span_ms": 212.236294,
+      "queue_idle_gap_ms": 8.934818,
+      "gaps_over_10us": 6,
+      "gaps_over_50us": 1,
+      "max_gap_us": 68.061,
+      "kernel_trace_sha256": "d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67",
+      "summary_sha256": "3033dc5c2686ea0f3057bd52205f7cdf69cd4ffc4c005a09f6ce597cdb1f7da5"
+    }
+  },
+  "gdn_schedule_crosswalk": {
+    "production_exact": {
+      "full_chain_ms": 199.030271,
+      "recurrent_ms": 197.020139,
+      "recurrent_dispatches": 30,
+      "geometry": "32-thread workgroup, 4,096 total grid threads; one thread owns one value column and evaluates all 128 state rows in scalar order; 16,384 bytes LDS/workgroup",
+      "vgpr_count": 40,
+      "scratch_bytes": 0
+    },
+    "peer_wave32": {
+      "full_chain_ms": 20.839555,
+      "recurrent_ms": 17.648009,
+      "recurrent_dispatches": 30,
+      "geometry": "128-thread workgroup, 131,072 total grid threads; one wave32 owns one value column, keeps four state rows/lane in VGPRs, and uses the llama.cpp XOR reduction tree; zero LDS",
+      "vgpr_count": 40,
+      "scratch_bytes": 0
+    },
+    "llamacpp_hip": {
+      "full_named_family_ms": 16.52237,
+      "dispatches": 30,
+      "geometry": "One wave32 owns one value column and keeps four state rows/lane resident across the serial token loop"
+    },
+    "paro_schedule_control": {
+      "source": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "recurrent_ms": 40.315364,
+      "total_kernel_ms": 196.880556,
+      "dispatches": 1312,
+      "note": "Different model, quant, protocol, and software revision; useful only to confirm that state-row parallel recurrence is the known fast hipEngine schedule."
+    }
+  },
+  "family_crosswalk_ms": [
+    {
+      "family": "gdn_full_chain",
+      "production_exact": 199.030271,
+      "peer_wave32": 20.839555,
+      "llamacpp": 16.52237,
+      "production_minus_llamacpp": 182.507901,
+      "peer_minus_llamacpp": 4.317185
+    },
+    {
+      "family": "dense_q8",
+      "production_exact": 49.382158,
+      "peer_wave32": 52.752074,
+      "llamacpp": 30.425833,
+      "production_minus_llamacpp": 18.956325,
+      "peer_minus_llamacpp": 22.326241
+    },
+    {
+      "family": "selected_q4_q5",
+      "production_exact": 84.896667,
+      "peer_wave32": 92.184522,
+      "llamacpp": 111.822579,
+      "production_minus_llamacpp": -26.925912,
+      "peer_minus_llamacpp": -19.638057
+    },
+    {
+      "family": "router_and_scheduler",
+      "production_exact": 17.174776,
+      "peer_wave32": 18.777296,
+      "llamacpp": 15.309844,
+      "production_minus_llamacpp": 1.864932,
+      "peer_minus_llamacpp": 3.467452
+    },
+    {
+      "family": "linear_attention_convolution",
+      "production_exact": 1.976937,
+      "peer_wave32": 2.033292,
+      "llamacpp": 1.282169,
+      "production_minus_llamacpp": 0.694768,
+      "peer_minus_llamacpp": 0.751123
+    },
+    {
+      "family": "full_attention",
+      "production_exact": 3.619028,
+      "peer_wave32": 3.722226,
+      "llamacpp": 3.298423,
+      "production_minus_llamacpp": 0.320605,
+      "peer_minus_llamacpp": 0.423803
+    },
+    {
+      "family": "q6_and_lm_head",
+      "production_exact": 3.82543,
+      "peer_wave32": 4.005949,
+      "llamacpp": 4.495795,
+      "production_minus_llamacpp": -0.670365,
+      "peer_minus_llamacpp": -0.489846
+    },
+    {
+      "family": "remaining_layout_norm_postops",
+      "production_exact": 9.379903,
+      "peer_wave32": 9.493542,
+      "llamacpp": 20.144463,
+      "production_minus_llamacpp": -10.76456,
+      "peer_minus_llamacpp": -10.650921
+    }
+  ],
+  "delta_summary": {
+    "production_exact_minus_llamacpp_kernel_ms": 165.983694,
+    "production_exact_minus_llamacpp_span_ms": 180.316947,
+    "production_exact_minus_llamacpp_idle_ms": 14.333253,
+    "production_exact_minus_peer_kernel_ms": 165.476714,
+    "production_exact_minus_peer_span_ms": 177.245844,
+    "production_exact_minus_peer_idle_ms": 11.76913,
+    "peer_minus_llamacpp_kernel_ms": 0.50698,
+    "peer_minus_llamacpp_span_ms": 3.071103,
+    "peer_minus_llamacpp_idle_ms": 2.564123,
+    "interpretation": "The production GDN excess is larger than the whole kernel/span deficit because selected Q4/Q5 and remaining glue are faster than llama.cpp. The peer route removes the first-order GDN excess; its summed GPU work is within 0.507 ms of llama.cpp and its remaining trace-span difference is 3.071 ms."
+  },
+  "post_lcp4a_peer_speed_gate": {
+    "provenance_clean": true,
+    "raw_sha256": "df2392de36a724ca207fa5bc735d0cd64db2c3eaa54bd4088a7b83a55188579a",
+    "contexts": {
+      "512": {
+        "prefill_samples_tok_s": [
+          2434.278868400528,
+          2385.677417971056,
+          2385.3394126993903
+        ],
+        "prefill_median_tok_s": 2385.677417971056,
+        "llamacpp_floor_tok_s": 2412.32,
+        "delta_vs_floor_percent": -1.1044381354440636,
+        "decode_median_tok_s": 92.62894255057756,
+        "final_ids": [9707, 9707, 9707]
+      },
+      "4096": {
+        "prefill_samples_tok_s": [
+          2605.99922853521,
+          2585.3430041709153,
+          2584.3887685563896
+        ],
+        "prefill_median_tok_s": 2585.3430041709153,
+        "llamacpp_floor_tok_s": 2255.08,
+        "delta_vs_floor_percent": 14.645289930774762,
+        "decode_median_tok_s": 100.20120323028999,
+        "final_ids": [9707, 9707, 9707]
+      }
+    },
+    "change_vs_pre_lcp4a_clean_peer_percent": {
+      "512": 2.1943689225762952,
+      "4096": 2.5982414423548983
+    },
+    "decision": "Keep chain_peer_wave32 explicit-only. LCP-4A materially narrows the 512 miss, but the prospectively frozen rule requires both 512 and 4K to meet the llama.cpp floors; 512 remains 1.104% below."
+  },
+  "conclusion": "The shipped pp512 gap is the scalar-order exact GDN recurrence, not GGUF broadly. Production exact spends 199.030 ms in the GDN chain versus 16.522 ms in llama.cpp; that +182.508 ms excess exceeds the whole +180.317 ms trace-span gap. After substituting the already quality-admitted peer schedule, hipEngine and llama.cpp perform essentially equal GPU work (203.808 vs 203.301 ms), with only 3.071 ms of trace-span residual. Conv is now 1.977 ms and closed as a first-order target. The clean peer route still misses the frozen 512 non-profiled floor by 1.104%, so production remains chain_lds32_direct.",
+  "next": "Do not reopen dense-Q8, selected-MoE, Conv, full-attention, or generic launch-count experiments to explain the shipped gap. Any parity continuation should preserve the admitted peer GDN schedule and target its final approximately 3 ms queue/span residual or produce genuinely new exact-parallel GDN evidence; re-run the full semantic/decode gate before any future peer-route promotion."
+}

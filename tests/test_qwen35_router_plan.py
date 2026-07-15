@@ -20,6 +20,8 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_router_topk_shared_coop_out_bf16,
     qwen35_router_topk_shared_coop_out_fp16,
     qwen35_router_topk_split_shared_coop_out_bf16,
+    qwen35_router_topk_split_shared_coop_out_bf16_f32w,
+    qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent,
     qwen35_router_topk_split_shared_coop_out_fp16,
     qwen35_router_topk_shared_out_bf16,
     qwen35_router_topk_shared_out_fp16,
@@ -140,6 +142,24 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
         resolve(backend="hip_gfx1100", layer="router_topk_split_shared", quant="fp16", variant="coop_out")
         is qwen35_router_topk_split_shared_coop_out_fp16
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_topk_split_shared",
+            quant="f32",
+            variant="coop_out_bf16_hidden",
+        )
+        is qwen35_router_topk_split_shared_coop_out_bf16_f32w
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_topk_split_shared",
+            quant="f32",
+            variant="coop_out_bf16_hidden_persistent",
+        )
+        is qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent
+    )
 
 
 def test_qwen35_router_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -206,6 +226,143 @@ def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
         qwen35_router_topk_split_shared_coop_out_bf16(0, 0, 0, 0, 0, 0, 2, 16, 8, 4)
     with pytest.raises(ValueError, match="top_k must be <= num_experts"):
         qwen35_router_topk_split_shared_coop_out_fp16(0, 0, 0, 0, 0, 0, 1, 16, 2, 4)
+    with pytest.raises(ValueError, match="F32-weight cooperative router requires 256 threads"):
+        qwen35_router_topk_split_shared_coop_out_bf16_f32w(
+            0, 0, 0, 0, 0, 0, 1, 2048, 256, 8, threads=512
+        )
+    with pytest.raises(ValueError, match="F32-weight cooperative router requires hidden_size <= 2048"):
+        qwen35_router_topk_split_shared_coop_out_bf16_f32w(
+            0, 0, 0, 0, 0, 0, 1, 4096, 256, 8, threads=256
+        )
+    with pytest.raises(ValueError, match="F32-weight cooperative router requires 256 threads"):
+        qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
+            0, 0, 0, 0, 0, 0, 0, 1, 2048, 256, 8, threads=512
+        )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_split_shared_coop_bf16_f32w_persistent_is_replay_exact_at_production_shape(router_library) -> None:
+    rng = np.random.default_rng(20260714)
+    hidden_size = 2048
+    num_experts = 256
+    top_k = 8
+    hidden = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(hidden_size,)).astype(np.float32))
+    expert = rng.normal(0.0, 0.2, size=(num_experts, hidden_size)).astype(np.float32)
+    expert[0] = _bf16_u16_to_f32(hidden)
+    expert[1] = expert[0]
+    shared = rng.normal(0.0, 0.2, size=(hidden_size,)).astype(np.float32)
+    control_logits = np.zeros((num_experts + 1,), dtype=np.float32)
+    candidate_logits = np.zeros_like(control_logits)
+    control_selected = np.zeros((top_k,), dtype=np.int64)
+    candidate_selected = np.zeros_like(control_selected)
+    control_routing = np.zeros((top_k,), dtype=np.float32)
+    candidate_routing = np.zeros_like(control_routing)
+    counter = np.zeros((1,), dtype=np.int32)
+    arrays = (
+        hidden,
+        expert,
+        shared,
+        control_logits,
+        candidate_logits,
+        control_selected,
+        candidate_selected,
+        control_routing,
+        candidate_routing,
+        counter,
+    )
+    buffers = [malloc(arr.nbytes) for arr in arrays]
+    try:
+        for arr, buf in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        qwen35_router_logits_bf16_f32w(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[3].ptr,
+            1,
+            hidden_size,
+            num_experts,
+            threads=512,
+            library=router_library,
+        )
+        qwen35_router_logits_bf16_f32w(
+            buffers[0].ptr,
+            buffers[2].ptr,
+            buffers[3].ptr + num_experts * np.dtype(np.float32).itemsize,
+            1,
+            hidden_size,
+            1,
+            threads=512,
+            library=router_library,
+        )
+        qwen35_router_select(
+            buffers[3].ptr,
+            buffers[5].ptr,
+            buffers[7].ptr,
+            1,
+            num_experts,
+            num_experts,
+            top_k,
+            threads=256,
+            library=router_library,
+        )
+        qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[4].ptr,
+            buffers[6].ptr,
+            buffers[8].ptr,
+            buffers[9].ptr,
+            1,
+            hidden_size,
+            num_experts,
+            top_k,
+            threads=256,
+            library=router_library,
+        )
+        candidate_logits.fill(np.nan)
+        candidate_selected.fill(-1)
+        candidate_routing.fill(np.nan)
+        for arr, buf in (
+            (candidate_logits, buffers[4]),
+            (candidate_selected, buffers[6]),
+            (candidate_routing, buffers[8]),
+        ):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[4].ptr,
+            buffers[6].ptr,
+            buffers[8].ptr,
+            buffers[9].ptr,
+            1,
+            hidden_size,
+            num_experts,
+            top_k,
+            threads=256,
+            library=router_library,
+        )
+        for arr, buf in (
+            (control_logits, buffers[3]),
+            (candidate_logits, buffers[4]),
+            (control_selected, buffers[5]),
+            (candidate_selected, buffers[6]),
+            (control_routing, buffers[7]),
+            (candidate_routing, buffers[8]),
+            (counter, buffers[9]),
+        ):
+            copy_device_to_host(host_array_ptr(arr), buf, arr.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    np.testing.assert_array_equal(candidate_logits.view(np.uint32), control_logits.view(np.uint32))
+    np.testing.assert_array_equal(candidate_selected, control_selected)
+    np.testing.assert_array_equal(candidate_routing.view(np.uint32), control_routing.view(np.uint32))
+    assert counter.tolist() == [0]
+    assert list(candidate_selected[:2]) == [0, 1]
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

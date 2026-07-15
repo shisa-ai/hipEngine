@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_f32w_cooperative_router",
+  "status": "accepted_default",
+  "created_at": "2026-07-14T18:58:55.087906+00:00",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV 4K/128 c1 graph decode",
+  "correctness_claim": true,
+  "candidate": "Exact c1 BF16-hidden/F32-weight split cooperative router logits plus top-k",
+  "conclusion": "The clean default cooperative route improves 4K graph decode from 97.234 to 98.273 tok/s (+1.068%) while preserving every measured token ID/final value and the complete production-shape router output bytes.",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-14T18:56:23.839663+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "4c74399440f94000da277ae7ea3f849d324d1e86",
+    "git_branch": "gfx1100-gguf-optimization",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--backend",
+      "hip_gfx1100",
+      "--workloads",
+      "4K/128",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--warmup-decode-tokens",
+      "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--graph-steps-per-replay",
+      "1",
+      "--compiler-version-file",
+      "/tmp/gfx1100-gguf-opt/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1100-router-f32w-clean-candidate.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "implementation": {
+    "hipengine_commit": "4c74399440f94000da277ae7ea3f849d324d1e86",
+    "registry_key": {
+      "backend": "hip_gfx1100",
+      "layer": "router_topk_split_shared",
+      "quant": "f32",
+      "variant": "coop_out_bf16_hidden"
+    },
+    "default": true,
+    "rollback": "HIPENGINE_GGUF_ROUTER_F32W_COOP=0",
+    "exact_scope": {
+      "tokens": 1,
+      "hidden_size_max": 2048,
+      "threads": 256,
+      "hidden_dtype": "bf16",
+      "weight_dtype": "f32"
+    },
+    "fallback": "Separate expert logits, shared-gate logit, and router_select chain remains registry-resolved for unsupported shapes/backends/quants and F32-hidden diagnostics.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/moe/router.hip": "bfe49891511428dfd44b9d3f725b0af0e5cbc1a25ba9cefe945ba250ff5bb8d6",
+      "hipengine/kernels/hip_gfx1100/moe/router.py": "a4d86eae5cb9c32650f11abd7dfc24bd0ca31fc08f00ac6599aca8683d6cf201",
+      "hipengine/runtime/qwen35_gguf_runner.py": "003d9753d35962b15da1a1d09503d8263285ece34f9b8f5ea02109f4b071ea66",
+      "tests/test_qwen35_router_plan.py": "e2a543e808739b5ad41369fde07cc7e95095ff25a435373ae50de6d97aa6fb06",
+      "tests/test_qwen35_gguf_compact_moe_gemv_routing.py": "ba062c64a3e7228a1fd461ba70620a4c909127d636ee955f8d99f39fbae846bc"
+    }
+  },
+  "correctness": {
+    "red_green": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gfx1151_backend.py -q --tb=short",
+      "result": "42 passed",
+      "contract": "At hidden=2048, experts=256, top_k=8, candidate FP32 logits, int64 selected IDs, and FP32 routing weights are byte-identical to 512-thread expert/shared logits plus 256-thread select. Equal maximum rows select lower IDs first."
+    },
+    "additional_bundle": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py tests/test_qwen35_gguf_hidden_seed_contract.py -q --tb=short",
+      "result": "32 passed"
+    },
+    "full_model": {
+      "all_nine_measured_ids_exact": true,
+      "all_nine_final_values_exact": true,
+      "final_token_id": 9707,
+      "final_value": 29.407920837402344
+    }
+  },
+  "production_shape_micro": {
+    "source_state": "pre-commit diagnostic; production kernel body matches committed source except the final explicit hidden-size admission was narrowed to <=2048",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 /tmp/router_f32w_coop_micro.py",
+    "shape": {
+      "hidden": 2048,
+      "experts": 256,
+      "top_k": 8
+    },
+    "protocol": {
+      "pool_size": 64,
+      "pool_mib": 128.5,
+      "warmups": 80,
+      "iters": 400,
+      "legs": 6
+    },
+    "byte_exact": true,
+    "control": "512-thread BF16-hidden/F32-weight expert logits + shared logit + 256-thread select",
+    "candidate": "hipMemsetAsync counter reset + 256-thread cooperative producer/select kernel",
+    "control_us_samples": [
+      19.36563014984131,
+      17.837142944335938,
+      17.897077798843384,
+      17.85247802734375,
+      17.833280563354492,
+      17.822489738464355
+    ],
+    "candidate_us_samples": [
+      14.404147863388062,
+      14.361032247543335,
+      14.673562049865723,
+      14.664764404296875,
+      14.667764902114868,
+      14.676965475082397
+    ],
+    "control_median_us": 17.844810485839844,
+    "candidate_median_us": 14.666264653205872,
+    "candidate_latency_delta_pct": -17.81215796691258
+  },
+  "clean_full_model_protocol": {
+    "shape": "4K/128",
+    "prompt": "token 9707 repeated 4096 times",
+    "decode": "128 tokens; one eager warmup token; state-bound HIP graph replay; graph capture excluded",
+    "process_order": "rollback control / no-env default candidate / rollback control",
+    "runs_per_process": "1 discarded warmup plus 3 measured",
+    "control_env": "HIPENGINE_GGUF_ROUTER_F32W_COOP=0",
+    "candidate_env": "unset (default-on)",
+    "common_command": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build",
+    "raw_artifacts": [
+      "/tmp/gfx1100-router-f32w-clean-control-a.json",
+      "/tmp/gfx1100-router-f32w-clean-candidate.json",
+      "/tmp/gfx1100-router-f32w-clean-control-b.json"
+    ]
+  },
+  "clean_full_model_results": {
+    "control_a_decode_tok_s": [
+      97.2948467661645,
+      97.24878418267036,
+      97.25014228767601
+    ],
+    "candidate_decode_tok_s": [
+      98.32779352590822,
+      98.27268836518205,
+      98.08246820821074
+    ],
+    "control_b_decode_tok_s": [
+      97.1831799221919,
+      97.21966855122437,
+      97.04235728781813
+    ],
+    "control_a_median_tok_s": 97.25014228767601,
+    "candidate_median_tok_s": 98.27268836518205,
+    "control_b_median_tok_s": 97.1831799221919,
+    "combined_control_median_tok_s": 97.23422636694737,
+    "candidate_throughput_delta_pct": 1.0680004737382065,
+    "control_a_prefill_median_tok_s": 1455.5301346274787,
+    "candidate_prefill_median_tok_s": 1453.1986330476075,
+    "control_b_prefill_median_tok_s": 1450.387019337208,
+    "prefill_interpretation": "No prefill claim: the router candidate changes c1 decode only; monotonic process-order drift covers the small prefill differences.",
+    "tracked_peak_gib_all_legs": 21.543610125780106
+  },
+  "profiler": {
+    "source_state": "cached-only pre-commit expected-symbol trace of the implementation promoted unchanged in commit 4c743994",
+    "command": "HIPENGINE_GGUF_ROUTER_F32W_COOP=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/gfx1100-router-f32w-trace -- python3 scripts/gguf_decode_rocprof.py --child-mode profile --source-root . --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --prompt-length 4096 --max-seq 4352 --steps 1 --warmup-steps 4 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached --child-json /tmp/gfx1100-router-f32w-profile-child.json",
+    "trace": "/tmp/gfx1100-router-f32w-trace/epyc/194270_kernel_trace.csv",
+    "kernel": "qwen35_router_topk_split_shared_coop_out_f32w_kernel<unsigned short>",
+    "launches": 200,
+    "workgroup_size": 256,
+    "grid_size_total_threads": 65792,
+    "vgpr_count": 40,
+    "scratch_size": 0,
+    "lds_block_size": 512,
+    "duration_ns_min": 10200,
+    "duration_ns_median": 10600,
+    "duration_ns_max": 12400,
+    "final_timed_token_40_launches_total_ns": 426245,
+    "expected_symbol_observed": true
+  },
+  "decision": "Retain and promote as the gfx1100 exact-contract default. Keep =0 only as a temporary rollback/A-B flag under docs/REFACTOR.md; preserve the separate chain as the required unfused fallback."
+}

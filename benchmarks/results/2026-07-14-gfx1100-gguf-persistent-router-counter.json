@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_persistent_cooperative_router_counter",
+  "status": "accepted_default",
+  "created_at": "2026-07-14T19:31:56.217945+00:00",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B GGUF Q4_K_M/BF16-KV 4K/128 c1 graph decode",
+  "correctness_claim": true,
+  "candidate": "Dedicated self-resetting four-byte completion counter for the exact F32-weight cooperative c1 router",
+  "conclusion": "The clean no-env default removes 40 reset graph nodes/token and improves 4K graph decode from 98.812 to 100.446 tok/s (+1.654%) while preserving all measured IDs/final values.",
+  "provenance": {
+    "hipengine_commit": "0ec2a813052971e8ecbb90a0f6bfd1336c574920",
+    "git_branch": "gfx1100-gguf-optimization",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint_sha256_sampled_v1": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "model_size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "7.2.4",
+    "hipcc_version": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded",
+    "warmups": 1,
+    "repetitions": 3
+  },
+  "implementation": {
+    "registry_key": {
+      "backend": "hip_gfx1100",
+      "layer": "router_topk_split_shared",
+      "quant": "f32",
+      "variant": "coop_out_bf16_hidden_persistent"
+    },
+    "default": true,
+    "rollback": "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0",
+    "counter_abi": {
+      "dtype": "int32",
+      "bytes_each": 4,
+      "resident_counter_count": 1,
+      "prefill_counter_count": 1,
+      "tracked_session_delta_bytes_vs_prior_route": 8,
+      "initialization": "zero once at scratch allocation",
+      "rearm": "last producer thread 0 atomicExch(counter, 0) after exact top-k/softmax output writes"
+    },
+    "fallback": "The selected-ID counter alias plus hipMemsetAsync remains separately registered for rollback; the unfused expert/shared logits plus select chain remains for unsupported contracts.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/moe/__init__.py": "23a6d1ab9cb08636b1b8c5e56e193b0a5113f86fcc1befdf6c1024ec8c6485b4",
+      "hipengine/kernels/hip_gfx1100/moe/router.hip": "7e4f31dfadbc7e284d8a45c3720a688e7fe3ba25e67e28aa12151d10089927db",
+      "hipengine/kernels/hip_gfx1100/moe/router.py": "2040321b8d7a59c374b64a8ef2df82b10455496a91800f2945dcfe13e75f0034",
+      "hipengine/runtime/qwen35_gguf_runner.py": "e5f0bfc0c86454d40c50ef97c61d4784f35a462456be74d549e699627ff7f1cc",
+      "tests/test_qwen35_router_plan.py": "86e9761e3d87fef8068303ae5e656b5bd97e6ff590fd4cb20c7a663c4bfb3ed9",
+      "tests/test_qwen35_gguf_compact_moe_gemv_routing.py": "67f602854727db350cb2122d8fb3ee575864de56ef34893d6e14db2c997414cd"
+    }
+  },
+  "correctness": {
+    "red_green": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q --tb=short tests/test_qwen35_router_plan.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gfx1151_backend.py",
+      "result": "44 passed",
+      "contract": "Production-shape FP32 logits, int64 selected IDs, and FP32 routing weights are byte-identical to the unfused chain; a second launch after poisoning outputs succeeds without a host counter reset and leaves counter zero."
+    },
+    "additional_bundle": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q --tb=short tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py tests/test_qwen35_gguf_hidden_seed_contract.py",
+      "result": "32 passed"
+    },
+    "full_model": {
+      "all_nine_measured_ids_exact": true,
+      "all_nine_final_values_exact": true,
+      "final_token_id": 9707,
+      "final_value": 29.407920837402344
+    }
+  },
+  "production_shape_micro": {
+    "source_state": "pre-commit diagnostic; kernel implementation promoted unchanged in 0ec2a813",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 /tmp/router_f32w_persistent_micro.py",
+    "shape": {"hidden": 2048, "experts": 256, "top_k": 8},
+    "protocol": {"pool_size": 64, "pool_mib": 128.5, "warmups": 80, "iters": 400, "legs": 6},
+    "byte_exact": true,
+    "replay_counter_zero": true,
+    "control": "Current cooperative router with selected-ID alias plus hipMemsetAsync reset",
+    "candidate": "Dedicated persistent counter reset by the last producer block",
+    "control_us_samples": [16.569632291793823, 14.393529891967773, 14.65793251991272, 14.669952392578125, 14.665955305099487, 14.668571949005127],
+    "candidate_us_samples": [10.378057956695557, 10.351557731628418, 10.455125570297241, 10.450122356414795, 10.438239574432373, 10.468549728393555],
+    "control_median_us": 14.667263627052307,
+    "candidate_median_us": 10.444180965423584,
+    "candidate_latency_delta_pct": -28.79257350934681
+  },
+  "profiler": {
+    "source_state": "cached-only pre-commit trace of implementation promoted unchanged in 0ec2a813",
+    "command": "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/gfx1100-router-persistent-trace -- python3 scripts/gguf_decode_rocprof.py --child-mode profile --source-root . --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --prompt-length 4096 --max-seq 4352 --steps 1 --warmup-steps 4 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached",
+    "profiled_decode_tokens": 5,
+    "control_fill_buffer_launches": 650,
+    "candidate_fill_buffer_launches": 450,
+    "fill_buffer_launches_removed": 200,
+    "fill_buffer_launches_removed_per_token": 40,
+    "candidate_kernel": "qwen35_router_topk_split_shared_coop_out_f32w_kernel<unsigned short, true>",
+    "candidate_router_launches": 200,
+    "candidate_router_duration_ns_median": 10360,
+    "workgroup_size": 256,
+    "vgpr_count": 40,
+    "scratch_size": 0,
+    "lds_block_size": 512,
+    "all_generated_ids_exact": true,
+    "expected_symbol_observed": true
+  },
+  "dirty_admission_gate": {
+    "combined_control_median_tok_s": 98.93569302632858,
+    "candidate_median_tok_s": 100.71051266843664,
+    "candidate_throughput_delta_pct": 1.7939123766341325,
+    "all_ids_exact": true
+  },
+  "clean_full_model_protocol": {
+    "shape": "4K/128",
+    "prompt": "token 9707 repeated 4096 times",
+    "decode": "128 tokens; one eager warmup token; state-bound HIP graph replay; graph capture excluded",
+    "process_order": "rollback control / no-env default / rollback control",
+    "runs_per_process": "1 discarded warmup plus 3 measured",
+    "control_env": "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0",
+    "default_env": "unset (default-on)",
+    "common_command": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1100 --workloads 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt --require-cached-build"
+  },
+  "clean_full_model_results": {
+    "control_a_decode_tok_s": [98.92018249530112, 98.9233598844225, 98.73247541059912],
+    "default_decode_tok_s": [100.44632019724575, 100.31043501316472, 100.47660677890894],
+    "control_b_decode_tok_s": [98.87211335623148, 98.75197569513158, 98.62644491141405],
+    "control_a_median_tok_s": 98.92018249530112,
+    "default_median_tok_s": 100.44632019724575,
+    "control_b_median_tok_s": 98.75197569513158,
+    "combined_control_median_tok_s": 98.81204452568153,
+    "default_throughput_delta_pct": 1.6539235468804314,
+    "control_a_prefill_tok_s": [1456.728466124791, 1452.8911816087166, 1449.4248127038738],
+    "default_prefill_tok_s": [1454.6217193783818, 1453.1255166452736, 1449.168557501864],
+    "control_b_prefill_tok_s": [1454.2354798160322, 1453.9668655724088, 1446.282109895921],
+    "prefill_interpretation": "No prefill claim: the candidate changes c1 decode only and process-order drift covers the small differences.",
+    "tracked_peak_allocated_bytes_all_legs": 23132275240,
+    "tracked_peak_gib_all_legs": 21.543610133230686,
+    "all_legs_clean_same_commit": true
+  },
+  "decision": "Retain and promote the persistent counter as the gfx1100 exact-contract default. Keep =0 temporarily for rollback/A-B; preserve the selected-ID alias wrapper and unfused chain as fallbacks until the removal trigger in docs/REFACTOR.md."
+}

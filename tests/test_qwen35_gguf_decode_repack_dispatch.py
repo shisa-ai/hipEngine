@@ -57,6 +57,7 @@ def _runner(*, is_moe: bool = True) -> Qwen35GGUFFullStackRunner:
     layer = _Layer()
     runner.weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
     runner.runtime = object()
+    runner.backend = "hip_gfx1100"
     runner.compiler_version = None
     runner.require_cached_build = False
     runner._cast_library = lambda: "cast-lib"
@@ -150,6 +151,11 @@ def _patch_full_attention_primitives(monkeypatch):
     )
     monkeypatch.setattr(
         qwen_runtime,
+        "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans",
+        record("split_k_gqa_parallel_reduce"),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
         "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans",
         record("split_k_warp_gate"),
     )
@@ -197,6 +203,37 @@ def test_long_context_routes_full_attention_through_split_k_gqa_gate(monkeypatch
         scratch.full_attn_split_l.ptr,
     )
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_long_context_parallel_reduce_is_gfx1100_default(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(is_moe=True)
+    scratch = _scratch(position=32767, max_positions=32768)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=32767, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "split_k_gqa_parallel_reduce" in names
+    assert "split_k_gqa_gate" not in names
+    split_args = next(args for name, args, _ in calls if name == "split_k_gqa_parallel_reduce")
+    assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_long_context_parallel_reduce_keeps_explicit_opt_out(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    monkeypatch.setenv("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", "0")
+    runner = _runner(is_moe=True)
+    scratch = _scratch(position=32767, max_positions=32768)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=32767, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "split_k_gqa_gate" in names
+    assert "split_k_gqa_parallel_reduce" not in names
 
 
 def test_int8_kv_routes_full_attention_through_int8_append_and_split_k(monkeypatch) -> None:

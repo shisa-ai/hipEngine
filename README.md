@@ -141,14 +141,25 @@ The native explicit `tail4_hadamard_group32` layout keeps K/V for
 full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
 `27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
 rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
-BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
-while writing packed tail K/V, then releases that oracle before decode. Native
-GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
-KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
-1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
-the mixed policy remains explicit and non-default: its quality-preserving 256
-Ki request scratch OOMs, while the allocation-passing direct route fails
-fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
+BF16 shadow. PARO's quality-preserving prefill uses a temporary BF16 oracle;
+GGUF's post-quality layout audit reports zero persistent oracle/mirror buffers.
+Native PARO still fails 1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82%
+worst-prompt top-1), and its 256 Ki quality-preserving request scratch OOMs.
+
+The clean `c971262f` therock-7.15 GGUF-only closure passes all 11 prompts at
+512/8 (max KL `0.007455`, top-1 100%) and 4K/16 (mean/max KL
+`0.0001369/0.009926`, aggregate/minimum-prompt top-1 `99.47%/94.12%`) plus
+bounded `mixed_v1` at 128K/16 (max KL `5.19e-5`, top-1 100%). At 128K,
+persistent K/V is `2,185,297,920` bytes versus BF16 `2,689,597,440` bytes and
+live owned memory falls `24.168 -> 23.698 GiB`. It still rejects promotion:
+production 4K prefill/decode regress `0.67%/0.75%`, one-shot 128K decode
+regresses `3.82%`, and production prefill allocates then frees
+`1,075,838,976` bytes—byte-exact to four BF16 layer caches—raising allocator
+high water `24.168 -> 24.700 GiB`. The transient attribution is inferred from
+the exact bytes; it is not a persistent shadow. The policy remains explicit
+and non-default. Evidence:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json` and
+`benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale
@@ -207,54 +218,55 @@ commit/build, GPU, full command, and whole-card sampling artifact.
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-**Status: retained.** This clean 2026-07-12 refresh measured hipEngine
-`8116c453` (rebased-equivalent reachable `8708304f`; runtime and benchmark code
-identical), TheRock HIP 7.15, right-sized resident sessions, production graph decode, two
-discarded plus five measured hipEngine runs, and five llama.cpp samples per
-phase. The W7900-local GGUF oracle passes external tokens and byte-exact
-hidden/Conv/GDN/KV state. All six rows pass clean provenance, stable finite
-outputs, exact Q4_K_M identity, corrected W7900 VRAM scope, and sample-variance
-gates. PARO remains W4 PARO/BF16 KV; the other columns use Q4_K_M with
-BF16/F16 KV, so bold values are descriptive rather than same-quant wins.
+**Status: retained.** The GGUF column is the clean 2026-07-16 final
+selector-unset BF16-KV sweep at `28b37356` on therock HIP 7.15: independent
+right-sized sessions, one discarded warmup, three measured runs, and production
+graph decode. All 18 GGUF final IDs are exact and maximum prefill/decode stdev
+over median is `0.658%/0.223%`. PARO and llama.cpp retain their clean July 12
+protocols. PARO is W4 PARO/BF16 KV; the other columns use Q4_K_M with BF16/F16
+KV, so bold values are descriptive rather than same-quant wins. GGUF prefill now
+beats llama.cpp HIP at every shape and Vulkan through 64K; GGUF decode beats HIP
+everywhere and is closest to Vulkan at 4K (`-2.47%`).
 
 <!-- BEGIN TOPLINE:W7900_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | 644.719 | 2412.320 | 2627.990 |
-| 1K/128 | **2995.876** | 676.177 | 2389.670 | 2631.750 |
-| 4K/128 | **2943.038** | 677.618 | 2255.080 | 2521.770 |
-| 32K/128 | **2108.868** | 628.364 | 1667.640 | 1943.920 |
-| 64K/128 | **1584.131** | 572.612 | 1291.820 | 1414.470 |
-| 128K/128 | 1056.252 | 484.212 | 891.949 | **1079.280** |
+| 512/128 | **2917.732** | 2716.648 | 2412.320 | 2627.990 |
+| 1K/128 | 2995.876 | **3052.541** | 2389.670 | 2631.750 |
+| 4K/128 | 2943.038 | **2953.101** | 2255.080 | 2521.770 |
+| 32K/128 | **2108.868** | 2078.038 | 1667.640 | 1943.920 |
+| 64K/128 | **1584.131** | 1559.878 | 1291.820 | 1414.470 |
+| 128K/128 | 1056.252 | 1037.378 | 891.949 | **1079.280** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.599** | 89.873 | 80.756 | 107.786 |
-| 1K/128 | 103.238 | 94.751 | 80.805 | **107.555** |
-| 4K/128 | **105.943** | 96.551 | 79.768 | 103.066 |
-| 32K/128 | **92.438** | 83.673 | 74.304 | 91.835 |
-| 64K/128 | 78.260 | 71.644 | 69.010 | **83.746** |
-| 128K/128 | 60.663 | 56.745 | 60.933 | **70.833** |
+| 512/128 | **115.599** | 92.833 | 80.756 | 107.786 |
+| 1K/128 | 103.238 | 98.148 | 80.805 | **107.555** |
+| 4K/128 | **105.943** | 100.522 | 79.768 | 103.066 |
+| 32K/128 | **92.438** | 88.240 | 74.304 | 91.835 |
+| 64K/128 | 78.260 | 76.691 | 69.010 | **83.746** |
+| 128K/128 | 60.663 | 62.669 | 60.933 | **70.833** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.144** | 21.478 | 21.606 | 21.260 |
-| 1K/128 | **18.367** | 21.710 | 21.618 | 21.220 |
-| 4K/128 | **19.161** | 22.995 | 21.674 | 21.278 |
-| 32K/128 | **19.864** | 23.559 | 22.216 | 21.855 |
-| 64K/128 | **20.403** | 24.203 | 22.895 | 22.512 |
-| 128K/128 | **22.124** | 25.493 | 24.089 | 23.824 |
+| 512/128 | **18.144** | 21.228 | 21.606 | 21.260 |
+| 1K/128 | **18.367** | 21.295 | 21.618 | 21.220 |
+| 4K/128 | **19.161** | 21.670 | 21.674 | 21.278 |
+| 32K/128 | **19.864** | 22.234 | 22.216 | 21.855 |
+| 64K/128 | **20.403** | 22.879 | 22.895 | 22.512 |
+| 128K/128 | **22.124** | 24.168 | 24.089 | 23.824 |
 <!-- END TOPLINE:W7900_SWEEP -->
 
-W7900 row sources: [accepted summary](benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json),
+W7900 row sources: [final hipEngine GGUF sweep](benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[July 12 accepted summary](benchmarks/results/2026-07-12-w7900-v030-8116c453-summary.json),
 [hipEngine PARO](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
-[hipEngine GGUF](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
+[superseded July 12 hipEngine GGUF](benchmarks/results/2026-07-12-w7900-v030-8116c453-hipengine-gguf-q4km-5run.json),
 [llama.cpp HIP](benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-hip-q4km-f16kv.json),
 [llama.cpp Vulkan](benchmarks/results/2026-07-12-w7900-v030-8116c453-llamacpp-vulkan-q4km-f16kv.json),
 and [W7900 correctness oracle](benchmarks/results/2026-07-12-w7900-v030-gguf-eager-p512-d4.json).

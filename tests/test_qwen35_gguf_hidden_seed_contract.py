@@ -428,7 +428,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     class BulkScratch:
         def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
             calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
-            return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000 + int(start) * 0x100))
+            return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000))
 
     def fake_copy_host_to_device(buf, host_ptr, nbytes, *, runtime) -> None:
         calls.append(("copy_host_to_device", int(buf.ptr), int(nbytes), runtime))
@@ -445,11 +445,34 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
 
     runtime = object()
     weights = SimpleNamespace(
-        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, ssm_conv_kernel=2),
+        config=SimpleNamespace(
+            layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.LINEAR_ATTENTION),
+            rms_norm_eps=1.0e-6,
+            ssm_conv_kernel=2,
+            is_moe=False,
+        ),
         root=lambda name: SimpleNamespace(name=name),
     )
+
+    def fake_linear_layer(layer_id, src_ptr, dst_ptr, scratch, **kwargs: object) -> None:
+        calls.append(
+            (
+                "linear_layer",
+                int(layer_id),
+                int(src_ptr),
+                int(dst_ptr),
+                scratch.norm.ptr,
+                int(kwargs["rows"]),
+            )
+        )
+
     session = object.__new__(Qwen35GGUFResidentSession)
-    session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
+    session.runner = SimpleNamespace(
+        weights=weights,
+        hidden_size=8,
+        vocab_size=100,
+        _run_linear_attention_prefill_layer_rows=fake_linear_layer,
+    )
     session.runtime = runtime
     session.scratch = SimpleNamespace(
         max_positions=16,
@@ -470,6 +493,8 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     session._verify_block_rows_capacity = 0
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
+    session.use_expert_sidecar = False
+    session._linear_prefill_layer_chunk_size = lambda rows: int(rows)
 
     def fake_run_output_norm_hidden(
         src_ptr: int,
@@ -502,9 +527,11 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     )
 
     last_src_ptr = 0x1000 + 2 * 8 * DType.BF16.itemsize
-    assert ("scratch", 2, 1, 3, runtime, 0) in calls
-    assert ("last_row_output_norm", last_src_ptr, 0x7200, 0, False) in calls
-    assert result.hidden_ptr == 0x7200
+    assert [call[:4] for call in calls if call[0] == "scratch"] == [
+        ("scratch", 0, 3, 3),
+    ]
+    assert ("last_row_output_norm", last_src_ptr, 0x7000, 0, False) in calls
+    assert result.hidden_ptr == 0x7000
     assert result.return_logits is False
     assert session._verify_hidden_seed_rows_populated == 0
     assert not session._hidden_seed_fp32_populated

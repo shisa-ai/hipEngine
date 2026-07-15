@@ -25,15 +25,24 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100 import (
+    GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
+    GGUF_Q8_T16_PREFILL_TWO_WAVE as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE,
+    GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
 )
 from hipengine.kernels.hip_gfx1151 import (
+    GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE,
+    GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
     GGUF_PREFILL_ROUTER_SELECT_THREADS,
     GGUF_Q8_T16_PREFILL_FOUR_WAVE,
@@ -149,10 +158,18 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
     assert GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
-    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "fused"
+    assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
+    assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
-    assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
+    assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is False
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
+    assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
+    assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -204,7 +221,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             quant="gguf_q8_0_t16_v1",
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
-        is gguf_q8_0_t16_wmma_prefill_bf16_bf16_out
+        is gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
     )
     assert (
         resolve(
@@ -227,7 +244,63 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "fused"
+        == "chain_peer_wave32"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+        )
+        == "shared_x"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+        )
+        == 32768
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
+        )
+        is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_PREFILL_TWO_WAVE",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+        )
+        == 4096
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+        )
+        == 4096
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+        )
+        == 0
     )
     assert (
         backend_package_capability(
@@ -433,7 +506,7 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert len(resolved) == 25
+    assert len(resolved) == 30
     assert set(resolved) == {"hip_gfx1151"}
 
 
