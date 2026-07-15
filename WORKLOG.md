@@ -158399,3 +158399,55 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `/tmp/gfx1151-flight-d697b971-20260715T170112Z`; the compact artifact records
   SHA-256 hashes for the final ring, telemetry, fence samples, recovered journal,
   run log, and provenance.
+
+## 2026-07-16 — Merged metadata reuse does not clear the 128K stall
+
+- At tracked-clean `7d4500c3`, first ran a cached gfx1151 512/1 preflight after
+  warming the newly merged router object: final ID `9707`, finite logits,
+  **1204.617 prefill / 49.127 decode tok/s**. The one-shot cold-clock rate is
+  only a cache/exactness smoke, not a performance row.
+- Ran merged main under the same HIP 7.15, `GPU_MAX_HW_QUEUES=1`, 128K/128
+  warmup+3, cached-build, 1,800-second protocol with chunk flight recording,
+  telemetry, fence sampling, kernel journal, and 15-second process task-state /
+  kernel-stack sampling. Merged commit `e03e5a34` prepares each outer chunk's
+  metadata once before the 40-layer loop, removing about 7,488 synchronous H2D
+  calls relative to the first capture.
+- The process still times out (`rc=124`, 1,805 seconds), now during the **first
+  warmup** with no timing line or result JSON. The characteristic state begins
+  at 02:45:33 and persists **1,636 seconds** through the bound: 100% reported
+  activity, 2,900 MHz median clock, **45 W median** package power (43-62 W), and
+  fixed 26,662 MiB VRAM. Termination drops the next sample to 25 W and 17 MiB.
+- The last retired chunk marker is sequence **591** for `[57344,61440)`, proving
+  complete stream retirement through token 61,440. Host checkpoints enter
+  sequence **653**, layer **18** linear attention in chunk `[61440,65536)`, and
+  never reach layer 19. On merged main `for_chunk()` has already completed
+  before the layer loop, so the layer-18 call was entered. Chunk granularity
+  cannot distinguish queued work from layer-18 kernels or its post-attention
+  compact-MoE scheduler/readback, and it still does not identify the last
+  retired user dispatch.
+- All 119 sampled main-thread states are runnable (`R/RN/RNl`) with no kernel
+  wait channel, while most worker threads sleep in `futex_wait` and two ROCr
+  event threads sleep in `kfd_wait_on_events`. This is compatible with
+  user-space polling inside a synchronous HIP operation, not a user stack trace
+  or proof of which HIP API is waiting. Kernel journal again has zero relevant
+  amdgpu/KFD/MES fault/reset/hang lines. `amdgpu_fence_info` keeps gfx ring 0
+  fixed at emitted=signaled `0x9889`; MES/SDMA monitor activity continues, with
+  the same KFD user-queue blind spot.
+- Compared with the first capture, failure moves from measured prefill 1 near
+  token 32K/layer 11 to first warmup near token 64K/layer 18. The shared
+  low-power signature persists, so request/chunk metadata reuse is **rejected as
+  a lifecycle fix**. The shifted incidence/location also argues against one
+  deterministic failing chunk or layer from these two captures; timing-sensitive
+  queue/fence lifecycle remains the stronger common explanation.
+- The remaining explicit per-layer synchronization is compact-WMMA's scalar
+  `wmma_total` D2H. A lifecycle-only no-read A/B is now causally motivated, but
+  the existing tight-upper-bound route previously regressed gfx1151 4K wall by
+  0.56% from empty tiles and cannot become production unchanged. A production
+  repair would need indirect/device-sized launch rather than retaining empty
+  work. Layer-granularity markers remain the more intrusive alternative.
+- Compact evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-merged-metadata-reuse-stall.json`.
+  Raw local bundle:
+  `/tmp/gfx1151-merged-flight-7d4500c3-20260715T174253Z`; the artifact records
+  hashes for recorder, telemetry, fences, journal, process stacks, run log, and
+  provenance.

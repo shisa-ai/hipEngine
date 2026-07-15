@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_merged_metadata_reuse_stall",
+  "status": "diagnostic_merged_scheduler_still_reproduces",
+  "created_at": "2026-07-16T03:12:58+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "Merged request/chunk metadata reuse is not a gfx1151 128K lifecycle fix. A cached exact 512/1 preflight completed, but the bounded 128K warmup produced no completed timing and entered the same persistent 100%-activity, 2.9-GHz, low-power state. The last retired chunk marker certifies all work through token 61440; host execution enters layer 18 linear attention in chunk [61440,65536) and never reaches layer 19. Unlike the pre-merge capture, current main prepares chunk metadata before the layer loop, so layer 18 was entered. Chunk granularity still cannot name the last retired user dispatch or distinguish a nonterminating kernel from queue/fence no-progress. The failure moved from measured prefill 1 near 32K in the pre-merge capture to the first warmup near 64K here, arguing against one deterministic chunk/layer location and remaining consistent with timing-sensitive KFD/MES/queue lifecycle failure.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "7d4500c3170821ee9af1bb9057366e9b9660767d",
+    "source_tree": "tracked-clean main; unrelated pre-existing untracked benchmark files present",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "hsa_enable_sdma": "unset",
+    "prefill_device_metadata_override": "unset; gfx1151 package default is host metadata above 4K",
+    "flight_recorder_granularity": "chunk",
+    "merged_scheduler_change": "e03e5a34 request/chunk metadata reuse"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "preflight": {
+    "workload": "512/1",
+    "require_cached_build": true,
+    "prefill_tok_s": 1204.6171033349635,
+    "decode_tok_s": 49.12677643511738,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "status": "exact cached smoke only; cold-clock one-shot is not a performance row",
+    "local_result": "/tmp/gfx1151-merged-main-512-cached-smoke.json"
+  },
+  "protocol": {
+    "workload": "128K/128",
+    "warmups": 1,
+    "requested_measured_runs": 3,
+    "completed_warmups": 0,
+    "completed_measured_runs": 0,
+    "process_bound_seconds": 1800,
+    "actual_elapsed_seconds": 1805,
+    "exit_status": 124,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity chunk --json <out>/result.json",
+    "instrumentation": [
+      "8,192-entry persistent prefill mmap ring",
+      "same-stream chunk retirement markers",
+      "one-second external ring watcher",
+      "five-second amd-smi telemetry",
+      "two-second amdgpu_fence_info sampling",
+      "15-second process task-state/kernel-stack sampling",
+      "kernel journal window"
+    ]
+  },
+  "flight_recorder": {
+    "prefill_id": 1,
+    "capacity": 8192,
+    "submitted_sequence": 653,
+    "completed_sequence": 591,
+    "retirement_lag": 62,
+    "overwritten_entries": 0,
+    "last_completed": {
+      "sequence": 591,
+      "phase": "chunk",
+      "chunk_start": 57344,
+      "chunk_end": 61440,
+      "layer_id": -1,
+      "interpretation": "The marker is enqueued after all 40 layers for the chunk and certifies complete stream retirement through token 61440."
+    },
+    "last_host_checkpoint": {
+      "sequence": 653,
+      "phase": "linear_attention_layer",
+      "chunk_start": 61440,
+      "chunk_end": 65536,
+      "layer_id": 18,
+      "layer_type": 1,
+      "interpretation": "On merged main, for_chunk() completed before the layer loop; this checkpoint is immediately before entering the layer-18 call. No layer-19 checkpoint was published."
+    },
+    "strongest_safe_localization": {
+      "definitely_retired": "all device work through token 61440",
+      "host_progress": "layer calls 0-17 returned and layer 18 was entered for chunk [61440,65536)",
+      "unresolved_window": [
+        "retirement of previously queued work in the current chunk",
+        "layer 18 linear-attention kernels",
+        "layer 18 post-attention MoE scheduler/kernels and synchronous scalar readback"
+      ],
+      "not_established": [
+        "the exact last submitted user-mode kernel",
+        "the exact last retired user-mode kernel",
+        "a nonterminating layer-18 kernel rather than a scheduler/queue/fence failure"
+      ]
+    }
+  },
+  "telemetry": {
+    "persistent_low_power_start": "2026-07-16T02:45:33+09:00",
+    "persistent_low_power_duration_through_bound_seconds": 1636,
+    "gfx_activity_percent": 100,
+    "gfx_clock_mhz": {
+      "min": 2893,
+      "median": 2900,
+      "max": 2900
+    },
+    "socket_power_w": {
+      "min": 43,
+      "median": 45,
+      "max": 62
+    },
+    "vram_used_mib": 26662,
+    "after_process_termination_sample": {
+      "power_w": 25,
+      "gfx_clock_mhz": 1271,
+      "gfx_activity_percent": 29,
+      "vram_used_mib": 17
+    }
+  },
+  "process_state": {
+    "sample_interval_seconds": 15,
+    "main_thread_samples": 119,
+    "main_thread_state": "R/RN/RNl with no kernel wait channel; executing or polling in user space",
+    "background_threads": "most threads wait in futex_wait; two ROCr event threads wait in kfd_wait_on_events",
+    "interpretation": "The main thread was not sleeping in a kernel wait channel. This is compatible with user-space polling inside a synchronous HIP operation but is not a user-space stack trace and does not identify the HIP API."
+  },
+  "system_observability": {
+    "kernel_journal_relevant_amdgpu_kfd_fault_reset_hang_mes_lines": 0,
+    "amdgpu_fence_info": {
+      "gfx_ring_0_first_and_last_signaled_emitted": "0x00009889 / 0x00009889",
+      "ring_0_unique_values": 1,
+      "emitted_equals_signaled_on_sampled_kernel_rings": true,
+      "mes_and_sdma_monitor_activity_continued": true,
+      "interpretation": "No sampled kernel-ring mismatch was exposed. KFD user queues remain absent from this debugfs view, so it cannot identify or clear the user queue."
+    }
+  },
+  "comparison_to_premerge_capture": {
+    "premerge_artifact": "benchmarks/results/2026-07-16-gfx1151-128k-prefill-flight-recorder-stall.json",
+    "premerge_source": "d697b971",
+    "premerge_failure": "measured prefill 1; last retired chunk ended at 28672; host reached layer-11 entry of the next chunk; median 49 W",
+    "merged_failure": "first warmup; last retired chunk ended at 61440; host entered layer 18 of the next chunk; median 45 W",
+    "shared_signature": "persistent 100% reported activity, approximately 2.9 GHz, low package power, fixed memory residency, clean kernel journal, immediate resource release on process termination",
+    "decision": "Reject merged request/chunk metadata reuse as a lifecycle fix. The shifted location and incidence do not support one deterministic failing chunk/layer from these two timing-sensitive captures."
+  },
+  "next_diagnostic": {
+    "candidate": "Remove the remaining per-layer compact-WMMA scalar D2H synchronization with HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=32768 for a lifecycle-only A/B, or use layer-granularity markers for a more intrusive retirement bisect.",
+    "caveat": "The same tight no-read route previously regressed gfx1151 4K wall by 0.56% due to empty tiles and is not a performance candidate. It is useful only to test whether the remaining per-layer synchronous boundary participates in the lifecycle failure; production would require an indirect/device-sized launch rather than retaining empty work."
+  },
+  "source_hashes": {
+    "flight_final_json": "41f220544ed5497637c8513dfecd406f1779d2ceddb0cfd32122d852e05227de",
+    "telemetry_csv": "9bca0ac07a4eacd55d917ef7ef5fd159d01cc975bd34b73753145e724c208e7f",
+    "amdgpu_fences_log": "c38a2061e149328bb4934794c5ce58e3d1785afaf24438838cdd5cafdbc86947",
+    "kernel_journal_log": "93ea6ca5d985048f3ddf5f37da6b7f3e3423b848da5be40f83387653a7d5d8ce",
+    "process_stacks_log": "93a2fd48fe85d4e3199fab00cc3202a3c852407db879f66f89166b39d0c71422",
+    "run_log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "provenance_txt": "89ffdb49d574dd6be4f513a4c18f3cec6ac6b73d6a0fae7333da0bb6731f5a16"
+  },
+  "local_raw_directory": "/tmp/gfx1151-merged-flight-7d4500c3-20260715T174253Z"
+}
