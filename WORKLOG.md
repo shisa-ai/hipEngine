@@ -158451,3 +158451,49 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `/tmp/gfx1151-merged-flight-7d4500c3-20260715T174253Z`; the artifact records
   hashes for recorder, telemetry, fences, journal, process stacks, run log, and
   provenance.
+
+## 2026-07-16 — Compact-MoE scalar D2H is not the 128K trigger
+
+- At tracked-clean `d1b9e581`, enabled the already correctness-tested tight
+  compact-WMMA upper bound through 32,768 selected rows with
+  `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=32768`. The 4K outer
+  chunk's 36,608 padded-row bound fits its 36,864-row scratch capacity. Cached
+  4K/1 preflight is exact (ID `9707`, finite logits) at **1358.888 prefill /
+  51.948 decode tok/s**. This is only an exact/cache smoke: the same route's
+  prior +0.16%/-0.56% 512/4K result keeps it performance-rejected because empty
+  tiles lose at 4K.
+- Ran the lifecycle-only no-read route under the same HIP 7.15, one-queue,
+  cached 128K warmup+3 protocol and persistent chunk recorder. Warmup completes
+  at **507.551587 prefill / 28.100299 decode tok/s**, tracked peak **25.492502
+  GiB**; measured prefill 1 then times out at 1,805 seconds (`rc=124`).
+- The persistent state starts at 03:42:21 and lasts **1,437 seconds** through the
+  bound: 100% activity, median 2,900 MHz, median **54 W** (53-58 W), fixed
+  26,662 MiB VRAM. Process termination drops the next sample to 20 W and 17 MiB.
+  The kernel journal again has zero relevant amdgpu/KFD/MES fault/reset/hang
+  lines; gfx ring 0 remains emitted=signaled `0x9889` in all debugfs samples.
+- Recorder completion stops at sequence **1687**, certifying all work through
+  chunk `[32768,36864)`. With compact-MoE's per-layer scalar D2H removed, host
+  entries rapidly cover all 40 layers of `[36864,40960)`, then publish chunk
+  and embedding checkpoints for `[40960,45056)`. The embedding checkpoint
+  precedes `_copy_token_embeddings_to_device()`'s synchronous default-stream
+  token-ID H2D copy and embedding launch; no later checkpoint appears. Thus all
+  40 prior-chunk layer calls returned, but chunk granularity cannot name the
+  queued kernel that failed to retire or prove that the next embedding launched.
+- All 119 main-thread samples remain runnable in user space with no kernel wait
+  channel, matching the merged control. The no-read path moves the visible host
+  wait from an in-layer scalar readback to the next chunk's token H2D boundary
+  but does not prevent device no-progress. Therefore compact-WMMA scalar D2H is
+  **not a necessary trigger and is rejected as a lifecycle fix**; synchronous
+  copies/readbacks are observation/fencing points, not a sufficient cause.
+- Across the three flight captures, the last certified chunk and host boundary
+  move from 28K/layer 11, to 61K/layer 18, to 36K/next embedding while the same
+  low-power signature persists. This further weakens a deterministic
+  chunk/layer explanation. Next localization should use the intentionally more
+  perturbing layer-granularity retirement markers or a separate rocprofv3 KFD
+  trace, not another unchanged copy-boundary experiment.
+- Compact evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-compact-no-read-stall.json`.
+  Raw local bundle:
+  `/tmp/gfx1151-no-read-flight-d1b9e581-20260715T183621Z`; the artifact records
+  hashes for recorder, telemetry, fences, journal, process stacks, run log, and
+  provenance.
