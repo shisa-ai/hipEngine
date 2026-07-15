@@ -156656,3 +156656,41 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Raw candidate/llama trace SHA256 values are
   `8ea695693d2fd7d809ef8c65f1e26d8d98019a6ee3de4d1fd8b749c3f74fcd73`
   and `d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67`.
+
+## 2026-07-15 - Reuse request-scoped GGUF prefill metadata across layers
+
+- HIP API tracing identified the first copy-boundary cause directly:
+  `_GGUFFullAttentionPrefillScratch.for_chunk()` uploaded the same six metadata
+  arrays before every one of 40 layers at pp512, even though the request had one
+  unchanged `(start=0, rows=512, total=512)` chunk. The 288 synchronous
+  `hipMemcpy` calls accounted for the copy->copy and copy->RMSNorm bubble
+  clusters from the preceding residual profile.
+- Moved chunk preparation outside the layer loop for outer-chunk prefill and
+  reused the active `(start, rows, total)` view across consecutive same-shape
+  layers in the normal scheduler. The final output norm now reuses that view
+  instead of uploading a synthetic one-row metadata set. Multi-chunk paths still
+  upload whenever the active chunk changes.
+- Matched HIP API/kernel traces before and after the scoped source change remove
+  exactly **240 synchronous copies / dispatches**: `hipMemcpy 288 -> 48` and
+  total dispatches **1645 -> 1405**. Summed GPU work is noisy
+  (**207.951 -> 209.347 ms**), but first-to-last span improves
+  **235.907 -> 224.511 ms (-4.83%)** and between-kernel idle improves
+  **27.956 -> 15.163 ms (-45.76%, -12.793 ms)**. The pre/post trace SHA256s are
+  `aa471ac628c5ce97332de6b6cafe3fc1e45b150048a904961cf1a030abb51fb2`
+  and `fa51a0ed12bf72b76331d47bb56d3c1318b448674ce414ce9d69a604d7f179e1`.
+- Dirty scoped 1+3 GPF-9C validation is exact on final IDs and improves the
+  prior clean candidate medians **2210.729 -> 2308.847 tok/s (+4.44%)** at 512
+  and **2513.374 -> 2519.051 tok/s (+0.23%)** at 4K. Decode medians are
+  **92.514/100.020 tok/s**, tracked peak remains **22.995 GiB**, and all six
+  final IDs are `9707`. The 512 leg remains **4.29% below** the prospective
+  llama.cpp HIP floor, so this is retained scheduler work but does not promote
+  GPF-9C yet. Raw sweep: `/tmp/gpf9c-metadata-reuse-speed.json`.
+- Validation: RED/GREEN
+  `tests/test_qwen35_gguf_hidden_seed_contract.py` now requires one metadata
+  preparation across two same-shape layers; targeted runner/hidden-seed/batch
+  tests pass (**171 passed, 9 skipped**), `compileall`, registry, CPU-fixtures,
+  and smoke-add plan pass. `scripts/check_fixtures.py` still hits the existing
+  mixed-schema `tests/fixtures/cpu_reference/moe/` `KeyError: expected`; the
+  dedicated CPU-fixtures smoke passes all seven canonical fixtures.
+- Next queue target is the remaining 40 per-layer compact-WMMA total-row D2H
+  reads (the copy->selected-Q4 bubble), before any dense-Q8 kernel work.
