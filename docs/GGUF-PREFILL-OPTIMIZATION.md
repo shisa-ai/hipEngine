@@ -491,6 +491,7 @@ select current code without a fresh profile.
 | 19 | `LCP-3B` | **Rejected and removed:** direct prequantized Q8_1 x Q8T16 integer-WMMA body | Primitive numerics/quality pass, but the body is 44.66% slower before quantization; quantization adds only 0.016 ms. Any continuation must reproduce the actual shared MMQ tile/decomposition, not route raw dp4a or retry direct T16 |
 | 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
 | 21 | `LCP-3E` | **Rejected and removed:** source-compatible MMQ128 directly over output-major `block_q8_0` rows | Correctness passes and the final WGP body is spill-free with source-matched fragment/WMMA counts, but prequantized/included rows are +3.95%/+5.32% vs production. The frozen gate fails before profiler/runtime work; raw+T16 dual residency remains forbidden |
+| 22 | `LCP-4A` | **Promoted:** capture-free normal FP32 Conv prefill with explicit sequential ISA multiply/add | Removes 20 private bytes/thread while preserving byte-exact Conv output/state; pp512 body -77.71%, clean production 512/4K prefill +1.44%/+1.86% |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1444,16 +1445,27 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   **0.549562 ms (+5.32%)** with packing. Both rows had to win, so the candidate
   was removed before profiler/model routing. Duplicating T16 would also add
   about **1.390 GiB**. Dense-Q8 prefill tile/layout variants are therefore
-  closed pending genuinely new evidence; re-profile and move to the next
-  measured family. Evidence:
+  closed pending genuinely new evidence. LCP-4A then found that the apparent
+  next convolution residual was dominated by the normal kernel's exactness
+  mechanism: four `volatile` products forced **20 private bytes/thread** even
+  when row-state capture was null. A capture-free body uses explicit sequential
+  `v_mul_f32_e32`/`v_add_f32_e32`, preserves output/final-state bytes against
+  the retained segment body, and compiles with zero private storage/spills.
+  Cached pp512 Conv body time falls **8.496 -> 1.894 ms / 30 (-77.71%)**;
+  clean balanced production direct-LDS32 prefill improves **1298.018 ->
+  1316.663 tok/s (+1.44%)** at 512 and **1386.682 -> 1412.496 (+1.86%)**
+  at 4K with every ID `9707`. The exact path is promoted without a new flag.
+  Re-profile after LCP-4A rather than selecting from the stale convolution
+  family total. Evidence:
   [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
   [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
   [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
   [`LCP-3A`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-four-wave-rejected.json),
   [`LCP-3B`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-q8-1-i8-wmma-rejected.json),
   [`LCP-3C`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json),
-  [`LCP-3D`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json), and
-  [`LCP-3E`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json).
+  [`LCP-3D`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json),
+  [`LCP-3E`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json), and
+  [`LCP-4A`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
