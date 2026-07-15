@@ -21,6 +21,8 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_chunkwise_wy8_lds32_direct_f32,
+    qwen35_gdn_prefill_recurrent_chunkwise_wy8_segments_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
@@ -121,6 +123,15 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_f32
     )
     assert plan.has_exact_chain_lds32_direct
+    assert (
+        plan.chunkwise_recurrent_wy8
+        is qwen35_gdn_prefill_recurrent_chunkwise_wy8_lds32_direct_f32
+    )
+    assert (
+        plan.chunkwise_recurrent_segments_wy8
+        is qwen35_gdn_prefill_recurrent_chunkwise_wy8_segments_lds32_direct_f32
+    )
+    assert plan.has_chunkwise_wy8
     assert (
         plan.exact_recurrent_wave32
         is qwen35_gdn_prefill_recurrent_decode_order_exact_wave32_f32
@@ -238,15 +249,21 @@ def test_run_gdn_prefill_auto_falls_back_to_fused_when_preferred_mode_missing() 
 
 
 @pytest.mark.parametrize(
-    ("rows", "expected_recurrent"),
-    [(64, "exact_lds32_direct"), (1025, "exact_segments_lds32_direct")],
+    ("mode", "rows", "expected_recurrent"),
+    [
+        ("chain_lds32_direct", 64, "exact_lds32_direct"),
+        ("chain_lds32_direct", 1025, "exact_segments_lds32_direct"),
+        ("chain_wy8", 64, "chunkwise_wy8"),
+        ("chain_wy8", 1025, "chunkwise_segments_wy8"),
+    ],
 )
-def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
+def test_run_gdn_prefill_explicit_compact_direct_mode_uses_compact_abi(
     monkeypatch: pytest.MonkeyPatch,
+    mode: str,
     rows: int,
     expected_recurrent: str,
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct")
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
     runner = _new_runner()
     calls: list[tuple[str, object]] = []
     runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
@@ -259,6 +276,10 @@ def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
         exact_recurrent_lds32_direct=_recorder(calls, "exact_lds32_direct"),
         exact_recurrent_segments_lds32_direct=_recorder(
             calls, "exact_segments_lds32_direct"
+        ),
+        chunkwise_recurrent_wy8=_recorder(calls, "chunkwise_wy8"),
+        chunkwise_recurrent_segments_wy8=_recorder(
+            calls, "chunkwise_segments_wy8"
         ),
     )
     scratch = _make_scratch()
@@ -608,6 +629,13 @@ def test_run_gdn_prefill_explicit_fused_overrides_available_chain(
                 None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
             ),
             "explicit GGUF GDN prefill mode 'chain_lds32_direct' is unavailable",
+        ),
+        (
+            "chain_wy8",
+            qgr._GGUFGDNPrefillPlan(
+                None, None, None, lambda *args, **kwargs: None, lambda *args, **kwargs: None
+            ),
+            "explicit GGUF GDN prefill mode 'chain_wy8' is unavailable",
         ),
         (
             "chain_wave32",
