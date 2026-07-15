@@ -206,7 +206,13 @@ Continuation order is now:
    sequential `v_mul_f32_e32`/`v_add_f32_e32`, keeps output/final-state bytes
    exact, and uses zero scratch. Cached pp512 Conv falls **8.496 -> 1.894 ms / 30
    (-77.71%)**; clean production direct-LDS32 prefill improves **+1.44%/+1.86%**
-   at 512/4K with stable IDs. Reprofile before naming another prefill residual.
+   at 512/4K with stable IDs. The clean follow-up identifies the production gap
+   precisely: exact/peer/llama.cpp total kernels are **369.285/203.808/203.301
+   ms**, and their GDN families are **199.030/20.840/16.522 ms**. Peer versus
+   llama.cpp has only **3.071 ms** of trace-span residual, but the clean peer
+   512/4K speed gate reaches **2385.677/2585.343 tok/s** and still misses the
+   frozen 512 floor by **1.104%**. Keep exact production; target only that final
+   peer queue/span residual or new exact-parallel GDN evidence.
 5. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
@@ -221,8 +227,9 @@ Machine-readable evidence:
 [`LCP-2A metadata reuse`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
 [`LCP-2B tight no-read`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
 [`LCP-3E raw MMQ rejection`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json),
+[`LCP-4A no-scratch Conv`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json),
 and
-[`LCP-4A no-scratch Conv`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json).
+[`post-LCP-4A residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json).
 
 ## gfx1151 post-merge transfer plan
 

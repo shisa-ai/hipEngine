@@ -157082,3 +157082,47 @@ graphless decode launch-collapse path without regressing target/serial parity.
   the benchmark rollup, changelog, prefill plan, and llama.cpp parity handoff.
   The next action is a clean post-LCP-4A pp512 profile; the old Conv family
   total is no longer a valid basis for selecting the next optimization.
+
+## 2026-07-15 - Attribute the clean post-LCP-4A production residual
+
+- Collected cached-only bounded pp512 traces at clean `c85c2880` on the W7900
+  for production exact `chain_lds32_direct` and quality-admitted explicit
+  `chain_peer_wave32`, using the same max-512 session, initialization pass,
+  five-second pre-target warm pass, and final synchronized collection window.
+  Both produce final ID `9707` and launch 1,365 kernels.
+- Production exact measures **369.285 ms** summed kernels, **392.553 ms**
+  first-to-last span, and **23.268 ms** queue idle. Its GDN prepare + recurrence
+  + gate is **199.030 ms**, of which the 30 recurrent launches are **197.020
+  ms**. The recurrent body uses a 32-thread workgroup, one scalar-order thread
+  per value column, 16 KiB LDS, 40 VGPR, and zero scratch.
+- The peer route measures **203.808 ms** summed kernels, **215.307 ms** span,
+  and **11.499 ms** queue idle. Its full GDN chain is **20.840 ms** and the
+  recurrence is **17.648 ms**: one wave32 per value column, four state rows per
+  lane in VGPRs, llama.cpp's XOR reduction tree, zero LDS/scratch. llama.cpp's
+  retained same-W7900 pp512 row is **203.301 ms** kernels, **212.236 ms** span,
+  **8.935 ms** idle, and **16.522 ms** named GDN. Peer minus llama.cpp is only
+  **+0.507 ms kernels / +3.071 ms span**, so no broad GGUF/MMQ/runtime deficit
+  remains after substituting the peer schedule.
+- The production-minus-llama.cpp GDN excess is **+182.508 ms**, larger than the
+  whole **+180.317 ms** span deficit because hipEngine wins back **26.926 ms**
+  in selected Q4/Q5 and **10.765 ms** in remaining layout/norm/post-ops. Dense
+  Q8 remains **+18.956 ms**, but all screened replacement/tile paths are closed
+  and it is not the explanation for the shipped 180 ms gap. Conv is now only
+  **1.977 ms versus llama.cpp's 1.282 ms** and is closed as a first-order target.
+- Repeated the frozen clean peer 512/4K 1+3 floor after LCP-4A. Prefill moves
+  from the prior **2334.451/2519.871 -> 2385.677/2585.343 tok/s
+  (+2.19%/+2.60%)** with all six IDs `9707`. 4K is **14.645%** above the
+  llama.cpp floor, but 512 remains **1.104%** below **2412.320 tok/s**, so
+  `chain_peer_wave32` stays explicit-only and production remains exact.
+- Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json`.
+  Exact/peer trace SHA256 values are
+  `47d681f9dcf0b72473bd4632eb1613a3a65448ff4e9b353c6a4e95680e1e53f6`
+  and `34fe8283e5def0450acad060c7ff1ab825daf7f55319bc9e3d0faaeeb7d03146`;
+  clean speed-gate SHA256 is
+  `df2392de36a724ca207fa5bc735d0cd64db2c3eaa54bd4088a7b83a55188579a`.
+- Continue only by preserving the admitted peer schedule and removing its final
+  approximately 3 ms queue/span residual, or with genuinely new exact-parallel
+  GDN evidence. Do not reopen dense-Q8, selected-MoE, Conv, full-attention, or
+  generic launch-count experiments to explain the production gap. Any future
+  peer promotion must rerun the full semantic/decode contract.

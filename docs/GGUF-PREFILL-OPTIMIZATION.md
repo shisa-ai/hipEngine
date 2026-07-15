@@ -1455,8 +1455,16 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   clean balanced production direct-LDS32 prefill improves **1298.018 ->
   1316.663 tok/s (+1.44%)** at 512 and **1386.682 -> 1412.496 (+1.86%)**
   at 4K with every ID `9707`. The exact path is promoted without a new flag.
-  Re-profile after LCP-4A rather than selecting from the stale convolution
-  family total. Evidence:
+  The clean post-LCP-4A profile now closes the attribution. Production exact
+  spends **369.285 ms** in kernels and **392.553 ms** first-to-last; its GDN
+  chain alone is **199.030 ms**, versus llama.cpp HIP's **16.522 ms**. The
+  already quality-admitted peer route reduces that chain to **20.840 ms** and
+  total kernels to **203.808 ms**, essentially llama.cpp's **203.301 ms**;
+  only **3.071 ms** of trace span remains. Conv is now **1.977 ms** and is not
+  the next target. A clean post-LCP-4A peer speed gate improves 512/4K from
+  **2334.451/2519.871 -> 2385.677/2585.343 tok/s (+2.19%/+2.60%)**, but 512
+  remains **1.104%** below the frozen llama.cpp floor, so production stays
+  exact `chain_lds32_direct`. Evidence:
   [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
   [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
   [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
@@ -1464,8 +1472,9 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   [`LCP-3B`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-q8-1-i8-wmma-rejected.json),
   [`LCP-3C`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json),
   [`LCP-3D`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json),
-  [`LCP-3E`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json), and
-  [`LCP-4A`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json).
+  [`LCP-3E`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json),
+  [`LCP-4A`](../benchmarks/results/2026-07-15-gfx1100-gguf-conv-no-scratch.json), and
+  [`post-LCP-4A residual`](../benchmarks/results/2026-07-15-gfx1100-gguf-post-conv-residual-attribution.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the
@@ -1475,11 +1484,16 @@ confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
 lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
 do not revisit LCP-1 without a new hotspot profile. Production remains exact
 `chain_lds32_direct`; GPF-9C/9D remain explicit-only through the planned
-post-merge gfx1151 gate. For any gfx1100 continuation, preserve GPF-9C's
-quality-admitted recurrence and attack the measured copy-boundary queue bubbles
-before a new dense-Q8 path. Its predeclared CPU, 18-prompt 0.05/0.90 semantic,
-determinism, decode, and 512/4K parity-floor contract remains authoritative;
-exact state and free-running token identity are diagnostics.
+post-merge gfx1151 gate. The post-LCP-4A exact/peer/llama.cpp profile shows that
+GPF-9C removes the shipped first-order deficit: peer and llama.cpp summed GPU
+work differ by only **0.507 ms**, with **2.564 ms** excess queue idle. Do not
+reopen dense-Q8, selected-MoE, Conv, full-attention, or generic launch-count
+experiments to explain the production gap. Any continuation must preserve
+GPF-9C's quality-admitted recurrence and remove its final approximately 3 ms
+span residual, or bring genuinely new exact-parallel GDN evidence. Its
+predeclared CPU, 18-prompt 0.05/0.90 semantic, determinism, decode, and 512/4K
+parity-floor contract remains authoritative; rerun the full gate before future
+promotion. Exact state and free-running token identity remain diagnostics.
 
 ## Document Ownership
 
