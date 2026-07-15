@@ -6687,8 +6687,48 @@ def _gguf_packed_verify_gpu_stage_timings_enabled() -> bool:
     return _env_flag(_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV, False)
 
 
-def _gguf_compact_wmma_no_read_max_selected_rows() -> int:
-    return max(0, _env_int(_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV, 0))
+def _gguf_compact_wmma_no_read_max_selected_rows(backend: str) -> int:
+    raw_default = backend_package_capability(
+        backend,
+        "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+        0,
+    )
+    try:
+        default = int(raw_default)
+    except (TypeError, ValueError):
+        default = 0
+    return max(
+        0,
+        _env_int(
+            _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV,
+            default,
+        ),
+    )
+
+
+def _compact_wmma_static_upper_bound(
+    selected_rows: int,
+    num_experts: int,
+) -> tuple[int, int]:
+    """Return the tight routing-independent padded-row/tile upper bound.
+
+    Compact WMMA pads each active expert to a 16-row tile.  For ``S`` selected
+    rows and ``A=min(S, E)`` potentially active experts, assigning one row to
+    every active expert creates ``A`` tiles.  Every further tile requires 16
+    additional rows, so the exact worst-case tile count is
+    ``A + floor((S-A)/16)``.  Unused tiles are initialized to expert ``-1`` and
+    rejected by every compact selected kernel.
+    """
+
+    selected_rows = int(selected_rows)
+    num_experts = int(num_experts)
+    if selected_rows <= 0:
+        raise ValueError("selected_rows must be positive")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    active_experts = min(selected_rows, num_experts)
+    upper_tiles = active_experts + (selected_rows - active_experts) // 16
+    return upper_tiles * 16, upper_tiles
 
 
 def _gguf_token_embedding_rows_f32(
@@ -15274,9 +15314,12 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         runtime=runtime,
     )
     wmma_rows_capacity = int(getattr(scratch, "moe_wmma_rows_capacity", 0))
-    wmma_total_upper_rows = int(selected_rows) * 16
+    wmma_total_upper_rows, wmma_total_upper_tiles = _compact_wmma_static_upper_bound(
+        selected_rows,
+        num_experts,
+    )
     use_wmma_total_upper_bound = (
-        selected_rows <= _gguf_compact_wmma_no_read_max_selected_rows()
+        selected_rows <= _gguf_compact_wmma_no_read_max_selected_rows(runner.backend)
         and wmma_total_upper_rows <= wmma_rows_capacity
     )
     qwen35_moe_wmma_tile_map(
@@ -15285,7 +15328,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         scratch.moe_tile_expert.ptr,
         scratch.moe_wmma_total.ptr,
         num_experts,
-        tile_capacity=selected_rows if use_wmma_total_upper_bound else 0,
+        tile_capacity=wmma_total_upper_tiles if use_wmma_total_upper_bound else 0,
         stream=stream,
         runtime=runtime,
     )

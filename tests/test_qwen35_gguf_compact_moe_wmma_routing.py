@@ -15,6 +15,7 @@ def _reset_wmma_prefill_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_WMMA_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_DS4_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", raising=False)
     set_wmma_prefill_enabled(None)
     yield
@@ -55,6 +56,7 @@ def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pyt
     _patch_compact_scheduler(monkeypatch, calls)
     _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k")
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "0")
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
     set_wmma_prefill_enabled(True)
@@ -115,6 +117,7 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
     _patch_compact_scheduler(monkeypatch, calls)
     _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k_t16_v1", use_ds4=True)
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "0")
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
     monkeypatch.setattr(
@@ -123,6 +126,7 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
         lambda x_ptr, out_ptr, rows, hidden, **kwargs: calls.append(("ds4_pack", (x_ptr, out_ptr, rows, hidden))),
     )
     monkeypatch.setenv("HIPENGINE_GGUF_T16_DS4_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "baseline")
     set_wmma_prefill_enabled(True)
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
@@ -132,6 +136,36 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
     assert ("ds4_pack", (scratch.moe_down_out.ptr, scratch.moe_q8_1_ds4.ptr, 6, 256)) in calls
     assert ("compact_gate_up_ds4", (scratch.moe_q8_1_ds4.ptr, 6, 256, 256, 256, 4, 16)) in calls
     assert ("compact_down", (6, 256, 256, 4, 16)) in calls
+
+
+@pytest.mark.parametrize(
+    ("selected_rows", "num_experts", "expected_rows", "expected_tiles"),
+    [
+        (1, 4, 16, 1),
+        (6, 4, 64, 4),
+        (20, 4, 80, 5),
+        (4096, 256, 7936, 496),
+    ],
+)
+def test_compact_wmma_static_upper_bound_is_tight(
+    selected_rows: int,
+    num_experts: int,
+    expected_rows: int,
+    expected_tiles: int,
+) -> None:
+    assert qgr._compact_wmma_static_upper_bound(selected_rows, num_experts) == (
+        expected_rows,
+        expected_tiles,
+    )
+
+
+def test_compact_wmma_no_read_scope_is_backend_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1100") == 4096
+    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1151") == 0
+
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "7")
+    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1100") == 7
+    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1151") == 7
 
 
 def test_compact_wmma_small_rows_skips_host_wmma_total_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,9 +183,9 @@ def test_compact_wmma_small_rows_skips_host_wmma_total_read(monkeypatch: pytest.
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
 
-    assert ("tile_map", 6) in calls
-    assert ("compact_gate_up", (6, 256, 256, 256, 4, 96)) in calls
-    assert ("compact_down", (6, 256, 256, 4, 96)) in calls
+    assert ("tile_map", 4) in calls
+    assert ("compact_gate_up", (6, 256, 256, 256, 4, 64)) in calls
+    assert ("compact_down", (6, 256, 256, 4, 64)) in calls
 
 
 def test_q4k_selected_dual_dp4a_off_by_default_keeps_raw_pair(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -262,6 +296,7 @@ def _fake_runner_and_scratch():
     layer = _FakeLayer()
     weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1100"
     runner.weights = weights
     runner.runtime = "runtime-sentinel"
     scratch = SimpleNamespace(
