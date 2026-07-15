@@ -156615,3 +156615,44 @@ graphless decode launch-collapse path without regressing target/serial parity.
   gfx1100 residual attribution. Once gfx1151 is measured, promote only a passing
   architecture-local peer route or remove both rejected peer candidates. Updated
   `docs/REFACTOR.md` with this bounded removal trigger.
+
+## 2026-07-15 - Attribute the GPF-9C pp512 residual to queue bubbles
+
+- Captured a current same-W7900 bounded 512-token trace of explicit
+  `chain_peer_wave32` after one cache warmup and a second clock warmup outside
+  the collection window. It produces ID `9707`, **2164.603 tok/s** under the
+  profiler, **207.253 ms / 1645 dispatches** summed kernel time, and a
+  **235.314 ms** first-to-last-kernel span.
+- Captured llama.cpp HIP `1ebf790cd` on the same W7900/model with F16 KV and
+  isolated its second 2259-dispatch pp512 pass after the first Q6_K lm-head
+  terminator. It measures **2373.106 tok/s**, **203.301 ms** summed kernel time,
+  and a **212.236 ms** kernel span.
+- The peer recurrence itself is at practical kernel parity:
+  **17.134 vs 16.522 ms**. Adding hipEngine's separate prepare and RMSNorm/gate
+  makes its named GDN chain only **+3.689 ms**. GDN recurrence algebra no longer
+  explains GPF-9C's short-shape miss.
+- The decisive residual is queue starvation. hipEngine has **28.061 ms** of
+  between-kernel idle gaps versus llama.cpp's **8.935 ms**, a **+19.126 ms**
+  excess and **82.9%** of the trace-span delta despite 614 fewer dispatches.
+  hipEngine records 450 gaps over 10 us (22.199 ms total) and 154 over 50 us;
+  llama.cpp records only 6 over 10 us (0.184 ms) and one over 50 us.
+- Largest hipEngine bubble transitions are copy->RMSNorm **6.334 ms / 41**,
+  copy->copy **6.010 ms / 264**, copy->selected-Q4 **3.173 ms / 40**,
+  RMSNorm->dense-Q8 **2.668 ms / 40**, SiLU->selected-Q5 **1.184 ms / 37**,
+  and copy->full-attention **1.181 ms / 10**.
+- The largest positive kernel-family residual is dense Q8
+  (**51.251 vs 30.426 ms, +20.825 ms**), followed by convolution
+  (**9.430 vs 1.282 ms, +8.148 ms**). Selected Q4/Q5 is already
+  **90.004 vs 111.823 ms (-21.819 ms)**, and remaining layout/norm/post-op work
+  is **-9.403 ms**, so those advantages nearly balance the positive families.
+- This is diagnostic, not a promotion: the frozen non-profiled speed verdict
+  remains **2210.729 tok/s**, **19.354 ms** slower than the 2412.320 tok/s
+  llama.cpp floor. Production remains exact direct-LDS32. Next profile-selected
+  work is copy-boundary queue-bubble removal on the explicit peer route, then a
+  genuinely new dense-Q8 path; do not retune recurrence algebra, selected
+  Q4/Q5, short full attention, or raw launch count.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json`.
+  Raw candidate/llama trace SHA256 values are
+  `8ea695693d2fd7d809ef8c65f1e26d8d98019a6ee3de4d1fd8b749c3f74fcd73`
+  and `d9736d5af4524baac79df108b89cdb77ac880c233705a6f4b163f75eb2cd0f67`.
