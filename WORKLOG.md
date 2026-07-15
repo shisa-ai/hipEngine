@@ -157267,3 +157267,33 @@ cached kernel trace must confirm the candidate name, plausible duration,
 variant. Do not reopen selected q8_1/dp4a, raw layouts, broader tile/thread
 sweeps, or dense-Q8 experiments during this pass. After this decision, refresh
 the bounded long-context attention attribution and close decode.
+
+## 2026-07-15 — Reject and remove LCP-D3 Q4T16 half-sequential decode
+
+The candidate passed the complete 88-test selected-T16 decode file, including
+byte equality to the retained split gate/up plus SiLU contract. Static resources
+improved as intended with no private storage or spills: system HIP 7.2
+**195 -> 115 VGPR** and therock HIP 7.15 **195 -> 114 VGPR**. Full-model IDs
+remain `9707`, final logits are finite, and tracked peak stays **21.670 GiB**.
+
+Performance rejects on both toolchains:
+
+- System HIP 7.2 compatibility, one max-4K session, one warmup/library and four
+  balanced eager 4K/128 runs: control **40.712 tok/s**, candidate **40.287
+  tok/s**; candidate wall is **+1.055%** slower.
+- Canonical therock HIP 7.15, the same session/library protocol with a fresh
+  state-bound graph capture per run: control samples
+  `[100.330,100.339,99.961,99.893]`, median **100.146 tok/s**; candidate
+  `[97.759,97.575,97.017,97.121]`, median **97.348 tok/s (-2.794%)**. Candidate
+  wall is **+2.874%** slower.
+
+The second K/x traversal costs more than the occupancy improvement. Removed the
+candidate source exactly; production code and defaults are unchanged. Compact
+evidence is
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-q4t16-halfseq-rejected.json`;
+raw A/B SHA256 values are
+`d9bd6ed79359b678da5595721acd0f9314991592c73e40e3726d63ebd328e683` and
+`7937b60955d1c5b0384ec743fe6d9afbac6153f6f744003370ccdf43c6d35c3d`.
+Close selected-Q4T16 pressure work with the existing body. The final decode
+attribution and promotion sweep use therock 7.15; system 7.2 remains a
+compatibility gate rather than a source of mixed-toolchain topline deltas.
