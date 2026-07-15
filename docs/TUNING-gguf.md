@@ -1480,6 +1480,35 @@ python3 scripts/qwen35_gguf_rocprof_summary.py \
   --json benchmarks/results/<date>-gpu1-gguf-tuning-rocprof-summary.json
 ```
 
+## gfx1100 final pass outcome — 2026-07-16
+
+The clean selector-unset BF16-KV right-sized 1+3 sweep at `28b37356` closes
+the current gfx1100 pass:
+
+| Shape | Prefill tok/s | Graph decode tok/s | Tracked GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 2716.648 | 92.833 | 21.228 |
+| 1K/128 | 3052.541 | 98.148 | 21.295 |
+| 4K/128 | 2953.101 | 100.522 | 21.670 |
+| 32K/128 | 2078.038 | 88.240 | 22.234 |
+| 64K/128 | 1559.878 | 76.691 | 22.879 |
+| 128K/128 | 1037.378 | 62.669 | 24.168 |
+
+Prefill beats llama.cpp HIP by `12.62-30.95%` at every shape and Vulkan from
+512 through 64K; only 128K Vulkan prefill remains `3.88%` ahead. Decode beats
+llama.cpp HIP everywhere and remains below Vulkan, nearest at 4K (`2.47%`).
+Tracked memory is within `-0.378..+0.079 GiB` of llama.cpp HIP's broader
+whole-device readings. All 18 IDs are exact. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json`.
+
+This pass closes unchanged dense-Q8/MMQ/dp4a, selected-Q4 pressure, broad
+selected-MoE geometry, serial-reducer, generic launch-count, and exact GDN
+algebra retries. The explicit tail-four Hadamard KV layout passes quality and
+saves 18.75% persistent K/V but remains non-default because 4K/128K speed and
+a 1.002 GiB prefill transient fail promotion. New gfx1100 c=1 work should begin
+only from fresh source/layout evidence for Vulkan decode or the 128K context
+scan, not from the historical candidate list below.
+
 ## Tuning lanes
 
 Use stable IDs in commits, artifacts, and `WORKLOG.md`.

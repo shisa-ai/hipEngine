@@ -157370,3 +157370,83 @@ speed plus transient high-water memory. Revisit only after removing the
 four-layer prefill transient and optimizing long-context group32 attention.
 Compact artifact:
 `benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`.
+
+## 2026-07-16 — Publish final gfx1100 GGUF optimization sweep
+
+Ran six independent source-clean right-sized processes at `28b37356` on the
+W7900 with the complete therock HIP 7.15 stack. No experimental GDN,
+selected-prefill, reducer, KV, or compiler-policy env selector was set; BF16 KV
+and package automatic policies were used. Each shape ran one discarded eager
+warmup plus three measured repetitions with a fresh state-bound graph per run,
+128 decode tokens, repeated token `9707`, cached builds required, and graph
+capture excluded. Command family:
+
+```bash
+$TRPY scripts/qwen35_readme_sweep.py --engine gguf \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --backend hip_gfx1100 --token-id 9707 \
+  --workloads <one-shape>/128 --warmup-runs 1 --measured-runs 3 \
+  --warmup-decode-tokens 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/gfx1100-gguf-opt/hipcc-version.txt \
+  --require-cached-build --json /tmp/lcp-final-default-<shape>-715-clean.json
+```
+
+Final medians:
+
+| Shape | Prefill tok/s | Graph decode tok/s | Tracked peak GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | **2716.648** | **92.833** | **21.228** |
+| 1K/128 | **3052.541** | **98.148** | **21.295** |
+| 4K/128 | **2953.101** | **100.522** | **21.670** |
+| 32K/128 | **2078.038** | **88.240** | **22.234** |
+| 64K/128 | **1559.878** | **76.691** | **22.879** |
+| 128K/128 | **1037.378** | **62.669** | **24.168** |
+
+All 18 final IDs are `9707`; all measured routes report WMMA/GEMV effective and
+default BF16 KV. Largest prefill/decode stdev over median is `0.658%/0.223%`.
+Versus the July 14 table, prefill improves `+35.27%..+118.78%`, decode improves
+`+2.24%..+3.46%`, and peer Q/K/V arena liveness adds `0.024..0.127 GiB` versus
+the post-LCP-M1 direct-GDN census.
+
+Final parity decision:
+
+- llama.cpp HIP prefill is closed at all six shapes: hipEngine is
+  **+12.62%..+30.95%**. Decode is also **+2.85%..+26.02%**.
+- llama.cpp Vulkan prefill is beaten from 512 through 64K by
+  **+3.37%..+17.10%**; Vulkan remains **3.88%** ahead at 128K.
+- Vulkan decode remains ahead at all shapes by
+  **13.87/8.75/2.47/3.91/8.42/11.52%**; 4K is the closest boundary.
+- Tracked hipEngine memory versus llama.cpp HIP whole-device is
+  `-0.378/-0.323/-0.004/+0.018/-0.016/+0.079 GiB`. This is practical capacity
+  parity, not an allocator-efficiency comparison across scopes.
+
+For the user's toolchain question, the same-code/system-7.2 versus therock-7.15
+1+3 comparison is material only in prefill: 512 **2588.231 -> 2667.455
+(+3.06%)**, 4K **2757.752 -> 2920.268 (+5.89%)**; decode is `-0.10%/+0.46%`.
+The complete final publication therefore correctly uses therock 7.15, while
+system 7.2 remains the compatibility/resource gate.
+
+Published compact evidence at
+`benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json` and
+updated the scoreboard, parity/tuning docs, changelog, and root README export.
+The gfx1100 pass is complete. Remaining c=1 avenues are Vulkan decode and 128K
+Vulkan prefill; mixed KV remains explicit until its prefill transient and
+long-context speed blockers are removed. gfx1151 transfer remains the separate
+post-merge plan.
+
+## 2026-07-16 — Final publication validation
+
+The current-tree milestone run completed with **6226 passed, 53 skipped, 1
+failed** in 1849.35 seconds. The only failure was a stale policy assertion that
+still expected gfx1100 GPF-5A to be disabled after this branch promoted its
+backend-package ceiling through 4096 tokens. Updated that regression to cover
+both independent ceilings (gfx1100 4096, gfx1151 65536); the focused file then
+passed **4/4**. A second full-suite run was started unnecessarily and stopped at
+66%; the completed first run plus the repaired focused gate are the final test
+evidence.
+
+Final mechanical checks: `python3 scripts/sync_benchmark_readme.py --check`
+passed, the compact artifact parses as JSON, all 21 newly added Markdown link
+targets exist, and `git diff --check` passed.
