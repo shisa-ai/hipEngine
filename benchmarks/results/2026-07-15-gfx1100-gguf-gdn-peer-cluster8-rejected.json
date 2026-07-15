@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_gguf_gdn_peer_cluster8_gate",
+  "status": "rejected_decode_regression",
+  "created_at": "2026-07-15T05:01:47Z",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "candidate_retained": false,
+  "conclusion": "The llama.cpp-Vulkan-shaped chain_peer_cluster8 route passes primitive/resource and teacher-forced quality gates, but fails the prospectively frozen strict decode non-regression rule. KL max is 0.028689 <= 0.05 and aggregate top-1 is 444/450 = 98.667% >= 90%; aggregate decode wall is 22508.498 -> 22508.787 ms, a 0.001286% regression. No tolerance was predeclared, so the candidate does not proceed to the 512/4K speed gate. The peer-schedule lane closes without a promotion and chain_lds32_direct remains production default.",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_runtime": "7.2.4",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "239d90db9662a40fd8c6b7812928001cc9dd94ec",
+    "source_clean": true,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "mode": "chain_peer_cluster8",
+    "source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp",
+    "source_commit": "263cc04a5405fc55122bf59383dd8195519b30f4",
+    "schedule": "unit-normalized Q/K, post-reduction 1/sqrt(128) output scale, scalar decay inside S^T@k products, eight-lane clustered reductions, four value columns per physical wave32, 32 columns per 256-thread block, 16 recurrent-state rows per lane",
+    "resource_trace": {
+      "workgroup_size": 256,
+      "vgpr_count": 96,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "synthetic_plain_us": 41.84,
+      "synthetic_segmented_us": 44.801
+    }
+  },
+  "contract": {
+    "baseline_mode": "chain_lds32_direct",
+    "prompt_suites": [
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompts": 18,
+    "teacher_forced_transitions": 450,
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "decode_nonregression_required": true,
+    "decode_regression_tolerance_percent": 0.0,
+    "speed_gate_only_after_complete_semantic_decode_pass": true
+  },
+  "result": {
+    "measurement_valid": true,
+    "source_clean": true,
+    "kl_max": 0.02868853662880074,
+    "kl_passed": true,
+    "kl_max_prompt": "code_lru_cache",
+    "top1_matches": 444,
+    "top1_total": 450,
+    "top1_agreement": 0.9866666666666667,
+    "top1_passed": true,
+    "baseline_decode_median_wall_sum_ms": 22508.4975825,
+    "candidate_decode_median_wall_sum_ms": 22508.7870565,
+    "candidate_minus_baseline_ms": 0.289474,
+    "decode_wall_delta_percent": 0.0012860654023666407,
+    "decode_speedup": 0.9999871395113706,
+    "decode_non_regressive": false,
+    "free_running_trajectories_exact_diagnostic": false,
+    "prefill_speed_gate_run": false
+  },
+  "command": "PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_cluster8 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9d.txt --require-cached-build --json /tmp/gdn-peer-cluster8-peer-aligned-clean-239d90db.json",
+  "raw_artifact": {
+    "path": "/tmp/gdn-peer-cluster8-peer-aligned-clean-239d90db.json",
+    "sha256": "d8d5469e1820437f0071973bac0916a4a6c6f8578492aa195ebc3461af3d99a4"
+  },
+  "decision": {
+    "default_changed": false,
+    "speed_gate_run": false,
+    "production_default": "chain_lds32_direct",
+    "peer_schedule_lane_closed": true,
+    "cleanup": "Remove rejected GPF-9 selectors, wrappers, and kernel bodies; retain compact evidence and the exact fallback/default paths."
+  }
+}

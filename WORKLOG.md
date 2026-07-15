@@ -156557,3 +156557,23 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `/tmp/hipengine-gpf9d-rocprof/gpf9d_kernel_trace.csv`.
 - The unchanged 18-prompt KL/top-1/determinism/decode gate runs next; 512/4K
   speed follows only if semantics pass.
+
+## 2026-07-15 - Reject GPF-9D on strict decode and close peer schedules
+
+- Clean W7900 commit `239d90db` passes teacher-forced product quality across all
+  18 prompts: KL max **0.02868854 <= 0.05** on `code_lru_cache`, aggregate
+  top-1 **444/450 = 98.667% >= 90%**, and finite deterministic execution.
+- Aggregate balanced decode median-wall sum is **22508.498 -> 22508.787 ms**,
+  candidate minus baseline **0.289 ms**, or **+0.001286%**. The prospectively
+  frozen rule required strict non-regression with zero tolerance, so the gate
+  status is `rejected_decode_regression`; no 512/4K speed measurement follows.
+- Exact command:
+  `PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_cluster8 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9d.txt --require-cached-build --json /tmp/gdn-peer-cluster8-peer-aligned-clean-239d90db.json`.
+  Raw SHA256 is
+  `d8d5469e1820437f0071973bac0916a4a6c6f8578492aa195ebc3461af3d99a4`.
+- Published compact rejection evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`.
+  No benchmark topline/changelog changes. GPF-9 now closes without promotion:
+  HIP peer geometry fails the 512 floor and Vulkan peer geometry fails strict
+  decode. Production remains `chain_lds32_direct`; remove the rejected selector,
+  wrapper, kernel, and candidate-only scratch surfaces next.

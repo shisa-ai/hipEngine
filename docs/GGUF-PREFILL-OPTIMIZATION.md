@@ -486,7 +486,7 @@ select current code without a fresh profile.
 | 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but KL 0.056522 and the 512 llama.cpp floor fail; the later trajectory-policy change does not alter rejection |
 | 15 | `GPF-9A/B` | **Rejected:** existing normalized-Q/K K2 and raw-Q/K-plus-scale register-resident wave32 tree | K2 fails KL `0.059031`; tree fails `0.068757`. Both pass top-1 and decode, but do not proceed to speed |
 | 16 | `GPF-9C` | **Rejected on 512 speed:** `chain_peer_wave32` reproduces llama.cpp HIP's normalized-Q/K one-wave32 schedule | Semantics/decode pass; 4K beats llama.cpp by 11.45%, but 512 reaches `2210.729 tok/s`, 8.36% below the required floor |
-| 17 | `GPF-9D` | **Active; primitive admitted:** `chain_peer_cluster8` reproduces llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | Four columns/wave, 32/block, 16 resident rows/lane; CPU fixtures pass at 96 VGPR/zero LDS/scratch and synthetic recurrence is about half GPF-9C; semantic/speed gates remain |
+| 17 | `GPF-9D` | **Rejected on strict decode:** `chain_peer_cluster8` reproduces llama.cpp Vulkan's eight-lane clustered S_v=128 schedule | KL `0.028689` and top-1 `444/450` pass, but decode regresses `0.001286%` with no predeclared tolerance; no speed gate |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1159,8 +1159,11 @@ stays on `chain_lds32_direct`. The subsequent clean speed gate reaches
 tok/s** at 4K (**+11.454%**). Because both floors are required, GPF-9C is
 rejected for promotion. GPF-9D now tests Vulkan's distinct eight-lane clustered
 schedule, whose higher column concurrency specifically targets the failed 512
-shape. Evidence:
-[`2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json).
+shape. GPF-9D passes teacher-forced quality at KL max **0.028689** and top-1
+**444/450 = 98.667%**, but aggregate decode wall is **22508.498 -> 22508.787
+ms (+0.001286%)**. The prospectively frozen rule had zero tolerance, so no
+speed gate follows and the peer-schedule lane closes without promotion. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json).
 
 ## Correctness And Promotion Contract
 

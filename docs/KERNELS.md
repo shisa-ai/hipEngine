@@ -313,8 +313,11 @@ value column, 16 state rows per lane, and clustered reduction. The explicit
 contiguous eight-lane clusters and each 256-thread block to 32 value columns;
 plain/segmented CPU-reference fixtures pass, and rocprof reports 96 VGPR with
 zero LDS/scratch and `41.840/44.801 us` recurrence on the synthetic fixture.
-The unchanged semantic and speed gates still own admission. See
-`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-speed-rejected.json`.
+Its clean quality gate passes at KL max `0.028689` and top-1 `444/450`, but the
+strict decode rule rejects aggregate wall `22508.498 -> 22508.787 ms
+(+0.001286%)`; no tolerance was predeclared and no speed gate follows. The
+peer-schedule lane closes without promotion. See
+`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-cluster8-rejected.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
 registers without changing shuffles, explicit FMA sites, token order, or the
