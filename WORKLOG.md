@@ -158427,3 +158427,15 @@ used by gfx1100 LCP-4A and was promoted with zero private scratch/spills. The
 remaining separate state update measured only 0.241 ms across 120 launches in
 the 4K trace. There is no missing tiled-plus-no-scratch combination; reopening
 Conv would target only that negligible state-update tail and is not selected.
+
+## 2026-07-16 — Confirm the retained gfx1100 router stack
+
+A direct same-session legacy-versus-package gate at clean `76104cd4` compares
+512-thread logits plus 512-thread select against the newly retained 256/128
+package defaults. Hermetic therock HIP 7.15 balanced 1+3 paired prefill deltas
+are **+3.87%** at 512 and **+4.16%** at 4K. Aggregate medians move
+**2705.881 -> 2805.542 tok/s** and **2945.327 -> 3081.822 tok/s**. Graph decode
+is **+0.11%/+0.07%**, tracked peak is unchanged, and all 12 measured final IDs
+are 9707. This confirms that the two independently retained paths compose
+without interference. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-stack-promotion.json`.
