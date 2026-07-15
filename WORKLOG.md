@@ -156982,3 +156982,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Re-profile the clean pp512 residual and move to the next measured family; do
   not reopen independent-wave widening, direct T16 integer WMMA, T16-to-MMQ
   transpose, or raw MMQ128 without genuinely new evidence.
+
+## 2026-07-15 - Predeclare LCP-4A no-scratch normal convolution prefill
+
+- The clean pp512 comparison initially appears to show linear-attention
+  convolution at **8.496 ms / 30 calls** in hipEngine versus **1.282 ms / 30**
+  in llama.cpp. Per-dispatch inspection changes the diagnosis: hipEngine calls
+  4-30 are already **101-108 us** each (about **2.83 ms** total), while only
+  calls 1-3 cost **2.627/1.514/1.522 ms** after the trace protocol's five-second
+  idle lead. The apparent family residual is therefore mostly a cold/private-
+  memory event, not a missing 30-layer tiled algorithm.
+- Production normal prefill launches
+  `qwen35_linear_attn_conv_prefill_kernel(..., conv_state_rows=nullptr)`. Its
+  four `volatile` products intentionally preserve separate FP32 multiply/add
+  rounding and sequential decode order, but the compiled code object reports
+  **20 bytes private storage/thread** (27 VGPR, zero spills); rocprof reports
+  the same 20-byte scratch allocation over the 4,194,304-thread pp512 launch.
+  The optional verifier row-capture branch is not the source of those bytes;
+  the volatile exactness mechanism is. The source is unchanged from the prior
+  clean profile that measured about 3.1 ms, so this is bounded optimization,
+  not a newly introduced correctness regression.
+- LCP-4A adds one capture-free normal-prefill specialization. Explicit
+  `v_mul_f32_e32` and sequential `v_add_f32_e32` instructions must preserve the
+  existing operation order while keeping products/accumulators in VGPRs. The
+  existing state-row capture kernel, segment kernels, low-precision kernels,
+  wrappers, state update, and decode routes remain semantically untouched.
+- RED/GREEN requires normal-prefill outputs and final Conv state to match the
+  independent CPU decode-order reference numerically and current production
+  byte-for-byte over short-boundary and ordinary shapes. Static code-object
+  metadata must show zero private storage and zero spills for the new body.
+- The frozen W7900 performance ladder first compares old and new cached shared
+  objects on the production `512x8192`, kernel-size-4 leaf: warm median must not
+  regress, and a five-second-idle first-launch screen must improve. It then
+  repeats the cached pp512 kernel trace; the 30-call convolution total and the
+  first-three aggregate must decrease without moving capture/state-row routes.
+  Only then may balanced exact-semantics 512/4K full-model A/B rows select the
+  default. A warm-body loss, remaining private segment, byte mismatch, or
+  either full-model floor regression rejects and removes the specialization.
