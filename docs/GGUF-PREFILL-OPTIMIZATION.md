@@ -1,6 +1,6 @@
 # GGUF Prefill Optimization
 
-Last updated: 2026-07-14.
+Last updated: 2026-07-15.
 
 Status: `SOL-R5` plus the bounded GGUF half of `SOL-R6` are retained and
 published on gfx1151.
@@ -43,7 +43,11 @@ complete: exact tiled convolution LCP-1 and long-split reducer LCP-D1 publish
 512/1K/4K/32K/64K/128K. All 18 measured IDs are `9707`; tracked memory is
 unchanged; maximum prefill/decode stdev over median is **0.140%/0.113%**. The
 separate 128K lifecycle-soak issue is not reproduced inside this calibrated
-1+3 window.
+1+3 window. LCP-2A exact cacheable GDN, scoped LCP-3 four-wave Q8T16, and
+LCP-4A's 256-thread F32 router are now promoted. The final LCP-M2 metadata gate
+also retains the exact short-context win: stream-ordered metadata is automatic
+through 4K, while longer requests keep synchronous metadata after the explicit
+128K one-queue route still reproduced the low-power no-progress state.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. LCP-D1 records the bounded 128K GGUF decode
@@ -397,7 +401,7 @@ select current code without a fresh profile.
 | 12 | `LCP-1` | **Promoted and published on gfx1151:** exact 32-token by 128-channel shared-memory convolution | 82/82 state parts exact; 4K body 954.134 -> 49.790 ms; six-shape prefill +1.10%..+24.04%; gfx1100 stays baseline |
 | 13 | `LCP-D1` | **Retained long-context decode reduction:** cooperate only above 256 splits | 4,096 BF16 values exact; 128K reducer -16.30%; graph decode 27.753 -> 28.047 tok/s; shorter reducer unchanged |
 | 14 | `LCP-2A` | **Promoted on gfx1151:** compiler-cacheable exact direct-LDS32 GDN state | Six-case state and 250/250 natural transitions exact; balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%; volatile GPF-2E remains rollback |
-| 15 | `LCP-M2` | **Blocked default-off:** generate contiguous chunk metadata on-device instead of six synchronous H2D copies | 83/83 exact; clean 512/4K +1.47%/+0.65%, but the required 128K variance escalation reproduces the separate low-power GPU-active lifecycle state |
+| 15 | `LCP-M2` | **Promoted on gfx1151 through 4K:** generate contiguous chunk metadata on-device instead of six synchronous H2D copies | Automatic-vs-explicit 512/1K/4K is 83/83 exact; balanced prefill +1.56%/+0.90%/+0.53%. Explicit 128K with one queue still enters the low-power no-progress state, so longer requests retain synchronous metadata |
 | 16 | `LCP-3` | **Promoted on gfx1151 through 64K:** four exact Q8T16 waves share one activation tile | Clean 512/4K state is 83/83 exact; five-pair full-model prefill +0.53%/+1.57%; two-wave and production remain rollback paths |
 | 17 | `LCP-4A` | **Promoted on gfx1151:** exact 256-thread BF16-hidden/F32-weight router logits | Clean 512/4K state is 83/83 exact; prefill +2.76%/+3.28%; graph decode exact/+0.071%; gfx1100 remains 512-thread |
 
@@ -1267,14 +1271,16 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 
 - gfx1151 automatic GGUF prefill selects exact
   `chain_lds32_direct_nonvolatile` GDN, Q4T16 `shared_x`, LCP-3 four-wave
-  Q8T16 through 65,536 prompt tokens, and LCP-4A 256-thread F32 router logits.
-  Longer prompts restore the production Q8T16 wrapper while retaining LCP-4A.
+  Q8T16 through 65,536 prompt tokens, LCP-4A 256-thread F32 router logits, and
+  LCP-M2 stream-ordered contiguous metadata through 4,096 prompt tokens. Longer
+  prompts restore synchronous metadata; prompts above 64K also restore the
+  production Q8T16 wrapper while retaining LCP-4A.
   Before HIP loads, gfx1151 now also defaults to `GPU_MAX_HW_QUEUES=1`; explicit
   user values win, and gfx1100/mixed recognized arches are unchanged. gfx1100
   remains on its prior fused/baseline/production routes pending hardware-local
   transfer evidence.
 - Causal retained wins are the clean GPF-2D, GPF-3A, GPF-2E, scoped GPF-5A,
-  LCP-1, LCP-D1, LCP-2A, scoped LCP-3, and LCP-4A gates above. GPF-1, GPF-2A, GPF-2B,
+  LCP-1, LCP-D1, LCP-2A, scoped LCP-M2, scoped LCP-3, and LCP-4A gates above. GPF-1, GPF-2A, GPF-2B,
   and GPF-2C are closed rejections; do not
   rerun them without a genuinely different algorithm or contract.
 - Correctness is anchored by the six-case byte-exact matrices and the GPF-2E
@@ -1312,12 +1318,12 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   transitions are exact; balanced 512/1K/4K prefill improves
   **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100 stays
   fused pending its own transfer gate.
-- LCP-M2 is exact and locally positive but remains default-off. Clean 512/4K
-  improves **+1.47%/+0.65%** with 83/83 parts exact; its variance escalation was
-  where the low-power GPU-active state first reappeared. The later clean
-  production/default-queue reproduction plus one-queue completion proves that
-  blocker is process-wide gfx11 queue scheduling, not deterministic LCP-2A or
-  metadata math. Re-gate LCP-M2 separately only if it returns to the roadmap.
+- LCP-M2 is promoted on gfx1151 through 4K. Clean balanced 512/1K/4K prefill
+  improves **+1.56%/+0.90%/+0.53%** and automatic-vs-explicit state is 83/83
+  exact at all three shapes. Explicit 128K under the one-queue process policy
+  completes a 483.439 tok/s warmup but still enters the low-power no-progress
+  state on measured pass 1. Package policy therefore retains synchronous
+  metadata above 4K; env `0|1` remains the rollback/diagnostic override.
 - LCP-D1 is retained for `num_splits > 256`; shorter reducers remain serial.
   The clean 128K reducer falls **234.714 -> 196.466 us/call (-16.30%)**, and
   right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.
@@ -1331,7 +1337,7 @@ This is the authoritative pickup state; do not reconstruct it from chat:
 - No benchmark process is intentionally left running. The one-queue stability
   artifact, rollup, upstream comment, and root README export are complete. The
   public six-shape throughput table still carries the earlier right-sized row;
-  its next refresh must use the new gfx1151 queue default and current LCP-4A
+  its next refresh must use the new gfx1151 queue default and current LCP-M2
   selector-unset production path.
 
 Keep GPF-4 explicit/default-off and LCP-3 request-scoped through 65,536 tokens,
