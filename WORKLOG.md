@@ -157019,3 +157019,45 @@ graphless decode launch-collapse path without regressing target/serial parity.
   Only then may balanced exact-semantics 512/4K full-model A/B rows select the
   default. A warm-body loss, remaining private segment, byte mismatch, or
   either full-model floor regression rejects and removes the specialization.
+
+## 2026-07-15 - Implement LCP-4A no-scratch normal convolution prefill
+
+- RED failed on the required capture-free exact-math body name/instructions.
+  GREEN adds only `qwen35_linear_attn_conv_prefill_no_state_rows_kernel` and
+  routes the existing normal FP32 wrapper to it. A two-instruction inline-ISA
+  helper emits one `v_mul_f32_e32` followed by one `v_add_f32_e32` for every
+  sequential tap. The old optional state-row body, segment bodies, lowp paths,
+  state update, decode wrappers, and registry keys are unchanged.
+- Boundary correctness passes for 1/3/4/9/31 tokens: normal output and final
+  state are byte-exact to the retained segment body and match the independent
+  CPU decode-order reference within `2e-6`. The focused plan/kernel command is
+  **11 passed**; the existing full prefill smoke reports Conv output max abs
+  `1.49e-08` and state max abs zero. Static gfx1100 metadata is **26 VGPR / 49
+  SGPR, zero private bytes, zero spills**; the measured kernel trace reports 32
+  VGPR and zero scratch.
+- The prospectively frozen `512x8192`, K4 shared-object leaf gate passes. HIP
+  event medians move **0.111900 -> 0.070860 ms (-36.68%)** warm and **0.400742
+  -> 0.259321 ms (-35.29%)** after five-second idle, comparing the cached old
+  and new full wrappers including the unchanged state-update launch.
+- The final pp512 pass was extracted after the trace's explicit 750.806 ms
+  pre-target gap. Normal Conv body time moves **8.496307 -> 1.893535 ms / 30
+  (-77.71%)**. The first three cold calls move **5.663766 -> 0.192841 ms
+  (-96.60%)** and calls 4-30 move **2.832541 -> 1.700694 ms (-39.96%)**.
+  Summed GPU work falls **208.353512 -> 199.126 ms (-4.43%)** and profiler host
+  rate rises **2296.173 -> 2416.276 tok/s (+5.23%)**. Candidate trace SHA256 is
+  `7170860bd4c757dd589452f3daaf56edd643a3d053542d31c3d292a8d2ac720c`.
+- Dirty-tree same-session balanced A/B clears both full-model floors with every
+  final ID `9707`. On `chain_peer_wave32`, 512/4K prefill moves **2302.613 ->
+  2352.580 (+2.17%) / 2505.262 -> 2578.163 tok/s (+2.91%)**. On production
+  `chain_lds32_direct`, it moves **1297.387 -> 1317.049 (+1.52%) / 1387.583 ->
+  1410.278 tok/s (+1.64%)**. Raw A/B SHA256 values are
+  `80ff609db3ae1c77bfa5c327e8725876af9a7e9c05c9e04c0a8ff4b543d8593a`
+  and `d15e7557d6bffa950f9e025f51d5d88d186aed35e55bd26ccbf55d52443438a7`.
+  These validate the code unit but do not satisfy clean retained provenance;
+  commit the exact kernel/tests/catalog first, then rerun the balanced direct
+  gate from the clean commit before publishing the benchmark artifact.
+- Validation also passes compileall, registry smoke, and CPU-fixture smoke.
+  `scripts/check_fixtures.py` remains independently broken on pre-existing
+  `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, whose
+  schema lacks the runner's required top-level `expected`; this change does not
+  touch that fixture or runner.
