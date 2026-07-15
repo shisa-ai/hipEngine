@@ -156123,3 +156123,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json`.
   Exact prefill closure is complete; next optimization work is the measured
   decode tranche.
+
+## 2026-07-15 - Close current exact GGUF decode tranche
+
+- Captured fresh current-default one-queue eager profiles at 512, 4K, and 128K.
+  All 48 marked transitions plus prefills/warmups retain token `9707`; each
+  decode window has **708 kernel launches/token**. GPU time is
+  **19.231/18.109/34.657 ms/token**. Dense Q8 remains
+  **8.560/8.541/8.555 ms/token**; 128K attention is **17.504 ms/token**, split
+  between grouped-GQA context **15.509** and the LCP-D1 reducer **1.962 ms**.
+- Screened the only safe launch-only residuals. On a deterministic 128K BF16-KV
+  context+reduce fixture, chunk 128 is **1.739 -> 1.691 ms (+2.89%)** but changes
+  one BF16 output; chunk 512 is also one-output inexact and slower at **1.905
+  ms**. Keep chunk 256. On the dominant Q8 rows=1 `2048x(8192+4096)` split pair,
+  64 threads takes **154.41 us** versus 128 threads **133.30 us** (+15.8% wall).
+  Keep 128. The earlier exact all-eight-head register tile remains rejected at
+  2.878 versus 1.748 ms/call.
+- Current full-model graph admission remains positive. Matched 1+3 graph versus
+  eager decode is **49.120 vs 48.634 tok/s (+1.00%)** at 512 and **52.461 vs
+  52.012 (+0.86%)** at 4K. A bounded current 128K confirmation is **28.081 vs
+  27.981 tok/s (+0.36%)**. Every measured ID is `9707`; graph capture is
+  excluded from decode wall.
+- No new decode kernel is promoted. Retain LCP-D1 chunk-256 grouped GQA,
+  128-thread Q8T16 GEMV, and production graph replay. Synchronized the profile,
+  benchmark/kernel rollups, and parity/prefill handoffs in
+  `benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json`.
+  Future decode work needs a new exact algorithm/layout; proceed to the final
+  selector-unset six-shape publication refresh.

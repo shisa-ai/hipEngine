@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_decode_closure_profile",
+  "status": "closed_no_new_kernel_promotion_graph_retained",
+  "performance_claim": true,
+  "performance_claim_scope": "Current graph-versus-eager admission at 512/4K plus a bounded 128K confirmation; eager family profiles are attribution diagnostics",
+  "correctness_claim": true,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "source_commit": "89443a1fcb78aaa32b18f331e9e1bdd30edfd74f",
+    "hip": "7.15.0-0000000",
+    "kernel": "7.1.3-2-cachyos",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1 (automatic gfx1151 process default)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "profile_protocol": {
+    "mode": "correct eager decode; graph off; decode repack and GEMV on",
+    "steps": 16,
+    "warmup_steps": 1,
+    "scope": "one synchronized ROCTX marker window per exact decode transition; model load, prefill, and warmup excluded",
+    "profiler": "rocprofv3 --kernel-trace --marker-trace with SDK ROCTX override and cached builds",
+    "all_profile_tokens_exact": true,
+    "kernel_dispatches_per_token": 708
+  },
+  "profiles": {
+    "512": {
+      "profiled_host_tok_s": 45.948466009744315,
+      "gpu_ms_per_token": 19.2307978125,
+      "buckets_ms_per_token": {
+        "dense_q8_0_gemv": 8.559681125,
+        "moe_selected_gemv": 4.2087164375,
+        "attn_core": 2.0936784375,
+        "lm_head": 1.8591461875,
+        "moe_router": 0.771181125,
+        "gdn_linear_attn": 0.7440946875
+      }
+    },
+    "4096": {
+      "profiled_host_tok_s": 47.4437334223441,
+      "gpu_ms_per_token": 18.10890925,
+      "buckets_ms_per_token": {
+        "dense_q8_0_gemv": 8.540978875,
+        "moe_selected_gemv": 4.18927675,
+        "lm_head": 1.8580589375,
+        "attn_core": 1.0051760625,
+        "moe_router": 0.767514625,
+        "gdn_linear_attn": 0.741548875
+      }
+    },
+    "131072": {
+      "profiled_host_tok_s": 26.792367614030386,
+      "gpu_ms_per_token": 34.6574139375,
+      "buckets_ms_per_token": {
+        "attn_core": 17.504070875,
+        "dense_q8_0_gemv": 8.55459775,
+        "moe_selected_gemv": 4.1924385,
+        "lm_head": 1.866573625,
+        "moe_router": 0.77455725,
+        "gdn_linear_attn": 0.74615275
+      },
+      "top_attention_families_ms_per_token": {
+        "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa": 15.508676875,
+        "qwen35_paged_full_attn_decode_split_k_reduce_gate": 1.9622440625
+      }
+    }
+  },
+  "candidate_screens": {
+    "grouped_gqa_chunk_size": {
+      "shape": "BF16 KV, 131072 context, 16 Q heads, 2 KV heads, head_dim 256, dense contiguous KVLiveSpans",
+      "protocol": "three warmups and nine synchronized context+reduce samples per chunk geometry on one deterministic patterned fixture",
+      "chunk_256_control": {"splits": 512, "median_ms": 1.7393440357409418},
+      "chunk_128": {"splits": 1024, "median_ms": 1.6905030352063477, "speedup": 1.0288914006762682, "bf16_mismatches": 1, "decision": "reject_inexact"},
+      "chunk_512": {"splits": 256, "median_ms": 1.9054050208069384, "speedup": 0.9128474086860179, "bf16_mismatches": 1, "decision": "reject_inexact_and_slower"},
+      "prior_register_tile_control": "The previously measured all-eight-query-head register tile remains rejected at 2.878 vs 1.748 ms/call (0.607x), despite exact output, because occupancy/register pressure dominates.",
+      "decision": "Retain chunk 256 and the LCP-D1 long-split reducer. No exact launch-only grouped-GQA candidate wins."
+    },
+    "dense_q8_threads": {
+      "shape": "rows=1, in=2048, split outputs 8192+4096, >2x-MALL weight cycling",
+      "protocol": "20 warmups and 100 measured exact-kernel iterations",
+      "threads_64_us": 154.41,
+      "threads_128_us": 133.30,
+      "threads_128_speedup_vs_64": 1.158364591147787,
+      "decision": "Retain 128 threads. The only supported alternative has 15.8% longer wall on the dominant dual-split shape; prior q8_1/dp4a and row-tile diagnostics remain non-production or rows>1 only."
+    }
+  },
+  "graph_admission": {
+    "short_mid_protocol": "Separate clean graph and eager max-4K resident processes; one warmup plus three measured 128-token trajectories per shape",
+    "512": {
+      "graph_median_tok_s": 49.120346465167835,
+      "eager_median_tok_s": 48.634378769655285,
+      "graph_delta_percent": 0.9992266947917994,
+      "all_final_token_ids": 9707
+    },
+    "4096": {
+      "graph_median_tok_s": 52.46123715987902,
+      "eager_median_tok_s": 52.0122160029252,
+      "graph_delta_percent": 0.8632994159075258,
+      "all_final_token_ids": 9707
+    },
+    "128k_protocol": "Bounded clean current confirmation: one measured 128-token trajectory per separate graph/eager process after one 128K prefill; capture excluded from graph decode wall",
+    "131072": {
+      "graph_tok_s": 28.080594281263174,
+      "eager_tok_s": 27.981255065981127,
+      "graph_delta_percent": 0.355020584486998,
+      "all_final_token_ids": 9707
+    },
+    "decision": "Retain graph replay as the production default at all publication contexts. The final six-shape 1+3 graph sweep remains the publication authority."
+  },
+  "sources": {
+    "profile_512_summary_sha256": "070b0038c5a34cc6d0d35a58c3ecd80f132950f07119256ad21f721194ff3001",
+    "profile_4096_summary_sha256": "e9cc1fb0c9737653195ddbbd8864d45b4df4a3953ea4af234be37ae92acd2a9e18a39",
+    "profile_128k_summary_sha256": "2007019e00a175e622b9b88b295e9f8775a6da2eff041893f64847cc9010abc8",
+    "profile_512_kernel_trace_sha256": "f3198513f12ae12c74b8620e99220f8631fb73c73dd0e16bb3a0714e98f9b1fa",
+    "profile_4096_kernel_trace_sha256": "ed41eb737ee5622ebe707d9b6adc5646e306b9b087ab71fe2ea226a30c49fdcb",
+    "profile_128k_kernel_trace_sha256": "97cc36cb50d10304760c26f093f94a257350256a8c4e594bb30632ba0b19daf3",
+    "profile_512_marker_trace_sha256": "2309eab80c0e3c37d34d4caa98ee8c3299d5eece3fdcf0aaf6e06799bd757d3f",
+    "profile_4096_marker_trace_sha256": "2663f35fb4f9f349d58ad4a6d80fc70c67e029e9cc56799638a17bd00cfabc7b",
+    "profile_128k_marker_trace_sha256": "8cbe6dd22d1cfeb661930c6a56e22c977bb3df38f46ad12ea4970675719bf0db",
+    "graph_short_mid_sha256": "cb9f67f16b006ad2818f449ad2f46547780a7a06475086b152bbde8cd71bb7c6",
+    "eager_short_mid_sha256": "2e99425d6092f481f537853da6ab412327417848b2ad7d272aac2b71ea0c36a0",
+    "graph_128k_sha256": "e4fbdea854b89b1d9b9674092aa8f93f0d287fb00ffde834c06021b1bb6c913c",
+    "eager_128k_sha256": "cd49506ce80907b6b3827028b3e1462f861bc964ae0c781b801ca3c688b4ec05",
+    "gqa_chunk_screen_sha256": "5d3bf9b3e1e106181c8816680e274d549131ca095643d15b1901559796be2d00",
+    "q8_thread_screen_sha256": "083e0c4f93b6e80785edc910a993b7b8f4ddb35015c49212e54e111ab08218b1"
+  },
+  "decision": "Close the current exact decode candidate tranche without a new kernel promotion. Retain LCP-D1 chunk-256 grouped GQA, 128-thread dense Q8T16 GEMV, and production graph replay. Future decode work requires a new exact algorithm/layout, not another launch-only sweep of the measured candidates."
+}

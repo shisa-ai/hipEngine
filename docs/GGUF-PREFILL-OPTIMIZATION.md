@@ -1337,12 +1337,13 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   currently actionable exact-GDN source lane; LCP-3 closes the current
   dense-Q8 shared-layout screen; LCP-4A closes router-logit launch geometry;
   and the post-profile LCP-4B gate closes router selection without risky
-  logits+top-k fusion. The remaining 128K decode bodies are grouped-GQA context
-  and dense Q8.
+  logits+top-k fusion. The fresh exact-decode tranche also closes launch-only
+  grouped-GQA and dense-Q8 screens without a new promotion; graph replay remains
+  admitted. Any future decode attempt needs a new exact algorithm/layout.
 - No benchmark process is intentionally left running. The one-queue stability
   artifact, rollup, upstream comment, and root README export are complete. The
   public six-shape throughput table still carries the earlier right-sized row;
-  its next refresh must use the new gfx1151 queue default and current LCP-M2
+  its next refresh must use the new gfx1151 queue default and current LCP-4B
   selector-unset production path.
 
 Keep GPF-4 explicit/default-off and LCP-3 request-scoped through 65,536 tokens,

@@ -10,6 +10,7 @@ Machine-readable evidence:
 - [`2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json`](../benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json)
 - [`2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-device-metadata-scoped-promotion.json)
 - [`2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-prefill-router-select-threads128-promotion.json)
+- [`2026-07-15-gfx1151-gguf-decode-closure-profile.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json)
 
 This document answers a narrow question: after the retained GPF-5A work, what
 still makes llama.cpp HIP faster than hipEngine GGUF on Radeon 8060S/gfx1151,
@@ -480,6 +481,19 @@ and improves clean balanced 512/4K prefill **+0.34%/+0.36%**, with 83/83
 full-model state parts exact. The faster 64-thread primitive is rejected because
 4K full-model logits/hidden, Conv/GDN, and KV state differ.
 
+### Current exact-decode closure
+
+Fresh one-queue marker profiles preserve the same residual ordering: dense Q8 is
+**8.560/8.541/8.555 ms/token** at 512/4K/128K, while 128K grouped-GQA context
+plus reduction is **15.509 + 1.962 ms/token**. The two launch-only screens do
+not produce a retainable kernel: halving grouped-GQA chunk size is +2.89% on a
+deterministic 128K fixture but changes one BF16 output; doubling it is inexact
+and slower. Dense-Q8 64 threads has 15.8% longer wall than 128 on the dominant
+rows=1 split-pair shape. Current graph replay still beats eager by
+**+1.00%/+0.86%** at 512/4K across 1+3 and by **+0.36%** in a bounded 128K
+confirmation, all IDs exact. Keep LCP-D1 chunk 256, Q8 threads 128, and graph
+replay. Another decode attempt needs a new exact algorithm/layout.
+
 ## Explicit non-targets
 
 - Do not replace hipEngine selected Q4/Q5 with generic llama.cpp MMQ; the
@@ -502,7 +516,9 @@ currently actionable exact convolution, GDN, metadata, dense-Q8, router-logit,
 and router-select prefill bodies. Use the promoted gfx1151 one-queue process
 default for subsequent production/profile runs. The required 4K refresh is
 complete and does not justify router-select fusion; do not disturb the already-
-faster selected Q4/Q5 families. For decode, the clean 128K trace still
-leaves the grouped-GQA context body at **15.502 ms/token** and dense Q8 at
-**8.546 ms/token**. Any follow-up must target one of those measured families and
-preserve the current BF16-KV, `KVLiveSpans`, and exact state/token contracts.
+faster selected Q4/Q5 families. The current decode profile and launch-only
+screens are also complete; graph replay remains admitted and no new exact kernel
+is promoted. Any future decode work must bring a new grouped-GQA or dense-Q8
+algorithm/layout and preserve the current BF16-KV, `KVLiveSpans`, and exact
+state/token contracts. The immediate next step is the final selector-unset
+six-shape publication sweep, not another unprofiled kernel experiment.
