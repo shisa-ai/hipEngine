@@ -131,14 +131,25 @@ The native explicit `tail4_hadamard_group32` layout keeps K/V for
 full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
 `27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
 rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
-BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
-while writing packed tail K/V, then releases that oracle before decode. Native
-GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
-KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
-1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
-the mixed policy remains explicit and non-default: its quality-preserving 256
-Ki request scratch OOMs, while the allocation-passing direct route fails
-fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
+BF16 shadow. PARO's quality-preserving prefill uses a temporary BF16 oracle;
+GGUF's post-quality layout audit reports zero persistent oracle/mirror buffers.
+Native PARO still fails 1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82%
+worst-prompt top-1), and its 256 Ki quality-preserving request scratch OOMs.
+
+The clean `c971262f` therock-7.15 GGUF-only closure passes all 11 prompts at
+512/8 (max KL `0.007455`, top-1 100%) and 4K/16 (mean/max KL
+`0.0001369/0.009926`, aggregate/minimum-prompt top-1 `99.47%/94.12%`) plus
+bounded `mixed_v1` at 128K/16 (max KL `5.19e-5`, top-1 100%). At 128K,
+persistent K/V is `2,185,297,920` bytes versus BF16 `2,689,597,440` bytes and
+live owned memory falls `24.168 -> 23.698 GiB`. It still rejects promotion:
+production 4K prefill/decode regress `0.67%/0.75%`, one-shot 128K decode
+regresses `3.82%`, and production prefill allocates then frees
+`1,075,838,976` bytes—byte-exact to four BF16 layer caches—raising allocator
+high water `24.168 -> 24.700 GiB`. The transient attribution is inferred from
+the exact bytes; it is not a persistent shadow. The policy remains explicit
+and non-default. Evidence:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json` and
+`benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The INT8 layout retains 2,686,976,000 payload bytes plus 20,992,000 FP16 scale

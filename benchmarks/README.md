@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-15**
 
 Latest retained hipEngine revision in this scoreboard:
-`683ddab6bcaedbe51abbec779b6e6ae0a575d94c`.
+`487e658cde2ee87415db132711988db44d6ec5d0`.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -299,7 +299,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | --- | --- | --- | --- | --- | --- | --- |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
-| Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-14 | source base `9d0bb4e2` plus exact recorded implementation hashes; TheRock HIP 7.2.53211; exact Q4_K_M, PARO snapshot, and prompt-suite identities; dirty-source speed rows remain diagnostic | **Split native outcome; no promotion**: the six-BF16/four-INT8 packed layout passes GGUF on all 11 prompts at 512/8 and 4K/16 (**0.00006564/0.001681 mean/max KL, 100% top-1** at 4K) plus bounded `mixed_v1` 128K/16. PARO fails one 512/8 prompt and two 4K/16 prompts (worst prompt **0.08136 KL / 58.82% top-1**). XTX p512/d128 changes GGUF eager by **+0.05% prefill / +0.25% decode** and PARO graph by **-0.40% / -4.11%**. The quality-preserving PARO 256 Ki scratch probe OOMs cleanly at **23.469 GiB tracked peak**; direct streaming allocates at 23.290 GiB but is correctness-rejected. Explicit-only, unsupported/default status unchanged. [`artifact`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Require a PARO-safe layout plus memory-safe prefill to pass the full prompt suite, bounded long-context gate, full physical 256 Ki run, and clean matched performance before promotion. |
+| Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-15 | clean GGUF closure `c971262f`; therock HIP 7.15; exact Q4_K_M and prompt-suite identities; prior PARO/XTX outcome retained separately | **Quality-safe GGUF explicit diagnostic; no default promotion**: clean GGUF passes all 11 prompts at 512/8 and 4K/16 (**0.0001369/0.009926 mean/max KL, 99.47% aggregate and 94.12% minimum-prompt top-1** at 4K) plus bounded `mixed_v1` 128K/16. Persistent 128K K/V drops **2,689,597,440 -> 2,185,297,920 bytes (-18.75%)** with no persistent BF16 shadow, but production 4K prefill/decode regress **0.67%/0.75%**, 128K decode regresses **3.82%**, and a **1.002 GiB** prefill transient raises allocator high water **24.168 -> 24.700 GiB** despite lowering live owned memory by **0.470 GiB**. Prior PARO quality and 256 Ki capacity blockers remain. Explicit-only; unsupported/default status unchanged. [`clean GGUF gate`](results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) · [`prior split outcome`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Remove the inferred four-layer BF16 prefill transient and optimize long-context group32 attention, then repeat the clean GGUF gate; PARO requires its own quality-safe layout. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-12 | clean measured hipEngine `8116c453`, rebased-equivalent reachable `8708304f` (runtime/benchmark code identical); TheRock HIP `7.15.0-0000000`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted four-column topline**: all six shapes pass W7900-local state/token correctness, clean provenance, finite/stable IDs, exact Q4_K_M identity, five-sample variance, and corrected whole-device VRAM scope. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF architecture-local prefill/decode and LCP-M1 memory optimization | 2026-07-14 | clean throughput rollup `ef3e97dd`; clean liveness arena `04b48b67`; TheRock HIP 7.15; exact Q4_K_M fingerprint retained | **Accepted current gfx1100 GGUF route**: the final six-shape sweep publishes **1290.246-766.892 prefill** and **89.727-61.264 graph-decode tok/s**; LCP-M1 then reduces tracked memory by **0.274-1.452 GiB** and places every shape below the retained llama.cpp HIP whole-device total. The same-process 4K gate preserves all 248,320 FP32 logits byte-exact; clean 4K 1+3 prefill/decode are non-regressive. | Yes | Rerun throughput after GDN/dense-Q8/selected-MoE work; rerun memory after resident allocation/KV/model changes |
 | Radeon Pro W7900, gfx1100 | GGUF pp512 request-scoped metadata reuse | 2026-07-15 | clean retained scheduler `e03e5a34`; matched HIP API/kernel traces around the identical source change; TheRock HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained scheduler / diagnostic GPF-9C row**: exactly **240 synchronous copies** are removed, matched queue idle falls **27.956 -> 15.163 ms (-45.76%)**, and clean `chain_peer_wave32` pp512 improves **2210.729 -> 2292.186 tok/s (+3.68%)** with stable IDs, unchanged **22.995 GiB** peak, and decode +0.51%. 4K is within -0.44%, but 512 remains **4.98% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. [`artifact`](results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json). | Diagnostic link only; scheduler code retained | Superseded for the next queue boundary by the compact-WMMA no-read row below; retain as the isolated 240-copy attribution. |
@@ -766,14 +766,25 @@ The native explicit `tail4_hadamard_group32` layout keeps K/V for
 full-attention layers `3,7,11,15,19,23` in BF16 and stores only layers
 `27,31,35,39` as Hadamard-group32 INT8 with FP16 scales. At 262,400 retained
 rows it uses `4,366,336,000` K/V bytes—**18.75% below BF16**—with no persistent
-BF16 shadow. Quality-preserving prefill attends through a temporary BF16 oracle
-while writing packed tail K/V, then releases that oracle before decode. Native
-GGUF passes all 11 prompts at 512/8 and 4K/16 (`0.00006564/0.0016805` mean/max
-KL and 100% top-1 at 4K) plus bounded `mixed_v1` at 128K/16; native PARO fails
-1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82% worst-prompt top-1). Therefore
-the mixed policy remains explicit and non-default: its quality-preserving 256
-Ki request scratch OOMs, while the allocation-passing direct route fails
-fidelity. Evidence: `benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
+BF16 shadow. PARO's quality-preserving prefill uses a temporary BF16 oracle;
+GGUF's post-quality layout audit reports zero persistent oracle/mirror buffers.
+Native PARO still fails 1/11 prompts at 512/8 and 2/11 at 4K/16 (58.82%
+worst-prompt top-1), and its 256 Ki quality-preserving request scratch OOMs.
+
+The clean `c971262f` therock-7.15 GGUF-only closure passes all 11 prompts at
+512/8 (max KL `0.007455`, top-1 100%) and 4K/16 (mean/max KL
+`0.0001369/0.009926`, aggregate/minimum-prompt top-1 `99.47%/94.12%`) plus
+bounded `mixed_v1` at 128K/16 (max KL `5.19e-5`, top-1 100%). At 128K,
+persistent K/V is `2,185,297,920` bytes versus BF16 `2,689,597,440` bytes and
+live owned memory falls `24.168 -> 23.698 GiB`. It still rejects promotion:
+production 4K prefill/decode regress `0.67%/0.75%`, one-shot 128K decode
+regresses `3.82%`, and production prefill allocates then frees
+`1,075,838,976` bytes—byte-exact to four BF16 layer caches—raising allocator
+high water `24.168 -> 24.700 GiB`. The transient attribution is inferred from
+the exact bytes; it is not a persistent shadow. The policy remains explicit
+and non-default. Evidence:
+`benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json` and
+`benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`.
 <!-- END TOPLINE:W7900_MEMORY_CAPACITY -->
 
 The physical-card result differs from the earlier W7900 220 Ki rejection
