@@ -13,11 +13,12 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
-def test_gpf5a_two_wave_prefill_policy_is_scoped_through_64k() -> None:
+def test_gpf5a_two_wave_prefill_policy_uses_backend_specific_ceiling() -> None:
     assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1151", 512) is True
     assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1151", 65536) is True
     assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1151", 65537) is False
-    assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1100", 4096) is False
+    assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1100", 4096) is True
+    assert runner_module._gguf_q8_t16_two_wave_prefill_applies("hip_gfx1100", 4097) is False
 
 
 def test_gguf_aotriton_isolated_stream_policy_is_opt_in_after_stability_rejection(
