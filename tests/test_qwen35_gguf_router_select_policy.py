@@ -5,9 +5,9 @@ import pytest
 from hipengine.runtime import qwen35_gguf_runner as runner_module
 
 
-def test_prefill_router_select_threads_default_to_production() -> None:
+def test_prefill_router_select_threads_use_scoped_backend_policy() -> None:
     assert runner_module._gguf_prefill_router_select_threads("hip_gfx1100") == 512
-    assert runner_module._gguf_prefill_router_select_threads("hip_gfx1151") == 512
+    assert runner_module._gguf_prefill_router_select_threads("hip_gfx1151") == 128
 
 
 def test_prefill_router_select_threads_explicit_candidate_and_rollback(

@@ -156102,3 +156102,7 @@ graphless decode launch-collapse path without regressing target/serial parity.
   all 20 timed IDs are `9707`. `scripts/check_lineage.py` cannot run because the
   manifest's read-only `/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout is
   absent; this candidate changes no inherited kernel body.
+- Promoted the exact 128-thread launch through gfx1151 package capability;
+  gfx1100 remains 512 and decode remains 256. Explicit `512` is the rollback.
+  The focused bundle remains **31 passed**. Clean selector-unset confirmation
+  and profiler-name/resource evidence follow from the promotion commit.
