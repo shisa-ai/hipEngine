@@ -156577,3 +156577,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   HIP peer geometry fails the 512 floor and Vulkan peer geometry fails strict
   decode. Production remains `chain_lds32_direct`; remove the rejected selector,
   wrapper, kernel, and candidate-only scratch surfaces next.
+
+## 2026-07-15 - Predeclare the post-merge gfx1151 transfer plan
+
+- Audited `origin/main..HEAD`, backend package policy, and the retained gfx1151
+  llama.cpp parity profile. `hip_gfx1151` aliases the complete gfx1100 registry
+  key space and compiles shared HIP bodies natively for gfx1151, so GPF-9C/9D,
+  LCP-D2, and the cooperative-router kernels need hardware admission rather
+  than a second source port.
+- Kept automatic evidence architecture-local. GPF-9C/9D remain explicit-only
+  behind the existing `chain_peer_wave32`/`chain_peer_cluster8` modes; LCP-D2
+  remains disabled and LCP-M1 remains dedicated-allocation on gfx1151. The
+  globally enabled cooperative F32-weight router and persistent counter are the
+  first post-merge A/B because their gfx1100 win currently lacks a gfx1151
+  package gate.
+- Frozen execution order: clean six-shape merged-main control and router A/B;
+  native gfx1151 GPF-9C then GPF-9D under the same 18-prompt KL/top-1,
+  determinism, strict-decode, and 512/4K llama.cpp-floor contract; fresh 512/4K
+  profile; independent LCP-D2 long-context and LCP-M1 memory gates; then only
+  profile-selected convolution/dense-Q8 work and a final defaults-only 1+3
+  publication.
+- The existing gfx1151 trace remains a prior, not current evidence: GDN was
+  205.570/1700.469 ms, convolution 14.303/954.438 ms, and dense Q8
+  110.526/749.444 ms at 512/4K. LCP-1 is reopened only if a post-GDN profile
+  still shows material convolution. Rejected GPF-6/7/8/9A/9B and rejected
+  Q4/Q6/Q8 indexing experiments will not be rerun unchanged.
+- Durable plan is in `docs/LLAMACPP-HIP-PARITY.md`; no runtime default or
+  performance claim changed in this planning unit.

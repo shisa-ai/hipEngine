@@ -1,7 +1,7 @@
 # gfx1151 hipEngine versus llama.cpp HIP parity audit
 
-Status: **gfx1151 audit complete; gfx1100 HIP memory parity closed, compute parity open**
-Date: **2026-07-14**
+Status: **gfx1151 audit complete and post-merge transfer queued; gfx1100 HIP memory parity closed, compute parity open**
+Date: **2026-07-15**
 Machine-readable evidence:
 [`gfx1151 parity audit`](../benchmarks/results/2026-07-14-gfx1151-llamacpp-hip-parity-audit.json),
 [`gfx1100 post-transfer profile`](../benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json),
@@ -29,11 +29,12 @@ The current comparison has three distinct regimes:
    clearly only at 128K (**-13.58%**). That row needs a bounded matched decode
    profile and KV-dtype control before source differences are called causal.
 
-The first implementation candidate is **LCP-1: an exact, same-stream,
-long-token SSM-convolution kernel using llama.cpp's 32-token shared-memory
-schedule**. It targets a measured 4K family gap of **954.438 versus 32.980 ms**
-without importing llama.cpp's non-identical GDN reduction tree or re-enabling
-the unstable isolated-AOTriton-stream policy.
+The original audit's first implementation candidate was **LCP-1: an exact,
+same-stream, long-token SSM-convolution kernel using llama.cpp's 32-token
+shared-memory schedule**. It targets a measured 4K family gap of **954.438
+versus 32.980 ms** without re-enabling the unstable isolated-AOTriton-stream
+policy. The post-merge plan below now gates the already-written peer GDN
+schedules before reopening that implementation work.
 
 ## gfx1100 post-transfer update
 
@@ -156,6 +157,64 @@ Continuation order is now:
 Machine-readable ratios, allocation buckets, the diagnostic 4K family trace,
 and source boundary:
 [`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json).
+
+## gfx1151 post-merge transfer plan
+
+The current gfx1100 branch is intentionally cheap to bring back to gfx1151 at
+the **source** level. `hip_gfx1151` aliases the complete registered gfx1100
+kernel key space and JIT-compiles the shared HIP bodies as native gfx1151 code
+objects. The new peer-wave GDN, clustered GDN, long-context parallel reducer,
+and exact cooperative-router kernels therefore require no second source port.
+That does **not** transfer performance evidence or automatic policy: shared
+source, architecture-local admission remains the rule.
+
+| Work from the gfx1100 pass | What transfers after merge | gfx1151 policy before a hardware gate |
+| --- | --- | --- |
+| GPF-2E direct LDS32 GDN, GPF-3A shared-X selected Q4, GPF-5A two-wave dense Q8 | Already originated, passed, and is enabled on gfx1151 | Reproduce as the clean baseline; do not claim it again as new work |
+| GPF-9C peer wave32/XOR GDN and GPF-9D clustered8 GDN | Kernel bodies, registry keys, explicit modes, primitive tests, and the 18-prompt gate harness | Diagnostic only; `auto` remains `chain_lds32_direct` |
+| LCP-D2 parallel long-context split reduction | Native gfx1151 alias and explicit environment selector | Disabled; serial reduction remains automatic |
+| LCP-M1 phase-liveness scratch arena | Architecture-neutral host allocator and lifetime contract | Disabled; dedicated scratch remains automatic |
+| Cooperative F32-weight decode router and persistent completion counter | Shared kernels and current runtime selection path | Re-measure immediately because the selectors are currently global rather than backend-package-scoped |
+| Rejected GPF-6/7/8/9A/9B and rejected Q4/Q6/Q8 indexing experiments | Historical evidence and tests only | Do not rerun unchanged |
+| LCP-1 shared-token convolution | Source idea and exact fixture/gate design; the gfx1100 candidate was removed | Reprofile first, then reimplement only if convolution remains material on gfx1151 |
+
+The post-merge execution order is:
+
+1. **Establish a clean merged-main control.** Build every shared kernel with
+   `HIPENGINE_HIP_ARCH=gfx1151`, run the focused registry/primitive bundle, and
+   record defaults-only 512/1K/4K/32K/64K/128K prefill plus graph decode. A/B
+   the cooperative router and persistent counter first; if either regresses,
+   move its automatic selection behind gfx1151 package metadata before any
+   other tuning.
+2. **Gate the already-written peer GDN schedules.** Run `chain_peer_wave32`
+   first, then `chain_peer_cluster8`, using the same prospectively frozen
+   contract as gfx1100: CPU-reference primitive correctness, the full
+   18-prompt category plus heldout suite at KL <= 0.05 and top-1 >= 90%,
+   deterministic execution, strict decode non-regression, and both matched
+   llama.cpp HIP 512/4K speed floors. The gfx1100 outcomes are useful priors,
+   not gfx1151 verdicts: wave32 passed semantics but missed the W7900 512 floor;
+   clustered8 passed quality but missed strict decode by 0.00129%.
+3. **Reprofile the winning/default route at 512 and 4K.** The retained gfx1151
+   trace attributed 205.570/1700.469 ms to GDN, 14.303/954.438 ms to
+   convolution, and 110.526/749.444 ms to dense Q8. Do not assume that ranking
+   survives a different GDN schedule. If convolution remains material,
+   reopen LCP-1 on gfx1151 with the original exact 32-token shared-memory gate;
+   otherwise advance to dense Q8. Selected Q4/Q5 and short/mid full attention
+   remain non-targets unless the fresh profile reverses their measured lead.
+4. **Transfer the orthogonal gfx1100 wins independently.** Gate LCP-D2 at
+   32K/64K/128K with the long-context logit/KL check and graph-decode A/B; this
+   directly targets gfx1151's retained 128K decode deficit. Gate LCP-M1 with
+   the 4K byte-exact logit A/B, six-shape allocation census, and prefill/decode
+   non-regression. Promote each through gfx1151 package metadata only after its
+   own evidence passes.
+5. **Publish one final defaults-only rollup.** Repeat the six-shape 1+3 protocol,
+   full semantic/correctness gates, and matched llama.cpp comparison; update
+   the benchmark artifact, scoreboard, changelog, and worklog together.
+
+This ordering avoids spending a second implementation cycle on code already
+available through the registry alias, while preserving the lesson from the
+first transfer: even within gfx11, launch geometry, occupancy, queue behavior,
+and context thresholds remain hardware-specific.
 
 ## Evidence boundary
 
@@ -307,15 +366,18 @@ order:
 - [exact direct-conv LDS32 body and kernel](https://github.com/shisa-ai/hipEngine/blob/2332756e32c04f61103be3aa5f0f72d00290ed3a/hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip#L1374-L1541)
 - [32-thread launch](https://github.com/shisa-ai/hipEngine/blob/2332756e32c04f61103be3aa5f0f72d00290ed3a/hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip#L4360-L4384)
 
-The llama.cpp schedule explains the measured **4.65x/5.15x** family advantage,
-but reduction order is part of hipEngine's current semantic contract. The
-existing register/tree diagnostic already demonstrated the trade-off: it was
-much faster but completed only 3/10 exact natural 128-step trajectories. The
-ordered-wave exact attempt was slower.
+The llama.cpp schedule explains the measured **4.65x/5.15x** family advantage.
+Reduction order is no longer a universal admission requirement for an
+algebraically equivalent peer schedule: exact state bytes and free-running
+trajectory identity are diagnostics, while the CPU-reference primitive and
+18-prompt KL/top-1/determinism/decode gates own quality. The generic K2 and raw
+wave-tree routes still fail that current KL gate. The later peer-exact geometry
+is mixed on gfx1100: GPF-9C passes quality but misses the 512 speed floor, while
+GPF-9D passes quality but misses strict decode by 0.00129%.
 
-**Decision:** do not copy the tree reduction under the default route. Keep
-chunked/token-prefix GDN as high-effort research requiring the existing
-six-case state and 250/250 natural-trajectory gates.
+**Decision:** do not make a reassociated tree automatic without the full product
+and architecture-local speed gate. Reuse the explicit GPF-9C/9D modes for the
+independent gfx1151 transfer before opening new chunked/token-prefix research.
 
 ### 2. Convolution: strongest transferable schedule
 
@@ -451,7 +513,7 @@ change makes hipEngine exceed the retained HIP capacity row again.
 | ---: | --- | --- | --- | --- |
 | 1 | `LCP-1` | Exact 32-token shared-memory long-token convolution | **Closed on gfx1100 after post-transfer profile:** conv is 1.09% and exact candidate regresses 4K 0.192%; still untested as a gfx1151-local implementation | Do not revisit on gfx1100 without a new profile; gfx1151 retains the original gate if pursued independently |
 | 2 | `LCP-D1/D2` | **Closed/promoted on gfx1100:** bounded 128K profile identified serial split reduction; parallel prepare/output reduction is the scoped default from 32K | 32K clean 1+3 +1.23%; 64K/128K clean confirmations +3.95%/+7.80%; long-context KL/top-1 gate passes | Keep serial rollback; gfx1151 requires independent transfer evidence |
-| 3 | `LCP-2` | Exact chunked/prefix GDN research | Largest family and >4.6x gap; exact LDS16 is mixed and two-lane VGPR residency fails byte equality, while the direct tree port violates trajectory contract | High-effort only: six-case state matrix and 250/250 natural transitions before timing |
+| 3 | `LCP-2` | Peer-aligned GDN transfer, then new chunked/prefix research only if needed | Largest family and >4.6x gap; existing GPF-9C/9D have gfx1100-local speed/decode blockers but are already available for an independent gfx1151 gate | Full 18-prompt numerical/semantic gate before architecture-local speed; exact candidates retain the stronger byte/state matrix |
 | 4 | `LCP-3` | Further dense-Q8 shared-layout/tile screen | Still 19.43%/14.32% and 1.65x/1.41x slower after GPF-5A | Byte-exact primitive, dominant-shape trace, 512/4K state/wall |
 | 5 | `LCP-4` | Matrix-oriented F32 router logits; top-k fusion second | Logits are 94.8% of the measured 4K router bucket | Exact experts/weights and full state, then wall |
 | 6 | `LCP-M1` | **Closed/promoted on gfx1100:** phase-liveness bulk-scratch arena | Tracked memory falls 0.274-1.452 GiB and clears the HIP capacity row at all shapes | 248,320 logits byte-exact; clean 4K prefill/decode non-regressive |
@@ -467,8 +529,8 @@ improvements remain retainable under the project evidence policy.
   hipEngine family is already faster.
 - Do not re-enable GPF-4 isolated AOTriton queues by default; its final 32K/128K
   stability gate remains rejected.
-- Do not label llama.cpp's GDN tree reduction exact/default; it changes
-  contraction order and the analogous hipEngine path failed trajectory parity.
+- Do not label llama.cpp's GDN tree reduction exact or automatic without the
+  numerical/semantic, decode, and architecture-local speed gates.
 - Do not prioritize generic graph or launch-count work for prefill; llama.cpp
   launches more kernels and wins inside specific families.
 - Do not infer memory efficiency from the public cross-column peak values; the
@@ -481,7 +543,8 @@ primitive byte gate but failed the normal-stream full-model wall gate after the
 promoted schedule profile invalidated the old hotspot premise. The checklist
 below remains the original gfx1151-local gate, not open gfx1100 work.
 
-The first coding tranche should remain narrow:
+If the post-GDN gfx1151 profile reopens LCP-1, its coding tranche should remain
+narrow:
 
 1. Add a registered convolution variant; do not branch on backend or quant in
    engine/dispatch code.
