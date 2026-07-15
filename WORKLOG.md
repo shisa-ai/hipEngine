@@ -158296,10 +158296,11 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   ties process-lifetime pathology to MES hardware-queue creation and reports a
   `sched_policy=2` effect. Official HIP docs confirm that
   `GPU_MAX_HW_QUEUES=1` only caps/reuses per-process hardware queues and that
-  kernel/copy serialization are separate probes. Current rocprofiler-sdk docs
-  confirm HIP/HSA/kernel/copy traces but do not document the research note's
-  exact `--kfd-trace` spelling; verify the installed `rocprofv3 --help` before
-  relying on that option.
+  kernel/copy serialization are separate probes. The fetched public
+  rocprofiler-sdk page confirms HIP/HSA/kernel/copy traces but omits the
+  research note's exact spelling; the installed rocprofv3 **1.3.2** help does
+  confirm `--kfd-trace`, expanding it to page-migration, page-mapping, queue,
+  and dropped-event traces.
 - Added default-off `PrefillFlightRecorder`: an 8,192-entry fixed binary ring in
   a file-backed mmap. Host code publishes monotonic prefill/chunk/embedding/
   layer/finalize/sample submissions without per-event logging. HIP registers

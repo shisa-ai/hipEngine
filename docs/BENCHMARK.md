@@ -716,7 +716,11 @@ faulty. Escalate to `layer` only after a chunk interval repeats: it adds one
 marker dispatch per layer and is substantially more likely to move a
 timing-sensitive bug. Recorder-enabled runs are diagnostics, never retained
 performance rows. Pair them with the independent `amdgpu_fence_info` sampler so
-kernel-ring and KFD-user-queue blind spots remain explicit.
+kernel-ring and KFD-user-queue blind spots remain explicit. The installed
+rocprofv3 1.3.2 also exposes `--kfd-trace` (queue, mapping, migration, dropped
+events), but run that as a separate traced-incidence experiment: profiler
+instrumentation can suppress this timing-sensitive failure, and the traced
+process must use prebuilt `require_cached` kernels.
 
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
