@@ -158347,3 +158347,31 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   fixture schema (`moe_ffn_selected_gguf_q4_k.json` has `expected_block` /
   `expected_selected`, not the runner's required top-level `expected`); the
   schema-aware `smoke.py --mode cpu-fixtures` passes all standard fixtures.
+
+## 2026-07-16 — Predeclare gfx1151-to-gfx1100 convergence screens
+
+Bounded W7900 screens will evaluate, in order: (1) the existing exact
+256-thread BF16-hidden/F32-weight bulk router-logits wrapper, (2) the existing
+128-thread bulk router-select wrapper, (3) their retained stack, (4) residual
+short-prefill host/device metadata copies only if a cached `rocprofv3` trace
+still exposes them, and (5) the nonvolatile exact direct-LDS32 GDN body as an
+exact rollback only. Existing gfx1151 implementations are reused; no upstream
+kernel is being ported.
+
+The frozen protocol is Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, repeated token
+9707, W7900/gfx1100, the complete hermetic therock HIP 7.15 stack, independent
+right-sized 512/128 and 4K/128 resident processes, one discarded warmup plus
+three measured resets, production automatic chunks/WMMA/GEMV/graph replay,
+and cached builds required. Independent candidates must preserve full-state
+or primitive exactness and final token IDs, then improve prefill without a
+material decode or memory regression. Negative candidates stop after the
+focused gate; no six-shape or broad-suite rerun is authorized by this screen.
+
+Current clean merged-main control at `1355fc8d` measured 512/128 at
+**2699.283 prefill / 92.941 decode tok/s** (prefill min/max
+2699.116/2709.475) and 4K/128 at **2972.935 / 100.663 tok/s** (prefill min/max
+2967.070/2985.508). All three measured final IDs were 9707. While those
+processes were running, `origin/main` advanced to `3ef3926f` with the
+runtime-gated gfx1151 prefill flight recorder; candidate acceptance will use
+same-process/interleaved controls on the live commit so that unrelated default-
+off instrumentation cannot bias the decision.
