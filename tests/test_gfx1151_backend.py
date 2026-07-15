@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100 import (
+    GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
@@ -32,6 +33,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
 )
 from hipengine.kernels.hip_gfx1151 import (
+    GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
@@ -92,6 +94,8 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
+    assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
+    assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
@@ -189,6 +193,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
         )
         == 4096
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+        )
+        == 4096
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+        )
+        == 0
     )
     assert (
         backend_package_capability(
@@ -394,7 +412,7 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert len(resolved) == 23
+    assert len(resolved) == 28
     assert set(resolved) == {"hip_gfx1151"}
 
 

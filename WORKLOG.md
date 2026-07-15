@@ -156703,3 +156703,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json`;
   raw clean sweep SHA256 is
   `63e8606d51f17a4baddcd2300c1472f4faefa5a9d74eba27fcad2dbac0452a93`.
+
+## 2026-07-15 - Remove the compact-WMMA total-row D2H boundary on gfx1100
+
+- Replaced the old rejected `selected_rows * 16` no-read probe with the tight
+  routing-independent compact-WMMA bound. For `S` selected rows and
+  `A=min(S,E)` active experts, the maximum tile count is exactly
+  `A + floor((S-A)/16)`: one tile per active expert, then every additional tile
+  consumes another 16 rows. The existing tile-map kernel clears the bounded
+  tile-id range to `-1`, and all compact selected kernels reject those inactive
+  tiles before reading expert metadata.
+- Promoted the no-read route only for gfx1100 through 4,096 selected rows (the
+  pp512 model shape). `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0`
+  restores the exact scalar read. gfx1151 remains at zero pending its own
+  transfer gate; the earlier gfx1151 c=8 rejection used the old loose bound and
+  is not reused as gfx1100 evidence.
+- A matched bounded pp512 HIP API/kernel trace against clean `e03e5a34` removes
+  exactly **40 synchronous D2H copies / dispatches**: dispatches **1405 ->
+  1365**, `hipMemcpy` **48 -> 8**, first-to-last kernel span **224.511 ->
+  219.988 ms (-2.01%)**, and queue idle **15.163 -> 11.634 ms (-23.27%)**.
+  Summed GPU work is flat/noisy (**209.347 -> 208.354 ms**), and the affected
+  selected-Q4 body is also flat (**40.631 -> 40.728 ms**), confirming this is a
+  host-boundary removal rather than changed device math. Candidate kernel/HIP
+  API trace SHA256 values are
+  `d45ad79cffcbea10a6d9053dfcf8f62ebfdca1ba5468e5626b23270d1e70dbf2`
+  and `2eb830582bdead55fc43e24eb05096fc002249d909bb91e047fd0d8506cbcc34`.
+- Two non-profiled single-pass screens return the same token `9707` at
+  **2300.843/2299.553 tok/s**, versus clean `e03e5a34`'s three-run median
+  **2292.186 tok/s**. A clean committed 1+3 confirmation remains required
+  before publishing the model-wall delta or reassessing the GPF-9C floor.
+- Validation: focused compact-WMMA/backend/runner/hidden-seed tests pass
+  (**50 passed, 9 skipped**); `compileall`, registry smoke, all seven canonical
+  CPU fixtures, smoke-add plan, and `git diff --check` pass. No kernel body or
+  numerical reduction changed.
