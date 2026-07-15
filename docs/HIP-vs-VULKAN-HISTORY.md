@@ -19,7 +19,7 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
-## Production-path attribution: 2026-07-14
+## Production-path attribution: 2026-07-15
 
 The corrected microbench dashboard remains useful for mechanism, but production
 selection now comes from matched llama.cpp Vulkan and HIP traces on the same
@@ -58,17 +58,24 @@ Compact evidence is
 | Rank | Production-backed opportunity | Decision |
 | ---: | --- | --- |
 | 1 | Exact GDN for prefill | **LCP-2A promoted on gfx1151:** compiler-cacheable state accesses preserve the scalar recurrence, pass the six-case and 250/250 natural-transition gates exactly, and improve balanced 512/1K/4K prefill by 34.76%-36.63%. The Vulkan/HIP subgroup tree remains rejected under the exact route. |
-| 2 | Dense Q8 prefill and decode | Screen HIP-local address, live-range, activation-sharing, and shape schedules while preserving BF16 activation/output semantics. Do not substitute Vulkan Q8_1 math. |
+| 2 | Dense Q8 prefill and decode | **LCP-3 promoted for gfx1151 prefill through 64K:** four exact production-order waves share one activation tile and improve clean 512/4K by 0.53%/1.57%. Above 64K production Q8 remains required; decode dense Q8 remains an open profiled body. Do not substitute Vulkan Q8_1 math. |
 | 3 | 128K grouped-GQA decode context body | Compare hipEngine with the faster llama.cpp HIP FlashAttention implementation. Vulkan is explicitly not the source target. Preserve BF16 KV and `KVLiveSpans`. |
-| 4 | F32 router logits | Screen only after the larger families; Vulkan's separate top-k bucket is small, so top-k fusion is not the first router experiment. |
+| 4 | F32 router logits | **LCP-4A promoted on gfx1151:** the existing exact token-tiled body uses 256 rather than 512 threads, improving clean 512/4K prefill by 2.76%/3.28% and exact graph decode by 0.071%. Refresh the profile before considering separate router-select fusion. |
 
 Closed non-targets are selected Q4/Q5 prefill, short/mid full-attention prefill,
 generic graph/dispatch work, a wholesale Vulkan backend, broad compiler/ISA
 work, and the already-rejected non-exact GDN tree. The exact tiled convolution,
 long-split reducer, and compiler-cacheable exact GDN opportunities are retained
-as LCP-1, LCP-D1, and LCP-2A. Future implementation claims must
-start from the current hipEngine family trace rather than transfer raw
+as LCP-1, LCP-D1, LCP-2A, LCP-3, and LCP-4A. Future implementation claims
+must start from the current hipEngine family trace rather than transfer raw
 cross-profiler ratios.
+
+A separate HIP runtime stability result does not change the backend-selection
+conclusion: gfx1151 now defaults to `GPU_MAX_HW_QUEUES=1` before HIP loads after
+a clean default-queue 128K stall and matched one-queue warmup+3 completion. The
+512/4K check is non-regressive, and the evidence is posted to ROCm#5107. This
+points to a gfx11 HIP scheduler/firmware workaround, not a reason to begin a
+Vulkan backend.
 
 ## Measurement Reset: 2026-07-10
 

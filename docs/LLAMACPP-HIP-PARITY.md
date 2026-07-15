@@ -438,6 +438,24 @@ now exceeds the retained llama.cpp HIP rows by **4.68%/10.93%/11.11%**. The
 single eager marker-profile rate above remains kernel evidence; this 1+3 graph-
 decode sweep supplies the publication medians.
 
+### gfx1151 hardware-queue stability gate
+
+A clean current-production 128K rerun with ROCm's documented default four
+hardware queues entered the no-progress state during its first warmup: active
+power fell from roughly 122-127 W to 41-43 W while utilization/SCLK remained
+100%/2.9 GHz. Four seven-minute host dumps stayed in synchronous metadata
+`hipMemcpy`, the kernel journal recorded no amdgpu/KFD fault, and terminating
+the process restored idle without reset. Changing only
+`GPU_MAX_HW_QUEUES=1` completed warmup+3 at **499.755 warmup** and
+**500.210/500.873/500.687 measured prefill tok/s**, with exact token `9707`,
+unchanged memory, and normal active power. Clean 512/4K checks are also
+non-regressive at **+0.35%/+0.46% prefill** and **+0.066%/+0.072% decode**.
+hipEngine therefore applies one queue before `libamdhip64` loads when gfx1151 is
+the only recognized visible HIP backend; explicit values are preserved and
+gfx1100 is unchanged. Evidence:
+[`2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`](../benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json)
+and the [ROCm#5107 comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824).
+
 ## Explicit non-targets
 
 - Do not replace hipEngine selected Q4/Q5 with generic llama.cpp MMQ; the
@@ -456,9 +474,10 @@ decode sweep supplies the publication medians.
 ## Next parity targets
 
 LCP-1, LCP-D1, LCP-2A, LCP-3, and LCP-4A close the currently actionable
-exact convolution, GDN, dense-Q8, and router-logit prefill bodies. Refresh the
-4K family profile before attempting router-select fusion; do not disturb the
-already-faster selected Q4/Q5 families. For decode, the clean 128K trace still
+exact convolution, GDN, dense-Q8, and router-logit prefill bodies. Use the
+promoted gfx1151 one-queue process default for subsequent production/profile
+runs. Refresh the 4K family profile before attempting router-select fusion; do
+not disturb the already-faster selected Q4/Q5 families. For decode, the clean 128K trace still
 leaves the grouped-GQA context body at **15.502 ms/token** and dense Q8 at
 **8.546 ms/token**. Any follow-up must target one of those measured families and
 preserve the current BF16-KV, `KVLiveSpans`, and exact state/token contracts.

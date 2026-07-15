@@ -155999,3 +155999,46 @@ graphless decode launch-collapse path without regressing target/serial parity.
   registry override. gfx1100 keeps the 512-thread base pending independent
   evidence. Clean commands and raw hashes are in
   `benchmarks/results/2026-07-15-gfx1151-gguf-router-threads256-clean-promotion.json`.
+
+## 2026-07-15 - Promote the gfx1151 one-hardware-queue workaround
+
+- Posted the matched observation to ROCm#5107 without overclaiming identical
+  root cause:
+  https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824. The comment
+  records the gfx1151/MES firmware, full workload, low-power 100%-busy state,
+  repeated synchronous-`hipMemcpy` host stacks, clean kernel journal, exact
+  hashes, and the one-variable queue-count completion. The tiny #2625-style
+  stream/memset probe did not reproduce, so standalone-reproducer work is
+  intentionally closed.
+- Clean current production `4d0aa281` with ROCm's default four hardware queues
+  entered the state during its first 128K warmup: real work initially drew
+  122-127 W, then collapsed after roughly 80 seconds to 41-43 W while utilization
+  and SCLK remained 100%/2.9 GHz. Four seven-minute faulthandler dumps all stop
+  in `_GGUFFullAttentionPrefillScratch.for_chunk -> copy_host_to_device ->
+  hipMemcpy`; no amdgpu/KFD/ring/VM fault appeared. Termination restored idle
+  without a reset.
+- Changing only `GPU_MAX_HW_QUEUES=1` completes the same 128K warmup+3 protocol:
+  warmup **499.755 tok/s**, measured prefill **500.210/500.873/500.687 tok/s**,
+  decode **28.057/28.058/28.062 tok/s**, all final IDs `9707`, tracked peak
+  **25.493 GiB**, and no low-power collapse or journal fault.
+- The required clean short-context A/B is also non-regressive. Separate max-4K
+  resident processes, each one warmup plus three measured, compare default to
+  one queue: 512 prefill **1256.091 -> 1260.549 tok/s (+0.35%)**, decode
+  **49.024 -> 49.056 (+0.066%)**; 4K prefill **1333.576 -> 1339.683 (+0.46%)**,
+  decode **52.422 -> 52.460 tok/s (+0.072%)**. Every measured final ID and logit
+  match exactly; memory is unchanged. Source JSON hashes are
+  `50a854bcb61790050c2cfa34652879c95a9a4cc0d1b44b16af4fcab4155337f6`
+  and `acd5496eef7139b14a455f49212f8dacb9f344f090a45778d0630f64c6317823`.
+- Added backend process-start metadata so `get_hip_runtime()` applies
+  `GPU_MAX_HW_QUEUES=1` before loading `libamdhip64` when all recognized visible
+  HIP arches map to gfx1151. Existing values win (`=4` restores ROCm's
+  documented default); gfx1100 and mixed recognized arches remain unchanged.
+  Benchmark provenance now captures the queue value. RED failed on the missing
+  policy import; GREEN is **34 passed** across HIP runtime, gfx1151 backend, and
+  provenance tests. Fresh-process smokes print automatic `1` and preserve
+  explicit `4`. The full declared dev bundle
+  `uv run --extra dev pytest -q` passes **6245 passed / 53 skipped** with only
+  the pre-existing Starlette deprecation and CPU-reference exp-overflow warnings.
+  Benchmark/env/backend docs, the Vulkan/HIP history, rollup, and changelog are
+  synchronized. Compact retained evidence is
+  `benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`.

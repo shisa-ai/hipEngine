@@ -122,6 +122,25 @@ def test_artifact_provenance_resolves_auto_backend_and_validates_schema(tmp_path
     assert provenance["command"] == ["python3", "scripts/example.py", "--rows", "2"]
 
 
+def test_artifact_provenance_captures_hip_hardware_queue_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    monkeypatch.setenv("GPU_MAX_HW_QUEUES", "1")
+
+    provenance = collect_artifact_provenance(
+        repo_root=repo,
+        configured_backend="hip_gfx1151",
+        detected_arches=("gfx1151",),
+        command=("python3", "bench.py"),
+        rocm_version="7.1-test",
+        hipcc_version="hipcc test",
+    )
+
+    assert provenance["environment"]["GPU_MAX_HW_QUEUES"] == "1"
+
+
 def test_artifact_provenance_uses_explicit_target_when_device_probe_is_disabled(
     tmp_path: Path,
 ) -> None:

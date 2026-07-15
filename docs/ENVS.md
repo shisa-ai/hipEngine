@@ -116,6 +116,7 @@ qwen35moe fast-path safety gate.
 | --- | --- | --- | --- |
 | `HIPENGINE_BACKEND` | Backend selection | unset / `auto` | Force a backend key such as `hip_gfx1100` or `hip_gfx1151`; otherwise auto-detects supported HIP arches and falls back to `cpu_reference` with a warning. |
 | `HIPENGINE_HIP_ARCH` | HIP JIT build | unset | Force native HIP offload arch in build cache keys, e.g. `gfx1100` or `gfx1151`. The backend helper sets this temporarily when needed. |
+| `GPU_MAX_HW_QUEUES` | HIP runtime / gfx1151 stability | gfx1151: `1`; otherwise unset (ROCm default `4`) | Must be applied before `libamdhip64` loads. hipEngine sets `1` only when all recognized visible HIP arches map to gfx1151 and the user has not provided a value. Explicit values always win; use `4` to reproduce ROCm's documented default for rollback/scheduler diagnosis. The one-queue policy prevents the retained low-power 128K queue stall and is non-regressive at 512/4K. |
 | `HIPENGINE_HIP_OFFLOAD_ARCH` | HIP JIT build | unset | Alias-style fallback for `HIPENGINE_HIP_ARCH`. |
 | `HIPENGINE_ROCM_DEVICE_LIB_PATH` | HIP JIT build | unset | Adds `--rocm-device-lib-path=<path>` to `hipcc`. Falls back to standard `HIP_DEVICE_LIB_PATH` if unset. Useful for TheRock. |
 | `HIPENGINE_COMPILER_VERSION_TEXT` | HIP JIT cache | unset | Literal compiler-version text for cache keys; avoids probing `<compiler> --version`. |

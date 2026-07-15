@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_hip_one_queue_stability_promotion",
+  "status": "accepted_gfx1151_process_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f"
+  },
+  "software": {
+    "measurement_commit": "4d0aa281f3e1aa0d251562abfb70e200cc28129a",
+    "kernel": "7.1.3-2-cachyos",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv": "BF16"
+  },
+  "commands": {
+    "128k": [
+      "python3", "scripts/qwen35_readme_sweep.py",
+      "--engine", "gguf",
+      "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant", "gguf_q4_k_m",
+      "--backend", "hip_gfx1151",
+      "--workloads", "131072/128",
+      "--warmup-runs", "1", "--measured-runs", "3",
+      "--warmup-decode-tokens", "1",
+      "--force-bulk-prefill", "--bulk-prefill-attention-mode", "bulk",
+      "--use-wmma-prefill", "--use-gemv-decode", "--graph-replay-decode",
+      "--compiler-version-file", "/tmp/lcp1-hipcc-version-current.txt",
+      "--require-cached-build", "--json", "<result.json>"
+    ],
+    "short_context": [
+      "python3", "scripts/qwen35_readme_sweep.py",
+      "--engine", "gguf",
+      "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant", "gguf_q4_k_m",
+      "--backend", "hip_gfx1151",
+      "--workloads", "512/128", "4096/128",
+      "--warmup-runs", "1", "--measured-runs", "3",
+      "--warmup-decode-tokens", "1",
+      "--force-bulk-prefill", "--bulk-prefill-attention-mode", "bulk",
+      "--use-wmma-prefill", "--use-gemv-decode", "--graph-replay-decode",
+      "--compiler-version-file", "/tmp/lcp1-hipcc-version-current.txt",
+      "--require-cached-build", "--json", "<result.json>"
+    ],
+    "common_environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/lcp1-hipcc-version-current.txt",
+      "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": null,
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": null,
+      "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE": null,
+      "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE": null
+    },
+    "default_leg": {"GPU_MAX_HW_QUEUES": null},
+    "one_queue_leg": {"GPU_MAX_HW_QUEUES": "1"}
+  },
+  "policy": {
+    "default": "set GPU_MAX_HW_QUEUES=1 before loading libamdhip64 when the only recognized visible HIP backend is hip_gfx1151",
+    "gfx1100_changed": false,
+    "mixed_recognized_arches_changed": false,
+    "explicit_override": "an existing GPU_MAX_HW_QUEUES value is preserved; GPU_MAX_HW_QUEUES=4 restores ROCm's documented default",
+    "upstream": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824"
+  },
+  "default_queue_128k_failure": {
+    "protocol": "clean selector-unset current production; one warmup plus three measured requested; 1800-second bound; periodic seven-minute faulthandler dumps",
+    "completed_runs": 0,
+    "failed_phase": "first warmup prefill",
+    "normal_power_w": "122-127",
+    "failure_transition_seconds_into_prefill_approx": 80,
+    "failure_state": "100% GPU utilization, 2900 MHz SCLK, 41-43 W, no forward progress until bounded termination",
+    "host_stack_repetitions": 4,
+    "host_stack": [
+      "hipengine/core/hip.py:60 memcpy",
+      "hipengine/core/memory.py:52 copy_host_to_device",
+      "hipengine/runtime/qwen35_gguf_runner.py:13311 for_chunk",
+      "hipengine/runtime/qwen35_gguf_runner.py:8813 _run_bulk_prefill_and_sample"
+    ],
+    "kernel_journal_faults": false,
+    "termination_restored_idle": true,
+    "log_sha256": "6054859b085c735266bc36e255dde5a56e3f2245ca0458a113e9c16569ad6589",
+    "telemetry_sha256": "e6971e49bf05fbcea86594d06d84bd99806ba32eee14c2c16209d3267c8b1a11"
+  },
+  "one_queue_128k_gate": {
+    "protocol": "same clean commit/configuration with only GPU_MAX_HW_QUEUES=1; one warmup plus three measured",
+    "warmup_prefill_tok_s": 499.7552377175581,
+    "measured_prefill_tok_s": [500.2096218423468, 500.8732335507061, 500.6866966175627],
+    "median_prefill_tok_s": 500.6866966175627,
+    "measured_decode_tok_s": [28.05700964403099, 28.0583197523196, 28.061789178936003],
+    "median_decode_tok_s": 28.0583197523196,
+    "final_token_ids": [9707, 9707, 9707],
+    "tracked_peak_gib": 25.492501735687256,
+    "kernel_journal_faults": false,
+    "json_sha256": "292dcc31d3fa9dd7659793314b2787eb0edb98f211494f80e4edf686343b6a69",
+    "log_sha256": "bbf42b4f8b49e9fde647b64cbe173f69cad75bd8203e70f18c1c6a3bae3b1ebe",
+    "telemetry_sha256": "5a9f63f481f8834b5499bc726ca46e3e156d10eabea3210fa1cff3ee4585e3ff"
+  },
+  "short_context_clean_ab": {
+    "protocol": "separate clean max-4K resident processes; default four-queue ROCm policy then GPU_MAX_HW_QUEUES=1; one warmup plus three measured per context",
+    "512": {
+      "default_prefill_tok_s": [1261.1457109163177, 1256.09060425237, 1254.0246723095322],
+      "one_queue_prefill_tok_s": [1263.0440410647777, 1260.5489512259803, 1259.8804340060462],
+      "default_median_prefill_tok_s": 1256.09060425237,
+      "one_queue_median_prefill_tok_s": 1260.5489512259803,
+      "prefill_delta_percent": 0.3549383267828832,
+      "default_median_decode_tok_s": 49.02396206123683,
+      "one_queue_median_decode_tok_s": 49.0562310104698,
+      "decode_delta_percent": 0.06582280965512499,
+      "exact_final_token": 9707,
+      "exact_final_logit": 28.27558135986328
+    },
+    "4096": {
+      "default_prefill_tok_s": [1334.0434222350557, 1333.575691177913, 1332.4374959492288],
+      "one_queue_prefill_tok_s": [1339.682530610896, 1339.3685673399066, 1340.4968753215985],
+      "default_median_prefill_tok_s": 1333.575691177913,
+      "one_queue_median_prefill_tok_s": 1339.682530610896,
+      "prefill_delta_percent": 0.45792972032872026,
+      "default_median_decode_tok_s": 52.422099483950156,
+      "one_queue_median_decode_tok_s": 52.460045061975016,
+      "decode_delta_percent": 0.07238469729065056,
+      "exact_final_token": 9707,
+      "exact_final_logit": 29.312543869018555
+    },
+    "tracked_peak_gib": 22.99488216638565,
+    "default_json_sha256": "50a854bcb61790050c2cfa34652879c95a9a4cc0d1b44b16af4fcab4155337f6",
+    "one_queue_json_sha256": "acd5496eef7139b14a455f49212f8dacb9f344f090a45778d0630f64c6317823"
+  },
+  "decision": "Use one HIP hardware queue as the gfx1151 process-start default. It converts the reproduced 128K first-warmup stall into a stable exact 1+3 completion and is non-regressive at 512/4K. Preserve explicit override and remove the workaround after a fixed gfx11 firmware/runtime is independently gated."
+}

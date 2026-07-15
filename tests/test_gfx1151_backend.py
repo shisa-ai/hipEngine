@@ -12,6 +12,7 @@ from hipengine.generation import register_builtin_generators, resolve_text_gener
 from hipengine.kernels.backends import (
     CPU_BACKEND,
     backend_package_capability,
+    configure_hip_process_environment,
     hip_target_arch_for_backend,
     resolve_backend,
     select_backend,
@@ -82,6 +83,56 @@ def test_explicit_backend_is_not_autodetected() -> None:
     assert selection.backend == "custom_backend"
     assert selection.source == "explicit"
     assert selection.detected_arches == ()
+
+
+def test_gfx1151_hip_process_environment_defaults_to_one_hardware_queue() -> None:
+    env: dict[str, str] = {}
+
+    applied = configure_hip_process_environment(
+        detected_arches=["gfx1151:sramecc+:xnack-"],
+        env=env,
+    )
+
+    assert applied == {"GPU_MAX_HW_QUEUES": "1"}
+    assert env["GPU_MAX_HW_QUEUES"] == "1"
+
+
+def test_gfx1151_hip_process_environment_preserves_explicit_queue_override() -> None:
+    env = {"GPU_MAX_HW_QUEUES": "4"}
+
+    applied = configure_hip_process_environment(detected_arches=["gfx1151"], env=env)
+
+    assert applied == {}
+    assert env["GPU_MAX_HW_QUEUES"] == "4"
+
+
+def test_gfx1100_hip_process_environment_does_not_change_queue_policy() -> None:
+    env: dict[str, str] = {}
+
+    applied = configure_hip_process_environment(detected_arches=["gfx1100"], env=env)
+
+    assert applied == {}
+    assert "GPU_MAX_HW_QUEUES" not in env
+
+
+def test_mixed_hip_arches_do_not_receive_a_process_wide_queue_default() -> None:
+    env: dict[str, str] = {}
+
+    applied = configure_hip_process_environment(
+        detected_arches=["gfx1151", "gfx1100"],
+        env=env,
+    )
+
+    assert applied == {}
+    assert "GPU_MAX_HW_QUEUES" not in env
+
+
+def test_explicit_gfx1151_backend_hint_applies_when_arch_detection_is_empty() -> None:
+    env = {"HIPENGINE_BACKEND": "hip_gfx1151"}
+
+    applied = configure_hip_process_environment(detected_arches=[], env=env)
+
+    assert applied == {"GPU_MAX_HW_QUEUES": "1"}
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
