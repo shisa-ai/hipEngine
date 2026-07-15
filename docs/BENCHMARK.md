@@ -669,6 +669,15 @@ six-shape rollup. Discarded runs warm kernels eagerly. Every measured reset
 captures a fresh state-bound graph, excludes capture from decode timing, and
 destroys it before the next reset.
 
+On gfx1151, hipEngine applies `GPU_MAX_HW_QUEUES=1` before loading
+`libamdhip64`. This is the retained lifecycle-safe process default after the
+clean 128K default-queue failure and one-queue completion recorded in
+`benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`.
+Artifact provenance must capture `GPU_MAX_HW_QUEUES`. For an explicit rollback
+or scheduler diagnostic, launch a fresh process with `GPU_MAX_HW_QUEUES=4`
+(ROCm's documented default); never compare queue policies inside one resident
+HIP process. gfx1100 and mixed recognized architecture sets remain unchanged.
+
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
 `mem_info_gtt_{total,used}`. Whole-device llama.cpp peak rows on gfx1151 must

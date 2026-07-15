@@ -12,7 +12,7 @@ import os
 import re
 import subprocess
 import warnings
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import import_module
@@ -22,6 +22,7 @@ AUTO_BACKEND = "auto"
 CPU_BACKEND = "cpu_reference"
 _ENV_BACKEND = "HIPENGINE_BACKEND"
 _ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
+_ENV_GPU_MAX_HW_QUEUES = "GPU_MAX_HW_QUEUES"
 
 HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
     "hip_gfx1100": "gfx1100",
@@ -29,6 +30,13 @@ HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
 }
 HIP_TARGET_ARCH_BACKEND: dict[str, str] = {
     arch: backend for backend, arch in HIP_BACKEND_TARGET_ARCH.items()
+}
+# Process-start HIP runtime defaults are backend metadata, not dispatch logic.
+# ROCm's documented default is four hardware queues. Clean gfx1151 evidence
+# instead admits one queue until the related gfx11 scheduler/firmware issue is
+# fixed upstream. An explicit user value always wins.
+HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
+    "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "1"},
 }
 
 _ARCH_PATTERN = re.compile(r"\bgfx[0-9a-fA-F]+(?:[-_:][^\s]*)?")
@@ -90,6 +98,50 @@ def backend_package_capability(backend: str, name: str, default=None):
     hip_target_arch_for_backend(backend)
     module = import_module(f"hipengine.kernels.{backend}")
     return getattr(module, str(name), default)
+
+
+def configure_hip_process_environment(
+    *,
+    detected_arches: Sequence[str] | None = None,
+    env: MutableMapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Apply hardware-local HIP defaults before ``libamdhip64`` is loaded.
+
+    gfx1151 currently needs one hardware queue to avoid an intermittent
+    low-power, 100%-utilization wait in synchronous ``hipMemcpy``. The policy
+    is applied only when all recognized visible HIP architectures map to the
+    same backend. Existing environment values are never overwritten, so
+    ``GPU_MAX_HW_QUEUES=4`` restores ROCm's documented default for diagnosis.
+    """
+
+    env_map = os.environ if env is None else env
+    if detected_arches is None:
+        arch_hint = (env_map.get(_ENV_HIP_ARCH) or "").strip()
+        raw_arches = (arch_hint,) if arch_hint else detect_hip_target_arches()
+    else:
+        raw_arches = detected_arches
+
+    arches = tuple(_normalize_arch(arch) for arch in raw_arches)
+    backends = {
+        HIP_TARGET_ARCH_BACKEND[arch]
+        for arch in arches
+        if arch in HIP_TARGET_ARCH_BACKEND
+    }
+    if not backends:
+        backend_hint = (env_map.get(_ENV_BACKEND) or "").strip()
+        if backend_hint in HIP_BACKEND_TARGET_ARCH:
+            backends.add(backend_hint)
+    if len(backends) != 1:
+        return {}
+
+    backend = next(iter(backends))
+    applied: dict[str, str] = {}
+    for name, value in HIP_BACKEND_PROCESS_ENV_DEFAULTS.get(backend, {}).items():
+        if name in env_map:
+            continue
+        env_map[name] = value
+        applied[name] = value
+    return applied
 
 
 def select_backend(

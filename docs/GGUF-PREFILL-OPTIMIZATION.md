@@ -1269,9 +1269,10 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   `chain_lds32_direct_nonvolatile` GDN, Q4T16 `shared_x`, LCP-3 four-wave
   Q8T16 through 65,536 prompt tokens, and LCP-4A 256-thread F32 router logits.
   Longer prompts restore the production Q8T16 wrapper while retaining LCP-4A.
-  gfx1100 remains on its
-  prior fused/baseline/production routes pending hardware-local transfer
-  evidence.
+  Before HIP loads, gfx1151 now also defaults to `GPU_MAX_HW_QUEUES=1`; explicit
+  user values win, and gfx1100/mixed recognized arches are unchanged. gfx1100
+  remains on its prior fused/baseline/production routes pending hardware-local
+  transfer evidence.
 - Causal retained wins are the clean GPF-2D, GPF-3A, GPF-2E, scoped GPF-5A,
   LCP-1, LCP-D1, LCP-2A, scoped LCP-3, and LCP-4A gates above. GPF-1, GPF-2A, GPF-2B,
   and GPF-2C are closed rejections; do not
@@ -1289,11 +1290,14 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   measured repetitions. Five is a variance/stability/borderline escalation,
   not a default. The LCP sweep's largest prefill/decode stdev over median is
   only **0.140%/0.113%**; all 18 measured IDs are `9707`.
-- 128K later-pass no-progress remains a separate lifecycle-soak diagnostic.
-  The new calibrated 1+3 LCP component completes all four passes cleanly at
-  **433.811 prefill / 28.047 decode tok/s** and does not disprove the older
-  intermittent later-pass issue. Investigate that issue only with phase markers
-  and bounded lifecycle coverage, not more timing repetitions.
+- The 128K no-progress state is now mitigated by a matched hardware-queue A/B.
+  On clean current production, ROCm's default four queues enter the state in the
+  first warmup at 100%/2.9 GHz but only 41-43 W; four host dumps remain in the
+  same synchronous metadata H2D and the kernel journal has no fault. Changing
+  only `GPU_MAX_HW_QUEUES=1` completes warmup+3 at **499.755 warmup** and
+  **500.210/500.873/500.687 prefill tok/s**, with exact IDs, unchanged memory,
+  and no low-power collapse. Treat this as a gfx11 scheduler/firmware workaround,
+  not a kernel fix; evidence is posted to ROCm#5107.
 - GPF-4 remains rejected. LCP-3 supersedes GPF-5A through 64K with clean
   512/4K gains of **+0.53%/+1.57%** and 83/83 exact state. The predecessor
   two-wave schedule's same-commit 128K rejection remains **382.041 vs
@@ -1309,11 +1313,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   **+34.76%/+36.63%/+36.58%**, with weighted decode **+0.021%**. gfx1100 stays
   fused pending its own transfer gate.
 - LCP-M2 is exact and locally positive but remains default-off. Clean 512/4K
-  improves **+1.47%/+0.65%** with 83/83 parts exact; 128K completes 1+3 at a
-  **499.636 tok/s** median but fires a variance escalation, whose measured pass
-  1 reproduces the low-power GPU-active lifecycle state. The phase-marked chunk
-  diagnostic completes three passes, so the unresolved blocker is intermittent
-  lifecycle stability rather than a deterministic LCP-2A or metadata error.
+  improves **+1.47%/+0.65%** with 83/83 parts exact; its variance escalation was
+  where the low-power GPU-active state first reappeared. The later clean
+  production/default-queue reproduction plus one-queue completion proves that
+  blocker is process-wide gfx11 queue scheduling, not deterministic LCP-2A or
+  metadata math. Re-gate LCP-M2 separately only if it returns to the roadmap.
 - LCP-D1 is retained for `num_splits > 256`; shorter reducers remain serial.
   The clean 128K reducer falls **234.714 -> 196.466 us/call (-16.30%)**, and
   right-sized graph decode improves **27.753 -> 28.047 tok/s (+1.06%)**.
@@ -1324,8 +1328,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   geometry. Refresh the 4K profile before deciding whether router-select fusion
   remains material. The remaining 128K decode bodies are grouped-GQA context
   and dense Q8.
-- No benchmark process is intentionally left running. Publication, artifacts,
-  rollups, and the root README export are complete.
+- No benchmark process is intentionally left running. The one-queue stability
+  artifact, rollup, upstream comment, and root README export are complete. The
+  public six-shape throughput table still carries the earlier right-sized row;
+  its next refresh must use the new gfx1151 queue default and current LCP-4A
+  selector-unset production path.
 
 Keep GPF-4 explicit/default-off and LCP-3 request-scoped through 65,536 tokens,
 with GPF-5A as its first rollback. Keep the exact production convolution

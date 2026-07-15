@@ -8,6 +8,7 @@ from hipengine.core.hip import (
     HipError,
     HipMemcpyKind,
     HipRuntime,
+    get_hip_runtime,
     is_default_runtime_loaded,
     reset_default_runtime_for_tests,
 )
@@ -114,6 +115,28 @@ def setup_function() -> None:
 
 def test_importing_runtime_module_does_not_load_default_runtime() -> None:
     assert not is_default_runtime_loaded()
+
+
+def test_get_runtime_configures_process_environment_before_loading_library(monkeypatch) -> None:
+    import hipengine.kernels.backends as backends
+
+    events: list[str] = []
+    fake_runtime = object()
+
+    def configure() -> dict[str, str]:
+        events.append("configure")
+        return {"GPU_MAX_HW_QUEUES": "1"}
+
+    def load(cls, path: str):
+        del cls, path
+        events.append("load")
+        return fake_runtime
+
+    monkeypatch.setattr(backends, "configure_hip_process_environment", configure)
+    monkeypatch.setattr(HipRuntime, "load", classmethod(load))
+
+    assert get_hip_runtime() is fake_runtime
+    assert events == ["configure", "load"]
 
 
 def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:

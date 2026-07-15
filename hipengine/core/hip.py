@@ -272,6 +272,11 @@ _DEFAULT_RUNTIME: HipRuntime | None = None
 def get_hip_runtime(path: str = DEFAULT_HIP_LIBRARY) -> HipRuntime:
     global _DEFAULT_RUNTIME
     if _DEFAULT_RUNTIME is None:
+        # Runtime queue policy is read during HIP/HSA initialization, so apply
+        # backend metadata before loading libamdhip64 rather than in a runner.
+        from hipengine.kernels.backends import configure_hip_process_environment
+
+        configure_hip_process_environment()
         _DEFAULT_RUNTIME = HipRuntime.load(path)
     return _DEFAULT_RUNTIME
 

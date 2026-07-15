@@ -100,6 +100,11 @@ such as `gfx1101`/`gfx1102` can force a backend with `backend="hip_gfx1100"`,
 `--backend hip_gfx1100`, or `HIPENGINE_BACKEND=hip_gfx1100` after validating
 correctness/performance.
 
+On gfx1151, hipEngine sets `GPU_MAX_HW_QUEUES=1` before HIP loads to avoid a
+retained gfx11 low-power queue stall. Explicit values are preserved; set
+`GPU_MAX_HW_QUEUES=4` before process start to restore ROCm's documented default
+for diagnosis. gfx1100 is unchanged. See [`docs/ENVS.md`](docs/ENVS.md).
+
 Wave32 is the default for `hip_gfx1100` device code; wave64 is treated as an
 isolated experiment with its own gates (see
 [`docs/PLAN.md`](docs/PLAN.md#rdna3-wavefront-and-scheduling-caveat)).
