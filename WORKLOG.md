@@ -156496,3 +156496,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - The prospective admission contract remains unchanged: clean full 18-prompt
   teacher-forced KL/top-1/determinism/decode gate first, then 512/4K speed floors
   only if semantics pass.
+
+## 2026-07-15 - Admit GPF-9C through the clean semantic/decode gate
+
+- Clean W7900 commit `1e7b6592` passes all 18 category/heldout prompts under the
+  prospectively frozen peer-aligned contract: KL max **0.04173687 <= 0.05** on
+  `heldout_code_rate_limiter`, aggregate top-1 **445/450 = 98.889% >= 90%**,
+  finite deterministic execution, and no prompt-level gate failure.
+- Aggregate balanced decode median-wall sum is **22524.379 -> 22513.178 ms
+  (-0.050%, 1.00050x)**, satisfying non-regression. Free-running trajectories
+  are not exact and remain diagnostic only.
+- Exact command:
+  `PYTHONPATH=. python3 scripts/gguf_gdn_semantic_gate.py --candidate-mode chain_peer_wave32 --top1-threshold 0.90 --compiler-version-file /tmp/hipengine-hipcc-version-gpf9c.txt --require-cached-build --json /tmp/gdn-peer-wave32-peer-aligned-clean-1e7b6592.json`.
+  Raw SHA256 is
+  `e218d8282f52816442cadbed5d81ed3c44feb15523bd4aae8044599c2935c550`.
+- Published compact evidence at
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json`.
+  This is not yet a retained prefill performance claim, so benchmark toplines
+  remain unchanged. Production remains `chain_lds32_direct`; clean interleaved
+  512/4K prefill floors are next.

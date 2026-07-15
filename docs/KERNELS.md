@@ -300,11 +300,12 @@ four-register-rows-per-lane schedule used by llama.cpp HIP on gfx1100; neither
 existing rejected route has both properties. The explicit `chain_peer_wave32`
 implementation follows llama.cpp `1ebf790cda38`'s unit-Q normalization,
 post-reduction output scale, XOR reduction, and post-reduction scalar-decay
-placement; it launches four columns per 128-thread block,
-and compiles at 40 VGPR with zero LDS/scratch. Plain and segmented primitive
-fixtures pass the CPU-reference numerical budgets; the 18-prompt product gate
-still owns admission. See
-`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json`.
+placement; it launches four columns per 128-thread block and compiles at 40
+VGPR with zero LDS/scratch. Plain and segmented primitive
+fixtures pass the CPU-reference numerical budgets. The clean W7900 18-prompt
+product gate passes at KL max `0.041737`, top-1 `445/450`, and aggregate decode
+wall `-0.050%`; the 512/4K prefill speed floors now own final admission. See
+`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json`.
 
 GPF-2C moves the exact ordered-wave variant's four state rows per lane into
 registers without changing shuffles, explicit FMA sites, token order, or the
