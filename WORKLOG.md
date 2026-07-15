@@ -156914,3 +156914,27 @@ graphless decode launch-collapse path without regressing target/serial parity.
   candidate must use source-compatible output-major/raw resident bytes and
   predeclare the decode/memory tradeoff, or this family should close in favor
   of the next measured residual.
+
+## 2026-07-15 - Predeclare LCP-3E raw/output-major Q8 MMQ128 leaf screen
+
+- LCP-3D isolates layout conversion as the blocker rather than the source MMQ
+  decomposition. LCP-3E therefore tests the same 256-thread, 128-output x
+  128-token, K256 D4 integer-WMMA schedule directly against output-major raw
+  `block_q8_0` rows. This is the layout llama.cpp's measured kernel consumes;
+  no T16 gather or resident runtime route is included in the first leaf.
+- A raw sidecar is not an admissible runtime answer. The 250 dense-Q8 tensors
+  represented by the pp512 trace total approximately **1.390 GiB** of raw Q8_0
+  bytes; duplicating byte-neutral T16 would reopen the closed llama.cpp memory
+  parity target. If the standalone body wins, continuation must be a
+  byte-neutral replacement layout plus raw-compatible decode, not dual
+  residency. Decode, memory, and both 512/4K full-model floors remain mandatory.
+- RED requires a new standalone module/key and ordinary/tail D4 CPU-oracle
+  gates at relative L2 <=0.02, mean KL <=0.05, and top-1 >=90%. The primary
+  W7900 `512x2048x8192` cycling-pool gate compares production two-wave FP16
+  WMMA against both prequantized raw MMQ128 and D4-pack-plus-body. A body or
+  included-cost loss removes the candidate before profiler/runtime work.
+- A primary win proceeds to the other measured pp512 shapes
+  (`512x2048x4096`, `512x4096x2048`, `512x512x2048`, and width-512), then a
+  cached kernel trace confirming 256 threads, zero scratch, bounded LDS, and
+  plausible VGPRs. Only a same-family win can justify designing raw replacement
+  materialization and its strict decode/memory gates.

@@ -193,8 +193,11 @@ Continuation order is now:
    bytes require four-byte gather/packing to fill llama.cpp's output-major
    shared fragments, so the candidate is removed. Any continuation must first
    use a source-compatible output-major replacement layout and account for
-   decode/memory tradeoffs. Do not retune selected Q4/Q5, short full attention,
-   or generic launch count.
+   decode/memory tradeoffs. `LCP-3E` is predeclared as that standalone raw leaf
+   proof. A raw sidecar is forbidden: the traced dense-Q8 weights are about
+   **1.390 GiB**, so only a byte-neutral replacement with strict decode/memory
+   gates may proceed beyond the leaf. Do not retune selected Q4/Q5, short full
+   attention, or generic launch count.
 4. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.

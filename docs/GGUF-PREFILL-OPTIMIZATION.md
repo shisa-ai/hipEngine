@@ -490,6 +490,7 @@ select current code without a fresh profile.
 | 18 | `LCP-3A` | **Rejected and removed:** four exact 32-column Q8T16 FP16-WMMA waves share one activation tile | Byte-exact, but width 4096 and short-K width 2048 regress 2.24%/8.87%; the pp512 mix projects about +0.3 ms. Stop independent-wave widening |
 | 19 | `LCP-3B` | **Rejected and removed:** direct prequantized Q8_1 x Q8T16 integer-WMMA body | Primitive numerics/quality pass, but the body is 44.66% slower before quantization; quantization adds only 0.016 ms. Any continuation must reproduce the actual shared MMQ tile/decomposition, not route raw dp4a or retry direct T16 |
 | 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
+| 21 | `LCP-3E` | **Standalone raw-layout leaf predeclared:** source MMQ128 directly over output-major `block_q8_0` rows | A primary body+included win is required before profiler work. Runtime dual residency is forbidden: the raw dense-Q8 footprint is ~1.390 GiB, so continuation must be a byte-neutral replacement plus decode/memory gates |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1433,7 +1434,11 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   byte/primitive quality, but the primary body regressed **0.523062 -> 1.144524
   ms (+118.81%)**; D4 packing added only 0.007061 ms. The candidate was removed
   before profiler/model routing. T16's K-major 16-column payload cannot populate
-  the output-major packed-int shared tile economically. Evidence:
+  the output-major packed-int shared tile economically. LCP-3E now screens the
+  source tile directly over output-major raw Q8_0 bytes. This is standalone
+  only: duplicating T16 would add about **1.390 GiB**, so any advancing runtime
+  design must replace the layout byte-neutrally and pass strict decode/memory
+  gates. Evidence:
   [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
   [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
   [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
