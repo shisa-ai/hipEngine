@@ -377,25 +377,26 @@ but the cached gfx1100 trace compiled both 32-thread kernels at **256 VGPR** and
 **1064/1060 bytes scratch per thread** (zero LDS). This fails the predeclared
 <=192 VGPR/zero-scratch gate before full-model timing, so all GPF-7 code and
 registry/routing surfaces were removed. Atlas remains lineage-only evidence:
-SM121's register-file result does not transfer mechanically to RDNA3. Future
-exact GDN work must use chunkwise/WY algebra, not another storage or reduction
-micro-variant. The rejection is recorded in the GPF-6/7 artifact above.
+SM121's register-file result does not transfer mechanically to RDNA3. GPF-7
+therefore sent the next attempt to chunkwise/WY algebra rather than another
+storage or reduction micro-variant. Its rejection is recorded in the GPF-6/7
+artifact above; GPF-8 below records the outcome of that final lane.
 
-GPF-8 begins that algorithmic lane with a high-precision CPU oracle and a
-callable, default-off HIP candidate. `gdn_prefill_chunkwise_wy_segments`
-implements the direct lower-triangular/Woodbury-Young identity in float64 and
-is checked against an independent token-serial definition for chunk sizes
-1/2/3/8/16, packed segment remapping, and an odd tail. The HIP schedule is C=8,
-one 256-thread block per `(segment,v_head,value_tile32)`, the retained 16 KiB
-FP32 state tile plus bounded Q/K/coefficient scratch, direct FP32 `conv_out`
-inputs, an in-kernel scalar token-serial remainder, no prompt-sized coefficient
-arena, and separate plain/segment registry variants. Plain and segmented C=8
-plus 17-token-tail fixtures pass the frozen primitive bounds; cached W7900
-traces report **48 VGPR, zero scratch, 28 KiB LDS**, and the complete synthetic
-30-layer 512 GDN stage is **47.491 ms**, below the predeclared 66 ms gate.
-Semantic, trajectory, and clean 512/4K model gates remain; current defaults are
-unchanged. See `docs/GGUF-PREFILL-OPTIMIZATION.md` for the derivation and frozen
-contract.
+GPF-8 completed the algorithmic lane and was rejected. The retained
+`gdn_prefill_chunkwise_wy_segments` float64 oracle checks the direct lower-
+triangular/Woodbury-Young identity against token-serial recurrence for chunk
+sizes 1/2/3/8/16, packed remapping, and odd tails. The temporary C=8 HIP body
+passed primitive correctness and compiled at **256 threads, 48 VGPR, zero
+scratch, and 28 KiB LDS**; its synthetic 30-layer 512 GDN stage was **47.491
+ms**, below the frozen 66 ms ceiling. Clean W7900 model gates then failed: KL
+**0.056522 > 0.05**, top-1 **445/450 = 98.889% < 99%**, only **5/18** exact
+free-running trajectories, and 512 prefill **2003.399 < 2412.320 tok/s** even
+though 4K reached **2280.244 > 2255.080**. All candidate HIP/registry/runtime
+test surfaces were removed; `chain_lds32_direct` remains default. Future GDN
+work requires a materially different algorithm or model-wide path; do not
+reopen storage/reduction or C=8 WY variants. See
+`docs/GGUF-PREFILL-OPTIMIZATION.md` and
+`benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`.
 
 ## DFlash / MTP lineage map
 

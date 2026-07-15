@@ -156359,3 +156359,35 @@ graphless decode launch-collapse path without regressing target/serial parity.
   prefill sample ID `9707`, **1589.982 tok/s**, and **21.204 GiB** tracked peak.
   The warmupless dirty smoke only proves live route execution; it is not a
   retained performance/correctness claim and does not satisfy any clean floor.
+
+## 2026-07-15 - Reject and remove GPF-8 chunkwise/WY GDN
+
+- Clean candidate commit `37d28fdb` passes the primitive/resource/family gates
+  but fails the frozen model contract. The complete 18-prompt same-context gate
+  measures max KL **0.056522 > 0.05** and aggregate top-1 **445/450 = 98.889%
+  < 99%**. Only **5/18** complete 128-transition free-running trajectories are
+  exact. Aggregate decode wall is non-regressive at **22541.156 -> 22530.790
+  ms (-0.046%)**, but cannot override correctness.
+- Clean cached 1+3 W7900 speed at repeated token `9707` measures 512 prefill
+  **2009.702/2003.399/1997.080 tok/s** (median **2003.399**) and 4K
+  **2285.519/2280.244/2270.250** (median **2280.244**). The candidate beats the
+  4K llama.cpp HIP floor by **+1.116%** but misses the 512 floor by **-16.951%**;
+  both **2412.320/2255.080** floors were mandatory. All six timed final IDs are
+  `9707`; tracked peak is **21.543610133 GiB**.
+- Rejected without changing thresholds. Removed all candidate HIP bodies,
+  wrappers, registry entries, `chain_wy8` runtime/harness routing, refactor
+  debt, and candidate-specific tests. Retained only the independent float64 CPU
+  algebra/oracle from `912ef70d`; production remains `chain_lds32_direct`.
+- Published compact rejection artifact
+  `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`.
+  Raw clean semantic/speed artifacts remain local at
+  `/tmp/gpf8-semantic-clean.json` and `/tmp/gpf8-speed-clean.json`; their SHA256
+  values and exact commands are in the compact artifact. No benchmark topline
+  changes because this is a rejected diagnostic, not a retained performance
+  result.
+- Final cleanup validation passes **144/144** focused GPU/CPU/routing/harness
+  tests, `python3 -m compileall -q hipengine scripts tests`, compact-artifact
+  JSON validation, `scripts/check_lineage.py --kind kernel --diff stat`, and
+  `git diff --check`. The lineage report contains only the previously catalogued
+  unrelated parent drift; the registered Atlas/vLLM GDN references remain
+  clean.
