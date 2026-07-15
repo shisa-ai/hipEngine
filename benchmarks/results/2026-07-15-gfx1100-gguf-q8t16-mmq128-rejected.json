@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_gguf_q8t16_mmq128_prefill_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "6002ebca",
+  "candidate": {
+    "id": "LCP-3D",
+    "family": "dense Q8T16 prefill",
+    "variant": "wmma_prefill_mmq128_q8_1_d4_bf16_bf16_out",
+    "scope": "standalone prequantized diagnostic only; never model-routed",
+    "lineage": "llama.cpp HIP 1ebf790cda38 ggml/src/ggml-cuda/{mmq.cuh,mma.cuh,quantize.cu}",
+    "design": "A 256-thread, eight-wave workgroup computed a 128-output x 128-token tile over K256. It packed BF16 activations into source-compatible K-major D4 blocks, cooperatively gathered byte-lossless resident Q8T16 slabs into llama.cpp's padded row-major shared weight tile, issued two signed integer-WMMA K16 operations per 32-K scale interval, and accumulated scaled products in FP32 before BF16 output.",
+    "dynamic_lds_bytes": 57856
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "kernel": "7.1.3-2-cachyos"
+  },
+  "software": {
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "correctness": {
+    "red": "Collection failed because no callable/registered MMQ128 D4 wrapper existed.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py -q -k lcp3d -vv",
+    "green_result": "2 passed",
+    "shapes": [[32, 256, 128], [17, 256, 80]],
+    "gates": {
+      "d4_pack_matches_cpu_bytes": true,
+      "q8_0_x_d4_cpu_oracle_relative_l2_max": 0.02,
+      "exact_q8_0_bf16_mean_kl_max": 0.05,
+      "exact_q8_0_bf16_top1_min": 0.9,
+      "all_passed": true
+    }
+  },
+  "microbench": {
+    "protocol": "W7900 HIP events, eight cycling Q8T16 weight copies, three warmup cycles, 60 rotated measured repetitions per mode, cached builds. Modes were production two-wave FP16 WMMA, prequantized MMQ128 body, and D4 quantization plus MMQ128 body.",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-lcp3.txt PYTHONPATH=. python3 /tmp/lcp3d_q8_t16_mmq128_micro.py --rows 512 --in-features 2048 --out-features 8192 --compiler-version-file /tmp/hipengine-hipcc-version-lcp3.txt --json /tmp/lcp3d-q8-primary.json",
+    "shape_mkn": [512, 2048, 8192],
+    "medians_ms": {
+      "production_fp16_two_wave": 0.523061990737915,
+      "prequantized_mmq128_body": 1.1445240378379822,
+      "d4_quantize_plus_mmq128_body": 1.1515855193138123
+    },
+    "deltas_percent": {
+      "prequantized_body_vs_production": 118.81231251831798,
+      "included_cost_vs_production": 120.16234016339081
+    },
+    "quantize_increment_ms": 0.007061481475830078,
+    "raw_sha256": "14c041d54784d1c287e99fe5498ddccc222ef9609ef9b0f6e82ae87bc6c09f4f"
+  },
+  "decision": {
+    "result": "reject_at_primary_body_gate",
+    "reason": "The source-scale tile geometry is not sufficient over resident Q8T16. T16 stores quants K-major inside 16-column slabs, so populating llama.cpp's output-major packed-int shared tile requires four byte gathers and packing per int32 weight fragment. The body is 2.19x production even before quantization; D4 packing is not the blocker.",
+    "profiler": "Skipped after the prospectively frozen primary body gate failed.",
+    "source_disposition": "Removed the candidate kernel, quantizer, wrappers, registry key, and tests; production source/defaults are unchanged.",
+    "next": "Do not attempt another T16-to-MMQ shared transpose. Any further dense-Q8 MMQ work must first use a source-compatible output-major/raw replacement layout and account for decode and memory tradeoffs, or close dense-Q8 and move to the next measured family."
+  }
+}

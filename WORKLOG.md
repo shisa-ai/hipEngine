@@ -156887,3 +156887,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json`. Do not
   reopen direct T16 integer WMMA, independent-wave widening, raw-sidecar dp4a,
   selected Q4/Q5, or generic launch-count work in this lane.
+
+## 2026-07-15 - Reject LCP-3D T16-backed source-scale MMQ128
+
+- RED failed collection because the MMQ128 D4 wrapper/key did not exist. The
+  temporary 256-thread K256 GREEN implementation passed both ordinary/tail
+  fixtures: its K-major D4 pack matched CPU bytes and Q8_0 x D4 output passed
+  relative L2 <=0.02, mean KL <=0.05, and top-1 >=90%.
+- The primary sequential W7900 cycling-pool gate rejects the body decisively.
+  Production two-wave FP16 WMMA is **0.523062 ms**; prequantized MMQ128 is
+  **1.144524 ms (+118.81%)**; D4 packing plus MMQ128 is **1.151586 ms
+  (+120.16%)**. D4 packing adds only **0.007061 ms**, so activation conversion
+  is again not the blocker.
+- The source geometry alone cannot overcome resident T16 ordering. llama.cpp
+  starts from output-major raw Q8_0 rows and copies packed int32 fragments into
+  its padded shared tile. Q8T16 stores quants K-major inside 16-column slabs;
+  reproducing the same logical tile requires four separate byte gathers and a
+  pack for every int32 weight fragment. That gather/transpose cost more than
+  doubles the body even though the unique byte count is unchanged.
+- Per the prospectively frozen body-loss rule, skipped profiler/model routing
+  and removed the candidate kernel, D4 quantizer, wrappers, registry key, and
+  tests. Production source/defaults are byte-for-byte unchanged. Evidence:
+  `benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json`; raw
+  micro SHA256 `14c041d54784d1c287e99fe5498ddccc222ef9609ef9b0f6e82ae87bc6c09f4f`.
+- Do not attempt another T16-to-MMQ shared transpose. A further dense-Q8 MMQ
+  candidate must use source-compatible output-major/raw resident bytes and
+  predeclare the decode/memory tradeoff, or this family should close in favor
+  of the next measured residual.
