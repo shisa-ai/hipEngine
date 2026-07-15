@@ -3,7 +3,7 @@
 Last reviewed: **2026-07-16**
 
 Latest retained hipEngine revisions in this scoreboard:
-`df253cf88205478fc87ca5a800136c032f811c52` for the focused post-sweep gfx1100
+`d2d1c6fcc5d6ef69ccb060c36da180900e2024d7` for the focused post-sweep gfx1100
 GGUF router convergence gates and `61a27d7279549843bb3fb0464cb8b120689b9ff1`
 for the current gfx1151 GGUF refresh. The gfx1151 production refresh is retained
 through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler
@@ -412,7 +412,10 @@ confirms paired prefill gains of **+3.87%/+4.16%** at 512/4K, graph decode
 **+0.11%/+0.07%**, and unchanged memory/IDs. The subsequently retained
 stream-ordered metadata path adds aggregate **+0.41%/+2.43%** at 512/4K
 (paired **+0.26%/+2.26%**), with non-regressive decode, unchanged memory/IDs,
-and an exact metadata primitive.
+and an exact metadata primitive. Production peer-wave GDN remains unchanged;
+the strict-exact rollback now resolves to nonvolatile direct-LDS32, which moves
+volatile-direct 512/4K prefill **+73.01%/+82.46%**, halves VGPR **64 -> 32**,
+and preserves byte-exact state, decode, and compact-scratch memory.
 
 Relative to the July 14 GGUF table, prefill improves **+35.27% to +118.78%**
 and decode improves **+2.24% to +3.46%**. Prefill now beats llama.cpp HIP at
@@ -429,6 +432,7 @@ Evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-opt
 [`128-thread router-select transfer`](results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json),
 [`retained router stack`](results/2026-07-16-gfx1100-gguf-router-stack-promotion.json),
 [`device-metadata transfer`](results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json),
+[`nonvolatile exact rollback`](results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json),
 [`peer-GDN promotion`](results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json),
 [`decode attribution`](results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json),
 [`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),
