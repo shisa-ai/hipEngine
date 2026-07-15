@@ -88,11 +88,11 @@ prefill/decode stdev over median is **0.447%/0.109%**, and tracked memory is
 unchanged. This replaces the July 12 gfx1100 GGUF column; see the
 [`final optimization rollup`](../benchmarks/results/2026-07-14-gfx1100-gguf-optimization-right-sized-3run.json).
 
-Task #98 / `GPF-8` is the next active lane: a true eight-token FP32
-chunkwise/WY recurrence, not another state-storage or reduction-width variant.
-The high-precision CPU algebra and its contract are defined below before any
-HIP implementation or timing. Published defaults remain unchanged while this
-candidate is developed.
+Task #98 / `GPF-8` completed as a clean rejection: the eight-token FP32
+chunkwise/WY recurrence passed primitive/resource gates but failed frozen
+semantic, exact-trajectory, and 512 speed gates. Candidate code was removed;
+the high-precision CPU algebra and full contract remain below as evidence.
+Published defaults are unchanged.
 
 Scope: Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, single-request bulk prefill on
 `hip_gfx1100` and `hip_gfx1151`. This is not a general GGUF plan and does not
@@ -445,7 +445,7 @@ select current code without a fresh profile.
 | 11 | `GPF-5` | **GPF-5A promoted on gfx1151 through 64K:** two exact 32-column Q8T16 waves share one activation tile | Final 512-64K components are +1.01%-8.57%; stable same-commit 128K is -2.59%, so request-scoped package metadata restores production there; final automatic 128K rerun remains |
 | 12 | `GPF-6` | **Rejected:** wave/group register-resident direct-input schedules | Fast group4 misses the frozen semantic gate; exact group3 misses the speed floors; do not reopen reduction-width sweeps |
 | 13 | `GPF-7` | **Rejected:** Atlas-inspired scalar-column register residency | Exact, but gfx1100 compiles at 256 VGPR with about 1 KiB scratch per thread; SM121 register capacity does not transfer |
-| 14 | `GPF-8` | **Active:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | CPU algebra and gates first; implement only the 256-thread, zero-prompt-matrix design below |
+| 14 | `GPF-8` | **Rejected and removed:** eight-token FP32 chunkwise/triangular-WY recurrence over direct-conv Q/K/V | Resource/family gate passes, but clean semantic, exact-trajectory, and 512 llama.cpp-floor gates fail; retain only the CPU oracle |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every exact, measured, non-regressive improvement is retainable. The
@@ -974,9 +974,10 @@ in-tree schedule experiment over the catalogued T16 body.
 
 ## GPF-8: Eight-Token Chunkwise/WY GDN
 
-Status: CPU algebra/oracle and a callable, default-off HIP candidate are
-implemented; semantic/trajectory/full-model admission remains and no retained
-performance claim exists. The source ideas are Atlas
+Status: rejected and removed on gfx1100. The CPU algebra/oracle remains as
+rejected-design evidence; all HIP, registry, runtime-selector, and candidate-
+specific test surfaces are gone, and no performance claim exists. The source
+ideas are Atlas
 `gated_delta_rule_wy{,64_prefill}.cu` at `8d187c7`/`37513bf` and the FLA-derived
 vLLM `chunk.py`, `chunk_scaled_dot_kkt.py`, and `wy_fast.py` at their registered
 file commits. hipEngine does not copy their CUDA/Triton bodies, BF16 matrix
@@ -1067,19 +1068,25 @@ parallelism makes the design plausible; a serial WY implementation does not.
    six-shape sweep, update the compact artifact/README/changelog, and promote
    through backend package metadata rather than an engine backend/quant branch.
 
-### Initial HIP gate result (W7900, 2026-07-15)
+### GPF-8 result (gfx1100, 2026-07-15)
 
-The callable plain and segmented registry variants pass the predeclared
-one-token byte-identity and C=8/17-token high-precision primitive fixtures. The
-final integrated-tail bodies use one 256-thread launch for both full chunks and
-the scalar remainder. Cached traces observe the expected plain and segment
-symbols at **48 VGPR, zero scratch, and 28 KiB LDS**. A cached synthetic
-production-shape trace of compact prepare, recurrence, and RMSNorm+gate across
-30 layers measures **47.491 ms total** at 512 tokens: **0.866 ms prepare,
-43.848 ms recurrence, and 2.777 ms RMSNorm+gate**. This passes the frozen 66 ms
-pre-routing gate. Published runtime defaults are still unchanged; the explicit
-`chain_wy8` mode exists only for admission harnesses. The candidate must now
-pass the semantic, exact-trajectory, decode, and clean 512/4K floors.
+The candidate passed every pre-model gate. Plain/segmented C=8 and 17-token-tail
+fixtures met the frozen primitive bounds; cached traces reported **256 threads,
+48 VGPR, zero scratch, and 28 KiB LDS**. A synthetic production-shape trace put
+compact prepare + recurrence + RMSNorm/gate across 30 layers at **47.491 ms**,
+below the predeclared 66 ms ceiling.
+
+The clean W7900 model gates reject it. Across all 18 frozen prompts, teacher-
+forced KL reaches **0.056522 > 0.05**, top-1 is **445/450 = 98.889% < 99%**,
+and only **5/18** complete 128-transition free-running trajectories remain
+exact. Aggregate decode wall is non-regressive (**-0.046%**) but cannot override
+correctness. Clean 1+3 prefill measures **2003.399 tok/s at 512** and
+**2280.244 tok/s at 4K**: 4K exceeds its llama.cpp HIP floor by 1.116%, while
+512 misses by 16.951%, and both floors were required. The candidate kernels,
+wrappers, registry entries, `chain_wy8` selector, and candidate tests were
+removed. The float64 CPU oracle remains, and `chain_lds32_direct` stays the
+production default. Evidence:
+[`2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json).
 
 ## Correctness And Promotion Contract
 
