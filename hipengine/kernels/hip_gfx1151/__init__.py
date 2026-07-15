@@ -47,6 +47,9 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # LCP-4's exact router primitive and full-model gates admit the 256-thread
 # reduction geometry for BF16-hidden/F32-weight GGUF router logits on gfx1151.
 GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
+# Post-LCP-4B profile and full-state gates admit 128 threads for bulk-prefill
+# top-k selection. Decode keeps its independently selected 256-thread launch.
+GGUF_PREFILL_ROUTER_SELECT_THREADS = 128
 # Clean LCP-3 exactness plus balanced 512/4K wall admits four-wave activation
 # sharing for covered dense Q8T16 WMMA prefill shapes on gfx1151. Two-wave stays
 # available as the first rollback schedule during its release window.
@@ -123,6 +126,7 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
+    "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
