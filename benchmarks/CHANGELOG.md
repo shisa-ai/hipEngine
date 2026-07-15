@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [captured gfx1151 128K prefill no-progress with persistent flight recorder] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV HIP 7.15 one-queue warmup completes at **503.876/27.970 prefill/decode tok/s**, then measured prefill 1 holds **100% / 2.9 GHz / median 49 W** for 1,436 seconds; the last retired marker certifies chunk `[24576,28672)`, while host entry reaches layer 11 in `[28672,32768)` before stopping, narrowing the unresolved window to layer-10 retirement / layer-11 metadata / layer-11 full-attention-MoE without claiming a named failed dispatch; `benchmarks/results/2026-07-16-gfx1151-128k-prefill-flight-recorder-stall.json`.
+
 - [published final gfx1100 GGUF optimization sweep] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV defaults-only therock-7.15 right-sized 1+3: prefill **1290.246-766.892 -> 2716.648-1037.378 tok/s (+35.27% to +118.78%)**, graph decode **89.727-61.264 -> 92.833-62.669 tok/s (+2.24% to +3.46%)**, and tracked memory **21.228-24.168 GiB**. Prefill beats llama.cpp HIP at all six shapes (**+12.62% to +30.95%**) and Vulkan through 64K; decode beats HIP everywhere and is closest to Vulkan at 4K (**-2.47%**). All 18 IDs are exact; `benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json`.
 
 ## 2026-07-15
