@@ -303,6 +303,18 @@ accumulators, q8_1/dp4a, raw selected layouts, or broad selected-MoE geometry
 sweeps without genuinely new evidence. Artifact:
 `benchmarks/results/2026-07-15-gfx1100-gguf-decode-q4t16-halfseq-rejected.json`.
 
+A final source-clean therock-7.15 marked trace at `11051aec` confirms
+**8.652 ms GPU/token** at 4K: dense Q8T16 `39.45%`, selected-MoE `21.41%`,
+attention `9.06%`, and lm-head `7.25%`. At 32K, total GPU work is
+**9.724 ms/token** and attention rises to `17.36%`; however, the retained
+LCP-D2 prepare plus parallel output reducer is only **90.878 us/token**
+(`5.38%` of attention). The remaining **1.569 ms/token** is the already
+scoped grouped-GQA split-K context scan. Serial reduction, warp split,
+threshold, and grouped-GQA alternatives are measured closures, so this pass
+adds no second decode candidate. Decode is closed pending the final
+defaults-only sweep. Artifact:
+`benchmarks/results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json`.
+
 G-D2 ISA/code-object audit for the active Q8_0 T16 GEMV decode family is
 recorded in
 `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-isa-audit.json`.
