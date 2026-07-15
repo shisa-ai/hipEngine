@@ -156150,3 +156150,66 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json`.
   Future decode work needs a new exact algorithm/layout; proceed to the final
   selector-unset six-shape publication refresh.
+
+## 2026-07-15 - Final publication exposes residual 128K lifecycle stall
+
+- Clean detached `61a27d72` selector-unset one-queue production components pass
+  at 512/1K/4K/32K/64K with exact three-run IDs and prefill
+  **1294.885/1358.342/1365.720/1034.845/796.083 tok/s**. Graph decode is
+  **49.041/51.623/52.422/43.572/37.622 tok/s** and tracked peak is unchanged.
+- The matching 128K component records automatic `GPU_MAX_HW_QUEUES=1` in
+  provenance and completes warmup at **509.708 prefill / 28.036 decode tok/s**,
+  then measured pass 1 enters the same no-progress signature for more than seven
+  minutes: 100% utilization, 2.9 GHz SCLK, **44-46 W**, no output, and no
+  amdgpu/KFD fault. Bounded process-group termination restores idle without a
+  reset. This disproves treating the one-queue workaround as sufficient by
+  itself for every current-production lifecycle.
+- The five completed components remain diagnostic inputs, not a retained final
+  rollup until a clean same-commit 128K 1+3 completes. Isolate post-`4d0aa281`
+  policy first: explicit LCP-4B 512-thread rollback versus automatic 128, with
+  device metadata explicitly off as a no-op long-context control. Promote a
+  request-scoped safe policy only on causal exact evidence, then rerun the final
+  128K component and merge gate.
+- LCP-4B is not causal. A clean one-warmup/one-measured 128K screen with
+  `GPU_MAX_HW_QUEUES=1`, device metadata explicitly off, and router select
+  restored to 512 threads completes warmup at **503.455 tok/s** but measured
+  pass 1 enters the same 100%/2.9 GHz, 45-46 W state. Bounded termination again
+  restores idle.
+- The next user-space scheduler/copy control, adding `HSA_ENABLE_SDMA=0` to the
+  automatic current route with one hardware queue, completes warmup+1 at
+  **498.492/498.688 prefill tok/s** and **27.998/28.137 decode tok/s**, exact ID
+  `9707`, unchanged 25.493 GiB tracked peak, and no low-power collapse. This is
+  a successful screen, not yet a retained default: a complete 1+3 plus 512/4K
+  non-regression gate is required before changing gfx1151 process policy.
+- The full SDMA-disabled gate rejects that workaround: fresh warmup is
+  **499.838 tok/s**, then measured pass 1 reproduces the same 100%/2.9 GHz,
+  45 W no-progress state. No user-space launch/copy selector survives the
+  required lifecycle gate. `amdgpu.sched_policy=2` is documented debug-only,
+  system-wide, and requires disruptive module reload/reboot; it is not adopted
+  as a production hipEngine default.
+- Retained publication scope is therefore 512-64K only. The five clean
+  right-sized 1+3 components improve prefill by
+  **+42.77%/+46.10%/+44.31%/+32.95%/+25.11%** over the previous public GGUF
+  row; all 15 measured IDs are `9707`, maximum prefill/decode stdev over median
+  is **0.187%/0.049%**, and tracked memory is unchanged. The current 128K table
+  cells are explicitly blocked rather than carrying a stale number.
+- Published compact evidence
+  `benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`
+  and corrected the upstream report at
+  https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043. One queue
+  remains the gfx1151 risk-reducing default because its original matched A/B
+  and short-context non-regression are valid; all lifecycle-safe/prevents-stall
+  wording is removed. Synchronized both READMEs, changelog, benchmark protocol,
+  env contract, kernel/refactor catalogs, parity/prefill handoffs, Vulkan/HIP
+  history, and the SOL coordinator. External closure requires a fixed gfx11
+  firmware/kernel and the same 128K warmup+3 gate.
+- Final validation initially found 15 compact-MoE routing-test failures: two
+  `object.__new__` fake runners bypassed `Qwen35GGUFFullStackRunner.__post_init__`
+  and therefore inherited the class default `backend="auto"`; LCP-4B's new
+  backend capability lookup correctly requires the concrete backend that every
+  real runner resolves during initialization. Set both fixtures explicitly to
+  their existing `hip_gfx1100` baseline rather than weakening production's
+  fail-closed backend contract. The focused router/compact-MoE bundle passes
+  **29/29**, and `uv run --extra dev pytest -q` then completes at **100%** with
+  exit 0. `python3 scripts/sync_benchmark_readme.py --check`, the focused
+  benchmark README test, JSON validation, and `git diff --check` also pass.

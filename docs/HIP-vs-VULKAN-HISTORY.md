@@ -58,9 +58,9 @@ Compact evidence is
 | Rank | Production-backed opportunity | Decision |
 | ---: | --- | --- |
 | 1 | Exact GDN for prefill | **LCP-2A promoted on gfx1151:** compiler-cacheable state accesses preserve the scalar recurrence, pass the six-case and 250/250 natural-transition gates exactly, and improve balanced 512/1K/4K prefill by 34.76%-36.63%. The Vulkan/HIP subgroup tree remains rejected under the exact route. |
-| 2 | Dense Q8 prefill and decode | **LCP-3 promoted for gfx1151 prefill through 64K:** four exact production-order waves share one activation tile and improve clean 512/4K by 0.53%/1.57%. Above 64K production Q8 remains required; decode dense Q8 remains an open profiled body. Do not substitute Vulkan Q8_1 math. |
-| 3 | 128K grouped-GQA decode context body | Compare hipEngine with the faster llama.cpp HIP FlashAttention implementation. Vulkan is explicitly not the source target. Preserve BF16 KV and `KVLiveSpans`. |
-| 4 | F32 router logits | **LCP-4A promoted on gfx1151:** the existing exact token-tiled body uses 256 rather than 512 threads, improving clean 512/4K prefill by 2.76%/3.28% and exact graph decode by 0.071%. Refresh the profile before considering separate router-select fusion. |
+| 2 | Dense Q8 prefill and decode | **LCP-3 promoted for gfx1151 prefill through 64K:** four exact production-order waves share one activation tile and improve clean 512/4K by 0.53%/1.57%. Above 64K production Q8 remains required. The decode closure rejects 64 threads as 15.8% slower; a future attempt needs a new exact layout/algorithm, not Vulkan Q8_1 math. |
+| 3 | 128K grouped-GQA decode context body | **Launch-only closure complete:** chunk 128 is 2.89% faster but changes one BF16 output, while chunk 512 is inexact and slower. Keep chunk 256 plus LCP-D1; future work may compare a genuinely new exact implementation with llama.cpp HIP FlashAttention while preserving BF16 KV and `KVLiveSpans`. |
+| 4 | F32 router logits and selection | **LCP-4A/LCP-4B promoted on gfx1151:** exact router logits use 256 threads, and the refreshed profile selects an exact 128-thread top-k launch rather than risky cross-block fusion. Clean 512/4K prefill gains are 2.76%/3.28% plus 0.34%/0.36%; the named select family falls 70.17%. |
 
 Closed non-targets are selected Q4/Q5 prefill, short/mid full-attention prefill,
 generic graph/dispatch work, a wholesale Vulkan backend, broad compiler/ISA
@@ -71,11 +71,14 @@ must start from the current hipEngine family trace rather than transfer raw
 cross-profiler ratios.
 
 A separate HIP runtime stability result does not change the backend-selection
-conclusion: gfx1151 now defaults to `GPU_MAX_HW_QUEUES=1` before HIP loads after
-a clean default-queue 128K stall and matched one-queue warmup+3 completion. The
-512/4K check is non-regressive, and the evidence is posted to ROCm#5107. This
-points to a gfx11 HIP scheduler/firmware workaround, not a reason to begin a
-Vulkan backend.
+conclusion: gfx1151 defaults to `GPU_MAX_HW_QUEUES=1` before HIP loads after a
+clean default-queue 128K stall and matched one-queue warmup+3 completion. The
+512/4K check is non-regressive, so the risk-reducing default remains. It is not
+a lifecycle guarantee: later current-production, router-rollback, and
+SDMA-disabled full 128K gates all reproduce the low-power measured-pass-1
+stall. Both the initial evidence and correction are posted to ROCm#5107. This
+is a gfx11 HIP scheduler/firmware limitation, not a reason to begin a Vulkan
+backend.
 
 ## Measurement Reset: 2026-07-10
 

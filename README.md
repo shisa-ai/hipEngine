@@ -100,8 +100,10 @@ such as `gfx1101`/`gfx1102` can force a backend with `backend="hip_gfx1100"`,
 `--backend hip_gfx1100`, or `HIPENGINE_BACKEND=hip_gfx1100` after validating
 correctness/performance.
 
-On gfx1151, hipEngine sets `GPU_MAX_HW_QUEUES=1` before HIP loads to avoid a
-retained gfx11 low-power queue stall. Explicit values are preserved; set
+On gfx1151, hipEngine sets `GPU_MAX_HW_QUEUES=1` before HIP loads because it
+reduces a retained gfx11 low-power queue failure and is non-regressive at short
+context. It is not a repeated-128K lifecycle guarantee: current production can
+still hit the firmware/scheduler stall. Explicit values are preserved; set
 `GPU_MAX_HW_QUEUES=4` before process start to restore ROCm's documented default
 for diagnosis. gfx1100 is unchanged. See [`docs/ENVS.md`](docs/ENVS.md).
 
@@ -258,45 +260,43 @@ and [W7900 correctness oracle](benchmarks/results/2026-07-12-w7900-v030-gguf-eag
 
 > Thanks to Framework for sending a dedicated Framework Desktop Strix Halo motherboard for this profiling and tuning work.
 
-**Status: retained.** GGUF is the clean 2026-07-14 LCP-1/LCP-D1 automatic
-1+3 refresh at `71e61524`. Exact tiled convolution is active at all six shapes;
-the long-split reducer enters only above 256 attention splits, leaving shorter
-reducers on the original serial body. llama.cpp remains the clean 2026-07-11
-matched reference. PARO 512/1K are the clean 2026-07-12 exact recovery at
-`9944e481`; 4K and 32K-128K are the clean scoped AOTriton queue-isolation
-refresh at `01e2cec5`, all with TheRock HIP 7.15 and TuneD
-`accelerator-performance`. PARO uses two discarded warmups plus five
-measurements; GGUF uses one warmup plus three measurements; llama.cpp uses one
-internal warmup plus five samples per split phase. GGUF prefill/decode sample
-stdev over median is at most **0.140%/0.113%**, all 18 measured IDs are `9707`,
-and tracked memory is unchanged. The 128K row is now a complete serialized 1+3
-component; the older intermittent later-pass lifecycle issue remains a separate
-diagnostic. Bold marks the best raw value per row, but PARO is W4 PARO rather
-than Q4_K_M and memory scopes differ, so emphasis is descriptive rather than a
-controlled same-quant/backend win.
+**Status: retained through 64K; repeated 128K blocked.** GGUF is the clean
+2026-07-15 selector-unset 1+3 production refresh at `61a27d72`, with the
+current LCP stack and automatic one-queue gfx1151 process policy. The five
+accepted shapes pass clean provenance, finite logits, exact final IDs, and the
+5% variance gate; prefill/decode stdev over median is at most
+**0.187%/0.049%**, all 15 measured IDs are `9707`, and tracked memory is
+unchanged. Repeated 128K production completes warmup but can still enter the
+100%/2.9 GHz, 44-46 W no-progress state on measured pass 1. Router rollback and
+SDMA-disabled full controls reproduce it, so no stale hipEngine GGUF 128K value
+is carried into the table. llama.cpp remains the clean July 11 reference; PARO
+retains its July 12 exact recovery and scoped queue-isolation rows. Bold marks
+the best raw value per row, but PARO is W4 PARO rather than Q4_K_M and memory
+scopes differ, so emphasis is descriptive rather than a controlled same-math
+allocator comparison.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **1140.101** | 906.979 | 1061.260 | 1067.770 |
-| 1K/128 | **1208.343** | 929.724 | 1043.230 | 1069.870 |
-| 4K/128 | **1089.031** | 946.366 | 1009.240 | 1016.580 |
-| 32K/128 | **906.145** | 778.371 | 743.547 | 814.923 |
-| 64K/128 | **716.775** | 636.330 | 573.611 | 660.974 |
-| 128K/128 | 474.641 | 433.811 | 390.441 | **476.788** |
+| 512/128 | 1140.101 | **1294.885** | 1061.260 | 1067.770 |
+| 1K/128 | 1208.343 | **1358.342** | 1043.230 | 1069.870 |
+| 4K/128 | 1089.031 | **1365.720** | 1009.240 | 1016.580 |
+| 32K/128 | 906.145 | **1034.845** | 743.547 | 814.923 |
+| 64K/128 | 716.775 | **796.083** | 573.611 | 660.974 |
+| 128K/128 | 474.641 | — (blocked) | 390.441 | **476.788** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **66.767** | 49.061 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 51.569 | 50.818 | **62.136** |
-| 4K/128 | **62.715** | 52.432 | 50.126 | 60.097 |
-| 32K/128 | 50.342 | 43.543 | 44.240 | **51.319** |
-| 64K/128 | 42.094 | 37.562 | 39.326 | **44.422** |
-| 128K/128 | 30.386 | 28.047 | 32.114 | **34.948** |
+| 512/128 | **66.767** | 49.041 | 50.939 | 62.396 |
+| 1K/128 | 61.746 | 51.623 | 50.818 | **62.136** |
+| 4K/128 | **62.715** | 52.422 | 50.126 | 60.097 |
+| 32K/128 | 50.342 | 43.572 | 44.240 | **51.319** |
+| 64K/128 | 42.094 | 37.622 | 39.326 | **44.422** |
+| 128K/128 | 30.386 | — (blocked) | 32.114 | **34.948** |
 
 #### Peak memory GiB
 
@@ -307,19 +307,18 @@ controlled same-quant/backend win.
 | 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
 | 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
 | 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
-| 128K/128 | **22.124** | 25.493 | 23.862 | 24.254 |
+| 128K/128 | **22.124** | — (blocked) | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 The memory columns have different scopes: hipEngine reports tracked allocator
 high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
 sampled every 10 ms. Use them for within-column context growth, not small
-cross-column allocator comparisons. Row sources: [`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
+cross-column allocator comparisons. Row sources: [`current hipEngine GGUF 512-64K refresh and 128K blocker`](benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
+[`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
 [`PARO 4K-128K AOTriton queue isolation`](benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
-[`hipEngine GGUF LCP-1/LCP-D1 right-sized 1+3 refresh`](benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json),
-[`LCP-D1 clean 128K profile`](benchmarks/results/2026-07-14-gfx1151-gguf-decode-lcpd1-clean-profile.json),
+[`previous GGUF LCP-1/LCP-D1 rollup`](benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json),
+[`queue-stall follow-up`](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043),
 [`accepted July 11 matched summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
-[`July 11 PARO reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-paro-packed-5run.json),
-[`July 11 hipEngine GGUF reference`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-hipengine-gguf-q4km-5run.json),
 [`llama.cpp HIP`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json), and
 [`llama.cpp Vulkan`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json). Exact settings and gates are in the canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-throughput).
 

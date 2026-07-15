@@ -264,6 +264,8 @@ def _fake_runner_and_scratch():
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
     runner.weights = weights
     runner.runtime = "runtime-sentinel"
+    # object.__new__ bypasses __post_init__, which normally resolves `auto`.
+    runner.backend = "hip_gfx1100"
     scratch = SimpleNamespace(
         post_norm=_buf(100),
         moe_router_logits=_buf(110),

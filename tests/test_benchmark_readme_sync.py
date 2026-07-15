@@ -42,6 +42,13 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
             / "2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json"
         ).read_text(encoding="utf-8")
     )
+    current_gguf_refresh = json.loads(
+        (
+            results_dir
+            / "2026-07-15-gfx1151-gguf-production-refresh-"
+            "512-64k-128k-blocked.json"
+        ).read_text(encoding="utf-8")
+    )
     paro_recovery = json.loads(
         (results_dir / "2026-07-12-gfx1151-paro-prefill-recovery.json").read_text(
             encoding="utf-8"
@@ -94,6 +101,32 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     assert gguf_lcp_refresh["correctness"][
         "largest_decode_stdev_over_median_percent"
     ] < 5.0
+    assert current_gguf_refresh["status"] == (
+        "accepted_512_through_64k_128k_lifecycle_blocked"
+    )
+    assert current_gguf_refresh["performance_claim"] is True
+    assert current_gguf_refresh["performance_claim_scope"].endswith(
+        "no current 128K topline claim"
+    )
+    assert current_gguf_refresh["software"]["measurement_commit"].startswith(
+        "61a27d72"
+    )
+    assert current_gguf_refresh["correctness"][
+        "all_15_measured_final_ids_9707"
+    ] is True
+    assert current_gguf_refresh["correctness"][
+        "largest_prefill_stdev_over_median_percent"
+    ] < 5.0
+    assert current_gguf_refresh["correctness"][
+        "largest_decode_stdev_over_median_percent"
+    ] < 5.0
+    assert current_gguf_refresh["blocked_128k"]["topline_eligible"] is False
+    assert current_gguf_refresh["blocked_128k"]["automatic_one_queue"][
+        "termination_restored_idle"
+    ] is True
+    validate_artifact_provenance(
+        current_gguf_refresh["provenance"], require_model=False
+    )
     assert paro_recovery["status"] == "accepted"
     assert paro_recovery["performance_claim"] is True
     assert paro_recovery["correctness_claim"] is True
@@ -158,13 +191,16 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert table_header in root_readme
         for row in rows:
             paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
-            gguf_summary = gguf_lcp_refresh["summary_by_workload"][row["workload"]]
-            if table_key == "prefill_tok_s":
-                gguf_value = gguf_summary["prefill_tok_s"]["median"]
-            elif table_key == "decode_tok_s":
-                gguf_value = gguf_summary["decode_tok_s"]["median"]
-            else:
-                gguf_value = gguf_summary["tracked_peak_allocated_gib"]
+            gguf_summary = current_gguf_refresh["summary_by_workload"].get(
+                row["workload"]
+            )
+            if gguf_summary is not None:
+                if table_key == "prefill_tok_s":
+                    gguf_value = gguf_summary["prefill_tok_s"]["median"]
+                elif table_key == "decode_tok_s":
+                    gguf_value = gguf_summary["decode_tok_s"]["median"]
+                else:
+                    gguf_value = gguf_summary["tracked_peak_allocated_gib"]["median"]
             if row["workload"] == "4K/128":
                 isolated = paro_isolation["performance"]["candidate_isolated_stream"]
                 isolation_keys = {
@@ -188,16 +224,26 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
                     paro_value = isolated["decode_tok_s"]["median"]
                 else:
                     paro_value = isolated["tracked_peak_allocated_gib"]
-            published_row = (
-                f"| {row['workload']} | {paro_value:.3f} | "
-                f"{gguf_value:.3f} | {row['llamacpp_hip']:.3f} | "
-                f"{row['llamacpp_vulkan']:.3f} |"
-            )
+            if gguf_summary is None:
+                assert row["workload"] == "128K/128"
+                published_row = (
+                    f"| {row['workload']} | {paro_value:.3f} | — (blocked) | "
+                    f"{row['llamacpp_hip']:.3f} | {row['llamacpp_vulkan']:.3f} |"
+                )
+            else:
+                published_row = (
+                    f"| {row['workload']} | {paro_value:.3f} | "
+                    f"{gguf_value:.3f} | {row['llamacpp_hip']:.3f} | "
+                    f"{row['llamacpp_vulkan']:.3f} |"
+                )
             assert published_row in canonical_values
             assert published_row in root_values
 
-    assert "Each hipEngine shape uses its own right-sized resident session" in canonical
-    assert "GGUF uses one discarded warmup plus\nthree measurements" in canonical
+    assert "Each accepted shape uses one independent right-sized resident process" in canonical
+    assert "one\ndiscarded warmup, and three measured runs" in canonical
+    assert "128K production is **blocked**" in canonical
+    assert "128K/128 | 474.641 | — (blocked)" in canonical
+    assert "128K/128 | 474.641 | — (blocked)" in root_readme
 
     for name, component in artifact["components"].items():
         assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name
