@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_prefill_flight_recorder_stall",
+  "status": "diagnostic_stall_captured_and_chunk_layer_window_narrowed",
+  "created_at": "2026-07-16T02:31:17+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "A clean HIP 7.15 one-queue 128K warmup completed at 503.876 prefill / 27.970 decode tok/s, then measured prefill 1 entered the persistent low-power no-progress state. The chunk-granularity GPU marker proves all work through chunk [24576,28672) retired. Host checkpoints progressed into chunk [28672,32768) through the layer-11 full-attention entry, then stopped for the remaining 1,436 seconds of telemetry. Because this source records a layer checkpoint before its synchronous for_chunk metadata copies and before the layer launch, the exact unresolved window is after layer 10 was enqueued and before layer 11 returned: layer-10 linear-attention retirement, layer-11 metadata preparation, or layer-11 full-attention/MoE work. This is a materially narrower boundary but does not establish a nonterminating kernel or exclude a KFD/MES queue/fence failure.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "d697b97182369df805305515bb1e6924e0811bc4",
+    "source_tree": "clean detached worktree",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "hsa_enable_sdma": "unset",
+    "prefill_device_metadata_override": "unset; gfx1151 package default is host metadata above 4K",
+    "flight_recorder_granularity": "chunk"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "protocol": {
+    "workload": "128K/128",
+    "warmups": 1,
+    "requested_measured_runs": 3,
+    "completed_measured_runs": 0,
+    "process_bound_seconds": 1800,
+    "actual_elapsed_seconds": 1805,
+    "exit_status": 124,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity chunk --json <out>/result.json",
+    "instrumentation": [
+      "8,192-entry persistent prefill mmap ring",
+      "same-stream chunk retirement markers",
+      "one-second external ring watcher",
+      "five-second amd-smi telemetry",
+      "two-second amdgpu_fence_info sampling",
+      "kernel journal window"
+    ]
+  },
+  "completed_warmup": {
+    "prefill_tok_s": 503.875659,
+    "decode_tok_s": 27.970192,
+    "tracked_peak_gib": 25.492502,
+    "note": "Warmup timing is diagnostic because the recorder was enabled and is not a retained performance row. The timed process did not finish a measured repetition or write result.json."
+  },
+  "flight_recorder": {
+    "prefill_id": 2,
+    "capacity": 8192,
+    "submitted_sequence": 1658,
+    "completed_sequence": 1603,
+    "retirement_lag": 55,
+    "overwritten_entries": 0,
+    "last_completed": {
+      "sequence": 1603,
+      "phase": "chunk",
+      "chunk_start": 24576,
+      "chunk_end": 28672,
+      "layer_id": -1,
+      "interpretation": "In chunk mode this marker is enqueued after all 40 layers for the chunk, so its retirement proves the complete chunk retired."
+    },
+    "last_host_checkpoint": {
+      "sequence": 1658,
+      "phase": "full_attention_layer",
+      "chunk_start": 28672,
+      "chunk_end": 32768,
+      "layer_id": 11,
+      "layer_type": 2,
+      "interpretation": "The checkpoint is published before for_chunk() and before the layer call. It proves host entry into layer 11, not that the layer-11 kernels were submitted."
+    },
+    "strongest_safe_localization": {
+      "definitely_retired": "all work through token 28672 plus layers 0-9 of chunk [28672,32768), because each following layer entry reaches a synchronous metadata boundary",
+      "last_layer_enqueued": "layer 10 linear attention",
+      "unresolved_window": [
+        "retirement of layer 10 linear-attention work",
+        "layer 11 synchronous host-to-device metadata preparation",
+        "layer 11 full-attention and post-attention MoE work before return"
+      ],
+      "not_established": [
+        "that layer 11's attention kernel launched",
+        "the exact last retired user-mode dispatch",
+        "a nonterminating kernel rather than a scheduler/queue/fence failure"
+      ]
+    }
+  },
+  "telemetry": {
+    "high_power_work_start": "2026-07-16T02:02:12+09:00",
+    "persistent_low_power_start": "2026-07-16T02:07:12+09:00",
+    "persistent_low_power_duration_through_bound_seconds": 1436,
+    "gfx_activity_percent": 100,
+    "gfx_clock_mhz": {
+      "min": 2900,
+      "median": 2900,
+      "max": 2900
+    },
+    "socket_power_w": {
+      "min": 46,
+      "median": 49,
+      "max": 65
+    },
+    "vram_used_mib": 26662,
+    "after_process_termination_sample": {
+      "power_w": 24,
+      "gfx_clock_mhz": 1245,
+      "gfx_activity_percent": 28,
+      "vram_used_mib": 17
+    }
+  },
+  "system_observability": {
+    "kernel_journal_relevant_amdgpu_kfd_fault_reset_hang_mes_lines": 0,
+    "kernel_journal_note": "The recovered time window contains one spurious PCIe PME interrupt at 02:03:26, before the persistent state, and no amdgpu/KFD/MES fault, timeout, or reset report.",
+    "amdgpu_fence_info": {
+      "gfx_ring_0_first_and_last_signaled_emitted": "0x00009889 / 0x00009889",
+      "emitted_equals_signaled_on_sampled_kernel_rings": true,
+      "mes_and_sdma_monitor_activity_continued": true,
+      "interpretation": "No sampled kernel-ring mismatch was exposed. KFD user queues are not represented by this debugfs view, so this neither proves user-queue retirement nor clears MES/KFD."
+    }
+  },
+  "merge_boundary": {
+    "captured_source": "d697b971, before the merged gfx1100 request/chunk metadata-reuse scheduler",
+    "current_main_change": "e03e5a34 moves identical chunk metadata preparation outside the 40-layer loop",
+    "expected_128k_copy_topology_change": "For 32 outer 4K chunks, six per-layer synchronous copies fall from approximately 7,680 calls to 192, removing approximately 7,488 synchronization boundaries.",
+    "required_next_gate": "Run the merged scheduler as a distinct 128K lifecycle experiment. Do not call completion a root-cause fix, and use layer-granularity markers or post-metadata checkpoint placement because the removed barriers change submission lag."
+  },
+  "source_hashes": {
+    "flight_final_json": "581d9eacf37b0c66903780e4459ca17c5b0b8d43a50789f55d4b8cde001c068d",
+    "telemetry_csv": "83500d819287543c603df3f65f7b9f573a58a32f34d1cd8a9559a622ac82a25d",
+    "amdgpu_fences_log": "0e6c5be8804d39404c75a9afaa06a55f4839b181df6fedeb1e33dbd227fa152a",
+    "kernel_journal_log": "0f2e4c97d5d9736fead549d47d1a94ad5993ed82178f77340e62db5a270bbc9a",
+    "run_log": "b49606c4b9184a7e5e35fd6a95ceb8a8120cb06cdcd5ca3b898bfe8b06368852",
+    "provenance_txt": "23a02c7fdd1827bafc07e1dece54d9bb653d8dd1edc115b74cfe51e8e3f7b606"
+  },
+  "local_raw_directory": "/tmp/gfx1151-flight-d697b971-20260715T170112Z"
+}
