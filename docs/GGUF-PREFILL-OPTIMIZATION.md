@@ -490,7 +490,7 @@ select current code without a fresh profile.
 | 18 | `LCP-3A` | **Rejected and removed:** four exact 32-column Q8T16 FP16-WMMA waves share one activation tile | Byte-exact, but width 4096 and short-K width 2048 regress 2.24%/8.87%; the pp512 mix projects about +0.3 ms. Stop independent-wave widening |
 | 19 | `LCP-3B` | **Rejected and removed:** direct prequantized Q8_1 x Q8T16 integer-WMMA body | Primitive numerics/quality pass, but the body is 44.66% slower before quantization; quantization adds only 0.016 ms. Any continuation must reproduce the actual shared MMQ tile/decomposition, not route raw dp4a or retry direct T16 |
 | 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
-| 21 | `LCP-3E` | **Standalone raw-layout leaf predeclared:** source MMQ128 directly over output-major `block_q8_0` rows | A primary body+included win is required before profiler work. Runtime dual residency is forbidden: the raw dense-Q8 footprint is ~1.390 GiB, so continuation must be a byte-neutral replacement plus decode/memory gates |
+| 21 | `LCP-3E` | **Rejected and removed:** source-compatible MMQ128 directly over output-major `block_q8_0` rows | Correctness passes and the final WGP body is spill-free with source-matched fragment/WMMA counts, but prequantized/included rows are +3.95%/+5.32% vs production. The frozen gate fails before profiler/runtime work; raw+T16 dual residency remains forbidden |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1434,18 +1434,26 @@ This is the authoritative pickup state; do not reconstruct it from chat:
   byte/primitive quality, but the primary body regressed **0.523062 -> 1.144524
   ms (+118.81%)**; D4 packing added only 0.007061 ms. The candidate was removed
   before profiler/model routing. T16's K-major 16-column payload cannot populate
-  the output-major packed-int shared tile economically. LCP-3E now screens the
-  source tile directly over output-major raw Q8_0 bytes. This is standalone
-  only: duplicating T16 would add about **1.390 GiB**, so any advancing runtime
-  design must replace the layout byte-neutrally and pass strict decode/memory
-  gates. Evidence:
+  the output-major packed-int shared tile economically. LCP-3E then screened the
+  source tile directly over output-major raw Q8_0 bytes. After removing an
+  invalid 418-spill unroll, matching source WGP mode, using aligned 16-byte LDS
+  fragments, and compiling a no-tail-check full tile, the standalone body was
+  210 VGPR with zero scratch/spills and source-matched 24 `ds_load_b128`/32
+  integer-WMMA static counts. Primitive correctness passed, but the final
+  primary gate was **0.521823 -> 0.542442 ms (+3.95%)** before D4 packing and
+  **0.549562 ms (+5.32%)** with packing. Both rows had to win, so the candidate
+  was removed before profiler/model routing. Duplicating T16 would also add
+  about **1.390 GiB**. Dense-Q8 prefill tile/layout variants are therefore
+  closed pending genuinely new evidence; re-profile and move to the next
+  measured family. Evidence:
   [`residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
   [`LCP-2A`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
   [`LCP-2B`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
   [`LCP-3A`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-four-wave-rejected.json),
   [`LCP-3B`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-q8-1-i8-wmma-rejected.json),
-  [`LCP-3C`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json), and
-  [`LCP-3D`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json).
+  [`LCP-3C`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8-mmq-source-audit.json),
+  [`LCP-3D`](../benchmarks/results/2026-07-15-gfx1100-gguf-q8t16-mmq128-rejected.json), and
+  [`LCP-3E`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json).
 
 Keep GPF-4 explicit/default-off. GPF-5A owns the gfx1151 BF16/BF16 Q8T16
 prefill aliases only when the request has at most 65,536 prompt tokens and the

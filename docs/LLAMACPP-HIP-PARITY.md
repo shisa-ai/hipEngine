@@ -191,13 +191,15 @@ Continuation order is now:
    quality, but failed the primary body gate **0.523062 -> 1.144524 ms
    (+118.81%)**; D4 packing adds only 0.007061 ms. T16's K-major 16-column
    bytes require four-byte gather/packing to fill llama.cpp's output-major
-   shared fragments, so the candidate is removed. Any continuation must first
-   use a source-compatible output-major replacement layout and account for
-   decode/memory tradeoffs. `LCP-3E` is predeclared as that standalone raw leaf
-   proof. A raw sidecar is forbidden: the traced dense-Q8 weights are about
-   **1.390 GiB**, so only a byte-neutral replacement with strict decode/memory
-   gates may proceed beyond the leaf. Do not retune selected Q4/Q5, short full
-   attention, or generic launch count.
+   shared fragments, so the candidate is removed. `LCP-3E` then tested the
+   source-compatible output-major raw layout directly. Its final spill-free WGP
+   body matched the source fragment/WMMA instruction counts and passed primitive
+   correctness, but still lost the frozen primary gate: **0.521823 -> 0.542442
+   ms (+3.95%)** prequantized and **0.549562 ms (+5.32%)** including D4 packing.
+   It was removed before profiler/model routing. A raw sidecar is independently
+   forbidden: the traced dense-Q8 weights are about **1.390 GiB**. Close
+   dense-Q8 prefill tile/layout experiments pending genuinely new evidence; do
+   not retune selected Q4/Q5, short full attention, or generic launch count.
 4. Continue profile-directed dense-Q8/selected-MoE **decode** work for Vulkan
    parity independently, retaining 4K first and escalating to the 512 and 128K
    endpoints.
@@ -210,8 +212,9 @@ Machine-readable evidence:
 [`parity rebaseline`](../benchmarks/results/2026-07-14-gfx1100-gguf-parity-rebaseline.json),
 [`GPF-9C residual attribution`](../benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-residual-attribution.json),
 [`LCP-2A metadata reuse`](../benchmarks/results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json),
+[`LCP-2B tight no-read`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json),
 and
-[`LCP-2B tight no-read`](../benchmarks/results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json).
+[`LCP-3E raw MMQ rejection`](../benchmarks/results/2026-07-15-gfx1100-gguf-raw-q8-mmq128-rejected.json).
 
 ## gfx1151 post-merge transfer plan
 
