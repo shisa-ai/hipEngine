@@ -13083,6 +13083,10 @@ _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS = frozenset(
         "moe_shared_out_f32",
     }
 )
+_GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS = frozenset(
+    _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+    - {"prefill_query", "prefill_key", "prefill_value"}
+)
 
 
 def _both_prefill_routes(start: int, end: int) -> tuple[tuple[str, int, int], ...]:
@@ -13104,6 +13108,11 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         # The exact recurrence reads the full convolution sequence while
         # writing recurrent_out, so those ranges must remain disjoint.
         "conv_out": (("linear", 2, 5),),
+        # Normalized peer GDN materializes Q/K/V after convolution and keeps
+        # them live only through the recurrent output handoff.
+        "prefill_query": (("linear", 3, 5),),
+        "prefill_key": (("linear", 3, 5),),
+        "prefill_value": (("linear", 3, 5),),
         "prefill_beta": (("linear", 3, 5),),
         "prefill_decay": (("linear", 3, 5),),
         "prefill_query_scale": (("linear", 3, 5),),
@@ -13218,11 +13227,13 @@ def _allocate_prefill_scratch_liveness_arena(
     return arena, views, MappingProxyType(offsets)
 
 
-def _gguf_prefill_scratch_liveness_alias_enabled(runner: object) -> bool:
+def _gguf_prefill_scratch_liveness_disabled_fields(
+    runner: object,
+) -> frozenset[str] | None:
     cfg = getattr(getattr(runner, "weights", None), "config", None)
     backend = getattr(runner, "backend", None)
     if cfg is None or not bool(getattr(cfg, "is_moe", False)) or not isinstance(backend, str):
-        return False
+        return None
     try:
         admitted = bool(
             backend_package_capability(
@@ -13232,24 +13243,30 @@ def _gguf_prefill_scratch_liveness_alias_enabled(runner: object) -> bool:
             )
         )
     except ValueError:
-        return False
+        return None
     if not admitted:
-        return False
+        return None
     requested_mode = _gguf_gdn_prefill_mode()
     effective_mode = (
         backend_package_capability(backend, "GGUF_GDN_PREFILL_AUTO_MODE", "fused")
         if requested_mode == "auto"
         else requested_mode
     )
-    if effective_mode != "chain_lds32_direct":
-        return False
+    if effective_mode == "chain_lds32_direct":
+        disabled_fields = _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+    elif effective_mode == "chain_peer_wave32":
+        disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
+    else:
+        return None
     # F32/capture diagnostics intentionally retain independently-owned buffers
     # so post-layer inspection can observe every intermediate concurrently.
-    return not any(
+    if any(
         _env_flag(name, False)
         for name in os.environ
         if name.startswith("HIPENGINE_GGUF_VERIFY_")
-    )
+    ):
+        return None
+    return disabled_fields
 
 
 @dataclass(frozen=True)
@@ -13509,11 +13526,12 @@ class _GGUFFullAttentionPrefillScratch:
         allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
         allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
         owners: list[DeviceBuffer] = []
-        if _gguf_prefill_scratch_liveness_alias_enabled(runner):
+        liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(runner)
+        if liveness_disabled_fields is not None:
             active_sizes = {
                 name: int(nbytes)
                 for name, nbytes in field_sizes.items()
-                if name not in _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+                if name not in liveness_disabled_fields
             }
             arena, active_fields, allocation_offsets = _allocate_prefill_scratch_liveness_arena(
                 active_sizes,
@@ -13522,7 +13540,7 @@ class _GGUFFullAttentionPrefillScratch:
             fields = {
                 name: (
                     _GGUF_PREFILL_SCRATCH_EMPTY
-                    if name in _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
+                    if name in liveness_disabled_fields
                     else active_fields[name]
                 )
                 for name in field_sizes

@@ -157151,3 +157151,63 @@ layout, scheduler ABI, or GDN changes are allowed. Go/no-go requires byte-exact
 Q4/Q5/Q6 focused fixtures, static plus rocprof zero-scratch evidence, a real
 selected-MoE replay win, and clean peer 512/4K plus the full semantic/decode
 promotion contract. Remove and record any rejected source candidate.
+
+## 2026-07-15 — LCP-5A implementation and gfx1100 peer-GDN promotion
+
+The bounded unroll-profile ablation did not change HIP 7.2 resources: Q4/Q5/Q6
+BF16 remained 256 VGPR with 156/176/188 private bytes. The single allowed
+source variant succeeded. On gfx1100 only, the outer 8-subblock Q4/Q5 and
+16-K-tile Q6 loops stay rolled while each inner K16 body remains unrolled;
+gfx1151 retains its independently validated schedule.
+
+Correctness and resources:
+
+- `uv run --with pytest pytest tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q --tb=short`
+  -> **46 passed**. Q4/Q5/Q6 BF16/FP16 outputs remain byte-exact to the CPU
+  selected-MoE reference across uneven/empty experts, padding, and multi-block K.
+- HIP 7.2 static BF16 Q4/Q5/Q6 resources become **70/91/73 VGPR**, **30 SGPR**,
+  and zero private bytes/spills. The cache-only pp512 trace reports allocated
+  **56/96/80 VGPR**, 32-thread workgroups, and zero scratch/LDS.
+- No new RED math fixture was needed because the schedule preserves every
+  operation and the existing CPU-oracle matrix already covers all affected
+  qtypes/dtypes. The later package-default change did produce a real RED in
+  `test_gfx1100_production_prefill_scratch_uses_bounded_liveness_arena`: the
+  old allocator correctly rejected non-direct GDN and fell back to dedicated
+  buffers. GREEN adds peer Q/K/V lifetimes to the phase-safe arena while the
+  explicit direct route still exposes null materialized Q/K/V views.
+
+Matched current-process real-routing replay (same model/session/routing; control
+injects only the known spilled shared object):
+
+- Q4 gate/up: **44.200 -> 44.003 ms** (flat).
+- Q5 down: **50.863 -> 31.725 ms (-37.63%)**.
+- Q6 down: **3.475 -> 2.630 ms (-24.31%)**.
+- selected-MoE total: **98.538 -> 78.358 ms (-20.48%)**.
+
+Final cache-only peer pp512 trace:
+
+- Q5: **51.009 -> 29.544 ms (-42.08%)**; Q6 **3.350 -> 2.383 ms (-28.85%)**.
+- complete kernels: **203.808 -> 184.513 ms (-9.47%)**.
+- first-to-last span: **215.307 -> 194.886 ms (-9.48%)**; idle **10.373 ms**.
+- The new row is faster than llama.cpp HIP's retained **203.301 ms kernels /
+  212.236 ms span** by **9.24% / 8.17%**.
+- Trace/profile SHA256:
+  `b926fb214ad4b8db6a5551456570dfb76ae26dab22ab5d31c6e2ddd31e3077df`,
+  `ad8e8e6ea756b99b2684307c74ab5bb416851e90efb013924d4ed67dba315cea`.
+
+The explicit-peer 1+3 speed screen reaches **2696.304/2823.889 tok/s** at
+512/4K. Enabling the package default initially exposed the liveness RED above;
+a dedicated peer session used **22.995 GiB**. The final selector-unset,
+liveness-aliased screen reaches **2595.233/2783.108 tok/s**, still **7.58% /
+23.42% above** the frozen llama.cpp floors, with all six IDs `9707` and tracked
+peak restored to **21.670 GiB** (**-1.325 GiB** versus dedicated peer scratch).
+Decode medians are **93.029/100.362 tok/s**.
+
+The full 18-prompt promotion run reproduces KL max **0.041737**, top-1
+**445/450 = 98.889%**, finite deterministic teacher-forced execution, and
+aggregate decode wall **-0.085%**. Its raw artifact is marked dirty because the
+candidate is necessarily uncommitted; summary checks all pass and match the
+prior clean semantic artifact exactly. A clean post-commit rerun remains
+required before publication. gfx1100 package policy now selects
+`chain_peer_wave32`; gfx1151 remains exact `chain_lds32_direct`, and explicit
+direct-LDS32 remains the gfx1100 rollback.

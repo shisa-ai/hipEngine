@@ -492,7 +492,7 @@ select current code without a fresh profile.
 | 20 | `LCP-3C/3D` | **Audit complete; T16-backed MMQ128 rejected and removed:** reproduce llama.cpp's 128-output x128-token K256 tile over resident Q8T16 plus D4 Q8 activations | D4 bytes and primitive quality pass, but the T16 gather/transpose body is +118.81% before quantization. Source MMQ requires output-major packed weight bytes; do not retry over T16 |
 | 21 | `LCP-3E` | **Rejected and removed:** source-compatible MMQ128 directly over output-major `block_q8_0` rows | Correctness passes and the final WGP body is spill-free with source-matched fragment/WMMA counts, but prequantized/included rows are +3.95%/+5.32% vs production. The frozen gate fails before profiler/runtime work; raw+T16 dual residency remains forbidden |
 | 22 | `LCP-4A` | **Promoted:** capture-free normal FP32 Conv prefill with explicit sequential ISA multiply/add | Removes 20 private bytes/thread while preserving byte-exact Conv output/state; pp512 body -77.71%, clean production 512/4K prefill +1.44%/+1.86% |
-| 23 | `LCP-5A` | **Predeclared:** remove the HIP 7.2 Q5/Q6T16 selected-prefill compiler spills without changing math | The clean peer trace's repeated SiLU->Q5 gaps enter a Q5 body reported at 256 VGPR/176 private bytes; identical source is 66 VGPR/zero private bytes under HIP 7.15 but 256 VGPR/176 bytes/75 spills under 7.2. First screen the existing unroll-600 ablation, then at most one rolled-subblock source variant if required. Require byte-exact fixtures, zero scratch, a real selected-MoE replay win, and clean peer 512/4K plus semantic/decode gates before retention |
+| 23 | `LCP-5A` | **Promoted on gfx1100:** roll only the outer Q4/Q5/Q6 T16 quant-block loops and make quality-admitted peer GDN automatic | Removes HIP 7.2's Q5 256-VGPR/176-byte/75-spill code object while preserving byte-exact outputs; Q5 trace -42.08%, total peer kernels/span 184.513/194.886 ms. The full 18-prompt contract passes and selector-unset 512/4K reaches 2595.233/2783.108 tok/s with 21.670 GiB tracked peak; gfx1151 and explicit exact rollback are unchanged |
 
 There is no invented minimum full-model percentage. Under the project evidence
 policy, every correctness-admitted, measured, non-regressive improvement is
@@ -1483,26 +1483,32 @@ gfx1100 aliases only through 4096 tokens; request-scoped package policy restores
 production above each architecture's bound. The long-context gfx1100 screen
 confirms that cap. The gfx1151 partial refresh is final; investigate its 128K
 lifecycle only with phase markers and bounded lifecycle coverage. On gfx1100,
-do not revisit LCP-1 without a new hotspot profile. Production remains exact
-`chain_lds32_direct`; GPF-9C/9D remain explicit-only through the planned
-post-merge gfx1151 gate. The post-LCP-4A exact/peer/llama.cpp profile shows that
+do not revisit LCP-1 without a new hotspot profile. LCP-5A now makes
+`chain_peer_wave32` automatic; `chain_lds32_direct` remains explicit scalar-
+exact rollback and rejected GPF-9D remains diagnostic-only pending cleanup.
+The post-LCP-4A exact/peer/llama.cpp profile shows that
 GPF-9C removes the shipped first-order deficit: peer and llama.cpp summed GPU
 work differ by only **0.507 ms**, with **2.564 ms** excess queue idle. Do not
 reopen dense-Q8, selected-MoE, Conv, full-attention, or generic launch-count
-experiments without genuinely new measured evidence. LCP-5A has that evidence:
-the current HIP 7.2 code object for the Q5T16 selected-prefill body has 256 VGPR,
-176 private bytes, and 75 spills, while identical source compiled by HIP 7.15
-has 66 VGPR and zero private bytes/spills. The bounded screen changes no math:
-first remove this family's unroll-600 profile flag; if it still spills, try at
-most one rolled-subblock source variant. Retain only if byte-exact fixtures,
-static and traced zero-scratch evidence, selected-MoE replay, and clean peer
-512/4K plus semantic/decode gates all pass. Otherwise remove the source
-candidate and close the compiler lane. Any continuation must preserve GPF-9C's
-quality-admitted recurrence and remove its final approximately 3 ms span
-residual, or bring genuinely new exact-parallel GDN evidence. Its predeclared
-CPU, 18-prompt 0.05/0.90 semantic, determinism, decode, and 512/4K parity-floor
-contract remains authoritative; rerun the full gate before future promotion.
-Exact state and free-running token identity remain diagnostics.
+experiments without genuinely new measured evidence. LCP-5A supplied that
+evidence and is promoted on gfx1100. HIP 7.2 compiled the Q5T16 BF16 body at
+256 VGPR, 176 private bytes, and 75 spills; rolling only the outer quant-block
+loop gives 91 static VGPR and zero private bytes/spills while retaining the
+inner K16 unroll and all operation order. Q4/Q5/Q6 BF16/FP16 CPU-oracle GPU
+fixtures pass byte-exact. Matched real routing moves Q5 **50.863 -> 31.725 ms**,
+Q6 **3.475 -> 2.630 ms**, and selected-MoE **98.538 -> 78.358 ms**. Cached
+pp512 trace moves Q5 **51.009 -> 29.544 ms** and the complete peer route from
+**203.808/215.307 -> 184.513/194.886 ms** kernels/span, now faster than the
+matched llama.cpp HIP trace. The 18-prompt semantic contract remains KL max
+**0.041737**, top-1 **445/450**, deterministic/finite, with aggregate decode
+wall **-0.085%** in the promotion run. Selector-unset liveness-aliased 512/4K
+reaches **2595.233/2783.108 tok/s**, clears both floors by **7.58%/23.42%**,
+and restores the tracked peak from the dedicated peer diagnostic's 22.995 GiB
+to **21.670 GiB**. gfx1100 package policy now selects `chain_peer_wave32`;
+explicit `chain_lds32_direct` remains the scalar-exact rollback, and gfx1151
+keeps its independently admitted direct-LDS32 default. Exact state and free-
+running token identity remain diagnostics under the prospectively frozen peer
+contract.
 
 ## Document Ownership
 

@@ -294,10 +294,17 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
         : tiles;
     const int64_t g_k_base = blk * QK_K;
 
+    // HIP 7.2 over-unrolls these gfx1100 outer quant-block loops and spills
+    // the live WMMA fragments. Keep only the inner K16 work unrolled there;
+    // gfx1151 retains the independently validated fully-unrolled schedule.
     if constexpr (qtype == 4) {
       const float d_f = valid_col ? fp16_bytes_to_float(tile + Q4_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
       const float dmin_f = valid_col ? fp16_bytes_to_float(tile + Q4_T16_DMIN_OFFSET + col_in_slab * 2) : 0.0f;
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
       for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
         const float scale_f = valid_col
             ? d_f * static_cast<float>(tile[Q4_T16_SCALE_OFFSET + sb * T16_COLS + col_in_slab])
@@ -329,7 +336,11 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
     } else if constexpr (qtype == 5) {
       const float d_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
       const float dmin_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col_in_slab * 2) : 0.0f;
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
       for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
         const float scale_f = valid_col
             ? d_f * static_cast<float>(tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col_in_slab])
@@ -362,7 +373,11 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
       const float d_f = valid_col ? fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
       const int8_t* __restrict__ scales =
           reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
       for (int kt = 0; kt < K_TILES_PER_BLOCK; ++kt) {
         const int k_off = kt * K_TILE;
         const int64_t k_base = g_k_base + k_off;
