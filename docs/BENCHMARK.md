@@ -720,7 +720,9 @@ kernel-ring and KFD-user-queue blind spots remain explicit. The installed
 rocprofv3 1.3.2 also exposes `--kfd-trace` (queue, mapping, migration, dropped
 events), but run that as a separate traced-incidence experiment: profiler
 instrumentation can suppress this timing-sensitive failure, and the traced
-process must use prebuilt `require_cached` kernels.
+process must use prebuilt `require_cached` kernels. The canonical symptom,
+control matrix, KFD/MES capture plan, and upstream-report checklist live in
+[`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md).
 
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in

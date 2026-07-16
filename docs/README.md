@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-07-10
+Last updated: 2026-07-16
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -26,6 +26,7 @@ working on.
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
 | [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
+| [`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md) | Open gfx1151 128K prefill no-progress signature, eliminated hypotheses, KFD/MES debug plan, and upstream-report checklist. |
 | [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
 | [`../benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) | Archived experiment rollup, source-lineage targets, external baselines, and superseded diagnostics. |
 | [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md) | Reverse-chronological summary of benchmark rollup updates. |
