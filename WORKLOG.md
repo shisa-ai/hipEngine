@@ -160103,3 +160103,36 @@ batching is still not claimed: D3 real device-KV-pool admission and D4 OpenAI
 streaming/backpressure/drain remain open. Per the active execution queue, the
 next lane is E1: transfer the same model-step and loop gates unchanged to
 gfx1151 before native-c8 E2.
+
+## 2026-07-16 — Block gfx1151 E1 on unavailable Radeon 8060S
+
+Started the post-D2 E1 symmetry audit at clean `bf17a357`. The current host is
+not the prior gfx1151 machine: HIP loads, but `rocminfo` exposes only two
+gfx1100 agents on the Ryzen 9 5950X/W7900 system. Read-only SSH probes to the
+configured `frame` and `zen2` routes both failed at their jump-port forwarding
+with `connect failed: Connection refused`; `wzen2.local` is also not resolvable.
+No gfx1151 execution, build, profiler, or correctness claim can be made from
+this host, and no gfx1151-targeted code was changed speculatively.
+
+Existing artifacts were audited rather than rerun or overclaimed:
+
+- `2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json` proves short p16/c4
+  token/Conv/GDN/live-KV equality, sparse c4→c1 survival, ragged
+  `[512,64,64,64]`, and 10-prompt x3 generated-token equality. It explicitly
+  lacks per-layer hidden capture, all-row p512/d128, current native-family
+  profiler evidence, repeated exact-accounting scaling, and live admission.
+- `2026-07-13-gfx1151-gguf-exact-concurrency-diagnostic.json` is one dirty
+  server sweep with no profiler or repeat packet; it cannot close E1.
+- `2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json` and the
+  2026-07-15 decode closure profile validate c1 graph/eager and family
+  attribution only. They are not c4 model-step or membership evidence.
+- `2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json` validates one c1
+  session's 24-GiB residency and close behavior; it does not prove a c4 pool.
+
+E1 therefore remains in progress and gfx1151 live admission stays
+`not_started`. When the Radeon 8060S returns, the minimum unchanged packet is:
+current-HEAD p512/c4/d128 eager+graph with all-layer hidden/state/KV, sparse
+c4→c1 replay, a c4 native-family marker census, same-protocol c1/c2/c4/serial
+scaling, and the exact D2 A/B/C/D live lifecycle under `hip_gfx1151`. Until
+then, the recorded hardware blocker permits work on the still-open gfx1100 D3
+real device-KV-pool boundary without skipping or pretending to close E1.
