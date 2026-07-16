@@ -725,7 +725,7 @@ E1. gfx1151 symmetry:
 
 E2. Native widths:
 
-- [ ] Support physical buckets c1/c2/c4/c8 with active masks.
+- [x] Support physical buckets c1/c2/c4/c8 with active masks.
 - [x] Run one true native c8 model step; c4+c4 may remain an explicit fallback
       but cannot qualify as c8.
 - [ ] Pass c8 steady, ragged, sparse, cancellation, and 512/128 equality.
@@ -745,9 +745,12 @@ c8→c6→c4→c2→c1 retirement without compaction. Tokens, every survivor's
 all-layer hidden output, and every physical session's Conv/GDN/live-KV state—including
 all retired lanes—remain exact across **1,160/1,160** comparisons. Inactive
 lanes carry `-1` positions, zero live counts, and no state import/scatter. The
-all-active c8 graph regression remains **960/960** exact. This closes only the
-no-compaction retirement item: masked graph capture/replay, ragged/cancellation,
-and the standard p512/d128 gate remain open.
+mask-aware graph-control helpers also keep inactive block rows, token feedback,
+recording, and cursors inert. Five mask-specific physical-c8 graphs replay the
+same c8→c1 sequence with **1,160/1,160** exact hidden comparisons; the cumulative
+all-active c8 graph regression remains **960/960** exact. This closes the physical-
+bucket and no-compaction retirement items. Ragged/cancellation and the standard
+p512/d128 gate remain open.
 
 E3. Arbitrary request counts:
 

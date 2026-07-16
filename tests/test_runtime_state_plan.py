@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -210,6 +211,61 @@ def test_record_f32_row_indexed_copies_row_without_advancing_index() -> None:
     np.testing.assert_array_equal(out[0], np.full((4,), -99.0, dtype=np.float32))
     np.testing.assert_array_equal(out[2], np.full((4,), -99.0, dtype=np.float32))
     assert int(index[0]) == 1
+
+
+def test_masked_packed_graph_helpers_forward_active_mask_pointer() -> None:
+    class FakeFunction:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            self.calls.append(args)
+            return 0
+
+    metadata = FakeFunction()
+    commit = FakeFunction()
+    library = SimpleNamespace(
+        hipengine_prepare_packed_decode_metadata_from_positions=metadata,
+        hipengine_commit_packed_decode_graph_step=commit,
+    )
+
+    prepare_packed_decode_metadata_from_positions(
+        0x1000,
+        0x2000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x6000,
+        0x7000,
+        0x8000,
+        4,
+        2,
+        active_mask_u8_ptr=0x9000,
+        library=library,
+        runtime=object(),
+    )
+    commit_packed_decode_graph_step(
+        0xA000,
+        0xB000,
+        0xC000,
+        0xD000,
+        4,
+        active_mask_u8_ptr=0xE000,
+        recorded_token_ids_i32_ptr=0xF000,
+        record_index_i64_ptr=0x11000,
+        record_capacity=7,
+        library=library,
+        runtime=object(),
+    )
+
+    assert metadata.calls[0][8].value == 0x9000
+    assert metadata.calls[0][9].value == 4
+    assert metadata.calls[0][10].value == 2
+    assert commit.calls[0][4].value == 0xE000
+    assert commit.calls[0][5].value == 0xF000
+    assert commit.calls[0][8].value == 4
 
 
 def test_embedding_lookup_validates_shape_before_gpu_load() -> None:

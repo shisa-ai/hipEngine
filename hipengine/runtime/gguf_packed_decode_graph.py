@@ -118,7 +118,6 @@ def build_qwen35_gguf_packed_decode_graph_key(
     """Build a complete fixed-shape/state key for one packed graph window."""
 
     session_tuple = tuple(sessions)
-    positions = tuple(int(session.position) for session in session_tuple)
     mask = tuple(bool(value) for value in active_mask)
     rows = len(session_tuple)
     if rows <= 0 or rows > 8:
@@ -127,8 +126,14 @@ def build_qwen35_gguf_packed_decode_graph_key(
         raise ValueError("active_mask length must equal physical rows")
     if not any(mask):
         raise ValueError("active_mask must contain at least one active row")
-    if min(positions) < 0:
-        raise ValueError("session positions must be non-negative")
+    if any((session is not None) != active for session, active in zip(session_tuple, mask, strict=True)):
+        raise ValueError("active_mask must exactly match populated physical sessions")
+    positions = tuple(
+        -1 if session is None else int(session.position)
+        for session in session_tuple
+    )
+    if any(position < 0 for position, active in zip(positions, mask, strict=True) if active):
+        raise ValueError("active session positions must be non-negative")
     step_width = int(steps_per_replay)
     replay_span = int(max_replay_steps)
     if step_width <= 0 or replay_span <= 0:
@@ -147,7 +152,11 @@ def build_qwen35_gguf_packed_decode_graph_key(
     capacity = int(max_positions)
     if block <= 0 or capacity <= 0:
         raise ValueError("block_size and max_positions must be positive")
-    replay_context_limit = max(positions) + replay_span
+    replay_context_limit = max(
+        position
+        for position, active in zip(positions, mask, strict=True)
+        if active
+    ) + replay_span
     context_bucket = ((replay_context_limit + block - 1) // block) * block
     if context_bucket > capacity:
         raise ValueError("packed decode graph transition window exceeds resident capacity")
@@ -272,28 +281,54 @@ def _resolve_packed_graph_kernels(owner: Any, *, rows: int) -> tuple[Any, Any, A
     return resolved  # type: ignore[return-value]
 
 
-def _singleton_layout(token_ids: Sequence[int], positions: Sequence[int], *, capacity: int):
+def _singleton_layout(
+    token_ids: Sequence[int],
+    positions: Sequence[int],
+    *,
+    capacity: int,
+    active_mask: Sequence[bool] | None = None,
+):
     from hipengine.runtime.qwen35_gguf_runner import (
         _GGUFPackedVerifySlotBlock,
         _build_gguf_packed_verify_layout,
     )
 
+    tokens = tuple(int(token) for token in token_ids)
+    position_tuple = tuple(int(position) for position in positions)
+    mask = (
+        (True,) * len(tokens)
+        if active_mask is None
+        else tuple(bool(active) for active in active_mask)
+    )
+    if len(position_tuple) != len(tokens) or len(mask) != len(tokens):
+        raise ValueError("singleton layout token, position, and mask widths must match")
     blocks = tuple(
         _GGUFPackedVerifySlotBlock(
-            input_token_ids=(int(token),),
-            start_position=int(position),
+            input_token_ids=(token,),
+            start_position=position,
+            active=active,
         )
-        for token, position in zip(token_ids, positions, strict=True)
+        for token, position, active in zip(tokens, position_tuple, mask, strict=True)
     )
     return _build_gguf_packed_verify_layout(blocks, slot_capacity=int(capacity))
 
 
 def _final_transition_layout(graph: "Qwen35GGUFPackedDecodeGraph"):
+    mask = tuple(bool(active) for active in graph.bucket_key.active_mask)
     positions = tuple(
-        int(start) + int(graph.replayed_steps) - 1
-        for start in graph.bucket_key.state_generations
+        int(start) + int(graph.replayed_steps) - 1 if active else -1
+        for start, active in zip(
+            graph.bucket_key.state_generations,
+            mask,
+            strict=True,
+        )
     )
-    return _singleton_layout((0,) * len(positions), positions, capacity=graph.slot_capacity)
+    return _singleton_layout(
+        (0,) * len(positions),
+        positions,
+        capacity=graph.slot_capacity,
+        active_mask=mask,
+    )
 
 
 def capture_qwen35_gguf_packed_decode_graph(
@@ -301,6 +336,8 @@ def capture_qwen35_gguf_packed_decode_graph(
     *,
     token_ids: Sequence[int],
     sessions: Sequence[Any],
+    physical_rows: int | None = None,
+    active_slot_indices: Sequence[int] | None = None,
     steps_per_replay: int = 1,
     max_replay_steps: int | None = None,
     record_steps: int = 0,
@@ -310,11 +347,39 @@ def capture_qwen35_gguf_packed_decode_graph(
 
     token_tuple = tuple(int(token) for token in token_ids)
     session_tuple = tuple(sessions)
-    rows = len(session_tuple)
-    if rows <= 0 or rows > 8:
-        raise ValueError("packed decode graphs require between one and eight rows")
-    if len(token_tuple) != rows:
+    active_rows = len(session_tuple)
+    rows = active_rows if physical_rows is None else int(physical_rows)
+    if active_rows <= 0 or rows <= 0 or rows > 8 or rows < active_rows:
+        raise ValueError("packed decode graphs require physical_rows in [active_rows, 8]")
+    if len(token_tuple) != active_rows:
         raise ValueError("token_ids and sessions must have the same length")
+    active_slots = (
+        tuple(range(active_rows))
+        if active_slot_indices is None
+        else tuple(int(index) for index in active_slot_indices)
+    )
+    if len(active_slots) != active_rows:
+        raise ValueError("active_slot_indices must align with token_ids and sessions")
+    if (
+        len(set(active_slots)) != len(active_slots)
+        or any(index < 0 or index >= rows for index in active_slots)
+    ):
+        raise ValueError("active_slot_indices must be unique lanes within physical_rows")
+    physical_sessions: list[Any | None] = [None] * rows
+    physical_tokens = [0] * rows
+    physical_positions = [-1] * rows
+    for token, session, slot_index in zip(
+        token_tuple,
+        session_tuple,
+        active_slots,
+        strict=True,
+    ):
+        physical_sessions[slot_index] = session
+        physical_tokens[slot_index] = token
+        physical_positions[slot_index] = int(session.position)
+    physical_session_tuple = tuple(physical_sessions)
+    mask = tuple(session is not None for session in physical_session_tuple)
+    positions = tuple(physical_positions)
     if owner.runner is None or owner.runner.weights is None or owner.scratch is None:
         raise RuntimeError("GGUF resident session is closed")
     if owner._prefill_token_buf is None or owner._bulk_prefill_scratch is None:
@@ -335,8 +400,12 @@ def capture_qwen35_gguf_packed_decode_graph(
     replay_span = int(step_width if max_replay_steps is None else max_replay_steps)
     if step_width <= 0 or replay_span <= 0 or step_width > replay_span:
         raise ValueError("invalid packed decode graph replay window")
-    positions = tuple(int(session.position) for session in session_tuple)
-    if max(positions) + replay_span >= 1024:
+    max_active_position = max(
+        position
+        for position, active in zip(positions, mask, strict=True)
+        if active
+    )
+    if max_active_position + replay_span >= 1024:
         raise NotImplementedError("packed decode graphs currently require context < 1024")
     record_capacity = int(record_steps)
     if record_capacity < 0:
@@ -348,8 +417,13 @@ def capture_qwen35_gguf_packed_decode_graph(
         raise ValueError("layer-hidden recording requires record_steps")
 
     runtime: HipRuntime = owner.runtime or get_hip_runtime()
-    slot_capacity = max(1024, max(positions) + replay_span + 1)
-    layout = _singleton_layout(token_tuple, positions, capacity=slot_capacity)
+    slot_capacity = max(1024, max_active_position + replay_span + 1)
+    layout = _singleton_layout(
+        physical_tokens,
+        positions,
+        capacity=slot_capacity,
+        active_mask=mask,
+    )
     packed_state, packed_scratch_base = owner._ensure_packed_verify_workspace(
         slot_count=rows,
         rows=rows,
@@ -361,9 +435,10 @@ def capture_qwen35_gguf_packed_decode_graph(
     generated_tokens: DeviceBuffer | None = None
     generated_hidden: DeviceBuffer | None = None
     record_index: DeviceBuffer | None = None
+    active_mask_device: DeviceBuffer | None = None
     try:
         imported_slot_indices = owner._sync_packed_decode_initial_state(
-            session_tuple,
+            physical_session_tuple,
             layout,
             packed_state,
             runtime=runtime,
@@ -375,7 +450,7 @@ def capture_qwen35_gguf_packed_decode_graph(
             stream=stream,
             metadata_prepare_fn=owner.runner._packed_decode_metadata_kernel(),
         )
-        replay_context_limit = max(positions) + replay_span
+        replay_context_limit = max_active_position + replay_span
         packed_scratch = replace(
             packed_scratch,
             append_spans=replace(
@@ -388,11 +463,19 @@ def capture_qwen35_gguf_packed_decode_graph(
             ),
         )
         owner._ensure_verify_lm_head_buffers(rows, runtime=runtime)
-        token_array = np.ascontiguousarray(token_tuple, dtype=np.int64)
+        token_array = np.ascontiguousarray(physical_tokens, dtype=np.int64)
         copy_host_to_device(
             owner._prefill_token_buf,
             host_array_ptr(token_array),
             token_array.nbytes,
+            runtime=runtime,
+        )
+        mask_array = np.ascontiguousarray(mask, dtype=np.uint8)
+        active_mask_device = malloc(mask_array.nbytes, runtime=runtime)
+        copy_host_to_device(
+            active_mask_device,
+            host_array_ptr(mask_array),
+            mask_array.nbytes,
             runtime=runtime,
         )
         if record_capacity:
@@ -435,11 +518,12 @@ def capture_qwen35_gguf_packed_decode_graph(
             generated_tokens,
             generated_hidden,
             record_index,
+            active_mask_device,
         )
         key = build_qwen35_gguf_packed_decode_graph_key(
             owner,
-            sessions=session_tuple,
-            active_mask=(True,) * rows,
+            sessions=physical_session_tuple,
+            active_mask=mask,
             block_size=int(packed_scratch.block_size),
             max_positions=int(packed_scratch.max_positions),
             steps_per_replay=step_width,
@@ -465,6 +549,7 @@ def capture_qwen35_gguf_packed_decode_graph(
                     packed_scratch.gdn_state_indices.ptr,
                     rows,
                     int(layout.blocks_per_slot),
+                    active_mask_u8_ptr=active_mask_device.ptr,
                     stream=stream,
                     library=owner._runtime_state_library,
                     runtime=runtime,
@@ -509,6 +594,7 @@ def capture_qwen35_gguf_packed_decode_graph(
                     packed_scratch.positions.ptr,
                     packed_scratch.context_counts.ptr,
                     rows,
+                    active_mask_u8_ptr=active_mask_device.ptr,
                     recorded_token_ids_i32_ptr=(
                         None if generated_tokens is None else generated_tokens.ptr
                     ),
@@ -536,7 +622,7 @@ def capture_qwen35_gguf_packed_decode_graph(
                 pass
         if stream:
             runtime.stream_destroy(stream)
-        for buffer in (record_index, generated_hidden, generated_tokens):
+        for buffer in (active_mask_device, record_index, generated_hidden, generated_tokens):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         raise
@@ -549,6 +635,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         imported_slot_indices=(),
         import_positions=positions,
         scatter_state=False,
+        active_mask=mask,
         blocks_per_slot=int(layout.blocks_per_slot),
         capture_layer_count=0,
         linear_attention_decode_path=linear_path,
@@ -604,8 +691,10 @@ def capture_qwen35_gguf_packed_decode_graph(
         }
     )
     manifest["graph_setup_movement"] = {
-        "host_to_device_input_copies": 1,
-        "host_to_device_input_bytes": rows * DType.INT64.itemsize,
+        "host_to_device_input_copies": 2,
+        "host_to_device_input_bytes": rows * (DType.INT64.itemsize + 1),
+        "host_to_device_active_mask_copies": 1,
+        "host_to_device_active_mask_bytes": rows,
         "device_metadata_prepare_launches": 1,
         "device_to_device_state_import_copies": state_import_copies,
         "imported_slot_indices": list(imported_slot_indices),
@@ -631,14 +720,17 @@ def capture_qwen35_gguf_packed_decode_graph(
         },
     }
     owner.last_packed_execution_manifest = manifest
-    owner._packed_decode_sessions = session_tuple
+    owner._packed_decode_sessions = physical_session_tuple
     owner._packed_decode_last_layout = layout
     owner._packed_decode_state_dirty = True
-    owner._packed_decode_session_ids = tuple(id(session) for session in session_tuple)
+    owner._packed_decode_session_ids = tuple(
+        0 if session is None else id(session)
+        for session in physical_session_tuple
+    )
     owner._packed_decode_positions = positions
     handle = Qwen35GGUFPackedDecodeGraph(
         owner=owner,
-        sessions=session_tuple,
+        sessions=physical_session_tuple,
         graph=graph,
         graph_exec=graph_exec,
         stream=stream,
@@ -650,6 +742,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         generated_tokens=generated_tokens,
         generated_hidden=generated_hidden,
         record_index=record_index,
+        active_mask_device=active_mask_device,
         record_steps=record_capacity,
         record_layer_ids=layer_ids,
         bucket_key=key,
@@ -662,7 +755,7 @@ def capture_qwen35_gguf_packed_decode_graph(
 @dataclass
 class Qwen35GGUFPackedDecodeGraph:
     owner: Any
-    sessions: tuple[Any, ...]
+    sessions: tuple[Any | None, ...]
     graph: int
     graph_exec: int
     stream: int
@@ -674,6 +767,7 @@ class Qwen35GGUFPackedDecodeGraph:
     generated_tokens: DeviceBuffer | None
     generated_hidden: DeviceBuffer | None
     record_index: DeviceBuffer | None
+    active_mask_device: DeviceBuffer | None
     record_steps: int
     record_layer_ids: tuple[int, ...]
     bucket_key: Qwen35GGUFPackedDecodeGraphKey
@@ -697,8 +791,15 @@ class Qwen35GGUFPackedDecodeGraph:
             raise ValueError("cumulative graph replay exceeds the declared transition window")
         if self.record_steps and self.replayed_steps + steps > self.record_steps:
             raise ValueError("cumulative graph replay exceeds record capacity")
-        expected = tuple(start + self.replayed_steps for start in self.position_tuple)
-        observed = tuple(int(session.position) for session in self.sessions)
+        mask = self.bucket_key.active_mask
+        expected = tuple(
+            start + self.replayed_steps if active else -1
+            for start, active in zip(self.position_tuple, mask, strict=True)
+        )
+        observed = tuple(
+            -1 if session is None else int(session.position)
+            for session in self.sessions
+        )
         if observed != expected:
             raise RuntimeError(
                 f"packed decode graph state generation mismatch: expected {expected!r}, "
@@ -711,12 +812,20 @@ class Qwen35GGUFPackedDecodeGraph:
             self.owner.runtime.stream_synchronize(self.stream)
         self.replay_count += launches
         self.replayed_steps += steps
-        final_positions = tuple(start + self.replayed_steps for start in self.position_tuple)
+        final_positions = tuple(
+            start + self.replayed_steps if active else -1
+            for start, active in zip(self.position_tuple, mask, strict=True)
+        )
         for session, position in zip(self.sessions, final_positions, strict=True):
+            if session is None:
+                continue
             session._position = int(position)
             session.scratch.position_host[0] = int(position)
             session.scratch.context_host[0] = int(position) + 1
-        self.owner._packed_decode_session_ids = tuple(id(session) for session in self.sessions)
+        self.owner._packed_decode_session_ids = tuple(
+            0 if session is None else id(session)
+            for session in self.sessions
+        )
         self.owner._packed_decode_positions = final_positions
         self.owner._packed_decode_last_layout = _final_transition_layout(self)
         self.owner._packed_decode_state_dirty = True
@@ -791,7 +900,12 @@ class Qwen35GGUFPackedDecodeGraph:
         runtime.graph_destroy(self.graph)
         if self.stream:
             runtime.stream_destroy(self.stream)
-        for name in ("record_index", "generated_hidden", "generated_tokens"):
+        for name in (
+            "active_mask_device",
+            "record_index",
+            "generated_hidden",
+            "generated_tokens",
+        ):
             buffer = getattr(self, name)
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -800,6 +914,8 @@ class Qwen35GGUFPackedDecodeGraph:
         if isinstance(graphs, list) and self in graphs:
             graphs.remove(self)
         for session in self.sessions:
+            if session is None:
+                continue
             unpin = getattr(session, "_unpin_device_kv_graph", None)
             if callable(unpin):
                 unpin(self)

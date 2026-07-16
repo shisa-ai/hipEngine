@@ -60,9 +60,13 @@ def _key(
     active_mask: tuple[bool, ...] = (True, True),
 ):
     owner, sessions, pointers = _owner(positions=positions, packed_ptr=packed_ptr)
+    physical_sessions = tuple(
+        session if active else None
+        for session, active in zip(sessions, active_mask, strict=True)
+    )
     return build_qwen35_gguf_packed_decode_graph_key(
         owner,
-        sessions=sessions,
+        sessions=physical_sessions,
         active_mask=active_mask,
         block_size=256,
         max_positions=1024,
@@ -102,6 +106,40 @@ def test_packed_decode_graph_key_supports_native_c8_physical_width() -> None:
     assert key.active_rows == 8
     assert key.active_mask == (True,) * 8
     assert key.state_generations == positions
+
+
+def test_packed_decode_graph_key_preserves_sparse_c8_physical_lanes() -> None:
+    mask = (True, False, True, False, False, True, False, True)
+    key = _key(
+        positions=(512, 0, 520, 0, 0, 528, 0, 536),
+        active_mask=mask,
+    )
+
+    assert key.physical_rows == 8
+    assert key.active_rows == 4
+    assert key.active_mask == mask
+    assert key.state_generations == (512, -1, 520, -1, -1, 528, -1, 536)
+    assert key.replay_context_limit == 664
+    assert key.context_bucket == 768
+
+
+def test_packed_decode_graph_final_layout_keeps_inactive_lanes_inert() -> None:
+    graph = SimpleNamespace(
+        replayed_steps=2,
+        slot_capacity=1024,
+        bucket_key=SimpleNamespace(
+            state_generations=(512, -1, 520, -1, -1, 528, -1, 536),
+            active_mask=(True, False, True, False, False, True, False, True),
+        ),
+    )
+
+    layout = packed_graph._final_transition_layout(graph)
+
+    assert layout.row_positions.tolist() == [513, -1, 521, -1, -1, 529, -1, 537]
+    assert layout.live_counts.tolist() == [514, 0, 522, 0, 0, 530, 0, 538]
+    assert layout.active_mask.tolist() == [True, False, True, False, False, True, False, True]
+    assert layout.block_table[1].tolist() == [-1, -1, -1, -1]
+    assert layout.block_table[6].tolist() == [-1, -1, -1, -1]
 
 
 def test_packed_graph_kernel_resolution_tracks_native_width(monkeypatch) -> None:
@@ -170,6 +208,8 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
     result = owner.capture_packed_decode_graph(
         (11, 22),
         sessions=(owner, peer),
+        physical_rows=8,
+        active_slot_indices=(1, 6),
         steps_per_replay=2,
         max_replay_steps=8,
         record_steps=8,
@@ -182,6 +222,8 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
         "owner": owner,
         "token_ids": (11, 22),
         "sessions": (owner, peer),
+        "physical_rows": 8,
+        "active_slot_indices": (1, 6),
         "steps_per_replay": 2,
         "max_replay_steps": 8,
         "record_steps": 8,
