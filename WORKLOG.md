@@ -159351,3 +159351,30 @@ c1 **628**, c4 **756**, expected/observed row-local **0/0**, and all **756** c4
 dispatches in the packed-native bucket. The original failed JSON is diagnostic
 only; the canonical profiler run will be repeated after this classifier unit is
 committed so implementation and summarizer provenance are both clean.
+
+## 2026-07-16 — Pin category-oracle provenance to its compiler key
+
+The clean C2 24x3 category matrix passed all arithmetic gates, but its canonical
+provenance incorrectly described ambient `/opt/rocm` HIP 7.2 even though every
+resident session consumed the supplied TheRock HIP 7.15 compiler-version file
+and required cached builds. The provenance collector defaults to `hipcc` from
+`PATH` unless the caller provides the authoritative string.
+
+Passed `_session_build_policy(args)["compiler_version"]` directly to
+`collect_artifact_provenance(hipcc_version=...)`, matching the existing
+profiler harness policy and making the recorded ROCm/HIP version derive from the
+same build key used by the sessions. The original exact category result is not
+retained because its metadata is misleading; it will be rerun after this fix.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_ar_category_oracle.py \
+  tests/test_benchmark_provenance.py
+# GREEN: 13 passed
+python3 -m py_compile scripts/gguf_packed_ar_category_oracle.py
+git diff --check
+# GREEN
+```
+
+Full-file Ruff still reports this script's pre-existing unused `os` import and
+E402 bootstrap imports; the one-line provenance change introduces no new Ruff
+finding.
