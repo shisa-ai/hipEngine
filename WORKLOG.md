@@ -159089,3 +159089,19 @@ six-shape or broad-suite rerun was performed. Artifact:
   MES logging/recovery/SIGTERM with no `sched_policy=2`. The running kernel stays
   policy 2 until reboot; reboot before production work. Emergency backup:
   `/etc/default/limine.pre-policy0-restore-20260716T103433Z`.
+
+## 2026-07-17 — Verify the gfx1151 scheduler rollback boot
+
+- Rebooted into boot ID `c8a9183f-7010-4c52-b8af-66829305fd52` and verified the
+  command line no longer contains `sched_policy=2`. Loaded values are
+  `sched_policy=0`, `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
+  `cwsr_enable=1`; the remaining fault/watchdog/power parameters match the
+  primary MES-debug evidence boot.
+- HIP loads successfully and rocminfo identifies gfx1151 / Radeon 8060S. The GPU
+  is idle at 0% with no KFD clients or benchmark/profiler process. The current
+  boot journal contains ordinary MES/KFD initialization and no GPU fault,
+  timeout, recovery, or error line.
+- Repository HEAD `02e1273d` matches `origin/main` with zero staged, unstaged, or
+  tracked changes. All application rollback/diagnostic environment selectors
+  are unset. The machine is back on the normal HWS policy and ready for ordinary
+  work; do not rerun the rejected policy-2 gate without new AMD guidance.

@@ -70,8 +70,9 @@ The dedicated stack-wide report and redacted bundle are now public. The separate
 stack: exact 512 controls pass, but the matched 128K process faults before
 prefill in the ROCr/HSA code-cache invalidation path. It therefore does not
 answer whether non-HWS would prevent the original HWS/MES retirement stall. The
-result is posted to ROCm/ROCm#6437; restore `sched_policy=0`. A
-legacy-interposition or streaming rocprofiler retry remains lower priority.
+result is posted to ROCm/ROCm#6437. The machine has been restored and verified
+on `sched_policy=0`. A legacy-interposition or streaming rocprofiler retry
+remains lower priority.
 
 ## User-visible impact and scope
 
@@ -590,9 +591,11 @@ Raw checksummed evidence remains under
 The one-variable backup
 `/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z` has been
 restored and `limine-update` completed. Both current generated CachyOS entries
-retain MES logging/recovery/SIGTERM and contain no `sched_policy=2`; the running
-kernel remains policy 2 until reboot. Reboot to `sched_policy=0` before
-production work.
+retain MES logging/recovery/SIGTERM and contain no `sched_policy=2`. The
+subsequent boot ID `c8a9183f-7010-4c52-b8af-66829305fd52` is verified at loaded
+`sched_policy=0`, `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
+`cwsr_enable=1`; HIP sees gfx1151, the GPU is idle with no KFD client, and the
+boot journal has no GPU fault/error.
 
 ### Priority 3: retry tracing with legacy queue interception
 
