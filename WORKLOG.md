@@ -159162,3 +159162,83 @@ source result is SHA-256
 `32217fd380979df83022131ab0bdc063fa4eccc96bd8f1c80b75b9da24fb41d5`.
 This closes C1 and advances the active queue to C2 recurrent linear-attention
 closure.
+
+
+## 2026-07-16 — Add C2 sparse indexed Conv/GDN primitives
+
+Started C2 from clean `c9cfc0f6`. ROCm was live on Radeon Pro W7900/gfx1100.
+The required lineage preflight:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+reported the known `nano-vllm-amd/csrc/amd/qwen35_expert.hip` drift through
+`b95eaa5` (single-launch DFlash tree Conv/GDN), while the dedicated DFlash R1
+manifest entry itself is clean. Inspection showed hipEngine already contains
+that tree/chain lineage plus a segment-indexed GDN body. C2 therefore does not
+copy the parent tree kernels: it adds one hipEngine-local batch sibling of the
+scalar Conv decode body and exposes the existing segment GDN body for BF16.
+
+Added the RED fixture
+`tests/test_qwen35_linear_attn_decode_batch_indexed.py`. It requires a sparse
+c4 permutation with state indices `[4,1,5,0]` to match four independent scalar
+BF16 Conv/GDN launches exactly, preserve two inactive state slots, pass the
+independent NumPy/`kernels/cpu_reference` numerical and KL/top-1 gates, and
+prove that prematurely rounding the FP32 GDN intermediate to BF16 changes the
+next projected hidden values. Before implementation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_linear_attn_decode_batch_indexed.py
+# RED: ImportError: qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
+```
+
+Implemented and registered two exact `gguf_qwen35` primitives:
+
+- `linear_attn_conv_decode/bf16_indexed`: grid-Y owns independent rows and
+  indexes the persistent FP32 Conv slab through device `state_indices`; its
+  arithmetic statements mirror scalar BF16 decode and mutate selected slots in
+  place;
+- `gdn_recurrent_rmsnorm_gate/bf16_segments`: BF16 C/Python exposure of the
+  existing segment-aware decode-order GDN body, preserving FP32 output before
+  `ssm_out` and indexing persistent recurrent state through
+  `(cu_seqlens,state_indices)`.
+
+The existing scalar Conv/GDN chain remains unchanged and is the required
+unfused/fallback oracle. The primitive GREEN/regression gate was:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+python3 -m pytest -q \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_qwen35_linear_attn_segment_state_rows.py
+# GREEN: 15 passed
+python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build
+# scalar F32/BF16/FP16 state exact; max output abs 7.45e-09
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build
+# scalar BF16/FP16 max output abs 2.98e-07; max state abs 1.05e-07
+```
+
+After warm-building outside the profiler, ran the new sparse fixture under
+cached-only `rocprofv3` with `HIPENGINE_TEST_REQUIRE_CACHED_BUILD=1`. The trace
+contains 32 total dispatches (scalar controls plus batch candidates) and proves:
+
+- `qwen35_linear_attn_conv_decode_indexed_lowp_kernel<unsigned short>`: one
+  launch, grid `(256,4,1)`, workgroup 256, 16 VGPR, zero scratch/LDS,
+  **2,720 ns**;
+- `qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<unsigned short>`:
+  one launch over four segments/two V heads, grid `(512,2,1)`, workgroup 128,
+  80 VGPR, zero scratch, **10,360 ns**.
+
+No `hipcc`/clang/linker match appears in the retained trace directory. These
+are launch/correctness observations, not a throughput claim. The packed runtime
+still uses the C1 row loop at this commit; the next logical unit wires these
+registry keys together with already row-shaped RMSNorm/projection/`ssm_out`
+kernels, keeps the scalar chain as a missing-key fallback, and reruns the full
+model lifecycle oracle.
