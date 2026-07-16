@@ -5,7 +5,9 @@
 **Primary platform:** Framework Desktop, Ryzen AI MAX+ 395 / Radeon 8060S
 (`gfx1151`)<br>
 **Current publication decision:** hipEngine GGUF rows through 64K are retained;
-the current repeated-128K row is blocked.
+the current repeated-128K row is blocked.<br>
+**Dedicated upstream issue:** [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)<br>
+**Redacted evidence bundle:** [public gist](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72)
 
 This document is the handoff and escalation record for a silent long-prefill
 no-progress state observed in hipEngine's torch-free HIP runtime. It separates
@@ -62,10 +64,10 @@ process teardown. This is direct evidence of a mapped user queue with unread
 work; one HQD sample does not prove temporal pointer immobility, identify an
 unread packet, or prove MES firmware is the faulty component.
 
-The next steps are to file the dedicated stack-wide issue with a redacted
-capture bundle, then run a separate `sched_policy=2` scheduler-isolation boot.
-A legacy-interposition or streaming rocprofiler retry is lower priority than
-getting the current HQD/MES evidence in front of AMD.
+The dedicated stack-wide report and redacted bundle are now public. The next
+experiment is a separate `sched_policy=2` scheduler-isolation boot; its result
+will be added to ROCm/ROCm#6437. A legacy-interposition or streaming rocprofiler
+retry remains lower priority.
 
 ## User-visible impact and scope
 
@@ -444,23 +446,28 @@ Answers and remaining questions:
 MQDs can be stale for mapped queues; correlate them with HQDs rather than
 interpreting the software descriptor alone.
 
-### Priority 1: file the dedicated upstream issue
+### Priority 1 result: dedicated upstream issue filed
 
-Prepare one redacted attachment bundle containing:
+The report is public as [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437),
+with the text-only [redacted evidence bundle](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72).
+The bundle contains:
 
 - the compact artifact and exact public commit/command;
 - `amdgpu_firmware_info`, decompressed firmware hashes, kernel version, command
   line, and complete amdgpu parameter values;
 - recorder tail/cursor history, telemetry, process states, and filtered journal;
 - the primary/auxiliary HQD excerpt and register-map source;
-- healthy/stalled/+30-second/after-termination MES event-log snapshots plus
-  hashes;
+- one byte-identical healthy/stalled/+30-second MES event-log snapshot, the
+  changed after-termination snapshot, and hashes for all original states;
 - the healthy-vs-stalled matrix and an explicit evidence-boundary note.
 
-Do not attach model weights, unrelated process listings, hostnames, root UUIDs,
-or an unredacted full VM map. File in **ROCm/ROCm** for stack-wide routing and
-cross-link the related reports without asserting a shared root cause. Post a
-short evidence update to #5107 after the dedicated URL exists.
+Model weights, unrelated process listings, hostnames, root UUIDs, UFW/network
+records, local user paths, and unredacted VM maps were excluded. The bundle has
+15 text-only files, a verified `SHA256SUMS`, and no detected prohibited
+identifier or secret pattern. The existing umbrella report was updated in
+[#5107 comment 4990158250](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250).
+Future evidence should be posted to #6437 first and cross-linked only when it
+changes the broader #5107 scheduler-family picture.
 
 ### Priority 2: non-HWS scheduler-isolation boot
 
@@ -548,9 +555,10 @@ all recorded locations have moved.
 
 ### What we have already reported
 
-We posted two comments to
+We posted three comments to
 [ROCm/ROCm#5107](https://github.com/ROCm/ROCm/issues/5107), an issue originally
-about persistent 100% utilization with multiple models/queues:
+about persistent 100% utilization with multiple models/queues, and then opened a
+dedicated report:
 
 1. [Initial gfx1151 report](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4976739824)
    - single gfx1151 / single process and model;
@@ -566,8 +574,17 @@ about persistent 100% utilization with multiple models/queues:
    - router/metadata rollback failure;
    - `HSA_ENABLE_SDMA=0` screen success followed by full-gate failure;
    - 128K publication blocked and one queue retained only as risk reduction.
+3. [Dedicated-issue cross-link](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250)
+   - cursor 389/339 and the 100%/2.9 GHz/41-49 W signature;
+   - active non-empty 1 MiB HQD with 32 unread AQL packets and zero
+     error/dequeue state;
+   - MES-log healthy/stall identity and teardown change;
+   - explicit one-HQD-sample and undecoded-MES evidence boundaries;
+   - link to the dedicated report and public redacted bundle.
 
-Those comments are accurate but incomplete relative to current evidence.
+The dedicated [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)
+contains the complete environment, reproducer, controls, HQD decode, raw MES
+snapshot links, and questions for AMD.
 
 ### Closest existing reports
 
@@ -582,7 +599,8 @@ all reports have the same root cause.
 
 ### Tracker-selection research: ROCm/ROCm versus ROCm/TheRock
 
-**Decision: file the dedicated report in `ROCm/ROCm`.** Cross-link TheRock
+**Decision implemented: the dedicated report is
+[ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437).** Cross-link TheRock
 reports, but do not duplicate-file there unless an AMD maintainer requests it or
 a later A/B establishes a TheRock-package regression.
 
@@ -626,12 +644,12 @@ hardware is available; it is evidence about handling patterns, not a service
 level. For this cross-layer silent queue-retirement failure, correct routing to
 the umbrella tracker is more important than the noisy timing difference.
 
-## What should be reported next
+## Upstream reporting status and follow-up
 
-### Update the existing #5107 thread
+### Existing #5107 thread updated
 
-Post one concise update after the committed artifacts are publicly reachable.
-It should add only evidence not already in the correction:
+The posted [cross-link comment](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250)
+adds only evidence not already in the correction:
 
 - HIP 7.13 and 7.15 both reproduce;
 - metadata slab reuse and scalar no-read controls reproduce;
@@ -648,13 +666,12 @@ It should add only evidence not already in the correction:
   change during teardown;
 - a dedicated ROCm/ROCm issue is now the primary tracking path.
 
-Do not paste every benchmark number into #5107. Link this document and the
-compact artifacts.
+Future #5107 updates should remain concise and point detailed investigation to
+#6437.
 
-### File a dedicated issue
+### Dedicated issue filed
 
-The threshold for a dedicated issue is already met. It should not wait for every
-possible workaround because:
+The threshold was met without waiting for every possible workaround because:
 
 - the observed operation stops making forward progress, not merely reports a
   misleading utilization value;
@@ -664,35 +681,31 @@ possible workaround because:
 - current 128K production is blocked;
 - the symptom is related to, but materially different from, #5107 and #6165.
 
-Recommended repository: **ROCm/ROCm**, so AMD can route it across HIP, ROCr,
-KFD, amdgpu, CP, MES, firmware, and hang recovery. TheRock is not primary
-because no build/package/nightly regression is established; its closest MES
-report routes related gfx115x cases back to ROCm/ROCm. Move or cross-file to
-TheRock or drm/amd only if AMD requests it.
+The report was filed in **ROCm/ROCm** for routing across HIP, ROCr, KFD,
+amdgpu, CP, MES, firmware, and hang recovery. TheRock was not primary because no
+build/package/nightly regression is established; its closest MES report routes
+related gfx115x cases back to ROCm/ROCm. Move or cross-file to TheRock or drm/amd
+only if AMD requests it.
 
-Suggested title:
+Actual issue title:
 
 ```text
-[gfx1151] Single-process 128K prefill queue stops retiring at 100%/2.9 GHz low power; no timeout or reset
+[gfx1151] Single-process 128K prefill AQL queue stops retiring at 100%/2.9 GHz low power; no timeout or reset
 ```
 
-Before filing:
+Published package:
 
-1. use the already-public exact run commit `a7b4fe4b` and push the compact
-   capture artifact/document update;
-2. build a small redacted attachment from the completed `rls`/`mqds`/`hqds`,
-   MES-log, recorder, telemetry, task-state, and journal capture;
-3. attach exact kernel cmdline, amdgpu parameter values, decompressed firmware
-   hashes, and `amdgpu_firmware_info`;
-4. include the HQD register-map source and state explicitly that only one HQD
-   sample exists;
-5. redact hostnames, root UUIDs, unrelated process data, and full VM mappings;
-6. include the public model URL/fingerprint, never model weights.
+1. public exact run commit `a7b4fe4b` and capture/rollup commit `35d3d0e7`;
+2. 15-file text-only redacted bundle with raw healthy/stall and teardown MES hex
+   views, HQD dump/decode, recorder, telemetry, firmware, and summaries;
+3. exact amdgpu values and decompressed firmware hashes;
+4. explicit one-HQD-sample, stale-MQD, and undecoded-MES boundaries;
+5. public model URL/fingerprint, never model weights.
 
-Do **not** delay the issue for the `sched_policy=2` or legacy-profiler boots. Add
-those as follow-up comments.
+The `sched_policy=2` and legacy-profiler results remain follow-up comments rather
+than blockers for filing.
 
-### Dedicated issue content checklist
+### Submitted issue content
 
 #### Problem statement
 
@@ -782,14 +795,21 @@ State that:
 | [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete pre-reboot healthy MQD/sysfs controls and prepared MES-debug boot |
 | [`2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json`](../benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json) | First MES-debug-boot stall with recorder cursor, telemetry, active non-empty HQD decode, MES-log control, firmware hashes, and evidence boundaries |
 
+Public reporting links:
+
+- dedicated issue: [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437);
+- redacted raw bundle: [gist `dcdc0eb2e7a8f1bede6088130c383f72`](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72);
+- #5107 cross-link: [comment 4990158250](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250).
+
 Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
 profiler logs normally remain local under the `/tmp/gfx1151-*` directories named
 and hashed by the compact artifacts. The two pre-reboot KFD bundles are also
 compressed and checksum-preserved under
 `/home/lhl/gfx1151-debug/2026-07-16-current-boot`. The MES-debug-boot preflight
 and stalled capture are checksum-preserved under
-`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. These local bundles
-are not public evidence until a redacted issue attachment is created.
+`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. The selected,
+redacted subset listed above is public in the gist; excluded raw files remain
+local and are not upstream evidence.
 
 ## Closure criteria
 
