@@ -161021,3 +161021,30 @@ Source/hash/value assertions and JSON parsing pass. The final compact artifact i
 `docs/CONCURRENCY.md`; the claim remains direct model-step throughput only. Optional compaction, arbitrary C/C>8 lowering,
 server-wall burst/live-admission performance, gfx1151 symmetry, and PARO remain
 separate gates.
+
+## 2026-07-17 — Audit final gfx1100 E2 scope and rollback debt
+
+Audited `docs/CONCURRENCY.md` against the retained A–E2 artifacts after
+`d09aa573`. Every mandatory gfx1100 GGUF E2 requirement is covered: physical
+c1/c2/c4/c8 buckets and masks, one true c8 group, eager/graph steady and standard
+p512/d128 equality, ragged and sparse c8→c1 retirement, non-edge cancellation,
+inactive state/KV immutability without compaction, current primitive evidence,
+zero-fallback profiler census, and same-session scaling with latency/memory
+tradeoffs. No mandatory E2 execution remains.
+
+The unchecked items are intentionally separate scope rather than hidden E2
+failures: optional physical-slot compaction; E3 arbitrary logical C and C>8
+policy; E1 gfx1151 symmetry; F1 server-wall burst/live-admission and category
+retention; Phase G PARO; and later normal sampling/advanced composition. The E2
+artifact explicitly makes no claim for them.
+
+Updated `docs/REFACTOR.md` because four rollback entries still described the
+now-closed gfx1100 c1–c8 gates as pending. Packed decode/prefill remain default-on
+and their original gfx1100 correctness/profiler trigger is now marked met.
+`_generate_ar_serving_slots()` remains an independent direct oracle rather than
+a second public scheduler, and the stream route remains rollback/unsupported-
+shape coverage. Concrete removal blockers are one release window plus E3
+arbitrary-C and F1 server evidence; gfx1151 keeps an independent E1 decision.
+No runtime flag or fallback is removed in this documentation-only audit.
+Re-read the changed ledger rows; all three named env flags exist in the live
+GGUF generator, Markdown table shape, conflict scan, and `git diff --check` pass.
