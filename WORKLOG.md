@@ -160465,3 +160465,31 @@ hits→invalidation lifecycle. The complete GGUF generation file is **57 passed*
 the focused real-runner file is HIP-skipped on the host interpreter as expected.
 Python compilation and diff checks pass. Prometheus rendering and a real W7900
 live scrape remain open.
+
+## 2026-07-16 — Export D5 resident metrics through Prometheus
+
+The opt-in `/metrics` endpoint now consumes one `LLM.live_loop_snapshot()` per
+scrape instead of independently racing the scheduler, runner, pool, and graph
+owners. It preserves the prior additive HTTP/queue metrics and exports resident
+pending/admitted/active and physical occupancy gauges; cumulative admission,
+reclaim, and prefill/decode/reclaim work counts; actual scheduler policy/active
+mask/last-work info; and bounded queue/TTFT/ITL/service/completion summaries.
+
+The same scrape reaches the real GGUF dynamic pool rather than the legacy
+`_session` discovery path, adding current/high-water pages and pinned pages to
+the existing byte/ref/grow/failure/shrink metrics. Graph exports now include
+aggregate captures/replays/invalidations and stable-bucket entry/capture/hit/
+replay/invalidation rows. Route and fallback counters are labeled, while a
+compact info metric identifies the detailed last route manifest; the full
+manifest and bucket keys remain in the JSON snapshot for retained artifacts.
+
+A RED server fixture first proved every resident metric was absent. GREEN now
+checks all six D5 categories from one synthetic snapshot, including fractional
+latency quantiles and per-bucket graph labels. Existing opt-in/additive,
+malformed-value filtering, cancellation, and SSE KV metadata tests remain green.
+Full validation is **487 passed** for `tests/test_server_api.py` and 387 passed,
+4 skipped across the scheduler, GGUF generation, and public LLM files.
+Ruff,
+Python compilation, and diff checks pass. `docs/API.md` and `docs/ENVS.md`
+document the expanded public metric surface. A clean real W7900 scrape/artifact
+is still required before D5 closes.
