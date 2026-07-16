@@ -1,0 +1,310 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_c3_model_boundaries_closure",
+  "created_at": "2026-07-16T09:35:00+00:00",
+  "status": "c3_model_boundaries_closed",
+  "passed": true,
+  "claim_level": "exact_hybrid_model_boundaries_closed",
+  "performance_claim": false,
+  "provenance": {
+    "hipengine_commit": "db1ce640af610410a2f67ad6b04dad8a45e7320d",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+    "cached_build_required": true
+  },
+  "implementation": {
+    "family_observability_commit": "8a40f12d",
+    "device_metadata_commit": "db1ce640",
+    "registered_key": [
+      "hip_gfx1100",
+      "decode_metadata",
+      "gguf_qwen35",
+      "packed_c4_i64"
+    ],
+    "metadata_prepare_path": "device_prepare_persistent",
+    "fallback": "byte-equivalent eight-copy host upload when the registry key is missing or the packed layout is non-singleton/noncanonical",
+    "metadata_contract": "rebuild disjoint packed block rows, ragged positions/live counts, attention CU/reset scalars, singleton GDN cu_seqlens, and identity recurrent-state indices in persistent device buffers"
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "execution_contract": {
+    "claim_level": "exact_hybrid",
+    "linear_attention_decode_path": "indexed_batch",
+    "full_attention_decode_path": "kv_live_spans_batch",
+    "moe_decode_path": "selected_rows_batch",
+    "lm_head_decode_path": "q6_rowtile_f32_logits",
+    "sampler_decode_path": "argmax_i32_rows",
+    "metadata_prepare_path": "device_prepare_persistent",
+    "model_step": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "expected_exact_row_local_kernel_launches": 0
+    },
+    "host_device_movement": {
+      "host_to_device_metadata_copies": 0,
+      "host_to_device_metadata_bytes": 0,
+      "device_metadata_prepare_launches": 1,
+      "host_to_device_input_copies": 1,
+      "host_to_device_input_bytes": 32,
+      "host_to_device_total_copies": 1,
+      "host_to_device_total_bytes": 32,
+      "device_to_device_state_import_copies": 0,
+      "device_to_device_state_scatter_copies": 0,
+      "device_to_host_vector_copies": 1,
+      "device_to_host_vector_values": 4,
+      "device_to_host_vector_bytes": 16,
+      "device_to_host_scalar_copies": 0
+    },
+    "synchronizations": 2,
+    "scalar_fallbacks": 0,
+    "steady_packed_state_reused": true
+  },
+  "profiler_census": {
+    "source": {
+      "file": "c3-census.json",
+      "size_bytes": 81192,
+      "sha256": "16e188753daadd120bdaad5b24a22fe87909b07108026dfaa974259439105fe9"
+    },
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --raw-root /tmp/gfx1100-concurrency-c3-clean-db1ce640/raw --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 --out /tmp/gfx1100-concurrency-c3-clean-db1ce640/c3-census.json",
+    "kind": "gfx1100_gguf_concurrency_c3_model_boundaries_census",
+    "status": "c3_model_boundaries_census_complete",
+    "route_check_passed": true,
+    "c3_family_route_check_passed": true,
+    "c1_reference": {
+      "dispatches": 628,
+      "instrumented_gpu_duration_ns": 9402401
+    },
+    "c4": {
+      "dispatches": 749,
+      "instrumented_gpu_duration_ns": 17524704,
+      "packed_native_dispatches": 749,
+      "exact_row_local_dispatches": 0
+    },
+    "c2_comparison": {
+      "artifact": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json",
+      "c4_dispatches_before": 756,
+      "c4_dispatches_after": 749,
+      "dispatch_delta": -7,
+      "dispatch_delta_percent": -0.9259259259259259,
+      "copy_dispatches_before": 10,
+      "copy_dispatches_after": 2,
+      "copy_dispatch_delta": -8,
+      "copy_dispatch_delta_percent": -80.0,
+      "metadata_h2d_copies_before": 8,
+      "metadata_h2d_copies_after": 0,
+      "device_metadata_prepare_launches_before": 0,
+      "device_metadata_prepare_launches_after": 1
+    },
+    "family_proof": {
+      "full_attention": {
+        "passed": true,
+        "path": "kv_live_spans_batch",
+        "context_dispatches": 10,
+        "kv_write_dispatches": 10,
+        "row_extent": 4
+      },
+      "moe_ffn": {
+        "passed": true,
+        "path": "selected_rows_batch",
+        "selected_lanes": 32,
+        "selected_gate_up_dispatches": 40,
+        "selected_down_dispatches": 40,
+        "combine_dispatches": 40
+      },
+      "lm_head_sampler": {
+        "passed": true,
+        "lm_head_path": "q6_rowtile_f32_logits",
+        "sampler_path": "argmax_i32_rows",
+        "lm_head_dispatches": 1,
+        "argmax_stage1_dispatches": 1,
+        "argmax_stage2_dispatches": 1,
+        "full_vocab_host_readback": false
+      },
+      "host_device_movement": {
+        "passed": true,
+        "expected_copy_dispatches": 2,
+        "observed_copy_dispatches": 2,
+        "expected_metadata_prepare_dispatches": 1,
+        "observed_metadata_prepare_dispatches": 1
+      }
+    },
+    "metadata_kernel_proof": {
+      "kernel": "prepare_packed_decode_metadata_kernel",
+      "dispatches": 1,
+      "total_duration_ns": 2840,
+      "grid": [
+        64,
+        1,
+        1
+      ],
+      "workgroup": [
+        64,
+        1,
+        1
+      ],
+      "vgpr": 16,
+      "scratch_bytes": 0,
+      "lds_bytes": 0
+    },
+    "raw_trace_hashes": {
+      "c1": {
+        "kernel_csv_sha256": "25358181957eec968712d76c2226c5bb930bc3853e219abb8149570d0b70aa1f",
+        "marker_csv_sha256": "66196b7d59e0eeb8998a2a700720a5cd73a2073f94c3e9c2ff77919f0f4fe02d",
+        "selected_dispatches": 628
+      },
+      "c4": {
+        "kernel_csv_sha256": "86a00e0528ffc03e21ba0a19f70c246f30d61b355247030c8fff1bf57af02519",
+        "marker_csv_sha256": "a746cac261cde74acd437aec6ebc3b382df1a6a2090a2d8cef6357714d9339ff",
+        "selected_dispatches": 749
+      }
+    },
+    "duration_scope": "single marker-sliced instrumented transition; diagnostic only"
+  },
+  "correctness": {
+    "metadata_primitive": {
+      "fixture": "tests/test_runtime_state_unpack_metadata.py::test_prepare_packed_decode_metadata_matches_ragged_c4_reference",
+      "position_values": [
+        513,
+        517,
+        521,
+        525
+      ],
+      "all_metadata_bytes_exact": true,
+      "standalone_kernel_duration_ns": 4120,
+      "workgroup_threads": 64,
+      "vgpr": 16,
+      "scratch_bytes": 0,
+      "lds_bytes": 0
+    },
+    "standard_p512_d128": {
+      "source": {
+        "file": "standard-c4-p512-d128.json",
+        "size_bytes": 18833,
+        "sha256": "41fe56a44fd8e249bd49088f97562b4aea26757a2eb04d6760a3292116934f8e"
+      },
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed --prompt-length 512 --decode-steps 128 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/standard-c4-p512-d128.json",
+      "passed": true,
+      "token_positions_exact": 516,
+      "layer_hidden_comparisons": 20640,
+      "layer_hidden_exact": true,
+      "initial_state_exact": true,
+      "lifecycle_state_exact": true,
+      "final_state_exact": true,
+      "first_divergence": null
+    },
+    "sparse_shrink_p512_d4": {
+      "source": {
+        "file": "sparse-c4-p512-d4.json",
+        "size_bytes": 5415,
+        "sha256": "23e508da37186a02751a9f3069e55efb88abfc6d50925975d45309281154d7b8"
+      },
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed --prompt-length 512 --decode-steps 4 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/sparse-c4-p512-d4.json",
+      "passed": true,
+      "lifecycle": "c4 -> c3 middle-hole -> c2 -> c1",
+      "layer_hidden_comparisons": 560,
+      "layer_hidden_exact": true,
+      "lifecycle_events": [
+        {
+          "step": 1,
+          "live_indices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "state_exact": true
+        },
+        {
+          "step": 2,
+          "live_indices": [
+            0,
+            2,
+            3
+          ],
+          "state_exact": true
+        },
+        {
+          "step": 3,
+          "live_indices": [
+            0,
+            3
+          ],
+          "state_exact": true
+        },
+        {
+          "step": 4,
+          "live_indices": [
+            3
+          ],
+          "state_exact": true
+        }
+      ],
+      "initial_state_exact": true,
+      "lifecycle_state_exact": true,
+      "final_state_exact": true,
+      "first_divergence": null
+    },
+    "category_24x3": {
+      "source_file": "/tmp/gfx1100-concurrency-c2-clean-799d29b9/category-24x3.json",
+      "size_bytes": 88024,
+      "sha256": "b5cd435df43c38816ecf2c2bd177e10250f99d8071cafa0dadbf28377b2bca94",
+      "hipengine_commit": "799d29b9e36f3a033b76bee4ce369639d864b319",
+      "inherited_without_rerun": true,
+      "inheritance_rationale": "C3 changes token-independent metadata production only; the family and sampler arithmetic routes are unchanged, while the new metadata bytes are covered by the ragged primitive, standard, and sparse lifecycle gates.",
+      "passed": true,
+      "prompt_count": 18,
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "state_or_kv_mismatches": 0,
+      "repeat_deterministic": true
+    }
+  },
+  "validation": {
+    "focused_regression": "48 passed",
+    "packed_generation": "2 passed",
+    "python_compile": true,
+    "ruff_changed_files": true,
+    "diff_check": true,
+    "profiled_children_require_cached_build": true
+  },
+  "limitations": [
+    "C3 closes the declared per-row model and steady metadata boundaries, but the route remains correctness-only exact_hybrid until C4 proves graph replay, repeats Phase B with replay, and publishes direct scaling.",
+    "No throughput, latency, memory, graph-replay, or fully-native-c4 claim is made.",
+    "Profiler durations are diagnostic because the marker window is instrumented and synchronized.",
+    "Raw rocprof CSV/log and oracle source files remain under /tmp and are represented by exact sizes and SHA-256 hashes."
+  ]
+}
