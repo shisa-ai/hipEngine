@@ -945,6 +945,11 @@ class ResidentBatchScheduler:
     def completed(self) -> Mapping[int, CompletedRequest]:
         return self._completed
 
+    def release_completed(self, request_id: int) -> CompletedRequest | None:
+        """Drop one caller-consumed completion from long-lived scheduler state."""
+
+        return self._completed.pop(int(request_id), None)
+
     def submit(
         self,
         prompt_tokens: Iterable[int],

@@ -16065,6 +16065,76 @@ def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> No
     assert inner.requests[0] == request
 
 
+def test_submit_poll_text_generator_reuses_one_loop_across_generate_calls() -> None:
+    inner = _FakeTextGenerator()
+    adapter = SubmitPollTextGenerator(inner, capacity=2)
+    loop = adapter._loop
+    runner = adapter._runner
+
+    first = GenerationRequest(
+        prompts=("one", "two"),
+        max_tokens=2,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        row_seeds=(10, 11),
+    )
+    second = replace(first, prompts=("three",), row_seeds=(12,))
+
+    assert adapter.generate(first) == ["generated:one:10", "generated:two:11"]
+    assert adapter.generate(second) == ["generated:three:12"]
+    assert adapter._loop is loop
+    assert adapter._runner is runner
+    assert loop.pending_count == 0
+    assert loop.active_count == 0
+    assert loop.completed == {}
+    assert [request.prompts for request in inner.requests] == [("one", "two"), ("three",)]
+
+
+def test_resident_engine_loop_uses_batch_commit_compact_and_reclaim_contract() -> None:
+    class BatchContractRunner:
+        def __init__(self) -> None:
+            self.prefills: list[tuple[object, bool]] = []
+            self.decodes: list[tuple[object, bool]] = []
+            self.compactions: list[tuple[object, ...]] = []
+            self.reclaims: list[object] = []
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            self.prefills.append((work, commit))
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            self.decodes.append((work, commit))
+            return tuple(GeneratedToken(request_id, 100 + request_id) for request_id in work.request_ids)
+
+        def compact_batch(self, moves) -> None:
+            self.compactions.append(tuple(moves))
+
+        def reclaim(self, completed) -> None:
+            self.reclaims.append(completed)
+
+    runner = BatchContractRunner()
+    loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
+    request_id = loop.submit([1, 2], max_new_tokens=1)
+
+    events = loop.poll(max_ticks=2)
+    moves = loop.compact()
+
+    assert [event.work_kind for event in events if event.kind == "work"] == [
+        WorkKind.PREFILL,
+        WorkKind.DECODE,
+    ]
+    assert [(work.request_ids, commit) for work, commit in runner.prefills] == [
+        ((request_id,), True)
+    ]
+    assert [(work.request_ids, commit) for work, commit in runner.decodes] == [
+        ((request_id,), True)
+    ]
+    assert runner.reclaims[0].request_id == request_id
+    assert runner.reclaims[0].generated_tokens == (100 + request_id,)
+    assert moves == ()
+    assert runner.compactions == [()]
+
+
 def test_submit_poll_text_generator_preserves_stream_detailed_telemetry() -> None:
     class DetailedStreamGenerator(_FakeTextGenerator):
         def stream_detailed(self, request: GenerationRequest):
