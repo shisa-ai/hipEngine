@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_rocprof_inline_interposition_stall",
+  "status": "stall_reproduced_but_profiler_trace_not_finalized_and_causality_ambiguous",
+  "created_at": "2026-07-16T11:30:18+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "A rocprofv3 1.3.2 run with kernel, HIP, HSA, memory-copy, and KFD tracing reproduces the persistent gfx1151 low-power no-progress signature during the first 128K prefill, but emits no finalized trace files and cannot identify the final user kernel. Layer markers last retire layer 15 full attention in chunk [102400,106496); layer 16 linear attention returns on the host and its marker remains pending while the host is inside layer 17 linear attention, again producing a two-checkpoint lag with an unretired linear layer. At the same onset, rocprofiler-sdk's inline queue-interposition async handler begins repeatedly warning that it is still waiting on one injected HSA signal, reaching 153,092,096 polling iterations. This is consistent with an outstanding dispatch/completion that never retires, but it is not independent root-cause evidence: upstream rocprofiler-sdk work documents intermittent hangs in this inline queue-interposition path and recommends ROCPROFILER_QUEUE_INTERPOSITION=0 as a legacy-intercept workaround. The run therefore neither names a faulty hipEngine kernel nor proves the original stall is profiler-independent. A legacy-interposition retry or a streaming custom profiler is required for usable final-dispatch evidence.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "6e7ab8b06defe099e8d06ac9c8373f679cf8f89a",
+    "source_tree": "tracked-clean main; unrelated pre-existing untracked benchmark files present",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "rocprofv3": "1.3.2 e711c9e7361a0c9d74b6d5c09c08c8ac2eee0253",
+    "gpu_max_hw_queues": 1,
+    "rocprofiler_queue_interposition": "unset; inline path active",
+    "flight_recorder_granularity": "layer"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "short_trace_smoke": {
+    "workload": "512/1",
+    "status": "completed_exact",
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "prefill_tok_s": 1159.1557156194974,
+    "decode_tok_s": 48.51092789540553,
+    "trace_rows": {
+      "kernel": 3023,
+      "hip_api": 13266,
+      "hsa_api": 23005,
+      "memory_copy": 1056,
+      "kfd_events": 0
+    },
+    "kfd_interpretation": "No KFD CSV was emitted because the smoke generated no page-migration, mapping, queue eviction/restore, or dropped-event records. KFD tracing uses the KFD event API; absence of tracefs kfd event names does not make the rocprofv3 option unavailable.",
+    "local_raw_directory": "/tmp/gfx1151-rocprof-kfd-smoke-6e7ab8b0"
+  },
+  "long_protocol": {
+    "workload": "128K/128",
+    "warmups": 1,
+    "requested_measured_runs": 3,
+    "completed_warmups": 0,
+    "completed_measured_runs": 0,
+    "process_bound_seconds": 1800,
+    "actual_elapsed_seconds": 1805,
+    "exit_status": 124,
+    "traces_requested": ["kernel", "hip", "hsa", "memory_copy", "kfd"],
+    "trace_files_finalized": 0,
+    "command": "GPU_MAX_HW_QUEUES=1 rocprofv3 --kernel-trace --hip-trace --hsa-trace --memory-copy-trace --kfd-trace --output-format csv -d <out>/trace -o gfx1151-128k-stall -- python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity layer --json <out>/result.json"
+  },
+  "flight_recorder": {
+    "prefill_id": 1,
+    "submitted_sequence": 1072,
+    "completed_sequence": 1070,
+    "retirement_lag": 2,
+    "overwritten_entries": 0,
+    "last_completed": {
+      "sequence": 1070,
+      "chunk_start": 102400,
+      "chunk_end": 106496,
+      "layer_id": 15,
+      "layer_type": "full_attention"
+    },
+    "pending_previous_layer_marker": {
+      "sequence": 1071,
+      "layer_id": 16,
+      "layer_type": "linear_attention",
+      "interpretation": "Layer 16's host call returned and its completion marker was enqueued but did not retire."
+    },
+    "last_host_checkpoint": {
+      "sequence": 1072,
+      "layer_id": 17,
+      "layer_type": "linear_attention",
+      "interpretation": "The host entered layer 17 and never reached layer 18."
+    },
+    "safe_window": "Layer 16's post-scalar-read MoE tail or marker through layer 17's pre-read attention/post-norm/router/scheduler work."
+  },
+  "telemetry": {
+    "persistent_low_power_start": "2026-07-16T11:04:14+09:00",
+    "persistent_low_power_duration_through_bound_seconds": 1556,
+    "gfx_activity_percent": 100,
+    "gfx_clock_mhz": {"min": 2900, "median": 2900, "max": 2900},
+    "socket_power_w": {"min": 53, "median": 55, "max": 59},
+    "vram_used_mib": 26666,
+    "after_process_termination": {"power_w": 26, "vram_used_mib": 17}
+  },
+  "process_state": {
+    "main_thread_samples": 118,
+    "states": ["R<", "R<l"],
+    "wait_channel": "none; runnable in user space"
+  },
+  "rocprofiler_observation": {
+    "first_async_signal_warning": "2026-07-16T11:04:19.698091+09:00",
+    "warning_offset_from_low_power_onset_seconds": 6,
+    "signal_handle": 140494790545024,
+    "signal_value": 1,
+    "signal_starting_value": 1,
+    "final_reported_poll_iterations": 153092096,
+    "warning_source": "rocprofiler-sdk queue_interposition.cpp:412",
+    "trace_finalization": "No caught-signal, output-generation, or result-file messages appeared; the trace directory remained empty.",
+    "interpretation": "The profiler's injected completion signal stopped advancing at the same onset as the device no-progress signature. Because the active inline interposer has its own documented intermittent hang class, this can be either an observer of the original failure or an instrumentation-induced failure."
+  },
+  "system_observability": {
+    "relevant_kernel_journal_lines": 0,
+    "amdgpu_fence_info": "No sampled kernel-ring mismatch; KFD user queues remain absent from this debugfs view."
+  },
+  "upstream_profiler_context": {
+    "inline_interposition_optimization": "https://github.com/ROCm/rocm-systems/pull/4276",
+    "documented_interposition_hang_workaround": "https://github.com/ROCm/rocm-systems/pull/7464",
+    "workaround": "ROCPROFILER_QUEUE_INTERPOSITION=0 forces the legacy HSA queue interception path",
+    "signal_flush_smoke": "A tiny completed marker process does flush CSVs on SIGINT under both inline and legacy interception; the stalled full-model inline process did not finalize, so output failure is tied to the outstanding queue signal rather than generic SIGINT handling."
+  },
+  "decision": {
+    "named_faulty_kernel": false,
+    "profiler_independent_reproduction": false,
+    "rocprof_inline_trace_usable": false,
+    "next_step": "Retry once with ROCPROFILER_QUEUE_INTERPOSITION=0 and the same cached command, or implement a streaming rocprofiler-sdk callback that persists completed dispatch records before process finalization. Do not interpret trace-suppressed completion as stability."
+  },
+  "source_hashes": {
+    "flight_final_json": "7e1fa40dd97733ada4ddc8f4e042ef9629a9e35b425dd09228455f95e2d53e49",
+    "telemetry_csv": "7641398ca39cbc5dfbd6c0bad40d3ecc4446dd5b08e23486fc5ed7e34d58b3db",
+    "amdgpu_fences_log": "f0578122dac73fab634db6f4056fe4a4ae901e2dfe3382bdf5ad80d2d90d646c",
+    "kernel_journal_log": "09c06596c352fda869a22ebed2c45a8b61be16ad492232b052cd2a6a71a8b06c",
+    "process_stacks_log": "d841d039e111a91cf665b2968d4884a42fc4b91bf05158439dd7b2839555c003",
+    "rocprof_err": "1674193581f9282c6fe7b452357aeedc24899a8dfc97e7d99da3e23e76b743f4",
+    "provenance_txt": "ab0e9b5098d87dcbf0a4c0b53359701296a3525f2464c2dc0754ecf2c48220f6"
+  },
+  "local_raw_directory": "/tmp/gfx1151-rocprof-trace-6e7ab8b0-20260716T020013Z"
+}
