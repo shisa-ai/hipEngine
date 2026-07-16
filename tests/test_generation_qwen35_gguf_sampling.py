@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
+from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation import (
     GenerationCancellationToken,
     GenerationCancelled,
@@ -1670,6 +1671,91 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
     assert generator.last_batch_generation["serial_decode_fallback"] is True
+
+
+def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.position = 0
+
+        def reset(self) -> None:
+            self.position = 0
+            calls.append(("reset",))
+
+        def prefill(self, token_ids, **kwargs):
+            raise AssertionError(f"incremental prefill must not replay the full prompt: {token_ids!r} {kwargs!r}")
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
+            assert sessions == [self]
+            chunk = tuple(int(token) for token in prompt_token_ids[0])
+            start = self.position
+            self.position += len(chunk)
+            calls.append(("prefill_batch_native", chunk, start, self.position, dict(kwargs)))
+            return [SimpleNamespace(token_id=100 + chunk[-1])]
+
+        def close(self) -> None:
+            calls.append(("close",))
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 64
+
+        def __init__(self) -> None:
+            self.session = FakeSession()
+
+        def _get_shared_runner(self):
+            return SimpleNamespace()
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            return self.session, ("continuous_ar", True, True, 64), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key, session
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    request = _request(prompts=((10, 11, 12, 13, 14),), max_tokens=2, ignore_eos=True)
+    runner.register_batch((7,), request, prompt_rows=((10, 11, 12, 13, 14),))
+
+    for chunk in ((10, 11), (12, 13), (14,)):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(7,),
+                row_to_request=(7,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert [call[1] for call in calls if call[0] == "prefill_batch_native"] == [
+        (10, 11),
+        (12, 13),
+        (14,),
+    ]
+    assert [call[2:4] for call in calls if call[0] == "prefill_batch_native"] == [
+        (0, 2),
+        (2, 4),
+        (4, 5),
+    ]
+    assert [call[4]["full_prompt_lengths"] for call in calls if call[0] == "prefill_batch_native"] == [
+        [5],
+        [5],
+        [5],
+    ]
+    row = runner._rows[7]
+    assert row.slot is not None
+    assert row.slot.generated_ids == [114]
+    assert row.slot.seq_position == 5
+    assert runner.decode_batch(
+        WorkItem(kind=WorkKind.DECODE, request_ids=(7,), row_to_request=(7,)),
+        commit=True,
+    ) == (qwen35_gguf.GeneratedToken(7, 114, finished=False),)
 
 
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:

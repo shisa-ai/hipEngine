@@ -10862,6 +10862,7 @@ class Qwen35GGUFResidentSession:
         prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
         *,
         sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        full_prompt_lengths: list[int] | tuple[int, ...] | None = None,
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
@@ -10873,6 +10874,8 @@ class Qwen35GGUFResidentSession:
         across every unfinished slot, so capacity pressure never turns a c>N
         prompt into undeclared slot-at-a-time prefill.  Conv/GDN and paged-KV
         continuity crosses rounds through the normal packed state contract.
+        ``full_prompt_lengths`` preserves the full-prompt attention route when
+        an outer scheduler supplies one logical prompt over multiple calls.
         Chunk-tail samples are internal; only each prompt's final result is
         returned. ``return_hidden_seeds=True`` concatenates all per-round FP32
         rows for the llama-compatible MTP draft catch-up path.
@@ -10884,6 +10887,26 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids must be non-empty")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        logical_lengths_supplied = full_prompt_lengths is not None
+        logical_prompt_lengths = (
+            tuple(len(prompt) for prompt in prompt_tuple)
+            if full_prompt_lengths is None
+            else tuple(int(length) for length in full_prompt_lengths)
+        )
+        if len(logical_prompt_lengths) != len(prompt_tuple):
+            raise ValueError("full_prompt_lengths must have one entry per prompt")
+        if any(length <= 0 for length in logical_prompt_lengths):
+            raise ValueError("full_prompt_lengths must be positive")
+        if logical_lengths_supplied and any(
+            int(session.position) + len(prompt) > full_length
+            for session, prompt, full_length in zip(
+                session_tuple,
+                prompt_tuple,
+                logical_prompt_lengths,
+                strict=True,
+            )
+        ):
+            raise ValueError("prefill chunk extends beyond its declared full prompt length")
         if self._bulk_prefill_scratch is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
         row_capacity = int(self._bulk_prefill_scratch.rows)
@@ -10894,13 +10917,14 @@ class Qwen35GGUFResidentSession:
         aotriton_threshold = int(PrefillConfig().attn_aotriton_min_tokens)
         aotriton_eligible_slots = tuple(
             slot_index
-            for slot_index, prompt in enumerate(prompt_tuple)
-            if aotriton_threshold > 0 and len(prompt) >= aotriton_threshold
+            for slot_index, prompt_length in enumerate(logical_prompt_lengths)
+            if aotriton_threshold > 0 and prompt_length >= aotriton_threshold
         )
         self.last_packed_prefill_plan = {
             "route": "slot_fair_bounded_rounds",
             "row_capacity": row_capacity,
             "total_rows": sum(len(prompt) for prompt in prompt_tuple),
+            "full_prompt_lengths": list(logical_prompt_lengths),
             "chunk_count": len(chunks),
             "chunk_rows": [int(chunk.rows) for chunk in chunks],
             "slot_indices": [list(chunk.slot_indices) for chunk in chunks],
@@ -10914,7 +10938,18 @@ class Qwen35GGUFResidentSession:
             "aotriton_threshold": aotriton_threshold,
             "aotriton_eligible_slots": list(aotriton_eligible_slots),
             "aotriton_eligibility_preserved_across_chunks": bool(
-                len(chunks) > 1 and aotriton_eligible_slots
+                aotriton_eligible_slots
+                and (
+                    len(chunks) > 1
+                    or any(
+                        full_length > len(prompt)
+                        for full_length, prompt in zip(
+                            logical_prompt_lengths,
+                            prompt_tuple,
+                            strict=True,
+                        )
+                    )
+                )
             ),
             "intermediate_tail_samples": max(
                 0,
@@ -10929,6 +10964,8 @@ class Qwen35GGUFResidentSession:
                 return_hidden_seeds=return_hidden_seeds,
                 capture_layer_output_hidden=capture_layer_output_hidden,
                 stream=stream,
+                _slot_local_full_attention=bool(aotriton_eligible_slots),
+                _force_aotriton_slot_indices=aotriton_eligible_slots,
             )
 
         initial_positions = tuple(int(session.position) for session in session_tuple)
