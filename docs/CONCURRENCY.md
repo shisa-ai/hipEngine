@@ -728,7 +728,7 @@ E2. Native widths:
 - [x] Support physical buckets c1/c2/c4/c8 with active masks.
 - [x] Run one true native c8 model step; c4+c4 may remain an explicit fallback
       but cannot qualify as c8.
-- [ ] Pass c8 steady, ragged, sparse, cancellation, and 512/128 equality.
+- [x] Pass c8 steady, ragged, sparse, cancellation, and 512/128 equality.
 - [x] Validate non-edge survivors through c8→c1 retirement without compaction.
 - [ ] Validate optional compaction separately with state/KV hashes at every move.
 
@@ -748,9 +748,16 @@ lanes carry `-1` positions, zero live counts, and no state import/scatter. The
 mask-aware graph-control helpers also keep inactive block rows, token feedback,
 recording, and cursors inert. Five mask-specific physical-c8 graphs replay the
 same c8→c1 sequence with **1,160/1,160** exact hidden comparisons; the cumulative
-all-active c8 graph regression remains **960/960** exact. This closes the physical-
-bucket and no-compaction retirement items. Ragged/cancellation and the standard
-p512/d128 gate remain open.
+all-active c8 graph regression remains **960/960** exact. Ragged p16/23 graph
+replay is **1,600/1,600** exact. A capacity-eight `protect_ttft` live loop cancels
+non-edge lane 3 after one native c8 step, then runs two masked physical-c8 steps;
+cancelled/survivor tokens and every Conv/GDN/live-KV hash match production-route
+c1 controls, with zero fallback and final ownership zero. The standard p512/d128
+eager and graph paths each pass **41,280/41,280** hidden comparisons plus exact
+tokens/state/KV; graph captures once and replays 128 times with zero steady
+copies. This closes the physical-bucket, no-compaction retirement, and complete
+E2 equality-suite items. Optional compaction and retained native-c8 scaling
+remain open. Evidence: `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-correctness.json`.
 
 E3. Arbitrary request counts:
 

@@ -160823,3 +160823,81 @@ This closes E2 physical c1/c2/c4/c8 active-mask support and masked graph replay,
 but not E2 closure or a performance claim. Ragged prompts, live cancellation,
 the standard p512/d128 equality gate, and retained native-c8 scaling remain
 open.
+
+## 2026-07-17 — Close native c8 ragged, cancellation, and p512/d128 equality
+
+All gates below ran from clean `bbe6deb0` on the W7900/gfx1100 with
+Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP 7.15, exact GDN, and cached
+builds. No throughput result is retained in this unit.
+
+The ragged graph gate uses row 0 at prompt length 16 and rows 1–7 at length 23,
+then four native-c8 transitions:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 16 --alternate-prompt-length 23 \
+  --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-ragged-graph-p16-23-d4.json
+```
+
+It captures one c8 graph, replays four times, and passes exact tokens,
+Conv/GDN/live-KV, and **1,600/1,600** hidden comparisons. The 15,679-byte JSON
+SHA-256 is `e880e271fdb126fb5809785944904b6e26cb893e68fcbaa622c6803d74568338`.
+
+The live-cancellation gate adapts the retained D2 harness to resident capacity
+8, ragged prompt lengths 16–23, and non-edge lane 3. Initial attempts correctly
+exposed two harness/protocol mismatches rather than model failures: D3 pool
+sessions have deferred KV and cannot serve as dense references before admission,
+and the default `protect_decode` policy drains one row before prefetching the
+next. The accepted harness uses one standalone dense reference session sharing
+the loaded model, matches the live pool's production WMMA/GEMV route, and sets
+`HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft` explicitly.
+
+One all-active native c8 step is followed by cancellation after row 3's second
+token and two masked physical-c8 steps with mask `11101111`. All eight token
+prefixes, the cancelled row's Conv/GDN/live-KV, every survivor immediately after
+cancel, and all seven final survivor states match independent production-route
+c1 controls. Manifests report zero complete-c1/session/layer/model-row fallback;
+route counts are three packed steps and zero c1/serial/resident fallback. Final
+ownership is 0 active requests, 8 available sessions, and scheduler active 0.
+The 17,812-byte JSON SHA-256 is
+`c4d207cbef812d4f658b2acc9c0bc5481a870f7babaaa40684c73d02a543fc4f`;
+the 11,529-byte `/tmp/gfx1100_e2_c8_live_cancellation.py` SHA-256 is
+`11eb8350845f9408945f45c607a0b757e17814eadb26b75f63bb0928d62a73f7`.
+
+The standard gate ran both explicit modes with p512/c8/d128 and all 40 hidden
+taps:
+
+```bash
+# graph; repeat with --decode-mode eager and its output path
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-graph-p512-d128.json
+```
+
+Graph captures once and replays 128 times; eager executes 128 native-c8 model
+steps. Both modes pass **41,280/41,280** hidden comparisons, exact tokens,
+initial/final Conv/GDN/live-KV, and zero model-row fallback. Graph reports zero
+steady H2D and state copies. Graph JSON is 42,653 bytes, SHA-256
+`11144f10bbd1849c1dbafa558eadb669dd310e7f90e981c87307c272e70f671c`;
+eager JSON is 708,736 bytes, SHA-256
+`0293cf5ebddb24ab199f01d596dd628666baba586b6963b48e1db97e86f922ae`.
+
+The compact retained packet is
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-correctness.json`.
+Across the short steady, ragged, eager/graph sparse, and eager/graph standard
+gates it records **87,440** exact hidden comparisons with zero token/state/KV
+mismatches. This closes E2's complete equality-suite item. Native-c8 scaling,
+optional compaction, arbitrary C>8 lowering, and gfx1151 symmetry remain open.

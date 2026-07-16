@@ -1,0 +1,278 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_e2_native_c8_correctness",
+  "created_at": "2026-07-17T03:58:00+09:00",
+  "status": "accepted_native_c8_correctness",
+  "passed": true,
+  "claim_level": "native_c8_eq_ok",
+  "performance_claim": false,
+  "performance_claim_scope": null,
+  "native_c8_claim": true,
+  "continuous_c8_cancellation_claim": true,
+  "optional_compaction_claim": false,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-17T03:58:00+09:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "bbe6deb0cfea21f4f564aea9d400854906958670",
+    "git_branch": "gfx1100-concurrency",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_packed_ar_state_oracle.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--rows",
+      "8",
+      "--lifecycle",
+      "steady",
+      "--prefill-mode",
+      "packed",
+      "--decode-mode",
+      "graph",
+      "--prompt-length",
+      "512",
+      "--decode-steps",
+      "128",
+      "--capture-layer-hidden",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1100-e2-native-c8-graph-p512-d128.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "decode",
+    "timing_protocol": "correctness-only; no throughput timing retained",
+    "warmups": null,
+    "repetitions": null,
+    "profiler": {
+      "kind": "cached_masked_graph_control_kernel_trace",
+      "database": "/tmp/gfx1100-e2-masked-control-rocprof/epyc/3861161_results.db",
+      "database_sha256": "fd43952aa09fdfc431d093e77fe2d9ea360d5b7360ab98671160e9d0693b4084",
+      "metadata_duration_ns": 5560,
+      "commit_duration_ns": 1720,
+      "metadata_vgpr": 16,
+      "commit_vgpr": 8,
+      "scratch_bytes": 0,
+      "lds_bytes": 0,
+      "cached_build_required": true
+    }
+  },
+  "implementation": {
+    "physical_bucket_widths": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "native_model_step": {
+      "physical_rows": 8,
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "expected_exact_row_local_kernel_launches": 0
+    },
+    "masked_graph_control": {
+      "inactive_position": -1,
+      "inactive_context": 0,
+      "inactive_block_table_value": -1,
+      "inactive_token_feedback": false,
+      "inactive_token_recording": false,
+      "inactive_cursor_advance": false
+    },
+    "family_routes": {
+      "linear_attention": "indexed_batch",
+      "full_attention": "kv_live_spans_batch",
+      "moe": "selected_rows_batch",
+      "lm_head": "q6_rowtile_f32_logits",
+      "sampler": "argmax_i32_rows",
+      "graph_metadata": "device_positions_persistent_masked",
+      "graph_token_feedback": "device_i32_to_i64_masked"
+    }
+  },
+  "correctness": {
+    "short_steady_graph": {
+      "source": "/tmp/gfx1100-e2-native-c8-graph-p16-d2-post-active-mask.json",
+      "source_sha256": "717f0ec2c7eecbd3e46a5db87eea38abd3300e9f5a2c2568902e039ca73ea15a",
+      "source_size_bytes": 15238,
+      "prompt_lengths": [
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16
+      ],
+      "decode_steps": 2,
+      "graph_replays": 2,
+      "hidden_comparisons": 960,
+      "tokens_exact": true,
+      "state_kv_exact": true
+    },
+    "ragged_graph": {
+      "source": "/tmp/gfx1100-e2-native-c8-ragged-graph-p16-23-d4.json",
+      "source_sha256": "e880e271fdb126fb5809785944904b6e26cb893e68fcbaa622c6803d74568338",
+      "source_size_bytes": 15679,
+      "prompt_lengths": [
+        16,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23
+      ],
+      "decode_steps": 4,
+      "graph_replays": 4,
+      "hidden_comparisons": 1600,
+      "tokens_exact": true,
+      "state_kv_exact": true
+    },
+    "sparse_no_compaction": {
+      "active_masks": [
+        "11111111",
+        "10110111",
+        "10100101",
+        "00100100",
+        "00000100"
+      ],
+      "eager": {
+        "source": "/tmp/gfx1100-e2-masked-c8-shrink-p16-d5.json",
+        "source_sha256": "2b117e0e3eea03104f3469570d4484865f22f8e59760a1632fc30d784e73f603",
+        "source_size_bytes": 38087,
+        "hidden_comparisons": 1160,
+        "tokens_exact": true,
+        "all_physical_state_kv_exact_per_transition": true
+      },
+      "graph": {
+        "source": "/tmp/gfx1100-e2-masked-c8-graph-shrink-p16-d5.json",
+        "source_sha256": "4a87214e151faf28d2e5e853dc8fe6deeb0a22e4429ffedab084eee122c4cd7a",
+        "source_size_bytes": 58959,
+        "hidden_comparisons": 1160,
+        "graph_capture_count": 5,
+        "graph_replay_count": 5,
+        "tokens_exact": true,
+        "all_physical_state_kv_exact_per_transition": true
+      }
+    },
+    "live_cancellation": {
+      "source": "/tmp/gfx1100-e2-c8-live-cancellation.json",
+      "source_sha256": "c4d207cbef812d4f658b2acc9c0bc5481a870f7babaaa40684c73d02a543fc4f",
+      "source_size_bytes": 17812,
+      "harness": "/tmp/gfx1100_e2_c8_live_cancellation.py",
+      "harness_sha256": "11eb8350845f9408945f45c607a0b757e17814eadb26b75f63bb0928d62a73f7",
+      "harness_size_bytes": 11529,
+      "scheduler_policy": "protect_ttft",
+      "resident_capacity": 8,
+      "prompt_lengths": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "cancelled_physical_lane": 3,
+      "cancelled_after_tokens": 2,
+      "all_active_native_c8_steps": 1,
+      "post_cancel_masked_physical_c8_steps": 2,
+      "tokens_exact": true,
+      "cancelled_state_kv_exact": true,
+      "survivor_state_kv_exact_after_cancel": true,
+      "survivor_final_state_kv_exact": true,
+      "serial_or_resident_fallback_steps": 0,
+      "final_active_requests": 0,
+      "final_available_sessions": 8,
+      "final_scheduler_active": 0
+    },
+    "standard_p512_d128": {
+      "prompt_tokens_per_row": 512,
+      "decode_transitions_per_row": 128,
+      "eager": {
+        "source": "/tmp/gfx1100-e2-native-c8-eager-p512-d128.json",
+        "source_sha256": "0293cf5ebddb24ab199f01d596dd628666baba586b6963b48e1db97e86f922ae",
+        "source_size_bytes": 708736,
+        "native_model_steps": 128,
+        "hidden_comparisons": 41280,
+        "tokens_exact": true,
+        "state_kv_exact": true
+      },
+      "graph": {
+        "source": "/tmp/gfx1100-e2-native-c8-graph-p512-d128.json",
+        "source_sha256": "11144f10bbd1849c1dbafa558eadb669dd310e7f90e981c87307c272e70f671c",
+        "source_size_bytes": 42653,
+        "physical_rows": 8,
+        "active_rows": 8,
+        "graph_captures": 1,
+        "graph_replays": 128,
+        "hidden_comparisons": 41280,
+        "tokens_exact": true,
+        "state_kv_exact": true,
+        "steady_host_to_device_copies": 0,
+        "steady_device_to_device_state_copies": 0
+      }
+    },
+    "total_retained_hidden_comparisons": 87440,
+    "hidden_mismatches": 0,
+    "token_mismatches": 0,
+    "state_or_kv_mismatches": 0
+  },
+  "validation": {
+    "adjacent_pytest_passed": 114,
+    "gpu_runtime_state_tests_passed": 5,
+    "python_compileall_passed": true,
+    "focused_ruff_passed": true,
+    "lineage_checked": true
+  },
+  "known_non_claims": [
+    "No native-c8 throughput, TTFT, ITL, memory-scaling, or server-performance result is inferred from this correctness packet.",
+    "The prior chunked-c8 c4+c4 timing row remains historical until the same-session scaling protocol is rerun on native c8.",
+    "Optional physical-slot compaction is not exercised; every sparse and cancellation gate intentionally preserves physical lane identity.",
+    "gfx1151 E1 symmetry remains a separate hardware gate."
+  ],
+  "next_gate": "Run same-session c1/c2/c4/native-c8/serial scaling plus native-c8 profiler census, then validate optional compaction and arbitrary C>8 lowering separately."
+}

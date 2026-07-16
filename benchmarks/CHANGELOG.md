@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-17
 
+- [closed gfx1100 GGUF E2 native-c8 correctness packet] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV native width moves **historical c4+c4 chunking -> correctness-retained one physical c8 model step** (**% delta n/a; scaling not yet measured**): eager/graph p512/d128 each pass **41,280/41,280** hidden comparisons, ragged graph is **1,600/1,600**, eager/graph sparse c8→c1 are **1,160/1,160** each with all retired state/KV immutable, and non-edge live cancellation keeps cancelled/survivor tokens/state/KV exact through c8→masked-c8 with zero fallback and final ownership zero; `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-correctness.json`.
+
 - [closed gfx1100 GGUF D5 live-loop observability] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV continuous loop moves **HTTP-shell metrics only -> correctness-retained `continuous_eq_ok` full live observability** (**% delta n/a; no performance claim**): real `/metrics` scrapes expose c1→c2→idle ownership with **2/4 occupied slots**, **3→6→3 KV pages**, all queue/TTFT/ITL/service/completion families, complete route/fallback manifests, and stable graph bucket `600fea75…` through **1 capture → 24 exact hits/replays → 1 invalidation**; live A/B tokens and state/KV plus the graph trajectory remain independent-c1 exact and final scheduler/session/KV ownership is zero; `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-d5-live-observability-closure.json`.
 
 ## 2026-07-16
