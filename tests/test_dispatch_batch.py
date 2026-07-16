@@ -134,10 +134,29 @@ def test_work_item_validates_request_and_verify_metadata() -> None:
         kind=WorkKind.DECODE,
         request_ids=(1, 2),
         row_to_request=(1, 2),
+        slot_ids=(0, 2),
+        active_mask=(True, False, True, False),
     )
     assert item.kind is WorkKind.DECODE
+    assert item.slot_ids == (0, 2)
+    assert item.active_mask == (True, False, True, False)
 
     with pytest.raises(ValueError, match="row_to_request"):
         WorkItem(kind=WorkKind.DECODE, request_ids=(1,), row_to_request=(2,))
+    with pytest.raises(ValueError, match="slot_ids"):
+        WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=(1, 2),
+            row_to_request=(1, 2),
+            slot_ids=(0,),
+        )
+    with pytest.raises(ValueError, match="active_mask"):
+        WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=(1, 2),
+            row_to_request=(1, 2),
+            slot_ids=(0, 2),
+            active_mask=(True, True, False),
+        )
     with pytest.raises(ValueError, match="positive draft_depth"):
         WorkItem(kind=WorkKind.VERIFY_CHAIN, request_ids=(1,), row_to_request=(1,))

@@ -293,6 +293,8 @@ class ServerConfig:
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
     generation_batch_window_ms: float = 0.0
+    stream_queue_max_chunks: int = 16
+    shutdown_grace_seconds: float = 5.0
     request_timeout_ms: float | None = None
     metrics: str = "off"
     prefix_cache: str = "off"
@@ -314,6 +316,12 @@ class ServerConfig:
                 + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
             )
         object.__setattr__(self, "speculative_mtp_serving", mode)
+        if int(self.stream_queue_max_chunks) < 2:
+            raise ValueError("stream_queue_max_chunks must be at least 2")
+        if float(self.shutdown_grace_seconds) < 0.0:
+            raise ValueError("shutdown_grace_seconds must be non-negative")
+        object.__setattr__(self, "stream_queue_max_chunks", int(self.stream_queue_max_chunks))
+        object.__setattr__(self, "shutdown_grace_seconds", float(self.shutdown_grace_seconds))
 
     @property
     def model_id(self) -> str:
@@ -1094,7 +1102,8 @@ def _known_unsupported_fields() -> list[str]:
     return list(_UNSUPPORTED_GRAMMAR_FIELDS)
 
 
-def _admission_capability(config: ServerConfig) -> dict[str, Any]:
+def _admission_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
+    controlled_streaming = _engine_supports_controlled_streaming(engine)
     return {
         "queue": {
             "max_queued_requests": config.max_queued_requests,
@@ -1109,15 +1118,23 @@ def _admission_capability(config: ServerConfig) -> dict[str, Any]:
             "max_active": config.max_chat_sessions,
             "rejects_new_sessions_when_full": config.max_chat_sessions is not None,
         },
-        "scheduler_fairness": _scheduler_fairness_capability(),
+        "streaming": {
+            "controlled_model_loop": controlled_streaming,
+            "queue_max_chunks": int(config.stream_queue_max_chunks),
+            "backpressure_scope": "per_request",
+            "shutdown_grace_seconds": float(config.shutdown_grace_seconds),
+        },
+        "scheduler_fairness": _scheduler_fairness_capability(
+            continuous_decode=controlled_streaming
+        ),
     }
 
 
-def _scheduler_fairness_capability() -> dict[str, Any]:
+def _scheduler_fairness_capability(*, continuous_decode: bool = False) -> dict[str, Any]:
     return {
         "policy": _GENERATION_SCHEDULER_FAIRNESS_POLICY,
         "compatible_sampling_coalescing": True,
-        "continuous_decode": False,
+        "continuous_decode": bool(continuous_decode),
         "preemptive_fairness": False,
     }
 
@@ -1234,7 +1251,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "continuations": _session_continuation_capability(),
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
-        "admission": _admission_capability(config),
+        "admission": _admission_capability(config, engine=engine),
         "parallelism": _parallelism_capability(),
         "unsupported_fields": _known_unsupported_fields(),
     }
@@ -1883,6 +1900,8 @@ class _QueuedGeneration:
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     cancelled: bool = False
+    finished: bool = False
+    producer_task: asyncio.Task[None] | None = None
 
 
 class _CompositeGenerationCancellationToken:
@@ -1930,6 +1949,7 @@ class _GenerationBatcher:
         max_active_requests: int | None = None,
         route_max_active_requests: Mapping[str, int] | None = None,
         retry_after_seconds: int = 1,
+        stream_queue_max_chunks: int = 16,
     ) -> None:
         self._engine_factory = engine_factory
         self._batch_window_seconds = max(0.0, float(batch_window_seconds))
@@ -1946,9 +1966,16 @@ class _GenerationBatcher:
                 raise ValueError("route max_active_requests limits must be positive")
             self._route_max_active_requests[str(route)] = route_limit
         self._retry_after_seconds = max(1, int(retry_after_seconds))
+        self._stream_queue_max_chunks = int(stream_queue_max_chunks)
+        if self._stream_queue_max_chunks < 2:
+            raise ValueError("stream_queue_max_chunks must be at least 2")
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
+        self._stream_tasks: set[asyncio.Task[None]] = set()
+        self._stream_items: dict[int, _QueuedGeneration] = {}
+        self._active_items: dict[int, _QueuedGeneration] = {}
         self._active_requests = 0
+        self._accepting = True
 
     def queue_depth(self) -> int:
         return len(self._queue)
@@ -1963,7 +1990,20 @@ class _GenerationBatcher:
         return self._max_active_requests
 
     def active(self) -> bool:
-        return self._worker is not None and not self._worker.done()
+        worker_active = self._worker is not None and not self._worker.done()
+        return worker_active or any(not task.done() for task in self._stream_tasks)
+
+    def stream_queue_max_chunks(self) -> int:
+        return self._stream_queue_max_chunks
+
+    def stream_queue_depths(self) -> tuple[int, ...]:
+        items = [*self._queue, *self._stream_items.values()]
+        queues = {
+            id(item.stream_queue): item.stream_queue
+            for item in items
+            if item.stream_queue is not None
+        }
+        return tuple(queue.qsize() for queue in queues.values())
 
     def _route_request_cap(self, route: str) -> int | None:
         limit = self._max_active_requests
@@ -2005,6 +2045,15 @@ class _GenerationBatcher:
         )
 
     def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:
+        if not self._accepting:
+            raise OpenAIHTTPError(
+                429,
+                "generation engine is draining",
+                error_type="rate_limit_error",
+                code="engine_busy",
+                extra=error_extra,
+                headers={"Retry-After": str(self._retry_after_seconds)},
+            )
         if self._max_queue_size is None:
             return
         if len(self._queue) < self._max_queue_size:
@@ -2057,7 +2106,7 @@ class _GenerationBatcher:
 
         prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[object] = asyncio.Queue()
+        queue: asyncio.Queue[object] = asyncio.Queue(maxsize=self._stream_queue_max_chunks)
         self._raise_if_full(error_extra=error_extra)
         item = _QueuedGeneration(
             prompts=prompt_tuple,
@@ -2076,7 +2125,13 @@ class _GenerationBatcher:
                     raise event
                 yield event
         finally:
-            item.cancelled = True
+            if not item.finished:
+                _cancel_queued_generation(item, reason="disconnect")
+                producer = item.producer_task
+                if producer is not None and producer is not asyncio.current_task() and not producer.done():
+                    producer.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await producer
 
     async def _run(self) -> None:
         try:
@@ -2086,6 +2141,11 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
+                if first.stream_queue is not None:
+                    engine = self._engine_factory()
+                    if _engine_supports_controlled_streaming(engine):
+                        self._launch_controlled_stream(first, engine)
+                        continue
                 key = self._group_key(first)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
@@ -2106,11 +2166,43 @@ class _GenerationBatcher:
             if self._queue:
                 self._worker = asyncio.create_task(self._run())
 
+    def _launch_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
+        task = asyncio.create_task(self._run_controlled_stream(item, engine))
+        item.producer_task = task
+        self._stream_tasks.add(task)
+        self._stream_items[id(item)] = item
+
+        def finished(done: asyncio.Task[None]) -> None:
+            self._stream_tasks.discard(done)
+            self._stream_items.pop(id(item), None)
+
+        task.add_done_callback(finished)
+
+    async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
+        self._active_requests += 1
+        self._active_items[id(item)] = item
+        try:
+            if len(item.prompts) == 1:
+                await self._stream_single(item, engine=engine)
+            elif _engine_supports_stream_many(engine):
+                await self._stream_many(item, engine)
+            else:
+                raise NotImplementedError("controlled multi-row streaming is not supported by this generator")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await _finish_stream_queued_generation(item, exception=exc)
+        finally:
+            self._active_items.pop(id(item), None)
+            self._active_requests = max(0, self._active_requests - 1)
+
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
             return
+        self._active_requests += len(group)
+        for item in group:
+            self._active_items[id(item)] = item
         try:
-            self._active_requests = len(group)
             if len(group) == 1 and group[0].stream_queue is not None:
                 if len(group[0].prompts) == 1:
                     await self._stream_single(group[0])
@@ -2178,7 +2270,9 @@ class _GenerationBatcher:
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
         finally:
-            self._active_requests = 0
+            for item in group:
+                self._active_items.pop(id(item), None)
+            self._active_requests = max(0, self._active_requests - len(group))
 
     async def _generate_prompts(
         self,
@@ -2208,33 +2302,123 @@ class _GenerationBatcher:
             ),
         )
 
-    async def _stream_single(self, item: _QueuedGeneration) -> None:
+    async def _stream_single(self, item: _QueuedGeneration, *, engine: Any | None = None) -> None:
         assert item.stream_queue is not None
         try:
-            async for chunk in _stream_engine_text(self._engine_factory(), item.prompts[0], item.sampling):
+            async for chunk in _stream_engine_text(
+                self._engine_factory() if engine is None else engine,
+                item.prompts[0],
+                item.sampling,
+            ):
                 if _queued_generation_cancelled(item):
-                    break
-                item.stream_queue.put_nowait(chunk)
+                    raise GenerationCancelled(_queued_generation_finish_details(item))
+                await item.stream_queue.put(chunk)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            _finish_queued_generation(item, exception=exc)
+            await _finish_stream_queued_generation(item, exception=exc)
             return
-        _finish_queued_generation(item, outputs=())
+        await _finish_stream_queued_generation(item)
 
     async def _stream_many(self, item: _QueuedGeneration, engine: Any) -> None:
         assert item.stream_queue is not None
         try:
             async for chunk in _stream_engine_many(engine, item.prompts, item.sampling):
                 if _queued_generation_cancelled(item):
-                    break
-                item.stream_queue.put_nowait(chunk)
+                    raise GenerationCancelled(_queued_generation_finish_details(item))
+                await item.stream_queue.put(chunk)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            _finish_queued_generation(item, exception=exc)
+            await _finish_stream_queued_generation(item, exception=exc)
             return
-        _finish_queued_generation(item, outputs=())
+        await _finish_stream_queued_generation(item)
+
+    async def shutdown(self, *, grace_seconds: float = 5.0) -> dict[str, Any]:
+        """Stop admission, drain active work, then cooperatively force-cancel."""
+
+        grace = max(0.0, float(grace_seconds))
+        self._accepting = False
+        forced = False
+        try:
+            await asyncio.wait_for(self._wait_until_idle(), timeout=grace)
+        except asyncio.TimeoutError:
+            forced = True
+            finish_details = FinishDetails(reason="cancelled", cancelled=True)
+            error = GenerationCancelled(finish_details)
+            for item in [*self._queue, *self._active_items.values()]:
+                _cancel_queued_generation(item, reason="cancel")
+                _finish_queued_generation(item, exception=error)
+            self._queue.clear()
+            tasks = [
+                task
+                for task in (self._worker, *tuple(self._stream_tasks))
+                if task is not None and not task.done()
+            ]
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._worker = None
+            self._stream_tasks.clear()
+            self._stream_items.clear()
+            self._active_items.clear()
+            self._active_requests = 0
+        return {
+            "forced": forced,
+            "grace_seconds": grace,
+            "active_requests": self._active_requests,
+            "queued_requests": len(self._queue),
+        }
+
+    async def _wait_until_idle(self) -> None:
+        # Poll rather than awaiting producer tasks directly: wait_for() must not
+        # cancel a model thread before the force path trips its cooperative token.
+        while self._queue or self.active() or self._active_requests:
+            await asyncio.sleep(0.001)
+
+
+def _queued_generation_finish_details(item: _QueuedGeneration) -> FinishDetails:
+    token = item.sampling.cancellation_token
+    if token is not None and bool(getattr(token, "cancelled", False)):
+        return FinishDetails.from_value(getattr(token, "finish_details", None))
+    return FinishDetails(reason="cancelled", cancelled=True)
+
+
+def _cancel_queued_generation(item: _QueuedGeneration, *, reason: str) -> None:
+    item.cancelled = True
+    token = item.sampling.cancellation_token
+    if token is None:
+        return
+    if reason == "timeout":
+        details = FinishDetails(reason="deadline_exceeded", deadline_exceeded=True)
+    else:
+        details = FinishDetails(reason="cancelled", cancelled=True)
+    cancel = getattr(token, "cancel", None)
+    if callable(cancel):
+        cancel(details)
 
 
 def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:
-    return item.cancelled or (item.future is not None and item.future.cancelled())
+    token = item.sampling.cancellation_token
+    token_cancelled = token is not None and bool(getattr(token, "cancelled", False))
+    return item.cancelled or token_cancelled or (item.future is not None and item.future.cancelled())
+
+
+async def _finish_stream_queued_generation(
+    item: _QueuedGeneration,
+    *,
+    exception: Exception | None = None,
+) -> None:
+    queue = item.stream_queue
+    if queue is None or item.finished:
+        return
+    item.finished = True
+    if item.cancelled and exception is None:
+        return
+    if exception is not None:
+        await queue.put(exception)
+    await queue.put(_STREAM_DONE)
 
 
 def _finish_queued_generation(
@@ -2244,6 +2428,9 @@ def _finish_queued_generation(
     result: Any | None = None,
     exception: Exception | None = None,
 ) -> None:
+    if item.finished:
+        return
+    item.finished = True
     if item.future is not None and not item.future.done():
         if exception is not None:
             item.future.set_exception(exception)
@@ -2253,12 +2440,21 @@ def _finish_queued_generation(
             item.future.set_result(list(outputs or ()))
     if item.stream_queue is None:
         return
+    terminal: list[object] = []
     if exception is not None:
-        item.stream_queue.put_nowait(exception)
+        terminal.append(exception)
     else:
-        for output in outputs or ():
-            item.stream_queue.put_nowait(_coerce_generation_stream_chunk(output))
-    item.stream_queue.put_nowait(_STREAM_DONE)
+        terminal.extend(_coerce_generation_stream_chunk(output) for output in outputs or ())
+    terminal.append(_STREAM_DONE)
+    if len(terminal) > item.stream_queue.maxsize:
+        terminal = [GenerationCancelled(FinishDetails(reason="cancelled", cancelled=True)), _STREAM_DONE]
+    if item.stream_queue.qsize() + len(terminal) > item.stream_queue.maxsize:
+        while not item.stream_queue.empty():
+            with suppress(asyncio.QueueEmpty):
+                item.stream_queue.get_nowait()
+        terminal = [GenerationCancelled(FinishDetails(reason="cancelled", cancelled=True)), _STREAM_DONE]
+    for event in terminal:
+        item.stream_queue.put_nowait(event)
 
 
 async def _stream_engine_text(engine: Any, prompt: PromptInput, sampling: SamplingParams) -> AsyncIterator[Any]:
@@ -3073,6 +3269,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             else None
         ),
         retry_after_seconds=config.queue_retry_after_seconds,
+        stream_queue_max_chunks=config.stream_queue_max_chunks,
     )
     app.state.hipengine_generation_batcher = generation_batcher
 
@@ -3474,10 +3671,26 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         _LOGGER.info("hipEngine is ready.")
 
+    async def shutdown_model() -> None:
+        readiness: _ReadinessState = app.state.hipengine_readiness
+        readiness.ready = False
+        readiness.status = "draining"
+        shutdown_result = await generation_batcher.shutdown(
+            grace_seconds=config.shutdown_grace_seconds
+        )
+        engine = getattr(app.state, "hipengine_llm", None)
+        closer = None if engine is None else getattr(engine, "close", None)
+        if callable(closer):
+            await run_in_threadpool(closer)
+        app.state.hipengine_shutdown = shutdown_result
+        readiness.status = "stopped"
+
     if hasattr(app, "add_event_handler"):
         app.add_event_handler("startup", eager_load_model)
+        app.add_event_handler("shutdown", shutdown_model)
     else:  # FastAPI-lite compatibility in minimal test/runtime environments.
         app.router.on_startup.append(eager_load_model)
+        app.router.on_shutdown.append(shutdown_model)
 
     async def require_auth(request: Request) -> str:
         if not config.api_key:
@@ -4813,7 +5026,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "continuations": _session_continuation_capability(),
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
-            "admission": _admission_capability(config),
+            "admission": _admission_capability(config, engine=engine),
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
@@ -6427,6 +6640,83 @@ def _metrics_mode(raw: str | None) -> str:
     return value
 
 
+def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
+    if engine is None:
+        return None
+    getter = getattr(engine, "live_loop_snapshot", None)
+    if not callable(getter):
+        return None
+    try:
+        payload = getter()
+    except Exception:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _nested_mapping(owner: Mapping[str, Any] | None, key: str) -> Mapping[str, Any]:
+    if owner is None:
+        return {}
+    value = owner.get(key)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
+    loop = _nested_mapping(snapshot, "loop")
+    requests = _nested_mapping(loop, "requests")
+    bucket = _nested_mapping(loop, "physical_bucket")
+    work = _nested_mapping(loop, "work_counts")
+    policy = _nested_mapping(loop, "scheduler_policy")
+    latency = _nested_mapping(loop, "latency_seconds")
+    runner = _nested_mapping(snapshot, "runner")
+    routes = _nested_mapping(runner, "routes")
+
+    active_mask_value = bucket.get("active_mask")
+    if isinstance(active_mask_value, Sequence) and not isinstance(active_mask_value, (str, bytes)):
+        active_mask = "".join("1" if value is True else "0" for value in active_mask_value)
+    else:
+        active_mask = ""
+    latency_rows: dict[str, dict[str, float]] = {}
+    for kind in ("queue", "time_to_first_token", "inter_token", "service", "completion"):
+        row = _nested_mapping(latency, kind)
+        latency_rows[kind] = {
+            "count": _non_negative_metric_value(row.get("count")),
+            "sum": _non_negative_metric_value(row.get("sum")),
+            "max": _non_negative_metric_value(row.get("max")),
+            "p50": _non_negative_metric_value(row.get("p50")),
+            "p95": _non_negative_metric_value(row.get("p95")),
+        }
+    return {
+        "requests": {
+            "pending": _non_negative_metric_value(requests.get("pending")),
+            "admitted": _non_negative_metric_value(requests.get("admitted_current")),
+            "active": _non_negative_metric_value(requests.get("active")),
+            "admitted_total": _non_negative_metric_value(requests.get("admitted_total")),
+            "reclaimed_total": _non_negative_metric_value(requests.get("reclaimed_total")),
+        },
+        "bucket": {
+            "capacity": _non_negative_metric_value(bucket.get("capacity")),
+            "active_rows": _non_negative_metric_value(bucket.get("active_c")),
+            "occupied_slots": _non_negative_metric_value(bucket.get("occupied_slots")),
+            "free_slots": _non_negative_metric_value(bucket.get("free_slots")),
+            "occupancy_ratio": _non_negative_metric_value(bucket.get("occupancy_ratio")),
+            "active_mask": active_mask,
+        },
+        "work": {
+            "prefill": _non_negative_metric_value(work.get("prefill")),
+            "decode": _non_negative_metric_value(work.get("decode")),
+            "reclaim": _non_negative_metric_value(work.get("reclaim")),
+        },
+        "policy": {
+            "name": str(policy.get("prefill_decode_policy") or "unavailable"),
+            "last_work_kind": str(policy.get("last_work_kind") or "none"),
+        },
+        "latency": latency_rows,
+        "route_counts": _non_negative_metric_mapping(routes.get("counts")),
+        "fallback_reasons": _non_negative_metric_mapping(routes.get("fallback_reasons")),
+        "last_execution_manifest": _nested_mapping(routes, "last_execution_manifest"),
+    }
+
+
 def _render_prometheus_metrics(
     metrics: _ServerMetrics,
     *,
@@ -6436,8 +6726,10 @@ def _render_prometheus_metrics(
     pending_chat_sessions: set[str] | None = None,
     max_chat_sessions: int | None = None,
 ) -> str:
-    pool = _pool_metric_values(engine)
-    graph = _graph_bucket_metric_values(engine)
+    live_snapshot = _live_loop_snapshot(engine)
+    resident = _resident_loop_metric_values(live_snapshot)
+    pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
+    graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
     queue = _generation_queue_metric_values(generation_batcher)
     values = {
         "hipengine_requests_total": metrics.request_total,
@@ -6447,17 +6739,36 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total": metrics.request_cancelled_total,
         "hipengine_prompt_tokens_total": metrics.prompt_tokens_total,
         "hipengine_completion_tokens_total": metrics.completion_tokens_total,
+        "hipengine_resident_requests_pending": resident["requests"]["pending"],
+        "hipengine_resident_requests_admitted": resident["requests"]["admitted"],
+        "hipengine_resident_requests_active": resident["requests"]["active"],
+        "hipengine_resident_requests_admitted_total": resident["requests"]["admitted_total"],
+        "hipengine_resident_requests_reclaimed_total": resident["requests"]["reclaimed_total"],
+        "hipengine_resident_bucket_capacity": resident["bucket"]["capacity"],
+        "hipengine_resident_bucket_active_rows": resident["bucket"]["active_rows"],
+        "hipengine_resident_bucket_occupied_slots": resident["bucket"]["occupied_slots"],
+        "hipengine_resident_bucket_free_slots": resident["bucket"]["free_slots"],
+        "hipengine_resident_bucket_occupancy_ratio": resident["bucket"]["occupancy_ratio"],
+        "hipengine_resident_work_prefill_total": resident["work"]["prefill"],
+        "hipengine_resident_work_decode_total": resident["work"]["decode"],
+        "hipengine_resident_work_reclaim_total": resident["work"]["reclaim"],
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
         "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
         "hipengine_kv_pool_grow_events_total": pool["grow_events"],
         "hipengine_kv_pool_grow_failures_total": pool["grow_failures"],
         "hipengine_kv_pool_shrink_events_total": pool["shrink_events"],
+        "hipengine_kv_pool_current_pages": pool["current_pages"],
+        "hipengine_kv_pool_high_water_observed_pages": pool["high_water_observed_pages"],
         "hipengine_kv_pool_free_pages": pool["free_pages"],
         "hipengine_kv_pool_refcounted_pages": pool["refcounted_pages"],
+        "hipengine_kv_pool_pinned_pages": pool["pinned_pages"],
         "hipengine_graph_bucket_entries": graph["entries"],
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
         "hipengine_graph_bucket_replay_hit_rate": graph["replay_hit_rate"],
+        "hipengine_graph_bucket_captures_total": graph["captures"],
+        "hipengine_graph_bucket_replays_total": graph["replays"],
+        "hipengine_graph_bucket_invalidations_total": graph["invalidations"],
         "hipengine_generation_queue_depth": queue["depth"],
         "hipengine_generation_queue_max_depth": queue["max_depth"],
         "hipengine_generation_worker_active": queue["worker_active"],
@@ -6479,17 +6790,36 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total": "Generation requests cancelled after client disconnect or backend cancellation.",
         "hipengine_prompt_tokens_total": "Prompt tokens counted for successful requests.",
         "hipengine_completion_tokens_total": "Completion tokens counted for successful requests.",
+        "hipengine_resident_requests_pending": "Current requests pending resident-loop admission.",
+        "hipengine_resident_requests_admitted": "Current requests admitted to physical resident slots.",
+        "hipengine_resident_requests_active": "Current active resident-loop requests.",
+        "hipengine_resident_requests_admitted_total": "Cumulative resident-loop admissions.",
+        "hipengine_resident_requests_reclaimed_total": "Cumulative resident-loop reclaims.",
+        "hipengine_resident_bucket_capacity": "Physical resident bucket capacity.",
+        "hipengine_resident_bucket_active_rows": "Current active rows in the physical resident bucket.",
+        "hipengine_resident_bucket_occupied_slots": "Current occupied physical resident slots.",
+        "hipengine_resident_bucket_free_slots": "Current free physical resident slots.",
+        "hipengine_resident_bucket_occupancy_ratio": "Current occupied/capacity ratio for the resident bucket.",
+        "hipengine_resident_work_prefill_total": "Executed resident prefill work items.",
+        "hipengine_resident_work_decode_total": "Executed resident decode work items.",
+        "hipengine_resident_work_reclaim_total": "Executed resident reclaim transitions.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
         "hipengine_kv_pool_grow_failures_total": "Dynamic KV pool grow failures, or 0 when unavailable.",
         "hipengine_kv_pool_shrink_events_total": "Dynamic KV pool shrink events, or 0 when unavailable.",
+        "hipengine_kv_pool_current_pages": "Current dynamic KV pool pages, or 0 when unavailable.",
+        "hipengine_kv_pool_high_water_observed_pages": "Peak observed dynamic KV pool pages, or 0 when unavailable.",
         "hipengine_kv_pool_free_pages": "Current dynamic KV pool free pages, or 0 when unavailable.",
         "hipengine_kv_pool_refcounted_pages": "Current dynamic KV pool refcounted pages, or 0 when unavailable.",
+        "hipengine_kv_pool_pinned_pages": "Current graph-pinned dynamic KV pages, or 0 when unavailable.",
         "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
         "hipengine_graph_bucket_replay_hit_rate": "Graph bucket replay hit rate, or 0 when unavailable.",
+        "hipengine_graph_bucket_captures_total": "Resident graph captures across all physical buckets.",
+        "hipengine_graph_bucket_replays_total": "Resident graph replay calls across all physical buckets.",
+        "hipengine_graph_bucket_invalidations_total": "Resident graph invalidations across all physical buckets.",
         "hipengine_generation_queue_depth": "Current generation-batcher queue depth.",
         "hipengine_generation_queue_max_depth": "Configured generation-batcher queue cap, or 0 when unset.",
         "hipengine_generation_worker_active": "Whether the generation-batcher worker is active, as 0 or 1.",
@@ -6507,11 +6837,19 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total",
         "hipengine_prompt_tokens_total",
         "hipengine_completion_tokens_total",
+        "hipengine_resident_requests_admitted_total",
+        "hipengine_resident_requests_reclaimed_total",
+        "hipengine_resident_work_prefill_total",
+        "hipengine_resident_work_decode_total",
+        "hipengine_resident_work_reclaim_total",
         "hipengine_kv_pool_grow_events_total",
         "hipengine_kv_pool_grow_failures_total",
         "hipengine_kv_pool_shrink_events_total",
         "hipengine_graph_bucket_hits_total",
         "hipengine_graph_bucket_misses_total",
+        "hipengine_graph_bucket_captures_total",
+        "hipengine_graph_bucket_replays_total",
+        "hipengine_graph_bucket_invalidations_total",
     }
     lines: list[str] = []
     for name, value in values.items():
@@ -6529,6 +6867,70 @@ def _render_prometheus_metrics(
         f'preemptive_fairness="{str(bool(scheduler["preemptive_fairness"])).lower()}"'
         "} 1"
     )
+    lines.append("# HELP hipengine_resident_bucket_info Resident physical bucket and scheduler policy.")
+    lines.append("# TYPE hipengine_resident_bucket_info gauge")
+    lines.append(
+        "hipengine_resident_bucket_info{"
+        f'active_mask="{_escape_prometheus_label_value(str(resident["bucket"]["active_mask"]))}",'
+        f'last_work_kind="{_escape_prometheus_label_value(str(resident["policy"]["last_work_kind"]))}",'
+        f'policy="{_escape_prometheus_label_value(str(resident["policy"]["name"]))}"'
+        "} 1"
+    )
+    _append_resident_latency_metrics(lines, resident["latency"])
+    graph_buckets = graph.get("buckets", {})
+    for graph_stat, metric_name in (
+        ("entries", "hipengine_graph_bucket_entries_by_bucket"),
+        ("captures", "hipengine_graph_bucket_captures_by_bucket_total"),
+        ("hits", "hipengine_graph_bucket_hits_by_bucket_total"),
+        ("replays", "hipengine_graph_bucket_replays_by_bucket_total"),
+        ("invalidations", "hipengine_graph_bucket_invalidations_by_bucket_total"),
+    ):
+        bucket_values = {
+            str(bucket): _non_negative_metric_value(row.get(graph_stat))
+            for bucket, row in graph_buckets.items()
+            if isinstance(row, Mapping)
+        }
+        if graph_stat == "entries":
+            _append_labeled_gauge_metrics(
+                lines,
+                metric_name,
+                "Current resident graph entries by stable physical bucket.",
+                "bucket",
+                bucket_values,
+            )
+        else:
+            _append_labeled_counter_metrics(
+                lines,
+                metric_name,
+                f"Resident graph {graph_stat} by stable physical bucket.",
+                "bucket",
+                bucket_values,
+            )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_route_total",
+        "Resident GGUF execution transitions by declared route.",
+        "route",
+        resident["route_counts"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_fallback_total",
+        "Resident GGUF explicit fallbacks by reason.",
+        "reason",
+        resident["fallback_reasons"],
+    )
+    manifest = resident["last_execution_manifest"]
+    if manifest:
+        lines.append("# HELP hipengine_resident_route_manifest_info Last resident execution manifest identity.")
+        lines.append("# TYPE hipengine_resident_route_manifest_info gauge")
+        lines.append(
+            "hipengine_resident_route_manifest_info{"
+            f'claim_level="{_escape_prometheus_label_value(str(manifest.get("claim_level") or "unavailable"))}",'
+            f'kind="{_escape_prometheus_label_value(str(manifest.get("kind") or "unavailable"))}",'
+            f'rows="{_escape_prometheus_label_value(str(manifest.get("rows") or 0))}"'
+            "} 1"
+        )
     _append_labeled_counter_metrics(
         lines,
         "hipengine_graph_bucket_miss_reason_total",
@@ -6550,22 +6952,38 @@ _KV_POOL_STATS_ATTRS = ("kv_pool", "kv_cache_pool", "pool", "kv_pool_stats")
 _KV_POOL_METRIC_DEFAULTS = {
     "current_bytes": 0.0,
     "high_water_observed_bytes": 0.0,
+    "current_pages": 0.0,
+    "high_water_observed_pages": 0.0,
     "grow_events": 0.0,
     "grow_failures": 0.0,
     "shrink_events": 0.0,
     "free_pages": 0.0,
     "refcounted_pages": 0.0,
+    "pinned_pages": 0.0,
 }
 
 
-def _pool_metric_values(engine: Any | None) -> dict[str, float]:
-    stats = _kv_pool_stats_object(engine)
+def _pool_metric_values(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, float]:
+    stats = _kv_pool_stats_object(engine, live_snapshot=live_snapshot)
     if stats is None:
         return dict(_KV_POOL_METRIC_DEFAULTS)
     return _kv_pool_metric_values_from_stats(stats)
 
 
-def _kv_pool_stats_object(engine: Any | None) -> Any | None:
+def _kv_pool_stats_object(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> Any | None:
+    snapshot = live_snapshot if live_snapshot is not None else _live_loop_snapshot(engine)
+    runner = _nested_mapping(snapshot, "runner")
+    live_pool = runner.get("kv_pool")
+    if isinstance(live_pool, Mapping):
+        return live_pool
     return _first_stats_object(engine, _KV_POOL_STATS_ATTRS)
 
 
@@ -6614,15 +7032,47 @@ def _call_metric_getter(owner: Any, name: str) -> Any:
     return value() if callable(value) else value
 
 
-def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
+def _graph_bucket_metric_values(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     values: dict[str, Any] = {
         "entries": 0.0,
         "hits": 0.0,
         "misses": 0.0,
         "replay_hit_rate": 0.0,
+        "captures": 0.0,
+        "replays": 0.0,
+        "invalidations": 0.0,
+        "buckets": {},
         "miss_reasons": {},
         "kernel_time_histogram_ns": {},
     }
+    snapshot = live_snapshot if live_snapshot is not None else _live_loop_snapshot(engine)
+    runner = _nested_mapping(snapshot, "runner")
+    live_graph = _nested_mapping(runner, "graph_buckets")
+    if live_graph:
+        values["entries"] = _non_negative_metric_value(live_graph.get("entries"))
+        values["hits"] = _non_negative_metric_value(live_graph.get("hits_total"))
+        values["captures"] = _non_negative_metric_value(live_graph.get("captures_total"))
+        values["misses"] = values["captures"]
+        values["replays"] = _non_negative_metric_value(live_graph.get("replays_total"))
+        values["invalidations"] = _non_negative_metric_value(
+            live_graph.get("invalidations_total")
+        )
+        lookups = values["hits"] + values["misses"]
+        values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
+        bucket_rows = _nested_mapping(live_graph, "buckets")
+        values["buckets"] = {
+            str(bucket): {
+                field: _non_negative_metric_value(row.get(field))
+                for field in ("entries", "captures", "hits", "replays", "invalidations")
+            }
+            for bucket, row in bucket_rows.items()
+            if isinstance(row, Mapping)
+        }
+        return values
     stats = _first_stats_object(engine, ("graph_buckets", "graph_bucket_cache", "graph_bucket_stats"))
     if stats is None:
         return values
@@ -6668,11 +7118,14 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
     keys = (
         "current_bytes",
         "high_water_observed_bytes",
+        "current_pages",
+        "high_water_observed_pages",
         "grow_events",
         "grow_failures",
         "shrink_events",
         "free_pages",
         "refcounted_pages",
+        "pinned_pages",
         "entries",
         "hits",
         "misses",
@@ -6701,6 +7154,53 @@ def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
             continue
         metrics[str(key)] = numeric
     return metrics
+
+
+def _append_resident_latency_metrics(
+    lines: list[str],
+    values: Mapping[str, Mapping[str, float]],
+) -> None:
+    name = "hipengine_resident_request_latency_seconds"
+    lines.append(f"# HELP {name} Bounded resident request latency summaries by timing kind.")
+    lines.append(f"# TYPE {name} summary")
+    max_name = "hipengine_resident_request_latency_max_seconds"
+    lines.append(f"# HELP {max_name} Maximum bounded resident request latency by timing kind.")
+    lines.append(f"# TYPE {max_name} gauge")
+    for kind, row in sorted(values.items()):
+        label = _escape_prometheus_label_value(str(kind))
+        lines.append(
+            f'{name}{{kind="{label}",quantile="0.5"}} '
+            f'{_format_metric_value(row.get("p50", 0.0))}'
+        )
+        lines.append(
+            f'{name}{{kind="{label}",quantile="0.95"}} '
+            f'{_format_metric_value(row.get("p95", 0.0))}'
+        )
+        lines.append(
+            f'{name}_sum{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("sum", 0.0))}'
+        )
+        lines.append(
+            f'{name}_count{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("count", 0.0))}'
+        )
+        lines.append(
+            f'{max_name}{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("max", 0.0))}'
+        )
+
+
+def _append_labeled_gauge_metrics(
+    lines: list[str],
+    name: str,
+    help_text: str,
+    label: str,
+    values: Mapping[str, float],
+) -> None:
+    lines.append(f"# HELP {name} {help_text}")
+    lines.append(f"# TYPE {name} gauge")
+    for key, value in sorted(values.items()):
+        lines.append(f'{name}{{{label}="{_escape_prometheus_label_value(key)}"}} {_format_metric_value(value)}')
 
 
 def _append_labeled_counter_metrics(lines: list[str], name: str, help_text: str, label: str, values: Mapping[str, float]) -> None:
@@ -7945,6 +8445,15 @@ def _engine_stream_many_callable(engine: Any | None) -> Callable[[tuple[str, ...
     if callable(streamer):
         return streamer
     return None
+
+
+def _engine_supports_controlled_streaming(engine: Any | None) -> bool:
+    if engine is None:
+        return False
+    for target in (engine, getattr(engine, "_text_generator", None)):
+        if target is not None and bool(getattr(target, "supports_controlled_streaming", False)):
+            return True
+    return False
 
 
 def _engine_supports_stream_many(engine: Any | None) -> bool:

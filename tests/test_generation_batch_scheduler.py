@@ -32,6 +32,7 @@ from hipengine.generation import (
     CompactPromptSlab,
     EngineLoopConfig,
     GeneratedToken,
+    GenerationCancelled,
     GenerationRequest,
     GenerationOutput,
     GenerationStreamChunk,
@@ -16065,6 +16066,256 @@ def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> No
     assert inner.requests[0] == request
 
 
+def test_submit_poll_text_generator_reuses_one_loop_across_generate_calls() -> None:
+    inner = _FakeTextGenerator()
+    adapter = SubmitPollTextGenerator(inner, capacity=2)
+    loop = adapter._loop
+    runner = adapter._runner
+
+    first = GenerationRequest(
+        prompts=("one", "two"),
+        max_tokens=2,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        row_seeds=(10, 11),
+    )
+    second = replace(first, prompts=("three",), row_seeds=(12,))
+
+    assert adapter.generate(first) == ["generated:one:10", "generated:two:11"]
+    assert adapter.generate(second) == ["generated:three:12"]
+    assert adapter._loop is loop
+    assert adapter._runner is runner
+    assert loop.pending_count == 0
+    assert loop.active_count == 0
+    assert loop.completed == {}
+    assert [request.prompts for request in inner.requests] == [("one", "two"), ("three",)]
+
+
+def test_submit_poll_text_generator_applies_resolved_loop_config_to_runner() -> None:
+    class ConfiguredRunner:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = int(capacity)
+            self.configured: EngineLoopConfig | None = None
+
+        def configure_engine_loop(self, config: EngineLoopConfig) -> None:
+            self.configured = config
+
+    class ConfiguredInner:
+        def __init__(self) -> None:
+            self.runner: ConfiguredRunner | None = None
+
+        def create_resident_model_runner(self, *, capacity):
+            self.runner = ConfiguredRunner(capacity)
+            return self.runner
+
+    config = EngineLoopConfig(
+        prefill_decode_policy="fair",
+        max_active_requests=3,
+        max_prefill_chunk_tokens=7,
+        kv_pool_initial_pages=6,
+        kv_pool_low_water_pages=3,
+        kv_pool_high_water_pages=12,
+        kv_pool_chunk_pages=3,
+        kv_pool_idle_grace_seconds=1.5,
+        max_pending_requests=5,
+    )
+    inner = ConfiguredInner()
+    adapter = SubmitPollTextGenerator(inner, config=config)
+
+    assert inner.runner is adapter._runner
+    assert inner.runner is not None
+    assert inner.runner.capacity == 3
+    assert inner.runner.configured == config
+    assert adapter._loop.config == config
+    assert adapter._loop.prefill_chunk_size == 7
+    assert adapter._loop.prefill_decode_policy == "fair"
+    assert adapter._prefill_chunk_size == 7
+
+    with pytest.raises(ValueError, match="capacity conflicts"):
+        SubmitPollTextGenerator(inner, capacity=2, config=config)
+
+
+def test_submit_poll_text_generator_exposes_live_submit_poll_and_row_cancel() -> None:
+    class StepwiseRunner:
+        capacity = 2
+
+        def __init__(self) -> None:
+            self.rows: dict[int, tuple[GenerationRequest, int]] = {}
+            self.counts: dict[int, int] = {}
+            self.outputs: dict[int, GenerationOutput] = {}
+            self.prefills: list[tuple[int, ...]] = []
+            self.decodes: list[tuple[int, ...]] = []
+            self.reclaims: list[tuple[int, str]] = []
+
+        def prompt_tokens(self, prompt) -> tuple[int, ...]:
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows) -> None:
+            assert len(request_ids) == len(prompt_rows) == len(request.prompts)
+            for row_index, request_id in enumerate(request_ids):
+                self.rows[int(request_id)] = (request, row_index)
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            assert commit is True
+            self.prefills.append(tuple(work.request_ids))
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            assert commit is True
+            self.decodes.append(tuple(work.request_ids))
+            generated: list[GeneratedToken] = []
+            for request_id in work.request_ids:
+                count = self.counts.get(request_id, 0) + 1
+                self.counts[request_id] = count
+                request, _row_index = self.rows[request_id]
+                generated.append(
+                    GeneratedToken(
+                        request_id,
+                        1000 + request_id * 10 + count,
+                        finished=count >= request.max_tokens,
+                    )
+                )
+            return tuple(generated)
+
+        def compact_batch(self, moves) -> None:
+            del moves
+
+        def reclaim(self, completed) -> None:
+            self.reclaims.append((completed.request_id, completed.finish_reason))
+            self.outputs[completed.request_id] = GenerationOutput(
+                text=f"done:{completed.request_id}:{completed.finish_reason}",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+            self.rows.pop(completed.request_id, None)
+
+        def has_outputs(self, request_ids) -> bool:
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids) -> list[int]:
+            return [int(request_id) for request_id in request_ids if int(request_id) not in self.outputs]
+
+        def take_outputs(self, request_ids) -> list[GenerationOutput]:
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids) -> None:
+            for request_id in request_ids:
+                self.rows.pop(int(request_id), None)
+                self.outputs.pop(int(request_id), None)
+
+    class StepwiseInner:
+        def __init__(self) -> None:
+            self.runner = StepwiseRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 2}
+            return self.runner
+
+    inner = StepwiseInner()
+    adapter = SubmitPollTextGenerator(inner, capacity=2, prefill_chunk_size=2)
+    first_request = GenerationRequest(
+        prompts=((10, 11),),
+        max_tokens=3,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+    second_request = replace(first_request, prompts=((20,),), max_tokens=2)
+
+    first = adapter.submit_detailed(first_request)
+    assert adapter.poll(max_ticks=1)[-1].work_kind is WorkKind.PREFILL
+    first_decode = adapter.poll(max_ticks=1)
+    assert [event.token_id for event in first_decode if event.kind == "token"] == [1001]
+
+    second = adapter.submit_detailed(second_request)
+    admission = adapter.poll(max_ticks=1)
+    assert any(event.kind == "admitted" and event.request_id == second.request_ids[0] for event in admission)
+    assert admission[-1].work_kind is WorkKind.PREFILL
+    assert adapter._loop.active_count == 2
+
+    joined_decode = adapter.poll(max_ticks=1)
+    assert [event.request_id for event in joined_decode if event.kind == "token"] == [
+        first.request_ids[0],
+        second.request_ids[0],
+    ]
+    assert adapter.cancel_submission(second, row_index=0, reason="cancel") == (True,)
+    assert adapter.generation_complete(second) is True
+    assert adapter._loop.active_count == 1
+
+    final_decode = adapter.poll(max_ticks=1)
+    assert any(event.kind == "completed" and event.request_id == first.request_ids[0] for event in final_decode)
+    assert adapter.generation_complete(first) is True
+
+    first_output = adapter.take_result(first)
+    second_output = adapter.take_result(second)
+    assert first_output[0].generated_token_ids == (1001, 1002, 1003)
+    assert second_output[0].generated_token_ids == (1011,)
+    assert second_output[0].finish_details is not None
+    assert second_output[0].finish_details.to_json_dict() == {
+        "reason": "cancelled",
+        "cancelled": True,
+    }
+    assert inner.runner.prefills == [(first.request_ids[0],), (second.request_ids[0],)]
+    assert inner.runner.decodes == [
+        (first.request_ids[0],),
+        (first.request_ids[0], second.request_ids[0]),
+        (first.request_ids[0],),
+    ]
+    assert inner.runner.reclaims == [
+        (second.request_ids[0], "cancel"),
+        (first.request_ids[0], "stop"),
+    ]
+    assert adapter._loop.active_count == 0
+    assert adapter._loop.completed == {}
+
+
+def test_resident_engine_loop_uses_batch_commit_compact_and_reclaim_contract() -> None:
+    class BatchContractRunner:
+        def __init__(self) -> None:
+            self.prefills: list[tuple[object, bool]] = []
+            self.decodes: list[tuple[object, bool]] = []
+            self.compactions: list[tuple[object, ...]] = []
+            self.reclaims: list[object] = []
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            self.prefills.append((work, commit))
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            self.decodes.append((work, commit))
+            return tuple(GeneratedToken(request_id, 100 + request_id) for request_id in work.request_ids)
+
+        def compact_batch(self, moves) -> None:
+            self.compactions.append(tuple(moves))
+
+        def reclaim(self, completed) -> None:
+            self.reclaims.append(completed)
+
+    runner = BatchContractRunner()
+    loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
+    request_id = loop.submit([1, 2], max_new_tokens=1)
+
+    events = loop.poll(max_ticks=2)
+    moves = loop.compact()
+
+    assert [event.work_kind for event in events if event.kind == "work"] == [
+        WorkKind.PREFILL,
+        WorkKind.DECODE,
+    ]
+    assert [(work.request_ids, commit) for work, commit in runner.prefills] == [
+        ((request_id,), True)
+    ]
+    assert [(work.request_ids, commit) for work, commit in runner.decodes] == [
+        ((request_id,), True)
+    ]
+    assert runner.reclaims[0].request_id == request_id
+    assert runner.reclaims[0].generated_tokens == (100 + request_id,)
+    assert moves == ()
+    assert runner.compactions == [()]
+
+
 def test_submit_poll_text_generator_preserves_stream_detailed_telemetry() -> None:
     class DetailedStreamGenerator(_FakeTextGenerator):
         def stream_detailed(self, request: GenerationRequest):
@@ -16174,6 +16425,272 @@ def test_submit_poll_text_generator_preserves_generate_detailed_telemetry_for_st
     ]
     assert list(adapter.stream(request)) == ["detailed:one", "detailed:two"]
     assert inner.requests == [request, request]
+
+
+def test_submit_poll_text_generator_streams_native_events_through_resident_loop() -> None:
+    class StreamingRunner:
+        capacity = 2
+
+        def __init__(self) -> None:
+            self.rows: dict[int, tuple[GenerationRequest, int]] = {}
+            self.counts: dict[int, int] = {}
+            self.text: dict[int, list[str]] = {}
+            self.outputs: dict[int, GenerationOutput] = {}
+            self.decodes: list[tuple[int, ...]] = []
+            self.reclaims: list[tuple[int, str]] = []
+
+        def prompt_tokens(self, prompt) -> tuple[int, ...]:
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows) -> None:
+            assert len(request_ids) == len(prompt_rows) == len(request.prompts)
+            for row_index, request_id in enumerate(request_ids):
+                self.rows[int(request_id)] = (request, row_index)
+                self.text[int(request_id)] = []
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            assert commit is True
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            assert commit is True
+            self.decodes.append(tuple(int(request_id) for request_id in work.request_ids))
+            generated: list[GeneratedToken] = []
+            for request_id in work.request_ids:
+                request, row_index = self.rows[int(request_id)]
+                count = self.counts.get(int(request_id), 0) + 1
+                self.counts[int(request_id)] = count
+                text = f"row{row_index}:{count}"
+                self.text[int(request_id)].append(text)
+                generated.append(
+                    GeneratedToken(
+                        int(request_id),
+                        1000 + int(request_id) * 10 + count,
+                        finished=False,
+                        stream_chunk=GenerationStreamChunk(
+                            text=text,
+                            telemetry=GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=len(request.prompts[row_index]),
+                                generated_tokens=count,
+                                row_index=row_index,
+                                request_id=str(request_id),
+                                phase="answer",
+                                execution_path="resident_test_stream",
+                            ),
+                        ),
+                    )
+                )
+            return tuple(generated)
+
+        def compact_batch(self, moves) -> None:
+            del moves
+
+        def reclaim(self, completed) -> None:
+            request_id = int(completed.request_id)
+            self.reclaims.append((request_id, completed.finish_reason))
+            self.outputs[request_id] = GenerationOutput(
+                text="".join(self.text[request_id]),
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+            self.rows.pop(request_id, None)
+
+        def has_outputs(self, request_ids) -> bool:
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids) -> list[int]:
+            return [int(request_id) for request_id in request_ids if int(request_id) not in self.outputs]
+
+        def take_outputs(self, request_ids) -> list[GenerationOutput]:
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids) -> None:
+            for request_id in request_ids:
+                rid = int(request_id)
+                self.rows.pop(rid, None)
+                self.outputs.pop(rid, None)
+                self.text.pop(rid, None)
+
+    class StreamingInner:
+        def __init__(self) -> None:
+            self.runner = StreamingRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 2}
+            return self.runner
+
+        def stream(self, request):  # pragma: no cover - must never run
+            raise AssertionError("resident streaming must not call the legacy inner streamer")
+            yield request
+
+    inner = StreamingInner()
+    adapter = SubmitPollTextGenerator(inner, capacity=2, prefill_chunk_size=2)
+    request = GenerationRequest(
+        prompts=((10, 11),),
+        max_tokens=2,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+
+    chunks = list(adapter.stream_detailed(request))
+
+    assert [chunk.text for chunk in chunks] == ["row0:1", "row0:2"]
+    assert chunks[0].finish_details is None
+    assert chunks[1].finish_details is not None
+    assert chunks[1].finish_details.to_json_dict() == {"reason": "length", "length_limit": 2}
+    assert [chunk.telemetry.to_json_dict()["decode_state"]["execution_path"] for chunk in chunks] == [
+        "resident_test_stream",
+        "resident_test_stream",
+    ]
+    assert inner.runner.reclaims == [(0, "length")]
+    assert adapter._loop.pending_count == 0
+    assert adapter._loop.active_count == 0
+    assert adapter._loop.completed == {}
+
+
+def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_closed_row() -> None:
+    class ConcurrentRunner:
+        capacity = 2
+
+        def __init__(self) -> None:
+            self.rows: dict[int, tuple[GenerationRequest, int]] = {}
+            self.counts: dict[int, int] = {}
+            self.outputs: dict[int, GenerationOutput] = {}
+            self.decode_groups: list[tuple[int, ...]] = []
+            self.reclaims: list[tuple[int, str]] = []
+
+        def prompt_tokens(self, prompt) -> tuple[int, ...]:
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows) -> None:
+            for row_index, request_id in enumerate(request_ids):
+                self.rows[int(request_id)] = (request, row_index)
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            assert commit is True
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            assert commit is True
+            self.decode_groups.append(tuple(int(request_id) for request_id in work.request_ids))
+            events: list[GeneratedToken] = []
+            for request_id in work.request_ids:
+                request, row_index = self.rows[int(request_id)]
+                count = self.counts.get(int(request_id), 0) + 1
+                self.counts[int(request_id)] = count
+                events.append(
+                    GeneratedToken(
+                        int(request_id),
+                        2000 + int(request_id) * 10 + count,
+                        finished=False,
+                        stream_chunk=GenerationStreamChunk(
+                            text=f"request{request_id}:{count}",
+                            telemetry=GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=count,
+                                row_index=row_index,
+                                request_id=str(request_id),
+                                phase="answer",
+                            ),
+                        ),
+                    )
+                )
+            return tuple(events)
+
+        def compact_batch(self, moves) -> None:
+            del moves
+
+        def reclaim(self, completed) -> None:
+            request_id = int(completed.request_id)
+            self.reclaims.append((request_id, completed.finish_reason))
+            self.outputs[request_id] = GenerationOutput(
+                text=f"done:{request_id}",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+            self.rows.pop(request_id, None)
+
+        def has_outputs(self, request_ids) -> bool:
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids) -> list[int]:
+            return [int(request_id) for request_id in request_ids if int(request_id) not in self.outputs]
+
+        def take_outputs(self, request_ids) -> list[GenerationOutput]:
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids) -> None:
+            for request_id in request_ids:
+                rid = int(request_id)
+                self.rows.pop(rid, None)
+                self.outputs.pop(rid, None)
+
+    class ConcurrentInner:
+        def __init__(self) -> None:
+            self.runner = ConcurrentRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 2}
+            return self.runner
+
+    adapter = SubmitPollTextGenerator(ConcurrentInner(), capacity=2, prefill_chunk_size=2)
+    first_request = GenerationRequest(
+        prompts=((10,),),
+        max_tokens=4,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+    second_request = replace(first_request, prompts=((20,),), max_tokens=2)
+    first = adapter.stream_detailed(first_request)
+    second = adapter.stream_detailed(second_request)
+
+    assert next(first).text == "request0:1"
+    assert next(second).text == "request1:1"
+    assert next(first).text == "request0:2"
+    assert next(second).text == "request1:2"
+    with pytest.raises(StopIteration):
+        next(second)
+
+    first.close()
+
+    assert (0, 1) in adapter._runner.decode_groups
+    assert adapter._runner.reclaims == [(1, "length"), (0, "disconnect")]
+    assert adapter._loop.pending_count == 0
+    assert adapter._loop.active_count == 0
+    assert adapter._loop.completed == {}
+
+    overflow_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+        stream_queue_max_chunks=1,
+    )
+    slow = overflow_adapter.stream_detailed(replace(first_request, max_tokens=8))
+    neighbor = overflow_adapter.stream_detailed(replace(second_request, max_tokens=3))
+    assert next(slow).text == "request0:1"
+    assert [chunk.text for chunk in neighbor] == [
+        "request1:1",
+        "request1:2",
+        "request1:3",
+    ]
+    assert next(slow).text == "request0:2"
+    with pytest.raises(GenerationCancelled) as overflow:
+        next(slow)
+    assert overflow.value.finish_details.to_json_dict() == {
+        "reason": "cancelled",
+        "cancelled": True,
+        "budget_pressure": "client_backpressure",
+    }
+    assert overflow_adapter._runner.reclaims == [(0, "cancel"), (1, "length")]
+    assert overflow_adapter._loop.pending_count == 0
+    assert overflow_adapter._loop.active_count == 0
+    assert overflow_adapter._loop.completed == {}
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:
@@ -16344,6 +16861,108 @@ def test_resident_scheduler_completion_observability_and_pool_counters() -> None
     assert counters["grow_events"] == 1
 
 
+def test_resident_scheduler_live_observability_snapshot_covers_d5_contract() -> None:
+    now = 10.0
+
+    def clock() -> float:
+        return now
+
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4, clock=clock)
+    request_id = scheduler.submit([1, 2, 3], max_new_tokens=2)
+    now = 11.0
+    assert scheduler.admit_pending() == (request_id,)
+
+    live = scheduler.observability_snapshot()
+    assert live["requests"] == {
+        "pending": 0,
+        "admitted_current": 1,
+        "active": 1,
+        "admitted_total": 1,
+        "completed_buffered": 0,
+        "reclaimed_total": 0,
+    }
+    assert live["physical_bucket"] == {
+        "capacity": 2,
+        "active_c": 1,
+        "occupied_slots": 1,
+        "free_slots": 1,
+        "active_mask": [True, False],
+        "slot_to_request": [request_id, None],
+        "occupancy_ratio": 0.5,
+    }
+
+    prefill = scheduler.next_prefill_work(chunk_size=8)
+    assert prefill is not None
+    scheduler.record_work_duration(prefill, 0.25)
+    now = 12.0
+    decode0 = scheduler.next_decode_work()
+    assert decode0 is not None
+    scheduler.record_work_duration(decode0, 0.5)
+    assert scheduler.record_generated([GeneratedToken(request_id, 9)]) == ()
+    now = 12.5
+    decode1 = scheduler.next_decode_work()
+    assert decode1 is not None
+    scheduler.record_work_duration(decode1, 0.4)
+    done = scheduler.record_generated([GeneratedToken(request_id, 10)])[0]
+
+    observed = done.observability.to_json_dict()
+    assert observed["queue_seconds"] == 1.0
+    assert observed["time_to_first_token_seconds"] == 2.0
+    assert observed["inter_token_seconds"] == [0.5]
+    assert observed["service_seconds"] == 1.5
+    assert observed["completion_seconds"] == 2.5
+
+    final = scheduler.observability_snapshot()
+    assert final["requests"] == {
+        "pending": 0,
+        "admitted_current": 0,
+        "active": 0,
+        "admitted_total": 1,
+        "completed_buffered": 1,
+        "reclaimed_total": 1,
+    }
+    assert final["work_counts"] == {"prefill": 1, "decode": 2, "reclaim": 1}
+    assert final["latency_seconds"]["queue"]["samples"] == [1.0]
+    assert final["latency_seconds"]["time_to_first_token"]["samples"] == [2.0]
+    assert final["latency_seconds"]["inter_token"]["samples"] == [0.5]
+    assert final["latency_seconds"]["service"]["samples"] == [1.5]
+    assert final["latency_seconds"]["completion"]["samples"] == [2.5]
+    assert final["recent_completed"][0]["request_id"] == request_id
+
+    loop = ResidentEngineLoop(
+        _FakeSerialBridgeRunner(),
+        capacity=2,
+        prefill_chunk_size=2,
+        prefill_decode_policy="fair",
+    )
+    loop_request = loop.submit([1, 2], max_new_tokens=1)
+    assert loop.tick()
+    loop_snapshot = loop.observability_snapshot()
+    assert loop_snapshot["scheduler_policy"] == {
+        "prefill_decode_policy": "fair",
+        "prefill_chunk_tokens": 2,
+        "last_work_kind": "prefill",
+    }
+    assert loop_snapshot["physical_bucket"]["slot_to_request"] == [loop_request, None]
+
+    adapter = SubmitPollTextGenerator(_FakeTextGenerator(), capacity=2, prefill_chunk_size=2)
+    outputs = adapter.generate_detailed(
+        GenerationRequest(
+            prompts=("hello",),
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+        )
+    )
+    assert [output.text for output in outputs] == ["generated:hello:-1"]
+    adapter_snapshot = adapter.live_loop_snapshot()
+    assert adapter_snapshot["schema"] == 1
+    assert adapter_snapshot["kind"] == "resident_engine_loop_observability"
+    assert adapter_snapshot["loop"]["requests"]["reclaimed_total"] == 1
+    assert adapter_snapshot["runner"] == {}
+
+
 def test_resident_scheduler_decode_bucket_key_uses_workload_axes() -> None:
     scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
     request_id = scheduler.submit([1, 2, 3], max_new_tokens=1)
@@ -16363,6 +16982,43 @@ def test_resident_scheduler_decode_bucket_key_uses_workload_axes() -> None:
         "decode:c=1:ctx=4:mask=1:kv=int8_per_token_head:layers=max_layers=8:"
         "top_k=0:experts=0:replay=2:draft=0"
     )
+
+
+def test_resident_engine_loop_admission_barrier_rejects_without_partial_mutation() -> None:
+    class AdmissionRunner(_FakeSerialBridgeRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.allow_admission = False
+            self.reserved_request_ids: list[int] = []
+
+        def reserve_admission(self, request) -> None:
+            if not self.allow_admission:
+                raise MemoryError("KV pool high-water rejection")
+            self.reserved_request_ids.append(int(request.request_id))
+
+        def rollback_admission(self, request) -> None:
+            self.reserved_request_ids.remove(int(request.request_id))
+
+    runner = AdmissionRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit([10, 11], max_new_tokens=1)
+
+    with pytest.raises(MemoryError, match="high-water"):
+        loop.poll(max_ticks=1)
+
+    assert loop.pending_count == 1
+    assert loop.active_count == 0
+    assert runner.reserved_request_ids == []
+    assert loop.scheduler.active_batch.slot_to_request == (None,)
+
+    runner.allow_admission = True
+    events = loop.poll(max_ticks=1)
+
+    assert events[0].kind == "admitted"
+    assert events[0].request_id == request_id
+    assert loop.pending_count == 0
+    assert loop.active_count == 1
+    assert runner.reserved_request_ids == [request_id]
 
 
 def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
@@ -16886,6 +17542,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r0, r1, r2)
+    assert decode.slot_ids == (0, 1, 2)
+    assert decode.active_mask == (True, True, True)
     completed = scheduler.record_generated(
         [
             GeneratedToken(r0, 100, finished=True),
@@ -16902,6 +17560,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r1, r2)
+    assert decode.slot_ids == (1, 2)
+    assert decode.active_mask == (False, True, True)
     completed = scheduler.record_generated([GeneratedToken(r1, 201), GeneratedToken(r2, 301)])
 
     assert [(item.request_id, item.finish_reason) for item in completed] == [(r1, "length")]
@@ -16911,6 +17571,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r2,)
+    assert decode.slot_ids == (2,)
+    assert decode.active_mask == (False, False, True)
     completed = scheduler.record_generated([GeneratedToken(r2, 302, finished=True)])
 
     assert [(item.request_id, item.finish_reason) for item in completed] == [(r2, "stop")]
@@ -18771,6 +19433,44 @@ def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
         batch_correctness._primitive_correctness_passed(0, 0, 0.0, 1e-8, attn_batch_aa_max_abs=1e-8)
         is False
     )
+
+
+def test_qwen35_batch_correctness_build_libraries_propagates_cached_build_policy(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_kv(**kwargs):
+        calls.append(("kv", kwargs))
+        return "kv-lib"
+
+    def fake_attn(**kwargs):
+        calls.append(("attn", kwargs))
+        return "attn-lib"
+
+    monkeypatch.setattr(batch_correctness, "build_qwen35_paged_kv_write", fake_kv)
+    monkeypatch.setattr(batch_correctness, "build_qwen35_paged_attn_decode", fake_attn)
+
+    assert batch_correctness._build_primitive_libraries(
+        compiler_version="HIP version: test",
+        require_cached_build=True,
+    ) == ("kv-lib", "attn-lib")
+    assert calls == [
+        (
+            "kv",
+            {
+                "load": True,
+                "compiler_version": "HIP version: test",
+                "require_cached": True,
+            },
+        ),
+        (
+            "attn",
+            {
+                "load": True,
+                "compiler_version": "HIP version: test",
+                "require_cached": True,
+            },
+        ),
+    ]
 
 
 def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None:

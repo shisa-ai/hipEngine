@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from collections import Counter, deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import ceil, isfinite
 from numbers import Integral
 from typing import Iterable, Mapping, Sequence
@@ -511,6 +511,7 @@ class GeneratedToken:
     request_id: int
     token_id: int
     finished: bool = False
+    stream_chunk: GenerationStreamChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -529,6 +530,10 @@ class RequestObservability:
     """Per-request timing/KV fields emitted with completion metadata."""
 
     queue_seconds: float
+    time_to_first_token_seconds: float | None
+    inter_token_seconds: tuple[float, ...]
+    service_seconds: float | None
+    completion_seconds: float
     prefill_seconds: float
     decode_seconds: float
     kv_pages_owned: int
@@ -544,6 +549,10 @@ class RequestObservability:
     def to_json_dict(self) -> dict[str, object]:
         return {
             "queue_seconds": self.queue_seconds,
+            "time_to_first_token_seconds": self.time_to_first_token_seconds,
+            "inter_token_seconds": list(self.inter_token_seconds),
+            "service_seconds": self.service_seconds,
+            "completion_seconds": self.completion_seconds,
             "prefill_seconds": self.prefill_seconds,
             "decode_seconds": self.decode_seconds,
             "kv_pages_owned": self.kv_pages_owned,
@@ -584,6 +593,9 @@ class CompletedRequest:
 class _RequestObservabilityState:
     submitted_at: float
     admitted_at: float | None = None
+    first_token_at: float | None = None
+    last_token_at: float | None = None
+    inter_token_seconds: list[float] = field(default_factory=list)
     queue_seconds: float = 0.0
     prefill_seconds: float = 0.0
     decode_seconds: float = 0.0
@@ -932,6 +944,10 @@ class ResidentBatchScheduler:
         self._next_sampling_row_index = 0
         self._clock = time.monotonic if clock is None else clock
         self._reclaim_callback = reclaim_callback
+        self._admitted_total = 0
+        self._reclaimed_total = 0
+        self._work_counts: Counter[str] = Counter()
+        self._recent_completed: deque[CompletedRequest] = deque(maxlen=1024)
 
     @property
     def pending_count(self) -> int:
@@ -944,6 +960,73 @@ class ResidentBatchScheduler:
     @property
     def completed(self) -> Mapping[int, CompletedRequest]:
         return self._completed
+
+    def observability_snapshot(self) -> dict[str, object]:
+        """Return a bounded, JSON-ready view of live scheduler ownership."""
+
+        active = int(self.active_count)
+        capacity = int(self.capacity)
+        recent = tuple(self._recent_completed)
+        latency_samples = {
+            "queue": [float(done.observability.queue_seconds) for done in recent],
+            "time_to_first_token": [
+                float(done.observability.time_to_first_token_seconds)
+                for done in recent
+                if done.observability.time_to_first_token_seconds is not None
+            ],
+            "inter_token": [
+                float(sample)
+                for done in recent
+                for sample in done.observability.inter_token_seconds
+            ],
+            "service": [
+                float(done.observability.service_seconds)
+                for done in recent
+                if done.observability.service_seconds is not None
+            ],
+            "completion": [float(done.observability.completion_seconds) for done in recent],
+        }
+        return {
+            "requests": {
+                "pending": int(self.pending_count),
+                "admitted_current": active,
+                "active": active,
+                "admitted_total": int(self._admitted_total),
+                "completed_buffered": len(self._completed),
+                "reclaimed_total": int(self._reclaimed_total),
+            },
+            "physical_bucket": {
+                "capacity": capacity,
+                "active_c": active,
+                "occupied_slots": active,
+                "free_slots": capacity - active,
+                "active_mask": list(self.active_batch.active_mask),
+                "slot_to_request": list(self.active_batch.slot_to_request),
+                "occupancy_ratio": float(active) / float(capacity),
+            },
+            "work_counts": {
+                "prefill": int(self._work_counts.get(WorkKind.PREFILL.value, 0)),
+                "decode": int(self._work_counts.get(WorkKind.DECODE.value, 0)),
+                "reclaim": int(self._reclaimed_total),
+            },
+            "latency_seconds": {
+                name: _latency_summary(samples)
+                for name, samples in latency_samples.items()
+            },
+            "recent_completed": [
+                {
+                    "request_id": int(done.request_id),
+                    "finish_reason": str(done.finish_reason),
+                    "observability": done.observability.to_json_dict(),
+                }
+                for done in recent
+            ],
+        }
+
+    def release_completed(self, request_id: int) -> CompletedRequest | None:
+        """Drop one caller-consumed completion from long-lived scheduler state."""
+
+        return self._completed.pop(int(request_id), None)
 
     def submit(
         self,
@@ -991,19 +1074,40 @@ class ResidentBatchScheduler:
         )
         return rid
 
-    def admit_pending(self) -> tuple[int, ...]:
-        """Fill free slots from the pending queue and return admitted request ids."""
+    def admit_pending(
+        self,
+        *,
+        reserve_callback: Callable[[RequestState], None] | None = None,
+        rollback_callback: Callable[[RequestState], None] | None = None,
+    ) -> tuple[int, ...]:
+        """Fill free slots from the pending queue and return admitted request ids.
+
+        A scheduler-owned resource reservation may run immediately before the
+        request becomes active.  Reservation failures leave the request at the
+        head of the pending queue and do not publish a physical slot.  If the
+        slot commit itself fails, the paired rollback callback releases the
+        unpublished reservation before the exception escapes.
+        """
 
         admitted: list[int] = []
         while self._pending and self.active_batch.active_count < self.capacity:
-            request = self._pending.popleft()
-            self.active_batch.admit(request)
+            request = self._pending[0]
+            if reserve_callback is not None:
+                reserve_callback(request)
+            try:
+                self.active_batch.admit(request)
+            except Exception:
+                if reserve_callback is not None and rollback_callback is not None:
+                    rollback_callback(request)
+                raise
+            self._pending.popleft()
             state = self._observability.get(request.request_id)
             if state is not None:
                 now = self._clock()
                 state.admitted_at = now
                 state.queue_seconds = max(0.0, now - state.submitted_at)
             admitted.append(request.request_id)
+        self._admitted_total += len(admitted)
         if self._pending and self.active_batch.active_count >= self.capacity:
             for request in self._pending:
                 state = self._observability.get(request.request_id)
@@ -1137,20 +1241,29 @@ class ResidentBatchScheduler:
         )
         if not request_ids:
             return None
-        self._set_bucket_key(
-            request_ids,
-            self._bucket_key(
-                self.shape_key(
-                    mode=WorkKind.DECODE,
-                    top_k=top_k,
-                    experts_per_token=experts_per_token,
-                    replay_steps=replay_steps,
-                    kv_storage_dtype=kv_storage_dtype,
-                    layer_plan=layer_plan,
-                )
+        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in request_ids)
+        slot_set = set(slot_ids)
+        active_mask = tuple(slot in slot_set for slot in range(self.capacity))
+        shape = replace(
+            self.shape_key(
+                mode=WorkKind.DECODE,
+                top_k=top_k,
+                experts_per_token=experts_per_token,
+                replay_steps=replay_steps,
+                kv_storage_dtype=kv_storage_dtype,
+                layer_plan=layer_plan,
             ),
+            active_c=len(request_ids),
+            active_mask=active_mask,
         )
-        return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
+        self._set_bucket_key(request_ids, self._bucket_key(shape))
+        return WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=request_ids,
+            row_to_request=request_ids,
+            slot_ids=slot_ids,
+            active_mask=active_mask,
+        )
 
     def sampler_params_block(self, request_ids: Sequence[int]) -> SamplerParamsBlock:
         """Return a columnar per-row sampler block for a native decode launch."""
@@ -1190,6 +1303,7 @@ class ResidentBatchScheduler:
             field = "decode_seconds"
         else:
             return
+        self._work_counts[work.kind.value] += 1
         for request_id in work.request_ids:
             state = self._observability.get(request_id)
             if state is None:
@@ -1649,6 +1763,14 @@ class ResidentBatchScheduler:
         serial_decode_fallback: bool | None = None,
     ) -> tuple[CompletedRequest | None, GenerationStreamChunk]:
         request = self.active_batch.requests[token.request_id]
+        observed = self._observability.get(token.request_id)
+        if observed is not None:
+            token_at = self._clock()
+            if observed.first_token_at is None:
+                observed.first_token_at = token_at
+            elif observed.last_token_at is not None:
+                observed.inter_token_seconds.append(max(0.0, token_at - observed.last_token_at))
+            observed.last_token_at = token_at
         finish_reason = "stop" if token.finished else "length"
         sampler_state = self._sampling_states.get(token.request_id)
         params = self._sampling.get(token.request_id)
@@ -1669,7 +1791,7 @@ class ResidentBatchScheduler:
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
         self._update_kv_pages(updated)
-        stream_chunk = self._stream_chunk_for_generated_token(
+        scheduler_chunk = self._stream_chunk_for_generated_token(
             token,
             updated,
             sampler_state=sampler_state,
@@ -1681,13 +1803,36 @@ class ResidentBatchScheduler:
             native_caware_decode=native_caware_decode,
             serial_decode_fallback=serial_decode_fallback,
         )
+        provided_chunk = token.stream_chunk
+        stream_chunk = (
+            scheduler_chunk
+            if provided_chunk is None
+            else GenerationStreamChunk(
+                text=provided_chunk.text,
+                token_logprobs=(
+                    provided_chunk.token_logprobs
+                    if provided_chunk.token_logprobs
+                    else scheduler_chunk.token_logprobs
+                ),
+                finish_details=provided_chunk.finish_details,
+                telemetry=(
+                    provided_chunk.telemetry
+                    if provided_chunk.telemetry is not None
+                    else scheduler_chunk.telemetry
+                ),
+            )
+        )
         if not updated.finished:
             return None, stream_chunk
         done = self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
         return done, GenerationStreamChunk(
             text=stream_chunk.text,
             token_logprobs=stream_chunk.token_logprobs,
-            finish_details=done.finish_details,
+            finish_details=(
+                stream_chunk.finish_details
+                if stream_chunk.finish_details is not None
+                else done.finish_details
+            ),
             telemetry=stream_chunk.telemetry,
         )
 
@@ -1789,6 +1934,18 @@ class ResidentBatchScheduler:
             state.queue_seconds = max(0.0, now - state.submitted_at)
         observability = RequestObservability(
             queue_seconds=state.queue_seconds,
+            time_to_first_token_seconds=(
+                None
+                if state.first_token_at is None
+                else max(0.0, state.first_token_at - state.submitted_at)
+            ),
+            inter_token_seconds=tuple(state.inter_token_seconds),
+            service_seconds=(
+                None
+                if state.admitted_at is None
+                else max(0.0, now - state.admitted_at)
+            ),
+            completion_seconds=max(0.0, now - state.submitted_at),
             prefill_seconds=state.prefill_seconds,
             decode_seconds=state.decode_seconds,
             kv_pages_owned=state.kv_pages_owned,
@@ -1813,9 +1970,42 @@ class ResidentBatchScheduler:
         self._sampling.pop(done.request_id, None)
         self._sampling_states.pop(done.request_id, None)
         self._completed[done.request_id] = done
+        self._reclaimed_total += 1
+        self._recent_completed.append(done)
         if self._reclaim_callback is not None:
             self._reclaim_callback(done)
         return done
+
+
+def _latency_summary(samples: Sequence[float]) -> dict[str, object]:
+    values = sorted(float(sample) for sample in samples)
+    if not values:
+        return {
+            "count": 0,
+            "sum": 0.0,
+            "max": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "samples": [],
+        }
+
+    def percentile(q: float) -> float:
+        if len(values) == 1:
+            return values[0]
+        position = (len(values) - 1) * float(q)
+        lower = int(position)
+        upper = min(lower + 1, len(values) - 1)
+        fraction = position - lower
+        return values[lower] * (1.0 - fraction) + values[upper] * fraction
+
+    return {
+        "count": len(values),
+        "sum": float(sum(values)),
+        "max": float(values[-1]),
+        "p50": percentile(0.50),
+        "p95": percentile(0.95),
+        "samples": values,
+    }
 
 
 def _finish_details_for_scheduler_reason(finish_reason: str, request: RequestState) -> FinishDetails:

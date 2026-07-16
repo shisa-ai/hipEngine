@@ -625,7 +625,14 @@ Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
 OpenAI-server generation queue cap. Set `HIPENGINE_MAX_ACTIVE_REQUESTS` or
 `--max-active-requests` to limit how many HTTP requests can be coalesced into
 one active backend generation batch; overflow remains queued and is still
-bounded by the queue cap when configured. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
+bounded by the queue cap when configured. Streaming requests use bounded
+per-client token queues (`HIPENGINE_STREAM_QUEUE_MAX_CHUNKS`, default 16).
+Backpressure blocks only that producer; if another resident request advances
+far enough to fill the model-loop subscription queue, the slow row is cancelled
+with `budget_pressure=client_backpressure` rather than stalling its neighbors.
+On process shutdown, admission closes and work drains for
+`HIPENGINE_SHUTDOWN_GRACE_SECONDS` (default 5.0) before cooperative cancellation
+and long-lived runner close. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
 `--max-chat-sessions` to cap app-local chat transcript sessions. When a
 rejecting admission cap is full, new work fails before enqueue/generation with
 HTTP 429 `engine_busy` and `Retry-After: 1`; rejected requests do not allocate
@@ -1190,6 +1197,41 @@ JSON and compact sampler/agentic-control payload with SHA-256 and length
 metadata. `--replay-redaction none` stores raw strings and should only be used
 in local, non-sensitive debugging sessions.
 
+## Metrics and live-loop observability
+
+Start the server with `--metrics prometheus` or
+`HIPENGINE_METRICS=prometheus` to expose `GET /metrics`. The endpoint retains
+additive HTTP request/token counters and generation-batcher queue gauges, then
+adds one lock-consistent resident-loop snapshot when the loaded generator
+supports it:
+
+- `hipengine_resident_requests_*` exposes pending/admitted/active gauges plus
+  cumulative admissions and reclaims;
+- `hipengine_resident_bucket_*` exposes physical capacity, active rows,
+  occupied/free slots, occupancy ratio, active mask, selected prefill/decode
+  policy, and last work class;
+- `hipengine_resident_work_{prefill,decode,reclaim}_total` counts committed model
+  work classes;
+- `hipengine_resident_request_latency_seconds` reports bounded p50/p95,
+  count/sum, and max for queue time, submitted-to-first-token TTFT, per-row
+  inter-token intervals, admitted-to-completion service time, and
+  submitted-to-completion wall time;
+- `hipengine_kv_pool_*` exposes current/high-water bytes and pages,
+  free/refcounted/pinned pages, and grow/failure/shrink counts from the real
+  scheduler-owned device pool;
+- `hipengine_graph_bucket_*` exposes aggregate and stable-bucket current entries,
+  captures, replay hits/calls, and invalidations;
+- `hipengine_resident_route_total`, `hipengine_resident_fallback_total`, and
+  `hipengine_resident_route_manifest_info` expose declared GGUF route/fallback
+  decisions and the last detailed manifest identity.
+
+The in-process `LLM.live_loop_snapshot()` returns the corresponding JSON-ready
+scheduler and model-runner payload without forcing model load. It includes the
+full active mask/slot map, a bounded 1,024-completion metadata history, exact
+latency samples/summaries, complete dynamic-pool stats, full graph bucket keys,
+and the detailed last execution manifest. It does not include prompt or
+generated text.
+
 ## Current limitations
 
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
@@ -1200,20 +1242,18 @@ in local, non-sensitive debugging sessions.
   Already-running GPU kernels or a captured graph replay are not preempted
   mid-call.
 - HTTP generation requests route through the in-process generation batcher.
-  Compatible queued prompts can coalesce into one prompt-list engine call, but
-  true continuous decode, concurrent backend execution, and scheduler fairness
-  remain later runtime work. Backend batch width can be capped with
-  `--max-active-requests`; app-local chat transcript sessions can be capped with
-  `--max-chat-sessions`. These are admission/batching limits, not resident KV
-  fairness schedulers.
-  Prometheus mode exposes `hipengine_generation_queue_depth`,
-  `hipengine_generation_queue_max_depth`, and
-  `hipengine_generation_worker_active` gauges plus
-  `hipengine_generation_requests_active` and
-  `hipengine_generation_requests_max_active` for backpressure monitors.
-  `hipengine_generation_scheduler_fairness_policy_info` advertises the current
-  FIFO-compatible batching policy. Request counters include completed, failed,
-  rejected, and cancelled totals.
+  A generator advertising `supports_controlled_streaming` launches independent
+  bounded stream producers against the same submit/poll model loop, so a new
+  request can be admitted while a neighbor is decoding and a disconnected row
+  can be reclaimed independently. Model transitions remain deliberately
+  serialized by the resident loop's tick lock; this is continuous membership,
+  not concurrent kernel execution. Generators without that contract retain the
+  compatible prompt-list coalescer fallback. Backend batch width can be capped
+  with `--max-active-requests`; app-local chat transcript sessions can be capped
+  with `--max-chat-sessions`.
+  Prometheus mode retains HTTP queue/backpressure and request outcome metrics;
+  the resident-loop metric families and bounded JSON snapshot are documented in
+  **Metrics and live-loop observability** above.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,

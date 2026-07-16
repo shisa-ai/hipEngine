@@ -82,6 +82,6 @@ them ineligible as throughput claims.
 
 - [Dated PARO transfer notebook](PARO-GGUF-MTP-TRANSFER-HISTORY.md)
 - [Canonical benchmark scoreboard](../benchmarks/README.md)
-- [Concurrency design and history](CONCURRENCY.md)
+- [Concurrency roadmap and punchlist](CONCURRENCY.md)
 - [DFlash design](DFLASH.md)
 - [Optimization punchlist](SOL-OPTIMIZATION.md)

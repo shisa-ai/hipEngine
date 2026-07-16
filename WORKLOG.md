@@ -159120,3 +159120,2509 @@ six-shape or broad-suite rerun was performed. Artifact:
   does not contain `amd_iommu=off`, and the current boot exposes 28 IOMMU
   groups. Verify the token and post-boot IOMMU state before any benchmark.
   This preparation makes no correctness, stability, or performance claim.
+## 2026-07-16 — Reset the concurrency roadmap around first-class c=N
+
+Replaced the 4,777-line `docs/CONCURRENCY.md` experiment notebook with an
+827-line roadmap, architecture contract, backend/model coverage ledger, evidence
+gates, and ordered punchlist. The current claim is now explicit: host scheduler,
+KV, sampler, metrics, and API scaffolding plus gfx1151 GGUF/PARO exact hybrids
+exist, but no long-lived production model-owning loop or retained native c=N row
+exists. Historical results are single-line pointers to `WORKLOG.md` or compact
+artifacts rather than duplicated chronology.
+
+The implementation order is GGUF Q4_K_M/BF16 on W7900: transfer the c4 exact
+lifecycle oracle, close the all-row 512/128 and hidden/state/KV gates, remove
+row-local model replay, publish the direct c1/c2/c4 plus chunked-c8 profiler and
+scaling packet, and only then attach the long-lived gfx1100 loop. gfx1151
+symmetry/native c8 follows; PARO reuses the proven loop afterward. The end state
+requires GGUF and PARO on gfx1100/gfx1151 to treat c=1 as the C=1 instance of the
+same first-class pipeline.
+
+Resolved the old pointer contradiction as stable logical block ids plus pinned
+resident pointers while graph-referenced, with invalidation/rebinding on future
+tier movement. Clarified that diagnostic c>N graph capture/replay exists but is
+not retained production evidence. Updated `docs/ENVS.md`, `docs/README.md`, and
+the PARO/GGUF transfer reference to remove stale C4/C5/history wording. The ENVS consistency pass also aligns the
+already-retained gfx1100 peer-wave GDN, shared-X Q4T16, 128-thread router-select,
+and device-metadata-through-4K defaults with backend package policy. This is a
+docs-only unit; no GPU or performance run is required or claimed.
+
+## 2026-07-16 — Add the gfx1100 GGUF Phase-A control harness
+
+The first concurrency-roadmap audit found no suitable GGUF baseline harness.
+`scripts/qwen35_batch_serial_bench.py` is PARO-specific, while
+`scripts/qwen35_batch_gguf_diagnostic.py` checks generated IDs but does not
+record standard 512/128 timing ownership. Added
+`scripts/gguf_concurrency_baseline.py` for one prepared public GGUF runner with
+per-width warmups and measured c1/explicit-serial-c2/c4 controls. Serial mode
+disables packed and per-slot-stream prefill/decode, requires the
+`gguf_serial_greedy_decode` manifest, counts prompt tokens as `C*prompt_length`,
+and counts decode only after the prompt-final token as
+`C*(max_new_tokens-1)`. The compact artifact carries canonical git/model/device/
+compiler provenance, per-repeat token fingerprints, owned timing fields, tracked
+memory, and an optional package-c4 route inventory; it never makes a performance
+claim.
+
+RED/GREEN also corrected a route-observability bug exposed by the new inventory:
+packed AR prompt prefill executed `prefill_batch_native(...)` but public telemetry
+hardcoded `native_compact_prefill=false`. `_GGUFARServingSlot` now records packed
+prefill ownership, propagates it to output decode state, scheduler token chunks,
+and `last_batch_generation`, and preserves false for stream/scalar fallback.
+
+A reduced dirty-tree W7900/gfx1100 smoke under the hermetic TheRock HIP 7.15
+environment ran prompt16/decode4 for c1/c2 plus package c4. Both serial controls
+reported the exact serial route, exact denominators, repeatable c1 trajectories,
+and the Radeon Pro W7900 device. Package c4 matched c1 and now truthfully reports
+`native_compact_prefill=true`, `native_caware_decode=true`, and no serial decode
+fallback. This is implementation smoke only; the clean 512/128 Phase-A control
+is the next commit. Validation: the focused GGUF sampling plus new harness suite
+passes **57/57**; Python compilation and `git diff --check` pass. Ruff is not
+installed in the current dev environment.
+
+## 2026-07-16 — Propagate prepared GGUF context capacity to public sessions
+
+The first clean Phase-A 512/128 attempt stopped before measurement with
+`GGUF bulk prefill rows 512 exceed cache capacity 256`. The RED showed that
+`LLM.prepare(max_sequence_length=1024)` reached the GGUF generator but
+`prepare(...)` only materialized shared weights; later pooled AR sessions still
+used `Qwen35GGUFResidentSession`'s 256-token default.
+
+The generator now retains the largest prepared sequence length, includes it in
+the resident-session pool key, and passes it to every newly allocated public
+AR/MTP session. Including capacity in the key prevents a previously pooled
+smaller session from satisfying a larger prepared request. The focused fake
+runner gate now requires the 1024 capacity to reach session construction.
+
+A real dirty-tree W7900/TheRock HIP 7.15 p512/d1 run then completed through the
+public `LLM.generate_detailed()` serial control: prepared capacity 1024, exact
+512 prompt-token accounting, `gguf_serial_greedy_decode`, and 2222.43 prefill
+tok/s. This is a capacity GREEN smoke, not a retained rate. The full focused GGUF
+sampling plus baseline suite remains **57/57**; Python compilation and
+`git diff --check` pass. The clean 512/128 control is retried after this commit.
+
+## 2026-07-16 — Close gfx1100 GGUF Phase-A controls
+
+Ran the new harness from clean `47cc1381` on Radeon Pro W7900/gfx1100 with the
+Qwen3.6-35B-A3B `UD-Q4_K_M` file, BF16 KV, repeated token 9707, prompt 512,
+128 returned tokens, greedy/ignore-EOS, TheRock HIP 7.15, fixed compiler-version
+cache key, one discarded warmup, and three measured repetitions. The exact
+hermetic command and sampled model fingerprint are embedded in
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-phase-a-controls.json`;
+provenance reports clean commit `47cc1381`, W7900, gfx1100, and
+`performance_claim=false`. The canonical collector initially read the unused
+host `/opt/rocm` 7.2.4 version before the active HIP 7.15 compiler line; the
+compact artifact corrects `rocm_version` transparently from its recorded
+hermetic environment/hipcc, and the collector ordering is a follow-up fix.
+
+Explicit serial controls all report `gguf_serial_greedy_decode`, exact token
+accounting, stable route manifests, repeatable trajectories, and every c2/c4 row
+matching c1 across all repeats:
+
+- c1: **2803.298 prefill / 90.102 continuation-decode tok/s**;
+- serial c2: **2776.159 / 90.205 tok/s aggregate**;
+- serial c4: **2695.954 / 90.027 tok/s aggregate**.
+
+The flat aggregate decode rate is the expected complete-c1-row serial control,
+not c>N scaling. Denominators are explicit: prefill counts `C*512`; decode counts
+`C*127` because each prompt-final sample is produced by prefill.
+
+The separate package-c4 route inventory also matches the complete c1 128-token
+trajectory. Decode is packed for all 127 continuation steps
+(`native_caware_decode=true`, no serial decode fallback), but all-row p512 prompt
+prefill is **not packed**: `native_compact_prefill=false` and no
+`prefill_batch_ms` field is present, so the public route falls back to four
+slot-local prefills. This directly confirms the Phase-B3 capacity blocker and
+prevents a false c4 prefill claim. Tracked allocator peak is **22.406 GiB**.
+No profiler or performance promotion is claimed. Phase A is closed; next is the
+c2/c4 primitive append/attention gate and package-route trace.
+
+## 2026-07-16 — Prefer active hipcc in ROCm provenance
+
+Fixed the canonical provenance ordering exposed by the Phase-A hermetic run.
+`_detect_rocm_version(...)` previously read `/opt/rocm/.info/version` before the
+resolved `hipcc --version`, so a process whose PATH/LD_LIBRARY_PATH selected
+TheRock HIP 7.15 could be mislabeled with an unused host ROCm 7.2.4. RED mocks a
+stale host version beside an active HIP 7.15 compiler and reproduced the wrong
+selection. GREEN makes the active compiler's HIP/ROCm version line authoritative
+and uses `/opt/rocm` only when the compiler reports no version. Provenance plus
+Phase-A harness tests pass **12/12**; Python compilation and `git diff --check`
+pass.
+
+## 2026-07-16 — Make the c>N primitive gate profiler-safe
+
+Added precomputed compiler-version and `require_cached` plumbing to
+`scripts/qwen35_batch_correctness.py`. The harness now propagates one explicit
+build policy to both paged-KV-write and paged-attention libraries and records
+whether cached builds were required. This closes the prior profiler-safety gap:
+a `rocprofv3` child can now fail closed instead of spawning `hipcc`/clang.
+
+RED reproduced the missing build-policy boundary; GREEN passes the focused
+primitive-harness unit set **9/9**. A real W7900/gfx1100 TheRock HIP 7.15 smoke
+prebuilt the two libraries outside the profiler, then reran c2 and c4 with
+`--require-cached-build`. Both pass with zero append mismatch, byte-identical
+batch A/A, exact batch-vs-independent-c1 attention, and NumPy max-abs
+`2.2351742e-08` (c2) / `2.9802322e-08` (c4). This is harness validation only;
+the clean Phase-B1 artifact and trace follow in the next logical unit.
+
+## 2026-07-16 — Make the packed GGUF lifecycle oracle profiler-safe
+
+Added the same precomputed compiler-version and fail-closed cached-build policy
+to `scripts/gguf_packed_ar_state_oracle.py`, propagating it to the owner and all
+shared-runner resident sessions. The artifact now records the selected build
+policy, so a packed model-step trace can prove it did not compile under
+`rocprofv3`.
+
+RED/GREEN parser/policy coverage passes **3/3**. A real dirty-tree W7900/gfx1100
+TheRock HIP 7.15 c2 prompt16/decode1 decode-isolation smoke first prebuilt all
+required GGUF libraries outside the profiler, then reran with
+`--require-cached-build`. Both runs pass exact token, initial Conv/GDN + live-KV,
+and final state comparisons; packed state becomes dirty and flushes correctly.
+This validates profiler-safe execution only; the clean B1 trace follows after
+this commit.
+
+## 2026-07-16 — Close gfx1100 GGUF B1 primitive and route preflight
+
+Closed Phase B1 from clean `c553631e` on Radeon Pro W7900/gfx1100, Qwen3.6
+35B-A3B `UD-Q4_K_M`, BF16 KV, and the hermetic TheRock HIP 7.15 toolchain.
+Both direct primitive runs required cached builds and passed at c2/c4: append
+K/V mismatch and batch A/A mismatch are zero, batch attention is bit-exact to
+independent c1, batch A/A is exact, and NumPy max-abs is
+`2.2351742e-08`/`2.9802322e-08`. The cached-only profiled c4 repeat also passes;
+its 39-dispatch trace contains two c4 batch append and two c4 batch-attention
+launches at grid Y=4 plus the four independent-c1 comparators for each family.
+
+The first packed-c2 profile was rejected: the command supplied
+`--compiler-version-file` to the lifecycle harness but omitted the global
+`HIPENGINE_COMPILER_VERSION_FILE`. Lazy wrapper lookups therefore probed
+`hipcc --version` under `rocprofv3`, profiler diagnostics changed the cache key,
+and the profiled process launched `hipcc`, clang, and linker children. The
+corrected launch exported the same precomputed compiler file globally and still
+passed `--require-cached-build`. Its profiler stderr contains one process id and
+zero compiler/linker child command; the primitive profile has the same
+cached-only proof.
+
+The corrected model trace contains 6,840 total dispatch rows including model
+setup, four c1 prompt prefills, state capture, the packed transition, two c1
+reference transitions, and final capture. The isolated eager packed-c2 model
+step is 955 dispatches and matches independent c1 tokens plus initial/final
+Conv/GDN and live-KV bytes. It exercises 10 c2 paged-KV writes and 10 c2 full
+attention launches, 40 c2 router/selected-expert/shared-expert/MoE-combine layer
+routes, one c2 row-tiled LM head, and one two-stage row argmax. Router logits use
+256 threads and router select uses 128, matching the gfx1100 package. Eager is
+expected for one transition because the package graph threshold is 24.
+
+The trace also makes the current exact-hybrid boundary explicit rather than
+calling it native: Conv and recurrent GDN each launch 60 times, exactly 30
+linear-attention layers x 2 rows. B1 therefore advances gfx1100 c2 to
+`primitive_ok`; it does not establish a fully native step or any throughput
+claim. Compact evidence, package-policy inventory, exact commands, source
+hashes, trace route census, and profiler-safety checks are in
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b1-preflight.json`.
+Next is B2 steady c2/c4, sparse c4→c3→c2→c1, ragged prompts, and per-layer hidden
+capture.
+
+## 2026-07-16 — Bound packed AR prefill state storage by slot count
+
+The first gfx1100 packed-prefill B2 run exposed a route-contract mismatch rather
+than a scatter bug. With package defaults, tokens stayed exact through four
+decode transitions, but the initial state comparison reported 156 mismatches:
+60 recurrent, 56 downstream Conv, and 40 live-KV hashes. The first divergence
+was layer-0 recurrent state. Packed prompt capture uses decode-order-exact
+segmented state rows, while gfx1100 c1 production prefill intentionally uses the
+quality-admitted, non-byte-identical `chain_peer_wave32` route. An explicit
+`HIPENGINE_GGUF_GDN_PREFILL_MODE=exact` rerun had zero mismatches, proving the
+state-row commit/scatter path correct.
+
+`scripts/gguf_packed_ar_state_oracle.py` now defaults both sides to the declared
+strict-exact GDN prefill contract, scopes the selector itself, and records the
+selector plus state-row route in its artifact. `--gdn-prefill-mode auto` remains
+available to diagnose package-policy drift instead of silently inheriting an
+unreported shell variable.
+
+The subsequent `[512,64,64,64]` run failed before execution with HIP OOM because
+AR prefill allocated every recurrent-state snapshot for all 704 prompt rows and
+30 linear-attention layers. Those O(tokens x layers) rows are required by the
+speculative accept-row verifier, not by an all-accepted AR prompt. Packed AR
+prefill now runs the existing segmented Conv/GDN kernels directly against one
+packed final-state slot per request and skips the verifier-only row capture and
+commit. The verifier path is unchanged. The explicit storage-plan fixture
+requires four persistent state slots and zero transient state rows for the
+704-row ragged shape.
+
+Dirty-tree W7900/gfx1100 validation used Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+TheRock HIP 7.15, a precomputed compiler key, and `require_cached_build=true`.
+After prebuilding the exact missing AOTriton wrapper outside any profiler,
+steady c2, steady c4, sparse c4→c3→c2→c1 (`[0,1,2,3]`, `[0,2,3]`, `[0,3]`,
+`[3]`), and ragged `[512,64,64,64]` all pass four decode transitions with exact
+token trajectories, zero initial/final mismatches across all 30 Conv/GDN and 10
+live-KV families, and exact state at every sparse checkpoint. Focused layout and
+oracle tests pass **17/17**; GGUF generation/runner tests pass **53 passed, 9
+skipped**; Python compilation and `git diff --check` pass. This is correctness
+and capacity evidence only (`performance_claim=false`). Per-layer packed hidden
+capture remains the next B2 unit.
+
+## 2026-07-16 — Close packed GGUF per-layer hidden equality
+
+Added opt-in post-layer hidden capture to the actual packed AR prefill and decode
+loops. Captures occur only when requested, convert the BF16 model boundary to
+FP32 without changing bits, and scatter selected rows into each resident
+session's existing `last_layer_output_hidden` diagnostic contract. Packed prompt
+capture reads only each slot's final row, so the ragged gate does not introduce
+an O(tokens x layers) host transfer. Public c1 bulk prefill gained the same
+optional final-row tap; normal generation does no capture or D2H.
+
+The first c2 hidden run used `verify_target_block(...)` as the prompt reference.
+It found a layer-20 BF16-quantum difference and 88 initial state mismatches, but
+that was an invalid oracle substitution: the block-verifier prefill route had
+changed the c1 state being compared. Decode isolation with unchanged public c1
+prefill passed **320/320** packed layer-row comparisons. After adding the tap to
+the real public c1 bulk path, complete packed c2 passed **400/400** comparisons,
+proving the earlier layer-20 result was reference-route drift rather than a
+packed-model mismatch.
+
+Dirty-tree W7900/gfx1100 gates then passed every one of 40 post-layer outputs for
+all live rows: steady c4 **800/800**, sparse c4→c3→c2→c1 **560/560**, and ragged
+`[512,64,64,64]` **800/800** comparisons. Each run also retained exact generated
+tokens, zero initial/final mismatches across 30 Conv/GDN and 10 live-KV families,
+and exact sparse lifecycle checkpoints. Commands used Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, TheRock HIP 7.15, strict-exact GDN prefill, the precomputed
+compiler key, and cached builds required. The combined GGUF generation, hidden
+contract, packed layout/oracle, and runner suite passes **92 passed, 9 skipped**;
+Python compilation and `git diff --check` pass. This is diagnostic correctness
+evidence only; capture is never performance evidence and remains off by default.
+
+## 2026-07-16 — Retain clean gfx1100 GGUF B2 direct lifecycle
+
+Re-ran the complete B2 matrix from clean `39d024e5` on Radeon Pro W7900/gfx1100
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and every resident build required cached.
+Steady c2, steady c4, sparse c4→c3→c2→c1, and ragged `[512,64,64,64]` all pass
+four decode transitions with exact token trajectories; zero initial, lifecycle,
+or final mismatches across all 30 Conv/GDN and 10 live-KV families; and
+**400/400**, **800/800**, **560/560**, and **800/800** exact post-layer hidden
+comparisons respectively (**2,560/2,560** total).
+
+The compact current-HEAD artifact is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b2-direct-lifecycle.json`.
+It retains the exact commands, clean model/toolchain/device provenance, source
+hashes, route contract, sparse live-index sequence, resolved false-RED/OOM
+blockers, and explicit limitations. The coverage ledger advances c2/c4 to
+`direct_eq_ok`, but gfx1100 is not promoted to the roadmap's complete
+`exact_hybrid` row yet: the all-row c4 prompt-512/decode-128 capacity gate and
+category diversity remain B3/B4. No
+profiler or performance claim is made. The active queue advances to B3 packed
+prompt capacity.
+
+## 2026-07-16 — Remove the gfx1100 GGUF all-row prefill slab blocker
+
+The clean B3 reproduction stopped before GPU math exactly as expected:
+all-row c4 prompt-512 builds 2,048 packed rows, while the resident hidden/scratch
+slab is 768 rows. The old route raised
+`packed AR prefill rows 2048 exceed resident hidden-buffer capacity 768`, which
+made public serving fall back to four slot-local prefills.
+
+Added a backend-neutral slot-fair packed-prefill planner and execution wrapper.
+Every unfinished slot appears in every round; capacity smaller than the active
+slot count fails closed instead of silently dropping/serializing rows. The c4
+p512 plan is three c4 rounds with per-slot lengths `192 + 192 + 128`, total slab
+rows `[768,768,512]`. Conv/GDN and live KV remain continuous through the existing
+packed state/scatter contract. Hidden-seed mode concatenates round outputs back
+to each original prompt, preserving the MTP catch-up result ABI. The oracle now
+records the complete executed plan, including slot membership, row offsets,
+AOTriton eligibility, and `slot_serial_fallback=false`.
+
+The first implementation run removed the capacity error but was correctly
+rejected: 192-row rounds selected paged full attention while independent c1
+selected AOTriton for the original 512-row prompts. The earliest drift was
+layer-4 Conv (immediately after the first full-attention layer), with 288 initial
+state/KV mismatches. The retained route carries each original slot's threshold
+eligibility into every bounded round and forces only those slot-local AOTriton
+calls; no backend branch was added. The unchanged p512/decode1 rerun then passed
+exact tokens and zero initial/final state/KV mismatches. The all-layer
+p512/decode4 gate passed **800/800** post-layer row comparisons plus exact token
+trajectories, all 30 Conv/GDN families, and all 10 live-KV families before and
+after decode.
+
+GPU validation used Radeon Pro W7900/gfx1100, Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, the
+precomputed compiler key, `HIP_VISIBLE_DEVICES=0`, `PYTHONPATH` pinned to this
+checkout, and cached builds required. The core commands were:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 1 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-b3-chunked-aot-p512-d1.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-b3-chunked-aot-p512-d4-hidden.json
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py
+# 97 passed, 9 skipped
+```
+
+This is a dirty-tree implementation/correctness gate, not the clean standard
+512/128 packet and not a performance claim. `docs/REFACTOR.md` records the
+remaining intermediate chunk-tail output-norm/LM-head sampling debt. The next
+logical unit is the clean complete p512/decode128 lifecycle gate.
+
+## 2026-07-16 — Close the clean gfx1100 GGUF B3 standard lifecycle
+
+Ran the standard all-row gate from clean `5c939671` on Radeon Pro W7900/gfx1100
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill,
+TheRock HIP 7.15, the precomputed compiler key, and every resident build
+required cached. The command used c4 prompt-512, 128 packed decode transitions,
+and all-40-layer hidden capture:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-b3-clean-5c939671/standard-c4-p512-d128.json
+```
+
+The run passes exact token trajectories and **20,640/20,640** post-layer row
+comparisons (40 layers x c4 x prefill plus 128 transitions), with zero initial
+or final mismatches across all 30 Conv/GDN and 10 live-KV families. Packed state
+became dirty, flushed successfully, and remained exact afterward. Prefill used
+three all-slot rounds: total rows `[768,768,512]`, per-slot rows
+`[192,192,128]`, slot indices c4 in every round, and preserved AOTriton
+eligibility for every original p512 slot. `slot_serial_fallback=false`.
+
+Accounting is explicit because prefill produces the first sampled token. The
+extended run consumes **512** packed transition inputs and produces **516** total
+sampled outputs across c4 (4 prompt-final + 512 transition outputs), for 129
+trajectory steps per slot including the prefill sample. The standard
+128-return-token endpoint is fully contained at trajectory step 127: one
+prefill output plus 127 transitions per slot, **508** transition inputs and
+**512** sampled outputs across c4. The retained gate executes one additional
+exact transition beyond that endpoint.
+
+Compact clean evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b3-standard-lifecycle.json`.
+It records canonical clean model/device/compiler provenance, the source hash,
+both accounting views and trajectory hashes, complete chunk membership, and
+`performance_claim=false`. `docs/CONCURRENCY.md` closes all three B3 boxes but
+does not promote gfx1100 to `exact_hybrid`; B4 full-category prompt diversity
+remains the next gate. No throughput, scaling, profiler, or native-model-step
+claim is made.
+
+## 2026-07-16 — Add the packed GGUF B4 category lifecycle oracle
+
+Added `scripts/gguf_packed_ar_category_oracle.py` because the existing
+`gguf_true_ar_category_bench.py` is a c1 timing/MTP baseline and does not compare
+packed c4 hidden/state/KV lifecycle. The new harness reuses the canonical
+`build_chat_prompt()` tokenizer contract and strict `load_prompt_rows()` loader.
+It requires the complete committed 10-prompt
+`mtpbench-code-general-ja.jsonl` ID/order and the existing frozen 8-prompt
+`gdn-prefill-category-heldouts.jsonl` coverage across `code`, `general_en`,
+`general_ja`, and `mixed_ja_en`.
+
+The harness groups the primary suite as c4+c4+c2 and the heldouts as c4+c4;
+it never duplicates prompts to fill a tail group. For each group it compares
+packed strict-exact AR against independent c1 for every sampled token, every
+post-layer BF16 row, all 30 Conv/GDN state families, and all 10 live BF16 K/V
+families before and after decode. Packed state must become dirty and flush
+successfully. At least three repeats are mandatory, and each prompt's complete
+trajectory hash must be deterministic across repeats. Canonical provenance,
+source hashes, prompt hashes/categories, group plans, cached-build policy, and
+all mismatch counts are retained; `performance_claim=false` is unconditional.
+
+A dirty-tree W7900/gfx1100 smoke exercised all 18 prompts, all 15 group
+executions, and three repeats at one packed transition:
+
+```bash
+python3 scripts/gguf_packed_ar_category_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-steps 1 --repeats 3 --group-size 4 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-b4-harness-smoke-dirty/category-smoke.json
+```
+
+All 15 groups and 54 prompt-repeat executions pass, with exact tokens,
+**4,320/4,320** hidden comparisons, zero initial/final state or live-KV
+mismatches, and deterministic trajectories. Focused category/state/layout tests
+pass **29/29**; Python compilation and `git diff --check` pass. This is harness
+validation only; the retained clean B4 run uses the default 24 transitions.
+
+## 2026-07-16 — Close gfx1100 GGUF B4 prompt diversity and Phase B
+
+Ran the category lifecycle oracle from clean `a55e81c2` on Radeon Pro
+W7900/gfx1100 with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact
+GDN prefill, TheRock HIP 7.15, the precomputed compiler key, and cached builds
+required:
+
+```bash
+python3 scripts/gguf_packed_ar_category_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-steps 24 --repeats 3 --group-size 4 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-b4-clean-a55e81c2/category-24x3.json
+```
+
+The retained matrix covers all 10 canonical mtp-bench prompts plus all 8 frozen
+category-heldouts across `code`, `general_en`, `general_ja`, and `mixed_ja_en`.
+Each repeat executes primary c4+c4+c2 and heldout c4+c4 groups, for **15** group
+executions and **54** prompt-repeat executions. Prompt lengths are 39-71 tokens;
+every group fits one declared packed slab, uses all active slots, and reports
+`slot_serial_fallback=false`. No prompt is duplicated to fill the c2 tail.
+
+All groups/prompts pass. The rollup has **1,350/1,350** exact sampled-token
+comparisons and **54,000/54,000** exact post-layer row comparisons, zero initial
+or final mismatches across all 30 Conv/GDN and 10 live-KV families, successful
+packed-state dirty/flush lifecycle in every group, and identical per-prompt
+trajectory hashes across all three repeats. Every category is independently
+exact; `first_divergence=null`.
+
+Compact clean evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json`.
+It retains canonical clean provenance, both prompt-source and per-prompt hashes,
+category/group manifests, deterministic trajectory hashes, and the complete
+mismatch rollup. Together with the B3 standard-lifecycle artifact, this closes
+Phase B and advances gfx1100 GGUF c4 to correctness-only `exact_hybrid`.
+`performance_claim=false`: no throughput, scaling, profiler, or fully native
+model-step claim is made. The active queue advances to C1 hybrid-boundary
+tracing.
+
+
+## 2026-07-16 — Make the gfx1100 GGUF C1 hybrid boundary observable
+
+Added a runtime execution manifest for every packed autoregressive decode step
+and a paired leaf-process `rocprofv3` census. The manifest names projection,
+Conv/GDN, full-attention, MoE/FFN, LM-head, sampler, and normalization routes;
+counts complete c1 replay, host model-row loops/iterations, current structural
+row-local launches, H2D metadata/input copies, D2D state import/scatter,
+D2H vector/scalar reads, synchronizations, and scalar fallbacks; and separates
+the first packed-state import from steady `scatter_state=False` reuse.
+
+The current c4 steady contract has 30 linear-attention and 10 full-attention
+layers. It executes zero complete c1 session/layer replays but invokes the
+c1-exact recurrent attention subgraph 120 times through 30 host row-loop sites.
+The checked structural boundary is 840 exact row-local kernel launches: 480
+linear-attention projection launches, 240 Conv/GDN launches, and 120 attention
+RMSNorm launches. Full attention, all 40 MoE/FFN tails, LM head, and two-stage
+argmax remain packed-native. Steady host/device accounting is eight metadata
+H2D copies (200 bytes), one token-vector H2D copy (32 bytes), zero state
+import/scatter D2D copies, one four-value i32 D2H result (16 bytes), two
+synchronizations, and zero scalar fallbacks. A first p512 c4 import is recorded
+separately as 320 D2D state/KV copies.
+
+`scripts/gguf_packed_ar_rocprof.py` warm-builds c1/c4 outside the profiler, then
+requires cached builds in separate leaf children and slices one synchronized
+steady transition from each trace with ROCTX. A dirty-tree cached c4 leaf passed
+all p512 warmup/profile tokens (`9707` in every row), emitted the steady manifest,
+and flushed packed state. The first paired trace classifier incorrectly counted
+all 131 c4 RMSNorm launches as row-local because rocprof flattens row geometry
+into grid-X; comparing grid-X with workgroup-X correctly separates 120 one-row
+launches from 11 packed launches. The corrected dirty trace is mechanically
+GREEN: c1 **628** dispatches; c4 **1,386** dispatches split into exactly **840**
+exact-row-local and **546** packed-native. Instrumented durations are diagnostic
+only and no performance claim is made.
+
+RED/GREEN and regression commands:
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py
+# RED: ModuleNotFoundError before implementation; GREEN: 4 passed
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN: 101 passed, 9 skipped
+python3 -m py_compile \
+  hipengine/runtime/gguf_packed_manifest.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+git diff --check
+```
+
+This is the dirty-tree C1 tooling/route gate. The retained clean profiler
+artifact follows from the committed implementation revision and remains
+`performance_claim=false`.
+
+
+## 2026-07-16 — Close gfx1100 GGUF C1 hybrid-boundary census
+
+Ran the retained paired census from clean implementation revision `88f10724` on
+Radeon Pro W7900/gfx1100 with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN prefill, TheRock HIP 7.15, the precomputed compiler key, and
+cached profiled children required:
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c1-clean-88f10724/raw \
+  --out /tmp/gfx1100-concurrency-c1-clean-88f10724/c1-census.json
+```
+
+The parent warm-built independent c1/c4 leaves outside `rocprofv3`. Each
+profiled child then ran with `--require-cached-build` and ROCTX-bounded one
+synchronized steady decode transition. Both leaves are token-exact at p512:
+c1 emits three `9707` values across warmup/profile/flush, and c4 emits four
+`9707` values in both warmup and profile transitions before flushing packed
+state. Profile stderr contains zero compiler/linker matches.
+
+The c1 marker window contains **628** dispatches and 9.417228 ms instrumented
+GPU duration. The c4 window contains **1,386** dispatches and 19.095683 ms. Its
+runtime-manifest contract and profiler classification agree exactly:
+
+- **840 exact-row-local dispatches**, 7.847403 ms (**41.10%**): 480
+  linear-attention projections, 240 Conv/GDN kernels, and 120 attention
+  RMSNorm kernels;
+- **546 packed-native dispatches**, 11.248280 ms (**58.90%**): full attention,
+  all MoE/FFN tails, packed norms, LM head, and row-vector argmax;
+- 30 host row-loop sites / 120 row iterations, but zero complete c1 session or
+  complete-layer replay;
+- steady movement is eight metadata H2D copies (200 bytes), one token-vector
+  H2D copy (32 bytes), zero state import/scatter D2D copies, and one four-value
+  i32 D2H read (16 bytes); two synchronizations and zero scalar fallback.
+
+The single synchronized marker windows are a route census, not a throughput
+measurement; profiler durations are diagnostic and `performance_claim=false`.
+The route remains `exact_hybrid` because all 30 recurrent linear-attention
+layers invoke the exact c1 row subgraph four times. C2 is therefore narrowly
+defined: add a RED fixture at that boundary, then replace Conv/GDN and its
+associated row-local projections/norm with a c-aware exact route without
+changing Phase-B equality.
+
+Compact evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c1-hybrid-census.json`
+(SHA-256 `aa2bcf140fee7f24c4b9b4fbb732bafb072e484b15e193bc3ea35588b82b7476`).
+It preserves clean canonical provenance, the complete execution manifest and
+census, raw trace/marker/stderr hashes, source-file hashes, safety checks, and
+validation while truncating only verbose top-kernel lists. The unmodified clean
+source result is SHA-256
+`32217fd380979df83022131ab0bdc063fa4eccc96bd8f1c80b75b9da24fb41d5`.
+This closes C1 and advances the active queue to C2 recurrent linear-attention
+closure.
+
+
+## 2026-07-16 — Add C2 sparse indexed Conv/GDN primitives
+
+Started C2 from clean `c9cfc0f6`. ROCm was live on Radeon Pro W7900/gfx1100.
+The required lineage preflight:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+reported the known `nano-vllm-amd/csrc/amd/qwen35_expert.hip` drift through
+`b95eaa5` (single-launch DFlash tree Conv/GDN), while the dedicated DFlash R1
+manifest entry itself is clean. Inspection showed hipEngine already contains
+that tree/chain lineage plus a segment-indexed GDN body. C2 therefore does not
+copy the parent tree kernels: it adds one hipEngine-local batch sibling of the
+scalar Conv decode body and exposes the existing segment GDN body for BF16.
+
+Added the RED fixture
+`tests/test_qwen35_linear_attn_decode_batch_indexed.py`. It requires a sparse
+c4 permutation with state indices `[4,1,5,0]` to match four independent scalar
+BF16 Conv/GDN launches exactly, preserve two inactive state slots, pass the
+independent NumPy/`kernels/cpu_reference` numerical and KL/top-1 gates, and
+prove that prematurely rounding the FP32 GDN intermediate to BF16 changes the
+next projected hidden values. Before implementation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_linear_attn_decode_batch_indexed.py
+# RED: ImportError: qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
+```
+
+Implemented and registered two exact `gguf_qwen35` primitives:
+
+- `linear_attn_conv_decode/bf16_indexed`: grid-Y owns independent rows and
+  indexes the persistent FP32 Conv slab through device `state_indices`; its
+  arithmetic statements mirror scalar BF16 decode and mutate selected slots in
+  place;
+- `gdn_recurrent_rmsnorm_gate/bf16_segments`: BF16 C/Python exposure of the
+  existing segment-aware decode-order GDN body, preserving FP32 output before
+  `ssm_out` and indexing persistent recurrent state through
+  `(cu_seqlens,state_indices)`.
+
+The existing scalar Conv/GDN chain remains unchanged and is the required
+unfused/fallback oracle. The primitive GREEN/regression gate was:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+python3 -m pytest -q \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_qwen35_linear_attn_segment_state_rows.py
+# GREEN: 15 passed
+python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build
+# scalar F32/BF16/FP16 state exact; max output abs 7.45e-09
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build
+# scalar BF16/FP16 max output abs 2.98e-07; max state abs 1.05e-07
+```
+
+After warm-building outside the profiler, ran the new sparse fixture under
+cached-only `rocprofv3` with `HIPENGINE_TEST_REQUIRE_CACHED_BUILD=1`. The trace
+contains 32 total dispatches (scalar controls plus batch candidates) and proves:
+
+- `qwen35_linear_attn_conv_decode_indexed_lowp_kernel<unsigned short>`: one
+  launch, grid `(256,4,1)`, workgroup 256, 16 VGPR, zero scratch/LDS,
+  **2,720 ns**;
+- `qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<unsigned short>`:
+  one launch over four segments/two V heads, grid `(512,2,1)`, workgroup 128,
+  80 VGPR, zero scratch, **10,360 ns**.
+
+No `hipcc`/clang/linker match appears in the retained trace directory. These
+are launch/correctness observations, not a throughput claim. The packed runtime
+still uses the C1 row loop at this commit; the next logical unit wires these
+registry keys together with already row-shaped RMSNorm/projection/`ssm_out`
+kernels, keeps the scalar chain as a missing-key fallback, and reruns the full
+model lifecycle oracle.
+
+## 2026-07-16 — Wire C2 indexed recurrent decode into packed GGUF AR
+
+Wired the registered `gguf_qwen35` indexed Conv and segmented FP32-output GDN
+capabilities into `Qwen35GGUFFullStackRunner.step_batch_native()`. The packed
+linear-attention route now executes one row-shaped attention RMSNorm, row-shaped
+QKV/gate and alpha/beta projections, one sparse indexed Conv launch, one
+segment-aware GDN launch, and one row-shaped FP32-input `ssm_out` projection per
+linear layer. Conv/GDN mutate the canonical packed slabs directly through the
+already-uploaded `(cu_seqlens,state_indices)` metadata; there is no complete
+state scatter in a steady `scatter_state=False` step.
+
+Resolution is registry-driven. `_GGUFLinearAttentionDecodeBatchPlan` is complete
+only when both `linear_attn_conv_decode/gguf_qwen35/bf16_indexed` and
+`gdn_recurrent_rmsnorm_gate/gguf_qwen35/bf16_segments` resolve for the selected
+backend. A missing/incomplete plan retains the previous scalar row loop as the
+required exact unfused fallback. The runtime records the path returned by every
+linear layer and rejects mixed accounting. The execution manifest now reports
+`indexed_batch`, zero host model-row loops/iterations, and zero expected exact
+row-local launches only when that route actually ran; the overall claim remains
+`exact_hybrid` pending clean C2 evidence and later C3/C4 closure.
+
+The host dispatch contract was RED before implementation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_gguf_packed_verify_layout.py::test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan
+# RED: unexpected keyword argument 'batch_plan'; GREEN after implementation
+```
+
+Focused host/CPU regression gate:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py
+# GREEN: 106 passed, 9 skipped
+```
+
+Real dirty-tree W7900/gfx1100 gates used Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN prefill, the precomputed TheRock HIP 7.15 compiler key, and
+cached builds required. A direct profiler leaf at p512/c4 emitted
+`linear_attention_decode_path=indexed_batch`, zero host row-loop sites, zero
+row iterations/subgraph invocations, zero expected exact-row-local launches,
+unchanged 9 H2D input/metadata copies, zero steady state import/scatter, and
+exact warmup/profile tokens before a successful flush.
+
+The all-layer state oracle then passed:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c2-indexed-p512-d4-hidden.json
+# exact tokens/state/KV; 800/800 exact layer-hidden comparisons
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c2-indexed-shrink-p512-d4-hidden.json
+# c4->c3->c2->c1 exact at every step; 560/560 exact layer-hidden comparisons
+```
+
+Python compilation, changed-file Ruff checks, and `git diff --check` pass. Full
+GGUF-runner Ruff still contains its pre-existing F401/F841/F821 baseline, so the
+runner was checked with those existing codes excluded. These are correctness
+and route observations, not a throughput or fully-native-c4 claim. The next
+logical unit reruns the retained clean p512/d128 lifecycle and marker-sliced
+profiler census from the committed implementation revision.
+
+## 2026-07-16 — Make the GGUF profiler census C2-aware
+
+The first clean marker-sliced run from implementation revision `8695b51d`
+proved the C2 kernels executed but correctly failed the old C1 classifier:
+c4 fell from 1,386 to **756** dispatches and both indexed kernels ran 30 times,
+yet 120 row-shaped projections were still labeled `exact_row_local` solely by
+kernel name. Their launch geometry is unambiguous: c4 QKV/gate, alpha/beta, and
+FP32-input `ssm_out` projection bodies use grid-Y 4; the scalar c1 bodies use
+grid-Y 1.
+
+Added a RED geometry fixture for those three shared projection kernel families,
+then made classification require row extent 1 for the row-local bucket. Added a
+zero-row-local census contract and made the artifact identity/limitation text
+route-aware: an indexed manifest emits the C2 recurrent-census kind while still
+refusing a throughput or fully-native-c4 claim.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py
+# GREEN: 6 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+```
+
+Reclassifying the untouched clean raw marker windows from `8695b51d` now gives
+c1 **628**, c4 **756**, expected/observed row-local **0/0**, and all **756** c4
+dispatches in the packed-native bucket. The original failed JSON is diagnostic
+only; the canonical profiler run will be repeated after this classifier unit is
+committed so implementation and summarizer provenance are both clean.
+
+## 2026-07-16 — Pin category-oracle provenance to its compiler key
+
+The clean C2 24x3 category matrix passed all arithmetic gates, but its canonical
+provenance incorrectly described ambient `/opt/rocm` HIP 7.2 even though every
+resident session consumed the supplied TheRock HIP 7.15 compiler-version file
+and required cached builds. The provenance collector defaults to `hipcc` from
+`PATH` unless the caller provides the authoritative string.
+
+Passed `_session_build_policy(args)["compiler_version"]` directly to
+`collect_artifact_provenance(hipcc_version=...)`, matching the existing
+profiler harness policy and making the recorded ROCm/HIP version derive from the
+same build key used by the sessions. The original exact category result is not
+retained because its metadata is misleading; it will be rerun after this fix.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_ar_category_oracle.py \
+  tests/test_benchmark_provenance.py
+# GREEN: 13 passed
+python3 -m py_compile scripts/gguf_packed_ar_category_oracle.py
+git diff --check
+# GREEN
+```
+
+Full-file Ruff still reports this script's pre-existing unused `os` import and
+E402 bootstrap imports; the one-line provenance change introduces no new Ruff
+finding.
+
+## 2026-07-16 — Close gfx1100 GGUF C2 recurrent linear attention
+
+Closed C2 on Radeon Pro W7900/gfx1100 with Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, the
+precomputed compiler key, and cached builds required. The implementation spans
+primitive `b896eba5`, packed runtime `8695b51d`, profiler contract `f6e8363e`,
+and hermetic category provenance `799d29b9`.
+
+The canonical paired marker census ran from clean `f6e8363e`:
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c2-clean-f6e8363e/raw \
+  --out /tmp/gfx1100-concurrency-c2-clean-f6e8363e/c2-census.json
+```
+
+Both cached-only children are exact and clean. C1 remains **628** dispatches;
+c4 moves **1,386 -> 756 (-45.45%)** versus C1's retained hybrid census. The
+runtime/profiler contract agrees at **0 expected / 0 observed exact-row-local**
+dispatches, zero host model-row loops/iterations, and all **756** dispatches in
+the packed-native bucket. Indexed Conv and segmented FP32-output GDN each run
+30 times with zero scratch; Conv uses grid `(8192,4,1)`/workgroup 256 and GDN
+uses `(512,32,1)`/workgroup 128. Steady movement remains nine H2D copies, one
+four-value D2H vector, two synchronizations, zero state import/scatter, and zero
+scalar fallback. Instrumented durations are diagnostic only.
+
+The complete Phase-B correctness scope was rerun clean:
+
+- p512/c4, 128 transitions at `f6e8363e`: **516/516** token positions and
+  **20,640/20,640** post-layer rows exact; initial/final Conv/GDN and live KV
+  bytes exact; source SHA-256
+  `ff5cb7cddfb944062d49998894ece5414ff7a5ebc7e6de1333bbc110f64f0d3a`;
+- p512 sparse shrink c4->c3->c2->c1: **560/560** post-layer rows and every
+  post-membership state exact; source SHA-256
+  `0139572dd8f182bdeab6201228f38e0f53f4819f26f8be3a17f492b54a3e6768`;
+- final clean 24x3 category run at `799d29b9`: all 15 groups and 54 prompt-repeat
+  executions pass across all 10 canonical prompts and 8 heldouts, with
+  **1,350/1,350** tokens and **54,000/54,000** hidden rows exact, zero state/KV
+  mismatches, deterministic trajectories, and HIP 7.15 provenance; source
+  SHA-256 `b5cd435df43c38816ecf2c2bd177e10250f99d8071cafa0dadbf28377b2bca94`.
+
+Compact retained evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json`
+(SHA-256 `04d0e898df35c52bf4d23509fdc09639c57bad9ea3b870f0fceee0ec850fa64e`).
+It records clean provenance, source/raw-trace hashes, registry/fallback/state
+contracts, the runtime manifest, named kernel execution, and all correctness
+rollups. `docs/CONCURRENCY.md` closes all C2 boxes and advances the active queue
+to C3. The route remains correctness-only `exact_hybrid`; no throughput,
+latency, memory, graph-replay, or fully-native-c4 claim is made.
+
+## 2026-07-16 — Make gfx1100 GGUF C3 family routes auditable
+
+Audited the first three C3 boundaries against the untouched clean C2 c4 marker
+window before changing device metadata. The runtime already executes these
+families c-aware, but the C2 profiler's single `packed_native` bucket did not
+prove that claim:
+
+- full attention: all 10 context and KV-write kernels execute once per layer
+  with grid-Y 4 and consume per-row `KVLiveSpans` positions/live counts;
+- MoE/FFN: all 40 layers execute selected gate-up and down with 32 routed lanes
+  (c4 x top-k 8), then one c4 batch combine per layer;
+- LM head/sampler: one c4 Q6 rowtile computes device logits, row-wise argmax
+  runs one stage1 plus one stage2 launch, and only one four-i32 vector is read
+  back; no full-vocabulary host readback occurs;
+- movement: the trace has exactly 10 copy dispatches, matching eight metadata
+  H2D uploads, one token-vector H2D upload, and one token-vector D2H readback.
+
+Added an explicit runtime manifest contract for full-attention, MoE, LM-head,
+sampler, and metadata preparation paths. The runner now records the actual
+LM-head/sampler branch and full-attention span route. Added a family-specific
+profiler census that rejects missing dispatch families, wrong c4/selected-lane
+geometry, or copy counts inconsistent with the runtime manifest. The RED
+fixture initially failed because these route arguments and census did not
+exist; it is now GREEN, and reprocessing the unchanged C2 raw trace passes every
+family check. This is observability only: C3 remains open until the eight
+steady metadata H2D uploads are replaced and the resulting runtime/trace is
+rerun clean.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_ar_category_oracle.py
+# GREEN: 38 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed and (batch or native or lifecycle)'
+# GREEN: 2 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  hipengine/runtime/gguf_packed_manifest.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  hipengine/runtime/gguf_packed_manifest.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+git diff --check
+# GREEN
+```
+
+## 2026-07-16 — Prepare packed gfx1100 decode metadata on device
+
+Added `decode_metadata / gguf_qwen35 / packed_c4_i64` to the gfx1100 runtime
+state family. The new stream-ordered kernel rebuilds the persistent packed
+block table, ragged positions/live counts, attention CU/reset scalars,
+singleton GDN segments, and identity recurrent-state indices for c1-c4 without
+the prior eight host-to-device metadata uploads. The runner resolves the route
+through the four-axis registry and keeps the byte-equivalent host-upload path
+for a missing kernel or a non-singleton/noncanonical layout. The RED analytic
+fixture used ragged positions `[513,517,521,525]` and failed before the symbol,
+registration, and runner route existed; it is now byte-exact for all eight
+metadata families.
+
+The first build was rejected because system HIP 7.2 had been used with the HIP
+7.15 compiler-version key. Only that new runtime-state cache key was discarded,
+then the body was rebuilt with the actual TheRock HIP 7.15 compiler and required
+cached thereafter. A standalone cached-only W7900/gfx1100 `rocprofv3
+--kernel-trace` smoke records `prepare_packed_decode_metadata_kernel` at **4.120
+us**, 64 threads, 16 VGPR, zero scratch, and zero LDS (raw trace SHA-256
+`30dcfd8b32b90ebc79155e97b83dacc09960202b64a83b37b5de0a8f36887216`).
+
+The real Qwen3.6-35B-A3B `UD-Q4_K_M` p512/c4/d4 packed-model gate then passed
+all token trajectories, **800/800** layer-hidden rows, and complete initial/final
+Conv/GDN plus live-KV byte equality. Its manifest selected
+`device_prepare_persistent`, reported zero metadata H2D copies/bytes, one
+metadata kernel launch, one 32-byte token H2D, and one four-i32 token-vector D2H.
+Source artifact SHA-256:
+`146a5b1bc2f46cef62d8de01f55bc0741eee379498918331522fbd8309e7d36c`.
+
+A dirty-tree paired marker census is also mechanically clean and will be rerun
+from the implementation commit for retained closure evidence. Its c4 window is
+**749** all-packed-native dispatches versus C2's 756: replacing eight metadata
+copies with one kernel removes seven dispatches. All C3 family checks pass, the
+metadata kernel executes once at 2.720 us in the model trace, only two copy
+dispatches remain, and exact-row-local dispatches remain zero. These durations
+are profiler diagnostics, not a throughput claim. The profiler artifact
+classification now distinguishes C3 only when the family census, zero metadata
+H2D contract, and one device-prepare launch all agree.
+
+```bash
+python3 -m pytest -q tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_ar_category_oracle.py
+# GREEN: 48 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed and (batch or native or lifecycle)'
+# GREEN: 2 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  hipengine/kernels/hip_gfx1100/runtime/state.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  hipengine/kernels/hip_gfx1100/runtime/state.py \
+  tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+git diff --check
+# GREEN
+```
+
+## 2026-07-16 — Close gfx1100 GGUF C3 model boundaries
+
+Closed C3 from clean `db1ce640` on Radeon Pro W7900/gfx1100 with
+Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and cached builds required.
+
+The clean paired marker census emits the explicit
+`gfx1100_gguf_concurrency_c3_model_boundaries_census` kind with clean provenance
+and passes every runtime/trace cross-check. One steady p512 c4 transition has
+**749 packed-native** and **zero exact-row-local** dispatches, versus C2's 756.
+The family proof records:
+
+- 10/10 full-attention context and 10/10 KV-write launches at row extent four,
+  consuming `KVLiveSpans` positions/live counts;
+- 40/40 selected gate-up, selected down, and c4 combine launches, with 32 routed
+  lanes (`c4 x top-k 8`);
+- one c4 Q6 lm-head rowtile, one row-argmax stage1, one stage2, no full-vocab
+  host readback, and one four-i32 token-vector D2H;
+- zero metadata H2D uploads, one device metadata-preparation launch, and exactly
+  two copy dispatches for token H2D plus token-vector D2H.
+
+`prepare_packed_decode_metadata_kernel` executes once at **2.840 us** in the
+instrumented model window with 64 threads, 16 VGPR, zero scratch, and zero LDS.
+The c4 raw kernel/marker trace SHA-256 values are
+`86a00e0528ffc03e21ba0a19f70c246f30d61b355247030c8fff1bf57af02519`
+and `a746cac261cde74acd437aec6ebc3b382df1a6a2090a2d8cef6357714d9339ff`;
+the compact census source is 81,192 bytes with SHA-256
+`16e188753daadd120bdaad5b24a22fe87909b07108026dfaa974259439105fe9`.
+Durations are diagnostic only.
+
+The standard and sparse Phase-B equality scopes were rerun from the same clean
+commit:
+
+- p512/c4/d128: **516/516** token positions and **20,640/20,640** layer-hidden
+  rows exact, with initial/lifecycle/final Conv/GDN and live-KV bytes exact;
+  source SHA-256
+  `41fe56a44fd8e249bd49088f97562b4aea26757a2eb04d6760a3292116934f8e`;
+- p512 sparse c4->c3->c2->c1: **560/560** layer-hidden rows and every
+  post-membership state/KV checkpoint exact; source SHA-256
+  `23e508da37186a02751a9f3069e55efb88abfc6d50925975d45309281154d7b8`.
+
+The clean 18-prompt 24x3 category source at `799d29b9` is inherited rather than
+rerun: C3 changes token-independent metadata production only, leaves all
+family/sampler arithmetic routes unchanged, and the new metadata bytes are
+covered by the ragged primitive plus standard and sparse lifecycle gates. That
+source remains **1,350/1,350** tokens and **54,000/54,000** hidden rows exact
+with deterministic trajectories and zero state/KV mismatches.
+
+Compact retained evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json`
+(SHA-256 `022350d44dd02e317393b3ce3ee4aaba29ee08130b657f19dc5cb01618627da5`).
+The roadmap closes all C3 boxes and advances the active queue to C4. Coverage
+remains correctness-only `exact_hybrid`: no throughput, latency, memory,
+graph-replay, or fully-native-c4 claim is made.
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --prompt-length 512 \
+  --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c3-clean-db1ce640/raw \
+  --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 \
+  --out /tmp/gfx1100-concurrency-c3-clean-db1ce640/c3-census.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/standard-c4-p512-d128.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/sparse-c4-p512-d4.json
+```
+
+## 2026-07-16 — Add state-bound gfx1100 GGUF packed graph replay
+
+Audited the C4 entry boundary after clean C3 closure `29b01733`. The existing
+whole-step GGUF graph contract was c1-only (`active_rows=1`). Packed c2/c4 still
+read one token vector to host, uploaded it again, and passed positions as scalar
+kernel arguments every transition, so toggling the c1 graph path could not
+qualify as packed replay.
+
+Added a RED packed graph contract before implementation. The focused gate failed
+at collection because `hipengine.runtime.gguf_packed_decode_graph` and the
+registry-resolved device-position/commit/record helpers did not exist. The new
+state-bound key covers physical/active width, active mask, per-row state
+generations, context bucket/window, model/quant/KV axes, weight and buffer
+identity, recording shape, metadata route, and token-feedback route.
+
+Extended the existing gfx1100 runtime/state family with three stream-ordered
+control kernels:
+
+- device-position metadata refresh rebuilds live counts/CU/reset/segment/index
+  metadata without host values;
+- packed graph commit promotes sampled i32 row tokens to the persistent i64
+  embedding input, records them when requested, and advances device positions;
+- indexed uint16 slab recording captures selected BF16 layer outputs into a
+  step-major diagnostic buffer before commit advances the shared index.
+
+The packed runner now has one enqueue-only model-step body shared by eager and
+graph execution. Capture imports state and uploads initial tokens once, then
+replay performs zero steady H2D/D2H operations. Optional layer capture is D2D
+inside the graph and read once after the declared window. The graph handle owns
+its bucket key/replay counters, rejects cursor drift or post-flush replay,
+updates host cursors only after synchronized launches, and rewrites the final
+layout before the existing exact full-state flush.
+
+The first d1 graph replay passed tokens/state/KV. The initial d4 run was RED at
+full-attention layer 3 on step 2 while layers 0-2 remained exact: captured
+`KVLiveSpans.max_live_count` still held the initial 513-token bound even though
+device live counts advanced to 514. Widening only the captured host bound to the
+declared replay window, matching the c1 graph contract, repaired the issue.
+Current dirty-tree W7900/gfx1100 Qwen3.6-35B-A3B `UD-Q4_K_M` gates with TheRock
+HIP 7.15 and cached builds required now pass:
+
+- p512 c4 d4: four graph launches/one replay-call synchronization, exact token
+  trajectory, **800/800** prefill+decode layer rows, and exact final Conv/GDN +
+  live KV; source SHA-256
+  `34f35d36b2181421f8abccffdd0dd79618f5166fe0f386be1fb96f349d81f1fa`;
+- p512 sparse c4->c3->c2->c1: one positive replay per fixed-width bucket,
+  **560/560** layer rows and every post-event state/KV checkpoint exact; source
+  SHA-256
+  `c2cdfe3fb704023fd1760691d5221a36b0a14b72dd973e4a601d8a93091bcc90`.
+
+A cached-only primitive `rocprofv3 --kernel-trace` records device-position
+metadata at **2.360 us** (64 threads, 16 VGPR), indexed BF16 recording at
+**2.080 us** (256 threads, 8 VGPR), and packed commit at **2.720 us** (one
+thread, 8 VGPR), all with zero scratch/LDS. Raw trace SHA-256:
+`18b7d06c5f5f366dc507029c59353ee719ba9ec750129cab6149212c98cf5766`.
+The first cached-only model attempt correctly failed before capture because the
+new source lacked the supplied HIP 7.15 cache key; it was prebuilt with the
+actual compiler outside profiling and then required cached.
+
+```bash
+python3 -m pytest -q tests/test_runtime_state_plan.py \
+  tests/test_gguf_packed_decode_graph.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_decode_graph_g5.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed or graph or manifest or state_oracle'
+# GREEN: 58 passed
+python3 -m pytest -q tests/test_runtime_state_unpack_metadata.py
+# GREEN on W7900: 4 passed
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c4-graph-p512-d4-hidden.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c4-graph-sparse-p512-d4-hidden.json
+```
+
+This commits the graph primitive/runtime unit only. C4 remains open for the
+clean standard d128 replay/eager gates, marker-sliced graph execution proof, and
+same-protocol c1/c2/c4/chunked-c8 timing/memory/latency packet. No throughput or
+fully-native-c4 claim is made here.
+
+## 2026-07-16 — Add the C4 graph census and direct-scaling harness
+
+Closed the clean standard equality rerun at graph-runtime commit `6f7851f3`.
+Both packed eager and graph p512/c4/d128 runs pass exact tokens,
+**20,640/20,640** prefill+decode layer rows, initial/final Conv/GDN state, and
+all live KV bytes. Graph mode records one physical c4 bucket, 128 launches, 128
+replayed transitions, and zero steady H2D/D2H; eager remains the explicit
+control. Source artifact SHA-256s are
+`b6ee8dc8a8f650f6f88f92b3ae831dee89088185754c4811056a023659d95ae8`
+(graph) and
+`00c69f34095730024dea32de8243ca44a6d5c692679d625ed828ef12f68285eb`
+(eager). The first background launch transiently imported a constructor without
+its current `backend` field and stopped before model load. Immediate normal and
+`PYTHONPATH=.` signature preflights both resolved the live checkout and exposed
+the field; the explicit clean rerun passed without a source change.
+
+Extended `scripts/gguf_packed_ar_rocprof.py` with an opt-in graph child and C4
+closure classification while preserving eager C1/C2/C3 behavior by default.
+Capture, state import, diagnostic readback, and flush remain outside ROCTX. A
+dirty-tree cached-only W7900 validation selects **747 dispatches**, all
+`packed_native`, with zero exact-row-local or copy dispatches, one
+`prepare_packed_decode_metadata_from_positions_kernel`, one
+`commit_packed_decode_graph_step_kernel`, and positive replay metadata. Raw c4
+kernel/marker SHA-256s are
+`1c24196e7e6fe54efa13c9bf2671a2cb83c0fe78dfe6cf23132194fa922cb6fa`
+and
+`b299d1bd4617314c8e864f16526c1e7a5d4a1a3fa03ee2bc7f1658a3467b449b`.
+A clean rerun is still required for retained evidence.
+
+Added `scripts/gguf_packed_ar_bench.py` as the same-protocol raw scaling packet.
+It encodes c1/c2/c4 as one native group, `chunked_c8` as two serial c4 groups,
+and `serial_c4` as four c1 groups. Every logical transition synchronizes each
+declared group once; capture/readback/flush are excluded from decode timing.
+The artifact records aggregate/per-request rate, per-request TTFT, model-step
+ITL p50/p95, graph keys/replay counts, active masks, tracked/HIP memory, and
+cross-route trajectory hashes. A p16/d2 all-route GPU smoke is trajectory-exact
+across c1/c2/c4/serial and both c8 groups. Its one-run rates
+(`105.52/149.57/213.74/214.28/105.91 tok/s` for
+c1/c2/c4/chunked-c8/serial-c4) are harness plausibility only, not performance
+evidence. The smoke exposed and fixed an over-strict validator: deliberate
+width-1 c1 controls may report row-local layer work, while every native width
+above one must report zero host model-row loops.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_ar_bench.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_runtime_state_plan.py
+# GREEN: 23 passed
+python3 -m ruff check scripts/gguf_packed_ar_bench.py \
+  scripts/gguf_packed_ar_rocprof.py tests/test_gguf_packed_ar_bench.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+```
+
+This is the evidence-tool unit, not C4 closure. Next: commit it, rerun the graph
+marker census clean, then run one clean p512/d128 1+3 packet and join its
+correctness/profiler/scaling evidence. No native-c4 or performance claim yet.
+
+After commit, the clean `a05c560b` C4 marker rerun passed the same contract:
+**747 packed-native / 0 row-local / 0 copies**, positive c4 replay, and clean
+provenance. Compact artifact/kernel/marker SHA-256s are
+`aa9bac93129a2d5a078ecbbee58bae48ad53e1fac1313c22e90279f4df3c07dc`,
+`c8a4296515c05aedbc998c2b077553001924deacd5a0e44129264b131e602440`,
+and `04fd5e4c3ac30e4dcb5a5e54b6faab9f5df461d7236515c6fdfc12174e660c68`.
+Before the full scaling run, added explicit phase-timestamped occupancy rows for
+admission, prefill completion, graph capture, and decode completion plus an
+empty static row-count-transition list. This closes the C4 artifact requirement
+without treating active masks alone as an occupancy-over-time proxy; focused
+gate is **16 passed** plus compile/Ruff/diff checks.
+
+The first clean full-packet launch was stopped before any result was retained:
+the harness had eagerly allocated eight session KV/state slabs before the c1,
+c2, and c4 phases. Rates would remain usable, but c4 memory would be an
+incorrect c8-residency proxy. Changed the canonical complete-packet order to
+grow one shared-runner process monotonically through 1→2→4→8 resident sessions,
+record the resident count per route, and summarize tracked-current,
+tracked-high-water, and `hipMemGetInfo` phase peaks per configuration. The
+complete packet now rejects reordered routes that would invalidate that memory
+scope; partial diagnostics remain allowed and disclose their resident count.
+
+The resulting clean `adf918c9` 1+3 execution completed every GPU transition and
+all token/route/variance/memory gates, but correctly exited non-retained because
+`stable_graph_bucket_keys` compared the full pointer-bound instance identity.
+C4 and chunked-c8 recapture fresh diagnostic recording buffers, so two safe
+instance hashes appeared even though every model/width/context/state/layout
+shape axis was unchanged. Rates were **85.281/127.035/185.507/184.159/84.448
+tok/s** for c1/c2/c4/chunked-c8/serial-c4, cross-route trajectories were exact,
+and maximum decode stdev/median was **0.279%**; these remain a rejected harness
+run. Preserve buffer identity in the runtime key for safety, but separate it
+from a pointer-independent bucket-shape fingerprint in the benchmark. Offline
+revalidation of the raw manifests confirms one stable shape for every route
+while honestly retaining 1/1/2/2/4 unique c1/c2/c4/chunked/serial instance
+hashes. Focused gate is **17 passed** plus compile/Ruff/diff checks; rerun clean.
+
+The clean `17185d53` rerun then passed every mechanical gate: exact
+cross-route trajectories, stable shape keys, <=**0.355%** variance, and c4
+**184.404 aggregate / 46.101 per-request tok/s**, **2.171x** c1 and **2.183x**
+serial-c4. Route-scoped c4 residency is four sessions with **23.396 GiB**
+tracked-current and **23.823 GiB** sampled HIP-used peaks; c4 TTFT p50/p95 is
+**2.026/2.027 s** and synchronized model-step ITL p50/p95 is
+**21.696/21.957 ms**. However, the shell pinned `HIP_VISIBLE_DEVICES=0` while
+the artifact whitelist omitted visible-device/queue variables, so this packet
+is provenance-incomplete and is not retained despite `status=measurement_complete`.
+Added `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, and `GPU_MAX_HW_QUEUES` to
+the captured environment contract and its unit test.
+
+A separate clean `17185d53` sparse graph refresh passes c4→c3→c2→c1 with
+**560/560** exact hidden rows, exact tokens/state/live-KV, no first divergence,
+and one positive replay for each width. Source SHA-256 is
+`98cfb454676e95669d1a61b8a18a768de00e8cf0ac77c3857a1704b460864e70`.
+The final scaling rerun follows after the provenance-only harness commit.
+
+## 2026-07-16 — Close gfx1100 GGUF C4 native graph scaling
+
+Retained C4 after the final clean `d59d7cf0` p512/d128 1+3 packet. The artifact
+captures `HIP_VISIBLE_DEVICES=0`, TheRock HIP 7.15 compiler provenance, exact
+model/quant/KV identity, one shared model load, and route-scoped 1→2→4→8
+resident-session growth. Every measured trajectory is repeatable and exact
+across c1/c2/c4, serial-c4, and both chunked-c8 c4 groups; every bucket shape is
+stable; maximum decode stdev/median is **0.495%**.
+
+Same-protocol aggregate/per-request decode rates are:
+
+- c1: **84.907 / 84.907 tok/s**;
+- c2: **126.909 / 63.455 tok/s**;
+- native c4: **184.993 / 46.248 tok/s**;
+- chunked c8 (two serialized c4 groups): **183.900 / 22.987 tok/s**;
+- serial-c4 (four serialized c1 groups): **84.140 / 21.035 tok/s**.
+
+Native c4 is **2.179x c1 (+117.88%)** and **2.199x serial-c4 (+119.86%)**.
+The retained tradeoff is explicit: per-request decode is **45.53% below c1**,
+model-step ITL p50/p95 is **21.641/21.888 ms** versus c1
+**11.768/12.105 ms**, packed-prefill TTFT is **2.027/2.031 s**, and c4
+tracked-current/HIP-used peaks are **23.396/23.823 GiB** versus c1
+**21.783/22.237 GiB**. This promotes only the direct native-c4 decode model
+step; it does not admit the route into a production continuous loop or claim
+streaming-delivery latency.
+
+The complete evidence join also retains:
+
+- clean graph/eager p512/c4/d128 equality, each **20,640/20,640** hidden rows
+  plus exact tokens, Conv/GDN state, and live KV;
+- clean sparse graph c4→c3→c2→c1, **560/560** exact hidden rows and positive
+  replay per bucket;
+- inherited clean B4 category coverage, **1,350/1,350** tokens and
+  **54,000/54,000** hidden rows across 18 prompts x3;
+- clean marker census `a05c560b`, **747 packed-native / 0 row-local / 0 copy**
+  dispatches, one device-position metadata launch, one token-feedback commit,
+  and zero complete c1 layer/session fallback.
+
+The retained raw scaling packet is 1,138,763 bytes with SHA-256
+`1fb58feb9b25fda7eeaaa17af3f497d4d7b85055d02105758722dc0aa8b1f607`.
+The compact closure artifact is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json`
+(23,246 bytes before this WORKLOG append, SHA-256
+`ea7c07df2fdf68012e4ad20d66bd6d0033173323cfdd299d8e6ff36096a2084e`).
+`docs/CONCURRENCY.md` marks every C4 item complete and advances the next missing
+boundary to D1: one long-lived model-owning GGUF runner with live
+admission/reclaim. The W7900 concurrency topline now exports the direct
+c1/c2/c4/chunked/serial table; chunked c8 remains explicitly non-native.
+
+## 2026-07-16 — Start gfx1100 GGUF D1 persistent loop ownership
+
+Closed the host ownership prerequisite for D1 without making a live-admission
+claim. `SubmitPollTextGenerator` now creates one compatibility runner and one
+`ResidentEngineLoop` for its lifetime instead of rebuilding both inside every
+`generate_detailed()` call. Request ids remain globally stable across API
+calls, consumed completions are released from the persistent scheduler, and
+only one mutable scheduler tick—not a full request lifetime—is protected by the
+adapter lock.
+
+The runner boundary now prefers explicit `prefill_batch(..., commit=True)` and
+`decode_batch(..., commit=True)` hooks, forwards scheduler slot moves through
+`compact_batch`, and invokes `reclaim` on every completion/cancel path. Legacy
+`prefill`/`decode` fakes remain an explicit compatibility bridge. RED failed on
+the missing persistent-loop constructor and batch hooks; GREEN is **10 passed**
+for the focused submit/poll and engine-loop bundle. Python compilation and Ruff
+pass for the two implementation modules; the focused test file still has the
+pre-existing unrelated F821 at line 15868 (`Any` in a prior local fake), so its
+Ruff audit was run with F821 excluded rather than silently folding that cleanup
+into D1. No GPU, throughput, live scheduling, or GGUF device-state ownership
+claim is made by this host-only unit; the next unit attaches a persistent GGUF
+session owner to these hooks.
+
+## 2026-07-16 — Attach D1 to persistent GGUF model/session state
+
+Added `Qwen35GGUFResidentModelRunner` as the model-specific implementation of
+the D1 runner contract. `SubmitPollTextGenerator` discovers the model runner by
+capability rather than backend/quant branches. The GGUF owner materializes one
+shared full-stack model plus a fixed c4 session pool at adapter construction,
+rebuilds that pool only at an idle `prepare(max_sequence_length=...)` barrier,
+and reuses the same sessions after completion. Greedy rows wait for their
+scheduler prefill commit, publish the prefill top-1 as token one, then execute
+one packed c<=4 model step per decode tick. Processed/sampled and zero-token
+requests remain explicit resident-session compatibility routes; they no longer
+construct a session inside `generate_detailed()`.
+
+The owner implements committed `prefill_batch`/`decode_batch`, consumes
+scheduler compaction moves while keeping request and physical-row identity
+separate, flushes deferred packed state before membership changes, and resets
+and reclaims sessions through the scheduler completion callback. Deadline and
+cancellation checks bracket every real prefill/decode transition. Public GGUF
+batch metadata distinguishes the packed greedy route from
+`gguf_resident_model_loop` fallbacks. The old direct `_generate_ar_serving_slots`
+loop remains only as an independent control/direct-generator compatibility path
+and is now recorded in `docs/REFACTOR.md` for deletion after D2/D4 migrate all
+remaining adapters.
+
+RED proved the class/factory and eager session owner were absent. GREEN covers
+model singleton ownership, idle context-pool rebuild, c2 packed steps, c1
+fallback, sampled and zero-token compatibility, stable session identity across
+API calls, and full reclaim. Focused validation is **78 passed, 4 skipped**
+across GGUF generation/public LLM plus the submit/poll/engine-loop bundle;
+Ruff and Python compilation pass. Registry and CPU-fixture smoke modes pass.
+`scripts/check_fixtures.py` still fails on the pre-existing noncanonical nested
+fixture `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`
+(`KeyError: expected`); this D1 unit does not alter fixture discovery or math.
+
+A real dirty-tree W7900/TheRock HIP 7.15 smoke compared the old direct resident
+control, the first persistent-loop call, and a second call for two independent
+16-token rows at d4. All three trajectories are exact:
+`[[9707,9707,9707,9707],[9708,9709,9708,9709]]`. The four reserved session
+identities are unchanged across both API calls, all four sessions return to the
+pool, no request remains active, and the final manifest reports
+`path=gguf_packed_ar_server_decode`, `native_decode_steps=3`,
+`native_caware_decode=true`, and `serial_decode_fallback=false`. Exact command
+is the hermetic gfx1100 invocation of
+`/tmp/gfx1100_d1_resident_loop_smoke.py`; result is
+`/tmp/gfx1100-d1-resident-loop-dirty.json` and wall was **75.959 s**. This is a
+correctness/ownership gate only, not a throughput or live-admission claim. A
+clean exact-revision rerun follows the atomic code commit.
+
+## 2026-07-16 — Close gfx1100 GGUF D1 runner ownership
+
+The clean exact-revision rerun passes at `285c20b4802e2505046b9abfa11a9d92a5399e71`
+on W7900 with the hermetic TheRock HIP 7.15 environment and
+`HIP_VISIBLE_DEVICES=0`. The direct resident control, first shared-loop call,
+and second shared-loop call again produce exactly
+`[[9707,9707,9707,9707],[9708,9709,9708,9709]]`. All four checks that distinguish
+ownership from token-only coincidence pass: the four session identities are
+stable across calls, every session is returned, no request remains active, and
+the manifest records three native c2 steps with no serial fallback. Wall is
+**76.231 s**; no speed claim is made.
+
+Raw clean evidence is
+`/tmp/gfx1100-d1-resident-loop-clean-285c20b4.json` (9,166 bytes, SHA-256
+`2eee6f5ab4476e6501b2cbba1f7df037ec815062488c636a587fbdeac1966ebe`).
+The compact closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d1-resident-model-runner-closure.json`
+(7,300 bytes before this append, SHA-256
+`93f6eb4c8079d44d68e890be897a1fc561514908dbe421826421afa581c86924`).
+`docs/CONCURRENCY.md` marks all four D1 ownership items complete and updates the
+current-truth/coverage narrative without advancing live admission:
+`GGUF Q4_K_M / BF16, live admission` remains `not_started`. `docs/PLAN.md`
+now distinguishes the persistent real GGUF loop from production continuous
+batching. The next gate is D2: admission during decode, bounded prefill/decode,
+row-local retirement/cancel/reuse, and exact survivor token/state/KV evidence.
+
+## 2026-07-16 — Start D2 with controlled shared-loop submissions
+
+Added the first D2 host contract without advancing the live-admission coverage
+row. `SubmitPollTextGenerator` now exposes a stable `GenerationSubmission`
+handle plus `submit_detailed`, one-or-more-tick `poll`, completion inspection,
+row-local `cancel_submission`, and ordered `take_result`. Blocking
+`generate_detailed` is now only a compatibility driver over those same methods;
+it no longer owns a separate control flow. Submission and each poll retain the
+D1 per-transition lock scope, so there is still no request-lifetime model lock.
+Pending cancellation now produces an explicit empty compatibility result with
+the scheduler's finish details instead of leaving a controlled submission
+unconsumable.
+
+RED failed because `submit_detailed` was delegated to the inner generator and
+did not exist on the adapter. GREEN deterministically advances request A through
+prefill and one decode token, submits/admit-prefills request B while A remains
+active, executes one joined A+B decode, cancels only B, then completes A. The
+asserted runner history is `decode[(A),(A,B),(A)]`; B reports `cancelled`, A
+keeps all three tokens, active state returns to zero, and consumed completions
+are bounded. The focused loop bundle is **11 passed**; the complete scheduler +
+public LLM files are GREEN with **4 skips**. Ruff (with the test file's existing
+unrelated F821 excluded), Python compilation, and diff checks pass.
+
+The repository-wide D1 closure run showed no failures through **66%** but was
+stopped before completion to release an available GPU lane; it is not counted
+as an acceptance gate. D1 remains supported by its complete focused host and
+clean W7900 gates. D2 still needs genuinely incremental GGUF prompt execution,
+real resident-session admission/reuse/cancel evidence, and survivor
+state/KV equality before any roadmap checkbox moves.
+
+## 2026-07-16 — Commit incremental GGUF scheduler prefill chunks
+
+The D2 GGUF model owner now consumes each committed scheduler prompt chunk once
+instead of waiting for the final cursor and replaying the complete prompt. The
+first chunk acquires the resident-session lease; every subsequent chunk advances
+that same session's Conv/GDN, full-attention KV, and position state through
+`prefill_batch_native`; only the final chunk publishes the prompt's top-1 token
+and creates the decode slot. Unsupported packed shapes reset the partially
+mutated session and retain the explicit final full-prompt fallback.
+
+The RED owner fixture required a five-token prompt to advance as `2+2+1` across
+three independent commits and prohibited `session.prefill(full_prompt)`. A
+second RED runtime fixture exposed an important route hazard: scheduler chunks
+below 512 tokens lost the full prompt's AOTriton eligibility. The packed-prefill
+API now accepts `full_prompt_lengths`, validates chunk bounds against the live
+session cursor, and forces the same full-attention route across outer scheduler
+chunks that its existing internal row-capacity chunker already preserved.
+
+Host GREEN is **55 passed** for the complete GGUF generation file and **23
+passed** for the packed-layout file; the focused submit/poll engine-loop bundle
+is **9 passed**. Python compilation and diff checks pass. Ruff passes with the
+runtime file's pre-existing unrelated F401/F841 and the generation-test file's
+pre-existing F821 excluded; no unrelated import cleanup is folded into D2.
+
+A dirty-tree W7900/gfx1100 gate compared direct c1 bulk p512 against scheduler
+incremental `256+256` prefill on Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict
+exact GDN prefill, TheRock HIP 7.15, and cached builds required. All **40/40**
+final prompt layer rows are bit-exact, prefill and post-d4 Conv/GDN plus live-KV
+hashes are exact, positions both finish at 516, and trajectories are identical
+`[9707,9707,9707,9707,9707]`. The final plan records full prompt length 512,
+AOTriton slot 0 preserved across the two scheduler chunks, and no serial slot
+fallback. Wall is **77.846 s**; this is correctness evidence, not a throughput
+claim. Raw result:
+`/tmp/gfx1100-d2-incremental-prefill-dirty.json` (1,138 bytes, SHA-256
+`ce4179b326afc3ac4ad273a0e4828ab16d6ad533cfaf4c4a1309ce4b9b0a96dd`).
+D2 remains open for a genuinely live A-decode/B-prefill lifecycle, row-local
+retirement/cancellation/reuse, and survivor token/state/KV equality.
+
+## 2026-07-16 — Close gfx1100 GGUF D2 live scheduling
+
+Closed D2 from clean implementation commit
+`b51bd6884957deb3999e7c60ec90f9a0e4f4400e` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and cached builds required. The controlled
+non-streaming model loop uses capacity four, `protect_ttft`, 512-token prompts,
+and committed 256-token prefill chunks.
+
+The clean lifecycle is intentionally stronger than token-only admission:
+
+- A completes `256+256` prefill and emits two tokens before B is submitted and
+  admitted. B completes `256+256`, joins A for first-token delivery, then runs
+  one native c2 model step with A.
+- B is cancelled while that packed c2 state is dirty. Group flush canonicalizes
+  both sessions before B reset; A remains live and its token, Conv/GDN, and
+  live-KV state matches the independent c1 checkpoint after four tokens.
+- C immediately receives B's exact resident session identity, completes
+  `256+256`, joins A, runs native c2, and retires at its two-token limit. Both
+  C's pre-reset state and survivor A's six-token state match c1.
+- D receives the same reclaimed session again, advances exactly one 256-token
+  prompt chunk, and is cancelled. A's state/KV hash is unchanged across that
+  cancellation, then A reaches all eight c1-exact tokens and an exact final
+  state/KV checkpoint.
+
+A/B/C live trajectories equal their independent controls:
+`A=[9707]*8`, `B=[9708]*2`, and `C=[9709]*2`. All six named membership
+state/KV comparisons have zero mismatches; B→C and C→D session reuse are exact;
+all four sessions return idle; active runner and scheduler counts return to
+zero. The first execution was model-green on every token/state check but the
+harness correctly remained false because its expected length finish payload
+omitted the scheduler's `sampler_mode`; correcting only that assertion and
+rerunning produced the accepted source. Wall is **78.691 s**. No throughput,
+TTFT, ITL, memory, server-streaming, or native-c8 claim is made.
+
+Raw clean source is `/tmp/gfx1100-d2-live-lifecycle-clean-b51bd688.json`
+(3,936 bytes, SHA-256
+`0ed9256e7eaa6533ea3ccb6185d248855b8bd7463570925b0f626d8eaabd831e`);
+the exact one-off harness is `/tmp/gfx1100_d2_live_lifecycle_smoke.py` (10,122
+bytes, SHA-256
+`e15e23ffdd7105f4db8415840a5fc2edde91b84fbc05339741b4e26e4abba98f`).
+The compact closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d2-live-lifecycle-closure.json`
+(8,637 bytes, SHA-256
+`948f590a7dac88cfad82c266874e31bfe0d723a307aaf2db49148a64a0cb16ad`).
+Focused host validation is **380 passed, 4 skipped** across GGUF generation,
+the complete scheduler, and public LLM paths; it also covers EOS, max-token,
+cancel, disconnect, and timeout reclaim reasons.
+
+`docs/CONCURRENCY.md` advances gfx1100 GGUF live admission from `not_started` to
+`continuous_eq_ok` and closes every D2 checkbox. Production server continuous
+batching is still not claimed: D3 real device-KV-pool admission and D4 OpenAI
+streaming/backpressure/drain remain open. Per the active execution queue, the
+next lane is E1: transfer the same model-step and loop gates unchanged to
+gfx1151 before native-c8 E2.
+
+## 2026-07-16 — Block gfx1151 E1 on unavailable Radeon 8060S
+
+Started the post-D2 E1 symmetry audit at clean `bf17a357`. The current host is
+not the prior gfx1151 machine: HIP loads, but `rocminfo` exposes only two
+gfx1100 agents on the Ryzen 9 5950X/W7900 system. Read-only SSH probes to the
+configured `frame` and `zen2` routes both failed at their jump-port forwarding
+with `connect failed: Connection refused`; `wzen2.local` is also not resolvable.
+No gfx1151 execution, build, profiler, or correctness claim can be made from
+this host, and no gfx1151-targeted code was changed speculatively.
+
+Existing artifacts were audited rather than rerun or overclaimed:
+
+- `2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json` proves short p16/c4
+  token/Conv/GDN/live-KV equality, sparse c4→c1 survival, ragged
+  `[512,64,64,64]`, and 10-prompt x3 generated-token equality. It explicitly
+  lacks per-layer hidden capture, all-row p512/d128, current native-family
+  profiler evidence, repeated exact-accounting scaling, and live admission.
+- `2026-07-13-gfx1151-gguf-exact-concurrency-diagnostic.json` is one dirty
+  server sweep with no profiler or repeat packet; it cannot close E1.
+- `2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json` and the
+  2026-07-15 decode closure profile validate c1 graph/eager and family
+  attribution only. They are not c4 model-step or membership evidence.
+- `2026-07-11-sol-g6-gfx1151-gguf-residency-audit.json` validates one c1
+  session's 24-GiB residency and close behavior; it does not prove a c4 pool.
+
+E1 therefore remains in progress and gfx1151 live admission stays
+`not_started`. When the Radeon 8060S returns, the minimum unchanged packet is:
+current-HEAD p512/c4/d128 eager+graph with all-layer hidden/state/KV, sparse
+c4→c1 replay, a c4 native-family marker census, same-protocol c1/c2/c4/serial
+scaling, and the exact D2 A/B/C/D live lifecycle under `hip_gfx1151`. Until
+then, the recorded hardware blocker permits work on the still-open gfx1100 D3
+real device-KV-pool boundary without skipping or pretending to close E1.
+
+## 2026-07-16 — Add the D3 atomic admission barrier
+
+Started gfx1100 GGUF D3 with the scheduler/allocator ownership boundary rather
+than attaching the host-only `ChunkedKVPool` after slot publication.
+`ResidentBatchScheduler.admit_pending()` now accepts a reservation callback that
+runs while the request is still the head of the pending queue. A reservation
+failure leaves pending count, active slots, and request identity unchanged; if
+physical-slot commit itself fails, the paired rollback callback releases the
+unpublished reservation. `ResidentEngineLoop` discovers this capability on the
+model runner without backend/quant branches.
+
+The RED test first proved the old loop admitted despite a synthetic KV
+high-water failure. It is now green and verifies zero partial mutation before a
+retry succeeds at the same request id. Focused engine-loop/config validation is
+**5 passed**:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  -k 'resident_engine_loop or engine_loop_config'
+# 5 passed
+```
+
+This is only the D3 admission commit point. Real GGUF device-page allocation,
+idle unpinned-tail shrink, allocator/HIP memory evidence, and the
+burst-to-steady-to-idle-to-burst gate remain open.
+
+## 2026-07-16 — Attach D3 admission to real GGUF device KV
+
+Implemented the real BF16 device-page ownership layer behind the backend-neutral
+scheduler reservation barrier. `DeviceChunkedKVPool` owns callback-allocated
+runtime chunks, preserves monotonic logical block ids, requires each request's
+pages to remain in one contiguous backing chunk for the existing base-pointer +
+int32 block-table ABI, tracks refs and graph pins, grows only from admission,
+and frees only fully-free unpinned tail chunks at loop barriers. GGUF resident
+sessions now defer fixed full-attention K/V allocation, bind request-sized
+subviews at admission, invalidate captured c1/packed graphs before reclaim, and
+return the exact allocation before their session lease becomes reusable.
+`KVLiveSpans` and recurrent/model scratch ABIs are unchanged.
+
+The public `LLM` adapter now resolves the documented engine-loop environment and
+passes one `EngineLoopConfig` to the native resident runner and scheduler. The
+legacy whole-generation compatibility bridge remains `protect_ttft` so a
+prompt-list request is not split into independent inner calls. A RED capacity
+fixture also found that a 513-position session had been budgeted with floor
+page division; total resident capacity now uses ceil division and correctly
+accounts for three 256-token pages. Unset high water remains uncapped as
+`docs/ENVS.md` specifies; explicit high water still rejects atomically.
+
+Focused host validation is **419 passed, 4 skipped** across device-pool policy,
+GGUF generation, the complete scheduler, graph contracts, and public LLM paths.
+Three dirty-tree W7900 diagnostics are green but are not retained closure
+claims: one exact two-token scheduler smoke; a 110.110 s real graph lifecycle
+with exact tokens and zero state/KV mismatches, stable live pointers, 3 pinned
+pages, exact tracked grow/shrink deltas of 15,728,640 bytes, and
+3→6→3→12→3 page transitions; and the 78.447 s D2 A/B/C/D lifecycle repeated
+through real allocations with every token/Conv/GDN/live-KV comparison exact,
+B→C allocation and session reuse, monotonic D regrowth, and final 3-page idle
+low water. The implementation must be committed and these gates rerun from that
+clean revision before D3 closes.
+
+## 2026-07-16 — Close gfx1100 GGUF D3 device KV
+
+Closed D3 from clean implementation commit
+`367cf7a54e14fb1585fdb05fe067742bdebb81a9` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M` (full SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, and the precomputed compiler
+version file. The clean host bundle is **419 passed, 4 skipped** in 20.75 s.
+
+The clean real-HIP graph/memory gate passes in **75.993 s**:
+
+- one page is 5,242,880 bytes across all ten full-attention K/V families;
+- the pool follows **3→6→3→12→3 pages** and
+  **15,728,640→31,457,280→15,728,640→62,914,560→15,728,640 bytes**;
+- tracked first grow/shrink deltas are each exactly **15,728,640 bytes**;
+  tracked current returns from `25,141,358,176` to the exact baseline
+  `25,125,629,536`, with burst peak `25,172,815,456`;
+- a real state-bound graph pins three tail pages, produces exact
+  `[9708,9708]`, has zero Conv/GDN/live-KV mismatches, preserves live pointers,
+  and is invalidated once before the tail is freed;
+- regrowth uses fresh monotonic logical ids `6..14` while low-water ids `0..2`
+  keep their exact pointers;
+- a real-HIP three-page high-water probe rejects request 3002 with
+  `device KV pool high-water rejection`, leaving current/refcounted pages at
+  `3/3`, no lease/allocation on the rejected row, and one failure event.
+
+Sampled HIP used memory is reported separately: baseline/burst/final are
+`25,588,015,104 / 25,623,666,688 / 25,590,112,256` bytes with sampled peak
+`25,627,197,440`. The 2 MiB final difference reflects runtime allocator
+reporting granularity; it is not hidden live page ownership because tracked
+current, active allocation count, pool refs, and pins all return exactly.
+
+The clean p512 A/B/C/D lifecycle passes again in **78.590 s** through the public
+`LLM` environment-configured loop. All A/B/C tokens and all six survivor/removed
+state-KV comparisons equal independent c1 controls. A keeps ids `0..2`; B and C
+reuse ids/backing `3..5` and the same resident session without a shrink between
+them; D reuses that session after regrowth on fresh ids `6..8`; final state is
+three free, zero-ref, zero-pin pages after two grow and two shrink events. D2 is
+therefore non-regressive under real scheduler-owned KV.
+
+Clean sources:
+
+- graph/memory result `/tmp/gfx1100-d3-kv-graph-lifecycle-clean-367cf7a5.json`
+  (9,825 bytes, SHA-256
+  `8ba84e493b1a2e79ec9ac1026157f8fe2d2cdf71bd1710c95b658854c1f83802`);
+  harness `/tmp/gfx1100_d3_kv_graph_lifecycle.py` (10,900 bytes, SHA-256
+  `1472648ff8c89b936ffecb9f3a0d4785fdcee1b9a76f2fc297b0341ab5685963`);
+- live result `/tmp/gfx1100-d3-live-lifecycle-clean-367cf7a5.json` (12,293
+  bytes, SHA-256
+  `75f71acc8d2b0508b3c4becd93af80d3b3ebb386221a7a6d348197e997cd4fcd`);
+  harness `/tmp/gfx1100_d3_live_lifecycle_smoke.py` (14,047 bytes, SHA-256
+  `0dc5fae5e097b1943cc58ebeba23b7c6214a015207cbf5d67a834e3ffec81491`).
+
+The compact retained closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv-pool-closure.json`
+(12,036 bytes, SHA-256
+`fc73c7a9cb3a55c01923dd208d82b735004e05923c539eaf0e03ca8180b00e75`).
+Every D3 checkbox in `docs/CONCURRENCY.md` is now closed. This does not add a
+throughput claim, does not enable request-sized INT8/mixed KV, and does not make
+production-server continuous batching complete. D4 still owns OpenAI streaming,
+per-row backpressure, disconnect, and shutdown drain; gfx1151 E1 remains
+hardware-blocked and native c8 remains open.
+
+## 2026-07-16 — Route D4 token streams through the resident loop
+
+Started D4 by removing the remaining stream-only bypass in
+`SubmitPollTextGenerator`. Streaming calls now submit to the same long-lived
+`ResidentEngineLoop` used by blocking `LLM.generate()`, advance only one locked
+model transition at a time, and route token events to request-owned
+subscriptions before releasing that tick lock. Concurrent iterators may each
+advance the shared loop without consuming one another's rows; a closed iterator
+cancels only its own request ids as `disconnect` and consumes the same unified
+reclaim path.
+
+Extended scheduler `GeneratedToken` reports with an optional model-produced
+`GenerationStreamChunk`. The scheduler still owns request state, finish, and
+telemetry fallback, while native runners can supply exact detokenized text,
+logprobs, and richer row metadata. The GGUF resident runner now emits one such
+chunk for each native token and no longer marks a max-token boundary as an EOS
+stop. Compatibility generators stream their final detailed output through the
+resident lifecycle rather than calling an independent inner streamer.
+
+RED-first contracts cover native per-token text/telemetry, two concurrent
+subscriptions joining one decode group, row-correct routing, and closing one
+live stream while its neighbor completes. Validation is green:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py
+# 315 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_runner.py
+# 56 passed, 9 skipped
+python3 -m pytest -q tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py
+# 12 passed
+```
+
+This is the first D4 logical unit, not D4 closure. The OpenAI batcher still
+serializes active stream producers, uses unbounded per-request queues, and has
+no explicit graceful/forced shutdown drain. Those server ownership changes and
+a clean W7900 HTTP lifecycle gate remain next.
+
+## 2026-07-16 — Add D4 bounded HTTP producers and shutdown drain
+
+Connected the OpenAI generation batcher to the controlled-stream capability
+introduced in `0d158a1d`. A controlled stream is now launched as an independent
+async producer rather than awaited by the single queue worker, so later HTTP
+requests can submit while a neighbor is still decoding. Producers share the
+same model-loop tick lock underneath; this is continuous membership, not
+concurrent GPU kernel execution.
+
+Each HTTP stream now has an explicit bounded queue (default 16 chunks, minimum
+2). A blocked producer does not block another row's producer. The resident
+subscription queue is independently bounded; if a neighbor advances far enough
+to overflow a slow row, only that row is cancelled and the stream reports
+`budget_pressure=client_backpressure`. Closing the HTTP iterator marks its
+request token cancelled and cancels only its producer. The capability manifest
+now distinguishes controlled continuous membership from the legacy prompt-list
+coalescer fallback.
+
+Added server shutdown ownership: admission closes, queued and active work drain
+for the configured grace period, then all remaining request tokens are tripped
+before producer tasks are cancelled. The long-lived `LLM`/resident runner is
+closed after the batcher reaches its graceful or forced terminal state. New
+public knobs are `HIPENGINE_STREAM_QUEUE_MAX_CHUNKS` /
+`--stream-queue-max-chunks` and `HIPENGINE_SHUTDOWN_GRACE_SECONDS` /
+`--shutdown-grace-seconds`; `docs/API.md` and `docs/ENVS.md` record the exact
+scope. A regression in generic fake/third-party stream hooks showed that the
+controlled contract must be capability-scoped: non-resident generators retain
+their existing detailed streamer, while gfx1100 GGUF advertises and uses the
+resident path.
+
+RED tests prove live-neighbor admission, bounded slow-client isolation,
+disconnect token propagation, forced cancellation after grace, app shutdown
+runner close, and capability/config reporting. Full host validation is green:
+
+```bash
+python3 -m pytest -q tests/test_server_api.py
+# 486 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py
+# 329 passed, 4 skipped
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py
+# 68 passed, 9 skipped
+```
+
+D4 is not yet closed. The host ownership contracts are complete, but a clean
+W7900 OpenAI SSE gate must still prove real GGUF live admission, per-token row
+routing, disconnect/timeout reclaim with survivor equality, bounded
+backpressure, and graceful/forced device-resource drain.
+
+## 2026-07-16 — Close gfx1100 GGUF D4 OpenAI streaming
+
+Closed D4 from clean implementation commit
+`f03957cc7c37805243356d5f8ca0435ffd08771b` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M` (full SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, and cached builds required.
+The clean server/model lifecycle passes in **78.158 s**.
+
+The gate deliberately fills A's configured two-chunk HTTP queue before B is
+submitted. B is still admitted, executes its two 256-token prefill commits, and
+joins A in one native c2 decode step while A's queue remains full. A completes
+all eight exact `[9707]` tokens; B's consumed `[9708]` prefix is exact before its
+iterator closes. A and B both have zero Conv/GDN/live-KV mismatches against the
+corresponding independent c1 checkpoints. Their request ids and three-page
+allocations remain distinct (`A=0/[0,1,2]`, `B=1/[3,4,5]`); A finishes as
+`length`, B alone reclaims as `disconnect`, and B's cancellation token is
+tripped without affecting A.
+
+The same prepared `LLM`, `SubmitPollTextGenerator`, resident loop, runner, and
+request-id space serve a real `/v1/completions` SSE call. It returns HTTP 200,
+four JSON payloads, non-empty token text (`" five six"`), a completion event, a
+usage event, and `[DONE]`. A separate 1 ms request deadline returns a valid SSE
+`deadline_exceeded` error plus `[DONE]` and reclaims its published row.
+
+Forced shutdown exposed an ownership boundary worth retaining rather than
+hiding. `batcher.shutdown(grace_seconds=0.01)` closes admission, trips the live
+producer token, and returns HTTP active/queued counts to zero, but cancellation
+of that producer does not synchronously join a Python generator still running
+through the model thread. Immediately before the next app-shutdown phase, the
+runner therefore honestly reports request 3, one active scheduler row, three
+refcounted/unpinned pages, and three of four sessions available. The following
+`LLM.close()`—the exact ordering in the FastAPI shutdown handler—closes the
+stream as `disconnect`, reclaims the row, destroys the pool, and leaves zero
+active/pending scheduler rows, zero sessions, and no device-KV owner. The first
+clean harness pass caught this distinction because it incorrectly expected the
+runner-side reason to be `cancel`; changing only that assertion to the observed
+and designed two-phase `disconnect` semantics produced the accepted rerun.
+
+Clean source is `/tmp/gfx1100-d4-openai-lifecycle-clean-f03957cc.json` (7,777
+bytes, SHA-256
+`6573ba1c0b2136b744db8d67cf791969eacbbabf844b562c3698e7f8f97563e2`);
+the exact one-off harness is `/tmp/gfx1100_d4_openai_lifecycle.py` (15,769
+bytes, SHA-256
+`b473a075784d1412e2aa60e51c16800b4f414792b4c76fc2080cff8256d3656e`).
+The compact retained closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d4-openai-streaming-closure.json`.
+The implementation commit's full host validation remains **486 passed** for the
+server API, **329 passed / 4 skipped** for scheduler and public LLM paths, and
+**68 passed / 9 skipped** for GGUF runner/graph paths.
+
+Every D4 checkbox in `docs/CONCURRENCY.md` is now closed. This advances the
+bounded gfx1100 GGUF OpenAI path to correctness-only `continuous_eq_ok`; it does
+not claim server throughput, TTFT, ITL, concurrent GPU execution, native c8, or
+project-wide backend/model coverage. D5 full live-loop observability is the
+remaining Phase-D gate. gfx1151 E1 remains hardware-blocked on this host.
+
+## 2026-07-16 — Add the D5 scheduler observability snapshot
+
+Started D5 at the model-owning loop rather than extending the existing
+HTTP-only counters. `ResidentBatchScheduler.observability_snapshot()` now emits
+current pending/admitted/active ownership, cumulative admissions/reclaims,
+physical bucket capacity/active mask/slot map/occupancy, executed
+prefill/decode/reclaim counts, and a bounded 1,024-completion metadata history.
+The history deliberately excludes prompt/generated text and retains structured
+finish plus request timing/KV/bucket metadata only.
+
+Per-request completion metadata now distinguishes queue, submitted-to-first-token
+TTFT, per-row inter-token intervals, admitted-to-completion service time, and
+submitted-to-completion wall time. Live summaries expose count/sum/max/p50/p95
+plus bounded samples for closure artifacts; requests cancelled before admission
+or before a first token keep the unavailable service/TTFT fields null rather
+than manufacturing zero latency. `ResidentEngineLoop` adds the selected
+prefill/decode policy and last executed work class, while
+`SubmitPollTextGenerator` and the public `LLM` expose one lock-consistent
+snapshot without forcing model load.
+
+The RED fixture first failed because no live snapshot existed. GREEN validation
+is **316 passed** for the complete scheduler file and **14 passed / 4 skipped**
+for public LLM generation files; focused compilation and diff checks pass. This
+is the first D5 logical unit only. The next unit must attach real GGUF KV/graph
+and route/fallback manifests, then render the combined snapshot through the
+Prometheus endpoint.
+
+## 2026-07-16 — Attach D5 GGUF resource and route observability
+
+The second D5 unit attaches the abstract loop snapshot to the actual long-lived
+GGUF owner. `Qwen35GGUFResidentModelRunner.observability_snapshot()` now reports
+resident capacity/active ids/session availability; the complete dynamic-pool
+stats payload including current/high-water bytes and pages, free/refcounted/
+pinned pages, and grow/failure/shrink counts; and cumulative route/fallback
+metadata.
+
+Route counters distinguish full-row and incremental native prefill, packed
+native decode transitions, c1 decode transitions, multi-row serial fallback,
+and resident sampler/zero-token fallback. The last detailed packed execution
+manifest is retained verbatim, and a bounded completion history keeps only
+request id plus execution-shape/fallback metadata. Fallback reasons are additive
+and explicit; no backend or quant branch was added outside the existing GGUF
+plugin owner.
+
+Real graph handles are now observed by their full stable bucket key before
+invalidation. Each bucket retains current entries plus cumulative captures,
+hits, replay calls, and invalidations; aggregate totals are derived from those
+bucket rows. The graph observer samples replay deltas rather than counting
+object lookups, and the existing device-KV release path records the handle before
+closing it so capture/replay evidence survives page reclaim.
+
+RED fixtures first found the missing runner snapshot. GREEN covers route
+counters/manifests across native c2, c1, sampled, and zero-token requests;
+atomic dynamic-KV high-water metrics; and one bucket's capture→two replay
+hits→invalidation lifecycle. The complete GGUF generation file is **57 passed**;
+the focused real-runner file is HIP-skipped on the host interpreter as expected.
+Python compilation and diff checks pass. Prometheus rendering and a real W7900
+live scrape remain open.
+
+## 2026-07-16 — Export D5 resident metrics through Prometheus
+
+The opt-in `/metrics` endpoint now consumes one `LLM.live_loop_snapshot()` per
+scrape instead of independently racing the scheduler, runner, pool, and graph
+owners. It preserves the prior additive HTTP/queue metrics and exports resident
+pending/admitted/active and physical occupancy gauges; cumulative admission,
+reclaim, and prefill/decode/reclaim work counts; actual scheduler policy/active
+mask/last-work info; and bounded queue/TTFT/ITL/service/completion summaries.
+
+The same scrape reaches the real GGUF dynamic pool rather than the legacy
+`_session` discovery path, adding current/high-water pages and pinned pages to
+the existing byte/ref/grow/failure/shrink metrics. Graph exports now include
+aggregate captures/replays/invalidations and stable-bucket entry/capture/hit/
+replay/invalidation rows. Route and fallback counters are labeled, while a
+compact info metric identifies the detailed last route manifest; the full
+manifest and bucket keys remain in the JSON snapshot for retained artifacts.
+
+A RED server fixture first proved every resident metric was absent. GREEN now
+checks all six D5 categories from one synthetic snapshot, including fractional
+latency quantiles and per-bucket graph labels. Existing opt-in/additive,
+malformed-value filtering, cancellation, and SSE KV metadata tests remain green.
+Full validation is **487 passed** for `tests/test_server_api.py` and 387 passed,
+4 skipped across the scheduler, GGUF generation, and public LLM files.
+Ruff,
+Python compilation, and diff checks pass. `docs/API.md` and `docs/ENVS.md`
+document the expanded public metric surface. A clean real W7900 scrape/artifact
+is still required before D5 closes.
+
+## 2026-07-16 — Fix D5 real GGUF graph replay accounting
+
+The pre-hardware D5 gate audit found that the resident graph observer counted a
+synthetic test-double `replay_count`, while the real
+`Qwen35GGUFDecodeGraph` ABI records `replayed_steps` and
+`steps_per_replay`. Real W7900 graph captures and invalidations could therefore
+be visible while every replay/hit counter remained zero.
+
+The RED graph-observability fixture now uses the real handle fields and first
+failed with `hits_total == 0`. The observer derives launch count as
+`replayed_steps // steps_per_replay` for real handles while retaining support
+for third-party/test handles that expose `replay_count`. GREEN validation is
+**57 passed** for `tests/test_generation_qwen35_gguf_sampling.py`; focused Ruff,
+Python compilation, and diff checks pass. The clean W7900 D5 gate must now prove
+that these corrected counters advance through a real capture/replay/invalidation
+lifecycle.
+
+## 2026-07-17 — Close gfx1100 GGUF D5 live observability
+
+D5 is closed at observable correctness-only `continuous_eq_ok`. The final
+implementation stack is scheduler/latency snapshot `0b843feb`, real GGUF
+KV/graph/route snapshot `61536cc9`, Prometheus rendering `b49bc0ef`, and real
+graph replay accounting `7ab8eb3b`. Public `/metrics` now consumes the same
+single lock-consistent snapshot as `LLM.live_loop_snapshot()`; it does not
+scrape independently mutable scheduler, runner, pool, or graph owners.
+
+The accepted clean W7900 gate used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV,
+TheRock HIP 7.15, cached compiler provenance, resident capacity 4, 256-token
+prefill chunks, two-chunk per-request HTTP queues, and a 3/3/12/3-page dynamic
+pool policy:
+
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
+  PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin \
+  LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib \
+  HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 \
+  PYTHONPATH=/home/lhl/hipEngine-main \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+  $PY /tmp/gfx1100_d5_live_observability.py
+```
+
+The gate passes all **12/12** checks in **84.048254 s**. A and B fill their own
+two-chunk queues and remain simultaneously visible as **2 admitted/active rows,
+2/4 occupied slots, occupancy 0.5**, and **6 current/refcounted pages**. They
+execute three native packed c2 transitions; A finishes exact **16/16** tokens
+and B disconnects after an exact **4/4** prefix with zero Conv/GDN/live-KV
+mismatches. Post-live metrics report **4 prefill, 16 decode, 2 reclaim** work
+items and bounded queue/TTFT/ITL/service/completion sample counts
+**2/2/18/2/2**. These latency values validate instrumentation only; no server
+performance claim is attached.
+
+A third scheduler-owned p512 row captures the full real gfx1100 graph bucket
+`600fea7531de4e78504fc1841e818e805c6199b4684ce560592cb6d5ba1e9ee4`
+at the admitted 24-replay threshold. Its first token and all 24 replay tokens
+match independent eager c1, and final state/KV has zero mismatches. The live
+scrapes advance **entries/captures/hits/replays/invalidations** from
+`1/1/0/0/0` to `1/1/24/24/0` to `0/1/24/24/1`; the pool moves from three
+refcounted+pinned pages to zero only after invalidation. Final scheduler rows,
+runner rows, refcounts, and pins are all zero. The artifact retains the full
+bucket key, route counts, empty explicit fallback map, complete two-row packed
+execution manifest, and bounded per-request route metadata.
+
+The final source JSON is
+`/tmp/gfx1100-d5-live-observability-clean-7ab8eb3b.json` (85,039 bytes,
+SHA-256 `eb819615413e247364e0d013f0a2810f4314492fa2fb37052177c103415d271e`);
+the accepted harness is `/tmp/gfx1100_d5_live_observability.py` (25,862 bytes,
+SHA-256 `a7517d8351f52949674b14f31362b9267419ad3873923cb0601139f04def0703`).
+The first complete diagnostic used eight live tokens; it correctly found that
+A could complete backend work while its HTTP queue remained full, so the
+accepted shape uses 16 tokens to hold a genuine c2 scrape. Earlier instrumented
+runs were stopped after localizing an `aclose()` timing race to cancellation
+while a threadpool `next()` was active; waiting until both bounded queues are
+full makes the closure barrier deterministic without changing production code.
+
+Final host validation remains **487 passed** for `tests/test_server_api.py` and
+**387 passed, 4 skipped** across scheduler, GGUF generation, and public LLM
+files; the real graph-ABI RED/GREEN file is **57 passed**. Focused D5 Ruff,
+Python compilation, JSON validation, and diff checks pass. A broader Ruff sweep
+also reports the unchanged pre-existing `Any` F821 at
+`tests/test_generation_batch_scheduler.py:15869` from `1959b58f`; it is not a
+D5 regression and was left untouched. The retained closure is
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-d5-live-observability-closure.json`.
+
+Phase D is complete for gfx1100 GGUF. This does not claim concurrent GPU kernel
+execution, server throughput/TTFT/ITL performance, project-wide continuous
+batching, gfx1151 symmetry, PARO loop support, or native c8. E1 remains
+hardware-blocked on this host; E2 true native c8 is the next executable gfx1100
+item.
+
+## 2026-07-17 — Open E2 with one eager native-c8 GGUF model step
+
+RED host contracts replaced the historical c8→c4+c4 AR lowering with one direct
+eight-row packed prefill/decode call while preserving honest c10→c8+c2 lowering.
+The AR width is now independent of the still-c4 MTP target-verifier cap, and the
+resident runner can use c8 when explicitly provisioned above its unchanged c4
+default capacity. The packed lifecycle oracle now admits c8 and retains a
+representative eager execution manifest as a required native-step check.
+
+A hermetic W7900 probe used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP
+7.15, eight packed rows, eight independent c1 references, p16/d2, all 40 layer
+hidden taps, strict exact GDN prefill, and cached builds only:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode eager --prompt-length 16 \
+  --decode-steps 2 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-p16-d2-manifest.json
+```
+
+The gate passes exact token trajectories, initial/final Conv/GDN and live-KV
+state, and **960/960** layer-hidden comparisons. Its retained eager manifest is
+`rows=8` with zero complete-c1 session/layer replays, zero host model-row loop
+sites/iterations, and zero per-row model-subgraph invocations. Source JSON and
+stdout are byte-identical, SHA-256
+`971bb94930e46ef3bb8febe33bc07b7f05af46296f269c6e46f1862398c388ff`.
+Host validation is **61 passed** across the GGUF generation and state-oracle
+files; focused Ruff, Python compilation, JSON assertions, lineage review, and
+diff checks pass.
+
+This is the first E2 implementation unit, not E2 closure or a performance claim.
+C8 eager metadata still uses the explicit `host_upload` fallback; c8 graph
+metadata/feedback, physical c1/c2/c4/c8 active-mask buckets, sparse non-edge
+retirement, cancellation, p512/d128, and profiler evidence remain open. No
+kernel body or registry key changed in this unit.
+
+## 2026-07-17 — Enable true c8 GGUF graph metadata and replay
+
+RED contracts first failed because the graph key/capture and device-position
+metadata/feedback launch guards stopped at four rows and only c4 registry keys
+existed. The graph path now admits at most eight physical rows, resolves explicit
+c8 metadata/commit variants for widths five through eight, and preserves the old
+c4 aliases for widths one through four. The underlying device-position and
+sampled-i32→embedding-i64 bodies were already row-generic; only their Python/HIP
+launch validation widened to eight. The eager host-scalar metadata helper stays
+explicitly c4-only.
+
+The analytic eight-row/two-step W7900 fixture is byte-exact for block tables,
+positions/contexts, singleton GDN segments, identity state indices, token
+feedback/recording, and indexed BF16 layer recording. Cached-only HIP 7.15
+`rocprofv3 --kernel-trace` records two
+`prepare_packed_decode_metadata_from_positions_kernel` launches at
+**4.520/2.400 us** (64 threads, 16 VGPR) and two
+`commit_packed_decode_graph_step_kernel` launches at **3.161/3.360 us** (one
+thread, 8 VGPR), all with zero scratch/LDS. The raw trace is
+`/tmp/gfx1100-e2-c8-control-rocprof/c8-control_kernel_trace.csv`, SHA-256
+`c7e4302856252cc76bab423022aca9a7e3ddbf89b93a129a217781101573ff29`.
+The profiled process first calls `build_runtime_state(require_cached=True)` and
+therefore cannot compile under the profiler.
+
+The real all-layer gate used the same Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV,
+TheRock HIP 7.15, p16/c8/d2, strict exact GDN, and eight independent c1
+references as the eager opener:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph --prompt-length 16 \
+  --decode-steps 2 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-graph-p16-d2.json
+```
+
+It captures one `physical_rows=8`, all-active bucket and replays it twice. Token
+trajectories, initial/final Conv/GDN and all live KV bytes are exact, as are
+**960/960** all-layer hidden comparisons. The graph manifest reports zero
+complete-c1 session/layer replay, host model-row loops/iterations, per-row model
+subgraphs, steady metadata/input copies, and state scatter. The source JSON is
+14,893 bytes, SHA-256
+`f705cc0b48602a4c41ee2701c55531cb3d421ca156fad0bb0e15a17d9fc99fa1`.
+The first model attempt correctly failed before capture because the changed
+helper lacked the runner's explicit gfx1100 cache key; prebuilding exact cache
+`aa9ad290278fa894` outside the run made the required-cached gate pass.
+
+Validation is **71 passed** across graph-key, runtime-plan, oracle-contract, and
+GGUF generation files; the complete runtime-state GPU file is **4 passed**.
+Focused Ruff, full Python compilation, JSON assertions, lineage review, and diff
+checks pass. This closes c8 graph-control/replay for an all-active short steady
+group only. Physical masked buckets, ragged/sparse non-edge retirement,
+cancellation, p512/d128, and retained profiler/scaling evidence remain open; no
+performance claim is made.
+
+## 2026-07-17 — Preserve sparse physical slots in decode work
+
+The first masked-bucket RED contract showed that `ResidentBatchScheduler`
+already owned the correct sparse physical slots but discarded them when building
+`WorkItem`: model runners received only compact request ids. Decode work now
+carries ordered `slot_ids` plus a work-specific `active_mask`; validation requires
+one unique non-negative active lane per request and exact mask/slot agreement.
+The scheduler's graph-shape key uses that same decode mask rather than counting
+prefill-only neighbors as decode rows.
+
+A three-slot retirement fixture now emits `(0,1,2)/(1,1,1)`, then
+`(1,2)/(0,1,1)`, then `(2)/(0,0,1)` without compaction. The complete dispatch
+and scheduler suite is **321 passed**. Focused source/test Ruff and Python
+compilation pass; the large scheduler file requires the existing scoped
+`--ignore F821` for the pre-existing unimported `Any` at line 15869, unchanged
+from D5. This is host ownership plumbing only: the GGUF model runner still must
+consume these physical lanes and prove inactive session state/KV immutability.
+
+## 2026-07-17 — Execute fixed physical c8 masks without compaction
+
+The resident GGUF loop now carries scheduler-owned physical slot ids into the
+native packed step instead of compacting the remaining request rows. Declared
+physical bucket widths are c1/c2/c4/c8; inactive singleton lanes use token `0`,
+position `-1`, zero live count, and an all-`-1` block table. Packed state import,
+cursor advance, flush/scatter, layer-hidden capture, and sampled-token return
+skip those lanes while the model step retains the full physical row extent.
+Execution manifests now report `physical_rows`, `active_rows`, `active_mask`,
+and `active_slot_indices` and account movement using active rows only.
+
+The retained W7900 probe used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP
+7.15, packed p16/c8/d5, strict exact GDN, cached builds only, and eight
+independent c1 references:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode eager --prompt-length 16 \
+  --decode-steps 5 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-masked-c8-shrink-p16-d5.json
+```
+
+One physical c8 workspace executes masks
+`11111111 → 10110111 → 10100101 → 00100100 → 00000100`, or active widths
+c8→c6→c4→c2→c1, with no compaction. Tokens, initial/final state, and
+**1,160/1,160** all-layer hidden comparisons are exact. Every transition also
+compares all eight sessions' Conv/GDN and live-KV bytes, so retired lanes are
+proved immutable rather than omitted. The 38,087-byte source JSON has SHA-256
+`2b117e0e3eea03104f3469570d4484865f22f8e59760a1632fc30d784e73f603`.
+
+The changed shared layout/manifest path was then regressed through the prior
+all-active c8 graph gate. Its p16/c8/d2 token/state/KV and **960/960** layer-
+hidden comparisons remain exact; the 15,131-byte JSON SHA-256 is
+`f42b9bd15a161d7fa30146bef095f2ddfe49efd25e03a00cc06193b91c481545`.
+Host validation is **96 passed** across GGUF generation, layout, manifest, and
+oracle-contract files; full Python compilation, JSON assertions, and diff
+checks pass. Focused Ruff reports the same 16 pre-existing runner F401/F821/F841
+findings at `61199d71` and none in this diff; no unrelated lint cleanup was
+included.
+
+This closes eager physical-mask execution and non-edge no-compaction retirement
+only. Masked graph capture/replay, ragged cancellation, the standard p512/d128
+gate, and retained native-c8 profiler/scaling evidence remain open. No
+performance claim is made.
+
+## 2026-07-17 — Capture and replay masked physical c8 graphs
+
+RED host contracts failed in five places: graph keys dereferenced inactive
+`None` lanes, final layouts advanced the `-1` sentinel, the public capture API
+had no physical-lane mapping, and the two device control wrappers had no active-
+mask ABI. Packed graph capture now accepts compact active sessions plus
+`physical_rows`/`active_slot_indices`, builds a fixed physical layout, includes
+the mask buffer in graph identity, and retains `-1` generations for inactive
+lanes. Replay advances only populated sessions; flush/scatter and graph pinning
+keep the physical tuple without touching inactive lanes.
+
+The device-position metadata and sampled-token commit helpers now accept an
+optional `uint8_t* active_mask`. Metadata emits zero inactive contexts and all-
+`-1` inactive block rows while finding the active maximum context. Commit skips
+inactive embedding feedback, token recording, position/context advance, and
+therefore leaves every sentinel stable across cumulative replays. A null mask
+preserves the old all-active c4/c8 call semantics and registry aliases.
+
+The complete GPU runtime-state file passes **5 tests**. Its new eight-row/two-
+step oracle verifies active mask `10100101`: inactive positions stay `-1`,
+contexts stay zero, block rows stay `-1`, token feedback stays unchanged, and
+recorded token slots stay `-1`, while active lanes advance exactly. A cached-
+only HIP 7.15 W7900 `rocprofv3 --kernel-trace` run executes
+`prepare_packed_decode_metadata_from_positions_kernel(..., unsigned char const*, ...)`
+at **5.560 us** (64 threads, 16 VGPR) and
+`commit_packed_decode_graph_step_kernel(..., unsigned char const*, ...)` at
+**1.720 us** (one thread, 8 VGPR), both with zero scratch/LDS. The profiler DB
+is `/tmp/gfx1100-e2-masked-control-rocprof/epyc/3861161_results.db` (SHA-256
+`fd43952aa09fdfc431d093e77fe2d9ea360d5b7360ab98671160e9d0693b4084`); its
+4,676-byte cached-only harness SHA-256 is
+`48155173da8d6134fcfaedcf58dbeeb470cc4fca9597ab95bf7d6261bc997cfb`.
+
+The real model gate used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP 7.15,
+strict exact GDN, packed p16/c8/d5, all 40 hidden taps, cached builds only, and
+eight independent c1 references:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode graph --prompt-length 16 \
+  --decode-steps 5 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-masked-c8-graph-shrink-p16-d5.json
+```
+
+Five distinct physical-c8 graph keys capture and replay masks
+`11111111 → 10110111 → 10100101 → 00100100 → 00000100`. Every key reports
+physical rows 8, active rows 8/6/4/2/1, inactive state generations `-1`, and zero
+inactive live counts. Tokens, initial/final state, every transition's all-eight-
+session Conv/GDN/live-KV comparison, and **1,160/1,160** hidden comparisons are
+exact. Every manifest reports zero complete-c1 session/layer replay, zero host
+model-row loops/subgraphs, zero steady H2D copies, and zero state scatter. The
+58,959-byte JSON SHA-256 is
+`4a87214e151faf28d2e5e853dc8fe6deeb0a22e4429ffedab084eee122c4cd7a`.
+
+The all-active p16/c8/d2 cumulative graph regression remains exact through two
+replays and **960/960** hidden comparisons; its 15,238-byte JSON SHA-256 is
+`717f0ec2c7eecbd3e46a5db87eea38abd3300e9f5a2c2568902e039ca73ea15a`.
+Adjacent host/GPU validation is **114 passed**; focused Ruff (scoped around the
+known runner debt), full Python compilation, JSON assertions, lineage review,
+and diff checks pass.
+
+This closes E2 physical c1/c2/c4/c8 active-mask support and masked graph replay,
+but not E2 closure or a performance claim. Ragged prompts, live cancellation,
+the standard p512/d128 equality gate, and retained native-c8 scaling remain
+open.
+
+## 2026-07-17 — Close native c8 ragged, cancellation, and p512/d128 equality
+
+All gates below ran from clean `bbe6deb0` on the W7900/gfx1100 with
+Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP 7.15, exact GDN, and cached
+builds. No throughput result is retained in this unit.
+
+The ragged graph gate uses row 0 at prompt length 16 and rows 1–7 at length 23,
+then four native-c8 transitions:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 16 --alternate-prompt-length 23 \
+  --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-ragged-graph-p16-23-d4.json
+```
+
+It captures one c8 graph, replays four times, and passes exact tokens,
+Conv/GDN/live-KV, and **1,600/1,600** hidden comparisons. The 15,679-byte JSON
+SHA-256 is `e880e271fdb126fb5809785944904b6e26cb893e68fcbaa622c6803d74568338`.
+
+The live-cancellation gate adapts the retained D2 harness to resident capacity
+8, ragged prompt lengths 16–23, and non-edge lane 3. Initial attempts correctly
+exposed two harness/protocol mismatches rather than model failures: D3 pool
+sessions have deferred KV and cannot serve as dense references before admission,
+and the default `protect_decode` policy drains one row before prefetching the
+next. The accepted harness uses one standalone dense reference session sharing
+the loaded model, matches the live pool's production WMMA/GEMV route, and sets
+`HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft` explicitly.
+
+One all-active native c8 step is followed by cancellation after row 3's second
+token and two masked physical-c8 steps with mask `11101111`. All eight token
+prefixes, the cancelled row's Conv/GDN/live-KV, every survivor immediately after
+cancel, and all seven final survivor states match independent production-route
+c1 controls. Manifests report zero complete-c1/session/layer/model-row fallback;
+route counts are three packed steps and zero c1/serial/resident fallback. Final
+ownership is 0 active requests, 8 available sessions, and scheduler active 0.
+The 17,812-byte JSON SHA-256 is
+`c4d207cbef812d4f658b2acc9c0bc5481a870f7babaaa40684c73d02a543fc4f`;
+the 11,529-byte `/tmp/gfx1100_e2_c8_live_cancellation.py` SHA-256 is
+`11eb8350845f9408945f45c607a0b757e17814eadb26b75f63bb0928d62a73f7`.
+
+The standard gate ran both explicit modes with p512/c8/d128 and all 40 hidden
+taps:
+
+```bash
+# graph; repeat with --decode-mode eager and its output path
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-graph-p512-d128.json
+```
+
+Graph captures once and replays 128 times; eager executes 128 native-c8 model
+steps. Both modes pass **41,280/41,280** hidden comparisons, exact tokens,
+initial/final Conv/GDN/live-KV, and zero model-row fallback. Graph reports zero
+steady H2D and state copies. Graph JSON is 42,653 bytes, SHA-256
+`11144f10bbd1849c1dbafa558eadb669dd310e7f90e981c87307c272e70f671c`;
+eager JSON is 708,736 bytes, SHA-256
+`0293cf5ebddb24ab199f01d596dd628666baba586b6963b48e1db97e86f922ae`.
+
+The compact retained packet is
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-correctness.json`.
+Across the short steady, ragged, eager/graph sparse, and eager/graph standard
+gates it records **87,440** exact hidden comparisons with zero token/state/KV
+mismatches. This closes E2's complete equality-suite item. Native-c8 scaling,
+optional compaction, arbitrary C>8 lowering, and gfx1151 symmetry remain open.
+
+## 2026-07-17 — Add native c8 scaling and profiler harness
+
+Extended `scripts/gguf_packed_ar_bench.py` from the retained C4 packet to the
+canonical `c1,c2,c4,native_c8,chunked_c8,serial_c4` order. `native_c8` is one
+physical eight-row graph group; `chunked_c8` remains two serial c4 groups. The
+harness now requires physical width/active-mask agreement, cross-route native-c8
+trajectory equality, and native-c8 scaling against c1, chunked-c8, and the
+serial-c4 control.
+
+A dirty-tree implementation validation on W7900, Qwen3.6-35B-A3B UD-Q4_K_M,
+BF16 KV, p512/d128, TheRock HIP 7.15, exact GDN, cached builds, one warmup, and
+three measured runs produced **252.545 aggregate tok/s** for one native c8 graph
+(**31.568 per request**), versus c1 **85.501**, c4 **184.773**, chunked-c8
+**183.460**, and serial-c4 **84.716 aggregate tok/s**. Native c8 is **2.954x
+c1**, **1.377x chunked-c8 (+37.66%)**, and **2.981x serial-c4**. All measured
+trajectories repeat and cross-route hashes match. This run is implementation
+evidence only because provenance correctly records `unstaged_dirty=true`; it is
+not the retained publication source.
+
+Generalized `scripts/gguf_packed_ar_rocprof.py` with a default-preserving
+`--packed-concurrency {4,8}` target, width-specific markers/artifact keys, and
+physical width/mask validation. The first shell launch failed before model/GPU
+work because repository `PYTHONPATH` was absent. The corrected launch produced
+one real c8 graph marker window with **748 dispatches / 26.370 ms**, all packed
+native, zero exact-row-local work, and zero copies. Its initial census rejected
+only because the old C4 oracle required one LM-head dispatch; c8 deliberately
+uses two exact c-aware Q6 row-tile groups (`6+2`). The corrected oracle validates
+the declared chunk count. Reprocessing the same raw trace passes full-attention
+(10 context + 10 KV-write), selected MoE (40 gate/up + 40 down + 40 combine,
+64 lanes), LM-head (2/2), sampler (1+1), and metadata (1) checks at closure
+level C4. Raw c8 kernel/marker CSV SHA-256 values are
+`c1dd5c24da92c85b19864ac1667fc4599fcc77b1f5c4197a8619f3d9873b2412` and
+`f47219fb8c44ec86852bfd11eebbb8a732d03f2199bcfaab098ad97883aef027`.
+
+Implementation validation is **22 passed** across the packed benchmark and
+execution-manifest files; Python compilation, focused Ruff, raw-trace
+reprocessing assertions, and `git diff --check` pass. The next step is a clean
+commit followed by the same full scaling packet, cached-only profiler census,
+and current c8 primitive gate before retention.
+
+## 2026-07-17 — Retain clean native c8 profiler and scaling
+
+Ran the E2 retention sources from clean `52b0db25` on W7900/gfx1100 with
+Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, exact GDN, TheRock HIP 7.15, and cached
+builds. GPU workloads ran strictly sequentially.
+
+The current c8 primitive initially stopped on an expected cache miss before
+kernel execution. Prebuilding the exact HIP-7.15/gfx1100 artifact outside the
+profiler and rerunning with `--require-cached-build` passes with zero K/V append
+mismatch, exact batch-vs-c1 attention, `5.960464477539063e-08` maximum error
+versus NumPy, and exact A/A output. The accepted 2,332-byte source is
+`/tmp/gfx1100-e2-native-c8-clean-52b0db25/primitive-c8.json`, SHA-256
+`5896149e2425fefa54d9d9c2df50ea289e991a56d8b6ab17244f5903c3457b58`.
+
+The paired cached-only profiler command was:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-mode graph --packed-concurrency 8 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler-raw \
+  --skip-warmbuild \
+  --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 \
+  --out /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler.json
+```
+
+It records one physical-c8 graph capture/replay with exact warmup/profile tokens,
+**748 packed-native / 0 exact-row-local / 0 copy dispatches**, one metadata
+producer, and **26.456 ms** instrumented GPU time. Full attention is 10 context
+plus 10 KV-write launches at row extent eight; selected MoE is 40 gate/up, 40
+down, and 40 combine launches over 64 lanes; Q6 LM head is the declared exact
+`6+2` two-launch lowering; sampler is one stage-1 plus one stage-2 launch. Raw c8
+kernel/marker hashes are
+`b608c2d48c89d7fcf78032e3f6eddfa359e28c3f9ebd4e58caed42bd3c1fd608` and
+`dcb8811966dbc3ebd79cb16891b3daec2f8b4210405bdd6f2f1a91a5c45f1584`.
+The 84,350-byte joined profiler JSON SHA-256 is
+`a4be088aa84c186d6dd7f597cbf94c87422e7c0e7cfa2576bcf731adc4e922d7`.
+Profiler durations remain diagnostic.
+
+The clean same-session scaling command was:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-clean-52b0db25/scaling.json
+```
+
+Median aggregate decode is **85.469/127.427/184.575/246.872/183.020/84.738
+tok/s** for c1/c2/c4/native-c8/chunked-c8/serial-c4. One physical c8 is
+**2.888x c1**, **1.349x c4+c4 (+34.89%)**, and **2.913x the serial-c4 rate**.
+All measured trajectories repeat and match their cross-route controls; maximum
+decode stdev/median is **0.466%**. Native-c8 per-request decode is **30.859
+tok/s**, model-step ITL p50/p95 is **32.414/32.749 ms**, packed-prefill TTFT is
+**3.475/3.479 s**, and tracked/HIP-used peak is **25.401/25.881 GiB**. Relative
+to c1, per-request rate is 63.89% lower and tracked peak is 3.617 GiB higher;
+those tradeoffs are part of the retained claim. The 1,341,650-byte source
+SHA-256 is `ecd6a7ebf6da9e930e09944f7a3f86f26894b8220e538381edcdd3b06c0a6bc1`.
+
+Joined the clean primitive, profiler, and scaling sources with the retained
+**87,440**-comparison E2 equality packet in
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json`.
+Source/hash/value assertions and JSON parsing pass. The final compact artifact is
+19,375 bytes, SHA-256
+`751c792de955b0e7dcb718065364e5c4e776a360495d2d6799911a1175fe3a5d`.
+`tests/test_benchmark_readme_sync.py` passes **6/6**; README export sync and
+`git diff --check` pass. Updated the benchmark scoreboard/changelog and
+`docs/CONCURRENCY.md`; the claim remains direct model-step throughput only. Optional compaction, arbitrary C/C>8 lowering,
+server-wall burst/live-admission performance, gfx1151 symmetry, and PARO remain
+separate gates.
+
+## 2026-07-17 — Audit final gfx1100 E2 scope and rollback debt
+
+Audited `docs/CONCURRENCY.md` against the retained A–E2 artifacts after
+`d09aa573`. Every mandatory gfx1100 GGUF E2 requirement is covered: physical
+c1/c2/c4/c8 buckets and masks, one true c8 group, eager/graph steady and standard
+p512/d128 equality, ragged and sparse c8→c1 retirement, non-edge cancellation,
+inactive state/KV immutability without compaction, current primitive evidence,
+zero-fallback profiler census, and same-session scaling with latency/memory
+tradeoffs. No mandatory E2 execution remains.
+
+The unchecked items are intentionally separate scope rather than hidden E2
+failures: optional physical-slot compaction; E3 arbitrary logical C and C>8
+policy; E1 gfx1151 symmetry; F1 server-wall burst/live-admission and category
+retention; Phase G PARO; and later normal sampling/advanced composition. The E2
+artifact explicitly makes no claim for them.
+
+Updated `docs/REFACTOR.md` because four rollback entries still described the
+now-closed gfx1100 c1–c8 gates as pending. Packed decode/prefill remain default-on
+and their original gfx1100 correctness/profiler trigger is now marked met.
+`_generate_ar_serving_slots()` remains an independent direct oracle rather than
+a second public scheduler, and the stream route remains rollback/unsupported-
+shape coverage. Concrete removal blockers are one release window plus E3
+arbitrary-C and F1 server evidence; gfx1151 keeps an independent E1 decision.
+No runtime flag or fallback is removed in this documentation-only audit.
+Re-read the changed ledger rows; all three named env flags exist in the live
+GGUF generator, Markdown table shape, conflict scan, and `git diff --check` pass.
+
+## 2026-07-17 — Merge gfx1100 concurrency into synchronized main
+
+Pushed `gfx1100-concurrency` to origin at `227129d6`, fetched `origin/main`, and
+fast-forwarded local `main` from `03a69a68` to `2edbb2ee` (16 upstream commits).
+The feature branch diverged by 59 commits from the common base. A no-ff merge
+found one additive conflict in `benchmarks/CHANGELOG.md`: upstream had newer
+July 16 gfx1151 stall diagnostics while the feature branch had the gfx1100
+concurrency B3–D4 rollup entries. Resolved it as reverse chronology by retaining
+all upstream entries first, then all feature entries, then the common older
+entries. README/benchmark exports, `WORKLOG.md` union merge, and every code path
+auto-merged without conflict.
+
+The Python 3.10 milestone run (`uv run pytest -v`) completed all 6,437 tests in
+31m14s: **6,383 passed, 53 skipped**, and one shutdown-grace test failed because
+`asyncio.TimeoutError` is distinct from built-in `TimeoutError` on 3.10 (the
+same classes are aliases on the Python 3.12 development environment). Updated
+`_GenerationBatcher.shutdown()` to catch `asyncio.TimeoutError`, which is valid
+on both versions. The exact failed test then passed **1/1**, and the full
+`tests/test_server_api.py` module passed **487/487** under Python 3.10. The
+other 6,383 full-suite tests, including real-model GPU gates, passed before the
+isolated compatibility correction. `compileall` for `hipengine`, `scripts`, and
+`tests`; README export sync; 16 new benchmark JSON parses; additive changelog
+ordering assertions; conflict scans; and staged/unstaged diff checks all pass.

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
 from hipengine.runtime.gguf_decode_graph import (
+    Qwen35GGUFDecodeGraph,
     _decode_graph_kv_layout_admitted,
     build_qwen35_gguf_decode_graph_key,
 )
@@ -156,6 +157,43 @@ def test_decode_graph_admits_bf16_and_tail4_hadamard_only() -> None:
 
     session.kv_storage_layout = "uniform"
     assert _decode_graph_kv_layout_admitted(session) is False
+
+
+def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
+    calls: list[tuple[str, int]] = []
+    unpinned: list[object] = []
+    runtime = SimpleNamespace(
+        graph_exec_destroy=lambda handle: calls.append(("exec", int(handle))),
+        graph_destroy=lambda handle: calls.append(("graph", int(handle))),
+        stream_destroy=lambda handle: calls.append(("stream", int(handle))),
+    )
+    session = SimpleNamespace(runtime=runtime, _decode_graphs=[])
+    session._unpin_device_kv_graph = lambda graph: unpinned.append(graph)
+    graph = Qwen35GGUFDecodeGraph(
+        session=session,
+        graph=11,
+        graph_exec=12,
+        stream=13,
+        position=0,
+        steps_per_replay=1,
+        max_replay_steps=1,
+        generated=None,
+        generated_hidden_seeds=None,
+        generated_index=None,
+        record_steps=0,
+        bucket_key=SimpleNamespace(),
+        attention_max_context_len=1,
+        capture_hidden_seed_fp32=False,
+    )
+    session._decode_graphs.append(graph)
+
+    graph.close()
+    graph.close()
+
+    assert graph.closed is True
+    assert session._decode_graphs == []
+    assert unpinned == [graph]
+    assert calls == [("exec", 12), ("graph", 11), ("stream", 13)]
 
 
 def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:

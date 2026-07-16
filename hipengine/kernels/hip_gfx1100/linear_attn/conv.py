@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("conv.hip")
 _OUTPUT_NAME = "qwen35_linear_attn_conv.so"
 _SYMBOL_F32 = "hipengine_qwen35_linear_attn_conv_decode_f32"
 _SYMBOL_BF16 = "hipengine_qwen35_linear_attn_conv_decode_bf16"
+_SYMBOL_INDEXED_BF16 = "hipengine_qwen35_linear_attn_conv_decode_indexed_bf16"
 _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_TREE_BF16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop"
 _SYMBOL_TREE_FP16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop"
@@ -119,6 +120,53 @@ def qwen35_linear_attn_conv_decode_bf16(
         library=library,
         runtime=runtime,
     )
+
+
+def qwen35_linear_attn_conv_decode_indexed_bf16(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    state_indices_ptr: int,
+    rows: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch sparse indexed BF16-input batch decode convolution."""
+
+    _check_positive(rows, "rows")
+    _check_conv_shape(channels, kernel_size)
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_INDEXED_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_linear_attn_conv_decode_fp16(
@@ -554,6 +602,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_decode", "w4_paro", "fp16"),
         qwen35_linear_attn_conv_decode_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_decode", "gguf_qwen35", "bf16_indexed"),
+        qwen35_linear_attn_conv_decode_indexed_bf16,
         replace=replace,
     )
     register(

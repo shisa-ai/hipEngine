@@ -16,6 +16,7 @@ from hipengine.dispatch import (
 )
 from hipengine.kvcache import (
     ChunkedKVPool,
+    DeviceChunkedKVPool,
     FixedPagedKVPolicy,
     KVLiveSpans,
     KVScaleMetadata,
@@ -237,6 +238,98 @@ def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
     again = pool.allocate(1, now_seconds=9.0)
     assert again.block_ids == (0,)
     assert again.pointers == (pool.pointer_for(0),)
+
+
+def test_device_chunked_kv_pool_burst_shrink_regrow_preserves_live_pointers() -> None:
+    allocated: list[tuple[int, int, int]] = []
+    freed: list[int] = []
+
+    def allocate_chunk(start_block_id: int, pages: int):
+        backing = {
+            "ptr": 0x80000000 + len(allocated) * 0x100000,
+            "pages": int(pages),
+        }
+        allocated.append((int(start_block_id), int(pages), int(backing["ptr"])))
+        return backing
+
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=2,
+        low_water_pages=2,
+        high_water_pages=4,
+        chunk_pages=2,
+        idle_grace_seconds=1.0,
+        allocate_chunk=allocate_chunk,
+        free_chunk=lambda backing: freed.append(int(backing["ptr"])),
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+
+    steady = pool.allocate(10, 2, now_seconds=1.0)
+    burst = pool.allocate(20, 2, now_seconds=2.0)
+    steady_pointers = steady.pointers
+    burst_pointers = burst.pointers
+    assert pool.stats.current_pages == 4
+    assert pool.stats.grow_events == 1
+
+    pool.pin(burst.block_ids)
+    pool.release(20, now_seconds=3.0)
+    assert pool.shrink_idle(now_seconds=5.0) == 0
+    assert pool.stats.pinned_pages == 2
+    assert pool.stats.free_pages == 0
+
+    pool.unpin(burst.block_ids)
+    assert pool.shrink_idle(now_seconds=5.0) == 2
+    assert freed == [burst_pointers[0]]
+    assert steady.pointers == steady_pointers
+    assert tuple(pool.pointer_for(block_id) for block_id in steady.block_ids) == steady_pointers
+
+    regrown = pool.allocate(30, 2, now_seconds=6.0)
+    assert regrown.block_ids == (4, 5)
+    assert regrown.pointers != burst_pointers
+    assert pool.stats.grow_events == 2
+    assert pool.stats.high_water_observed_pages == 4
+
+    pool.release(30, now_seconds=7.0)
+    assert pool.shrink_idle(now_seconds=9.0) == 2
+    pool.release(10, now_seconds=10.0)
+    pool.close()
+    assert len(freed) == 3
+
+
+def test_device_chunked_kv_pool_high_water_failure_is_atomic() -> None:
+    backings: list[dict[str, int]] = []
+
+    def allocate_chunk(start_block_id: int, pages: int):
+        backing = {"ptr": 0x90000000 + int(start_block_id) * 4096, "pages": int(pages)}
+        backings.append(backing)
+        return backing
+
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=1,
+        low_water_pages=1,
+        high_water_pages=2,
+        chunk_pages=1,
+        allocate_chunk=allocate_chunk,
+        free_chunk=lambda backing: None,
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+    first = pool.allocate(1, 1)
+    second = pool.allocate(2, 1)
+    before = pool.stats
+
+    with pytest.raises(MemoryError, match="high-water"):
+        pool.allocate(3, 1)
+
+    after = pool.stats
+    assert pool.allocations == {1: first, 2: second}
+    assert after.current_pages == before.current_pages == 2
+    assert after.refcounted_pages == before.refcounted_pages == 2
+    assert after.grow_events == before.grow_events == 1
+    assert after.grow_failures == before.grow_failures + 1
+    pool.release(2)
+    pool.release(1)
+    pool.close()
 
 
 def test_chunked_kv_pool_copy_on_write_fork_preserves_prefix_and_splits_suffix() -> None:

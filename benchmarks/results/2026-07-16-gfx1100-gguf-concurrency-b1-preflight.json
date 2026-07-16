@@ -1,0 +1,886 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_b1_preflight",
+  "created_at": "2026-07-16T04:48:17.745414+00:00",
+  "status": "primitive_ok",
+  "passed": true,
+  "claim_level": "primitive_ok",
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-16T04:48:17.745377+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "c553631e3b45f466e0fe01df4d64a4f875e6d554",
+    "git_branch": "gfx1100-concurrency",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "python3",
+      "/tmp/generate_b1_summary.py"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "GPU_MAX_HW_QUEUES": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public gfx1100 GGUF package defaults; precomputed HIP 7.15 compiler key; cached builds required under rocprofv3",
+    "timing_protocol": "correctness and route preflight only; c2/c4 primitive gates plus one isolated packed-c2 decode transition",
+    "warmups": 1,
+    "repetitions": 1,
+    "profiler": {
+      "used": true,
+      "tool": "rocprofv3",
+      "mode": "kernel-trace",
+      "performance_measurement": false
+    }
+  },
+  "commands": {
+    "primitive_c2": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_batch_correctness.py --rows 2 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c2.json",
+    "primitive_c4": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_batch_correctness.py --rows 4 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c4.json",
+    "primitive_c4_rocprof": "rocprofv3 --kernel-trace --output-directory /tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-primitive-c4-cached -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_batch_correctness.py --rows 4 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c4-profiled-cached.json",
+    "packed_c2_rocprof": "rocprofv3 --kernel-trace --output-directory /tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-packed-c2-cached -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 2 --prefill-mode independent_c1 --prompt-length 16 --decode-steps 1 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-b1-clean-c553631e/packed-c2-profiled-cached.json"
+  },
+  "primitive_correctness": {
+    "c2": {
+      "rows": 2,
+      "context_lens": [
+        1,
+        2
+      ],
+      "device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon Pro W7900"
+      },
+      "build": {
+        "compiler_version_supplied": true,
+        "require_cached_build": true,
+        "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+      },
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "attn_batch_aa_max_abs": 0.0,
+      "aa_passed": true,
+      "passed": true
+    },
+    "c4": {
+      "rows": 4,
+      "context_lens": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon Pro W7900"
+      },
+      "build": {
+        "compiler_version_supplied": true,
+        "require_cached_build": true,
+        "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+      },
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "attn_batch_aa_max_abs": 0.0,
+      "aa_passed": true,
+      "passed": true
+    },
+    "profiled_c4_repeat": {
+      "rows": 4,
+      "context_lens": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon Pro W7900"
+      },
+      "build": {
+        "compiler_version_supplied": true,
+        "require_cached_build": true,
+        "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+      },
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "attn_batch_aa_max_abs": 0.0,
+      "aa_passed": true,
+      "passed": true
+    }
+  },
+  "package_policy": {
+    "backend": "hip_gfx1100",
+    "package_capabilities": {
+      "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS": 24,
+      "GGUF_GDN_PREFILL_AUTO_MODE": "chain_peer_wave32",
+      "GGUF_GDN_PREFILL_EXACT_MODE": "chain_lds32_direct_nonvolatile",
+      "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE": "shared_x",
+      "GGUF_Q8_T16_PREFILL_TWO_WAVE": true,
+      "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS": 4096,
+      "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS": 4096,
+      "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS": 256,
+      "GGUF_PREFILL_ROUTER_SELECT_THREADS": 128,
+      "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS": 4096,
+      "GGUF_PAGED_ATTN_PARALLEL_REDUCE": true,
+      "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT": 32768,
+      "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS": true,
+      "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE": "baseline"
+    },
+    "resolved_unset_environment": {
+      "gdn_requested_mode": "auto",
+      "gdn_auto_mode": "chain_peer_wave32",
+      "gdn_exact_mode": "chain_lds32_direct_nonvolatile",
+      "linear_attn_conv_prefill_mode": "baseline",
+      "q4_t16_selected_prefill_mode": "shared_x",
+      "prefill_router_select_threads": 128,
+      "compact_wmma_no_read_max_selected_rows": 4096,
+      "moe_graph_enabled": false,
+      "device_metadata": {
+        "16": true,
+        "512": true,
+        "4096": true,
+        "4097": false
+      },
+      "q8_t16_two_wave": {
+        "16": true,
+        "512": true,
+        "4096": true,
+        "4097": false
+      }
+    }
+  },
+  "primitive_profiler": {
+    "trace": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-primitive-c4-cached/epyc/2728621_kernel_trace.csv",
+      "size_bytes": 7921,
+      "sha256": "63812d53dae5a897a57ac6ef12ea41433c29fec5c10e07ea149da44bb93d3fe2",
+      "dispatch_rows": 39
+    },
+    "safety": {
+      "stderr": {
+        "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-primitive-cached.stderr",
+        "size_bytes": 1482,
+        "sha256": "a98319332044561feb3c26bc9e6f2bdcd2b8d2596d30968bddfcb438d1a47db1"
+      },
+      "observed_process_ids": [
+        2728621
+      ],
+      "observed_child_process_count": 0,
+      "compiler_or_linker_process_matches": [],
+      "zero_compiler_or_linker_children": true
+    },
+    "expected_routes": {
+      "c4_batch_kv_append": {
+        "count": 2,
+        "grid_y": 4
+      },
+      "independent_c1_kv_append": {
+        "count": 4,
+        "grid_y": 1
+      },
+      "c4_batch_full_attention": {
+        "count": 2,
+        "grid_y": 4
+      },
+      "independent_c1_full_attention": {
+        "count": 4,
+        "grid_y": 1
+      }
+    },
+    "routes": {
+      "c4_batch_kv_append": {
+        "kernel_substring": "write_paged_kv_mixed_value_batch_position_tensor_kernel",
+        "count": 2,
+        "total_duration_ns": 9440,
+        "median_duration_ns": 4720.0,
+        "launch_shapes": [
+          {
+            "count": 2,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              256,
+              4,
+              1
+            ],
+            "vgpr": 8,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "independent_c1_kv_append": {
+        "kernel_substring": "write_paged_kv_mixed_value_position_tensor_kernel",
+        "count": 4,
+        "total_duration_ns": 9960,
+        "median_duration_ns": 2480.0,
+        "launch_shapes": [
+          {
+            "count": 4,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              256,
+              1,
+              1
+            ],
+            "vgpr": 8,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "c4_batch_full_attention": {
+        "kernel_substring": "paged_full_attn_decode_context_tensor_batch_kernel",
+        "count": 2,
+        "total_duration_ns": 15040,
+        "median_duration_ns": 7520.0,
+        "launch_shapes": [
+          {
+            "count": 2,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              4,
+              1
+            ],
+            "vgpr": 40,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "independent_c1_full_attention": {
+        "kernel_substring": "paged_full_attn_decode_context_tensor_kernel",
+        "count": 4,
+        "total_duration_ns": 18440,
+        "median_duration_ns": 3860.0,
+        "launch_shapes": [
+          {
+            "count": 4,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "vgpr": 40,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      }
+    },
+    "route_check_passed": true
+  },
+  "packed_c2_profiler": {
+    "oracle": {
+      "passed": true,
+      "tokens_exact": true,
+      "initial_state_exact": true,
+      "dirty_before_flush": true,
+      "flush_executed": true,
+      "final_state_exact": true,
+      "workload": {
+        "rows": 2,
+        "prompt_token_id": 9707,
+        "alternate_token_id": 9708,
+        "prompt_length": 16,
+        "alternate_prompt_length": 16,
+        "prompt_lengths": [
+          16,
+          16
+        ],
+        "prompt_terminal_token_ids": [
+          9707,
+          9708
+        ],
+        "decode_steps": 1,
+        "sampling": "greedy_top1",
+        "kv_dtype": "bf16"
+      },
+      "build": {
+        "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+        "compiler_version_supplied": true,
+        "require_cached_build": true
+      }
+    },
+    "trace": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-packed-c2-cached/epyc/2723272_kernel_trace.csv",
+      "size_bytes": 1774349,
+      "sha256": "5042142dde05fb884e2befa16fab99183eddc8f4954e7859a96905e4444ca137",
+      "dispatch_rows": 6840,
+      "packed_step_start_row_zero_based": 4465,
+      "packed_step_end_row_zero_based": 5419,
+      "packed_step_dispatch_rows": 955,
+      "packed_step_duration_ns": 11673605
+    },
+    "safety": {
+      "stderr": {
+        "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/rocprof-cached.stderr",
+        "size_bytes": 1245,
+        "sha256": "c60428900ca6c550c2ec57c33b1163908fef2d96c1d413af89a3f897a7e4b267"
+      },
+      "observed_process_ids": [
+        2723272
+      ],
+      "observed_child_process_count": 0,
+      "compiler_or_linker_process_matches": [],
+      "zero_compiler_or_linker_children": true
+    },
+    "expected_routes": {
+      "embedding": {
+        "count": 1
+      },
+      "linear_attention_conv_c1_exact_rows": {
+        "count": 60,
+        "grid_y": 1
+      },
+      "linear_attention_gdn_c1_exact_rows": {
+        "count": 60,
+        "grid_y": 1
+      },
+      "router_logits_c2": {
+        "count": 80,
+        "grid_y": 2,
+        "workgroup_x": 256
+      },
+      "router_select": {
+        "count": 40,
+        "workgroup_x": 128
+      },
+      "selected_q4_gate_up": {
+        "count": 40,
+        "grid_y": 16
+      },
+      "selected_q5_q6_down": {
+        "count": 40,
+        "grid_y": 16
+      },
+      "shared_expert_gate_up": {
+        "count": 40,
+        "grid_y": 2
+      },
+      "moe_batch_combine": {
+        "count": 40,
+        "grid_y": 2
+      },
+      "full_attention_kv_append_c2": {
+        "count": 10,
+        "grid_y": 2
+      },
+      "full_attention_context_c2": {
+        "count": 10,
+        "grid_y": 2
+      },
+      "lm_head_c2_rowtile": {
+        "count": 1
+      },
+      "sampler_c2_stage1": {
+        "count": 1,
+        "grid_y": 2
+      },
+      "sampler_c2_stage2": {
+        "count": 1
+      }
+    },
+    "routes": {
+      "embedding": {
+        "kernel_substring": "gguf_q8_0_embedding_bf16_out_kernel",
+        "count": 1,
+        "total_duration_ns": 3160,
+        "median_duration_ns": 3160,
+        "launch_shapes": [
+          {
+            "count": 1,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              2048,
+              2,
+              1
+            ],
+            "vgpr": 16,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "linear_attention_conv_c1_exact_rows": {
+        "kernel_substring": "qwen35_linear_attn_conv_decode_lowp_kernel",
+        "count": 60,
+        "total_duration_ns": 169160,
+        "median_duration_ns": 2800.0,
+        "launch_shapes": [
+          {
+            "count": 60,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              8192,
+              1,
+              1
+            ],
+            "vgpr": 16,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "linear_attention_gdn_c1_exact_rows": {
+        "kernel_substring": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel",
+        "count": 60,
+        "total_duration_ns": 833567,
+        "median_duration_ns": 13600.5,
+        "launch_shapes": [
+          {
+            "count": 60,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              4096,
+              1,
+              1
+            ],
+            "vgpr": 56,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "router_logits_c2": {
+        "kernel_substring": "qwen35_router_logits_kernel",
+        "count": 80,
+        "total_duration_ns": 367364,
+        "median_duration_ns": 4520.0,
+        "launch_shapes": [
+          {
+            "count": 40,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              256,
+              2,
+              1
+            ],
+            "vgpr": 24,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "count": 40,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              65536,
+              2,
+              1
+            ],
+            "vgpr": 24,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "router_select": {
+        "kernel_substring": "qwen35_router_select_kernel",
+        "count": 40,
+        "total_duration_ns": 272840,
+        "median_duration_ns": 6700.0,
+        "launch_shapes": [
+          {
+            "count": 40,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              256,
+              1,
+              1
+            ],
+            "vgpr": 32,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "selected_q4_gate_up": {
+        "kernel_substring": "q4_k_t16_selected_dual_direct_gemv_kernel",
+        "count": 40,
+        "total_duration_ns": 1806492,
+        "median_duration_ns": 44160.0,
+        "launch_shapes": [
+          {
+            "count": 40,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              4096,
+              16,
+              1
+            ],
+            "vgpr": 200,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "selected_q5_q6_down": {
+        "kernel_substring": "qk_t16_selected_direct_gemv_kernel",
+        "count": 40,
+        "total_duration_ns": 1400492,
+        "median_duration_ns": 34700.5,
+        "launch_shapes": [
+          {
+            "count": 3,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              16384,
+              16,
+              1
+            ],
+            "vgpr": 96,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "count": 37,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              16384,
+              16,
+              1
+            ],
+            "vgpr": 128,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "shared_expert_gate_up": {
+        "kernel_substring": "q8_0_t16_dual_gemv_kernel",
+        "count": 40,
+        "total_duration_ns": 422162,
+        "median_duration_ns": 10320.0,
+        "launch_shapes": [
+          {
+            "count": 40,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              8192,
+              2,
+              1
+            ],
+            "vgpr": 56,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "moe_batch_combine": {
+        "kernel_substring": "weighted_sum_shared_gate_combine_residual_batch_out_kernel",
+        "count": 40,
+        "total_duration_ns": 124960,
+        "median_duration_ns": 3080.0,
+        "launch_shapes": [
+          {
+            "count": 40,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              2048,
+              2,
+              1
+            ],
+            "vgpr": 16,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "full_attention_kv_append_c2": {
+        "kernel_substring": "write_paged_kv_mixed_value_prompt_position_tensor_kernel",
+        "count": 10,
+        "total_duration_ns": 47040,
+        "median_duration_ns": 3180.0,
+        "launch_shapes": [
+          {
+            "count": 10,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              512,
+              2,
+              1
+            ],
+            "vgpr": 8,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "full_attention_context_c2": {
+        "kernel_substring": "paged_full_attn_decode_context_tensor_batch_kernel",
+        "count": 10,
+        "total_duration_ns": 146800,
+        "median_duration_ns": 14700.0,
+        "launch_shapes": [
+          {
+            "count": 10,
+            "workgroup": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              4096,
+              2,
+              1
+            ],
+            "vgpr": 40,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "lm_head_c2_rowtile": {
+        "kernel_substring": "q6_k_t16_gemv_rowtile_kernel",
+        "count": 1,
+        "total_duration_ns": 663884,
+        "median_duration_ns": 663884,
+        "launch_shapes": [
+          {
+            "count": 1,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              1986560,
+              1,
+              1
+            ],
+            "vgpr": 88,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "sampler_c2_stage1": {
+        "kernel_substring": "argmax_rows_stage1_i32_kernel",
+        "count": 1,
+        "total_duration_ns": 8400,
+        "median_duration_ns": 8400,
+        "launch_shapes": [
+          {
+            "count": 1,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              62080,
+              2,
+              1
+            ],
+            "vgpr": 8,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      "sampler_c2_stage2": {
+        "kernel_substring": "argmax_rows_stage2_i32_kernel",
+        "count": 1,
+        "total_duration_ns": 2840,
+        "median_duration_ns": 2840,
+        "launch_shapes": [
+          {
+            "count": 1,
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              256,
+              1,
+              1
+            ],
+            "vgpr": 16,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          }
+        ]
+      }
+    },
+    "route_check_passed": true,
+    "declared_exact_hybrid_boundaries": [
+      "The packed c2 transition launches Conv and recurrent-GDN decode once per row (60 each = 30 linear-attention layers x 2 rows).",
+      "The trace is eager because one decode transition is below the gfx1100 package graph threshold of 24 replay steps."
+    ]
+  },
+  "source_files": {
+    "primitive_c2": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c2.json",
+      "size_bytes": 1486,
+      "sha256": "2cd77e2fe6afa4b768d052017b67ed4ac4a736bd675afa8280e77b482303cc70"
+    },
+    "primitive_c4": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c4.json",
+      "size_bytes": 1518,
+      "sha256": "a238d93ce9bf9e50ad8602d13c50f6d09e3312f915512e459de350ebe8672dc4"
+    },
+    "primitive_c4_profiled": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/primitive-c4-profiled-cached.json",
+      "size_bytes": 1534,
+      "sha256": "cfc79ed3983fe0d671e667efee56d464b09cd9802589d96bb6112b478f1f6515"
+    },
+    "packed_c2_profiled": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/packed-c2-profiled-cached.json",
+      "size_bytes": 2234,
+      "sha256": "36648f9ae886d31184f4898b2333fe4f2d18ea757ad82739252e2fbe0fff7b58"
+    },
+    "package_policy": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/package-policy.json",
+      "size_bytes": 1413,
+      "sha256": "7471cec1b7697932be4e5f2c3e4f9980dbf9f2bf81c3c39848bd31323333bf4a"
+    },
+    "compiler_version": {
+      "path": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "size_bytes": 348,
+      "sha256": "5858bddec984a64e8ff88a08651d87372a916e4c8a9b6ef2b9ebbfb3bbb2c50f"
+    }
+  },
+  "b1_exit": {
+    "primitive_c2_c4_exact": true,
+    "production_package_defaults_resolved": true,
+    "packed_step_registry_routes_verified": true,
+    "profiler_cached_only": true,
+    "complete": true
+  },
+  "limitations": [
+    "This is a correctness/route preflight, not a throughput or scaling result.",
+    "The model trace uses independent-c1 prompt prefill to isolate one packed c2 decode transition; complete packed-prefill lifecycle coverage remains Phase B2/B3.",
+    "The trace intentionally exposes the current exact-hybrid row-local Conv/GDN boundary and does not claim a fully native c2 model step.",
+    "The all-row p512 packed-prefill capacity blocker and the standard 512/128 lifecycle gate remain open."
+  ]
+}

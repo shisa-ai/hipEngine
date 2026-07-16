@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_e2_native_c8_scaling_closure",
+  "created_at": "2026-07-17T04:40:00+09:00",
+  "status": "retained_direct_native_c8_decode_model_step",
+  "passed": true,
+  "claim_level": "native_c8_eq_ok_retained_direct_packet",
+  "performance_claim": true,
+  "performance_claim_scope": "direct packed graph decode model step at p512/d128; not a server-wall, streaming-delivery, arbitrary-C, or optional-compaction claim",
+  "continuous_batching_claim": false,
+  "native_c8_claim": true,
+  "provenance": {
+    "measurement_commit": "52b0db25a20607f51e08abc89c43d200d2fe0ea5",
+    "correctness_commit": "bbe6deb0cfea21f4f564aea9d400854906958670",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "compiler_version_file": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+    "cached_build_required": true,
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"
+    }
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "prompt_tokens_per_row": 512,
+    "decode_transitions_per_row": 128,
+    "prompt_token_id": 9707,
+    "prompt_terminal_token_ids": [
+      9707,
+      9708,
+      9709,
+      9710,
+      9707,
+      9708,
+      9709,
+      9710
+    ],
+    "prompt_rows_sha256": "53b8d2a756f5b105803cc6a3b15a8bf43333bb54aa91e0180e8a9d029c0beb70",
+    "sampling": "greedy_top1",
+    "speculative_decode": false,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "timing_contract": "one shared model load; one discarded run and three measured repeats per route; one synchronized graph replay per physical group per logical transition; graph capture, diagnostic token readback, and final state flush excluded from decode throughput"
+  },
+  "correctness": {
+    "native_c8_packet": {
+      "artifact": "benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-correctness.json",
+      "artifact_sha256": "f8dcfa799b0b77da1d8d21f198f8197b25d96ef8d061cea47edec87c0805dd8f",
+      "passed": true,
+      "hidden_comparisons": 87440,
+      "hidden_mismatches": 0,
+      "token_mismatches": 0,
+      "state_or_kv_mismatches": 0,
+      "standard_p512_d128_eager_hidden_comparisons": 41280,
+      "standard_p512_d128_graph_hidden_comparisons": 41280,
+      "ragged_graph_hidden_comparisons": 1600,
+      "sparse_eager_hidden_comparisons": 1160,
+      "sparse_graph_hidden_comparisons": 1160,
+      "live_non_edge_cancellation_exact": true,
+      "optional_compaction_exercised": false
+    },
+    "primitive_c8": {
+      "source": "/tmp/gfx1100-e2-native-c8-clean-52b0db25/primitive-c8.json",
+      "source_sha256": "5896149e2425fefa54d9d9c2df50ea289e991a56d8b6ab17244f5903c3457b58",
+      "source_size_bytes": 2332,
+      "passed": true,
+      "rows": 8,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "attention_batch_vs_c1_max_abs": 0.0,
+      "attention_batch_vs_numpy_max_abs": 5.960464477539063e-08,
+      "aa_max_abs": 0.0
+    },
+    "same_session_cross_route": {
+      "passed": true,
+      "all_measured_runs_repeatable": true,
+      "c1_c2_c4_prefix_exact": true,
+      "native_c8_rows_match_c4": true,
+      "chunked_c8_groups_match_c4": true,
+      "c4_matches_serial_c4": true
+    },
+    "prompt_diversity_anchor": {
+      "artifact": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json",
+      "artifact_sha256": "992eb6762d5b0468901d4f923ea39791b3031734b158ae180c155d3554030e7f",
+      "passed": true,
+      "prompt_count": 18,
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "state_or_kv_mismatches": 0,
+      "scope_note": "The category anchor validates the same input-independent c-aware model math at c4; native-c8-specific width, mask, LM-head lowering, and state mutation are separately covered by the complete c8 direct/lifecycle packet."
+    }
+  },
+  "profiler_census": {
+    "source": "/tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler.json",
+    "source_sha256": "a4be088aa84c186d6dd7f597cbf94c87422e7c0e7cfa2576bcf731adc4e922d7",
+    "source_size_bytes": 84350,
+    "passed": true,
+    "claim_level": "native_c8_graph_replay_profiler_census",
+    "physical_rows": 8,
+    "active_rows": 8,
+    "active_mask": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "graph_capture_count": 1,
+    "graph_replay_count": 1,
+    "c1_reference_dispatches": 628,
+    "c1_reference_instrumented_duration_ns": 9267354,
+    "c8_dispatches": 748,
+    "c8_instrumented_duration_ns": 26455831,
+    "packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "copy_dispatches": 0,
+    "metadata_prepare_dispatches": 1,
+    "model_manifest": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "steady_host_to_device_copies": 0,
+      "steady_device_to_device_state_copies": 0
+    },
+    "family_proof": {
+      "full_attention": {
+        "passed": true,
+        "path": "kv_live_spans_batch",
+        "context_dispatches": 10,
+        "kv_write_dispatches": 10,
+        "row_extent": 8
+      },
+      "moe": {
+        "passed": true,
+        "path": "selected_rows_batch",
+        "selected_gate_up_dispatches": 40,
+        "selected_down_dispatches": 40,
+        "combine_dispatches": 40,
+        "selected_lanes": 64
+      },
+      "lm_head_sampler": {
+        "passed": true,
+        "lm_head_path": "q6_rowtile_f32_logits",
+        "lm_head_dispatches": 2,
+        "expected_lm_head_dispatches": 2,
+        "row_tile_lowering": "6+2",
+        "sampler_path": "argmax_i32_rows",
+        "argmax_stage1_dispatches": 1,
+        "argmax_stage2_dispatches": 1,
+        "full_vocab_host_readback": false
+      }
+    },
+    "raw_trace_hashes": {
+      "c1_kernel_csv_sha256": "ef323fb2bcbd95af241f272b6d315d74efbcaf544d92c60f32d44e3707a5836d",
+      "c1_marker_csv_sha256": "971d3551e74bc274f4e92ca6b4f279d3cf5ffc54cea4efbf6839ddbd47946b34",
+      "c8_kernel_csv_sha256": "b608c2d48c89d7fcf78032e3f6eddfa359e28c3f9ebd4e58caed42bd3c1fd608",
+      "c8_marker_csv_sha256": "dcb8811966dbc3ebd79cb16891b3daec2f8b4210405bdd6f2f1a91a5c45f1584"
+    },
+    "duration_scope": "single marker-sliced instrumented graph replay; diagnostic only"
+  },
+  "performance": {
+    "source": "/tmp/gfx1100-e2-native-c8-clean-52b0db25/scaling.json",
+    "source_sha256": "ecd6a7ebf6da9e930e09944f7a3f86f26894b8220e538381edcdd3b06c0a6bc1",
+    "source_size_bytes": 1341650,
+    "passed": true,
+    "complete_packet": true,
+    "maximum_decode_stdev_pct_of_median": 0.4656056814240111,
+    "routes": {
+      "c1": {
+        "logical_rows": 1,
+        "native_group_width": 1,
+        "native_group_count": 1,
+        "decode_tok_s_aggregate": 85.46885942369872,
+        "decode_tok_s_per_request": 85.46885942369872,
+        "prefill_tok_s_aggregate": 2448.977819108553,
+        "graph_capture_seconds": 0.020325773977674544,
+        "decode_seconds": 1.497621482994873,
+        "ttft_p50_seconds": 0.209064158,
+        "ttft_p95_seconds": 0.209360452,
+        "model_step_itl_p50_seconds": 0.011693237,
+        "model_step_itl_p95_seconds": 0.011954775,
+        "tracked_current_peak_bytes": 23389395561,
+        "hip_used_peak_sampled_bytes": 23878836224,
+        "bucket_shape_sha256": [
+          "7656267c31b5f1873f2062279b794fe04be7c03efe7434c177005f872efafdb6"
+        ]
+      },
+      "c2": {
+        "logical_rows": 2,
+        "native_group_width": 2,
+        "native_group_count": 1,
+        "decode_tok_s_aggregate": 127.427269976,
+        "decode_tok_s_per_request": 63.713634988,
+        "prefill_tok_s_aggregate": 1076.954292743,
+        "graph_capture_seconds": 0.022027336,
+        "decode_seconds": 2.008989128,
+        "ttft_p50_seconds": 0.950827512,
+        "ttft_p95_seconds": 0.953769488,
+        "model_step_itl_p50_seconds": 0.015764810,
+        "model_step_itl_p95_seconds": 0.016022929,
+        "tracked_current_peak_bytes": 24044895894,
+        "hip_used_peak_sampled_bytes": 24524496896,
+        "bucket_shape_sha256": [
+          "ee8fc3af3d4699ea46ec641b56a9edad3bca4f0b7c1754fe3dd01a24911de0eb"
+        ]
+      },
+      "c4": {
+        "logical_rows": 4,
+        "native_group_width": 4,
+        "native_group_count": 1,
+        "decode_tok_s_aggregate": 184.57535603187736,
+        "decode_tok_s_per_request": 46.14383900796934,
+        "prefill_tok_s_aggregate": 1013.970067166,
+        "graph_capture_seconds": 0.022494652,
+        "decode_seconds": 2.773934782,
+        "ttft_p50_seconds": 2.019781009,
+        "ttft_p95_seconds": 2.023417215,
+        "model_step_itl_p50_seconds": 0.021714837,
+        "model_step_itl_p95_seconds": 0.022020906,
+        "tracked_current_peak_bytes": 25121126128,
+        "hip_used_peak_sampled_bytes": 25581461504,
+        "bucket_shape_sha256": [
+          "0a994254bd6262d304372eb0bf6235f5cfc641dc924b6414e594db9fc5b50713"
+        ]
+      },
+      "native_c8": {
+        "logical_rows": 8,
+        "native_group_width": 8,
+        "native_group_count": 1,
+        "native_c8": true,
+        "decode_tok_s_aggregate": 246.8718018745899,
+        "decode_tok_s_per_request": 30.858975234323736,
+        "prefill_tok_s_aggregate": 1178.618518931,
+        "graph_capture_seconds": 0.023983831,
+        "decode_seconds": 4.147901835,
+        "ttft_p50_seconds": 3.475252044,
+        "ttft_p95_seconds": 3.479435083,
+        "model_step_itl_p50_seconds": 0.032413961,
+        "model_step_itl_p95_seconds": 0.032748605,
+        "tracked_current_peak_bytes": 27273586596,
+        "hip_used_peak_sampled_bytes": 27789762560,
+        "bucket_shape_sha256": [
+          "e224a14d7e44c30ad4db01ee99915f4a2764ede3266aed5ae3cc8aa789e65914"
+        ],
+        "steady_occupancy": {
+          "logical_active_rows": 8,
+          "physical_bucket_widths": [8],
+          "active_masks": [[true, true, true, true, true, true, true, true]],
+          "row_count_transitions": []
+        },
+        "admission_completion": {
+          "admission_elapsed_seconds": 0.0,
+          "completion_timestamps": "phase-relative per measured sample in the source occupancy timeline",
+          "finish_reasons": [
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit"
+          ]
+        }
+      },
+      "chunked_c8": {
+        "logical_rows": 8,
+        "native_group_width": 4,
+        "native_group_count": 2,
+        "native_c8": false,
+        "decode_tok_s_aggregate": 183.02032279677755,
+        "decode_tok_s_per_request": 22.87754035,
+        "prefill_tok_s_aggregate": 1004.527899705,
+        "graph_capture_seconds": 0.045207117,
+        "decode_seconds": 5.59500707,
+        "ttft_p50_seconds": 3.055221356,
+        "ttft_p95_seconds": 4.084414969,
+        "model_step_itl_p50_seconds": 0.043767043,
+        "model_step_itl_p95_seconds": 0.044280505,
+        "tracked_current_peak_bytes": 27991181392,
+        "hip_used_peak_sampled_bytes": 28502794240,
+        "bucket_shape_sha256": [
+          "0a994254bd6262d304372eb0bf6235f5cfc641dc924b6414e594db9fc5b50713",
+          "0a994254bd6262d304372eb0bf6235f5cfc641dc924b6414e594db9fc5b50713"
+        ]
+      },
+      "serial_c4": {
+        "logical_rows": 4,
+        "native_group_width": 1,
+        "native_group_count": 4,
+        "decode_tok_s_aggregate": 84.73830291892033,
+        "decode_tok_s_per_request": 21.18457573,
+        "prefill_tok_s_aggregate": 2335.370129515,
+        "graph_capture_seconds": 0.0785714,
+        "decode_seconds": 6.042131862,
+        "ttft_p50_seconds": 0.548030014,
+        "ttft_p95_seconds": 0.877248113,
+        "model_step_itl_p50_seconds": 0.047225218,
+        "model_step_itl_p95_seconds": 0.048141805,
+        "tracked_current_peak_bytes": 28974604364,
+        "hip_used_peak_sampled_bytes": 29475872768,
+        "scope_note": "Four serialized width-1 groups; aggregate rate is a serial-c4 control, not a logical-c8 latency row."
+      }
+    },
+    "scaling": {
+      "native_c8_aggregate_vs_c1": 2.888441515883123,
+      "native_c8_aggregate_vs_c1_percent": 188.84415158831231,
+      "native_c8_aggregate_vs_chunked_c8": 1.348876442255606,
+      "native_c8_aggregate_vs_chunked_c8_percent": 34.88764422556061,
+      "native_c8_aggregate_vs_serial_c4_rate": 2.9133437108222813,
+      "native_c8_aggregate_vs_serial_c4_rate_percent": 191.33437108222813,
+      "native_c8_per_request_vs_c1": 0.3610551894853904,
+      "native_c8_per_request_vs_c1_percent": -63.89448105146096,
+      "native_c8_scaling_gate_passed": true
+    },
+    "tradeoffs": {
+      "native_c8_model_step_itl_vs_c1": 2.7720263430904546,
+      "native_c8_model_step_itl_vs_c1_percent": 177.20263430904546,
+      "native_c8_ttft_vs_c1": 16.62289737870802,
+      "native_c8_tracked_current_peak_delta_bytes": 3884191035,
+      "native_c8_tracked_current_peak_delta_gib": 3.6174347950145602,
+      "native_c8_tracked_current_peak_delta_percent": 16.60663280019339,
+      "native_c8_hip_used_peak_delta_bytes": 3910926336,
+      "native_c8_hip_used_peak_delta_gib": 3.642333984375,
+      "interpretation": "Native c8 advances eight requests per model step and improves aggregate decode throughput over c1 and two serialized c4 groups, but per-request rate, synchronized model-step ITL, packed-prefill TTFT, and memory regress relative to c1. This is a retained direct model-step packet, not a live-server admission decision."
+    }
+  },
+  "commands": {
+    "primitive_prebuild": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_batch_correctness.py --rows 8 --seed 1234 --include-dense-c1 --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --json /tmp/gfx1100-e2-native-c8-clean-52b0db25/primitive-c8-prebuild.json",
+    "primitive_cached": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_batch_correctness.py --rows 8 --seed 1234 --include-dense-c1 --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-e2-native-c8-clean-52b0db25/primitive-c8.json",
+    "profiler": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --raw-root /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler-raw --skip-warmbuild --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 --out /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler.json",
+    "scaling": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-e2-native-c8-clean-52b0db25/scaling.json"
+  },
+  "completion_audit": {
+    "objective": "One gfx1100 GGUF Q4_K_M/BF16-KV c8 decode model step is exact through steady/ragged/sparse/cancellation/p512-d128 lifecycle, graph-replayed, marker-proven, and retained against same-process c1 and chunked-c8 controls.",
+    "requirements": {
+      "primitive_c8": true,
+      "complete_c8_eager_and_graph_equality": true,
+      "sparse_and_cancellation_inactive_state_kv_immutability": true,
+      "one_physical_c8_group": true,
+      "zero_undeclared_c1_fallback": true,
+      "same_protocol_c1_c2_c4_native_c8_chunked_and_serial_control": true,
+      "aggregate_per_request_latency_memory_occupancy_profiler_reported": true,
+      "native_c8_beats_c1_and_chunked_c8_aggregate": true
+    },
+    "gate_coverage": {
+      "gate_1_primitive": true,
+      "gate_2_direct_model_equality": true,
+      "gate_3_lifecycle_prompt_coverage": true,
+      "gate_4_native_execution": true,
+      "gate_5_retained_direct_performance": true
+    },
+    "uncovered_future_scope": [
+      "Optional physical-slot compaction remains a separate E2 gate.",
+      "Arbitrary logical C and C>8 lowering remain Phase E3.",
+      "Server-wall burst/live-admission latency and gfx1151 symmetry remain Phase F/E1.",
+      "PARO native concurrency remains Phase G."
+    ],
+    "e2_native_c8_objective_achieved": true
+  },
+  "validation": {
+    "implementation_focused_tests": "22 passed across packed benchmark and execution-manifest contracts",
+    "python_compile": true,
+    "focused_ruff": true,
+    "diff_check": true,
+    "profiled_children_require_cached_build": true,
+    "primitive_source_clean": true,
+    "profiler_source_clean": true,
+    "scaling_source_clean": true
+  },
+  "limitations": [
+    "The retained performance claim is limited to the direct packed graph decode model step; live OpenAI correctness is linked separately and has no server throughput claim.",
+    "The model-step ITL excludes per-token D2H and streaming delivery. Diagnostic token vectors are read once after each measured window.",
+    "Native c8 improves aggregate throughput while per-request decode rate, model-step ITL, packed-prefill TTFT, and memory regress relative to c1; exact tradeoffs are reported rather than hidden.",
+    "chunked_c8 is two serialized native-c4 groups and is never labeled native c8.",
+    "serial_c4 is a four-row rate control; no native-c8-versus-serial-c8 per-request latency claim is made.",
+    "Optional compaction, arbitrary C, C>8 policy, gfx1151 symmetry, normal sampling, and PARO are not inferred.",
+    "Profiler durations are diagnostic because the marker window is instrumented and synchronized.",
+    "Raw profiler CSVs and source primitive/profiler/scaling JSON remain under /tmp and are represented by exact sizes and SHA-256 hashes."
+  ]
+}

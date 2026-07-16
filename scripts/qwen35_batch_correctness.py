@@ -74,6 +74,31 @@ class _DeviceArena:
         self.buffers.clear()
 
 
+def _build_primitive_libraries(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+):
+    build_kwargs = {
+        "load": True,
+        "compiler_version": compiler_version,
+        "require_cached": bool(require_cached_build),
+    }
+    return (
+        build_qwen35_paged_kv_write(**build_kwargs),
+        build_qwen35_paged_attn_decode(**build_kwargs),
+    )
+
+
+def _read_compiler_version(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    text = path.expanduser().read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(f"compiler version file is empty: {path}")
+    return text
+
+
 def _visible_hip_device_metadata(runtime) -> dict[str, object]:
     env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
     visible_env: dict[str, str] = {}
@@ -225,6 +250,8 @@ def run(
     head_dim: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["head_dim"],
     context_lens: np.ndarray | None = None,
     include_dense_c1: bool = False,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
 ) -> dict[str, object]:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -261,8 +288,10 @@ def run(
     c1_value_cache = np.zeros_like(batch_key_cache)
 
     arena = _DeviceArena()
-    kv_lib = build_qwen35_paged_kv_write(load=True)
-    attn_lib = build_qwen35_paged_attn_decode(load=True)
+    kv_lib, attn_lib = _build_primitive_libraries(
+        compiler_version=compiler_version,
+        require_cached_build=require_cached_build,
+    )
     try:
         row_local_bt = arena.dev(row_local_block_table)
         shared_bt = arena.dev(shared_block_table)
@@ -466,6 +495,10 @@ def run(
         "num_kv_heads": num_kv_heads,
         "head_dim": head_dim,
         "context_lens": context_lens.tolist(),
+        "build": {
+            "compiler_version_supplied": compiler_version is not None,
+            "require_cached_build": bool(require_cached_build),
+        },
         "device": _visible_hip_device_metadata(arena.runtime),
         "append_key_mismatch": append_key_mismatch,
         "append_value_mismatch": append_value_mismatch,
@@ -520,8 +553,19 @@ def main() -> None:
     parser.add_argument("--head-dim", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["head_dim"])
     parser.add_argument("--context-lens", help="comma-separated live counts; defaults to 1..max_context_len coverage")
     parser.add_argument("--include-dense-c1", action="store_true", help="also compare batch paged context against the dense c1 short-context kernel")
+    parser.add_argument(
+        "--compiler-version-file",
+        type=Path,
+        help="read precomputed hipcc --version text so profiled runs do not spawn hipcc",
+    )
+    parser.add_argument(
+        "--require-cached-build",
+        action="store_true",
+        help="fail rather than invoke hipcc when either primitive library is missing",
+    )
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
+    compiler_version = _read_compiler_version(args.compiler_version_file)
     context_lens = None
     if args.context_lens:
         context_lens = _parse_context_lens(args.context_lens, rows=args.rows, max_context_len=args.max_context_len)
@@ -535,6 +579,11 @@ def main() -> None:
         head_dim=args.head_dim,
         context_lens=context_lens,
         include_dense_c1=args.include_dense_c1,
+        compiler_version=compiler_version,
+        require_cached_build=args.require_cached_build,
+    )
+    result["build"]["compiler_version_file"] = (
+        str(args.compiler_version_file) if args.compiler_version_file is not None else None
     )
     if args.json is not None:
         result["artifact_path"] = str(args.json)
