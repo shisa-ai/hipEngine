@@ -159905,3 +159905,51 @@ Ruff audit was run with F821 excluded rather than silently folding that cleanup
 into D1. No GPU, throughput, live scheduling, or GGUF device-state ownership
 claim is made by this host-only unit; the next unit attaches a persistent GGUF
 session owner to these hooks.
+
+## 2026-07-16 — Attach D1 to persistent GGUF model/session state
+
+Added `Qwen35GGUFResidentModelRunner` as the model-specific implementation of
+the D1 runner contract. `SubmitPollTextGenerator` discovers the model runner by
+capability rather than backend/quant branches. The GGUF owner materializes one
+shared full-stack model plus a fixed c4 session pool at adapter construction,
+rebuilds that pool only at an idle `prepare(max_sequence_length=...)` barrier,
+and reuses the same sessions after completion. Greedy rows wait for their
+scheduler prefill commit, publish the prefill top-1 as token one, then execute
+one packed c<=4 model step per decode tick. Processed/sampled and zero-token
+requests remain explicit resident-session compatibility routes; they no longer
+construct a session inside `generate_detailed()`.
+
+The owner implements committed `prefill_batch`/`decode_batch`, consumes
+scheduler compaction moves while keeping request and physical-row identity
+separate, flushes deferred packed state before membership changes, and resets
+and reclaims sessions through the scheduler completion callback. Deadline and
+cancellation checks bracket every real prefill/decode transition. Public GGUF
+batch metadata distinguishes the packed greedy route from
+`gguf_resident_model_loop` fallbacks. The old direct `_generate_ar_serving_slots`
+loop remains only as an independent control/direct-generator compatibility path
+and is now recorded in `docs/REFACTOR.md` for deletion after D2/D4 migrate all
+remaining adapters.
+
+RED proved the class/factory and eager session owner were absent. GREEN covers
+model singleton ownership, idle context-pool rebuild, c2 packed steps, c1
+fallback, sampled and zero-token compatibility, stable session identity across
+API calls, and full reclaim. Focused validation is **78 passed, 4 skipped**
+across GGUF generation/public LLM plus the submit/poll/engine-loop bundle;
+Ruff and Python compilation pass. Registry and CPU-fixture smoke modes pass.
+`scripts/check_fixtures.py` still fails on the pre-existing noncanonical nested
+fixture `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`
+(`KeyError: expected`); this D1 unit does not alter fixture discovery or math.
+
+A real dirty-tree W7900/TheRock HIP 7.15 smoke compared the old direct resident
+control, the first persistent-loop call, and a second call for two independent
+16-token rows at d4. All three trajectories are exact:
+`[[9707,9707,9707,9707],[9708,9709,9708,9709]]`. The four reserved session
+identities are unchanged across both API calls, all four sessions return to the
+pool, no request remains active, and the final manifest reports
+`path=gguf_packed_ar_server_decode`, `native_decode_steps=3`,
+`native_caware_decode=true`, and `serial_decode_fallback=false`. Exact command
+is the hermetic gfx1100 invocation of
+`/tmp/gfx1100_d1_resident_loop_smoke.py`; result is
+`/tmp/gfx1100-d1-resident-loop-dirty.json` and wall was **75.959 s**. This is a
+correctness/ownership gate only, not a throughput or live-admission claim. A
+clean exact-revision rerun follows the atomic code commit.

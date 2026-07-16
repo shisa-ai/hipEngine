@@ -14,6 +14,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    SubmitPollTextGenerator,
     TokenLogprob,
 )
 
@@ -1547,6 +1548,128 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
     assert mtp["hidden_seed_captured_rows"] == 9
     assert mtp["hidden_seed_needed_rows"] == 6
     assert mtp["hidden_seed_extra_rows"] == 3
+
+
+def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path, **kwargs):
+            self.model_path = str(model_path)
+            self.runtime = SimpleNamespace()
+            self.backend = kwargs.get("backend", "hip_gfx1100")
+            self.target_arch = "gfx1100"
+            self.vocab_size = 128
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+            calls.append(("runner_init", self.model_path))
+
+    class FakeSession:
+        next_slot = 0
+
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = FakeSession.next_slot
+            FakeSession.next_slot += 1
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            self._packed_decode_state_dirty = False
+            self._packed_decode_sessions = ()
+            calls.append(("session_init", self.slot_id, kwargs.get("max_sequence_length")))
+
+        def reset(self):
+            self.position = 0
+            calls.append(("reset", self.slot_id))
+
+        def prefill(self, token_ids, **kwargs):
+            self.position = len(token_ids)
+            calls.append(("prefill", self.slot_id, tuple(token_ids), dict(kwargs)))
+            logits = None
+            if kwargs.get("return_logits"):
+                logits = np.full((1, 128), -100.0, dtype=np.float32)
+                logits[0, 1] = 100.0
+            return SimpleNamespace(token_id=1, logits=logits)
+
+        def step(self, token_id, **kwargs):
+            self.position += 1
+            calls.append(("step", self.slot_id, int(token_id), dict(kwargs)))
+            next_token = int(token_id) + 1
+            logits = None
+            if kwargs.get("return_logits"):
+                logits = np.full((1, 128), -100.0, dtype=np.float32)
+                logits[0, next_token] = 100.0
+            return SimpleNamespace(token_id=next_token, logits=logits)
+
+        def step_batch_native(self, token_ids, *, sessions, positions, **kwargs):
+            calls.append(
+                (
+                    "step_batch_native",
+                    self.slot_id,
+                    tuple(int(token) for token in token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    tuple(int(position) for position in positions),
+                    dict(kwargs),
+                )
+            )
+            for session in sessions:
+                session.position += 1
+            self._packed_decode_state_dirty = True
+            self._packed_decode_sessions = tuple(sessions)
+            return [SimpleNamespace(token_id=int(token) + 1) for token in token_ids]
+
+        def flush_packed_decode_state(self):
+            calls.append(("flush", self.slot_id))
+            self._packed_decode_state_dirty = False
+            return True
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.backend = "hip_gfx1100"
+    generator._shared_runner = None
+    generator._shared_runner_lock = threading.Lock()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+
+    adapter = SubmitPollTextGenerator(generator, capacity=2)
+    runner = adapter._runner
+    assert isinstance(runner, qwen35_gguf.Qwen35GGUFResidentModelRunner)
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 2
+
+    adapter.prepare(max_sequence_length=128)
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 4
+    assert [call[2] for call in calls if call[0] == "session_init"][-2:] == [128, 128]
+
+    first = adapter.generate_detailed(_request(prompts=("first", "second"), max_tokens=3))
+    second = adapter.generate_detailed(_request(prompts=("first",), max_tokens=2))
+    greedy_last = dict(generator.last_batch_generation or {})
+    sampled = adapter.generate_detailed(
+        _request(prompts=("first",), max_tokens=2, temperature=0.7, seed=17)
+    )
+    zero = adapter.generate_detailed(_request(prompts=("first",), max_tokens=0))
+
+    assert [output.text for output in first] == ["BCD", "BCD"]
+    assert [output.generated_token_ids for output in first] == [(1, 2, 3), (1, 2, 3)]
+    assert [output.text for output in second] == ["BC"]
+    assert [output.generated_token_ids for output in sampled] == [(1, 2)]
+    assert [output.generated_token_ids for output in zero] == [()]
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 4
+    assert [call[2] for call in calls if call[0] == "step_batch_native"] == [(1, 1), (2, 2)]
+    assert [call for call in calls if call[0] == "step"][-1][2] == 1
+    assert runner.active_request_ids == ()
+    assert runner.available_session_count == 2
+    assert greedy_last["path"] == "gguf_packed_ar_server_decode"
+    assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
+    assert generator.last_batch_generation["serial_decode_fallback"] is True
 
 
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:

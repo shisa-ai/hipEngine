@@ -11,10 +11,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from pathlib import Path
-from typing import Any, ClassVar, Iterator
+from typing import Any, ClassVar, Iterator, Sequence
 
 import numpy as np
 
+from hipengine.dispatch import SlotMove, WorkItem
+from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
@@ -105,6 +107,7 @@ _LLAMA_COMPAT_MTP_ENV = {
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
+_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 _GGUFSessionPoolKey = tuple[str, bool | None, bool | None, int | None]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
@@ -854,6 +857,23 @@ class Qwen35GGUFBringupGenerator:
         result["packed_mtp_prefill_prompt_lengths"] = sorted(set(result["packed_mtp_prefill_prompt_lengths"]))
         result["packed_mtp_verify_prompt_lengths"] = sorted(set(result["packed_mtp_verify_prompt_lengths"]))
         return result
+
+    @_target_arch_scoped
+    def create_resident_model_runner(
+        self,
+        *,
+        capacity: int | None = None,
+    ) -> "Qwen35GGUFResidentModelRunner":
+        """Create the single scheduler-facing GGUF model owner for this generator."""
+
+        return Qwen35GGUFResidentModelRunner(
+            self,
+            capacity=(
+                _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY
+                if capacity is None
+                else int(capacity)
+            ),
+        )
 
     def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:
         runner = getattr(self, "_shared_runner", None)
@@ -3753,6 +3773,537 @@ class Qwen35GGUFBringupGenerator:
             )
             if finished:
                 return
+
+
+@dataclass(frozen=True, slots=True)
+class _GGUFResidentSessionLease:
+    session: Qwen35GGUFResidentSession
+    pool_key: _GGUFSessionPoolKey
+
+
+@dataclass(slots=True)
+class _GGUFResidentLoopRow:
+    request_id: int
+    batch_id: int
+    row_index: int
+    request: GenerationRequest
+    prompt_ids: tuple[int, ...]
+    native_greedy: bool
+    submitted_at: float
+    prefill_tokens_seen: int = 0
+    lease: _GGUFResidentSessionLease | None = None
+    slot: _GGUFARServingSlot | None = None
+    first_token_emitted: bool = False
+    fallback_output: GenerationOutput | None = None
+
+
+class Qwen35GGUFResidentModelRunner:
+    """Long-lived scheduler-facing owner of GGUF model and session state.
+
+    The owner reserves a fixed session pool once, keeps stable request identity
+    separate from scheduler physical slots, and exposes one committed prefill or
+    decode transition per engine-loop hook.  Greedy c>1 decode uses the retained
+    packed session primitive; unsupported sampler shapes remain an explicit
+    resident-session fallback rather than constructing a per-call session.
+    """
+
+    def __init__(
+        self,
+        generator: Qwen35GGUFBringupGenerator,
+        *,
+        capacity: int = _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY,
+    ) -> None:
+        if capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self.generator = generator
+        self.capacity = int(capacity)
+        self._shared_runner = generator._get_shared_runner()
+        self._max_sequence_length = getattr(generator, "_prepared_max_sequence_length", None)
+        self._available: list[_GGUFResidentSessionLease] = []
+        self._rows: dict[int, _GGUFResidentLoopRow] = {}
+        self._outputs: dict[int, GenerationOutput] = {}
+        self._completed_metadata: dict[int, dict[str, Any]] = {}
+        self._next_batch_id = 0
+        self._reserve_sessions()
+
+    @property
+    def active_request_ids(self) -> tuple[int, ...]:
+        return tuple(self._rows)
+
+    @property
+    def available_session_count(self) -> int:
+        return len(self._available)
+
+    def prompt_tokens(self, prompt: PromptInput) -> tuple[int, ...]:
+        tokens = tuple(_encode_prompt(self.generator.tokenizer, prompt))
+        if not tokens:
+            raise ValueError("GGUF prompt tokenization produced no token IDs")
+        return tokens
+
+    def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+        plan = _gguf_sampler_plan(request)
+        if plan.mode is SamplingMode.GREEDY_FAST and int(request.max_tokens) > 0:
+            return int(request.max_tokens)
+        # Non-greedy and zero-token requests execute as one declared resident
+        # compatibility transition and publish their already-complete output.
+        return 1
+
+    def register_batch(
+        self,
+        request_ids: Sequence[int],
+        request: GenerationRequest,
+        *,
+        prompt_rows: Sequence[Sequence[int]],
+    ) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        prompts = tuple(tuple(int(token) for token in row) for row in prompt_rows)
+        if len(ids) != len(request.prompts) or len(prompts) != len(ids):
+            raise ValueError("request_ids, prompts, and prompt_rows must have the same length")
+        if request.row_seeds and len(request.row_seeds) != len(request.prompts):
+            raise ValueError("row_seeds must have one entry per prompt")
+        batch_id = self._next_batch_id
+        self._next_batch_id += 1
+        native_greedy = (
+            _gguf_sampler_plan(request).mode is SamplingMode.GREEDY_FAST
+            and int(request.max_tokens) > 0
+        )
+        now = time.perf_counter()
+        for row_index, (request_id, prompt_ids) in enumerate(zip(ids, prompts, strict=True)):
+            if request_id in self._rows or request_id in self._outputs:
+                raise ValueError(f"request_id {request_id} is already registered")
+            if not prompt_ids:
+                raise ValueError("GGUF prompt tokenization produced no token IDs")
+            self._rows[request_id] = _GGUFResidentLoopRow(
+                request_id=request_id,
+                batch_id=batch_id,
+                row_index=row_index,
+                request=request,
+                prompt_ids=prompt_ids,
+                native_greedy=native_greedy,
+                submitted_at=now,
+            )
+
+    def prepare(self, *, max_sequence_length: int | None = None) -> None:
+        requested = getattr(self.generator, "_prepared_max_sequence_length", None)
+        if requested is None and max_sequence_length is not None:
+            requested = int(max_sequence_length)
+        if requested == self._max_sequence_length:
+            return
+        if self._rows:
+            raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
+        with hip_target_arch_environment(self.generator.target_arch):
+            self._release_available_sessions()
+            self._max_sequence_length = requested
+            self._reserve_sessions()
+
+    def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        if not commit:
+            raise ValueError("GGUF resident prefill requires commit=True")
+        with hip_target_arch_environment(self.generator.target_arch):
+            for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+                row = self._row(request_id)
+                start = int(row.prefill_tokens_seen)
+                chunk = tuple(int(token) for token in token_row)
+                expected = row.prompt_ids[start:start + len(chunk)]
+                if chunk != expected:
+                    raise RuntimeError(
+                        f"GGUF prefill chunk drift for request_id {request_id}: "
+                        f"expected {expected!r}, got {chunk!r}"
+                    )
+                row.prefill_tokens_seen += len(chunk)
+                if row.prefill_tokens_seen < len(row.prompt_ids):
+                    continue
+                if row.prefill_tokens_seen != len(row.prompt_ids):
+                    raise RuntimeError("GGUF prefill consumed beyond the registered prompt")
+                raise_if_generation_deadline_expired(row.request)
+                if row.native_greedy:
+                    self._prefill_native_row(row)
+                else:
+                    self._run_resident_fallback(row)
+                raise_if_generation_deadline_expired(row.request)
+
+    def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
+        if not commit:
+            raise ValueError("GGUF resident decode requires commit=True")
+        request_ids = tuple(int(request_id) for request_id in work.request_ids)
+        with hip_target_arch_environment(self.generator.target_arch):
+            rows = [self._row(request_id) for request_id in request_ids]
+            for row in rows:
+                raise_if_generation_deadline_expired(row.request)
+            step_rows = [
+                row
+                for row in rows
+                if row.native_greedy and row.first_token_emitted
+            ]
+            if step_rows:
+                self._step_native_rows(step_rows)
+            for row in rows:
+                raise_if_generation_deadline_expired(row.request)
+
+            generated: list[GeneratedToken] = []
+            for request_id, row in zip(request_ids, rows, strict=True):
+                if not row.native_greedy:
+                    output = row.fallback_output
+                    if output is None:
+                        raise RuntimeError("GGUF resident fallback output is not ready")
+                    token_ids = output.generated_token_ids or ()
+                    token_id = int(token_ids[-1]) if token_ids else 0
+                    generated.append(GeneratedToken(request_id, token_id, finished=True))
+                    continue
+                slot = row.slot
+                if slot is None or not slot.generated_ids:
+                    raise RuntimeError("GGUF resident greedy row is not prefilled")
+                if not row.first_token_emitted:
+                    row.first_token_emitted = True
+                generated.append(
+                    GeneratedToken(
+                        request_id,
+                        int(slot.generated_ids[-1]),
+                        finished=bool(slot.done),
+                    )
+                )
+            return tuple(generated)
+
+    def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        move_tuple = tuple(moves)
+        if any(move.old_slot != move.new_slot for move in move_tuple):
+            with hip_target_arch_environment(self.generator.target_arch):
+                self._flush_all_packed_owners()
+        # Session state is request-owned, not physical-row-owned.  The scheduler
+        # move is nevertheless consumed here so future row-indexed slabs cannot
+        # silently conflate stable request ids with physical slots.
+        for move in move_tuple:
+            self._row(move.request_id)
+
+    def reclaim(self, completed: CompletedRequest) -> None:
+        request_id = int(completed.request_id)
+        row = self._rows.get(request_id)
+        if row is None:
+            return
+        with hip_target_arch_environment(self.generator.target_arch):
+            if row.native_greedy:
+                self._flush_row_owner(row)
+                output = self._native_output(row, completed)
+            else:
+                output = row.fallback_output or self._empty_output(row, completed)
+            self._outputs[request_id] = output
+            self._completed_metadata[request_id] = self._execution_metadata(row)
+            if row.lease is not None:
+                row.lease.session.reset()
+                self._available.append(row.lease)
+                row.lease = None
+            self._rows.pop(request_id, None)
+
+    def has_outputs(self, request_ids: Sequence[int]) -> bool:
+        return all(int(request_id) in self._outputs for request_id in request_ids)
+
+    def missing_outputs(self, request_ids: Sequence[int]) -> list[int]:
+        return [int(request_id) for request_id in request_ids if int(request_id) not in self._outputs]
+
+    def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
+        return [self._outputs.pop(int(request_id)) for request_id in request_ids]
+
+    def discard(self, request_ids: Sequence[int]) -> None:
+        for request_id in request_ids:
+            rid = int(request_id)
+            row = self._rows.pop(rid, None)
+            if row is not None and row.lease is not None:
+                row.lease.session.reset()
+                self._available.append(row.lease)
+            self._outputs.pop(rid, None)
+            self._completed_metadata.pop(rid, None)
+
+    def finalize_batch(
+        self,
+        request: GenerationRequest,
+        request_ids: Sequence[int],
+        outputs: Sequence[GenerationOutput],
+    ) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        output_tuple = tuple(outputs)
+        prompt_rows = {
+            index: _encode_prompt(self.generator.tokenizer, prompt)
+            for index, prompt in enumerate(request.prompts)
+        }
+        generated_rows = {
+            index: list(output.generated_token_ids or ())
+            for index, output in enumerate(output_tuple)
+        }
+        metadata = [self._completed_metadata.pop(request_id, {}) for request_id in ids]
+        native_steps = max((int(item.get("native_decode_steps", 0)) for item in metadata), default=0)
+        native_prefill = bool(metadata) and all(bool(item.get("native_compact_prefill", False)) for item in metadata)
+        all_native_greedy = bool(metadata) and all(bool(item.get("native_greedy", False)) for item in metadata)
+        serial_fallback = any(bool(item.get("serial_decode_fallback", False)) for item in metadata)
+        self.generator.last_generation_outputs = output_tuple
+        self.generator.last_batch_generation = _gguf_last_batch_generation(
+            self.generator.tokenizer,
+            request,
+            _gguf_sampler_plan(request),
+            prompt_rows,
+            generated_rows,
+            {index: list(output.token_logprobs) for index, output in enumerate(output_tuple)},
+            outputs=output_tuple,
+            execution_path=(
+                "gguf_packed_ar_server_decode"
+                if all_native_greedy
+                else "gguf_resident_model_loop"
+            ),
+            native_compact_prefill=native_prefill,
+            native_decode_steps=native_steps,
+            native_caware_decode=native_steps > 0,
+            serial_decode_fallback=serial_fallback,
+        )
+
+    def close(self) -> None:
+        with hip_target_arch_environment(self.generator.target_arch):
+            self._flush_all_packed_owners()
+            for row in tuple(self._rows.values()):
+                if row.lease is not None:
+                    row.lease.session.close()
+            self._rows.clear()
+            self._release_available_sessions()
+
+    def _reserve_sessions(self) -> None:
+        acquired: list[_GGUFResidentSessionLease] = []
+        try:
+            for _ in range(self.capacity):
+                session, pool_key, _reused = self.generator._acquire_shared_session(
+                    self._shared_runner,
+                    pool_name="continuous_ar",
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                )
+                acquired.append(_GGUFResidentSessionLease(session, pool_key))
+        except Exception:
+            for lease in reversed(acquired):
+                lease.session.close()
+            raise
+        self._available.extend(acquired)
+
+    def _release_available_sessions(self) -> None:
+        while self._available:
+            lease = self._available.pop()
+            self.generator._release_shared_session(lease.pool_key, lease.session)
+
+    def _acquire_lease(self) -> _GGUFResidentSessionLease:
+        if not self._available:
+            raise RuntimeError("GGUF resident model runner has no free session")
+        return self._available.pop()
+
+    def _row(self, request_id: int) -> _GGUFResidentLoopRow:
+        rid = int(request_id)
+        if rid not in self._rows:
+            raise KeyError(f"request_id {rid} is not registered with the GGUF resident runner")
+        return self._rows[rid]
+
+    def _prefill_native_row(self, row: _GGUFResidentLoopRow) -> None:
+        if row.slot is not None:
+            return
+        lease = self._acquire_lease()
+        row.lease = lease
+        start = time.perf_counter()
+        result = lease.session.prefill(row.prompt_ids, return_logits=False)
+        timing = {
+            "prefill_ms": _timing_ms_since(start),
+            "request_total_ms": _timing_ms_since(row.submitted_at),
+        }
+        token = int(getattr(result, "token_id"))
+        row.slot = _GGUFARServingSlot(
+            request_id=row.request_id,
+            prompt_ids=list(row.prompt_ids),
+            session=lease.session,
+            prev_token=token,
+            seq_position=int(lease.session.position),
+            generated_ids=[token],
+            timing=timing,
+            session_pool_key=lease.pool_key,
+            done=(
+                int(row.request.max_tokens) <= 1
+                or _gguf_finished((token,), self.generator.tokenizer, row.request)
+            ),
+        )
+
+    def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
+        if row.fallback_output is not None:
+            return
+        if int(row.request.max_tokens) == 0:
+            row.fallback_output = self._empty_output(row, None)
+            return
+        lease = self._acquire_lease()
+        row.lease = lease
+        row.fallback_output = self.generator._generate_sampled(
+            lease.session,
+            list(row.prompt_ids),
+            row.request,
+            row_index=row.row_index,
+        )
+
+    def _step_native_rows(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
+        row_list = list(rows)
+        width = _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY
+        for start in range(0, len(row_list), width):
+            chunk = row_list[start:start + width]
+            if len(chunk) > 1 and _gguf_ar_packed_decode_enabled():
+                if self._step_native_chunk(chunk):
+                    continue
+            self._step_native_serial(chunk)
+
+    def _step_native_chunk(self, rows: Sequence[_GGUFResidentLoopRow]) -> bool:
+        slots = [row.slot for row in rows]
+        if any(slot is None for slot in slots):
+            raise RuntimeError("GGUF resident packed decode row is missing its session slot")
+        concrete = [slot for slot in slots if slot is not None]
+        owner_slot = concrete[0]
+        step_batch = getattr(owner_slot.session, "step_batch_native", None)
+        if not callable(step_batch):
+            return False
+        self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = step_batch(
+                    [int(slot.prev_token) for slot in concrete],
+                    sessions=[slot.session for slot in concrete],
+                    positions=[int(slot.seq_position) for slot in concrete],
+                    return_logits=False,
+                    scatter_state=False,
+                )
+        except NotImplementedError:
+            return False
+        if results is None:
+            return False
+        result_list = list(results)
+        if len(result_list) != len(concrete):
+            raise RuntimeError(
+                f"GGUF resident packed decode returned {len(result_list)} result(s) "
+                f"for {len(concrete)} row(s)"
+            )
+        owner = owner_slot.session
+        for row, slot, result in zip(rows, concrete, result_list, strict=True):
+            self._record_native_token(row, int(getattr(result, "token_id")))
+            slot.packed_decode_owner = owner
+            slot.native_decode_steps += 1
+        return True
+
+    def _step_native_serial(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
+        self._flush_rows(rows)
+        for row in rows:
+            slot = row.slot
+            if slot is None:
+                raise RuntimeError("GGUF resident serial decode row is missing its session slot")
+            result = slot.session.step(int(slot.prev_token), return_logits=False)
+            self._record_native_token(row, int(getattr(result, "token_id")))
+            slot.serial_decode_steps += 1
+
+    def _record_native_token(self, row: _GGUFResidentLoopRow, token_id: int) -> None:
+        slot = row.slot
+        if slot is None:
+            raise RuntimeError("GGUF resident row is missing its session slot")
+        token = int(token_id)
+        slot.generated_ids.append(token)
+        slot.prev_token = token
+        slot.seq_position += 1
+        slot.done = (
+            len(slot.generated_ids) >= int(row.request.max_tokens)
+            or _gguf_finished(slot.generated_ids, self.generator.tokenizer, row.request)
+        )
+
+    def _flush_rows(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
+        slots = [row.slot for row in rows if row.slot is not None]
+        if slots:
+            self.generator._flush_ar_packed_decode_owners(slots)
+
+    def _flush_row_owner(self, row: _GGUFResidentLoopRow) -> None:
+        slot = row.slot
+        if slot is None or slot.packed_decode_owner is None:
+            return
+        owner = slot.packed_decode_owner
+        related = [
+            candidate
+            for candidate_row in self._rows.values()
+            for candidate in (candidate_row.slot,)
+            if candidate is not None and candidate.packed_decode_owner is owner
+        ]
+        self.generator._flush_ar_packed_decode_owners(related)
+
+    def _flush_all_packed_owners(self) -> None:
+        slots = [row.slot for row in self._rows.values() if row.slot is not None]
+        if slots:
+            self.generator._flush_ar_packed_decode_owners(slots)
+
+    def _native_output(
+        self,
+        row: _GGUFResidentLoopRow,
+        completed: CompletedRequest,
+    ) -> GenerationOutput:
+        slot = row.slot
+        if slot is None:
+            return self._empty_output(row, completed)
+        generated_ids = tuple(int(token) for token in slot.generated_ids)
+        timing = dict(slot.timing)
+        timing["request_total_ms"] = _timing_ms_since(row.submitted_at)
+        finish_details = (
+            completed.finish_details
+            if completed.finish_reason in {"cancel", "disconnect", "timeout"}
+            else _gguf_finish_details(generated_ids, self.generator.tokenizer, row.request)
+        )
+        return GenerationOutput(
+            text=self.generator.tokenizer.decode(generated_ids),
+            generated_token_ids=generated_ids,
+            finish_details=finish_details,
+            telemetry=_gguf_telemetry(
+                row.prompt_ids,
+                generated_ids,
+                row.request,
+                row_index=row.row_index,
+                request_id=str(row.request_id),
+                execution_path="gguf_packed_ar_server_decode",
+                native_compact_prefill=slot.native_compact_prefill,
+                native_caware_decode=slot.native_decode_steps > 0,
+                serial_decode_fallback=slot.serial_decode_steps > 0,
+                native_sampler_rows=False,
+                timing=timing,
+            ),
+        )
+
+    def _empty_output(
+        self,
+        row: _GGUFResidentLoopRow,
+        completed: CompletedRequest | None,
+    ) -> GenerationOutput:
+        finish_details = (
+            completed.finish_details
+            if completed is not None and completed.finish_reason in {"cancel", "disconnect", "timeout"}
+            else _gguf_finish_details((), self.generator.tokenizer, row.request)
+        )
+        return GenerationOutput(
+            text="",
+            generated_token_ids=(),
+            finish_details=finish_details,
+            telemetry=_gguf_telemetry(
+                row.prompt_ids,
+                (),
+                row.request,
+                row_index=row.row_index,
+                request_id=str(row.request_id),
+                execution_path="gguf_resident_model_loop",
+                native_compact_prefill=False,
+                native_caware_decode=False,
+                serial_decode_fallback=not row.native_greedy,
+                native_sampler_rows=False,
+            ),
+        )
+
+    def _execution_metadata(self, row: _GGUFResidentLoopRow) -> dict[str, Any]:
+        slot = row.slot
+        return {
+            "native_greedy": bool(row.native_greedy),
+            "native_compact_prefill": bool(slot is not None and slot.native_compact_prefill),
+            "native_decode_steps": 0 if slot is None else int(slot.native_decode_steps),
+            "serial_decode_fallback": (
+                not row.native_greedy
+                or bool(slot is not None and slot.serial_decode_steps > 0)
+            ),
+        }
 
 
 def _select_from_gguf_logits(
