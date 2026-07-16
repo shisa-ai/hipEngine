@@ -18773,6 +18773,44 @@ def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
     )
 
 
+def test_qwen35_batch_correctness_build_libraries_propagates_cached_build_policy(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_kv(**kwargs):
+        calls.append(("kv", kwargs))
+        return "kv-lib"
+
+    def fake_attn(**kwargs):
+        calls.append(("attn", kwargs))
+        return "attn-lib"
+
+    monkeypatch.setattr(batch_correctness, "build_qwen35_paged_kv_write", fake_kv)
+    monkeypatch.setattr(batch_correctness, "build_qwen35_paged_attn_decode", fake_attn)
+
+    assert batch_correctness._build_primitive_libraries(
+        compiler_version="HIP version: test",
+        require_cached_build=True,
+    ) == ("kv-lib", "attn-lib")
+    assert calls == [
+        (
+            "kv",
+            {
+                "load": True,
+                "compiler_version": "HIP version: test",
+                "require_cached": True,
+            },
+        ),
+        (
+            "attn",
+            {
+                "load": True,
+                "compiler_version": "HIP version: test",
+                "require_cached": True,
+            },
+        ),
+    ]
+
+
 def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None:
     query = np.ones((1, 1, 1), dtype=np.float32)
     key_cache = np.ones((1, 2, 2, 1, 1), dtype=np.float32)
