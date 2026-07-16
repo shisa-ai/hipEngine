@@ -158806,3 +158806,33 @@ oracle tests pass **17/17**; GGUF generation/runner tests pass **53 passed, 9
 skipped**; Python compilation and `git diff --check` pass. This is correctness
 and capacity evidence only (`performance_claim=false`). Per-layer packed hidden
 capture remains the next B2 unit.
+
+## 2026-07-16 — Close packed GGUF per-layer hidden equality
+
+Added opt-in post-layer hidden capture to the actual packed AR prefill and decode
+loops. Captures occur only when requested, convert the BF16 model boundary to
+FP32 without changing bits, and scatter selected rows into each resident
+session's existing `last_layer_output_hidden` diagnostic contract. Packed prompt
+capture reads only each slot's final row, so the ragged gate does not introduce
+an O(tokens x layers) host transfer. Public c1 bulk prefill gained the same
+optional final-row tap; normal generation does no capture or D2H.
+
+The first c2 hidden run used `verify_target_block(...)` as the prompt reference.
+It found a layer-20 BF16-quantum difference and 88 initial state mismatches, but
+that was an invalid oracle substitution: the block-verifier prefill route had
+changed the c1 state being compared. Decode isolation with unchanged public c1
+prefill passed **320/320** packed layer-row comparisons. After adding the tap to
+the real public c1 bulk path, complete packed c2 passed **400/400** comparisons,
+proving the earlier layer-20 result was reference-route drift rather than a
+packed-model mismatch.
+
+Dirty-tree W7900/gfx1100 gates then passed every one of 40 post-layer outputs for
+all live rows: steady c4 **800/800**, sparse c4→c3→c2→c1 **560/560**, and ragged
+`[512,64,64,64]` **800/800** comparisons. Each run also retained exact generated
+tokens, zero initial/final mismatches across 30 Conv/GDN and 10 live-KV families,
+and exact sparse lifecycle checkpoints. Commands used Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, TheRock HIP 7.15, strict-exact GDN prefill, the precomputed
+compiler key, and cached builds required. The combined GGUF generation, hidden
+contract, packed layout/oracle, and runner suite passes **92 passed, 9 skipped**;
+Python compilation and `git diff --check` pass. This is diagnostic correctness
+evidence only; capture is never performance evidence and remains off by default.

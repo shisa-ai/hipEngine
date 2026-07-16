@@ -252,6 +252,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
         bulk_attention_mode: str,
         return_logits: bool,
         capture_hidden_seed_fp32: bool,
+        capture_layer_output_hidden: tuple[int, ...],
     ) -> SimpleNamespace:
         bulk_calls.append(
             {
@@ -259,6 +260,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
                 "bulk_attention_mode": bulk_attention_mode,
                 "return_logits": return_logits,
                 "capture_hidden_seed_fp32": capture_hidden_seed_fp32,
+                "capture_layer_output_hidden": capture_layer_output_hidden,
             }
         )
         return SimpleNamespace(token_id=8)
@@ -271,6 +273,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
         bulk_attention_mode="native",
         return_logits=False,
         capture_hidden_seed_fp32=True,
+        capture_layer_output_hidden=(0, 1),
     )
 
     assert result.token_id == 8
@@ -280,6 +283,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
             "bulk_attention_mode": "native",
             "return_logits": False,
             "capture_hidden_seed_fp32": True,
+            "capture_layer_output_hidden": (0, 1),
         }
     ]
 

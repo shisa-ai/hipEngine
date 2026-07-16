@@ -679,6 +679,33 @@ def _packed_ar_prefill_linear_state_plan(
     )
 
 
+def _scatter_packed_layer_output_hidden(
+    sessions: tuple[object, ...],
+    *,
+    layer_id: int,
+    hidden_rows: np.ndarray,
+    row_indices: tuple[int, ...] | None = None,
+) -> None:
+    """Expose selected packed BF16 layer rows through each session's c1 tap."""
+
+    rows = np.asarray(hidden_rows)
+    if rows.ndim != 2 or rows.dtype != np.float32:
+        raise ValueError("packed layer-output hidden rows must be rank-2 float32")
+    selected = tuple(range(len(sessions))) if row_indices is None else tuple(row_indices)
+    if len(selected) != len(sessions):
+        raise ValueError("packed layer-output row indices must match session count")
+    for session, row_index in zip(sessions, selected, strict=True):
+        if row_index < 0 or row_index >= int(rows.shape[0]):
+            raise ValueError(f"packed layer-output row index {row_index} is out of range")
+        captured = getattr(session, "_last_layer_output_hidden", None)
+        if not isinstance(captured, dict):
+            raise RuntimeError("packed layer-output session capture map is unavailable")
+        captured[int(layer_id)] = np.ascontiguousarray(
+            rows[row_index : row_index + 1],
+            dtype=np.float32,
+        )
+
+
 @dataclass(frozen=True)
 class _GGUFPackedVerifyDeferredState:
     """Owner-side packed verifier state kept live until accept-row commit."""
@@ -8912,6 +8939,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
@@ -8946,21 +8974,29 @@ class Qwen35GGUFResidentSession:
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
             ):
+                bulk_kwargs: dict[str, object] = {}
+                if capture_layer_output_hidden is not None:
+                    bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
                 return self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
                     return_logits=return_logits,
                     capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+                    **bulk_kwargs,
                 )
 
         self.reset()
         hidden_ptr = None
         final_index = len(token_ids) - 1
         for index, token_id in enumerate(token_ids):
+            token_kwargs: dict[str, object] = {}
+            if index == final_index and capture_layer_output_hidden is not None:
+                token_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
                 position=self._position,
                 capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32) and index == final_index,
+                **token_kwargs,
             )
             self._position += 1
         assert hidden_ptr is not None
@@ -9030,6 +9066,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         enqueue_sample_only: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -9046,6 +9083,11 @@ class Qwen35GGUFResidentSession:
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
         runtime = self.runtime or get_hip_runtime()
+        capture_layer_ids = self._normalize_layer_output_capture(
+            capture_layer_output_hidden
+        )
+        if capture_layer_ids:
+            self._last_layer_output_hidden = {}
         tokens = np.asarray([int(token) for token in token_ids], dtype=np.int64)
         for token in tokens.tolist():
             if token < 0 or token >= self.runner.vocab_size:
@@ -9191,6 +9233,21 @@ class Qwen35GGUFResidentSession:
                         if recorder is not None and recorder.should_complete_layers:
                             recorder.complete(layer_sequence, stream=stream)
                         src, dst = dst, src
+                        if layer_id in capture_layer_ids and chunk_end == rows:
+                            final_row_ptr = (
+                                src.ptr
+                                + (chunk_rows - 1)
+                                * self.runner.hidden_size
+                                * DType.BF16.itemsize
+                            )
+                            self._last_layer_output_hidden[int(layer_id)] = (
+                                _copy_bf16_rows_to_host_f32(
+                                    final_row_ptr,
+                                    1,
+                                    self.runner.hidden_size,
+                                    runtime=runtime,
+                                )
+                            )
                     if recorder is not None and not recorder.should_complete_layers:
                         recorder.complete(chunk_sequence, stream=stream)
                     last_bulk_scratch = bulk_scratch
@@ -9327,6 +9384,21 @@ class Qwen35GGUFResidentSession:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
                     src, dst = dst, src
+                    if layer_id in capture_layer_ids:
+                        final_row_ptr = (
+                            src.ptr
+                            + (rows - 1)
+                            * self.runner.hidden_size
+                            * DType.BF16.itemsize
+                        )
+                        self._last_layer_output_hidden[int(layer_id)] = (
+                            _copy_bf16_rows_to_host_f32(
+                                final_row_ptr,
+                                1,
+                                self.runner.hidden_size,
+                                runtime=runtime,
+                            )
+                        )
                 if recorder is not None and not recorder.should_complete_layers:
                     recorder.complete(chunk_sequence, stream=stream)
                 last_bulk_scratch = active_bulk_scratch
@@ -10476,6 +10548,7 @@ class Qwen35GGUFResidentSession:
         sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
     ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
         """Consume one prompt for each resident session in one packed prefill pass.
@@ -10542,6 +10615,16 @@ class Qwen35GGUFResidentSession:
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         if int(layout.max_live_count) >= 1024:
             raise NotImplementedError("packed AR prefill currently requires context < 1024")
+        capture_layer_ids = self._normalize_layer_output_capture(
+            capture_layer_output_hidden
+        )
+        capture_row_indices = tuple(
+            int(layout.cu_seqlens[slot_index + 1]) - 1
+            for slot_index in range(int(layout.slot_count))
+        )
+        if capture_layer_ids:
+            for session in session_tuple:
+                session._last_layer_output_hidden = {}
         rows = int(layout.rows)
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
@@ -10686,6 +10769,28 @@ class Qwen35GGUFResidentSession:
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
+                if layer_id in capture_layer_ids:
+                    hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+                    selected_hidden_rows = np.ascontiguousarray(
+                        np.concatenate(
+                            [
+                                _copy_bf16_rows_to_host_f32(
+                                    src.ptr + row_index * hidden_row_nbytes,
+                                    1,
+                                    self.runner.hidden_size,
+                                    runtime=runtime,
+                                )
+                                for row_index in capture_row_indices
+                            ],
+                            axis=0,
+                        ),
+                        dtype=np.float32,
+                    )
+                    _scatter_packed_layer_output_hidden(
+                        session_tuple,
+                        layer_id=layer_id,
+                        hidden_rows=selected_hidden_rows,
+                    )
 
             if linear_state_plan.commit_captured_state_rows:
                 self._commit_packed_decode_linear_state_rows(
@@ -10833,6 +10938,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = False,
         stream: int = 0,
         scatter_state: bool = True,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult]:
         """Consume one decode token for each resident session in one packed pass.
 
@@ -10900,6 +11006,12 @@ class Qwen35GGUFResidentSession:
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         if int(layout.max_live_count) >= 1024:
             raise NotImplementedError("packed AR decode currently requires context < 1024")
+        capture_layer_ids = self._normalize_layer_output_capture(
+            capture_layer_output_hidden
+        )
+        if capture_layer_ids:
+            for session in session_tuple:
+                session._last_layer_output_hidden = {}
         rows = int(layout.rows)
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
@@ -10985,6 +11097,18 @@ class Qwen35GGUFResidentSession:
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
+                if layer_id in capture_layer_ids:
+                    hidden_rows = _copy_bf16_rows_to_host_f32(
+                        src.ptr,
+                        rows,
+                        self.runner.hidden_size,
+                        runtime=runtime,
+                    )
+                    _scatter_packed_layer_output_hidden(
+                        session_tuple,
+                        layer_id=layer_id,
+                        hidden_rows=hidden_rows,
+                    )
 
             output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
             gguf_rmsnorm_bf16_f32_weight(
