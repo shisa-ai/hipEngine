@@ -160162,3 +160162,37 @@ python3 -m pytest -q tests/test_generation_batch_scheduler.py \
 This is only the D3 admission commit point. Real GGUF device-page allocation,
 idle unpinned-tail shrink, allocator/HIP memory evidence, and the
 burst-to-steady-to-idle-to-burst gate remain open.
+
+## 2026-07-16 — Attach D3 admission to real GGUF device KV
+
+Implemented the real BF16 device-page ownership layer behind the backend-neutral
+scheduler reservation barrier. `DeviceChunkedKVPool` owns callback-allocated
+runtime chunks, preserves monotonic logical block ids, requires each request's
+pages to remain in one contiguous backing chunk for the existing base-pointer +
+int32 block-table ABI, tracks refs and graph pins, grows only from admission,
+and frees only fully-free unpinned tail chunks at loop barriers. GGUF resident
+sessions now defer fixed full-attention K/V allocation, bind request-sized
+subviews at admission, invalidate captured c1/packed graphs before reclaim, and
+return the exact allocation before their session lease becomes reusable.
+`KVLiveSpans` and recurrent/model scratch ABIs are unchanged.
+
+The public `LLM` adapter now resolves the documented engine-loop environment and
+passes one `EngineLoopConfig` to the native resident runner and scheduler. The
+legacy whole-generation compatibility bridge remains `protect_ttft` so a
+prompt-list request is not split into independent inner calls. A RED capacity
+fixture also found that a 513-position session had been budgeted with floor
+page division; total resident capacity now uses ceil division and correctly
+accounts for three 256-token pages. Unset high water remains uncapped as
+`docs/ENVS.md` specifies; explicit high water still rejects atomically.
+
+Focused host validation is **419 passed, 4 skipped** across device-pool policy,
+GGUF generation, the complete scheduler, graph contracts, and public LLM paths.
+Three dirty-tree W7900 diagnostics are green but are not retained closure
+claims: one exact two-token scheduler smoke; a 110.110 s real graph lifecycle
+with exact tokens and zero state/KV mismatches, stable live pointers, 3 pinned
+pages, exact tracked grow/shrink deltas of 15,728,640 bytes, and
+3→6→3→12→3 page transitions; and the 78.447 s D2 A/B/C/D lifecycle repeated
+through real allocations with every token/Conv/GDN/live-KV comparison exact,
+B→C allocation and session reuse, monotonic D regrowth, and final 3-page idle
+low water. The implementation must be committed and these gates rerun from that
+clean revision before D3 closes.

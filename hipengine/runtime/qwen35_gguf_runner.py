@@ -13,7 +13,14 @@ import numpy as np
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.core.tensor import Tensor
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from hipengine.runtime.moe_graph import MoeGraphCache
@@ -106,7 +113,13 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_decode_position_i64,
     set_i64_scalar,
 )
-from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
+from hipengine.kvcache import (
+    DeviceChunkedKVPool,
+    DeviceKVPoolAllocation,
+    FixedPagedKVPolicy,
+    KVLiveSpans,
+    KVScaleMetadata,
+)
 from hipengine.runtime.qwen35_paro import AotritonPrefillStreamBridge
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
@@ -8077,6 +8090,104 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
+@dataclass(frozen=True)
+class Qwen35GGUFBF16KVChunkBacking:
+    """Real HIP backing for one contiguous chunk of logical BF16 KV pages."""
+
+    start_block_id: int
+    pages: int
+    page_nbytes_per_tensor: int
+    full_key_caches: tuple[DeviceBuffer | None, ...]
+    full_value_caches: tuple[DeviceBuffer | None, ...]
+    buffers: tuple[DeviceBuffer, ...]
+
+    @property
+    def total_nbytes(self) -> int:
+        return sum(int(buffer.nbytes) for buffer in self.buffers)
+
+    def page_pointer(self, local_page: int) -> int:
+        page = int(local_page)
+        if page < 0 or page >= self.pages:
+            raise IndexError("local KV page is outside the chunk")
+        first = next((buffer for buffer in self.full_key_caches if buffer is not None), None)
+        if first is None:
+            raise RuntimeError("GGUF BF16 KV chunk has no full-attention layer backing")
+        return int(first.ptr) + page * int(self.page_nbytes_per_tensor)
+
+    def bound_caches(
+        self,
+        block_ids: tuple[int, ...],
+    ) -> tuple[tuple[DeviceBuffer | None, ...], tuple[DeviceBuffer | None, ...]]:
+        if not block_ids:
+            raise ValueError("bound GGUF KV allocation must contain pages")
+        expected = tuple(range(int(block_ids[0]), int(block_ids[0]) + len(block_ids)))
+        if tuple(int(block_id) for block_id in block_ids) != expected:
+            raise ValueError("GGUF KV allocation pages must be contiguous")
+        local_start = int(block_ids[0]) - int(self.start_block_id)
+        if local_start < 0 or local_start + len(block_ids) > self.pages:
+            raise ValueError("GGUF KV allocation is outside its backing chunk")
+        byte_offset = local_start * int(self.page_nbytes_per_tensor)
+        bound_nbytes = len(block_ids) * int(self.page_nbytes_per_tensor)
+
+        def bind(buffer: DeviceBuffer | None) -> DeviceBuffer | None:
+            if buffer is None:
+                return None
+            return DeviceBuffer(ptr=int(buffer.ptr) + byte_offset, nbytes=bound_nbytes)
+
+        return (
+            tuple(bind(buffer) for buffer in self.full_key_caches),
+            tuple(bind(buffer) for buffer in self.full_value_caches),
+        )
+
+
+def _allocate_qwen35_gguf_bf16_kv_chunk(
+    runner: Qwen35GGUFFullStackRunner,
+    *,
+    runtime: HipRuntime,
+    start_block_id: int,
+    pages: int,
+) -> Qwen35GGUFBF16KVChunkBacking:
+    if runner.weights is None:
+        raise RuntimeError("GGUF full-stack runner is closed")
+    cfg = runner.weights.config
+    page_nbytes = 256 * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+    key_caches: list[DeviceBuffer | None] = []
+    value_caches: list[DeviceBuffer | None] = []
+    buffers: list[DeviceBuffer] = []
+    try:
+        for layer_type in cfg.layer_types:
+            if layer_type == LINEAR_ATTENTION:
+                key_caches.append(None)
+                value_caches.append(None)
+                continue
+            key_cache = malloc(int(pages) * page_nbytes, runtime=runtime)
+            value_cache = malloc(int(pages) * page_nbytes, runtime=runtime)
+            buffers.extend((key_cache, value_cache))
+            key_caches.append(key_cache)
+            value_caches.append(value_cache)
+    except Exception:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+        raise
+    return Qwen35GGUFBF16KVChunkBacking(
+        start_block_id=int(start_block_id),
+        pages=int(pages),
+        page_nbytes_per_tensor=page_nbytes,
+        full_key_caches=tuple(key_caches),
+        full_value_caches=tuple(value_caches),
+        buffers=tuple(buffers),
+    )
+
+
+def _free_qwen35_gguf_bf16_kv_chunk(
+    backing: Qwen35GGUFBF16KVChunkBacking,
+    *,
+    runtime: HipRuntime,
+) -> None:
+    for buffer in reversed(backing.buffers):
+        free(buffer, runtime=runtime)
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -8109,6 +8220,7 @@ class Qwen35GGUFResidentSession:
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
+    defer_kv_allocation: bool = False
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
@@ -8208,6 +8320,9 @@ class Qwen35GGUFResidentSession:
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
+    _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
+    _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -8245,6 +8360,8 @@ class Qwen35GGUFResidentSession:
         self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
         if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
+        if self.defer_kv_allocation and self.kv_storage_dtype != DType.BF16:
+            raise ValueError("deferred GGUF device KV allocation currently requires BF16 storage")
         self.kv_storage_layout = str(getattr(self.kv_policy, "storage_layout", "uniform"))
         self.int8_kv_value_bf16 = _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=self.kv_storage_dtype)
         self.kv_scale_dtype = DType.parse(self.kv_scale_dtype)
@@ -8357,6 +8474,7 @@ class Qwen35GGUFResidentSession:
             int8_kv_value_bf16=self.int8_kv_value_bf16,
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+            allocate_kv_cache=not bool(self.defer_kv_allocation),
         )
         total_memory_bytes = 0
         try:
@@ -8426,6 +8544,167 @@ class Qwen35GGUFResidentSession:
         """Next token position that will be consumed by :meth:`step`."""
 
         return int(self._position)
+
+    @property
+    def device_kv_allocation(self) -> DeviceKVPoolAllocation | None:
+        return self._device_kv_allocation
+
+    @property
+    def device_kv_capacity_tokens(self) -> int:
+        allocation = self._device_kv_allocation
+        if allocation is not None:
+            return len(allocation.block_ids) * 256
+        if self.scratch is None:
+            return 0
+        return 0 if self.defer_kv_allocation else int(self.scratch.max_positions)
+
+    def bind_device_kv_allocation(
+        self,
+        pool: DeviceChunkedKVPool,
+        allocation: DeviceKVPoolAllocation,
+    ) -> None:
+        """Bind one scheduler-owned allocation to this otherwise resident session."""
+
+        if not self.defer_kv_allocation:
+            raise RuntimeError("GGUF session was not created for deferred KV allocation")
+        if self.kv_storage_dtype != DType.BF16:
+            raise RuntimeError("dynamic GGUF device KV binding currently requires BF16 storage")
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._device_kv_allocation is not None:
+            raise RuntimeError("GGUF resident session already has a device KV allocation")
+        backing = allocation.backing
+        if not isinstance(backing, Qwen35GGUFBF16KVChunkBacking):
+            raise TypeError("GGUF device KV allocation has incompatible backing")
+        if len(allocation.block_ids) > int(self.scratch.block_table_tensor.numel):
+            raise ValueError("GGUF device KV allocation exceeds the session block-table capacity")
+        key_caches, value_caches = backing.bound_caches(allocation.block_ids)
+        local_block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
+        local_block_table[: len(allocation.block_ids)] = np.arange(
+            len(allocation.block_ids), dtype=np.int32
+        )
+        copy_host_to_device(
+            self.scratch.block_table,
+            host_array_ptr(local_block_table),
+            local_block_table.nbytes,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+        self.scratch = replace(
+            self.scratch,
+            full_key_caches=key_caches,
+            full_value_caches=value_caches,
+        )
+        self._device_kv_pool = pool
+        self._device_kv_allocation = allocation
+
+    def invalidate_device_kv_graphs(self) -> int:
+        """Close every graph that pins this session's current KV allocation."""
+
+        handles = {
+            id(handle): handle
+            for handle in (*tuple(self._device_kv_graph_handles.values()), *tuple(self._decode_graphs))
+        }
+        closed = 0
+        for handle in tuple(handles.values()):
+            close = getattr(handle, "close", None)
+            if callable(close) and not bool(getattr(handle, "closed", False)):
+                close()
+                closed += 1
+        return closed
+
+    def unbind_device_kv_allocation(self) -> DeviceKVPoolAllocation:
+        """Detach scheduler-owned KV after all graph pins have been invalidated."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            raise RuntimeError("GGUF resident session has no device KV allocation")
+        if self._device_kv_graph_handles:
+            raise RuntimeError("cannot detach GGUF device KV while graphs remain pinned")
+        empty = tuple(None for _ in self.scratch.full_key_caches)
+        self.scratch = replace(
+            self.scratch,
+            full_key_caches=empty,
+            full_value_caches=empty,
+        )
+        block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
+        copy_host_to_device(
+            self.scratch.block_table,
+            host_array_ptr(block_table),
+            block_table.nbytes,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+        self._device_kv_allocation = None
+        self._device_kv_pool = None
+        return allocation
+
+    def _pin_device_kv_graph(self, graph: object) -> None:
+        allocation = self._device_kv_allocation
+        pool = self._device_kv_pool
+        if allocation is None or pool is None:
+            return
+        key = id(graph)
+        if key in self._device_kv_graph_handles:
+            return
+        pool.pin(allocation.block_ids)
+        self._device_kv_graph_handles[key] = graph
+
+    def _unpin_device_kv_graph(self, graph: object) -> None:
+        key = id(graph)
+        if key not in self._device_kv_graph_handles:
+            return
+        allocation = self._device_kv_allocation
+        pool = self._device_kv_pool
+        if allocation is None or pool is None:
+            raise RuntimeError("GGUF device KV graph pin outlived its allocation")
+        pool.unpin(allocation.block_ids)
+        self._device_kv_graph_handles.pop(key, None)
+
+    def create_device_kv_pool(
+        self,
+        *,
+        initial_pages: int,
+        low_water_pages: int,
+        high_water_pages: int | None,
+        chunk_pages: int,
+        idle_grace_seconds: float,
+    ) -> DeviceChunkedKVPool:
+        """Create the scheduler-owned BF16 pool using this session's model plan."""
+
+        if not self.defer_kv_allocation:
+            raise RuntimeError("GGUF session was not created for deferred KV allocation")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        cfg = self.runner.weights.config
+        page_nbytes = 256 * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+        full_attention_layers = sum(
+            1 for layer_type in cfg.layer_types if layer_type == FULL_ATTENTION
+        )
+        page_bytes = 2 * full_attention_layers * page_nbytes
+
+        def allocate_chunk(start_block_id: int, pages: int):
+            return _allocate_qwen35_gguf_bf16_kv_chunk(
+                self.runner,
+                runtime=runtime,
+                start_block_id=int(start_block_id),
+                pages=int(pages),
+            )
+
+        return DeviceChunkedKVPool(
+            page_bytes=page_bytes,
+            initial_pages=int(initial_pages),
+            low_water_pages=int(low_water_pages),
+            high_water_pages=(None if high_water_pages is None else int(high_water_pages)),
+            chunk_pages=int(chunk_pages),
+            idle_grace_seconds=float(idle_grace_seconds),
+            allocate_chunk=allocate_chunk,
+            free_chunk=lambda backing: _free_qwen35_gguf_bf16_kv_chunk(
+                backing, runtime=runtime
+            ),
+            page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
+        )
 
     def decode_graph_min_replay_steps(self) -> int | None:
         """Return this backend package's admitted graph break-even, if any."""
@@ -14022,7 +14301,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("whole-step GGUF graph cannot nest the per-layer MoE graph diagnostic")
         from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
 
-        return capture_qwen35_gguf_decode_graph(
+        graph = capture_qwen35_gguf_decode_graph(
             self,
             position=int(position),
             steps_per_replay=int(steps_per_replay),
@@ -14032,6 +14311,8 @@ class Qwen35GGUFResidentSession:
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
             record_hidden_seeds=bool(record_hidden_seeds),
         )
+        self._pin_device_kv_graph(graph)
+        return graph
 
     def capture_packed_decode_graph(
         self,
@@ -14049,10 +14330,11 @@ class Qwen35GGUFResidentSession:
             capture_qwen35_gguf_packed_decode_graph,
         )
 
-        return capture_qwen35_gguf_packed_decode_graph(
+        session_tuple = (self,) if sessions is None else tuple(sessions)
+        graph = capture_qwen35_gguf_packed_decode_graph(
             self,
             token_ids=tuple(int(token) for token in token_ids),
-            sessions=(self,) if sessions is None else tuple(sessions),
+            sessions=session_tuple,
             steps_per_replay=int(steps_per_replay),
             max_replay_steps=max_replay_steps,
             record_steps=int(record_steps),
@@ -14060,6 +14342,9 @@ class Qwen35GGUFResidentSession:
                 int(layer_id) for layer_id in record_layer_output_hidden
             ),
         )
+        for session in session_tuple:
+            session._pin_device_kv_graph(graph)
+        return graph
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
@@ -14082,6 +14367,12 @@ class Qwen35GGUFResidentSession:
         for graph in tuple(self._decode_graphs):
             graph.close()
         self._decode_graphs.clear()
+        if self._device_kv_allocation is not None:
+            pool = self._device_kv_pool
+            allocation = self.unbind_device_kv_allocation()
+            if pool is None:
+                raise RuntimeError("GGUF session lost its device KV pool during close")
+            pool.release(allocation.request_id, now_seconds=time.monotonic())
         if self._moe_graph is not None:
             self._moe_graph.close()
             self._moe_graph = None
@@ -15066,6 +15357,7 @@ class _FullStackScratch:
         int8_kv_value_bf16: bool = False,
         int8_bf16_prefix_full_attention_layers: int = 0,
         int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
+        allocate_kv_cache: bool = True,
     ):
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
@@ -15077,6 +15369,8 @@ class _FullStackScratch:
         kv_storage = DType.parse(kv_storage_dtype)
         if kv_storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
+        if not allocate_kv_cache and kv_storage != DType.BF16:
+            raise ValueError("deferred GGUF full-attention KV allocation currently requires BF16 storage")
         scale_dtype = DType.parse(kv_scale_dtype)
         if scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF INT8 KV scales must use fp16 or fp32")
@@ -15185,6 +15479,18 @@ class _FullStackScratch:
                 full_v_scale_caches.append(None)
                 full_kv_scale_metadata.append(None)
             else:
+                if not allocate_kv_cache:
+                    layer_conv_states.append(None)
+                    layer_recurrent_states.append(None)
+                    full_key_caches.append(None)
+                    full_value_caches.append(None)
+                    full_bf16_mirror_key_caches.append(None)
+                    full_bf16_mirror_value_caches.append(None)
+                    full_k_scale_caches.append(None)
+                    full_v_scale_caches.append(None)
+                    full_kv_scale_metadata.append(None)
+                    full_attention_index += 1
+                    continue
                 layer_uses_int8 = kv_storage == DType.INT8_PER_TOKEN_HEAD and (
                     full_attention_index not in bf16_full_attention_index_set
                 )

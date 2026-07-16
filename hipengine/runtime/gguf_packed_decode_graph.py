@@ -795,6 +795,10 @@ class Qwen35GGUFPackedDecodeGraph:
         graphs = getattr(self.owner, "_decode_graphs", None)
         if isinstance(graphs, list) and self in graphs:
             graphs.remove(self)
+        for session in self.sessions:
+            unpin = getattr(session, "_unpin_device_kv_graph", None)
+            if callable(unpin):
+                unpin(self)
 
     def __enter__(self) -> "Qwen35GGUFPackedDecodeGraph":
         return self

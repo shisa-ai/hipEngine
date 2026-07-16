@@ -126,6 +126,9 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
     )
     owner = object.__new__(Qwen35GGUFResidentSession)
     peer = object.__new__(Qwen35GGUFResidentSession)
+    pins: list[tuple[str, object]] = []
+    owner._pin_device_kv_graph = lambda graph: pins.append(("owner", graph))
+    peer._pin_device_kv_graph = lambda graph: pins.append(("peer", graph))
 
     result = owner.capture_packed_decode_graph(
         (11, 22),
@@ -137,6 +140,7 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
     )
 
     assert result == "graph"
+    assert pins == [("owner", "graph"), ("peer", "graph")]
     assert observed == {
         "owner": owner,
         "token_ids": (11, 22),

@@ -137,28 +137,64 @@ class SubmitPollTextGenerator:
         capacity: int | None = None,
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
+        config: EngineLoopConfig | None = None,
     ) -> None:
         if capacity is not None and capacity <= 0:
             raise ValueError("capacity must be positive")
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
+        if (
+            config is not None
+            and capacity is not None
+            and config.max_active_requests is not None
+            and int(config.max_active_requests) != int(capacity)
+        ):
+            raise ValueError("capacity conflicts with config.max_active_requests")
         self._inner = inner
-        self._prefill_chunk_size = int(prefill_chunk_size)
         self._context_bucket_size = int(context_bucket_size)
+        configured_capacity = (
+            capacity
+            if capacity is not None
+            else (None if config is None else config.max_active_requests)
+        )
         resident_runner_factory = getattr(self._inner, "create_resident_model_runner", None)
-        if callable(resident_runner_factory):
-            self._runner = resident_runner_factory(capacity=capacity)
+        has_resident_runner = callable(resident_runner_factory)
+        if has_resident_runner:
+            self._runner = resident_runner_factory(capacity=configured_capacity)
             resolved_capacity = int(self._runner.capacity)
         else:
-            resolved_capacity = 32 if capacity is None else int(capacity)
+            resolved_capacity = 32 if configured_capacity is None else int(configured_capacity)
             self._runner = _SubmitPollTextRunner(self._inner, capacity=resolved_capacity)
-        self._loop = ResidentEngineLoop(
-            self._runner,
-            capacity=resolved_capacity,
-            prefill_chunk_size=self._prefill_chunk_size,
-            context_bucket_size=self._context_bucket_size,
-            prefill_decode_policy="protect_ttft",
-        )
+        if config is None:
+            self._loop = ResidentEngineLoop(
+                self._runner,
+                capacity=resolved_capacity,
+                prefill_chunk_size=int(prefill_chunk_size),
+                context_bucket_size=self._context_bucket_size,
+                prefill_decode_policy="protect_ttft",
+            )
+        else:
+            loop_config = (
+                config
+                if config.max_active_requests is not None
+                else replace(config, max_active_requests=resolved_capacity)
+            )
+            if not has_resident_runner:
+                # The compatibility bridge invokes one whole inner generation
+                # call per decode work item.  Prefill every submitted row first
+                # so prompt-list calls remain one ordered inner batch; native
+                # resident runners consume the configured scheduling policy.
+                loop_config = replace(loop_config, prefill_decode_policy="protect_ttft")
+            self._loop = ResidentEngineLoop(
+                self._runner,
+                capacity=resolved_capacity,
+                context_bucket_size=self._context_bucket_size,
+                config=loop_config,
+            )
+        self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
+        configure_engine_loop = getattr(self._runner, "configure_engine_loop", None)
+        if callable(configure_engine_loop):
+            configure_engine_loop(self._loop.config)
         # The lock protects one mutable scheduler tick, never an entire request.
         # Native runners therefore release it after each model transition so a
         # later D2 admission worker can enqueue between decode steps.
@@ -755,8 +791,16 @@ class ResidentEngineLoop:
         return tuple(events)
 
     def tick(self) -> tuple[EngineLoopEvent, ...]:
-        """Run one admission/prefill/decode tick."""
+        """Run one admission/prefill/decode tick and finish at a maintenance barrier."""
 
+        try:
+            return self._tick_once()
+        finally:
+            barrier = getattr(self.runner, "loop_barrier", None)
+            if callable(barrier):
+                barrier(active_count=self.active_count, pending_count=self.pending_count)
+
+    def _tick_once(self) -> tuple[EngineLoopEvent, ...]:
         events: list[EngineLoopEvent] = []
         reserve_admission = getattr(self.runner, "reserve_admission", None)
         rollback_admission = getattr(self.runner, "rollback_admission", None)

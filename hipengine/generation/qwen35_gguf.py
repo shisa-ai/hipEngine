@@ -15,7 +15,8 @@ from typing import Any, ClassVar, Iterator, Sequence
 
 import numpy as np
 
-from hipengine.dispatch import SlotMove, WorkItem
+from hipengine.core.memory import memory_stats
+from hipengine.dispatch import RequestState, SlotMove, WorkItem
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -910,6 +911,7 @@ class Qwen35GGUFBringupGenerator:
         pool_name: str,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
+        defer_kv_allocation: bool = False,
     ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
         max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
@@ -935,6 +937,7 @@ class Qwen35GGUFBringupGenerator:
                 shared_runner=shared_runner,
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
+                defer_kv_allocation=bool(defer_kv_allocation),
                 **session_kwargs,
             ),
             key,
@@ -3798,6 +3801,7 @@ class _GGUFResidentLoopRow:
     slot: _GGUFARServingSlot | None = None
     first_token_emitted: bool = False
     fallback_output: GenerationOutput | None = None
+    kv_allocation: Any | None = None
 
 
 class Qwen35GGUFResidentModelRunner:
@@ -3827,6 +3831,10 @@ class Qwen35GGUFResidentModelRunner:
         self._outputs: dict[int, GenerationOutput] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
+        self._kv_pool: Any | None = None
+        self._engine_loop_config: Any | None = None
+        self._kv_hip_used_peak_sampled_bytes = 0
+        self._kv_graph_invalidation_count = 0
         self._reserve_sessions()
 
     @property
@@ -3836,6 +3844,119 @@ class Qwen35GGUFResidentModelRunner:
     @property
     def available_session_count(self) -> int:
         return len(self._available)
+
+    @property
+    def kv_pool(self):
+        return self._kv_pool
+
+    @property
+    def kv_pool_stats(self):
+        pool = self._kv_pool
+        return None if pool is None else pool.stats
+
+    def kv_pool_memory_snapshot(self) -> dict[str, Any]:
+        """Return pool, tracked allocator, and sampled HIP current/peak evidence."""
+
+        self._sample_kv_hip_memory()
+        pool = self._kv_pool
+        pool_stats = None if pool is None else pool.stats.to_json_dict()
+        tracked = memory_stats()
+        return {
+            "dynamic_pool": pool_stats,
+            "tracked_allocator": tracked,
+            "hip_used_current_bytes": self._current_hip_used_bytes(),
+            "hip_used_peak_sampled_bytes": int(self._kv_hip_used_peak_sampled_bytes),
+            "graph_invalidation_count": int(self._kv_graph_invalidation_count),
+        }
+
+    def configure_engine_loop(self, config: Any) -> None:
+        """Bind engine-loop KV policy knobs to the real deferred session pool."""
+
+        if self._rows:
+            raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
+        self._engine_loop_config = config
+        factory_session = self._available[-1].session if self._available else None
+        create_pool = getattr(factory_session, "create_device_kv_pool", None)
+        if not callable(create_pool):
+            # Lightweight fake-session tests retain the D2 fixed-session path.
+            return
+        if self._kv_pool is not None:
+            self._kv_pool.close()
+            self._kv_pool = None
+        scratch = getattr(factory_session, "scratch", None)
+        if scratch is None:
+            raise RuntimeError("GGUF deferred session has no scratch capacity")
+        max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
+        total_pages = self.capacity * max_pages_per_request
+        initial_pages = min(int(config.kv_pool_initial_pages), total_pages)
+        low_water_pages = min(int(config.kv_pool_low_water_pages), initial_pages)
+        requested_high = getattr(config, "kv_pool_high_water_pages", None)
+        high_water_pages = None if requested_high is None else int(requested_high)
+        chunk_pages = min(max(1, int(config.kv_pool_chunk_pages)), total_pages)
+        self._kv_pool = create_pool(
+            initial_pages=initial_pages,
+            low_water_pages=low_water_pages,
+            high_water_pages=high_water_pages,
+            chunk_pages=chunk_pages,
+            idle_grace_seconds=float(config.kv_pool_idle_grace_seconds),
+        )
+        self._sample_kv_hip_memory()
+
+    def reserve_admission(self, request: RequestState) -> None:
+        """Reserve and bind real device KV before scheduler slot publication."""
+
+        pool = self._kv_pool
+        if pool is None:
+            return
+        row = self._row(request.request_id)
+        if row.lease is not None or row.kv_allocation is not None:
+            raise RuntimeError(f"request_id {row.request_id} already has admission resources")
+        if int(row.request.max_tokens) <= 0:
+            return
+        positions = len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
+        if positions <= 0:
+            return
+        lease = self._available[-1] if self._available else None
+        if lease is None:
+            raise RuntimeError("GGUF resident model runner has no free session at admission")
+        scratch = getattr(lease.session, "scratch", None)
+        if scratch is None or positions > int(scratch.max_positions):
+            capacity = 0 if scratch is None else int(scratch.max_positions)
+            raise ValueError(
+                f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
+            )
+        pages = (positions + 255) // 256
+        allocation = pool.allocate(row.request_id, pages, now_seconds=time.monotonic())
+        try:
+            lease.session.bind_device_kv_allocation(pool, allocation)
+        except Exception:
+            pool.release(row.request_id, now_seconds=time.monotonic())
+            raise
+        if not self._available or self._available[-1] is not lease:
+            lease.session.invalidate_device_kv_graphs()
+            lease.session.unbind_device_kv_allocation()
+            pool.release(row.request_id, now_seconds=time.monotonic())
+            raise RuntimeError("GGUF available-session order changed during atomic admission")
+        self._available.pop()
+        row.lease = lease
+        row.kv_allocation = allocation
+        self._sample_kv_hip_memory()
+
+    def rollback_admission(self, request: RequestState) -> None:
+        """Undo a bound KV/session lease that was never published active."""
+
+        row = self._row(request.request_id)
+        self._release_row_resources(row)
+
+    def loop_barrier(self, *, active_count: int, pending_count: int) -> None:
+        """Run allocator maintenance only between complete model transitions."""
+
+        del active_count, pending_count
+        pool = self._kv_pool
+        if pool is None:
+            return
+        pool.shrink_idle(now_seconds=time.monotonic())
+        self._sample_kv_hip_memory()
 
     def prompt_tokens(self, prompt: PromptInput) -> tuple[int, ...]:
         tokens = tuple(_encode_prompt(self.generator.tokenizer, prompt))
@@ -3895,9 +4016,15 @@ class Qwen35GGUFResidentModelRunner:
         if self._rows:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
         with hip_target_arch_environment(self.generator.target_arch):
+            config = self._engine_loop_config
+            if self._kv_pool is not None:
+                self._kv_pool.close()
+                self._kv_pool = None
             self._release_available_sessions()
             self._max_sequence_length = requested
             self._reserve_sessions()
+            if config is not None:
+                self.configure_engine_loop(config)
 
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
         if not commit:
@@ -3997,10 +4124,7 @@ class Qwen35GGUFResidentModelRunner:
                 output = row.fallback_output or self._empty_output(row, completed)
             self._outputs[request_id] = output
             self._completed_metadata[request_id] = self._execution_metadata(row)
-            if row.lease is not None:
-                row.lease.session.reset()
-                self._available.append(row.lease)
-                row.lease = None
+            self._release_row_resources(row)
             self._rows.pop(request_id, None)
 
     def has_outputs(self, request_ids: Sequence[int]) -> bool:
@@ -4016,9 +4140,8 @@ class Qwen35GGUFResidentModelRunner:
         for request_id in request_ids:
             rid = int(request_id)
             row = self._rows.pop(rid, None)
-            if row is not None and row.lease is not None:
-                row.lease.session.reset()
-                self._available.append(row.lease)
+            if row is not None:
+                self._release_row_resources(row)
             self._outputs.pop(rid, None)
             self._completed_metadata.pop(rid, None)
 
@@ -4067,9 +4190,11 @@ class Qwen35GGUFResidentModelRunner:
         with hip_target_arch_environment(self.generator.target_arch):
             self._flush_all_packed_owners()
             for row in tuple(self._rows.values()):
-                if row.lease is not None:
-                    row.lease.session.close()
+                self._release_row_resources(row)
             self._rows.clear()
+            if self._kv_pool is not None:
+                self._kv_pool.close()
+                self._kv_pool = None
             self._release_available_sessions()
 
     def _reserve_sessions(self) -> None:
@@ -4078,9 +4203,10 @@ class Qwen35GGUFResidentModelRunner:
             for _ in range(self.capacity):
                 session, pool_key, _reused = self.generator._acquire_shared_session(
                     self._shared_runner,
-                    pool_name="continuous_ar",
+                    pool_name="continuous_ar_dynamic_kv",
                     use_wmma_prefill=True,
                     use_gemv_decode=True,
+                    defer_kv_allocation=True,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
         except Exception:
@@ -4093,6 +4219,50 @@ class Qwen35GGUFResidentModelRunner:
         while self._available:
             lease = self._available.pop()
             self.generator._release_shared_session(lease.pool_key, lease.session)
+
+    def _release_row_resources(self, row: _GGUFResidentLoopRow) -> None:
+        lease = row.lease
+        if lease is None:
+            if row.kv_allocation is not None:
+                raise RuntimeError("GGUF row retained KV without a session lease")
+            return
+        session = lease.session
+        invalidate = getattr(session, "invalidate_device_kv_graphs", None)
+        if callable(invalidate):
+            self._kv_graph_invalidation_count += int(invalidate())
+        reset = getattr(session, "reset", None)
+        if callable(reset):
+            reset()
+        if row.kv_allocation is not None:
+            pool = self._kv_pool
+            if pool is None:
+                raise RuntimeError("GGUF row has dynamic KV but the pool is unavailable")
+            detached = session.unbind_device_kv_allocation()
+            if detached is not row.kv_allocation:
+                raise RuntimeError("GGUF session detached a different KV allocation")
+            released = pool.release(row.request_id, now_seconds=time.monotonic())
+            if released is not row.kv_allocation:
+                raise RuntimeError("GGUF pool released a different request allocation")
+            row.kv_allocation = None
+        self._available.append(lease)
+        row.lease = None
+        self._sample_kv_hip_memory()
+
+    def _current_hip_used_bytes(self) -> int:
+        runtime = getattr(self._shared_runner, "runtime", None)
+        if runtime is None:
+            return 0
+        try:
+            free_bytes, total_bytes = runtime.mem_get_info()
+        except Exception:
+            return 0
+        return max(0, int(total_bytes) - int(free_bytes))
+
+    def _sample_kv_hip_memory(self) -> None:
+        self._kv_hip_used_peak_sampled_bytes = max(
+            int(self._kv_hip_used_peak_sampled_bytes),
+            self._current_hip_used_bytes(),
+        )
 
     def _acquire_lease(self) -> _GGUFResidentSessionLease:
         if not self._available:
@@ -4210,7 +4380,7 @@ class Qwen35GGUFResidentModelRunner:
         if int(row.request.max_tokens) == 0:
             row.fallback_output = self._empty_output(row, None)
             return
-        lease = self._acquire_lease()
+        lease = row.lease or self._acquire_lease()
         row.lease = lease
         row.fallback_output = self.generator._generate_sampled(
             lease.session,
