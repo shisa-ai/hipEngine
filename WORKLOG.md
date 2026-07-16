@@ -158693,3 +158693,19 @@ selection. GREEN makes the active compiler's HIP/ROCm version line authoritative
 and uses `/opt/rocm` only when the compiler reports no version. Provenance plus
 Phase-A harness tests pass **12/12**; Python compilation and `git diff --check`
 pass.
+
+## 2026-07-16 — Make the c>N primitive gate profiler-safe
+
+Added precomputed compiler-version and `require_cached` plumbing to
+`scripts/qwen35_batch_correctness.py`. The harness now propagates one explicit
+build policy to both paged-KV-write and paged-attention libraries and records
+whether cached builds were required. This closes the prior profiler-safety gap:
+a `rocprofv3` child can now fail closed instead of spawning `hipcc`/clang.
+
+RED reproduced the missing build-policy boundary; GREEN passes the focused
+primitive-harness unit set **9/9**. A real W7900/gfx1100 TheRock HIP 7.15 smoke
+prebuilt the two libraries outside the profiler, then reran c2 and c4 with
+`--require-cached-build`. Both pass with zero append mismatch, byte-identical
+batch A/A, exact batch-vs-independent-c1 attention, and NumPy max-abs
+`2.2351742e-08` (c2) / `2.9802322e-08` (c4). This is harness validation only;
+the clean Phase-B1 artifact and trace follow in the next logical unit.
