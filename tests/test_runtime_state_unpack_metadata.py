@@ -172,16 +172,16 @@ def test_packed_decode_graph_control_kernels_match_two_step_reference() -> None:
 
     runtime = get_hip_runtime()
     library = build_runtime_state(load=True)
-    rows = 4
+    rows = 8
     blocks_per_slot = 4
     record_steps = 2
     hidden_elements = 8
     hidden_layers = 2
     hidden_step_stride = hidden_layers * hidden_elements
-    positions_host = np.asarray([513, 517, 521, 525], dtype=np.int64)
+    positions_host = np.asarray([513, 517, 521, 525, 529, 533, 537, 541], dtype=np.int64)
     token_steps = (
-        np.asarray([11, 22, 33, 44], dtype=np.int32),
-        np.asarray([12, 23, 34, 45], dtype=np.int32),
+        np.asarray([11, 22, 33, 44, 55, 66, 77, 88], dtype=np.int32),
+        np.asarray([12, 23, 34, 45, 56, 67, 78, 89], dtype=np.int32),
     )
     hidden_steps = (
         np.arange(100, 100 + hidden_elements, dtype=np.uint16),
@@ -301,11 +301,11 @@ def test_packed_decode_graph_control_kernels_match_two_step_reference() -> None:
                 runtime=runtime,
             )
 
-        np.testing.assert_array_equal(outputs[0], np.arange(16, dtype=np.int32).reshape(4, 4))
+        np.testing.assert_array_equal(outputs[0], np.arange(32, dtype=np.int32).reshape(8, 4))
         np.testing.assert_array_equal(outputs[1], positions_host + 2)
         np.testing.assert_array_equal(outputs[2], positions_host + 3)
         np.testing.assert_array_equal(outputs[3], np.asarray([0, rows], dtype=np.int32))
-        np.testing.assert_array_equal(outputs[4], np.asarray([0, 527], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[4], np.asarray([0, 543], dtype=np.int32))
         np.testing.assert_array_equal(outputs[5], np.asarray([0], dtype=np.int32))
         np.testing.assert_array_equal(outputs[6], np.arange(rows + 1, dtype=np.int32))
         np.testing.assert_array_equal(outputs[7], np.arange(rows, dtype=np.int64))

@@ -160626,3 +160626,62 @@ C8 eager metadata still uses the explicit `host_upload` fallback; c8 graph
 metadata/feedback, physical c1/c2/c4/c8 active-mask buckets, sparse non-edge
 retirement, cancellation, p512/d128, and profiler evidence remain open. No
 kernel body or registry key changed in this unit.
+
+## 2026-07-17 — Enable true c8 GGUF graph metadata and replay
+
+RED contracts first failed because the graph key/capture and device-position
+metadata/feedback launch guards stopped at four rows and only c4 registry keys
+existed. The graph path now admits at most eight physical rows, resolves explicit
+c8 metadata/commit variants for widths five through eight, and preserves the old
+c4 aliases for widths one through four. The underlying device-position and
+sampled-i32→embedding-i64 bodies were already row-generic; only their Python/HIP
+launch validation widened to eight. The eager host-scalar metadata helper stays
+explicitly c4-only.
+
+The analytic eight-row/two-step W7900 fixture is byte-exact for block tables,
+positions/contexts, singleton GDN segments, identity state indices, token
+feedback/recording, and indexed BF16 layer recording. Cached-only HIP 7.15
+`rocprofv3 --kernel-trace` records two
+`prepare_packed_decode_metadata_from_positions_kernel` launches at
+**4.520/2.400 us** (64 threads, 16 VGPR) and two
+`commit_packed_decode_graph_step_kernel` launches at **3.161/3.360 us** (one
+thread, 8 VGPR), all with zero scratch/LDS. The raw trace is
+`/tmp/gfx1100-e2-c8-control-rocprof/c8-control_kernel_trace.csv`, SHA-256
+`c7e4302856252cc76bab423022aca9a7e3ddbf89b93a129a217781101573ff29`.
+The profiled process first calls `build_runtime_state(require_cached=True)` and
+therefore cannot compile under the profiler.
+
+The real all-layer gate used the same Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV,
+TheRock HIP 7.15, p16/c8/d2, strict exact GDN, and eight independent c1
+references as the eager opener:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph --prompt-length 16 \
+  --decode-steps 2 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-graph-p16-d2.json
+```
+
+It captures one `physical_rows=8`, all-active bucket and replays it twice. Token
+trajectories, initial/final Conv/GDN and all live KV bytes are exact, as are
+**960/960** all-layer hidden comparisons. The graph manifest reports zero
+complete-c1 session/layer replay, host model-row loops/iterations, per-row model
+subgraphs, steady metadata/input copies, and state scatter. The source JSON is
+14,893 bytes, SHA-256
+`f705cc0b48602a4c41ee2701c55531cb3d421ca156fad0bb0e15a17d9fc99fa1`.
+The first model attempt correctly failed before capture because the changed
+helper lacked the runner's explicit gfx1100 cache key; prebuilding exact cache
+`aa9ad290278fa894` outside the run made the required-cached gate pass.
+
+Validation is **71 passed** across graph-key, runtime-plan, oracle-contract, and
+GGUF generation files; the complete runtime-state GPU file is **4 passed**.
+Focused Ruff, full Python compilation, JSON assertions, lineage review, and diff
+checks pass. This closes c8 graph-control/replay for an all-active short steady
+group only. Physical masked buckets, ragged/sparse non-edge retirement,
+cancellation, p512/d128, and retained profiler/scaling evidence remain open; no
+performance claim is made.

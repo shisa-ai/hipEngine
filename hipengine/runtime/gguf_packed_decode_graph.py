@@ -121,8 +121,8 @@ def build_qwen35_gguf_packed_decode_graph_key(
     positions = tuple(int(session.position) for session in session_tuple)
     mask = tuple(bool(value) for value in active_mask)
     rows = len(session_tuple)
-    if rows <= 0 or rows > 4:
-        raise ValueError("packed decode graphs require between one and four rows")
+    if rows <= 0 or rows > 8:
+        raise ValueError("packed decode graphs require between one and eight rows")
     if len(mask) != rows:
         raise ValueError("active_mask length must equal physical rows")
     if not any(mask):
@@ -241,12 +241,13 @@ def _packed_graph_buffer_ptrs(
     return tuple(pointers)
 
 
-def _resolve_packed_graph_kernels(owner: Any) -> tuple[Any, Any, Any]:
+def _resolve_packed_graph_kernels(owner: Any, *, rows: int) -> tuple[Any, Any, Any]:
     backend = str(owner.runner.backend)
     load_backend_kernel_package(backend)
+    variant_width = 8 if int(rows) > 4 else 4
     specs = (
-        ("decode_metadata", "packed_c4_device_positions_i64"),
-        ("decode_graph_commit", "packed_c4_i32_i64"),
+        ("decode_metadata", f"packed_c{variant_width}_device_positions_i64"),
+        ("decode_graph_commit", f"packed_c{variant_width}_i32_i64"),
         ("decode_graph_record", "packed_u16_rows_indexed"),
     )
     resolved = tuple(
@@ -310,8 +311,8 @@ def capture_qwen35_gguf_packed_decode_graph(
     token_tuple = tuple(int(token) for token in token_ids)
     session_tuple = tuple(sessions)
     rows = len(session_tuple)
-    if rows <= 0 or rows > 4:
-        raise ValueError("packed decode graphs require between one and four rows")
+    if rows <= 0 or rows > 8:
+        raise ValueError("packed decode graphs require between one and eight rows")
     if len(token_tuple) != rows:
         raise ValueError("token_ids and sessions must have the same length")
     if owner.runner is None or owner.runner.weights is None or owner.scratch is None:
@@ -418,7 +419,10 @@ def capture_qwen35_gguf_packed_decode_graph(
                     runtime=runtime,
                 )
                 runtime.memset(generated_hidden.ptr, 0, generated_hidden.nbytes)
-        metadata_kernel, commit_kernel, record_hidden_kernel = _resolve_packed_graph_kernels(owner)
+        metadata_kernel, commit_kernel, record_hidden_kernel = _resolve_packed_graph_kernels(
+            owner,
+            rows=rows,
+        )
         linear_decode_scratch = replace(
             owner.scratch,
             layer_conv_states=packed_state.layer_conv_states,

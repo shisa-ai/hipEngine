@@ -142,6 +142,24 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c8_device_positions_i64",
+        )
+        is prepare_packed_decode_metadata_from_positions
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_commit",
+            quant="gguf_qwen35",
+            variant="packed_c8_i32_i64",
+        )
+        is commit_packed_decode_graph_step
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="decode_graph_record",
             quant="gguf_qwen35",
             variant="packed_u16_rows_indexed",
@@ -240,6 +258,10 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="rows"):
         prepare_packed_decode_metadata_from_positions(0, 0, 0, 0, 0, 0, 0, 0, 0, 4)
     with pytest.raises(ValueError, match="rows"):
+        prepare_packed_decode_metadata_from_positions(0, 0, 0, 0, 0, 0, 0, 0, 9, 4)
+    with pytest.raises(ValueError, match="rows"):
         commit_packed_decode_graph_step(0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        commit_packed_decode_graph_step(0, 0, 0, 0, 9)
     with pytest.raises(ValueError, match="elements"):
         record_u16_rows_indexed(0, 0, 0, 0, 1, 1)

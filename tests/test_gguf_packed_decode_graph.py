@@ -94,6 +94,43 @@ def test_packed_decode_graph_key_covers_width_state_mask_and_buffers() -> None:
     assert first.key_sha256 != next_mask.key_sha256
 
 
+def test_packed_decode_graph_key_supports_native_c8_physical_width() -> None:
+    positions = (512, 513, 514, 515, 516, 517, 518, 519)
+    key = _key(positions=positions, active_mask=(True,) * 8)
+
+    assert key.physical_rows == 8
+    assert key.active_rows == 8
+    assert key.active_mask == (True,) * 8
+    assert key.state_generations == positions
+
+
+def test_packed_graph_kernel_resolution_tracks_native_width(monkeypatch) -> None:
+    resolved: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(packed_graph, "load_backend_kernel_package", lambda _backend: None)
+
+    def fake_resolve(**kwargs):
+        route = (str(kwargs["layer"]), str(kwargs["variant"]))
+        resolved.append(route)
+        return route
+
+    monkeypatch.setattr(packed_graph, "resolve", fake_resolve)
+    owner = SimpleNamespace(runner=SimpleNamespace(backend="hip_gfx1100"))
+
+    c4 = packed_graph._resolve_packed_graph_kernels(owner, rows=4)
+    c8 = packed_graph._resolve_packed_graph_kernels(owner, rows=8)
+
+    assert c4[:2] == (
+        ("decode_metadata", "packed_c4_device_positions_i64"),
+        ("decode_graph_commit", "packed_c4_i32_i64"),
+    )
+    assert c8[:2] == (
+        ("decode_metadata", "packed_c8_device_positions_i64"),
+        ("decode_graph_commit", "packed_c8_i32_i64"),
+    )
+    assert resolved == [*c4, *c8]
+
+
 def test_packed_decode_graph_key_serializes_complete_route_axes() -> None:
     payload = _key().as_dict()
 
@@ -154,6 +191,22 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
 
 def test_packed_decode_graph_key_rejects_invalid_shape_contract() -> None:
     owner, sessions, pointers = _owner()
+    oversized_owner, oversized_sessions, oversized_pointers = _owner(
+        positions=tuple(range(9))
+    )
+    with pytest.raises(ValueError, match="between one and eight"):
+        build_qwen35_gguf_packed_decode_graph_key(
+            oversized_owner,
+            sessions=oversized_sessions,
+            active_mask=(True,) * 9,
+            block_size=256,
+            max_positions=1024,
+            steps_per_replay=1,
+            max_replay_steps=1,
+            record_steps=0,
+            record_layer_ids=(),
+            packed_buffer_ptrs=oversized_pointers,
+        )
     with pytest.raises(ValueError, match="active_mask"):
         build_qwen35_gguf_packed_decode_graph_key(
             owner,

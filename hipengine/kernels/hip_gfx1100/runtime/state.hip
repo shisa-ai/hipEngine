@@ -779,7 +779,7 @@ extern "C" int hipengine_prepare_packed_decode_metadata_from_positions(
     int64_t rows,
     int64_t blocks_per_slot,
     hipStream_t stream) {
-  if (rows <= 0 || rows > 4 || blocks_per_slot <= 0 ||
+  if (rows <= 0 || rows > 8 || blocks_per_slot <= 0 ||
       rows * blocks_per_slot > INT32_MAX) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -845,7 +845,7 @@ extern "C" int hipengine_commit_packed_decode_graph_step(
     int64_t record_capacity,
     int64_t rows,
     hipStream_t stream) {
-  if (rows <= 0 || rows > 4 ||
+  if (rows <= 0 || rows > 8 ||
       ((recorded_token_ids_i32 == nullptr) != (record_index == nullptr)) ||
       (recorded_token_ids_i32 != nullptr && record_capacity <= 0)) {
     return static_cast<int>(hipErrorInvalidValue);

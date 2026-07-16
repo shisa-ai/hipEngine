@@ -567,8 +567,8 @@ def prepare_packed_decode_metadata_from_positions(
 
     row_count = int(rows)
     block_count = int(blocks_per_slot)
-    if row_count <= 0 or row_count > 4:
-        raise ValueError("rows must be in [1, 4]")
+    if row_count <= 0 or row_count > 8:
+        raise ValueError("rows must be in [1, 8]")
     if block_count <= 0:
         raise ValueError("blocks_per_slot must be positive")
     if row_count * block_count > 2**31 - 1:
@@ -623,8 +623,8 @@ def commit_packed_decode_graph_step(
     """Feed sampled row tokens back to embedding and advance replay state."""
 
     row_count = int(rows)
-    if row_count <= 0 or row_count > 4:
-        raise ValueError("rows must be in [1, 4]")
+    if row_count <= 0 or row_count > 8:
+        raise ValueError("rows must be in [1, 8]")
     recording = recorded_token_ids_i32_ptr is not None or record_index_i64_ptr is not None
     if recording and (
         recorded_token_ids_i32_ptr is None
@@ -955,6 +955,26 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
             "decode_graph_commit",
             "gguf_qwen35",
             "packed_c4_i32_i64",
+        ),
+        commit_packed_decode_graph_step,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_metadata",
+            "gguf_qwen35",
+            "packed_c8_device_positions_i64",
+        ),
+        prepare_packed_decode_metadata_from_positions,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_graph_commit",
+            "gguf_qwen35",
+            "packed_c8_i32_i64",
         ),
         commit_packed_decode_graph_step,
         replace=replace,
