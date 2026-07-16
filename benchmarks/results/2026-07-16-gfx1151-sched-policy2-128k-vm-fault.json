@@ -172,7 +172,19 @@
     "generated_current_entries_contain_sched_policy2": false,
     "generated_current_entries_retain_mes_log_recovery_sigterm": true,
     "running_kernel_sched_policy_until_reboot": 2,
-    "next_boot_expected_sched_policy": 0
+    "next_boot_expected_sched_policy": 0,
+    "post_reboot_verification": {
+      "boot_id": "c8a9183f-7010-4c52-b8af-66829305fd52",
+      "sched_policy": 0,
+      "mes_log_enable": 1,
+      "gpu_recovery": 1,
+      "send_sigterm": 1,
+      "cwsr_enable": 1,
+      "hip_gfx1151_available": true,
+      "gpu_idle": true,
+      "kfd_clients": 0,
+      "boot_gpu_fault_or_error_observed": false
+    }
   },
   "evidence_boundaries": [
     "This is one 128K attempt under sched_policy=2, bracketed by two exact 512 controls.",
