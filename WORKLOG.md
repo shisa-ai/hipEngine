@@ -159481,3 +159481,70 @@ python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
 git diff --check
 # GREEN
 ```
+
+## 2026-07-16 — Prepare packed gfx1100 decode metadata on device
+
+Added `decode_metadata / gguf_qwen35 / packed_c4_i64` to the gfx1100 runtime
+state family. The new stream-ordered kernel rebuilds the persistent packed
+block table, ragged positions/live counts, attention CU/reset scalars,
+singleton GDN segments, and identity recurrent-state indices for c1-c4 without
+the prior eight host-to-device metadata uploads. The runner resolves the route
+through the four-axis registry and keeps the byte-equivalent host-upload path
+for a missing kernel or a non-singleton/noncanonical layout. The RED analytic
+fixture used ragged positions `[513,517,521,525]` and failed before the symbol,
+registration, and runner route existed; it is now byte-exact for all eight
+metadata families.
+
+The first build was rejected because system HIP 7.2 had been used with the HIP
+7.15 compiler-version key. Only that new runtime-state cache key was discarded,
+then the body was rebuilt with the actual TheRock HIP 7.15 compiler and required
+cached thereafter. A standalone cached-only W7900/gfx1100 `rocprofv3
+--kernel-trace` smoke records `prepare_packed_decode_metadata_kernel` at **4.120
+us**, 64 threads, 16 VGPR, zero scratch, and zero LDS (raw trace SHA-256
+`30dcfd8b32b90ebc79155e97b83dacc09960202b64a83b37b5de0a8f36887216`).
+
+The real Qwen3.6-35B-A3B `UD-Q4_K_M` p512/c4/d4 packed-model gate then passed
+all token trajectories, **800/800** layer-hidden rows, and complete initial/final
+Conv/GDN plus live-KV byte equality. Its manifest selected
+`device_prepare_persistent`, reported zero metadata H2D copies/bytes, one
+metadata kernel launch, one 32-byte token H2D, and one four-i32 token-vector D2H.
+Source artifact SHA-256:
+`146a5b1bc2f46cef62d8de01f55bc0741eee379498918331522fbd8309e7d36c`.
+
+A dirty-tree paired marker census is also mechanically clean and will be rerun
+from the implementation commit for retained closure evidence. Its c4 window is
+**749** all-packed-native dispatches versus C2's 756: replacing eight metadata
+copies with one kernel removes seven dispatches. All C3 family checks pass, the
+metadata kernel executes once at 2.720 us in the model trace, only two copy
+dispatches remain, and exact-row-local dispatches remain zero. These durations
+are profiler diagnostics, not a throughput claim. The profiler artifact
+classification now distinguishes C3 only when the family census, zero metadata
+H2D contract, and one device-prepare launch all agree.
+
+```bash
+python3 -m pytest -q tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_ar_category_oracle.py
+# GREEN: 48 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed and (batch or native or lifecycle)'
+# GREEN: 2 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  hipengine/kernels/hip_gfx1100/runtime/state.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  hipengine/kernels/hip_gfx1100/runtime/state.py \
+  tests/test_runtime_state_plan.py \
+  tests/test_runtime_state_unpack_metadata.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+git diff --check
+# GREEN
+```

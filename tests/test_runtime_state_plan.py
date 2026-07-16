@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
     plan_runtime_state_build,
+    prepare_packed_decode_metadata,
     prepare_prefill_chunk_metadata,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
@@ -108,6 +109,15 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         )
         is prepare_prefill_chunk_metadata
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c4_i64",
+        )
+        is prepare_packed_decode_metadata
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -189,3 +199,11 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, -1, 1)
     with pytest.raises(ValueError, match="rows"):
         prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="non-empty"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (), 4)
+    with pytest.raises(ValueError, match="at most four"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1, 2, 3, 4, 5), 4)
+    with pytest.raises(ValueError, match="non-negative"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1, -1), 4)
+    with pytest.raises(ValueError, match="blocks_per_slot"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1,), 0)

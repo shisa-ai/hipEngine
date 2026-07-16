@@ -76,6 +76,82 @@ def test_prepare_prefill_chunk_metadata_matches_reference() -> None:
             free(buffer, runtime=runtime)
 
 
+def test_prepare_packed_decode_metadata_matches_ragged_c4_reference() -> None:
+    from hipengine.core.dtype import DType
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.runtime import (
+        build_runtime_state,
+        prepare_packed_decode_metadata,
+    )
+
+    runtime = get_hip_runtime()
+    positions_host = (513, 517, 521, 525)
+    rows = len(positions_host)
+    blocks_per_slot = 4
+    buffers = [
+        malloc(rows * blocks_per_slot * DType.INT32.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(2 * DType.INT32.itemsize, runtime=runtime),
+        malloc(2 * DType.INT32.itemsize, runtime=runtime),
+        malloc(DType.INT32.itemsize, runtime=runtime),
+        malloc((rows + 1) * DType.INT32.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+    ]
+    try:
+        block_table, positions, contexts, cu_q, cu_k, atomic, gdn_cu, state_indices = buffers
+        prepare_packed_decode_metadata(
+            block_table.ptr,
+            positions.ptr,
+            contexts.ptr,
+            cu_q.ptr,
+            cu_k.ptr,
+            atomic.ptr,
+            gdn_cu.ptr,
+            state_indices.ptr,
+            positions_host,
+            blocks_per_slot,
+            library=build_runtime_state(load=True),
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        outputs = [
+            np.empty((rows, blocks_per_slot), dtype=np.int32),
+            np.empty(rows, dtype=np.int64),
+            np.empty(rows, dtype=np.int64),
+            np.empty(2, dtype=np.int32),
+            np.empty(2, dtype=np.int32),
+            np.empty(1, dtype=np.int32),
+            np.empty(rows + 1, dtype=np.int32),
+            np.empty(rows, dtype=np.int64),
+        ]
+        for host, buffer in zip(outputs, buffers, strict=True):
+            copy_device_to_host(
+                host_array_ptr(host),
+                DeviceBuffer(buffer.ptr, host.nbytes),
+                runtime=runtime,
+            )
+
+        np.testing.assert_array_equal(
+            outputs[0],
+            np.arange(rows * blocks_per_slot, dtype=np.int32).reshape(
+                rows, blocks_per_slot
+            ),
+        )
+        np.testing.assert_array_equal(outputs[1], np.asarray(positions_host, dtype=np.int64))
+        np.testing.assert_array_equal(outputs[2], np.asarray(positions_host, dtype=np.int64) + 1)
+        np.testing.assert_array_equal(outputs[3], np.asarray([0, rows], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[4], np.asarray([0, max(positions_host) + 1], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[5], np.asarray([0], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[6], np.arange(rows + 1, dtype=np.int32))
+        np.testing.assert_array_equal(outputs[7], np.arange(rows, dtype=np.int64))
+    finally:
+        for buffer in buffers:
+            free(buffer, runtime=runtime)
+
+
 def test_unpack_verify_chain_dynamic_metadata_matches_reference() -> None:
     from hipengine.core.dtype import DType
     from hipengine.core.hip import get_hip_runtime
