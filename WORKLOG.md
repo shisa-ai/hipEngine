@@ -160196,3 +160196,66 @@ through real allocations with every token/Conv/GDN/live-KV comparison exact,
 B→C allocation and session reuse, monotonic D regrowth, and final 3-page idle
 low water. The implementation must be committed and these gates rerun from that
 clean revision before D3 closes.
+
+## 2026-07-16 — Close gfx1100 GGUF D3 device KV
+
+Closed D3 from clean implementation commit
+`367cf7a54e14fb1585fdb05fe067742bdebb81a9` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M` (full SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, and the precomputed compiler
+version file. The clean host bundle is **419 passed, 4 skipped** in 20.75 s.
+
+The clean real-HIP graph/memory gate passes in **75.993 s**:
+
+- one page is 5,242,880 bytes across all ten full-attention K/V families;
+- the pool follows **3→6→3→12→3 pages** and
+  **15,728,640→31,457,280→15,728,640→62,914,560→15,728,640 bytes**;
+- tracked first grow/shrink deltas are each exactly **15,728,640 bytes**;
+  tracked current returns from `25,141,358,176` to the exact baseline
+  `25,125,629,536`, with burst peak `25,172,815,456`;
+- a real state-bound graph pins three tail pages, produces exact
+  `[9708,9708]`, has zero Conv/GDN/live-KV mismatches, preserves live pointers,
+  and is invalidated once before the tail is freed;
+- regrowth uses fresh monotonic logical ids `6..14` while low-water ids `0..2`
+  keep their exact pointers;
+- a real-HIP three-page high-water probe rejects request 3002 with
+  `device KV pool high-water rejection`, leaving current/refcounted pages at
+  `3/3`, no lease/allocation on the rejected row, and one failure event.
+
+Sampled HIP used memory is reported separately: baseline/burst/final are
+`25,588,015,104 / 25,623,666,688 / 25,590,112,256` bytes with sampled peak
+`25,627,197,440`. The 2 MiB final difference reflects runtime allocator
+reporting granularity; it is not hidden live page ownership because tracked
+current, active allocation count, pool refs, and pins all return exactly.
+
+The clean p512 A/B/C/D lifecycle passes again in **78.590 s** through the public
+`LLM` environment-configured loop. All A/B/C tokens and all six survivor/removed
+state-KV comparisons equal independent c1 controls. A keeps ids `0..2`; B and C
+reuse ids/backing `3..5` and the same resident session without a shrink between
+them; D reuses that session after regrowth on fresh ids `6..8`; final state is
+three free, zero-ref, zero-pin pages after two grow and two shrink events. D2 is
+therefore non-regressive under real scheduler-owned KV.
+
+Clean sources:
+
+- graph/memory result `/tmp/gfx1100-d3-kv-graph-lifecycle-clean-367cf7a5.json`
+  (9,825 bytes, SHA-256
+  `8ba84e493b1a2e79ec9ac1026157f8fe2d2cdf71bd1710c95b658854c1f83802`);
+  harness `/tmp/gfx1100_d3_kv_graph_lifecycle.py` (10,900 bytes, SHA-256
+  `1472648ff8c89b936ffecb9f3a0d4785fdcee1b9a76f2fc297b0341ab5685963`);
+- live result `/tmp/gfx1100-d3-live-lifecycle-clean-367cf7a5.json` (12,293
+  bytes, SHA-256
+  `75f71acc8d2b0508b3c4becd93af80d3b3ebb386221a7a6d348197e997cd4fcd`);
+  harness `/tmp/gfx1100_d3_live_lifecycle_smoke.py` (14,047 bytes, SHA-256
+  `0dc5fae5e097b1943cc58ebeba23b7c6214a015207cbf5d67a834e3ffec81491`).
+
+The compact retained closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv-pool-closure.json`
+(12,036 bytes, SHA-256
+`fc73c7a9cb3a55c01923dd208d82b735004e05923c539eaf0e03ca8180b00e75`).
+Every D3 checkbox in `docs/CONCURRENCY.md` is now closed. This does not add a
+throughput claim, does not enable request-sized INT8/mixed KV, and does not make
+production-server continuous batching complete. D4 still owns OpenAI streaming,
+per-row backpressure, disconnect, and shutdown drain; gfx1151 E1 remains
+hardware-blocked and native c8 remains open.

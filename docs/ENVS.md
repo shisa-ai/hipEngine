@@ -185,10 +185,11 @@ These affect both PARO and GGUF decode paths where applicable.
 
 ## Continuous batching / engine-loop variables
 
-These knobs are wired into the torch-free engine-loop option resolver and fake
-KV-pool scaffolding. Runtime server lowering to the long-lived model-owning loop
-lands separately; until then they are primarily for scheduler/pool tests and
-future adapters.
+These knobs are resolved by the public torch-free `LLM` adapter and passed to
+one native resident scheduler/runner configuration. The gfx1100 GGUF BF16 path
+uses them for its real request-sized device-KV pool; host/fake pools consume the
+same contract in tests. The compatibility bridge preserves prompt-list ordering
+with `protect_ttft`, and D4 still owns OpenAI streaming/backpressure lowering.
 CLI flags with the same names (lowercase, dash-separated) override env values
 when an adapter/parser calls `add_engine_loop_config_args(...)`.
 
@@ -197,11 +198,11 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_PREFILL_DECODE_POLICY` | `protect_decode` | `--prefill-decode-policy` | One of `protect_decode`, `protect_ttft`, or `fair`. |
 | `HIPENGINE_MAX_ACTIVE_REQUESTS` | unset | `--max-active-requests` | Optional active resident request cap used as the engine-loop scheduler capacity when set; must be > 0. |
 | `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` | `256` | `--max-prefill-chunk-tokens` | Maximum prefill chunk tokens per loop tick; must be > 0. |
-| `HIPENGINE_KV_POOL_INITIAL_PAGES` | `128` | `--kv-pool-initial-pages` | Initial dynamic KV-pool pages; must be > 0. |
-| `HIPENGINE_KV_POOL_LOW_WATER_PAGES` | `128` | `--kv-pool-low-water-pages` | Idle-shrink low-water pages; must be > 0 and no greater than initial pages. |
-| `HIPENGINE_KV_POOL_HIGH_WATER_PAGES` | unset | `--kv-pool-high-water-pages` | Optional grow-on-admission page cap; unset means no scaffold cap. |
-| `HIPENGINE_KV_POOL_CHUNK_PAGES` | `128` | `--kv-pool-chunk-pages` | Pages per grow/shrink chunk; must be > 0. |
-| `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free tail chunks are eligible to shrink; must be ≥ 0. |
+| `HIPENGINE_KV_POOL_INITIAL_PAGES` | `128` | `--kv-pool-initial-pages` | Initial resident device-KV pages, clamped to the runner's maximum useful capacity; must be > 0. |
+| `HIPENGINE_KV_POOL_LOW_WATER_PAGES` | `128` | `--kv-pool-low-water-pages` | Idle-shrink low-water pages, clamped with the initial allocation; must be > 0 and no greater than configured initial pages. |
+| `HIPENGINE_KV_POOL_HIGH_WATER_PAGES` | unset | `--kv-pool-high-water-pages` | Optional atomic grow-on-admission page cap; unset means no configured pool cap. |
+| `HIPENGINE_KV_POOL_CHUNK_PAGES` | `128` | `--kv-pool-chunk-pages` | Real device pages per grow/shrink tail chunk, clamped to useful runner capacity; must be > 0. |
+| `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free, graph-unpinned tail chunks are eligible to shrink; must be ≥ 0. |
 | `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
 
 ## PARO variables

@@ -86,20 +86,21 @@ profiler to show that the route scales better than the serial bridge.
 
 **hipEngine does not yet have production server continuous batching.** The
 gfx1100 GGUF non-streaming model loop is now `continuous_eq_ok`: one long-lived
-runner and fixed reusable resident-session pool admit controlled submissions
-while a neighbor decodes, commit bounded prompt chunks, cancel or retire rows,
-and reuse the exact session while survivor token/Conv/GDN/live-KV state remains
-c1-exact. Public blocking `LLM.generate()` calls drive the same loop. D3 and D4
-remain open: admission is not connected to the real device KV pool, and the
-OpenAI streaming/backpressure/drain path does not yet consume the controlled
-per-request events.
+runner, fixed reusable session identities, and a scheduler-owned request-sized
+BF16 device-KV pool admit controlled submissions while a neighbor decodes,
+commit bounded prompt chunks, cancel or retire rows, and reuse exact resources
+while survivor token/Conv/GDN/live-KV state remains c1-exact. Public blocking
+`LLM.generate()` calls drive the same configured loop. D3 real device-KV
+admission/grow/shrink is closed; D4 remains open because the OpenAI
+streaming/backpressure/drain path does not yet consume the controlled per-request
+events.
 
 ### Model/backend coverage
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 model step plus `continuous_eq_ok` D2 loop: graph/eager p512/d128 and sparse c4→c1 gates are exact; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4); clean p512 live admission/cancel/retire/reuse preserves independent-c1 tokens and Conv/GDN/live-KV through native c2 membership changes | Public non-streaming calls and controlled submit/poll share one model-owning loop and reusable c4 session pool; production server streaming and device-KV-pool admission remain open | D3 real device KV pool, then D4 OpenAI streaming/backpressure/drain |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 model step plus `continuous_eq_ok` D3 loop: graph/eager p512/d128 and sparse c4→c1 gates are exact; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4); clean p512 live admission/cancel/retire/reuse remains independent-c1 exact through real request-sized device-KV growth/shrink and graph invalidation | Public non-streaming calls and controlled submit/poll share one configured model-owning loop, reusable c4 session identities, and a real BF16 device-KV pool; production server streaming/backpressure/drain remains open | D4 OpenAI streaming/backpressure/drain |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -113,19 +114,19 @@ The following components exist and have focused CPU/host tests:
   active masks, finish reasons, and reclaim callbacks;
 - `ResidentEngineLoop.submit/poll/cancel` around an abstract runner;
 - prompt-list and `n>1` API lowering plus per-request output queues;
-- `ChunkedKVPool` host/fake-runtime growth, shrink, refcounts, and stable block
-  identity checks;
+- `ChunkedKVPool` host-model checks plus `DeviceChunkedKVPool` callback-owned
+  real device growth, shrink, refcounts, graph pins, and stable block identity;
 - `RadixCache` host-side prefix indexing and copy-on-write metadata;
 - per-row sampling parameter blocks and EOS/reclaim metadata;
 - graph-bucket, request, and pool observability schemas;
 - Prometheus endpoint plumbing.
 
-The gfx1100 GGUF D2 runner now owns real device state through live
-prefill/decode/reclaim transitions and proves requests can enter, leave, cancel,
-and reuse sessions while neighbors remain exact. The remaining scaffolding
-becomes production server continuous batching only after D3 connects admission
-to real device KV allocation and D4 routes OpenAI streaming, backpressure, and
-drain through these events; PARO still lacks an equivalent model-owning runner.
+The gfx1100 GGUF D3 runner now owns real device state and request-sized BF16 KV
+through live prefill/decode/reclaim transitions. It proves requests can enter,
+leave, cancel, reuse sessions/pages, and invalidate pointer-bound graphs while
+neighbors remain exact. Production server continuous batching still requires D4
+to route OpenAI streaming, backpressure, disconnect, and drain through these
+events; PARO still lacks an equivalent model-owning runner.
 
 ### Result pointers
 
@@ -174,6 +175,10 @@ drain through these events; PARO still lacks an equivalent model-owning runner.
   retirement, exact session reuse, and survivor state/KV equality: `WORKLOG.md`,
   **2026-07-16 — Close gfx1100 GGUF D2 live scheduling**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d2-live-lifecycle-closure.json`.
+- gfx1100 D3 real BF16 device-KV admission, atomic high water, graph-pinned
+  pointer lifetime, exact tracked memory contraction, and 3→6→3→12→3 lifecycle:
+  `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF D3 device KV**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv-pool-closure.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -614,11 +619,29 @@ artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d2-live-life
 
 D3. Device KV pool:
 
-- [ ] Connect scheduler admission to real paged KV allocation.
-- [ ] Grow only at admission barriers; shrink only idle, free, unpinned chunks.
-- [ ] Enforce high-water rejection without partial request mutation.
-- [ ] Audit allocator-visible and tracked current/peak memory.
-- [ ] Pass burst→steady→idle→burst with pointer/graph validity checks.
+- [x] Connect scheduler admission to real paged KV allocation.
+- [x] Grow only at admission barriers; shrink only idle, free, unpinned chunks.
+- [x] Enforce high-water rejection without partial request mutation.
+- [x] Audit allocator-visible and tracked current/peak memory.
+- [x] Pass burst→steady→idle→burst with pointer/graph validity checks.
+
+Clean `367cf7a5` W7900 evidence binds each p512/d2 request to three real
+5,242,880-byte BF16 pages before slot publication. A state-bound graph pins all
+three tail pages, replays the exact `[9708,9708]` c1 trajectory with zero
+Conv/GDN/live-KV mismatch, and is invalidated before the tail shrinks. The
+allocator executes **3→6→3→12→3 pages**, preserves every live representative
+pointer, and regrows with fresh logical ids `6..14`; tracked first grow and
+shrink deltas are exactly **15,728,640 bytes** and the 12-page pool high water is
+**62,914,560 bytes**. Sampled HIP used bytes are retained separately and show
+allocator granularity rather than exact byte-for-byte contraction. A real-HIP
+three-page high-water probe rejects the next request before lease/slot
+publication with pages/refcounts unchanged. The full A/B/C/D D2 lifecycle also
+repeats through real allocation with every token and all six state/KV checks
+exact, B→C reusing ids `3..5` plus the same backing/session, D regrowing ids
+`6..8`, and the pool ending at three free unpinned pages. Focused clean host
+validation is **419 passed, 4 skipped**. D3 adds no throughput claim and supports
+request-sized allocation for BF16 KV only. See the compact [D3 closure
+artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv-pool-closure.json).
 
 D4. API and streaming:
 
