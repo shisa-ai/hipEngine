@@ -158836,3 +158836,25 @@ compiler key, and cached builds required. The combined GGUF generation, hidden
 contract, packed layout/oracle, and runner suite passes **92 passed, 9 skipped**;
 Python compilation and `git diff --check` pass. This is diagnostic correctness
 evidence only; capture is never performance evidence and remains off by default.
+
+## 2026-07-16 — Retain clean gfx1100 GGUF B2 direct lifecycle
+
+Re-ran the complete B2 matrix from clean `39d024e5` on Radeon Pro W7900/gfx1100
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and every resident build required cached.
+Steady c2, steady c4, sparse c4→c3→c2→c1, and ragged `[512,64,64,64]` all pass
+four decode transitions with exact token trajectories; zero initial, lifecycle,
+or final mismatches across all 30 Conv/GDN and 10 live-KV families; and
+**400/400**, **800/800**, **560/560**, and **800/800** exact post-layer hidden
+comparisons respectively (**2,560/2,560** total).
+
+The compact current-HEAD artifact is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b2-direct-lifecycle.json`.
+It retains the exact commands, clean model/toolchain/device provenance, source
+hashes, route contract, sparse live-index sequence, resolved false-RED/OOM
+blockers, and explicit limitations. The coverage ledger advances c2/c4 to
+`direct_eq_ok`, but gfx1100 is not promoted to the roadmap's complete
+`exact_hybrid` row yet: the all-row c4 prompt-512/decode-128 capacity gate and
+category diversity remain B3/B4. No
+profiler or performance claim is made. The active queue advances to B3 packed
+prompt capacity.
