@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_layer_marker_repeat_stalls",
+  "status": "two_approved_repeats_both_stall_layer_markers_rejected_as_reliable_mitigation",
+  "created_at": "2026-07-16T10:45:56+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "Both explicitly approved independent repeats of the HIP 7.15 one-queue 128K layer-granularity recorder gate enter the persistent no-progress state. Repeat 1 completes warmup and measured passes 1-2, then stalls in measured prefill 3; repeat 2 completes warmup, then stalls in measured prefill 1. Together with the preceding completed layer-marker process, the fixed-stack process outcome is one completion and two failures, so per-layer system-fence marker insertion is rejected as a reliable lifecycle mitigation and no standalone heartbeat should be promoted from this evidence. Layer markers nevertheless provide the narrowest retirement evidence so far: repeat 1 last retires layer 11 and stops with layer 12's completion marker pending while the host is inside layer 13; repeat 2 last retires layer 33 and stops with layer 34's marker pending while the host is inside layer 35. In both cases, the unretired immediately preceding layer is linear-attention and the cursor lag is two checkpoint sequences. Because each layer's synchronous compact-WMMA scalar read occurs before the selected/shared MoE tail, the safe common window is the prior linear layer's post-read MoE tail or marker through the current layer's pre-read prefix. This does not identify a named kernel, and two linear-layer instances are insufficient to establish a deterministic linear-attention defect.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001",
+    "amdgpu_sched_policy": 0
+  },
+  "software": {
+    "hipengine_commit": "5a66573178ecbcde26d1592b14f0938427f05801",
+    "source_tree": "tracked-clean main; unrelated pre-existing untracked benchmark files present",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "hsa_enable_sdma": "unset",
+    "compact_wmma_no_read_max_selected_rows": "unset; production scalar-readback route",
+    "flight_recorder_granularity": "layer"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "approval_and_protocol": {
+    "explicit_user_approval": true,
+    "independent_processes": 2,
+    "execution": "sequential on one GPU",
+    "workload": "128K/128",
+    "warmups_per_process": 1,
+    "requested_measured_runs_per_process": 3,
+    "process_bound_seconds": 1800,
+    "command_template": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity layer --json <out>/result.json"
+  },
+  "repeat_1": {
+    "exit_status": 124,
+    "elapsed_seconds": 1805,
+    "completed_warmups": 1,
+    "completed_measured_runs": 2,
+    "stalled_attempt": "measured prefill 3",
+    "completed_diagnostic_rates": [
+      {"kind": "warmup", "prefill_tok_s": 435.876849, "decode_tok_s": 28.168112},
+      {"kind": "measured", "index": 1, "prefill_tok_s": 509.927593, "decode_tok_s": 28.249981},
+      {"kind": "measured", "index": 2, "prefill_tok_s": 509.206904, "decode_tok_s": 28.250351}
+    ],
+    "correctness_status": "The process timed out before result.json was written; run.log does not persist token IDs, so no correctness claim is attached to these completed repetitions.",
+    "flight_recorder": {
+      "prefill_id": 4,
+      "submitted_sequence": 4356,
+      "completed_sequence": 4354,
+      "retirement_lag": 2,
+      "overwritten_entries": 0,
+      "last_completed": {
+        "sequence": 4354,
+        "chunk_start": 28672,
+        "chunk_end": 32768,
+        "layer_id": 11,
+        "layer_type": "full_attention"
+      },
+      "pending_previous_layer_marker": {
+        "sequence": 4355,
+        "layer_id": 12,
+        "layer_type": "linear_attention",
+        "interpretation": "Layer 12's host call returned and its post-layer completion marker was enqueued, but that marker did not retire."
+      },
+      "last_host_checkpoint": {
+        "sequence": 4356,
+        "layer_id": 13,
+        "layer_type": "linear_attention",
+        "interpretation": "Host entry is published before the layer call. No layer-14 entry follows, so the host remained inside layer 13."
+      }
+    },
+    "telemetry": {
+      "persistent_low_power_start": "2026-07-16T10:01:01+09:00",
+      "persistent_low_power_duration_through_bound_seconds": 880,
+      "gfx_activity_percent": 100,
+      "gfx_clock_mhz": {"min": 2891, "median": 2900, "max": 2900},
+      "socket_power_w": {"min": 42, "median": 43, "max": 61},
+      "vram_used_mib": 26662,
+      "after_process_termination": {"power_w": 23, "vram_used_mib": 17}
+    },
+    "process_state": {
+      "main_thread_samples": 119,
+      "states": ["RN", "RNl"],
+      "wait_channel": "none; runnable in user space"
+    },
+    "system_observability": {
+      "relevant_kernel_journal_lines": 0,
+      "gfx_ring_0_signaled_emitted": "0x00009889 / 0x00009889 for all 902 samples",
+      "kfd_user_queue_visible_in_fence_info": false
+    },
+    "local_raw_directory": "/tmp/gfx1151-layer-repeat-5a665731-20260716T004545Z",
+    "source_hashes": {
+      "flight_final_json": "7aae0a2f52aeeaaac633a71a4a97735cd4cda74e120b253a8b051dc50053b6b4",
+      "telemetry_csv": "6d8fda5f4ab5ffc9ada7e5960978a0d4ad1d6f1883a2a40547d8bfda572f239b",
+      "amdgpu_fences_log": "36dcae1e6776251b81f98603244122374befd26f4e5ba2687c63e755870811b2",
+      "kernel_journal_log": "662de97cf4d9808ba2bc79a96af7270f281eff282a7b897618b72d4c3b183bd6",
+      "process_stacks_log": "89c6419865502503ef9c387f1a89357ff746d35bde6a9635251132fc5ab91e50",
+      "run_log": "101037cc3f4683c0e1cd345d8f36a9ac7349a7753cfdbd038c5bf6a83928c3ff",
+      "provenance_txt": "8f9798ae2e4768268fe540ae4eacb21fe36cd11896b31261e72ba8d903a62290"
+    }
+  },
+  "repeat_2": {
+    "exit_status": 124,
+    "elapsed_seconds": 1806,
+    "completed_warmups": 1,
+    "completed_measured_runs": 0,
+    "stalled_attempt": "measured prefill 1",
+    "completed_diagnostic_rates": [
+      {"kind": "warmup", "prefill_tok_s": 504.628596, "decode_tok_s": 28.072896}
+    ],
+    "correctness_status": "The process timed out before result.json was written; run.log does not persist token IDs, so no correctness claim is attached to the completed warmup.",
+    "flight_recorder": {
+      "prefill_id": 2,
+      "submitted_sequence": 1556,
+      "completed_sequence": 1554,
+      "retirement_lag": 2,
+      "overwritten_entries": 0,
+      "last_completed": {
+        "sequence": 1554,
+        "chunk_start": 16384,
+        "chunk_end": 20480,
+        "layer_id": 33,
+        "layer_type": "linear_attention"
+      },
+      "pending_previous_layer_marker": {
+        "sequence": 1555,
+        "layer_id": 34,
+        "layer_type": "linear_attention",
+        "interpretation": "Layer 34's host call returned and its post-layer completion marker was enqueued, but that marker did not retire."
+      },
+      "last_host_checkpoint": {
+        "sequence": 1556,
+        "layer_id": 35,
+        "layer_type": "full_attention",
+        "interpretation": "Host entry is published before the layer call. No layer-36 entry follows, so the host remained inside layer 35."
+      }
+    },
+    "telemetry": {
+      "persistent_low_power_start": "2026-07-16T10:21:31+09:00",
+      "persistent_low_power_duration_through_bound_seconds": 1456,
+      "gfx_activity_percent": 100,
+      "gfx_clock_mhz": {"min": 2895, "median": 2900, "max": 2900},
+      "socket_power_w": {"min": 42, "median": 43, "max": 51},
+      "vram_used_mib": 26662,
+      "after_process_termination": {"power_w": 24, "vram_used_mib": 17}
+    },
+    "process_state": {
+      "main_thread_samples": 119,
+      "states": ["R<", "R<l"],
+      "wait_channel": "none; runnable in user space"
+    },
+    "system_observability": {
+      "relevant_kernel_journal_lines": 0,
+      "gfx_ring_0_signaled_emitted": "0x00009889 / 0x00009889 for all 902 samples",
+      "kfd_user_queue_visible_in_fence_info": false
+    },
+    "local_raw_directory": "/tmp/gfx1151-layer-repeat-5a665731-20260716T011550Z",
+    "source_hashes": {
+      "flight_final_json": "514534eb0c0e9101fb68e78d35beadbf289f387d69425f307c0ace7117543aa6",
+      "telemetry_csv": "ab2ee797effa62e8c490fa363f1ea1df5cfe0f967f437a7c77e05921cbf0d77c",
+      "amdgpu_fences_log": "6ecceb24e2b2fff2801dba25e9acf1b956e4a2a1a82faa271aa0310dac9af50d",
+      "kernel_journal_log": "0c59dd86e5111ebe8e3ec4d4dce1dc6925bf2eb22b66f84b0036bec144eb2409",
+      "process_stacks_log": "b40f71d894dfe868fe508b1f62507b73e9fe885e788176c47a64550a84769f43",
+      "run_log": "aa9499ccad7da1b80b270caa7fddf100b76050e367d5b341c250cb4a7236c7ae",
+      "provenance_txt": "94c2166711fedde8166a19d7220cd9a09468abe635288c57023543701dda24e7"
+    }
+  },
+  "aggregate_with_preceding_process": {
+    "preceding_completed_process_artifact": "benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-completion.json",
+    "processes_completed_full_warmup_plus_three": 1,
+    "processes_entering_persistent_no_progress": 2,
+    "total_processes": 3,
+    "completed_prefill_attempts_before_process_stop": 8,
+    "stalled_prefill_attempts": 2,
+    "interpretation": "This small, censored sequence is not a failure-rate estimate. It is sufficient to reject deterministic/reliable suppression by layer markers."
+  },
+  "ordering_analysis": {
+    "per_layer_order": [
+      "host layer checkpoint",
+      "attention plus residual/post-norm/router work",
+      "compact-MoE scheduler",
+      "synchronous wmma_total scalar D2H",
+      "selected gate/up, SiLU, selected down/sum, shared expert, combine residual",
+      "same-stream layer completion marker"
+    ],
+    "common_safe_window": "The marker for linear layer X is enqueued but not retired; host execution reaches layer X+1 and does not return. No-progress can lie in layer X's post-D2H MoE tail or completion marker, or in layer X+1's attention/post-norm/router/scheduler prefix before or at its scalar D2H wait.",
+    "common_observation": "X is linear-attention in both repeats (layers 12 and 34), while X+1 differs (linear layer 13 versus full-attention layer 35).",
+    "statistical_boundary": "Thirty of forty model layers are linear-attention. Two of two instances do not establish that linear attention rather than the shared MoE tail, marker, or queue lifecycle is causal."
+  },
+  "decision": {
+    "layer_marker_mitigation": "rejected as unreliable",
+    "standalone_heartbeat_promotion": "not justified",
+    "root_cause": "still unresolved",
+    "not_established": [
+      "one deterministic failing layer or chunk",
+      "a named nonterminating user kernel",
+      "that marker kernels themselves are irrelevant to the instrumented incidence",
+      "that the defect is firmware-only or MES 0x88-specific"
+    ],
+    "next_high_information_probe": "A separate instrumentation-sensitive rocprofv3 run combining kernel/HIP/HSA trace with installed --kfd-trace, using only prebuilt require_cached kernels, can attempt to identify the final completed/submitted user dispatch and KFD queue events. Do not wrap a compiler/JIT process and do not infer stability if tracing suppresses incidence."
+  }
+}

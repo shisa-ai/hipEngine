@@ -158540,3 +158540,58 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `/tmp/gfx1151-layer-flight-9e4e7c37-20260715T191409Z`; artifact hashes cover
   recorder, result, telemetry, fences, journal, process stacks, run log, and
   provenance.
+
+## 2026-07-16 — Approved layer-marker repeats both reproduce 128K no-progress
+
+- With explicit approval, ran two additional independent tracked-clean
+  `5a665731` HIP 7.15 / one-queue / layer-recorder 128K warmup+3 processes
+  sequentially, each bounded at 1,800 seconds with recorder, telemetry, fence,
+  task-state, and journal capture. Both time out; per-layer system-fence markers
+  are therefore **rejected as a reliable lifecycle mitigation**, and the prior
+  single-process completion does not justify a standalone heartbeat.
+- Repeat 1 completes warmup at **435.876849/28.168112**, measured pass 1 at
+  **509.927593/28.249981**, and measured pass 2 at
+  **509.206904/28.250351 prefill/decode tok/s**, then stalls in measured prefill
+  3. The process times out after 1,805 seconds. Because it never writes
+  `result.json`, run.log retains rates but not token IDs; these repetitions have
+  no retained performance or correctness claim.
+- Repeat-1 cursor **4354/4356** last retires layer 11 full attention in chunk
+  `[28672,32768)`. Layer 12 linear attention returns on the host and its
+  completion marker is enqueued at 4355 but does not retire. The host then
+  publishes layer-13 linear-attention entry at 4356 and never reaches layer 14.
+  Persistent telemetry lasts 880 seconds at 100%, median 2,900 MHz and **43 W**
+  (42-61 W); all 119 main-thread samples are runnable with no wait channel.
+- Repeat 2 completes only warmup at **504.628596/28.072896 tok/s**, then stalls
+  in measured prefill 1 and times out after 1,806 seconds. Cursor **1554/1556**
+  last retires layer 33 linear attention in chunk `[16384,20480)`. Layer 34
+  linear returns and its marker is enqueued at 1555 but does not retire; host
+  entry reaches layer 35 full attention at 1556 and stops. Persistent telemetry
+  lasts 1,456 seconds at 100%, median 2,900 MHz and **43 W** (42-51 W); all 119
+  main-thread samples are runnable with no wait channel.
+- Both journals contain zero relevant amdgpu/KFD/MES lines. All 902 debugfs
+  samples per process leave gfx ring 0 at emitted=signaled `0x9889`; KFD user
+  queues remain invisible. Process termination immediately releases VRAM.
+- Layer ordering makes the two-sequence lag useful. The compact-WMMA scalar D2H
+  occurs after attention, residual/post-norm, router, grouping, scatter, and
+  tile-map scheduling, but before selected gate/up, SiLU, selected down/sum,
+  shared-expert work, combine, and the layer marker. Therefore the safe window
+  is the prior layer X's post-read MoE tail or marker through layer X+1's
+  attention/post-norm/router/scheduler prefix before or at its scalar D2H wait.
+  X is linear in both repeats (12 and 34), while X+1 differs (linear 13 versus
+  full 35). Since 30/40 layers are linear, two cases do not establish a
+  deterministic linear-attention kernel defect; the shared MoE tail, marker,
+  and queue lifecycle remain unresolved.
+- Across three layer-marker processes, one completes warmup+3 and two fail. This
+  small censored sequence is not a failure-rate estimate, but it decisively
+  rejects deterministic marker suppression. Do not spend another long run on
+  marker cadence or heartbeat without new evidence. The next high-information
+  probe is a separate instrumentation-sensitive `rocprofv3` run combining
+  kernel/HIP/HSA tracing with installed `--kfd-trace`, using only prebuilt
+  `require_cached` kernels and treating trace-suppressed incidence explicitly.
+- Compact evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-repeat-stalls.json`.
+  Raw local bundles:
+  `/tmp/gfx1151-layer-repeat-5a665731-20260716T004545Z` and
+  `/tmp/gfx1151-layer-repeat-5a665731-20260716T011550Z`; artifact hashes cover
+  both recorders, telemetry streams, fences, journals, process stacks, run logs,
+  and provenance.
