@@ -125,6 +125,31 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
     }
 
 
+def test_packed_decode_manifest_reports_sparse_physical_bucket() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        active_mask=(True, False, True, False),
+        layer_types=_layer_types(),
+        imported_slot_indices=(0, 2),
+        import_positions=(513, -1, 521, -1),
+        scatter_state=True,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(),
+    )
+
+    assert manifest["rows"] == 4
+    assert manifest["physical_rows"] == 4
+    assert manifest["active_rows"] == 2
+    assert manifest["active_mask"] == [True, False, True, False]
+    assert manifest["state_import_slot_indices"] == [0, 2]
+    assert manifest["layer_families"]["full_attention"]["live_counts"] == [514, 0, 522, 0]
+    movement = manifest["host_device_movement"]
+    assert movement["device_to_device_state_import_copies"] == 160
+    assert movement["device_to_device_state_scatter_copies"] == 160
+    assert movement["device_to_host_vector_values"] == 4
+
+
 def test_packed_decode_manifest_requires_explicit_c3_family_routes() -> None:
     manifest = build_packed_decode_execution_manifest(
         rows=4,

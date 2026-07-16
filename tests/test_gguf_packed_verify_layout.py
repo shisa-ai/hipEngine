@@ -138,6 +138,31 @@ def test_gguf_packed_verify_layout_maps_rows_and_slot_state() -> None:
     assert layout.total_physical_positions == 24
 
 
+def test_gguf_packed_verify_layout_preserves_inactive_physical_lanes() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(0,), start_position=-1, active=False),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(33,), start_position=7),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(0,), start_position=-1, active=False),
+        ),
+        block_size=4,
+        slot_capacity=12,
+    )
+
+    np.testing.assert_array_equal(layout.active_mask, np.asarray([True, False, True, False]))
+    np.testing.assert_array_equal(layout.input_token_ids, np.asarray([11, 0, 33, 0], dtype=np.int64))
+    np.testing.assert_array_equal(layout.row_positions, np.asarray([5, -1, 7, -1], dtype=np.int64))
+    np.testing.assert_array_equal(layout.live_counts, np.asarray([6, 0, 8, 0], dtype=np.int64))
+    np.testing.assert_array_equal(layout.cu_seqlens, np.arange(5, dtype=np.int32))
+    np.testing.assert_array_equal(layout.state_indices, np.arange(4, dtype=np.int64))
+    np.testing.assert_array_equal(layout.block_table[1], np.full((3,), -1, dtype=np.int32))
+    np.testing.assert_array_equal(layout.block_table[3], np.full((3,), -1, dtype=np.int32))
+    assert layout.rows == 4
+    assert layout.slot_count == 4
+    assert layout.max_live_count == 8
+
+
 def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     layout = _build_gguf_packed_verify_layout(
         (

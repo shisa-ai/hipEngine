@@ -160703,3 +160703,53 @@ compilation pass; the large scheduler file requires the existing scoped
 `--ignore F821` for the pre-existing unimported `Any` at line 15869, unchanged
 from D5. This is host ownership plumbing only: the GGUF model runner still must
 consume these physical lanes and prove inactive session state/KV immutability.
+
+## 2026-07-17 — Execute fixed physical c8 masks without compaction
+
+The resident GGUF loop now carries scheduler-owned physical slot ids into the
+native packed step instead of compacting the remaining request rows. Declared
+physical bucket widths are c1/c2/c4/c8; inactive singleton lanes use token `0`,
+position `-1`, zero live count, and an all-`-1` block table. Packed state import,
+cursor advance, flush/scatter, layer-hidden capture, and sampled-token return
+skip those lanes while the model step retains the full physical row extent.
+Execution manifests now report `physical_rows`, `active_rows`, `active_mask`,
+and `active_slot_indices` and account movement using active rows only.
+
+The retained W7900 probe used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP
+7.15, packed p16/c8/d5, strict exact GDN, cached builds only, and eight
+independent c1 references:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode eager --prompt-length 16 \
+  --decode-steps 5 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-masked-c8-shrink-p16-d5.json
+```
+
+One physical c8 workspace executes masks
+`11111111 → 10110111 → 10100101 → 00100100 → 00000100`, or active widths
+c8→c6→c4→c2→c1, with no compaction. Tokens, initial/final state, and
+**1,160/1,160** all-layer hidden comparisons are exact. Every transition also
+compares all eight sessions' Conv/GDN and live-KV bytes, so retired lanes are
+proved immutable rather than omitted. The 38,087-byte source JSON has SHA-256
+`2b117e0e3eea03104f3469570d4484865f22f8e59760a1632fc30d784e73f603`.
+
+The changed shared layout/manifest path was then regressed through the prior
+all-active c8 graph gate. Its p16/c8/d2 token/state/KV and **960/960** layer-
+hidden comparisons remain exact; the 15,131-byte JSON SHA-256 is
+`f42b9bd15a161d7fa30146bef095f2ddfe49efd25e03a00cc06193b91c481545`.
+Host validation is **96 passed** across GGUF generation, layout, manifest, and
+oracle-contract files; full Python compilation, JSON assertions, and diff
+checks pass. Focused Ruff reports the same 16 pre-existing runner F401/F821/F841
+findings at `61199d71` and none in this diff; no unrelated lint cleanup was
+included.
+
+This closes eager physical-mask execution and non-edge no-compaction retirement
+only. Masked graph capture/replay, ragged cancellation, the standard p512/d128
+gate, and retained native-c8 profiler/scaling evidence remain open. No
+performance claim is made.
