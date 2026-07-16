@@ -66,6 +66,12 @@ def _parse_configurations(raw: str) -> tuple[str, ...]:
         raise ValueError(f"unknown packed AR configurations: {unknown!r}")
     if len(set(names)) != len(names):
         raise ValueError("configurations must be unique")
+    canonical = tuple(CONFIGURATIONS)
+    if set(names) == set(canonical) and names != canonical:
+        raise ValueError(
+            "the complete packet must use canonical c1,c2,c4,chunked_c8,serial_c4 order "
+            "so route-specific residency grows monotonically"
+        )
     return names
 
 
@@ -367,6 +373,7 @@ def _run_sample(
         "passed": bool(manifests_ok and trajectory_lengths_ok and all(flush_results)),
         "route": {
             **asdict(config),
+            "resident_session_count_at_measurement": len(sessions),
             "physical_bucket_widths": [len(group) for group in groups],
             "active_masks": [[True] * len(group) for group in groups],
             "serial_bridge": config.execution_class == "serial_bridge",
@@ -446,6 +453,27 @@ def _summarize_configuration(
     decode_aggregate = _stats(
         [float(sample["throughput"]["decode_tok_s_aggregate"]) for sample in measured]
     )
+    tracked_current_peaks = [
+        max(
+            int(snapshot["tracked"]["current_allocated_bytes"])
+            for snapshot in sample["memory"].values()
+        )
+        for sample in measured
+    ]
+    tracked_high_water = [
+        max(
+            int(snapshot["tracked"]["peak_allocated_bytes"])
+            for snapshot in sample["memory"].values()
+        )
+        for sample in measured
+    ]
+    hip_used_peaks = [
+        max(int(snapshot["hip_used_bytes"]) for snapshot in sample["memory"].values())
+        for sample in measured
+    ]
+    resident_session_counts = sorted(
+        {int(sample["route"]["resident_session_count_at_measurement"]) for sample in measured}
+    )
     return {
         "configuration": config.name,
         "route": asdict(config),
@@ -483,6 +511,12 @@ def _summarize_configuration(
             "ttft_seconds_per_request": _stats(ttft),
             "inter_token_model_step_seconds": _stats(itl),
             "streaming_delivery_included": False,
+        },
+        "memory": {
+            "resident_session_counts": resident_session_counts,
+            "tracked_current_peak_bytes": _stats(tracked_current_peaks),
+            "tracked_allocator_high_water_bytes": _stats(tracked_high_water),
+            "hip_used_peak_sampled_bytes": _stats(hip_used_peaks),
         },
         "variance_guard": {
             "decode_stdev_pct_of_median": decode_aggregate["stdev_pct_of_median"],
@@ -616,27 +650,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if owner.runner is None:
                 raise RuntimeError("GGUF packed benchmark owner runner is closed")
             sessions = [owner]
-            for _ in range(max_rows - 1):
-                sessions.append(
-                    stack.enter_context(
-                        Qwen35GGUFResidentSession(
-                            model,
-                            backend=str(args.backend),
-                            runtime=owner.runtime,
-                            shared_runner=owner.runner,
-                            compiler_version=compiler_version,
-                            require_cached_build=bool(args.require_cached_build),
-                            max_sequence_length=max_sequence_length,
-                            use_wmma_prefill=True,
-                            use_gemv_decode=True,
-                        )
-                    )
-                )
             resolved_backend = str(owner.backend)
             target_arch = str(owner.runner.target_arch)
             memory["after_load"] = _memory_snapshot("after_load", runtime)
             for name in names:
                 config = CONFIGURATIONS[name]
+                while len(sessions) < config.logical_rows:
+                    sessions.append(
+                        stack.enter_context(
+                            Qwen35GGUFResidentSession(
+                                model,
+                                backend=str(args.backend),
+                                runtime=owner.runtime,
+                                shared_runner=owner.runner,
+                                compiler_version=compiler_version,
+                                require_cached_build=bool(args.require_cached_build),
+                                max_sequence_length=max_sequence_length,
+                                use_wmma_prefill=True,
+                                use_gemv_decode=True,
+                            )
+                        )
+                    )
+                memory[f"before_{name}_with_{len(sessions)}_sessions"] = _memory_snapshot(
+                    f"before_{name}_with_{len(sessions)}_sessions",
+                    runtime,
+                )
                 for raw_index in range(int(args.warmup_runs) + int(args.measured_runs)):
                     measured = raw_index >= int(args.warmup_runs)
                     run_index = (

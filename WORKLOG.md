@@ -159791,3 +159791,13 @@ admission, prefill completion, graph capture, and decode completion plus an
 empty static row-count-transition list. This closes the C4 artifact requirement
 without treating active masks alone as an occupancy-over-time proxy; focused
 gate is **16 passed** plus compile/Ruff/diff checks.
+
+The first clean full-packet launch was stopped before any result was retained:
+the harness had eagerly allocated eight session KV/state slabs before the c1,
+c2, and c4 phases. Rates would remain usable, but c4 memory would be an
+incorrect c8-residency proxy. Changed the canonical complete-packet order to
+grow one shared-runner process monotonically through 1→2→4→8 resident sessions,
+record the resident count per route, and summarize tracked-current,
+tracked-high-water, and `hipMemGetInfo` phase peaks per configuration. The
+complete packet now rejects reordered routes that would invalidate that memory
+scope; partial diagnostics remain allowed and disclose their resident count.
