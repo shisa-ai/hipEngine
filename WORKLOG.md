@@ -159628,3 +159628,96 @@ python3 scripts/gguf_packed_ar_state_oracle.py \
   --require-cached-build \
   --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/sparse-c4-p512-d4.json
 ```
+
+## 2026-07-16 — Add state-bound gfx1100 GGUF packed graph replay
+
+Audited the C4 entry boundary after clean C3 closure `29b01733`. The existing
+whole-step GGUF graph contract was c1-only (`active_rows=1`). Packed c2/c4 still
+read one token vector to host, uploaded it again, and passed positions as scalar
+kernel arguments every transition, so toggling the c1 graph path could not
+qualify as packed replay.
+
+Added a RED packed graph contract before implementation. The focused gate failed
+at collection because `hipengine.runtime.gguf_packed_decode_graph` and the
+registry-resolved device-position/commit/record helpers did not exist. The new
+state-bound key covers physical/active width, active mask, per-row state
+generations, context bucket/window, model/quant/KV axes, weight and buffer
+identity, recording shape, metadata route, and token-feedback route.
+
+Extended the existing gfx1100 runtime/state family with three stream-ordered
+control kernels:
+
+- device-position metadata refresh rebuilds live counts/CU/reset/segment/index
+  metadata without host values;
+- packed graph commit promotes sampled i32 row tokens to the persistent i64
+  embedding input, records them when requested, and advances device positions;
+- indexed uint16 slab recording captures selected BF16 layer outputs into a
+  step-major diagnostic buffer before commit advances the shared index.
+
+The packed runner now has one enqueue-only model-step body shared by eager and
+graph execution. Capture imports state and uploads initial tokens once, then
+replay performs zero steady H2D/D2H operations. Optional layer capture is D2D
+inside the graph and read once after the declared window. The graph handle owns
+its bucket key/replay counters, rejects cursor drift or post-flush replay,
+updates host cursors only after synchronized launches, and rewrites the final
+layout before the existing exact full-state flush.
+
+The first d1 graph replay passed tokens/state/KV. The initial d4 run was RED at
+full-attention layer 3 on step 2 while layers 0-2 remained exact: captured
+`KVLiveSpans.max_live_count` still held the initial 513-token bound even though
+device live counts advanced to 514. Widening only the captured host bound to the
+declared replay window, matching the c1 graph contract, repaired the issue.
+Current dirty-tree W7900/gfx1100 Qwen3.6-35B-A3B `UD-Q4_K_M` gates with TheRock
+HIP 7.15 and cached builds required now pass:
+
+- p512 c4 d4: four graph launches/one replay-call synchronization, exact token
+  trajectory, **800/800** prefill+decode layer rows, and exact final Conv/GDN +
+  live KV; source SHA-256
+  `34f35d36b2181421f8abccffdd0dd79618f5166fe0f386be1fb96f349d81f1fa`;
+- p512 sparse c4->c3->c2->c1: one positive replay per fixed-width bucket,
+  **560/560** layer rows and every post-event state/KV checkpoint exact; source
+  SHA-256
+  `c2cdfe3fb704023fd1760691d5221a36b0a14b72dd973e4a601d8a93091bcc90`.
+
+A cached-only primitive `rocprofv3 --kernel-trace` records device-position
+metadata at **2.360 us** (64 threads, 16 VGPR), indexed BF16 recording at
+**2.080 us** (256 threads, 8 VGPR), and packed commit at **2.720 us** (one
+thread, 8 VGPR), all with zero scratch/LDS. Raw trace SHA-256:
+`18b7d06c5f5f366dc507029c59353ee719ba9ec750129cab6149212c98cf5766`.
+The first cached-only model attempt correctly failed before capture because the
+new source lacked the supplied HIP 7.15 cache key; it was prebuilt with the
+actual compiler outside profiling and then required cached.
+
+```bash
+python3 -m pytest -q tests/test_runtime_state_plan.py \
+  tests/test_gguf_packed_decode_graph.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_decode_graph_g5.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed or graph or manifest or state_oracle'
+# GREEN: 58 passed
+python3 -m pytest -q tests/test_runtime_state_unpack_metadata.py
+# GREEN on W7900: 4 passed
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c4-graph-p512-d4-hidden.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode graph \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c4-graph-sparse-p512-d4-hidden.json
+```
+
+This commits the graph primitive/runtime unit only. C4 remains open for the
+clean standard d128 replay/eager gates, marker-sliced graph execution proof, and
+same-protocol c1/c2/c4/chunked-c8 timing/memory/latency packet. No throughput or
+fully-native-c4 claim is made here.

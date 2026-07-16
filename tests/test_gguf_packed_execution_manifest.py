@@ -194,6 +194,20 @@ def test_packed_decode_manifest_accounts_copy_free_device_metadata() -> None:
     assert census["host_device_movement"]["expected_copy_dispatches"] == 2
     assert census["host_device_movement"]["observed_metadata_prepare_dispatches"] == 1
 
+    replay_manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(metadata_prepare_path="device_positions_persistent"),
+    )
+    replay_movement = replay_manifest["host_device_movement"]
+    assert replay_movement["host_to_device_metadata_copies"] == 0
+    assert replay_movement["device_metadata_prepare_launches"] == 1
+
 
 def test_profiler_artifact_classifies_the_highest_closed_boundary() -> None:
     recurrent_manifest = build_packed_decode_execution_manifest(

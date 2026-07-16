@@ -251,6 +251,89 @@ __global__ void prepare_packed_decode_metadata_kernel(
   }
 }
 
+__global__ void prepare_packed_decode_metadata_from_positions_kernel(
+    int32_t* block_table,
+    const int64_t* positions,
+    int64_t* contexts,
+    int32_t* cu_q,
+    int32_t* cu_k,
+    int32_t* atomic,
+    int32_t* gdn_cu_seqlens,
+    int64_t* state_indices,
+    int64_t rows,
+    int64_t blocks_per_slot) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index == 0) {
+    int64_t max_position = positions[0];
+    for (int64_t row = 1; row < rows; ++row) {
+      if (positions[row] > max_position) {
+        max_position = positions[row];
+      }
+    }
+    cu_q[0] = 0;
+    cu_q[1] = static_cast<int32_t>(rows);
+    cu_k[0] = 0;
+    cu_k[1] = static_cast<int32_t>(max_position + 1);
+    atomic[0] = 0;
+  }
+  if (index <= rows) {
+    gdn_cu_seqlens[index] = static_cast<int32_t>(index);
+  }
+  if (index < rows) {
+    contexts[index] = positions[index] + 1;
+    state_indices[index] = index;
+  }
+  const int64_t block_table_size = rows * blocks_per_slot;
+  if (index < block_table_size) {
+    block_table[index] = static_cast<int32_t>(index);
+  }
+}
+
+__global__ void record_u16_rows_indexed_kernel(
+    const uint16_t* value,
+    uint16_t* out,
+    const int64_t* index,
+    int64_t elements,
+    int64_t step_stride,
+    int64_t capacity) {
+  const int64_t step = index[0];
+  if (step < 0 || step >= capacity) {
+    return;
+  }
+  const int64_t element = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (element < elements) {
+    out[step * step_stride + element] = value[element];
+  }
+}
+
+__global__ void commit_packed_decode_graph_step_kernel(
+    const int32_t* token_ids_i32,
+    int64_t* token_ids_i64,
+    int64_t* positions,
+    int64_t* contexts,
+    int32_t* recorded_token_ids_i32,
+    int64_t* record_index,
+    int64_t record_capacity,
+    int64_t rows) {
+  if (threadIdx.x != 0 || blockIdx.x != 0) {
+    return;
+  }
+  const int64_t step = record_index == nullptr ? 0 : record_index[0];
+  for (int64_t row = 0; row < rows; ++row) {
+    const int32_t token = token_ids_i32[row];
+    token_ids_i64[row] = static_cast<int64_t>(token);
+    if (recorded_token_ids_i32 != nullptr && step >= 0 && step < record_capacity) {
+      recorded_token_ids_i32[step * rows + row] = token;
+    }
+    const int64_t next = positions[row] + 1;
+    positions[row] = next;
+    contexts[row] = next + 1;
+  }
+  if (record_index != nullptr) {
+    record_index[0] = step + 1;
+  }
+}
+
 __global__ void advance_decode_positions_i64_kernel(
     int64_t* positions,
     int64_t* contexts,
@@ -681,6 +764,106 @@ extern "C" int hipengine_prepare_packed_decode_metadata(
       position3,
       rows,
       blocks_per_slot);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_prepare_packed_decode_metadata_from_positions(
+    int32_t* block_table,
+    const int64_t* positions,
+    int64_t* contexts,
+    int32_t* cu_q,
+    int32_t* cu_k,
+    int32_t* atomic,
+    int32_t* gdn_cu_seqlens,
+    int64_t* state_indices,
+    int64_t rows,
+    int64_t blocks_per_slot,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > 4 || blocks_per_slot <= 0 ||
+      rows * blocks_per_slot > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 64;
+  const int64_t elements = rows * blocks_per_slot > rows + 1
+      ? rows * blocks_per_slot
+      : rows + 1;
+  const int blocks = static_cast<int>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      prepare_packed_decode_metadata_from_positions_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      block_table,
+      positions,
+      contexts,
+      cu_q,
+      cu_k,
+      atomic,
+      gdn_cu_seqlens,
+      state_indices,
+      rows,
+      blocks_per_slot);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_record_u16_rows_indexed(
+    const uint16_t* value,
+    uint16_t* out,
+    const int64_t* index,
+    int64_t elements,
+    int64_t step_stride,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (elements <= 0 || step_stride < elements || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      record_u16_rows_indexed_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      value,
+      out,
+      index,
+      elements,
+      step_stride,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_commit_packed_decode_graph_step(
+    const int32_t* token_ids_i32,
+    int64_t* token_ids_i64,
+    int64_t* positions,
+    int64_t* contexts,
+    int32_t* recorded_token_ids_i32,
+    int64_t* record_index,
+    int64_t record_capacity,
+    int64_t rows,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > 4 ||
+      ((recorded_token_ids_i32 == nullptr) != (record_index == nullptr)) ||
+      (recorded_token_ids_i32 != nullptr && record_capacity <= 0)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      commit_packed_decode_graph_step_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      token_ids_i32,
+      token_ids_i64,
+      positions,
+      contexts,
+      recorded_token_ids_i32,
+      record_index,
+      record_capacity,
+      rows);
   return static_cast<int>(hipGetLastError());
 }
 
