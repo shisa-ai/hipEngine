@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
 import time
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Protocol, Sequence
 
-from hipengine.dispatch import WorkItem, WorkKind
+from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.registry import (
     GenerationOutput,
@@ -83,13 +84,24 @@ class EngineLoopEvent:
 
 
 class EngineLoopRunner(Protocol):
-    """Minimal serial-bridge/fake-runner hooks consumed by the engine loop."""
+    """Scheduler-facing commit/compact/reclaim model-runner contract.
 
-    def prefill(self, work: WorkItem) -> None:
-        """Run or record one prefill work item."""
+    Native runners implement the batch-shaped methods.  The historical
+    ``prefill``/``decode`` pair remains an explicit serial bridge for simple
+    host fakes and non-native generators.
+    """
 
-    def decode(self, work: WorkItem) -> Sequence[GeneratedToken]:
+    def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        """Run one prefill transition and commit canonical state when requested."""
+
+    def decode_batch(self, work: WorkItem, *, commit: bool) -> Sequence[GeneratedToken]:
         """Return one generated token per decoded request row."""
+
+    def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        """Apply scheduler physical-slot moves to model-owned state."""
+
+    def reclaim(self, completed: CompletedRequest) -> None:
+        """Release model-owned state for one completed request."""
 
 
 class SubmitPollTextGenerator:
@@ -107,14 +119,29 @@ class SubmitPollTextGenerator:
         self,
         inner: TextGenerator,
         *,
+        capacity: int = 32,
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
     ) -> None:
+        if capacity <= 0:
+            raise ValueError("capacity must be positive")
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
         self._inner = inner
         self._prefill_chunk_size = int(prefill_chunk_size)
         self._context_bucket_size = int(context_bucket_size)
+        self._runner = _SubmitPollTextRunner(self._inner)
+        self._loop = ResidentEngineLoop(
+            self._runner,
+            capacity=int(capacity),
+            prefill_chunk_size=self._prefill_chunk_size,
+            context_bucket_size=self._context_bucket_size,
+            prefill_decode_policy="protect_ttft",
+        )
+        # The lock protects one mutable scheduler tick, never an entire request.
+        # Native runners therefore release it after each model transition so a
+        # later D2 admission worker can enqueue between decode steps.
+        self._loop_lock = threading.Lock()
 
     @property
     def inner(self) -> TextGenerator:
@@ -130,30 +157,39 @@ class SubmitPollTextGenerator:
         prompts = tuple(request.prompts)
         if not prompts:
             return []
-        runner = _SubmitPollTextRunner(self._inner, replace(request, prompts=prompts))
-        loop = ResidentEngineLoop(
-            runner,
-            capacity=len(prompts),
-            prefill_chunk_size=self._prefill_chunk_size,
-            context_bucket_size=self._context_bucket_size,
-            prefill_decode_policy="protect_ttft",
-        )
-        request_ids = tuple(
-            loop.submit(_surrogate_prompt_tokens(prompt), max_new_tokens=1, request_id=index)
-            for index, prompt in enumerate(prompts)
-        )
+        with self._loop_lock:
+            request_ids = tuple(
+                self._loop.submit(_surrogate_prompt_tokens(prompt), max_new_tokens=1)
+                for prompt in prompts
+            )
+            self._runner.register_batch(request_ids, replace(request, prompts=prompts))
         max_ticks = _submit_poll_max_ticks(prompts, self._prefill_chunk_size)
         ticks = 0
-        while any(request_id not in runner.outputs for request_id in request_ids):
-            events = loop.poll(max_ticks=1)
-            ticks += 1
-            if not events:
-                missing = [request_id for request_id in request_ids if request_id not in runner.outputs]
-                raise RuntimeError(f"submit+poll text generation stalled; missing request_ids={missing}")
-            if ticks > max_ticks:
-                missing = [request_id for request_id in request_ids if request_id not in runner.outputs]
-                raise RuntimeError(f"submit+poll text generation exceeded {max_ticks} ticks; missing request_ids={missing}")
-        return [runner.outputs[request_id] for request_id in request_ids]
+        try:
+            while not self._runner.has_outputs(request_ids):
+                with self._loop_lock:
+                    events = self._loop.poll(max_ticks=1)
+                ticks += 1
+                if not events:
+                    missing = self._runner.missing_outputs(request_ids)
+                    raise RuntimeError(f"submit+poll text generation stalled; missing request_ids={missing}")
+                if ticks > max_ticks:
+                    missing = self._runner.missing_outputs(request_ids)
+                    raise RuntimeError(
+                        f"submit+poll text generation exceeded {max_ticks} ticks; missing request_ids={missing}"
+                    )
+            with self._loop_lock:
+                outputs = self._runner.take_outputs(request_ids)
+                for request_id in request_ids:
+                    self._loop.release_completed(request_id)
+            return outputs
+        except Exception:
+            with self._loop_lock:
+                for request_id in request_ids:
+                    self._loop.cancel(request_id)
+                    self._loop.release_completed(request_id)
+                self._runner.discard(request_ids)
+            raise
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
         for chunk in self.stream_detailed(request):
@@ -187,42 +223,113 @@ class SubmitPollTextGenerator:
             yield GenerationStreamChunk(text=str(text))
 
 
+@dataclass(frozen=True, slots=True)
+class _SubmitPollTextRow:
+    batch_id: int
+    row_index: int
+    request: GenerationRequest
+
+
 class _SubmitPollTextRunner:
-    def __init__(self, inner: TextGenerator, request: GenerationRequest) -> None:
+    """Long-lived compatibility runner for non-native text generators."""
+
+    def __init__(self, inner: TextGenerator) -> None:
         self._inner = inner
-        self._request = request
-        self.outputs: dict[int, GenerationOutput] = {}
+        self._rows: dict[int, _SubmitPollTextRow] = {}
+        self._outputs: dict[int, GenerationOutput] = {}
+        self._next_batch_id = 0
 
-    def prefill(self, work: WorkItem) -> None:
-        return None
+    @property
+    def outputs(self) -> dict[int, GenerationOutput]:
+        return dict(self._outputs)
 
-    def decode(self, work: WorkItem) -> tuple[GeneratedToken, ...]:
+    def register_batch(self, request_ids: Sequence[int], request: GenerationRequest) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        if len(ids) != len(request.prompts):
+            raise ValueError("request_ids must have one entry per prompt")
+        if request.row_seeds and len(request.row_seeds) != len(request.prompts):
+            raise ValueError("row_seeds must have one entry per prompt")
+        batch_id = self._next_batch_id
+        self._next_batch_id += 1
+        for row_index, request_id in enumerate(ids):
+            if request_id in self._rows or request_id in self._outputs:
+                raise ValueError(f"request_id {request_id} is already registered")
+            self._rows[request_id] = _SubmitPollTextRow(batch_id, row_index, request)
+
+    def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        if not commit:
+            raise ValueError("submit+poll compatibility prefill requires commit=True")
+
+    def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
+        if not commit:
+            raise ValueError("submit+poll compatibility decode requires commit=True")
         request_ids = tuple(int(request_id) for request_id in work.request_ids)
-        subrequest = self._subset_request(request_ids)
-        detailed = getattr(self._inner, "generate_detailed", None)
-        if callable(detailed):
-            outputs = list(detailed(subrequest))
-        else:
-            outputs = [GenerationOutput(text=str(item)) for item in self._inner.generate(subrequest)]
-        if len(outputs) != len(request_ids):
-            raise RuntimeError(
-                f"generator returned {len(outputs)} outputs for {len(request_ids)} submit+poll rows"
-            )
-        tokens: list[GeneratedToken] = []
-        for row, (request_id, output) in enumerate(zip(request_ids, outputs, strict=True)):
-            generation_output = output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
-            self.outputs[request_id] = generation_output
-            tokens.append(GeneratedToken(request_id, row, finished=True))
-        return tuple(tokens)
+        grouped: dict[int, list[int]] = {}
+        for request_id in request_ids:
+            row = self._rows.get(request_id)
+            if row is None:
+                raise KeyError(f"request_id {request_id} is not registered")
+            grouped.setdefault(row.batch_id, []).append(request_id)
+
+        tokens_by_request: dict[int, GeneratedToken] = {}
+        for grouped_ids in grouped.values():
+            ids = tuple(grouped_ids)
+            subrequest = self._subset_request(ids)
+            detailed = getattr(self._inner, "generate_detailed", None)
+            if callable(detailed):
+                outputs = list(detailed(subrequest))
+            else:
+                outputs = [GenerationOutput(text=str(item)) for item in self._inner.generate(subrequest)]
+            if len(outputs) != len(ids):
+                raise RuntimeError(
+                    f"generator returned {len(outputs)} outputs for {len(ids)} submit+poll rows"
+                )
+            for row_index, (request_id, output) in enumerate(zip(ids, outputs, strict=True)):
+                generation_output = (
+                    output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+                )
+                self._outputs[request_id] = generation_output
+                tokens_by_request[request_id] = GeneratedToken(request_id, row_index, finished=True)
+        return tuple(tokens_by_request[request_id] for request_id in request_ids)
+
+    def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        del moves
+
+    def reclaim(self, completed: CompletedRequest) -> None:
+        # Output ownership remains with the adapter until the synchronous caller
+        # consumes it.  Model-native runners release device state here.
+        del completed
+
+    def has_outputs(self, request_ids: Sequence[int]) -> bool:
+        return all(int(request_id) in self._outputs for request_id in request_ids)
+
+    def missing_outputs(self, request_ids: Sequence[int]) -> list[int]:
+        return [int(request_id) for request_id in request_ids if int(request_id) not in self._outputs]
+
+    def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
+        outputs: list[GenerationOutput] = []
+        for request_id in request_ids:
+            rid = int(request_id)
+            outputs.append(self._outputs.pop(rid))
+            self._rows.pop(rid, None)
+        return outputs
+
+    def discard(self, request_ids: Sequence[int]) -> None:
+        for request_id in request_ids:
+            rid = int(request_id)
+            self._rows.pop(rid, None)
+            self._outputs.pop(rid, None)
 
     def _subset_request(self, request_ids: tuple[int, ...]) -> GenerationRequest:
-        prompts = tuple(self._request.prompts[request_id] for request_id in request_ids)
+        rows = tuple(self._rows[request_id] for request_id in request_ids)
+        request = rows[0].request
+        if any(row.request is not request for row in rows):
+            raise RuntimeError("submit+poll batch rows do not share one source request")
+        prompts = tuple(request.prompts[row.row_index] for row in rows)
         row_seeds: tuple[int, ...] = ()
-        if self._request.row_seeds:
-            if len(self._request.row_seeds) != len(self._request.prompts):
-                raise ValueError("row_seeds must have one entry per prompt")
-            row_seeds = tuple(self._request.row_seeds[request_id] for request_id in request_ids)
-        return replace(self._request, prompts=prompts, row_seeds=row_seeds)
+        if request.row_seeds:
+            row_seeds = tuple(request.row_seeds[row.row_index] for row in rows)
+        return replace(request, prompts=prompts, row_seeds=row_seeds)
 
 
 def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
@@ -453,6 +560,7 @@ class ResidentEngineLoop:
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
             max_pending_requests=resolved_config.max_pending_requests,
+            reclaim_callback=self._reclaim_runner_state,
         )
 
     @property
@@ -474,6 +582,20 @@ class ResidentEngineLoop:
         """Cancel a pending or active request and reclaim active scheduler state."""
 
         return self.scheduler.cancel(request_id, reason=reason) is not None
+
+    def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
+        """Compact scheduler slots and commit the same moves to the runner."""
+
+        moves = tuple(self.scheduler.compact(order=order))
+        compact_batch = getattr(self.runner, "compact_batch", None)
+        if callable(compact_batch):
+            compact_batch(moves)
+        return moves
+
+    def release_completed(self, request_id: int) -> CompletedRequest | None:
+        """Release one caller-consumed completion from the long-lived loop."""
+
+        return self.scheduler.release_completed(request_id)
 
     def disconnect(self, request_id: int) -> bool:
         """Reclaim a disconnected request through the unified cancel path."""
@@ -539,14 +661,22 @@ class ResidentEngineLoop:
 
     def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
-        self.runner.prefill(work)
+        prefill_batch = getattr(self.runner, "prefill_batch", None)
+        if callable(prefill_batch):
+            prefill_batch(work, commit=True)
+        else:
+            self.runner.prefill(work)
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
-        generated = tuple(self.runner.decode(work))
+        decode_batch = getattr(self.runner, "decode_batch", None)
+        if callable(decode_batch):
+            generated = tuple(decode_batch(work, commit=True))
+        else:
+            generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
         self._last_work_kind = work.kind
@@ -571,6 +701,11 @@ class ResidentEngineLoop:
                 )
             )
         return tuple(events)
+
+    def _reclaim_runner_state(self, completed: CompletedRequest) -> None:
+        reclaim = getattr(self.runner, "reclaim", None)
+        if callable(reclaim):
+            reclaim(completed)
 
 
 __all__ = [

@@ -159882,3 +159882,26 @@ The compact closure artifact is
 boundary to D1: one long-lived model-owning GGUF runner with live
 admission/reclaim. The W7900 concurrency topline now exports the direct
 c1/c2/c4/chunked/serial table; chunked c8 remains explicitly non-native.
+
+## 2026-07-16 — Start gfx1100 GGUF D1 persistent loop ownership
+
+Closed the host ownership prerequisite for D1 without making a live-admission
+claim. `SubmitPollTextGenerator` now creates one compatibility runner and one
+`ResidentEngineLoop` for its lifetime instead of rebuilding both inside every
+`generate_detailed()` call. Request ids remain globally stable across API
+calls, consumed completions are released from the persistent scheduler, and
+only one mutable scheduler tick—not a full request lifetime—is protected by the
+adapter lock.
+
+The runner boundary now prefers explicit `prefill_batch(..., commit=True)` and
+`decode_batch(..., commit=True)` hooks, forwards scheduler slot moves through
+`compact_batch`, and invokes `reclaim` on every completion/cancel path. Legacy
+`prefill`/`decode` fakes remain an explicit compatibility bridge. RED failed on
+the missing persistent-loop constructor and batch hooks; GREEN is **10 passed**
+for the focused submit/poll and engine-loop bundle. Python compilation and Ruff
+pass for the two implementation modules; the focused test file still has the
+pre-existing unrelated F821 at line 15868 (`Any` in a prior local fake), so its
+Ruff audit was run with F821 excluded rather than silently folding that cleanup
+into D1. No GPU, throughput, live scheduling, or GGUF device-state ownership
+claim is made by this host-only unit; the next unit attaches a persistent GGUF
+session owner to these hooks.
