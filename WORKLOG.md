@@ -159103,3 +159103,62 @@ git diff --check
 This is the dirty-tree C1 tooling/route gate. The retained clean profiler
 artifact follows from the committed implementation revision and remains
 `performance_claim=false`.
+
+
+## 2026-07-16 — Close gfx1100 GGUF C1 hybrid-boundary census
+
+Ran the retained paired census from clean implementation revision `88f10724` on
+Radeon Pro W7900/gfx1100 with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN prefill, TheRock HIP 7.15, the precomputed compiler key, and
+cached profiled children required:
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c1-clean-88f10724/raw \
+  --out /tmp/gfx1100-concurrency-c1-clean-88f10724/c1-census.json
+```
+
+The parent warm-built independent c1/c4 leaves outside `rocprofv3`. Each
+profiled child then ran with `--require-cached-build` and ROCTX-bounded one
+synchronized steady decode transition. Both leaves are token-exact at p512:
+c1 emits three `9707` values across warmup/profile/flush, and c4 emits four
+`9707` values in both warmup and profile transitions before flushing packed
+state. Profile stderr contains zero compiler/linker matches.
+
+The c1 marker window contains **628** dispatches and 9.417228 ms instrumented
+GPU duration. The c4 window contains **1,386** dispatches and 19.095683 ms. Its
+runtime-manifest contract and profiler classification agree exactly:
+
+- **840 exact-row-local dispatches**, 7.847403 ms (**41.10%**): 480
+  linear-attention projections, 240 Conv/GDN kernels, and 120 attention
+  RMSNorm kernels;
+- **546 packed-native dispatches**, 11.248280 ms (**58.90%**): full attention,
+  all MoE/FFN tails, packed norms, LM head, and row-vector argmax;
+- 30 host row-loop sites / 120 row iterations, but zero complete c1 session or
+  complete-layer replay;
+- steady movement is eight metadata H2D copies (200 bytes), one token-vector
+  H2D copy (32 bytes), zero state import/scatter D2D copies, and one four-value
+  i32 D2H read (16 bytes); two synchronizations and zero scalar fallback.
+
+The single synchronized marker windows are a route census, not a throughput
+measurement; profiler durations are diagnostic and `performance_claim=false`.
+The route remains `exact_hybrid` because all 30 recurrent linear-attention
+layers invoke the exact c1 row subgraph four times. C2 is therefore narrowly
+defined: add a RED fixture at that boundary, then replace Conv/GDN and its
+associated row-local projections/norm with a c-aware exact route without
+changing Phase-B equality.
+
+Compact evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c1-hybrid-census.json`
+(SHA-256 `aa2bcf140fee7f24c4b9b4fbb732bafb072e484b15e193bc3ea35588b82b7476`).
+It preserves clean canonical provenance, the complete execution manifest and
+census, raw trace/marker/stderr hashes, source-file hashes, safety checks, and
+validation while truncating only verbose top-kernel lists. The unmodified clean
+source result is SHA-256
+`32217fd380979df83022131ab0bdc063fa4eccc96bd8f1c80b75b9da24fb41d5`.
+This closes C1 and advances the active queue to C2 recurrent linear-attention
+closure.
