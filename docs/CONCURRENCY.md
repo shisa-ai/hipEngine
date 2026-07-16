@@ -84,23 +84,23 @@ profiler to show that the route scales better than the serial bridge.
 
 ## Current truth
 
-**hipEngine does not yet have production server continuous batching.** The
-gfx1100 GGUF non-streaming model loop is now `continuous_eq_ok`: one long-lived
-runner, fixed reusable session identities, and a scheduler-owned request-sized
-BF16 device-KV pool admit controlled submissions while a neighbor decodes,
-commit bounded prompt chunks, cancel or retire rows, and reuse exact resources
-while survivor token/Conv/GDN/live-KV state remains c1-exact. Public blocking
-`LLM.generate()` calls drive the same configured loop. D3 real device-KV
-admission/grow/shrink is closed; D4 remains open because the OpenAI
-streaming/backpressure/drain path does not yet consume the controlled per-request
-events.
+**hipEngine now has correctness-retained OpenAI continuous membership for the
+gfx1100 GGUF path, but not project-wide production continuous batching.** One
+long-lived runner, fixed reusable session identities, and a scheduler-owned
+request-sized BF16 device-KV pool admit controlled submissions while a neighbor
+decodes, commit bounded prompt chunks, stream row-owned token events, cancel or
+retire rows, and reuse exact resources while survivor token/Conv/GDN/live-KV
+state remains c1-exact. Public blocking `LLM.generate()` and OpenAI SSE drive
+the same configured loop. D4 streaming/backpressure/lifecycle is closed at
+`continuous_eq_ok`; D5 observability, PARO, and gfx1151 loop symmetry remain
+open before the roadmap's project-wide production destination is complete.
 
 ### Model/backend coverage
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 model step plus `continuous_eq_ok` D3 loop: graph/eager p512/d128 and sparse c4→c1 gates are exact; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4); clean p512 live admission/cancel/retire/reuse remains independent-c1 exact through real request-sized device-KV growth/shrink and graph invalidation | Public non-streaming calls and controlled submit/poll share one configured model-owning loop, reusable c4 session identities, and a real BF16 device-KV pool; production server streaming/backpressure/drain remains open | D4 OpenAI streaming/backpressure/drain |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 model step plus `continuous_eq_ok` D4 loop: graph/eager p512/d128 and sparse c4→c1 gates are exact; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4); clean live admission/disconnect/timeout/shutdown remains independent-c1 exact through bounded OpenAI streaming and real request-sized device-KV ownership | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c4 session identities, bounded per-request queues, and a real BF16 device-KV pool; no server throughput claim is attached | D5 full live-loop observability |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -121,12 +121,13 @@ The following components exist and have focused CPU/host tests:
 - graph-bucket, request, and pool observability schemas;
 - Prometheus endpoint plumbing.
 
-The gfx1100 GGUF D3 runner now owns real device state and request-sized BF16 KV
-through live prefill/decode/reclaim transitions. It proves requests can enter,
-leave, cancel, reuse sessions/pages, and invalidate pointer-bound graphs while
-neighbors remain exact. Production server continuous batching still requires D4
-to route OpenAI streaming, backpressure, disconnect, and drain through these
-events; PARO still lacks an equivalent model-owning runner.
+The gfx1100 GGUF D4 path now owns real device state, request-sized BF16 KV, and
+bounded OpenAI token delivery through live prefill/decode/reclaim transitions.
+It proves requests can enter, leave, disconnect, time out, reuse sessions/pages,
+and drain through app shutdown while neighbors remain exact. This is retained
+continuous-membership correctness, not a server throughput claim; D5 still must
+export the full live-loop metric set, and PARO still lacks an equivalent
+model-owning runner.
 
 ### Result pointers
 
@@ -179,6 +180,10 @@ events; PARO still lacks an equivalent model-owning runner.
   pointer lifetime, exact tracked memory contraction, and 3→6→3→12→3 lifecycle:
   `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF D3 device KV**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv-pool-closure.json`.
+- gfx1100 D4 bounded OpenAI streaming, full-queue live admission, row-local
+  disconnect/timeout, SSE completion, and two-phase shutdown reclaim:
+  `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF D4 OpenAI streaming**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d4-openai-streaming-closure.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -645,12 +650,27 @@ artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d3-device-kv
 
 D4. API and streaming:
 
-- [ ] Route both `LLM.generate()` and the OpenAI server through the same loop.
-- [ ] Stream token events per request without holding model/session locks.
-- [ ] Bound slow-client queues and isolate backpressure by row.
-- [ ] Support request cancellation, timeout, disconnect, and shutdown drain.
-- [ ] Keep non-streaming prompt-list behavior as a compatibility adapter, not a
+- [x] Route both `LLM.generate()` and the OpenAI server through the same loop.
+- [x] Stream token events per request without holding model/session locks.
+- [x] Bound slow-client queues and isolate backpressure by row.
+- [x] Support request cancellation, timeout, disconnect, and shutdown drain.
+- [x] Keep non-streaming prompt-list behavior as a compatibility adapter, not a
       second execution architecture.
+
+Clean `f03957cc` W7900 evidence fills A's two-chunk HTTP queue before B submits,
+then admits and prefills B while A remains live and executes one native c2
+A+B decode. A finishes all eight exact `[9707]` tokens; B's consumed `[9708]`
+prefix and both rows' Conv/GDN/live-KV state match independent c1 before B
+reclaims as `disconnect`. A real OpenAI completion emits four valid SSE payloads,
+usage, completion, and `[DONE]`; a 1 ms request deadline emits
+`deadline_exceeded` plus `[DONE]`. Forced shutdown trips the producer token and
+returns HTTP active/queued counts to zero; the app's immediately following
+long-lived runner close reclaims the still-resident three-page row and leaves
+zero scheduler rows, sessions, or KV-pool ownership. Host validation covers
+queue overflow isolation and graceful/forced ownership; the clean hardware gate
+passes in **78.158 s**. This closes D4 at correctness-only `continuous_eq_ok`—it
+adds no server throughput, TTFT, ITL, or concurrent-kernel claim. See the compact
+[D4 closure artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d4-openai-streaming-closure.json).
 
 D5. Observability:
 

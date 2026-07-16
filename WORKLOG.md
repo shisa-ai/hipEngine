@@ -160349,3 +160349,60 @@ D4 is not yet closed. The host ownership contracts are complete, but a clean
 W7900 OpenAI SSE gate must still prove real GGUF live admission, per-token row
 routing, disconnect/timeout reclaim with survivor equality, bounded
 backpressure, and graceful/forced device-resource drain.
+
+## 2026-07-16 — Close gfx1100 GGUF D4 OpenAI streaming
+
+Closed D4 from clean implementation commit
+`f03957cc7c37805243356d5f8ca0435ffd08771b` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M` (full SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, and cached builds required.
+The clean server/model lifecycle passes in **78.158 s**.
+
+The gate deliberately fills A's configured two-chunk HTTP queue before B is
+submitted. B is still admitted, executes its two 256-token prefill commits, and
+joins A in one native c2 decode step while A's queue remains full. A completes
+all eight exact `[9707]` tokens; B's consumed `[9708]` prefix is exact before its
+iterator closes. A and B both have zero Conv/GDN/live-KV mismatches against the
+corresponding independent c1 checkpoints. Their request ids and three-page
+allocations remain distinct (`A=0/[0,1,2]`, `B=1/[3,4,5]`); A finishes as
+`length`, B alone reclaims as `disconnect`, and B's cancellation token is
+tripped without affecting A.
+
+The same prepared `LLM`, `SubmitPollTextGenerator`, resident loop, runner, and
+request-id space serve a real `/v1/completions` SSE call. It returns HTTP 200,
+four JSON payloads, non-empty token text (`" five six"`), a completion event, a
+usage event, and `[DONE]`. A separate 1 ms request deadline returns a valid SSE
+`deadline_exceeded` error plus `[DONE]` and reclaims its published row.
+
+Forced shutdown exposed an ownership boundary worth retaining rather than
+hiding. `batcher.shutdown(grace_seconds=0.01)` closes admission, trips the live
+producer token, and returns HTTP active/queued counts to zero, but cancellation
+of that producer does not synchronously join a Python generator still running
+through the model thread. Immediately before the next app-shutdown phase, the
+runner therefore honestly reports request 3, one active scheduler row, three
+refcounted/unpinned pages, and three of four sessions available. The following
+`LLM.close()`—the exact ordering in the FastAPI shutdown handler—closes the
+stream as `disconnect`, reclaims the row, destroys the pool, and leaves zero
+active/pending scheduler rows, zero sessions, and no device-KV owner. The first
+clean harness pass caught this distinction because it incorrectly expected the
+runner-side reason to be `cancel`; changing only that assertion to the observed
+and designed two-phase `disconnect` semantics produced the accepted rerun.
+
+Clean source is `/tmp/gfx1100-d4-openai-lifecycle-clean-f03957cc.json` (7,777
+bytes, SHA-256
+`6573ba1c0b2136b744db8d67cf791969eacbbabf844b562c3698e7f8f97563e2`);
+the exact one-off harness is `/tmp/gfx1100_d4_openai_lifecycle.py` (15,769
+bytes, SHA-256
+`b473a075784d1412e2aa60e51c16800b4f414792b4c76fc2080cff8256d3656e`).
+The compact retained closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d4-openai-streaming-closure.json`.
+The implementation commit's full host validation remains **486 passed** for the
+server API, **329 passed / 4 skipped** for scheduler and public LLM paths, and
+**68 passed / 9 skipped** for GGUF runner/graph paths.
+
+Every D4 checkbox in `docs/CONCURRENCY.md` is now closed. This advances the
+bounded gfx1100 GGUF OpenAI path to correctness-only `continuous_eq_ok`; it does
+not claim server throughput, TTFT, ITL, concurrent GPU execution, native c8, or
+project-wide backend/model coverage. D5 full live-loop observability is the
+remaining Phase-D gate. gfx1151 E1 remains hardware-blocked on this host.
