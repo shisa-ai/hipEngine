@@ -158971,3 +158971,33 @@ six-shape or broad-suite rerun was performed. Artifact:
 - Next upstream action is the separate `sched_policy=2` boot; add its result to
   #6437 rather than opening or duplicating a TheRock report unless AMD requests
   rerouting.
+
+## 2026-07-16 — Prepare the gfx1151 non-HWS isolation boot
+
+- Confirmed the current MES-debug boot is loaded at default `sched_policy=0`
+  with `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
+  `cwsr_enable=1`. The GPU was idle at 0%, with no KFD clients or benchmark/
+  capture process.
+- Backed up the exact prior Limine source configuration to
+  `/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z`, then made the
+  one behavioral change for the next boot: added `amdgpu.sched_policy=2` while
+  retaining the three MES/recovery tokens exactly. No CWSR, fault, timeout,
+  watchdog, queue-count, or power parameter changed.
+- Ran `sudo limine-update`; EFI update and both CachyOS/CachyOS-LTS initramfs
+  builds completed. Verified the two current top-level kernel command lines in
+  `/boot/limine.conf` each contain `sched_policy=2`, `mes_log_enable=1`,
+  `gpu_recovery=1`, and `send_sigterm=1` exactly once and no
+  `sched_policy=0`. Historical snapshot entries intentionally retain their
+  historical command lines.
+- The running boot correctly remains at `sched_policy=0`; the new value is not
+  active until reboot. Full preparation logs, before/after source copies,
+  verification, rollback instructions, and a verified checksum manifest are
+  under
+  `/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-prep-20260716T092026Z`.
+  A/B rollback restores the new backup and reruns `limine-update`; full
+  pre-investigation rollback uses
+  `/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`.
+- After reboot, verify the loaded values before any GPU workload, then run the
+  cached exact 512/1 preflight and bounded 128K warmup+3 gate. Post the result to
+  ROCm/ROCm#6437 regardless of pass/fail; a pass is scheduler-plane evidence,
+  not yet a production workaround.

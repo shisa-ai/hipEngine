@@ -471,17 +471,30 @@ changes the broader #5107 scheduler-family picture.
 
 ### Priority 2: non-HWS scheduler-isolation boot
 
-Use a separate boot:
+The separate boot is prepared but not yet loaded:
 
 ```text
 amdgpu.sched_policy=2 amdgpu.mes_log_enable=1 \
   amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1
 ```
 
-Keep the kernel, firmware, HIP stack, compiler, application commit, one-queue
-environment, model, and capture protocol unchanged. `sched_policy=2` disables
-HWS and statically assigns queues. If the exact 128K warmup+3 gate becomes
-repeatedly reliable, that strongly implicates the HWS/MES scheduling plane. If
+`/etc/default/limine` and both current top-level CachyOS kernel entries contain
+those four tokens exactly once. `limine-update` completed successfully. The
+one-variable A/B rollback is
+`/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z`; the full
+pre-investigation backup remains
+`/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`. The current running
+boot remains at default `sched_policy=0` until reboot. Preparation logs and
+checksums are under
+`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-prep-20260716T092026Z`.
+
+After reboot and before any GPU workload, verify `/proc/cmdline` plus loaded
+`sched_policy=2`, `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
+`cwsr_enable=1`. Keep the kernel, firmware, HIP stack, compiler, application
+commit, one-queue environment, model, and capture protocol unchanged.
+`sched_policy=2` disables HWS and statically assigns queues. If the exact 128K
+warmup+3 gate becomes repeatedly reliable, that strongly implicates the HWS/MES
+scheduling plane. If
 it still fails, capture one HQD and all MES/KFD controls and do not conclude
 that firmware is exonerated. This policy is debug-only, system-wide, can affect
 TTY responsiveness/power/performance, and is not a production hipEngine fix.
