@@ -158595,3 +158595,39 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `/tmp/gfx1151-layer-repeat-5a665731-20260716T011550Z`; artifact hashes cover
   both recorders, telemetry streams, fences, journals, process stacks, run logs,
   and provenance.
+
+## 2026-07-16 — Inline rocprof queue interception stalls without a usable trace
+
+- Verified rocprofv3 1.3.2 kernel/HIP/HSA/copy/KFD collection on a cached exact
+  512/1 smoke (ID `9707`, finite logits): 3,023 kernel, 13,266 HIP API, 23,005
+  HSA API, and 1,056 memory-copy rows finalized. No KFD event row appeared; this
+  means the smoke generated no KFD event, not that tracefs must expose KFD names.
+- Ran the direct cached 128K warmup+3 child with the same traces, one hardware
+  queue, and layer recorder. The first prefill stalls before completion. Cursor
+  **1070/1072** last retires layer 15 full attention in `[102400,106496)`;
+  layer 16 linear returns and its marker is pending, while host entry reaches
+  layer 17 linear. This is the same two-checkpoint structure as both layer-repeat
+  failures; the unretired previous layer is linear for a third capture.
+- Persistent telemetry starts at 11:04:14 and lasts **1,556 seconds**: 100%,
+  2,900 MHz, median **55 W** (53-59 W), fixed 26,666 MiB. All 118 main-thread
+  samples remain runnable and the kernel journal is clean.
+- rocprofiler's inline queue-interposition async handler starts warning at
+  11:04:19 that one injected HSA signal remains value/start-value `1`, then
+  reports up to **153,092,096** polling iterations. No trace file finalizes and
+  no output-generation/signal-finalization message appears, so the intended last
+  user-dispatch evidence is unavailable.
+- This result is deliberately ambiguous. Upstream rocprofiler-sdk work documents
+  an intermittent hang in inline queue interception and uses
+  `ROCPROFILER_QUEUE_INTERPOSITION=0` to force the legacy path
+  (`ROCm/rocm-systems#7464`; see also queue rewrite #4276). The stuck profiler
+  signal can observe the original queue failure or induce a separate one. Do not
+  name a hipEngine kernel or count this as independent incidence.
+- A tiny completed-marker signal test proves SIGINT can flush CSV under both
+  inline and legacy interception; the full stalled process fails specifically
+  while an outstanding queue signal exists. Next trace attempt should use legacy
+  interception once or replace rocprofv3 finalization dependence with a
+  streaming callback.
+- Compact evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json`.
+  Raw local bundle:
+  `/tmp/gfx1151-rocprof-trace-6e7ab8b0-20260716T020013Z`.
