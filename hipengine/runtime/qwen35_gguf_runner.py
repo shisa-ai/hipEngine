@@ -658,6 +658,95 @@ class _GGUFPackedARPrefillLinearStatePlan:
     commit_captured_state_rows: bool
 
 
+@dataclass(frozen=True)
+class _GGUFPackedARPrefillChunk:
+    """One row-bounded packed-prefill round over every still-active slot."""
+
+    slot_indices: tuple[int, ...]
+    start_offsets: tuple[int, ...]
+    prompt_token_ids: tuple[tuple[int, ...], ...]
+
+    def __post_init__(self) -> None:
+        slot_count = len(self.slot_indices)
+        if slot_count <= 0:
+            raise ValueError("packed AR prefill chunk must contain at least one slot")
+        if len(self.start_offsets) != slot_count or len(self.prompt_token_ids) != slot_count:
+            raise ValueError("packed AR prefill chunk metadata must match its slot count")
+        if len(set(int(index) for index in self.slot_indices)) != slot_count:
+            raise ValueError("packed AR prefill chunk slot indices must be unique")
+        if min(int(index) for index in self.slot_indices) < 0:
+            raise ValueError("packed AR prefill chunk slot indices must be non-negative")
+        if min(int(offset) for offset in self.start_offsets) < 0:
+            raise ValueError("packed AR prefill chunk offsets must be non-negative")
+        if any(not tokens for tokens in self.prompt_token_ids):
+            raise ValueError("packed AR prefill chunk token segments must be non-empty")
+
+    @property
+    def rows(self) -> int:
+        return sum(len(tokens) for tokens in self.prompt_token_ids)
+
+
+def _plan_packed_ar_prefill_chunks(
+    prompt_token_ids: tuple[tuple[int, ...], ...],
+    *,
+    row_capacity: int,
+) -> tuple[_GGUFPackedARPrefillChunk, ...]:
+    """Plan slot-fair packed rounds without exceeding the resident row slab.
+
+    Every unfinished slot appears in each round.  The planner therefore fails
+    closed instead of silently processing only a subset when the slab cannot
+    represent at least one row for every active slot.
+    """
+
+    prompts = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+    if not prompts:
+        raise ValueError("packed AR prefill chunk plan requires at least one prompt")
+    if any(not prompt for prompt in prompts):
+        raise ValueError("packed AR prefill chunk plan requires non-empty prompts")
+    capacity = int(row_capacity)
+    if capacity <= 0:
+        raise ValueError("packed AR prefill row capacity must be positive")
+    total_rows = sum(len(prompt) for prompt in prompts)
+    if total_rows <= capacity:
+        return (
+            _GGUFPackedARPrefillChunk(
+                slot_indices=tuple(range(len(prompts))),
+                start_offsets=tuple(0 for _ in prompts),
+                prompt_token_ids=prompts,
+            ),
+        )
+
+    cursors = [0 for _ in prompts]
+    chunks: list[_GGUFPackedARPrefillChunk] = []
+    while any(cursor < len(prompt) for cursor, prompt in zip(cursors, prompts, strict=True)):
+        active = tuple(
+            slot_index
+            for slot_index, (cursor, prompt) in enumerate(zip(cursors, prompts, strict=True))
+            if cursor < len(prompt)
+        )
+        if capacity < len(active):
+            raise ValueError(
+                f"packed AR prefill row capacity {capacity} cannot represent all {len(active)} active slots"
+            )
+        rows_per_slot = max(1, capacity // len(active))
+        starts: list[int] = []
+        segments: list[tuple[int, ...]] = []
+        for slot_index in active:
+            start = int(cursors[slot_index])
+            end = min(len(prompts[slot_index]), start + rows_per_slot)
+            starts.append(start)
+            segments.append(prompts[slot_index][start:end])
+            cursors[slot_index] = end
+        chunks.append(
+            _GGUFPackedARPrefillChunk(
+                slot_indices=active,
+                start_offsets=tuple(starts),
+                prompt_token_ids=tuple(segments),
+            )
+        )
+    return tuple(chunks)
+
+
 def _packed_ar_prefill_linear_state_plan(
     layout: _GGUFPackedVerifyLayout,
 ) -> _GGUFPackedARPrefillLinearStatePlan:
@@ -2376,6 +2465,7 @@ class Qwen35GGUFFullStackRunner:
         aotriton_bridge: AotritonPrefillStreamBridge | None = None,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         allow_aotriton: bool = True,
+        aotriton_min_tokens: int | None = None,
         paged_max_context_len: int | None = None,
     ) -> bool:
         assert self.weights is not None
@@ -2596,7 +2686,13 @@ class Qwen35GGUFFullStackRunner:
                         library=kv_write_library,
                         runtime=runtime,
                     )
-        threshold = int(PrefillConfig().attn_aotriton_min_tokens)
+        threshold = int(
+            PrefillConfig().attn_aotriton_min_tokens
+            if aotriton_min_tokens is None
+            else aotriton_min_tokens
+        )
+        if threshold < 0:
+            raise ValueError("aotriton_min_tokens must be non-negative")
         use_aotriton = bool(
             allow_aotriton and not direct_hadamard_int8 and threshold > 0 and rows >= threshold
         )
@@ -7888,6 +7984,7 @@ class Qwen35GGUFResidentSession:
     last_packed_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
+    last_packed_prefill_plan: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
     kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
@@ -10551,15 +10648,143 @@ class Qwen35GGUFResidentSession:
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
     ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
-        """Consume one prompt for each resident session in one packed prefill pass.
+        """Consume one prompt per session through row-bounded packed rounds.
 
-        This is the server AR prompt counterpart to :meth:`step_batch_native`.
-        It packs prompt rows slot-major, scatters the resulting KV/recurrent
-        state back to each session, and samples only the final prompt row for
-        each slot.  ``return_hidden_seeds=True`` additionally returns the FP32
-        post-output_norm prompt rows needed by the llama-compatible MTP draft
-        catch-up path.
+        A prompt slab that fits runs unchanged.  Larger slabs are split fairly
+        across every unfinished slot, so capacity pressure never turns a c>N
+        prompt into undeclared slot-at-a-time prefill.  Conv/GDN and paged-KV
+        continuity crosses rounds through the normal packed state contract.
+        Chunk-tail samples are internal; only each prompt's final result is
+        returned. ``return_hidden_seeds=True`` concatenates all per-round FP32
+        rows for the llama-compatible MTP draft catch-up path.
         """
+
+        prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+        session_tuple = (self,) if sessions is None else tuple(sessions)
+        if not prompt_tuple:
+            raise ValueError("prompt_token_ids must be non-empty")
+        if len(prompt_tuple) != len(session_tuple):
+            raise ValueError("prompt_token_ids and sessions must have the same length")
+        if self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        row_capacity = int(self._bulk_prefill_scratch.rows)
+        chunks = _plan_packed_ar_prefill_chunks(
+            prompt_tuple,
+            row_capacity=row_capacity,
+        )
+        aotriton_threshold = int(PrefillConfig().attn_aotriton_min_tokens)
+        aotriton_eligible_slots = tuple(
+            slot_index
+            for slot_index, prompt in enumerate(prompt_tuple)
+            if aotriton_threshold > 0 and len(prompt) >= aotriton_threshold
+        )
+        self.last_packed_prefill_plan = {
+            "route": "slot_fair_bounded_rounds",
+            "row_capacity": row_capacity,
+            "total_rows": sum(len(prompt) for prompt in prompt_tuple),
+            "chunk_count": len(chunks),
+            "chunk_rows": [int(chunk.rows) for chunk in chunks],
+            "slot_indices": [list(chunk.slot_indices) for chunk in chunks],
+            "start_offsets": [list(chunk.start_offsets) for chunk in chunks],
+            "slot_rows": [
+                [len(tokens) for tokens in chunk.prompt_token_ids]
+                for chunk in chunks
+            ],
+            "all_active_slots_represented": True,
+            "slot_serial_fallback": False,
+            "aotriton_threshold": aotriton_threshold,
+            "aotriton_eligible_slots": list(aotriton_eligible_slots),
+            "aotriton_eligibility_preserved_across_chunks": bool(
+                len(chunks) > 1 and aotriton_eligible_slots
+            ),
+            "intermediate_tail_samples": max(
+                0,
+                sum(len(chunk.slot_indices) for chunk in chunks) - len(prompt_tuple),
+            ),
+        }
+        if len(chunks) == 1:
+            return self._prefill_batch_native_single_slab(
+                prompt_tuple,
+                sessions=session_tuple,
+                return_logits=return_logits,
+                return_hidden_seeds=return_hidden_seeds,
+                capture_layer_output_hidden=capture_layer_output_hidden,
+                stream=stream,
+            )
+
+        initial_positions = tuple(int(session.position) for session in session_tuple)
+        final_results: list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None] = [
+            None for _ in prompt_tuple
+        ]
+        hidden_parts: list[list[np.ndarray]] = [[] for _ in prompt_tuple]
+        aotriton_eligible_set = set(aotriton_eligible_slots)
+        for chunk in chunks:
+            chunk_sessions = tuple(session_tuple[index] for index in chunk.slot_indices)
+            force_aotriton_slot_indices = tuple(
+                local_index
+                for local_index, slot_index in enumerate(chunk.slot_indices)
+                if slot_index in aotriton_eligible_set
+            )
+            chunk_results = self._prefill_batch_native_single_slab(
+                chunk.prompt_token_ids,
+                sessions=chunk_sessions,
+                return_logits=return_logits,
+                return_hidden_seeds=return_hidden_seeds,
+                capture_layer_output_hidden=capture_layer_output_hidden,
+                stream=stream,
+                _slot_local_full_attention=bool(force_aotriton_slot_indices),
+                _force_aotriton_slot_indices=force_aotriton_slot_indices,
+            )
+            if len(chunk_results) != len(chunk.slot_indices):
+                raise RuntimeError("packed AR prefill chunk result count does not match active slots")
+            for slot_index, result in zip(chunk.slot_indices, chunk_results, strict=True):
+                final_results[slot_index] = result
+                if return_hidden_seeds:
+                    if not isinstance(result, Qwen35GGUFPackedPrefillResult):
+                        raise RuntimeError("packed AR prefill chunk did not return hidden seeds")
+                    hidden_parts[slot_index].append(
+                        np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
+                    )
+        if any(result is None for result in final_results):
+            raise RuntimeError("packed AR prefill did not produce a final result for every slot")
+        if not return_hidden_seeds:
+            return [
+                result
+                for result in final_results
+                if result is not None
+            ]
+
+        combined: list[Qwen35GGUFPackedPrefillResult] = []
+        for slot_index, result in enumerate(final_results):
+            if not isinstance(result, Qwen35GGUFPackedPrefillResult):
+                raise RuntimeError("packed AR prefill final result did not include hidden seeds")
+            hidden_seeds = np.ascontiguousarray(
+                np.concatenate(hidden_parts[slot_index], axis=0),
+                dtype=np.float32,
+            )
+            combined.append(
+                Qwen35GGUFPackedPrefillResult(
+                    input_token_ids=[int(token) for token in prompt_tuple[slot_index]],
+                    token_id=int(result.token_id),
+                    hidden_seeds=hidden_seeds,
+                    start_position=int(initial_positions[slot_index]),
+                )
+            )
+        return combined
+
+    def _prefill_batch_native_single_slab(
+        self,
+        prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        return_logits: bool = False,
+        return_hidden_seeds: bool = False,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        stream: int = 0,
+        _slot_local_full_attention: bool | None = None,
+        _force_aotriton_slot_indices: tuple[int, ...] = (),
+    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
+        """Execute one packed prompt slab that already fits resident scratch."""
 
         prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
         session_tuple = (self,) if sessions is None else tuple(sessions)
@@ -10678,9 +10903,16 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
-        slot_local_full_prefill = _packed_prefill_requires_slot_local_full_attention(
-            layout
+        slot_local_full_prefill = (
+            _packed_prefill_requires_slot_local_full_attention(layout)
+            if _slot_local_full_attention is None
+            else bool(_slot_local_full_attention)
         )
+        force_aotriton_slots = set(int(index) for index in _force_aotriton_slot_indices)
+        if any(index < 0 or index >= len(session_tuple) for index in force_aotriton_slots):
+            raise ValueError("forced AOTriton slot index is outside the packed slab")
+        if force_aotriton_slots and not slot_local_full_prefill:
+            raise ValueError("forced AOTriton slots require slot-local full attention")
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
@@ -10739,6 +10971,9 @@ class Qwen35GGUFResidentSession:
                                 max_positions=int(session.scratch.max_positions),
                                 stream=stream,
                                 expert_sidecar=None,
+                                aotriton_min_tokens=(
+                                    1 if slot_index in force_aotriton_slots else None
+                                ),
                             )
                     else:
                         key_cache, value_cache = packed_state.full_cache(layer_id)

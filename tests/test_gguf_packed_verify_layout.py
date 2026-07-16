@@ -12,12 +12,14 @@ from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
+    Qwen35GGUFPackedPrefillResult,
     _GGUFPackedTargetState,
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
     _packed_ar_prefill_linear_state_plan,
+    _plan_packed_ar_prefill_chunks,
     _scatter_packed_layer_output_hidden,
 )
 
@@ -191,6 +193,164 @@ def test_gguf_packed_layer_output_hidden_scatter_selects_slot_rows() -> None:
             hidden[row_index : row_index + 1],
         )
         assert session._last_layer_output_hidden[7].shape == (1, 4)
+
+
+def test_gguf_packed_ar_prefill_chunks_all_row_c4_without_slot_serialization() -> None:
+    prompts = tuple(
+        tuple(slot * 1000 + row for row in range(512))
+        for slot in range(4)
+    )
+
+    chunks = _plan_packed_ar_prefill_chunks(prompts, row_capacity=768)
+
+    assert [chunk.rows for chunk in chunks] == [768, 768, 512]
+    assert [chunk.slot_indices for chunk in chunks] == [
+        (0, 1, 2, 3),
+        (0, 1, 2, 3),
+        (0, 1, 2, 3),
+    ]
+    assert [tuple(len(tokens) for tokens in chunk.prompt_token_ids) for chunk in chunks] == [
+        (192, 192, 192, 192),
+        (192, 192, 192, 192),
+        (128, 128, 128, 128),
+    ]
+    assert [chunk.start_offsets for chunk in chunks] == [
+        (0, 0, 0, 0),
+        (192, 192, 192, 192),
+        (384, 384, 384, 384),
+    ]
+    for slot_index, prompt in enumerate(prompts):
+        reconstructed = tuple(
+            token
+            for chunk in chunks
+            for chunk_slot, tokens in zip(
+                chunk.slot_indices,
+                chunk.prompt_token_ids,
+                strict=True,
+            )
+            if chunk_slot == slot_index
+            for token in tokens
+        )
+        assert reconstructed == prompt
+
+
+def test_gguf_packed_ar_prefill_chunk_plan_preserves_fitting_ragged_slab() -> None:
+    prompts = (
+        (1,) * 512,
+        (2,) * 64,
+        (3,) * 64,
+        (4,) * 64,
+    )
+
+    chunks = _plan_packed_ar_prefill_chunks(prompts, row_capacity=768)
+
+    assert len(chunks) == 1
+    assert chunks[0].slot_indices == (0, 1, 2, 3)
+    assert chunks[0].start_offsets == (0, 0, 0, 0)
+    assert chunks[0].prompt_token_ids == prompts
+    assert chunks[0].rows == 704
+
+
+def test_gguf_packed_ar_prefill_chunk_plan_refuses_dropping_active_slots() -> None:
+    with pytest.raises(ValueError, match="active slots"):
+        _plan_packed_ar_prefill_chunks(((1,), (2,), (3,)), row_capacity=2)
+
+
+def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[int, ...], tuple[tuple[int, ...], ...]]] = []
+    routes: list[tuple[bool | None, tuple[int, ...]]] = []
+    sessions = tuple(SimpleNamespace(position=0) for _ in range(4))
+    session_index = {id(session): index for index, session in enumerate(sessions)}
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, **kwargs):
+        prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+        slot_indices = tuple(session_index[id(session)] for session in sessions)
+        calls.append((slot_indices, prompt_tuple))
+        routes.append(
+            (
+                kwargs.get("_slot_local_full_attention"),
+                tuple(kwargs.get("_force_aotriton_slot_indices", ())),
+            )
+        )
+        for session, prompt in zip(sessions, prompt_tuple, strict=True):
+            session.position += len(prompt)
+        return [SimpleNamespace(token_id=int(prompt[-1])) for prompt in prompt_tuple]
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "PrefillConfig",
+        lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
+    prompts = tuple(tuple(slot * 100 + row for row in range(6)) for slot in range(4))
+
+    results = owner.prefill_batch_native(prompts, sessions=sessions)
+
+    assert [slots for slots, _ in calls] == [(0, 1, 2, 3)] * 3
+    assert [[len(prompt) for prompt in chunk] for _, chunk in calls] == [[2, 2, 2, 2]] * 3
+    assert routes == [(True, (0, 1, 2, 3))] * 3
+    assert [result.token_id for result in results] == [prompt[-1] for prompt in prompts]
+    assert [session.position for session in sessions] == [6, 6, 6, 6]
+    assert owner.last_packed_prefill_plan["chunk_rows"] == [8, 8, 8]
+    assert owner.last_packed_prefill_plan["slot_indices"] == [[0, 1, 2, 3]] * 3
+    assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
+
+
+def test_gguf_packed_ar_prefill_concatenates_hidden_seed_rounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tuple(SimpleNamespace(position=position) for position in (3, 5))
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, return_hidden_seeds, **kwargs):
+        assert return_hidden_seeds
+        results = []
+        for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+            start = int(session.position)
+            tokens = [int(token) for token in prompt]
+            hidden = np.repeat(np.asarray(tokens, dtype=np.float32)[:, None], 3, axis=1)
+            session.position += len(tokens)
+            results.append(
+                Qwen35GGUFPackedPrefillResult(
+                    input_token_ids=tokens,
+                    token_id=tokens[-1] + 1,
+                    hidden_seeds=hidden,
+                    start_position=start,
+                )
+            )
+        return results
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
+    prompts = ((10, 11, 12, 13), (20, 21, 22, 23))
+
+    results = owner.prefill_batch_native(
+        prompts,
+        sessions=sessions,
+        return_hidden_seeds=True,
+    )
+
+    assert [result.input_token_ids for result in results] == [list(prompt) for prompt in prompts]
+    assert [result.start_position for result in results] == [3, 5]
+    assert [result.token_id for result in results] == [14, 24]
+    for result, prompt in zip(results, prompts, strict=True):
+        np.testing.assert_array_equal(
+            result.hidden_seeds,
+            np.repeat(np.asarray(prompt, dtype=np.float32)[:, None], 3, axis=1),
+        )
 
 
 def test_gguf_packed_ar_prefill_keeps_only_final_segment_state() -> None:

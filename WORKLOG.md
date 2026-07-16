@@ -158858,3 +158858,65 @@ blockers, and explicit limitations. The coverage ledger advances c2/c4 to
 category diversity remain B3/B4. No
 profiler or performance claim is made. The active queue advances to B3 packed
 prompt capacity.
+
+## 2026-07-16 — Remove the gfx1100 GGUF all-row prefill slab blocker
+
+The clean B3 reproduction stopped before GPU math exactly as expected:
+all-row c4 prompt-512 builds 2,048 packed rows, while the resident hidden/scratch
+slab is 768 rows. The old route raised
+`packed AR prefill rows 2048 exceed resident hidden-buffer capacity 768`, which
+made public serving fall back to four slot-local prefills.
+
+Added a backend-neutral slot-fair packed-prefill planner and execution wrapper.
+Every unfinished slot appears in every round; capacity smaller than the active
+slot count fails closed instead of silently dropping/serializing rows. The c4
+p512 plan is three c4 rounds with per-slot lengths `192 + 192 + 128`, total slab
+rows `[768,768,512]`. Conv/GDN and live KV remain continuous through the existing
+packed state/scatter contract. Hidden-seed mode concatenates round outputs back
+to each original prompt, preserving the MTP catch-up result ABI. The oracle now
+records the complete executed plan, including slot membership, row offsets,
+AOTriton eligibility, and `slot_serial_fallback=false`.
+
+The first implementation run removed the capacity error but was correctly
+rejected: 192-row rounds selected paged full attention while independent c1
+selected AOTriton for the original 512-row prompts. The earliest drift was
+layer-4 Conv (immediately after the first full-attention layer), with 288 initial
+state/KV mismatches. The retained route carries each original slot's threshold
+eligibility into every bounded round and forces only those slot-local AOTriton
+calls; no backend branch was added. The unchanged p512/decode1 rerun then passed
+exact tokens and zero initial/final state/KV mismatches. The all-layer
+p512/decode4 gate passed **800/800** post-layer row comparisons plus exact token
+trajectories, all 30 Conv/GDN families, and all 10 live-KV families before and
+after decode.
+
+GPU validation used Radeon Pro W7900/gfx1100, Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, the
+precomputed compiler key, `HIP_VISIBLE_DEVICES=0`, `PYTHONPATH` pinned to this
+checkout, and cached builds required. The core commands were:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 1 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-b3-chunked-aot-p512-d1.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-b3-chunked-aot-p512-d4-hidden.json
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py
+# 97 passed, 9 skipped
+```
+
+This is a dirty-tree implementation/correctness gate, not the clean standard
+512/128 packet and not a performance claim. `docs/REFACTOR.md` records the
+remaining intermediate chunk-tail output-norm/LM-head sampling debt. The next
+logical unit is the clean complete p512/decode128 lifecycle gate.
