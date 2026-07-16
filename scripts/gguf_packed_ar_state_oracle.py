@@ -156,6 +156,22 @@ def _prefill_c1(session: Any, prompt: Sequence[int]) -> int:
     return int(result.token_id)
 
 
+def _session_build_policy(args: argparse.Namespace) -> dict[str, Any]:
+    compiler_version = None
+    if args.compiler_version_file is not None:
+        compiler_version = args.compiler_version_file.expanduser().read_text(
+            encoding="utf-8"
+        ).strip()
+        if not compiler_version:
+            raise ValueError(
+                f"compiler version file is empty: {args.compiler_version_file}"
+            )
+    return {
+        "compiler_version": compiler_version,
+        "require_cached_build": bool(args.require_cached_build),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     rows = int(args.rows)
     if rows < 2 or rows > 4:
@@ -189,6 +205,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for row_index in range(1, rows):
         prompts[row_index][-1] = int(args.alternate_token_id) + row_index - 1
     max_sequence_length = max(len(prompt) for prompt in prompts) + int(args.decode_steps) + 2
+    build_policy = _session_build_policy(args)
 
     with ExitStack() as stack:
         owner = stack.enter_context(
@@ -196,6 +213,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 model,
                 backend=str(args.backend),
                 max_sequence_length=max_sequence_length,
+                **build_policy,
             )
         )
         shared_runner = owner.runner
@@ -211,6 +229,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         runtime=owner.runtime,
                         shared_runner=shared_runner,
                         max_sequence_length=max_sequence_length,
+                        **build_policy,
                     )
                 )
             )
@@ -353,6 +372,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": str(model),
         "backend": resolved_backend,
         "target_arch": target_arch,
+        "build": {
+            "compiler_version_file": (
+                str(args.compiler_version_file)
+                if args.compiler_version_file is not None
+                else None
+            ),
+            "compiler_version_supplied": build_policy["compiler_version"] is not None,
+            "require_cached_build": build_policy["require_cached_build"],
+        },
         "prefill_mode": str(args.prefill_mode),
         "lifecycle": lifecycle,
         "workload": {
@@ -406,6 +434,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-length", type=int, default=16)
     parser.add_argument("--alternate-prompt-length", type=int)
     parser.add_argument("--decode-steps", type=int, default=4)
+    parser.add_argument(
+        "--compiler-version-file",
+        type=Path,
+        help="read precomputed hipcc --version text so profiled runs do not spawn hipcc",
+    )
+    parser.add_argument(
+        "--require-cached-build",
+        action="store_true",
+        help="fail rather than invoke hipcc when any resident-session library is missing",
+    )
     parser.add_argument("--json", type=Path)
     return parser
 

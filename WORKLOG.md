@@ -158709,3 +158709,19 @@ prebuilt the two libraries outside the profiler, then reran c2 and c4 with
 batch A/A, exact batch-vs-independent-c1 attention, and NumPy max-abs
 `2.2351742e-08` (c2) / `2.9802322e-08` (c4). This is harness validation only;
 the clean Phase-B1 artifact and trace follow in the next logical unit.
+
+## 2026-07-16 — Make the packed GGUF lifecycle oracle profiler-safe
+
+Added the same precomputed compiler-version and fail-closed cached-build policy
+to `scripts/gguf_packed_ar_state_oracle.py`, propagating it to the owner and all
+shared-runner resident sessions. The artifact now records the selected build
+policy, so a packed model-step trace can prove it did not compile under
+`rocprofv3`.
+
+RED/GREEN parser/policy coverage passes **3/3**. A real dirty-tree W7900/gfx1100
+TheRock HIP 7.15 c2 prompt16/decode1 decode-isolation smoke first prebuilt all
+required GGUF libraries outside the profiler, then reran with
+`--require-cached-build`. Both runs pass exact token, initial Conv/GDN + live-KV,
+and final state comparisons; packed state becomes dirty and flushes correctly.
+This validates profiler-safe execution only; the clean B1 trace follows after
+this commit.
