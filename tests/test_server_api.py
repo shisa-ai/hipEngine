@@ -495,11 +495,14 @@ def _fake_kv_pool_stats() -> SimpleNamespace:
     return SimpleNamespace(
         current_bytes=4096,
         high_water_observed_bytes=8192,
+        current_pages=6,
+        high_water_observed_pages=8,
         grow_events=2,
         grow_failures=1,
         shrink_events=3,
         free_pages=4,
         refcounted_pages=5,
+        pinned_pages=1,
     )
 
 
@@ -507,11 +510,14 @@ def _fake_kv_pool_metadata() -> dict[str, float]:
     return {
         "current_bytes": 4096.0,
         "high_water_observed_bytes": 8192.0,
+        "current_pages": 6.0,
+        "high_water_observed_pages": 8.0,
         "grow_events": 2.0,
         "grow_failures": 1.0,
         "shrink_events": 3.0,
         "free_pages": 4.0,
         "refcounted_pages": 5.0,
+        "pinned_pages": 1.0,
     }
 
 
@@ -17676,6 +17682,178 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
 
 
+def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
+    fake = FakeLLM()
+    fake.live_loop_snapshot = lambda: {
+        "schema": 1,
+        "kind": "resident_engine_loop_observability",
+        "loop": {
+            "requests": {
+                "pending": 1,
+                "admitted_current": 2,
+                "active": 2,
+                "admitted_total": 7,
+                "completed_buffered": 0,
+                "reclaimed_total": 5,
+            },
+            "physical_bucket": {
+                "capacity": 4,
+                "active_c": 2,
+                "occupied_slots": 2,
+                "free_slots": 2,
+                "active_mask": [True, False, True, False],
+                "slot_to_request": [10, None, 12, None],
+                "occupancy_ratio": 0.5,
+            },
+            "work_counts": {"prefill": 3, "decode": 9, "reclaim": 5},
+            "latency_seconds": {
+                "queue": {"count": 2, "sum": 0.3, "max": 0.2, "p50": 0.15, "p95": 0.2, "samples": [0.1, 0.2]},
+                "time_to_first_token": {"count": 2, "sum": 1.5, "max": 1.0, "p50": 0.75, "p95": 1.0, "samples": [0.5, 1.0]},
+                "inter_token": {"count": 3, "sum": 0.12, "max": 0.05, "p50": 0.04, "p95": 0.05, "samples": [0.03, 0.04, 0.05]},
+                "service": {"count": 2, "sum": 2.5, "max": 1.5, "p50": 1.25, "p95": 1.5, "samples": [1.0, 1.5]},
+                "completion": {"count": 2, "sum": 2.8, "max": 1.7, "p50": 1.4, "p95": 1.7, "samples": [1.1, 1.7]},
+            },
+            "recent_completed": [],
+            "scheduler_policy": {
+                "prefill_decode_policy": "protect_ttft",
+                "prefill_chunk_tokens": 256,
+                "last_work_kind": "decode",
+            },
+        },
+        "runner": {
+            "model_runner": {
+                "capacity": 4,
+                "active_request_ids": [10, 12],
+                "active_requests": 2,
+                "available_sessions": 2,
+            },
+            "kv_pool": {
+                "current_bytes": 15728640,
+                "high_water_observed_bytes": 31457280,
+                "current_pages": 3,
+                "high_water_observed_pages": 6,
+                "free_pages": 0,
+                "refcounted_pages": 3,
+                "pinned_pages": 1,
+                "grow_events": 2,
+                "grow_failures": 1,
+                "shrink_events": 1,
+            },
+            "graph_buckets": {
+                "entries": 1,
+                "captures_total": 2,
+                "hits_total": 3,
+                "replays_total": 3,
+                "invalidations_total": 1,
+                "buckets": {
+                    "bucket-c2": {
+                        "bucket_key": {"key_sha256": "bucket-c2", "active_rows": 2},
+                        "entries": 1,
+                        "captures": 2,
+                        "hits": 3,
+                        "replays": 3,
+                        "invalidations": 1,
+                    }
+                },
+            },
+            "routes": {
+                "counts": {
+                    "native_full_prefill_rows": 2,
+                    "native_incremental_prefill_chunks": 4,
+                    "native_packed_decode_steps": 3,
+                    "native_c1_decode_steps": 1,
+                    "serial_decode_fallback_steps": 0,
+                    "resident_fallback_requests": 1,
+                },
+                "fallback_reasons": {"host_sampling": 1},
+                "last_execution_manifest": {
+                    "kind": "gguf_packed_ar_execution_manifest",
+                    "rows": 2,
+                },
+                "recent_completed": [],
+            },
+        },
+    }
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            metrics="prometheus",
+        ),
+        llm=fake,
+    )
+
+    body = TestClient(app).get("/metrics").text
+
+    assert _metric_value(body, "hipengine_resident_requests_pending") == 1
+    assert _metric_value(body, "hipengine_resident_requests_admitted") == 2
+    assert _metric_value(body, "hipengine_resident_requests_active") == 2
+    assert _metric_value(body, "hipengine_resident_requests_admitted_total") == 7
+    assert _metric_value(body, "hipengine_resident_requests_reclaimed_total") == 5
+    assert _metric_value(body, "hipengine_resident_bucket_capacity") == 4
+    assert _metric_value(body, "hipengine_resident_bucket_active_rows") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_occupied_slots") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_free_slots") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_occupancy_ratio") == 0.5
+    assert _metric_value(body, "hipengine_resident_work_prefill_total") == 3
+    assert _metric_value(body, "hipengine_resident_work_decode_total") == 9
+    assert _metric_value(body, "hipengine_resident_work_reclaim_total") == 5
+    assert (
+        'hipengine_resident_bucket_info{active_mask="1010",last_work_kind="decode",'
+        'policy="protect_ttft"} 1'
+        in body
+    )
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds",
+        kind="time_to_first_token",
+        quantile="0.5",
+    ) == 0.75
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds",
+        kind="inter_token",
+        quantile="0.95",
+    ) == 0.05
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds_sum",
+        kind="completion",
+    ) == 2.8
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds_count",
+        kind="completion",
+    ) == 2
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_max_seconds",
+        kind="service",
+    ) == 1.5
+    assert _metric_value(body, "hipengine_kv_pool_current_pages") == 3
+    assert _metric_value(body, "hipengine_kv_pool_high_water_observed_pages") == 6
+    assert _metric_value(body, "hipengine_kv_pool_pinned_pages") == 1
+    assert _metric_value(body, "hipengine_graph_bucket_captures_total") == 2
+    assert _metric_value(body, "hipengine_graph_bucket_replays_total") == 3
+    assert _metric_value(body, "hipengine_graph_bucket_invalidations_total") == 1
+    assert _labeled_metric_value(
+        body,
+        "hipengine_graph_bucket_replays_by_bucket_total",
+        bucket="bucket-c2",
+    ) == 3
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_route_total",
+        route="native_packed_decode_steps",
+    ) == 3
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_fallback_total",
+        reason="host_sampling",
+    ) == 1
+
+
 def test_metrics_endpoint_counts_cancelled_requests() -> None:
     app = create_app(
         ServerConfig(
@@ -18453,12 +18631,12 @@ def _metric_value(text: str, name: str) -> float:
     raise AssertionError(f"metric {name} not found in:\n{text}")
 
 
-def _labeled_metric_value(text: str, name: str, **labels: str) -> int:
+def _labeled_metric_value(text: str, name: str, **labels: str) -> float:
     encoded_labels = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
     prefix = f"{name}{{{encoded_labels}}} "
     for line in text.splitlines():
         if line.startswith(prefix):
-            return int(float(line.removeprefix(prefix)))
+            return float(line.removeprefix(prefix))
     raise AssertionError(f"metric {name} with labels {labels} not found in:\n{text}")
 
 

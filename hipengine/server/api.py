@@ -6640,6 +6640,83 @@ def _metrics_mode(raw: str | None) -> str:
     return value
 
 
+def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
+    if engine is None:
+        return None
+    getter = getattr(engine, "live_loop_snapshot", None)
+    if not callable(getter):
+        return None
+    try:
+        payload = getter()
+    except Exception:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _nested_mapping(owner: Mapping[str, Any] | None, key: str) -> Mapping[str, Any]:
+    if owner is None:
+        return {}
+    value = owner.get(key)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
+    loop = _nested_mapping(snapshot, "loop")
+    requests = _nested_mapping(loop, "requests")
+    bucket = _nested_mapping(loop, "physical_bucket")
+    work = _nested_mapping(loop, "work_counts")
+    policy = _nested_mapping(loop, "scheduler_policy")
+    latency = _nested_mapping(loop, "latency_seconds")
+    runner = _nested_mapping(snapshot, "runner")
+    routes = _nested_mapping(runner, "routes")
+
+    active_mask_value = bucket.get("active_mask")
+    if isinstance(active_mask_value, Sequence) and not isinstance(active_mask_value, (str, bytes)):
+        active_mask = "".join("1" if value is True else "0" for value in active_mask_value)
+    else:
+        active_mask = ""
+    latency_rows: dict[str, dict[str, float]] = {}
+    for kind in ("queue", "time_to_first_token", "inter_token", "service", "completion"):
+        row = _nested_mapping(latency, kind)
+        latency_rows[kind] = {
+            "count": _non_negative_metric_value(row.get("count")),
+            "sum": _non_negative_metric_value(row.get("sum")),
+            "max": _non_negative_metric_value(row.get("max")),
+            "p50": _non_negative_metric_value(row.get("p50")),
+            "p95": _non_negative_metric_value(row.get("p95")),
+        }
+    return {
+        "requests": {
+            "pending": _non_negative_metric_value(requests.get("pending")),
+            "admitted": _non_negative_metric_value(requests.get("admitted_current")),
+            "active": _non_negative_metric_value(requests.get("active")),
+            "admitted_total": _non_negative_metric_value(requests.get("admitted_total")),
+            "reclaimed_total": _non_negative_metric_value(requests.get("reclaimed_total")),
+        },
+        "bucket": {
+            "capacity": _non_negative_metric_value(bucket.get("capacity")),
+            "active_rows": _non_negative_metric_value(bucket.get("active_c")),
+            "occupied_slots": _non_negative_metric_value(bucket.get("occupied_slots")),
+            "free_slots": _non_negative_metric_value(bucket.get("free_slots")),
+            "occupancy_ratio": _non_negative_metric_value(bucket.get("occupancy_ratio")),
+            "active_mask": active_mask,
+        },
+        "work": {
+            "prefill": _non_negative_metric_value(work.get("prefill")),
+            "decode": _non_negative_metric_value(work.get("decode")),
+            "reclaim": _non_negative_metric_value(work.get("reclaim")),
+        },
+        "policy": {
+            "name": str(policy.get("prefill_decode_policy") or "unavailable"),
+            "last_work_kind": str(policy.get("last_work_kind") or "none"),
+        },
+        "latency": latency_rows,
+        "route_counts": _non_negative_metric_mapping(routes.get("counts")),
+        "fallback_reasons": _non_negative_metric_mapping(routes.get("fallback_reasons")),
+        "last_execution_manifest": _nested_mapping(routes, "last_execution_manifest"),
+    }
+
+
 def _render_prometheus_metrics(
     metrics: _ServerMetrics,
     *,
@@ -6649,8 +6726,10 @@ def _render_prometheus_metrics(
     pending_chat_sessions: set[str] | None = None,
     max_chat_sessions: int | None = None,
 ) -> str:
-    pool = _pool_metric_values(engine)
-    graph = _graph_bucket_metric_values(engine)
+    live_snapshot = _live_loop_snapshot(engine)
+    resident = _resident_loop_metric_values(live_snapshot)
+    pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
+    graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
     queue = _generation_queue_metric_values(generation_batcher)
     values = {
         "hipengine_requests_total": metrics.request_total,
@@ -6660,17 +6739,36 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total": metrics.request_cancelled_total,
         "hipengine_prompt_tokens_total": metrics.prompt_tokens_total,
         "hipengine_completion_tokens_total": metrics.completion_tokens_total,
+        "hipengine_resident_requests_pending": resident["requests"]["pending"],
+        "hipengine_resident_requests_admitted": resident["requests"]["admitted"],
+        "hipengine_resident_requests_active": resident["requests"]["active"],
+        "hipengine_resident_requests_admitted_total": resident["requests"]["admitted_total"],
+        "hipengine_resident_requests_reclaimed_total": resident["requests"]["reclaimed_total"],
+        "hipengine_resident_bucket_capacity": resident["bucket"]["capacity"],
+        "hipengine_resident_bucket_active_rows": resident["bucket"]["active_rows"],
+        "hipengine_resident_bucket_occupied_slots": resident["bucket"]["occupied_slots"],
+        "hipengine_resident_bucket_free_slots": resident["bucket"]["free_slots"],
+        "hipengine_resident_bucket_occupancy_ratio": resident["bucket"]["occupancy_ratio"],
+        "hipengine_resident_work_prefill_total": resident["work"]["prefill"],
+        "hipengine_resident_work_decode_total": resident["work"]["decode"],
+        "hipengine_resident_work_reclaim_total": resident["work"]["reclaim"],
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
         "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
         "hipengine_kv_pool_grow_events_total": pool["grow_events"],
         "hipengine_kv_pool_grow_failures_total": pool["grow_failures"],
         "hipengine_kv_pool_shrink_events_total": pool["shrink_events"],
+        "hipengine_kv_pool_current_pages": pool["current_pages"],
+        "hipengine_kv_pool_high_water_observed_pages": pool["high_water_observed_pages"],
         "hipengine_kv_pool_free_pages": pool["free_pages"],
         "hipengine_kv_pool_refcounted_pages": pool["refcounted_pages"],
+        "hipengine_kv_pool_pinned_pages": pool["pinned_pages"],
         "hipengine_graph_bucket_entries": graph["entries"],
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
         "hipengine_graph_bucket_replay_hit_rate": graph["replay_hit_rate"],
+        "hipengine_graph_bucket_captures_total": graph["captures"],
+        "hipengine_graph_bucket_replays_total": graph["replays"],
+        "hipengine_graph_bucket_invalidations_total": graph["invalidations"],
         "hipengine_generation_queue_depth": queue["depth"],
         "hipengine_generation_queue_max_depth": queue["max_depth"],
         "hipengine_generation_worker_active": queue["worker_active"],
@@ -6692,17 +6790,36 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total": "Generation requests cancelled after client disconnect or backend cancellation.",
         "hipengine_prompt_tokens_total": "Prompt tokens counted for successful requests.",
         "hipengine_completion_tokens_total": "Completion tokens counted for successful requests.",
+        "hipengine_resident_requests_pending": "Current requests pending resident-loop admission.",
+        "hipengine_resident_requests_admitted": "Current requests admitted to physical resident slots.",
+        "hipengine_resident_requests_active": "Current active resident-loop requests.",
+        "hipengine_resident_requests_admitted_total": "Cumulative resident-loop admissions.",
+        "hipengine_resident_requests_reclaimed_total": "Cumulative resident-loop reclaims.",
+        "hipengine_resident_bucket_capacity": "Physical resident bucket capacity.",
+        "hipengine_resident_bucket_active_rows": "Current active rows in the physical resident bucket.",
+        "hipengine_resident_bucket_occupied_slots": "Current occupied physical resident slots.",
+        "hipengine_resident_bucket_free_slots": "Current free physical resident slots.",
+        "hipengine_resident_bucket_occupancy_ratio": "Current occupied/capacity ratio for the resident bucket.",
+        "hipengine_resident_work_prefill_total": "Executed resident prefill work items.",
+        "hipengine_resident_work_decode_total": "Executed resident decode work items.",
+        "hipengine_resident_work_reclaim_total": "Executed resident reclaim transitions.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
         "hipengine_kv_pool_grow_failures_total": "Dynamic KV pool grow failures, or 0 when unavailable.",
         "hipengine_kv_pool_shrink_events_total": "Dynamic KV pool shrink events, or 0 when unavailable.",
+        "hipengine_kv_pool_current_pages": "Current dynamic KV pool pages, or 0 when unavailable.",
+        "hipengine_kv_pool_high_water_observed_pages": "Peak observed dynamic KV pool pages, or 0 when unavailable.",
         "hipengine_kv_pool_free_pages": "Current dynamic KV pool free pages, or 0 when unavailable.",
         "hipengine_kv_pool_refcounted_pages": "Current dynamic KV pool refcounted pages, or 0 when unavailable.",
+        "hipengine_kv_pool_pinned_pages": "Current graph-pinned dynamic KV pages, or 0 when unavailable.",
         "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
         "hipengine_graph_bucket_replay_hit_rate": "Graph bucket replay hit rate, or 0 when unavailable.",
+        "hipengine_graph_bucket_captures_total": "Resident graph captures across all physical buckets.",
+        "hipengine_graph_bucket_replays_total": "Resident graph replay calls across all physical buckets.",
+        "hipengine_graph_bucket_invalidations_total": "Resident graph invalidations across all physical buckets.",
         "hipengine_generation_queue_depth": "Current generation-batcher queue depth.",
         "hipengine_generation_queue_max_depth": "Configured generation-batcher queue cap, or 0 when unset.",
         "hipengine_generation_worker_active": "Whether the generation-batcher worker is active, as 0 or 1.",
@@ -6720,11 +6837,19 @@ def _render_prometheus_metrics(
         "hipengine_request_cancelled_total",
         "hipengine_prompt_tokens_total",
         "hipengine_completion_tokens_total",
+        "hipengine_resident_requests_admitted_total",
+        "hipengine_resident_requests_reclaimed_total",
+        "hipengine_resident_work_prefill_total",
+        "hipengine_resident_work_decode_total",
+        "hipengine_resident_work_reclaim_total",
         "hipengine_kv_pool_grow_events_total",
         "hipengine_kv_pool_grow_failures_total",
         "hipengine_kv_pool_shrink_events_total",
         "hipengine_graph_bucket_hits_total",
         "hipengine_graph_bucket_misses_total",
+        "hipengine_graph_bucket_captures_total",
+        "hipengine_graph_bucket_replays_total",
+        "hipengine_graph_bucket_invalidations_total",
     }
     lines: list[str] = []
     for name, value in values.items():
@@ -6742,6 +6867,70 @@ def _render_prometheus_metrics(
         f'preemptive_fairness="{str(bool(scheduler["preemptive_fairness"])).lower()}"'
         "} 1"
     )
+    lines.append("# HELP hipengine_resident_bucket_info Resident physical bucket and scheduler policy.")
+    lines.append("# TYPE hipengine_resident_bucket_info gauge")
+    lines.append(
+        "hipengine_resident_bucket_info{"
+        f'active_mask="{_escape_prometheus_label_value(str(resident["bucket"]["active_mask"]))}",'
+        f'last_work_kind="{_escape_prometheus_label_value(str(resident["policy"]["last_work_kind"]))}",'
+        f'policy="{_escape_prometheus_label_value(str(resident["policy"]["name"]))}"'
+        "} 1"
+    )
+    _append_resident_latency_metrics(lines, resident["latency"])
+    graph_buckets = graph.get("buckets", {})
+    for graph_stat, metric_name in (
+        ("entries", "hipengine_graph_bucket_entries_by_bucket"),
+        ("captures", "hipengine_graph_bucket_captures_by_bucket_total"),
+        ("hits", "hipengine_graph_bucket_hits_by_bucket_total"),
+        ("replays", "hipengine_graph_bucket_replays_by_bucket_total"),
+        ("invalidations", "hipengine_graph_bucket_invalidations_by_bucket_total"),
+    ):
+        bucket_values = {
+            str(bucket): _non_negative_metric_value(row.get(graph_stat))
+            for bucket, row in graph_buckets.items()
+            if isinstance(row, Mapping)
+        }
+        if graph_stat == "entries":
+            _append_labeled_gauge_metrics(
+                lines,
+                metric_name,
+                "Current resident graph entries by stable physical bucket.",
+                "bucket",
+                bucket_values,
+            )
+        else:
+            _append_labeled_counter_metrics(
+                lines,
+                metric_name,
+                f"Resident graph {graph_stat} by stable physical bucket.",
+                "bucket",
+                bucket_values,
+            )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_route_total",
+        "Resident GGUF execution transitions by declared route.",
+        "route",
+        resident["route_counts"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_resident_fallback_total",
+        "Resident GGUF explicit fallbacks by reason.",
+        "reason",
+        resident["fallback_reasons"],
+    )
+    manifest = resident["last_execution_manifest"]
+    if manifest:
+        lines.append("# HELP hipengine_resident_route_manifest_info Last resident execution manifest identity.")
+        lines.append("# TYPE hipengine_resident_route_manifest_info gauge")
+        lines.append(
+            "hipengine_resident_route_manifest_info{"
+            f'claim_level="{_escape_prometheus_label_value(str(manifest.get("claim_level") or "unavailable"))}",'
+            f'kind="{_escape_prometheus_label_value(str(manifest.get("kind") or "unavailable"))}",'
+            f'rows="{_escape_prometheus_label_value(str(manifest.get("rows") or 0))}"'
+            "} 1"
+        )
     _append_labeled_counter_metrics(
         lines,
         "hipengine_graph_bucket_miss_reason_total",
@@ -6763,22 +6952,38 @@ _KV_POOL_STATS_ATTRS = ("kv_pool", "kv_cache_pool", "pool", "kv_pool_stats")
 _KV_POOL_METRIC_DEFAULTS = {
     "current_bytes": 0.0,
     "high_water_observed_bytes": 0.0,
+    "current_pages": 0.0,
+    "high_water_observed_pages": 0.0,
     "grow_events": 0.0,
     "grow_failures": 0.0,
     "shrink_events": 0.0,
     "free_pages": 0.0,
     "refcounted_pages": 0.0,
+    "pinned_pages": 0.0,
 }
 
 
-def _pool_metric_values(engine: Any | None) -> dict[str, float]:
-    stats = _kv_pool_stats_object(engine)
+def _pool_metric_values(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, float]:
+    stats = _kv_pool_stats_object(engine, live_snapshot=live_snapshot)
     if stats is None:
         return dict(_KV_POOL_METRIC_DEFAULTS)
     return _kv_pool_metric_values_from_stats(stats)
 
 
-def _kv_pool_stats_object(engine: Any | None) -> Any | None:
+def _kv_pool_stats_object(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> Any | None:
+    snapshot = live_snapshot if live_snapshot is not None else _live_loop_snapshot(engine)
+    runner = _nested_mapping(snapshot, "runner")
+    live_pool = runner.get("kv_pool")
+    if isinstance(live_pool, Mapping):
+        return live_pool
     return _first_stats_object(engine, _KV_POOL_STATS_ATTRS)
 
 
@@ -6827,15 +7032,47 @@ def _call_metric_getter(owner: Any, name: str) -> Any:
     return value() if callable(value) else value
 
 
-def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
+def _graph_bucket_metric_values(
+    engine: Any | None,
+    *,
+    live_snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     values: dict[str, Any] = {
         "entries": 0.0,
         "hits": 0.0,
         "misses": 0.0,
         "replay_hit_rate": 0.0,
+        "captures": 0.0,
+        "replays": 0.0,
+        "invalidations": 0.0,
+        "buckets": {},
         "miss_reasons": {},
         "kernel_time_histogram_ns": {},
     }
+    snapshot = live_snapshot if live_snapshot is not None else _live_loop_snapshot(engine)
+    runner = _nested_mapping(snapshot, "runner")
+    live_graph = _nested_mapping(runner, "graph_buckets")
+    if live_graph:
+        values["entries"] = _non_negative_metric_value(live_graph.get("entries"))
+        values["hits"] = _non_negative_metric_value(live_graph.get("hits_total"))
+        values["captures"] = _non_negative_metric_value(live_graph.get("captures_total"))
+        values["misses"] = values["captures"]
+        values["replays"] = _non_negative_metric_value(live_graph.get("replays_total"))
+        values["invalidations"] = _non_negative_metric_value(
+            live_graph.get("invalidations_total")
+        )
+        lookups = values["hits"] + values["misses"]
+        values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
+        bucket_rows = _nested_mapping(live_graph, "buckets")
+        values["buckets"] = {
+            str(bucket): {
+                field: _non_negative_metric_value(row.get(field))
+                for field in ("entries", "captures", "hits", "replays", "invalidations")
+            }
+            for bucket, row in bucket_rows.items()
+            if isinstance(row, Mapping)
+        }
+        return values
     stats = _first_stats_object(engine, ("graph_buckets", "graph_bucket_cache", "graph_bucket_stats"))
     if stats is None:
         return values
@@ -6881,11 +7118,14 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
     keys = (
         "current_bytes",
         "high_water_observed_bytes",
+        "current_pages",
+        "high_water_observed_pages",
         "grow_events",
         "grow_failures",
         "shrink_events",
         "free_pages",
         "refcounted_pages",
+        "pinned_pages",
         "entries",
         "hits",
         "misses",
@@ -6914,6 +7154,53 @@ def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
             continue
         metrics[str(key)] = numeric
     return metrics
+
+
+def _append_resident_latency_metrics(
+    lines: list[str],
+    values: Mapping[str, Mapping[str, float]],
+) -> None:
+    name = "hipengine_resident_request_latency_seconds"
+    lines.append(f"# HELP {name} Bounded resident request latency summaries by timing kind.")
+    lines.append(f"# TYPE {name} summary")
+    max_name = "hipengine_resident_request_latency_max_seconds"
+    lines.append(f"# HELP {max_name} Maximum bounded resident request latency by timing kind.")
+    lines.append(f"# TYPE {max_name} gauge")
+    for kind, row in sorted(values.items()):
+        label = _escape_prometheus_label_value(str(kind))
+        lines.append(
+            f'{name}{{kind="{label}",quantile="0.5"}} '
+            f'{_format_metric_value(row.get("p50", 0.0))}'
+        )
+        lines.append(
+            f'{name}{{kind="{label}",quantile="0.95"}} '
+            f'{_format_metric_value(row.get("p95", 0.0))}'
+        )
+        lines.append(
+            f'{name}_sum{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("sum", 0.0))}'
+        )
+        lines.append(
+            f'{name}_count{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("count", 0.0))}'
+        )
+        lines.append(
+            f'{max_name}{{kind="{label}"}} '
+            f'{_format_metric_value(row.get("max", 0.0))}'
+        )
+
+
+def _append_labeled_gauge_metrics(
+    lines: list[str],
+    name: str,
+    help_text: str,
+    label: str,
+    values: Mapping[str, float],
+) -> None:
+    lines.append(f"# HELP {name} {help_text}")
+    lines.append(f"# TYPE {name} gauge")
+    for key, value in sorted(values.items()):
+        lines.append(f'{name}{{{label}="{_escape_prometheus_label_value(key)}"}} {_format_metric_value(value)}')
 
 
 def _append_labeled_counter_metrics(lines: list[str], name: str, help_text: str, label: str, values: Mapping[str, float]) -> None:
