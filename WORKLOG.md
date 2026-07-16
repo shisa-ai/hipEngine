@@ -160510,3 +160510,78 @@ for third-party/test handles that expose `replay_count`. GREEN validation is
 Python compilation, and diff checks pass. The clean W7900 D5 gate must now prove
 that these corrected counters advance through a real capture/replay/invalidation
 lifecycle.
+
+## 2026-07-17 — Close gfx1100 GGUF D5 live observability
+
+D5 is closed at observable correctness-only `continuous_eq_ok`. The final
+implementation stack is scheduler/latency snapshot `0b843feb`, real GGUF
+KV/graph/route snapshot `61536cc9`, Prometheus rendering `b49bc0ef`, and real
+graph replay accounting `7ab8eb3b`. Public `/metrics` now consumes the same
+single lock-consistent snapshot as `LLM.live_loop_snapshot()`; it does not
+scrape independently mutable scheduler, runner, pool, or graph owners.
+
+The accepted clean W7900 gate used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV,
+TheRock HIP 7.15, cached compiler provenance, resident capacity 4, 256-token
+prefill chunks, two-chunk per-request HTTP queues, and a 3/3/12/3-page dynamic
+pool policy:
+
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
+  PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin \
+  LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib \
+  HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 \
+  PYTHONPATH=/home/lhl/hipEngine-main \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+  $PY /tmp/gfx1100_d5_live_observability.py
+```
+
+The gate passes all **12/12** checks in **84.048254 s**. A and B fill their own
+two-chunk queues and remain simultaneously visible as **2 admitted/active rows,
+2/4 occupied slots, occupancy 0.5**, and **6 current/refcounted pages**. They
+execute three native packed c2 transitions; A finishes exact **16/16** tokens
+and B disconnects after an exact **4/4** prefix with zero Conv/GDN/live-KV
+mismatches. Post-live metrics report **4 prefill, 16 decode, 2 reclaim** work
+items and bounded queue/TTFT/ITL/service/completion sample counts
+**2/2/18/2/2**. These latency values validate instrumentation only; no server
+performance claim is attached.
+
+A third scheduler-owned p512 row captures the full real gfx1100 graph bucket
+`600fea7531de4e78504fc1841e818e805c6199b4684ce560592cb6d5ba1e9ee4`
+at the admitted 24-replay threshold. Its first token and all 24 replay tokens
+match independent eager c1, and final state/KV has zero mismatches. The live
+scrapes advance **entries/captures/hits/replays/invalidations** from
+`1/1/0/0/0` to `1/1/24/24/0` to `0/1/24/24/1`; the pool moves from three
+refcounted+pinned pages to zero only after invalidation. Final scheduler rows,
+runner rows, refcounts, and pins are all zero. The artifact retains the full
+bucket key, route counts, empty explicit fallback map, complete two-row packed
+execution manifest, and bounded per-request route metadata.
+
+The final source JSON is
+`/tmp/gfx1100-d5-live-observability-clean-7ab8eb3b.json` (85,039 bytes,
+SHA-256 `eb819615413e247364e0d013f0a2810f4314492fa2fb37052177c103415d271e`);
+the accepted harness is `/tmp/gfx1100_d5_live_observability.py` (25,862 bytes,
+SHA-256 `a7517d8351f52949674b14f31362b9267419ad3873923cb0601139f04def0703`).
+The first complete diagnostic used eight live tokens; it correctly found that
+A could complete backend work while its HTTP queue remained full, so the
+accepted shape uses 16 tokens to hold a genuine c2 scrape. Earlier instrumented
+runs were stopped after localizing an `aclose()` timing race to cancellation
+while a threadpool `next()` was active; waiting until both bounded queues are
+full makes the closure barrier deterministic without changing production code.
+
+Final host validation remains **487 passed** for `tests/test_server_api.py` and
+**387 passed, 4 skipped** across scheduler, GGUF generation, and public LLM
+files; the real graph-ABI RED/GREEN file is **57 passed**. Focused D5 Ruff,
+Python compilation, JSON validation, and diff checks pass. A broader Ruff sweep
+also reports the unchanged pre-existing `Any` F821 at
+`tests/test_generation_batch_scheduler.py:15869` from `1959b58f`; it is not a
+D5 regression and was left untouched. The retained closure is
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-d5-live-observability-closure.json`.
+
+Phase D is complete for gfx1100 GGUF. This does not claim concurrent GPU kernel
+execution, server throughput/TTFT/ITL performance, project-wide continuous
+batching, gfx1151 symmetry, PARO loop support, or native c8. E1 remains
+hardware-blocked on this host; E2 true native c8 is the next executable gfx1100
+item.
