@@ -889,6 +889,29 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _packed_decode_metadata_device_eligible(
+    layout: _GGUFPackedVerifyLayout,
+) -> bool:
+    """Return whether the c4 device kernel can rebuild this layout exactly."""
+
+    rows = int(layout.rows)
+    if rows <= 0 or rows > 4 or int(layout.slot_count) != rows:
+        return False
+    expected_rows = np.arange(rows, dtype=np.int64)
+    expected_blocks = np.arange(
+        rows * int(layout.blocks_per_slot),
+        dtype=np.int32,
+    ).reshape(rows, int(layout.blocks_per_slot))
+    return bool(
+        np.array_equal(layout.row_slot_indices, expected_rows.astype(np.int32))
+        and np.array_equal(layout.row_offsets_in_slot, np.zeros(rows, dtype=np.int32))
+        and np.array_equal(layout.live_counts, layout.row_positions + np.int64(1))
+        and np.array_equal(layout.block_table, expected_blocks)
+        and np.array_equal(layout.cu_seqlens, np.arange(rows + 1, dtype=np.int32))
+        and np.array_equal(layout.state_indices, expected_rows)
+    )
+
+
 def _packed_prefill_requires_slot_local_full_attention(
     layout: _GGUFPackedVerifyLayout,
     *,
@@ -1752,6 +1775,23 @@ class Qwen35GGUFFullStackRunner:
             plan = _resolve_gguf_linear_attention_decode_batch_plan(self.backend)
             self._gguf_linear_attention_decode_batch_plan_cache = plan
         return plan
+
+    def _packed_decode_metadata_kernel(self):
+        """Resolve the optional copy-free packed c4 metadata producer."""
+
+        missing = object()
+        kernel = getattr(self, "_gguf_packed_decode_metadata_kernel_cache", missing)
+        if kernel is missing:
+            load_backend_kernel_package(self.backend)
+            kernel = resolve(
+                backend=self.backend,
+                layer=_PACKED_DECODE_METADATA_KEY.layer,
+                quant=_PACKED_DECODE_METADATA_KEY.quant,
+                variant=_PACKED_DECODE_METADATA_KEY.variant,
+                missing="none",
+            )
+            self._gguf_packed_decode_metadata_kernel_cache = kernel
+        return kernel
 
     def _run_gdn_prefill(
         self,
@@ -11446,7 +11486,12 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
-        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        packed_scratch = packed_scratch_base.for_packed_verify_layout(
+            layout,
+            runtime=runtime,
+            stream=stream,
+            metadata_prepare_fn=self.runner._packed_decode_metadata_kernel(),
+        )
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
 
@@ -14671,6 +14716,7 @@ class _GGUFFullAttentionPrefillScratch:
         *,
         runtime: HipRuntime,
         stream: int = 0,
+        metadata_prepare_fn=None,
     ):
         rows = int(layout.rows)
         if rows <= 0 or rows > int(self.rows):
@@ -14688,28 +14734,47 @@ class _GGUFFullAttentionPrefillScratch:
             and int(layout.total_physical_positions) > int(self.blocks) * int(self.block_size)
         ):
             raise ValueError("packed verify physical KV span exceeds scratch KV capacity")
-        atomic_arr = np.asarray([0], dtype=np.int32)
-        cu_q_arr = np.asarray([0, rows], dtype=np.int32)
-        cu_k_arr = np.asarray([0, int(layout.max_live_count)], dtype=np.int32)
-        copy_host_to_device(self.block_table, host_array_ptr(layout.block_table), layout.block_table.nbytes, runtime=runtime)
-        copy_host_to_device(self.positions, host_array_ptr(layout.row_positions), layout.row_positions.nbytes, runtime=runtime)
-        copy_host_to_device(self.context_counts, host_array_ptr(layout.live_counts), layout.live_counts.nbytes, runtime=runtime)
-        copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
-        copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
-        copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
-        copy_host_to_device(
-            self.gdn_cu_seqlens,
-            host_array_ptr(layout.cu_seqlens),
-            layout.cu_seqlens.nbytes,
-            runtime=runtime,
-        )
-        copy_host_to_device(
-            self.gdn_state_indices,
-            host_array_ptr(layout.state_indices),
-            layout.state_indices.nbytes,
-            runtime=runtime,
-        )
-        _ = stream
+        device_prepare = callable(metadata_prepare_fn) and _packed_decode_metadata_device_eligible(layout)
+        if device_prepare:
+            metadata_prepare_fn(
+                self.block_table.ptr,
+                self.positions.ptr,
+                self.context_counts.ptr,
+                self.cu_q.ptr,
+                self.cu_k.ptr,
+                self.atomic.ptr,
+                self.gdn_cu_seqlens.ptr,
+                self.gdn_state_indices.ptr,
+                tuple(int(position) for position in layout.row_positions.tolist()),
+                int(layout.blocks_per_slot),
+                stream=stream,
+                library=self.runtime_state_library,
+                runtime=runtime,
+            )
+            metadata_prepare_path = "device_prepare_persistent"
+        else:
+            atomic_arr = np.asarray([0], dtype=np.int32)
+            cu_q_arr = np.asarray([0, rows], dtype=np.int32)
+            cu_k_arr = np.asarray([0, int(layout.max_live_count)], dtype=np.int32)
+            copy_host_to_device(self.block_table, host_array_ptr(layout.block_table), layout.block_table.nbytes, runtime=runtime)
+            copy_host_to_device(self.positions, host_array_ptr(layout.row_positions), layout.row_positions.nbytes, runtime=runtime)
+            copy_host_to_device(self.context_counts, host_array_ptr(layout.live_counts), layout.live_counts.nbytes, runtime=runtime)
+            copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
+            copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
+            copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                self.gdn_cu_seqlens,
+                host_array_ptr(layout.cu_seqlens),
+                layout.cu_seqlens.nbytes,
+                runtime=runtime,
+            )
+            copy_host_to_device(
+                self.gdn_state_indices,
+                host_array_ptr(layout.state_indices),
+                layout.state_indices.nbytes,
+                runtime=runtime,
+            )
+            metadata_prepare_path = "host_upload"
         block_table = Tensor.from_handle(
             self.block_table.ptr,
             layout.block_table.shape,
@@ -14754,7 +14819,7 @@ class _GGUFFullAttentionPrefillScratch:
             append_spans=append_spans,
             prefill_spans=prefill_spans,
             gdn_active_segments=int(layout.slot_count),
-            metadata_prepare_path="host_upload",
+            metadata_prepare_path=metadata_prepare_path,
         )
 
     def for_rows(self, rows: int, *, runtime: HipRuntime, stream: int = 0):
@@ -15428,6 +15493,12 @@ _COMPACT_MOE_REQUIRED_SCRATCH = (
     "moe_wmma_total_host",
 )
 
+_PACKED_DECODE_METADATA_KEY = KernelKey(
+    "hip_gfx1100",
+    "decode_metadata",
+    "gguf_qwen35",
+    "packed_c4_i64",
+)
 _LINEAR_ATTN_DECODE_INDEXED_BF16_KEY = KernelKey(
     "hip_gfx1100",
     "linear_attn_conv_decode",

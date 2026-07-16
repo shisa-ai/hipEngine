@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Sequence
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -23,6 +24,7 @@ _SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_PREPARE_PREFILL_CHUNK_METADATA = "hipengine_prepare_prefill_chunk_metadata"
+_SYMBOL_PREPARE_PACKED_DECODE_METADATA = "hipengine_prepare_packed_decode_metadata"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
@@ -468,6 +470,78 @@ def prepare_prefill_chunk_metadata(
     _check_launch(runtime, err)
 
 
+def prepare_packed_decode_metadata(
+    block_table_i32_ptr: int,
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    cu_q_i32_ptr: int,
+    cu_k_i32_ptr: int,
+    atomic_i32_ptr: int,
+    gdn_cu_seqlens_i32_ptr: int,
+    state_indices_i64_ptr: int,
+    position_values: Sequence[int],
+    blocks_per_slot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prepare singleton packed-decode metadata without host-to-device copies."""
+
+    values = tuple(int(value) for value in position_values)
+    if not values:
+        raise ValueError("position_values must be non-empty")
+    if len(values) > 4:
+        raise ValueError("position_values supports at most four packed decode rows")
+    if min(values) < 0:
+        raise ValueError("position_values must be non-negative")
+    if max(values) >= 2**31 - 1:
+        raise ValueError("position_values + 1 must fit int32 CU metadata")
+    block_count = int(blocks_per_slot)
+    if block_count <= 0:
+        raise ValueError("blocks_per_slot must be positive")
+    if len(values) * block_count > 2**31 - 1:
+        raise ValueError("packed block table size must fit int32")
+    padded_positions = (*values, *(0 for _ in range(4 - len(values))))
+
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREPARE_PACKED_DECODE_METADATA)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_table_i32_ptr),
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_void_p(cu_q_i32_ptr),
+        ctypes.c_void_p(cu_k_i32_ptr),
+        ctypes.c_void_p(atomic_i32_ptr),
+        ctypes.c_void_p(gdn_cu_seqlens_i32_ptr),
+        ctypes.c_void_p(state_indices_i64_ptr),
+        *(ctypes.c_int64(value) for value in padded_positions),
+        ctypes.c_int64(len(values)),
+        ctypes.c_int64(block_count),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def advance_decode_position_i64(
     position_i64_ptr: int,
     context_i64_ptr: int,
@@ -683,6 +757,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "prefill_metadata", "gguf_qwen35", "contiguous_chunk"),
         prepare_prefill_chunk_metadata,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "decode_metadata", "gguf_qwen35", "packed_c4_i64"),
+        prepare_packed_decode_metadata,
         replace=replace,
     )
     register(

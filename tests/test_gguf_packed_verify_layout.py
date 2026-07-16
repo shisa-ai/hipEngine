@@ -19,6 +19,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
     _packed_ar_prefill_linear_state_plan,
+    _packed_decode_metadata_device_eligible,
     _plan_packed_ar_prefill_chunks,
     _scatter_packed_layer_output_hidden,
 )
@@ -152,6 +153,26 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 3], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.asarray([0, 3, 4], dtype=np.int32))
     assert layout.blocks_per_slot == 2
+
+
+def test_gguf_packed_decode_device_metadata_requires_singleton_c4_layout() -> None:
+    singleton = _build_gguf_packed_verify_layout(
+        tuple(
+            _GGUFPackedVerifySlotBlock(input_token_ids=(slot + 1,), start_position=position)
+            for slot, position in enumerate((513, 517, 521, 525))
+        ),
+        slot_capacity=1024,
+    )
+    multi_token = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(1, 2), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(3, 4), start_position=8),
+        ),
+        slot_capacity=1024,
+    )
+
+    assert _packed_decode_metadata_device_eligible(singleton)
+    assert not _packed_decode_metadata_device_eligible(multi_token)
 
 
 def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() -> None:
@@ -455,7 +476,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         runner,
         rows=6,
         capacity=1024,
-        segments=2,
+        segments=4,
         allocate_kv_cache=False,
         runtime=SimpleNamespace(),
     )
@@ -484,6 +505,46 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
     assert view.block_table_tensor.shape == layout.block_table.shape
     assert view.positions_tensor.shape == layout.row_positions.shape
     assert view.context_counts_tensor.shape == layout.live_counts.shape
+    assert view.metadata_prepare_path == "host_upload"
+
+    device_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def fake_device_prepare(*args, **kwargs):
+        device_calls.append((args, kwargs))
+
+    singleton_layout = _build_gguf_packed_verify_layout(
+        tuple(
+            _GGUFPackedVerifySlotBlock(input_token_ids=(slot + 1,), start_position=position)
+            for slot, position in enumerate((513, 517, 521, 525))
+        ),
+        slot_capacity=1024,
+    )
+    copies.clear()
+
+    device_view = scratch.for_packed_verify_layout(
+        singleton_layout,
+        runtime=SimpleNamespace(),
+        stream=7,
+        metadata_prepare_fn=fake_device_prepare,
+    )
+
+    assert copies == {}
+    assert len(device_calls) == 1
+    args, kwargs = device_calls[0]
+    assert args[:8] == (
+        scratch.block_table.ptr,
+        scratch.positions.ptr,
+        scratch.context_counts.ptr,
+        scratch.cu_q.ptr,
+        scratch.cu_k.ptr,
+        scratch.atomic.ptr,
+        scratch.gdn_cu_seqlens.ptr,
+        scratch.gdn_state_indices.ptr,
+    )
+    assert args[8] == (513, 517, 521, 525)
+    assert args[9] == 4
+    assert kwargs["stream"] == 7
+    assert device_view.metadata_prepare_path == "device_prepare_persistent"
 
 
 def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:

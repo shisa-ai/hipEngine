@@ -6,6 +6,7 @@ from scripts.gguf_packed_ar_rocprof import (
     build_c3_family_census,
     build_execution_census,
     classify_packed_execution_bucket,
+    execution_census_closure_level,
 )
 
 
@@ -13,7 +14,11 @@ def _layer_types() -> tuple[str, ...]:
     return ("linear_attention",) * 30 + ("full_attention",) * 10
 
 
-def _c3_routes(*, full_attention: bool = True) -> dict[str, object]:
+def _c3_routes(
+    *,
+    full_attention: bool = True,
+    metadata_prepare_path: str = "host_upload",
+) -> dict[str, object]:
     return {
         "full_attention_decode_path": (
             "kv_live_spans_batch" if full_attention else "not_applicable"
@@ -22,7 +27,7 @@ def _c3_routes(*, full_attention: bool = True) -> dict[str, object]:
         "moe_top_k": 8,
         "lm_head_decode_path": "q6_rowtile_f32_logits",
         "sampler_decode_path": "argmax_i32_rows",
-        "metadata_prepare_path": "host_upload",
+        "metadata_prepare_path": metadata_prepare_path,
     }
 
 
@@ -152,6 +157,76 @@ def test_packed_decode_manifest_requires_explicit_c3_family_routes() -> None:
     assert families["lm_head"]["full_vocab_host_readback"] is False
     assert families["sampler"]["device_result"] == "argmax_i32_rows"
     assert families["sampler"]["host_readback"] == "one_i32_vector"
+
+
+def test_packed_decode_manifest_accounts_copy_free_device_metadata() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(metadata_prepare_path="device_prepare_persistent"),
+    )
+
+    movement = manifest["host_device_movement"]
+    assert manifest["metadata_prepare_path"] == "device_prepare_persistent"
+    assert movement["host_to_device_metadata_copies"] == 0
+    assert movement["host_to_device_metadata_bytes"] == 0
+    assert movement["device_metadata_prepare_launches"] == 1
+    assert movement["host_to_device_total_copies"] == 1
+    assert movement["host_to_device_total_bytes"] == 32
+
+    census = build_c3_family_census(
+        [
+            KernelTraceRow(
+                kernel="prepare_packed_decode_metadata_kernel",
+                duration_ns=10,
+            ),
+            KernelTraceRow(kernel="__amd_rocclr_copyBuffer", duration_ns=10),
+            KernelTraceRow(kernel="__amd_rocclr_copyBuffer", duration_ns=10),
+        ],
+        manifest=manifest,
+    )
+    assert census["host_device_movement"]["passed"] is True
+    assert census["host_device_movement"]["expected_copy_dispatches"] == 2
+    assert census["host_device_movement"]["observed_metadata_prepare_dispatches"] == 1
+
+
+def test_profiler_artifact_classifies_the_highest_closed_boundary() -> None:
+    recurrent_manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(),
+    )
+    device_manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(metadata_prepare_path="device_prepare_persistent"),
+    )
+    complete_families = {"c3_family_census": {"route_check_passed": True}}
+
+    assert execution_census_closure_level(recurrent_manifest, complete_families) == "c2"
+    assert execution_census_closure_level(device_manifest, complete_families) == "c3"
+    assert (
+        execution_census_closure_level(
+            device_manifest,
+            {"c3_family_census": {"route_check_passed": False}},
+        )
+        == "c2"
+    )
 
 
 def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() -> None:

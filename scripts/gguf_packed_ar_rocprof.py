@@ -8,9 +8,9 @@ movement, synchronizations, and scalar fallbacks. This script checks its
 route-dependent row-local launch count against the trace and buckets all c4 GPU
 work as ``exact_row_local`` or ``packed_native``.
 
-This is a C1/C2 route diagnostic, never a throughput claim. Model load, prefill,
-the first packed state import, and warmup are excluded by one ROCTX marker
-window.
+This is a C1/C2/C3 route diagnostic, never a throughput claim. Model load,
+prefill, the first packed state import, and warmup are excluded by one ROCTX
+marker window.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 KIND = "gfx1100_gguf_concurrency_c1_hybrid_census"
 C2_KIND = "gfx1100_gguf_concurrency_c2_recurrent_census"
+C3_KIND = "gfx1100_gguf_concurrency_c3_model_boundaries_census"
 SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
@@ -386,6 +387,32 @@ def build_execution_census(
             "observed_exact_row_local_dispatches": observed,
         },
     }
+
+
+def execution_census_closure_level(
+    manifest: Mapping[str, Any],
+    census: Mapping[str, Any],
+) -> str:
+    """Return the highest concurrency roadmap boundary proven by the census."""
+
+    c2_recurrent_closed = (
+        manifest.get("linear_attention_decode_path") == "indexed_batch"
+        and manifest.get("model_step", {}).get("host_model_row_loop_sites") == 0
+        and manifest.get("model_step", {}).get("expected_exact_row_local_kernel_launches") == 0
+    )
+    movement = manifest.get("host_device_movement", {})
+    c3_model_boundaries_closed = (
+        c2_recurrent_closed
+        and census.get("c3_family_census", {}).get("route_check_passed") is True
+        and manifest.get("metadata_prepare_path") == "device_prepare_persistent"
+        and movement.get("host_to_device_metadata_copies") == 0
+        and movement.get("device_metadata_prepare_launches") == 1
+    )
+    if c3_model_boundaries_closed:
+        return "c3"
+    if c2_recurrent_closed:
+        return "c2"
+    return "c1"
 
 
 def _read_kernel_csv(path: Path) -> list[KernelTraceRow]:
@@ -788,11 +815,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(manifest, Mapping):
         raise ValueError("c4 child did not emit an execution manifest")
     census = build_execution_census(c1["rows"], c4["rows"], manifest=manifest)
-    c2_recurrent_closed = (
-        manifest.get("linear_attention_decode_path") == "indexed_batch"
-        and manifest.get("model_step", {}).get("host_model_row_loop_sites") == 0
-        and manifest.get("model_step", {}).get("expected_exact_row_local_kernel_launches") == 0
-    )
+    closure_level = execution_census_closure_level(manifest, census)
     passed = (
         census["route_check_passed"] is True
         and c1["child"]["all_tokens_exact"] is True
@@ -831,18 +854,24 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema": SCHEMA,
-        "kind": C2_KIND if c2_recurrent_closed else KIND,
+        "kind": C3_KIND if closure_level == "c3" else C2_KIND if closure_level == "c2" else KIND,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
-            "c2_recurrent_census_complete"
-            if passed and c2_recurrent_closed
-            else "c1_census_complete" if passed else "failed"
+            f"{closure_level}_model_boundaries_census_complete"
+            if passed and closure_level == "c3"
+            else "c2_recurrent_census_complete"
+            if passed and closure_level == "c2"
+            else "c1_census_complete"
+            if passed
+            else "failed"
         ),
         "passed": passed,
         "performance_claim": False,
         "claim_level": (
-            "exact_hybrid_recurrent_closed_profiler_census"
-            if c2_recurrent_closed
+            "exact_hybrid_model_boundaries_closed_profiler_census"
+            if closure_level == "c3"
+            else "exact_hybrid_recurrent_closed_profiler_census"
+            if closure_level == "c2"
             else "exact_hybrid_profiler_census"
         ),
         "workload": {
@@ -882,9 +911,12 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "limitations": [
             "One synchronized steady decode transition is a route census, not a throughput sample.",
             (
-                "C2 closes the recurrent linear-attention row loop, but the route remains exact_hybrid "
-                "until the later C3/C4 correctness, replay, and scaling gates complete."
-                if c2_recurrent_closed
+                "C3 closes the declared per-row model and metadata boundaries, but the route remains "
+                "exact_hybrid until the C4 replay, equality, and scaling gates complete."
+                if closure_level == "c3"
+                else "C2 closes the recurrent linear-attention row loop, but the route remains "
+                "exact_hybrid until the later C3/C4 correctness, replay, and scaling gates complete."
+                if closure_level == "c2"
                 else "The c4 route remains exact_hybrid because recurrent linear attention replays a "
                 "c1-exact row subgraph."
             ),
