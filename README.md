@@ -505,28 +505,35 @@ ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
 the batch; *per-sequence* is tok/s seen by one request. See
 [`docs/VLLM_RDNA3.md`](docs/VLLM_RDNA3.md) for vLLM RDNA3 setup notes.
 
-### gfx1100 / W7900 decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
+### gfx1100 / W7900 direct GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: stale diagnostic.** This is a median-of-3 scaling snapshot, not an
-apples-to-apples engine ranking. hipEngine uses PARO W4/BF16 KV, llama.cpp uses
-Vulkan Q4_K_M/f16 KV, and vLLM uses GPTQ Int4. hipEngine and llama.cpp report
-backend decode timing; vLLM reports OpenAI client wall throughput.
+**Status: retained direct decode-model-step packet; not production continuous
+batching.** All rows use the same `UD-Q4_K_M`, BF16 KV, greedy-top1,
+W7900/gfx1100, and synchronized graph-step timing. Aggregate counts every row
+advanced by each logical transition; per-request is aggregate divided by live
+rows. ITL excludes streaming-token D2H.
 
 <!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
-No eligible concurrency row; the mixed-quant, mixed-timing sweep remains linked below pending rerun.
+| Route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| direct c1 | 1 | 1x c1 | 84.907 | 84.907 | 1.000x | 1.009x | 0.209 / 0.209 s | 11.768 / 12.105 ms | 21.783 GiB |
+| direct c2 | 2 | 1x c2 | 126.909 | 63.455 | 1.495x | 1.508x | 0.954 / 0.957 s | 15.802 / 16.024 ms | 22.394 GiB |
+| **direct c4** | **4** | **1x c4** | **184.993** | **46.248** | **2.179x** | **2.199x** | **2.027 / 2.031 s** | **21.641 / 21.888 ms** | **23.396 GiB** |
+| chunked c8 | 8 | 2x c4, serialized | 183.900 | 22.987 | 2.166x | 2.186x | 3.055 / 4.079 s | 43.487 / 44.014 ms | 25.731 GiB |
+| serial-c4 control | 4 | 4x c1, serialized | 84.140 | 21.035 | 0.991x | 1.000x | 0.547 / 0.875 s | 47.481 / 48.465 ms | 26.646 GiB* |
 <!-- END TOPLINE:W7900_CONCURRENCY -->
 
-Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3.
-hipEngine `c=1` uses the single-sequence graph-replay benchmark and `c>1` uses
-the native batch benchmark. llama.cpp restarts its server for each concurrency
-and repetition with `-np c -c 1024*c`.
+Protocol: prompt 512 per row, 128 decode transitions, one discarded full-route
+warmup and median of three, one shared model load. Resident sessions grow
+c1→c2→c4→c8 so c4 memory is scoped to four sessions. `serial-c4` runs after c8
+and its starred memory retains eight resident slabs; it is a throughput control,
+not the c4 memory row. C4 improves aggregate decode **117.88%** over c1 and
+**119.86%** over serial-c4, while per-request rate is **45.53% lower** than c1;
+Phase D has not admitted this tradeoff as a live server route.
 
-Source artifacts:
-[`hipEngine W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json),
-[`llama.cpp Vulkan W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json),
-[`vLLM local build W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
-[`full W7900 refresh summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json),
-and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
+Artifact: [`retained C4 closure`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json).
+Historical mixed-quant/mixed-scope results remain in
+[`benchmarks/HISTORY.md`](benchmarks/HISTORY.md).
 
 ### gfx1151 / Radeon 8060S PARO exact shape catalog (2026-07-11, Qwen3.6 35B-A3B, 512/128)
 
