@@ -1,15 +1,38 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from scripts.gguf_packed_ar_rocprof import (
     KernelTraceRow,
+    _marker_name,
+    _q6_rowtile_dispatch_count,
+    build_arg_parser,
     build_c3_family_census,
     build_execution_census,
     classify_packed_execution_bucket,
     execution_census_closure_level,
 )
+
+
+def test_packed_profiler_counts_exact_q6_rowtile_groups() -> None:
+    assert _q6_rowtile_dispatch_count(4) == 1
+    assert _q6_rowtile_dispatch_count(6) == 1
+    assert _q6_rowtile_dispatch_count(7) == 2
+    assert _q6_rowtile_dispatch_count(8) == 2
+    assert _q6_rowtile_dispatch_count(13) == 3
+
+
+def test_packed_rocprof_accepts_native_c8_target_and_marker() -> None:
+    parser = build_arg_parser()
+    assert parser.parse_args([]).packed_concurrency == 4
+
+    args = parser.parse_args(["--packed-concurrency", "8"])
+    assert args.packed_concurrency == 8
+    assert _marker_name(args.packed_concurrency) == (
+        "hipengine_gguf_packed_c1_profile_c8_steady_decode_step"
+    )
 
 
 def _layer_types() -> tuple[str, ...]:
@@ -396,9 +419,56 @@ def test_packed_c3_profiler_census_requires_each_caware_family() -> None:
     assert census["moe_ffn"]["selected_gate_up_dispatches"] == 40
     assert census["moe_ffn"]["selected_down_dispatches"] == 40
     assert census["moe_ffn"]["combine_dispatches"] == 40
+    assert census["lm_head_sampler"]["expected_lm_head_dispatches"] == 1
     assert census["lm_head_sampler"]["lm_head_dispatches"] == 1
     assert census["lm_head_sampler"]["argmax_stage1_dispatches"] == 1
     assert census["host_device_movement"]["observed_copy_dispatches"] == 10
+
+    c8_manifest = build_packed_decode_execution_manifest(
+        rows=8,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513,) * 8,
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(),
+    )
+    row_extent_eight = (
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+        "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel",
+        "weighted_sum_shared_gate_combine_residual_batch_out_kernel",
+        "argmax_rows_stage1_i32_kernel",
+    )
+    selected_extent = (
+        "selected_dual_direct_gemv_kernel",
+        "qk_t16_selected_direct_gemv_kernel",
+    )
+    c8_rows = [
+        replace(
+            row,
+            grid_y=(
+                8
+                if any(name in row.kernel for name in row_extent_eight)
+                else 64
+                if any(name in row.kernel for name in selected_extent)
+                else row.grid_y
+            ),
+        )
+        for row in rows
+    ]
+    c8_rows.append(
+        KernelTraceRow(
+            kernel="q6_k_t16_gemv_rowtile_kernel",
+            duration_ns=10,
+            grid_y=1,
+        )
+    )
+
+    c8_census = build_c3_family_census(c8_rows, manifest=c8_manifest)
+    assert c8_census["route_check_passed"] is True
+    assert c8_census["lm_head_sampler"]["expected_lm_head_dispatches"] == 2
+    assert c8_census["lm_head_sampler"]["lm_head_dispatches"] == 2
 
 
 def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> None:
@@ -494,8 +564,28 @@ def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
     census = build_execution_census(c1, c4, manifest=manifest)
 
     assert census["route_check_passed"] is True
+    assert census["packed_concurrency"] == 4
     assert census["c4"]["buckets"]["exact_row_local"]["dispatches"] == 0
     assert census["c4"]["buckets"]["packed_native"]["dispatches"] == 2
+
+    c8_manifest = deepcopy(manifest)
+    c8_manifest.update({"rows": 8, "physical_rows": 8, "active_rows": 8})
+    c8_manifest["active_mask"] = [True] * 8
+    c8_census = build_execution_census(
+        c1,
+        c4,
+        manifest=c8_manifest,
+        packed_concurrency=8,
+    )
+    assert c8_census["packed_concurrency"] == 8
+    assert "c8" in c8_census
+    assert "c4" not in c8_census
+    assert (
+        c8_census["c8"]["buckets"]["packed_native"][
+            "share_of_c8_gpu_duration"
+        ]
+        == 1.0
+    )
 
 
 def test_profiler_census_requires_runtime_manifest_launch_accounting() -> None:

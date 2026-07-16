@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Profile the observable c1/c4 GGUF execution boundary.
+"""Profile the observable c1/packed GGUF execution boundary.
 
 The parent warm-builds both leaf workloads outside rocprofv3, then profiles one
-synchronized steady decode transition for c1 and packed c4 in separate cached-
-only children. The c4 runtime manifest counts host row loops, metadata/state
-movement, synchronizations, scalar fallbacks, and graph replay. This script
-checks its route-dependent row-local launch count against the trace and buckets
-all c4 GPU work as ``exact_row_local`` or ``packed_native``.
+synchronized steady decode transition for c1 and a declared packed c4 or c8
+lane in separate cached-only children. The packed runtime manifest counts host
+row loops, metadata/state movement, synchronizations, scalar fallbacks, and
+graph replay. This script checks its route-dependent row-local launch count
+against the trace and buckets all packed GPU work as ``exact_row_local`` or
+``packed_native``.
 
-Eager mode retains the C1/C2/C3 route census. Graph mode proves one captured C4
-replay window, never throughput. Model load, prefill, packed-state import, graph
-capture, diagnostic readback, and flush are excluded by one ROCTX marker window.
+Eager mode retains the C1/C2/C3 route census. Graph mode proves one captured
+packed replay window, never throughput. Model load, prefill, packed-state import,
+graph capture, diagnostic readback, and flush are excluded by one ROCTX marker
+window.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ KIND = "gfx1100_gguf_concurrency_c1_hybrid_census"
 C2_KIND = "gfx1100_gguf_concurrency_c2_recurrent_census"
 C3_KIND = "gfx1100_gguf_concurrency_c3_model_boundaries_census"
 C4_KIND = "gfx1100_gguf_concurrency_c4_graph_replay_census"
+C8_KIND = "gfx1100_gguf_concurrency_e2_native_c8_graph_profiler_census"
 SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
@@ -103,7 +106,7 @@ def _normalise_kernel(name: str) -> str:
 
 
 def classify_packed_execution_bucket(row: KernelTraceRow) -> str:
-    """Classify current packed-c4 kernels by the known exact row boundary."""
+    """Classify current packed kernels by the known exact row boundary."""
 
     name = row.kernel.lower()
     scalar_only_substrings = (
@@ -213,6 +216,26 @@ def _all_row_extent(rows: Sequence[KernelTraceRow], expected: int) -> bool:
     return bool(rows) and all(_row_extent(row) == int(expected) for row in rows)
 
 
+def _q6_rowtile_dispatch_count(rows: int, *, max_chunk: int = 6) -> int:
+    """Mirror the exact LM-head row-tile lowering without hiding c1 tails."""
+
+    remaining = int(rows)
+    if remaining <= 0:
+        raise ValueError("rows must be positive")
+    if int(max_chunk) < 2:
+        raise ValueError("max_chunk must be at least two")
+    dispatches = 0
+    while remaining > 0:
+        take = min(remaining, int(max_chunk))
+        if remaining - take == 1:
+            take -= 1
+        if take < 2:
+            raise ValueError("Q6 row-tile lowering would create a c1 tail")
+        remaining -= take
+        dispatches += 1
+    return dispatches
+
+
 def build_c3_family_census(
     c4_rows: Sequence[KernelTraceRow],
     *,
@@ -266,8 +289,10 @@ def build_c3_family_census(
     lm_head_path = str(manifest["lm_head_decode_path"])
     if lm_head_path == "q6_rowtile_f32_logits":
         lm_head_rows = _rows_matching(c4_rows, "q6_k_t16_gemv_rowtile_kernel")
+        expected_lm_head_dispatches = _q6_rowtile_dispatch_count(row_count)
     elif lm_head_path == "direct_top1_rows":
         lm_head_rows = _rows_matching(c4_rows, "top1_gather")
+        expected_lm_head_dispatches = 1
     else:
         lm_head_rows = [
             row
@@ -275,11 +300,12 @@ def build_c3_family_census(
             if "gemv_kernel" in row.kernel.lower()
             and _row_extent(row) == row_count
         ]
+        expected_lm_head_dispatches = 1
     sampler_path = str(manifest["sampler_decode_path"])
     argmax_stage1 = _rows_matching(c4_rows, "argmax_rows_stage1_i32_kernel")
     argmax_stage2 = _rows_matching(c4_rows, "argmax_rows_stage2_i32_kernel")
     sampler_passed = (
-        len(lm_head_rows) == 1
+        len(lm_head_rows) == expected_lm_head_dispatches
         and (
             sampler_path == "fused_top1_i32_rows"
             or (
@@ -332,6 +358,7 @@ def build_c3_family_census(
             "passed": sampler_passed,
             "lm_head_path": lm_head_path,
             "sampler_path": sampler_path,
+            "expected_lm_head_dispatches": expected_lm_head_dispatches,
             "lm_head_dispatches": len(lm_head_rows),
             "argmax_stage1_dispatches": len(argmax_stage1),
             "argmax_stage2_dispatches": len(argmax_stage2),
@@ -349,9 +376,10 @@ def build_c3_family_census(
 
 def build_execution_census(
     c1_rows: Sequence[KernelTraceRow],
-    c4_rows: Sequence[KernelTraceRow],
+    packed_rows: Sequence[KernelTraceRow],
     *,
     manifest: Mapping[str, Any],
+    packed_concurrency: int = 4,
 ) -> dict[str, Any]:
     expected = int(
         manifest["model_step"]["expected_exact_row_local_kernel_launches"]  # type: ignore[index]
@@ -360,14 +388,15 @@ def build_execution_census(
         "exact_row_local": [],
         "packed_native": [],
     }
-    for row in c4_rows:
+    for row in packed_rows:
         bucket_rows[classify_packed_execution_bucket(row)].append(row)
     buckets = {name: _summary(rows) for name, rows in bucket_rows.items()}
-    c4_total_ns = sum(int(bucket["total_duration_ns"]) for bucket in buckets.values())
+    packed_total_ns = sum(int(bucket["total_duration_ns"]) for bucket in buckets.values())
+    share_key = f"share_of_c{int(packed_concurrency)}_gpu_duration"
     for bucket in buckets.values():
-        bucket["share_of_c4_gpu_duration"] = (
-            float(bucket["total_duration_ns"]) / c4_total_ns
-            if c4_total_ns > 0
+        bucket[share_key] = (
+            float(bucket["total_duration_ns"]) / packed_total_ns
+            if packed_total_ns > 0
             else None
         )
     observed = int(buckets["exact_row_local"]["dispatches"])
@@ -377,12 +406,14 @@ def build_execution_census(
         and int(manifest.get("scalar_fallbacks", -1)) == 0
         and int(manifest.get("model_step", {}).get("complete_c1_session_replays", -1)) == 0
     )
+    packed_label = f"c{int(packed_concurrency)}"
     return {
         "route_check_passed": route_check_passed,
-        "c3_family_census": build_c3_family_census(c4_rows, manifest=manifest),
+        "packed_concurrency": int(packed_concurrency),
+        "c3_family_census": build_c3_family_census(packed_rows, manifest=manifest),
         "c1_reference": _summary(c1_rows),
-        "c4": {
-            "all": _summary(c4_rows),
+        packed_label: {
+            "all": _summary(packed_rows),
             "buckets": buckets,
             "expected_exact_row_local_dispatches": expected,
             "observed_exact_row_local_dispatches": observed,
@@ -554,7 +585,7 @@ def _run_c1_child(session: Any, args: argparse.Namespace, marker: _Roctx | None)
     }
 
 
-def _run_c4_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace, marker: _Roctx | None) -> dict[str, Any]:
+def _run_packed_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace, marker: _Roctx | None) -> dict[str, Any]:
     prompts = tuple(
         tuple([int(args.prompt_token_id)] * int(args.prompt_length))
         for _ in sessions
@@ -582,7 +613,7 @@ def _run_c4_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace,
         )
         try:
             if marker is not None:
-                marker.push(_marker_name(4))
+                marker.push(_marker_name(len(session_tuple)))
             try:
                 graph.replay(1)
             finally:
@@ -595,7 +626,7 @@ def _run_c4_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace,
             graph.close()
     else:
         if marker is not None:
-            marker.push(_marker_name(4))
+            marker.push(_marker_name(len(session_tuple)))
         try:
             result = owner.step_batch_native(
                 current,
@@ -614,7 +645,7 @@ def _run_c4_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace,
 
     observed = [*[int(item.token_id) for item in first], *current, *final]
     return {
-        "concurrency": 4,
+        "concurrency": len(session_tuple),
         "decode_mode": str(args.decode_mode),
         "prefill_plan": dict(owner.last_packed_prefill_plan),
         "warmup_token_ids": current,
@@ -652,11 +683,11 @@ def _run_child(args: argparse.Namespace) -> int:
         owner = stack.enter_context(Qwen35GGUFResidentSession(args.model, **kwargs))
         if int(args.concurrency) == 1:
             payload = _run_c1_child(owner, args, marker)
-        elif int(args.concurrency) == 4:
+        elif int(args.concurrency) in {4, 8}:
             if owner.runner is None:
                 raise RuntimeError("GGUF owner did not materialize a shared runner")
             sessions = [owner]
-            for _ in range(3):
+            for _ in range(int(args.concurrency) - 1):
                 sessions.append(
                     stack.enter_context(
                         Qwen35GGUFResidentSession(
@@ -667,9 +698,9 @@ def _run_child(args: argparse.Namespace) -> int:
                         )
                     )
                 )
-            payload = _run_c4_child(owner, sessions, args, marker)
+            payload = _run_packed_child(owner, sessions, args, marker)
         else:
-            raise ValueError("C1 profiler child supports only c1 and c4")
+            raise ValueError("GGUF profiler child supports only c1, c4, and c8")
         payload.update(
             {
                 "schema": 1,
@@ -834,9 +865,11 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
+    packed_concurrency = int(args.packed_concurrency)
+    packed_label = f"c{packed_concurrency}"
     warmbuild_commands: list[list[str]] = []
     if not args.skip_warmbuild:
-        for concurrency in (1, 4):
+        for concurrency in (1, packed_concurrency):
             lane = raw_root / f"warmbuild-c{concurrency}"
             command = _child_command(
                 args,
@@ -854,16 +887,33 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     profile_env["LD_LIBRARY_PATH"] = f"{prefix}:{profile_env.get('LD_LIBRARY_PATH', '')}"
 
     c1 = _profile_one(args, concurrency=1, raw_root=raw_root, env=profile_env)
-    c4 = _profile_one(args, concurrency=4, raw_root=raw_root, env=profile_env)
-    manifest = c4["child"].get("execution_manifest")
+    packed = _profile_one(
+        args,
+        concurrency=packed_concurrency,
+        raw_root=raw_root,
+        env=profile_env,
+    )
+    manifest = packed["child"].get("execution_manifest")
     if not isinstance(manifest, Mapping):
-        raise ValueError("c4 child did not emit an execution manifest")
-    census = build_execution_census(c1["rows"], c4["rows"], manifest=manifest)
+        raise ValueError(f"{packed_label} child did not emit an execution manifest")
+    census = build_execution_census(
+        c1["rows"],
+        packed["rows"],
+        manifest=manifest,
+        packed_concurrency=packed_concurrency,
+    )
     closure_level = execution_census_closure_level(manifest, census)
+    physical_shape_exact = bool(
+        manifest.get("rows") == packed_concurrency
+        and manifest.get("physical_rows") == packed_concurrency
+        and manifest.get("active_rows") == packed_concurrency
+        and manifest.get("active_mask") == [True] * packed_concurrency
+    )
     passed = (
         census["route_check_passed"] is True
         and c1["child"]["all_tokens_exact"] is True
-        and c4["child"]["all_tokens_exact"] is True
+        and packed["child"]["all_tokens_exact"] is True
+        and physical_shape_exact
         and manifest.get("steady_packed_state_reused") is True
         and manifest.get("host_device_movement", {}).get("device_to_device_state_import_copies") == 0
         and manifest.get("host_device_movement", {}).get("device_to_device_state_scatter_copies") == 0
@@ -874,8 +924,8 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(args.backend),
-        resolved_backend=str(c4["child"]["backend"]),
-        target_arch=str(c4["child"]["target_arch"]),
+        resolved_backend=str(packed["child"]["backend"]),
+        target_arch=str(packed["child"]["target_arch"]),
         model_path=model,
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
@@ -883,10 +933,13 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         environment={
             "HIPENGINE_HIP_ARCH": profile_env.get("HIPENGINE_HIP_ARCH"),
             "HIPENGINE_COMPILER_VERSION_FILE": profile_env.get("HIPENGINE_COMPILER_VERSION_FILE"),
+            "HIP_VISIBLE_DEVICES": profile_env.get("HIP_VISIBLE_DEVICES"),
+            "ROCR_VISIBLE_DEVICES": profile_env.get("ROCR_VISIBLE_DEVICES"),
+            "GPU_MAX_HW_QUEUES": profile_env.get("GPU_MAX_HW_QUEUES"),
             "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
             "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
         },
-        build_profile="cached_only_paired_c1_c4_leaf_rocprof",
+        build_profile=f"cached_only_paired_c1_{packed_label}_leaf_rocprof",
         timing_protocol=(
             f"single_synchronized_{args.decode_mode}_steady_decode_marker_window_nonperformance"
         ),
@@ -895,14 +948,16 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         profiler={
             "kind": "rocprofv3_kernel_and_marker_trace",
             "c1_command": c1["command"],
-            "c4_command": c4["command"],
+            f"{packed_label}_command": packed["command"],
         },
         hipcc_version=_read_compiler_version(args.compiler_version_file),
     )
     return {
         "schema": SCHEMA,
         "kind": (
-            C4_KIND
+            C8_KIND
+            if packed_concurrency == 8 and closure_level == "c4"
+            else C4_KIND
             if closure_level == "c4"
             else C3_KIND
             if closure_level == "c3"
@@ -912,7 +967,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
-            "c4_graph_replay_census_complete"
+            "native_c8_graph_profiler_census_complete"
+            if passed and packed_concurrency == 8 and closure_level == "c4"
+            else "c4_graph_replay_census_complete"
             if passed and closure_level == "c4"
             else "c3_model_boundaries_census_complete"
             if passed and closure_level == "c3"
@@ -925,7 +982,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "performance_claim": False,
         "claim_level": (
-            "c4_graph_replay_profiler_census"
+            "native_c8_graph_replay_profiler_census"
+            if packed_concurrency == 8 and closure_level == "c4"
+            else "c4_graph_replay_profiler_census"
             if closure_level == "c4"
             else "exact_hybrid_model_boundaries_closed_profiler_census"
             if closure_level == "c3"
@@ -941,39 +1000,47 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_tokens_per_row": int(args.prompt_length),
             "profiled_decode_transitions": 1,
             "c1_rows": 1,
-            "c4_rows": 4,
+            f"{packed_label}_rows": packed_concurrency,
+            "physical_bucket_width": packed_concurrency,
+            "active_mask": [True] * packed_concurrency,
             "c1_decode_mode": "eager",
-            "c4_decode_mode": str(args.decode_mode),
+            f"{packed_label}_decode_mode": str(args.decode_mode),
             "sampling": "greedy_top1",
             "speculative_decode": False,
         },
         "correctness": {
             "c1_all_tokens_exact": c1["child"]["all_tokens_exact"],
-            "c4_all_tokens_exact": c4["child"]["all_tokens_exact"],
+            f"{packed_label}_all_tokens_exact": packed["child"]["all_tokens_exact"],
+            "physical_shape_exact": physical_shape_exact,
             "expected_token_id": int(args.expected_token_id),
             "c1_generated_token_ids": c1["child"]["generated_token_ids"],
-            "c4_warmup_token_ids": c4["child"]["warmup_token_ids"],
-            "c4_profile_token_ids": c4["child"]["profile_token_ids"],
+            f"{packed_label}_warmup_token_ids": packed["child"]["warmup_token_ids"],
+            f"{packed_label}_profile_token_ids": packed["child"]["profile_token_ids"],
             "phase_b_gate": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json",
         },
         "execution_manifest": dict(manifest),
         "profiler_census": census,
         "raw_traces": {
             "c1": c1["raw_trace"],
-            "c4": c4["raw_trace"],
+            packed_label: packed["raw_trace"],
         },
         "commands": {
             "parent": command,
             "warmbuild": warmbuild_commands,
             "c1_profiler": c1["command"],
-            "c4_profiler": c4["command"],
+            f"{packed_label}_profiler": packed["command"],
         },
         "provenance": provenance,
         "limitations": [
             "One synchronized steady decode transition is a route census, not a throughput sample.",
             (
-                "C4 proves one real graph replay with zero undeclared c1 work or steady transfer; "
-                "native/scaling promotion still requires the d128 and direct performance packet."
+                (
+                    "E2 proves one real native-c8 graph replay with zero undeclared c1 work or "
+                    "steady transfer; retained scaling and d128 equality are joined separately."
+                    if packed_concurrency == 8
+                    else "C4 proves one real graph replay with zero undeclared c1 work or steady transfer; "
+                    "native/scaling promotion still requires the d128 and direct performance packet."
+                )
                 if closure_level == "c4"
                 else "C3 closes the declared per-row model and metadata boundaries, but the route remains "
                 "exact_hybrid until the C4 replay, equality, and scaling gates complete."
@@ -994,6 +1061,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1100")
     parser.add_argument("--decode-mode", choices=("eager", "graph"), default="eager")
+    parser.add_argument(
+        "--packed-concurrency",
+        type=int,
+        choices=(4, 8),
+        default=4,
+        help="Physical packed lane to compare against c1 (default: c4).",
+    )
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--expected-token-id", type=int, default=9707)
@@ -1015,8 +1089,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if int(args.prompt_length) <= 0 or int(args.prompt_length) + 2 >= 1024:
         raise ValueError("prompt-length must be positive and leave two decode positions below 1024")
     if args.child_mode is not None:
-        if args.concurrency not in {1, 4} or args.child_json is None:
-            raise ValueError("child mode requires --concurrency 1|4 and --child-json")
+        if args.concurrency not in {1, 4, 8} or args.child_json is None:
+            raise ValueError("child mode requires --concurrency 1|4|8 and --child-json")
         return _run_child(args)
     payload = _run_parent(args)
     if args.out is not None:

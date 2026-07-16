@@ -11,6 +11,7 @@ from scripts.gguf_packed_ar_bench import (
     _graph_manifest_matches_configuration,
     _occupancy_event,
     _parse_configurations,
+    _scaling_summary,
     _stats,
 )
 
@@ -27,11 +28,14 @@ def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
 
 
 def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
-    names = _parse_configurations("c1,c2,c4,chunked_c8,serial_c4")
+    names = _parse_configurations("c1,c2,c4,native_c8,chunked_c8,serial_c4")
 
-    assert names == ("c1", "c2", "c4", "chunked_c8", "serial_c4")
+    assert names == ("c1", "c2", "c4", "native_c8", "chunked_c8", "serial_c4")
     assert CONFIGURATIONS["c4"].native_group_width == 4
     assert CONFIGURATIONS["c4"].native_group_count == 1
+    assert CONFIGURATIONS["native_c8"].logical_rows == 8
+    assert CONFIGURATIONS["native_c8"].native_group_width == 8
+    assert CONFIGURATIONS["native_c8"].native_group_count == 1
     assert CONFIGURATIONS["chunked_c8"].logical_rows == 8
     assert CONFIGURATIONS["chunked_c8"].native_group_width == 4
     assert CONFIGURATIONS["chunked_c8"].native_group_count == 2
@@ -39,17 +43,20 @@ def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
     assert CONFIGURATIONS["serial_c4"].native_group_count == 4
 
     with pytest.raises(ValueError, match="unknown"):
-        _parse_configurations("c1,native_c8")
+        _parse_configurations("c1,native_c16")
     with pytest.raises(ValueError, match="unique"):
         _parse_configurations("c1,c1")
     with pytest.raises(ValueError, match="canonical"):
-        _parse_configurations("c4,c1,c2,chunked_c8,serial_c4")
+        _parse_configurations("c4,c1,c2,native_c8,chunked_c8,serial_c4")
 
 
 def test_packed_ar_bench_builds_declared_group_boundaries() -> None:
     assert _configuration_groups(CONFIGURATIONS["c1"]) == ((0,),)
     assert _configuration_groups(CONFIGURATIONS["c2"]) == ((0, 1),)
     assert _configuration_groups(CONFIGURATIONS["c4"]) == ((0, 1, 2, 3),)
+    assert _configuration_groups(CONFIGURATIONS["native_c8"]) == (
+        (0, 1, 2, 3, 4, 5, 6, 7),
+    )
     assert _configuration_groups(CONFIGURATIONS["chunked_c8"]) == (
         (0, 1, 2, 3),
         (4, 5, 6, 7),
@@ -62,7 +69,12 @@ def test_packed_ar_bench_builds_declared_group_boundaries() -> None:
     )
 
 
-def test_packed_ar_bench_records_static_occupancy_without_inventing_native_c8() -> None:
+def test_packed_ar_bench_records_honest_native_and_chunked_c8_occupancy() -> None:
+    native = _occupancy_event(
+        CONFIGURATIONS["native_c8"],
+        phase="decode_complete",
+        elapsed_seconds=1.0,
+    )
     chunked = _occupancy_event(
         CONFIGURATIONS["chunked_c8"],
         phase="decode_complete",
@@ -74,6 +86,15 @@ def test_packed_ar_bench_records_static_occupancy_without_inventing_native_c8() 
         elapsed_seconds=0.0,
     )
 
+    assert native == {
+        "phase": "decode_complete",
+        "elapsed_seconds": 1.0,
+        "logical_active_rows": 8,
+        "native_group_width": 8,
+        "native_group_count": 1,
+        "physical_bucket_widths": [8],
+        "active_masks": [[True] * 8],
+    }
     assert chunked == {
         "phase": "decode_complete",
         "elapsed_seconds": 1.25,
@@ -123,6 +144,9 @@ def test_packed_ar_bench_shape_key_excludes_pointer_bound_instance_identity() ->
 def test_packed_ar_bench_allows_explicit_c1_controls_but_not_c4_row_loops() -> None:
     manifest = {
         "mode": "decode_graph_replay",
+        "physical_rows": 1,
+        "active_rows": 1,
+        "active_mask": [True],
         "graph": {"captured": True, "replay_count": 2, "replayed_steps": 2},
         "model_step": {
             "complete_c1_session_replays": 0,
@@ -144,6 +168,19 @@ def test_packed_ar_bench_allows_explicit_c1_controls_but_not_c4_row_loops() -> N
     assert not _graph_manifest_matches_configuration(
         CONFIGURATIONS["c4"], manifest, decode_steps=2
     )
+    native_manifest = {
+        **manifest,
+        "physical_rows": 8,
+        "active_rows": 8,
+        "active_mask": [True] * 8,
+        "model_step": {**manifest["model_step"], "host_model_row_loop_sites": 0},
+    }
+    assert _graph_manifest_matches_configuration(
+        CONFIGURATIONS["native_c8"], native_manifest, decode_steps=2
+    )
+    assert not _graph_manifest_matches_configuration(
+        CONFIGURATIONS["native_c8"], manifest, decode_steps=2
+    )
 
 
 def _summary(*hashes: str) -> dict[str, object]:
@@ -153,11 +190,42 @@ def _summary(*hashes: str) -> dict[str, object]:
     }
 
 
+def test_packed_ar_bench_native_c8_scaling_gate_uses_honest_controls() -> None:
+    def rates(aggregate: float, rows: int) -> dict[str, object]:
+        return {
+            "rates": {
+                "decode_tok_s_aggregate": {"median": aggregate},
+                "decode_tok_s_per_request": {"median": aggregate / rows},
+            }
+        }
+
+    scaling = _scaling_summary(
+        {
+            "c1": rates(80.0, 1),
+            "c4": rates(180.0, 4),
+            "native_c8": rates(250.0, 8),
+            "chunked_c8": rates(175.0, 8),
+            "serial_c4": rates(78.0, 4),
+        }
+    )
+
+    assert scaling["native_c8_scaling_gate_passed"] is True
+    assert scaling["native_c8_decode_tok_s_aggregate"] == 250.0
+    assert scaling["ratios"]["native_c8_aggregate_vs_c1"] == pytest.approx(3.125)
+    assert scaling["ratios"]["native_c8_aggregate_vs_chunked_c8"] == pytest.approx(
+        250.0 / 175.0
+    )
+    assert scaling["ratios"]["native_c8_aggregate_vs_serial_c4"] == pytest.approx(
+        250.0 / 78.0
+    )
+
+
 def test_packed_ar_bench_cross_configuration_gate_uses_serial_and_chunked_controls() -> None:
     summaries = {
         "c1": _summary("a"),
         "c2": _summary("a", "b"),
         "c4": _summary("a", "b", "c", "d"),
+        "native_c8": _summary("a", "b", "c", "d", "a", "b", "c", "d"),
         "chunked_c8": _summary("a", "b", "c", "d", "a", "b", "c", "d"),
         "serial_c4": _summary("a", "b", "c", "d"),
     }
@@ -167,6 +235,7 @@ def test_packed_ar_bench_cross_configuration_gate_uses_serial_and_chunked_contro
     assert result["passed"] is True
     assert result["c1_c2_c4_prefix_exact"] is True
     assert result["c4_matches_serial_c4"] is True
+    assert result["native_c8_rows_match_c4"] is True
     assert result["chunked_c8_groups_match_c4"] is True
 
     summaries["serial_c4"] = _summary("a", "bad", "c", "d")
