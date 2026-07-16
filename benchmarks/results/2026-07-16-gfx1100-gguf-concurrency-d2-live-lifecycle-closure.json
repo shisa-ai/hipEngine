@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_d2_live_lifecycle_closure",
+  "created_at": "2026-07-16T21:34:12+09:00",
+  "status": "accepted_continuous_eq_ok",
+  "passed": true,
+  "claim_level": "continuous_eq_ok",
+  "performance_claim": false,
+  "live_admission_claim": true,
+  "model_loop_continuous_scheduling_claim": true,
+  "production_server_continuous_batching_claim": false,
+  "device_kv_pool_claim": false,
+  "streaming_delivery_claim": false,
+  "provenance": {
+    "implementation_commit": "b51bd6884957deb3999e7c60ec90f9a0e4f4400e",
+    "controlled_submission_commit": "43ad214f1d56168d24119818846b779e60226557",
+    "persistent_runner_commit": "285c20b4802e2505046b9abfa11a9d92a5399e71",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+    }
+  },
+  "implementation": {
+    "adapter": "hipengine.generation.engine_loop.SubmitPollTextGenerator",
+    "loop": "hipengine.generation.engine_loop.ResidentEngineLoop",
+    "runner": "hipengine.generation.qwen35_gguf.Qwen35GGUFResidentModelRunner",
+    "scheduler_policy": "protect_ttft",
+    "prefill_chunk_tokens": 256,
+    "resident_capacity": 4,
+    "request_lifetime_lock": false,
+    "model_transition_lock": true,
+    "incremental_prefill": {
+      "commits_each_scheduler_chunk_once": true,
+      "full_prompt_replay_at_final_chunk": false,
+      "full_prompt_attention_route_preserved": true,
+      "unsupported_shape_fallback_resets_partial_state": true
+    },
+    "membership_change_flush": {
+      "packed_owner_flushed_before_cancel_or_retire": true,
+      "survivor_and_removed_row_canonicalized_together": true,
+      "removed_session_reset_before_reuse": true
+    }
+  },
+  "requirements": {
+    "admit_while_decoding": {
+      "passed": true,
+      "evidence": "A emitted two decode tokens before B request_id=1 was submitted and admitted; A remained active throughout B prefill and joined decode."
+    },
+    "bounded_prefill_decode_policy": {
+      "passed": true,
+      "evidence": "Each 512-token prompt executed as two committed 256-token scheduler chunks under protect_ttft; decode resumed with joined A+B and A+C work after each bounded prefill."
+    },
+    "retire_and_reuse_without_stopping_neighbor": {
+      "passed": true,
+      "evidence": "C retired at max_tokens=2 after native c2 A+C; its exact resident session was immediately reused by D while A remained live."
+    },
+    "cancel_or_disconnect_one_row": {
+      "passed": true,
+      "evidence": "B was cancelled after a native c2 A+B step while packed state was dirty; D was separately cancelled after 256 prompt tokens. A remained active and exact after both cancellations. Existing host gates cover the same reclaim path for disconnect and timeout reasons."
+    },
+    "deterministic_token_state_kv_across_membership": {
+      "passed": true,
+      "evidence": "A/B/C token trajectories match independent c1 controls, and all six captured survivor/removed/final Conv/GDN plus live-KV comparisons have zero hash mismatches."
+    }
+  },
+  "clean_w7900_gate": {
+    "source_artifact": "/tmp/gfx1100-d2-live-lifecycle-clean-b51bd688.json",
+    "source_sha256": "0ed9256e7eaa6533ea3ccb6185d248855b8bd7463570925b0f626d8eaabd831e",
+    "source_size_bytes": 3936,
+    "source_harness": "/tmp/gfx1100_d2_live_lifecycle_smoke.py",
+    "source_harness_sha256": "e15e23ffdd7105f4db8415840a5fc2edde91b84fbc05339741b4e26e4abba98f",
+    "source_harness_size_bytes": 10122,
+    "command": "hermetic TheRock python3 /tmp/gfx1100_d2_live_lifecycle_smoke.py",
+    "shape": {
+      "prompt_tokens_per_request": 512,
+      "prefill_chunk_tokens": 256,
+      "resident_capacity": 4,
+      "a_max_tokens": 8,
+      "b_cancel_after_tokens": 2,
+      "c_max_tokens": 2,
+      "d_cancel_after_prefill_tokens": 256
+    },
+    "request_ids": {
+      "a_survivor": 0,
+      "b_packed_cancel": 1,
+      "c_max_token_retire": 2,
+      "d_partial_prefill_cancel": 3
+    },
+    "timeline": [
+      {"label": "a_prefill_0", "work": "prefill", "admitted": [0], "tokens": [], "completed": []},
+      {"label": "a_prefill_1", "work": "prefill", "admitted": [], "tokens": [], "completed": []},
+      {"label": "a_token_0", "work": "decode", "admitted": [], "tokens": [0], "completed": []},
+      {"label": "a_decode_1", "work": "decode", "admitted": [], "tokens": [0], "completed": []},
+      {"label": "b_prefill_0", "work": "prefill", "admitted": [1], "tokens": [], "completed": []},
+      {"label": "b_prefill_1", "work": "prefill", "admitted": [], "tokens": [], "completed": []},
+      {"label": "joined_a_b_first", "work": "decode", "admitted": [], "tokens": [0, 1], "completed": []},
+      {"label": "native_c2_a_b", "work": "decode", "admitted": [], "tokens": [0, 1], "completed": []},
+      {"label": "c_prefill_0", "work": "prefill", "admitted": [2], "tokens": [], "completed": []},
+      {"label": "c_prefill_1", "work": "prefill", "admitted": [], "tokens": [], "completed": []},
+      {"label": "joined_a_c_first", "work": "decode", "admitted": [], "tokens": [0, 2], "completed": []},
+      {"label": "native_c2_a_c", "work": "decode", "admitted": [], "tokens": [0, 2], "completed": [2]},
+      {"label": "d_prefill_0", "work": "prefill", "admitted": [3], "tokens": [], "completed": []},
+      {"label": "a_finish_0", "work": "decode", "admitted": [], "tokens": [0], "completed": []},
+      {"label": "a_finish_1", "work": "decode", "admitted": [], "tokens": [0], "completed": [0]}
+    ],
+    "tokens": {
+      "a_reference": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+      "a_live": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+      "b_reference": [9708, 9708],
+      "b_live_before_cancel": [9708, 9708],
+      "c_reference": [9709, 9709],
+      "c_live": [9709, 9709]
+    },
+    "state_kv_checks": {
+      "survivor_after_packed_b_cancel_mismatches": 0,
+      "cancelled_b_state_mismatches": 0,
+      "survivor_after_c_retire_mismatches": 0,
+      "retired_c_state_mismatches": 0,
+      "survivor_d_partial_cancel_stability_mismatches": 0,
+      "final_a_state_mismatches": 0
+    },
+    "session_reuse": {
+      "b_to_c_same_session": true,
+      "c_to_d_same_session": true,
+      "available_sessions_after_gate": 4,
+      "active_requests_after_gate": 0,
+      "scheduler_active_after_gate": 0
+    },
+    "finish_details": {
+      "b": {"reason": "cancelled", "cancelled": true},
+      "c": {"reason": "length", "length_limit": 2, "sampler_mode": "greedy_fast"},
+      "d": {"reason": "cancelled", "cancelled": true}
+    },
+    "elapsed_seconds": 78.69058745499933
+  },
+  "host_validation": {
+    "passed": 380,
+    "skipped": 4,
+    "command": "uv run pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py",
+    "coverage": [
+      "controlled submit/poll and row-local cancellation",
+      "incremental resident-session prefill chunks",
+      "scheduler EOS/max-token/cancel/disconnect/timeout reclaim",
+      "model runner packed decode, flush, reset, and session reuse",
+      "public non-streaming LLM compatibility"
+    ]
+  },
+  "known_non_claims": [
+    "No throughput, TTFT, ITL, memory, or native-c4 scaling claim is derived from this lifecycle gate.",
+    "D3 still owns real device KV pool admission, growth, shrink, and high-water rejection.",
+    "D4 still owns OpenAI server integration, streaming delivery, backpressure, and shutdown drain.",
+    "The live-admission coverage level is continuous_eq_ok, not retained Gate 1-5 production status.",
+    "Native c8 remains unimplemented."
+  ],
+  "next_gate": "D3 device KV pool integration for scheduler admission and lifecycle."
+}

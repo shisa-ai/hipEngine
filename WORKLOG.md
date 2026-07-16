@@ -160047,3 +160047,59 @@ claim. Raw result:
 `ce4179b326afc3ac4ad273a0e4828ab16d6ad533cfaf4c4a1309ce4b9b0a96dd`).
 D2 remains open for a genuinely live A-decode/B-prefill lifecycle, row-local
 retirement/cancellation/reuse, and survivor token/state/KV equality.
+
+## 2026-07-16 — Close gfx1100 GGUF D2 live scheduling
+
+Closed D2 from clean implementation commit
+`b51bd6884957deb3999e7c60ec90f9a0e4f4400e` on Radeon Pro W7900/gfx1100,
+Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and cached builds required. The controlled
+non-streaming model loop uses capacity four, `protect_ttft`, 512-token prompts,
+and committed 256-token prefill chunks.
+
+The clean lifecycle is intentionally stronger than token-only admission:
+
+- A completes `256+256` prefill and emits two tokens before B is submitted and
+  admitted. B completes `256+256`, joins A for first-token delivery, then runs
+  one native c2 model step with A.
+- B is cancelled while that packed c2 state is dirty. Group flush canonicalizes
+  both sessions before B reset; A remains live and its token, Conv/GDN, and
+  live-KV state matches the independent c1 checkpoint after four tokens.
+- C immediately receives B's exact resident session identity, completes
+  `256+256`, joins A, runs native c2, and retires at its two-token limit. Both
+  C's pre-reset state and survivor A's six-token state match c1.
+- D receives the same reclaimed session again, advances exactly one 256-token
+  prompt chunk, and is cancelled. A's state/KV hash is unchanged across that
+  cancellation, then A reaches all eight c1-exact tokens and an exact final
+  state/KV checkpoint.
+
+A/B/C live trajectories equal their independent controls:
+`A=[9707]*8`, `B=[9708]*2`, and `C=[9709]*2`. All six named membership
+state/KV comparisons have zero mismatches; B→C and C→D session reuse are exact;
+all four sessions return idle; active runner and scheduler counts return to
+zero. The first execution was model-green on every token/state check but the
+harness correctly remained false because its expected length finish payload
+omitted the scheduler's `sampler_mode`; correcting only that assertion and
+rerunning produced the accepted source. Wall is **78.691 s**. No throughput,
+TTFT, ITL, memory, server-streaming, or native-c8 claim is made.
+
+Raw clean source is `/tmp/gfx1100-d2-live-lifecycle-clean-b51bd688.json`
+(3,936 bytes, SHA-256
+`0ed9256e7eaa6533ea3ccb6185d248855b8bd7463570925b0f626d8eaabd831e`);
+the exact one-off harness is `/tmp/gfx1100_d2_live_lifecycle_smoke.py` (10,122
+bytes, SHA-256
+`e15e23ffdd7105f4db8415840a5fc2edde91b84fbc05339741b4e26e4abba98f`).
+The compact closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d2-live-lifecycle-closure.json`
+(8,637 bytes, SHA-256
+`948f590a7dac88cfad82c266874e31bfe0d723a307aaf2db49148a64a0cb16ad`).
+Focused host validation is **380 passed, 4 skipped** across GGUF generation,
+the complete scheduler, and public LLM paths; it also covers EOS, max-token,
+cancel, disconnect, and timeout reclaim reasons.
+
+`docs/CONCURRENCY.md` advances gfx1100 GGUF live admission from `not_started` to
+`continuous_eq_ok` and closes every D2 checkbox. Production server continuous
+batching is still not claimed: D3 real device-KV-pool admission and D4 OpenAI
+streaming/backpressure/drain remain open. Per the active execution queue, the
+next lane is E1: transfer the same model-step and loop gates unchanged to
+gfx1151 before native-c8 E2.
