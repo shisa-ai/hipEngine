@@ -119,21 +119,27 @@ class SubmitPollTextGenerator:
         self,
         inner: TextGenerator,
         *,
-        capacity: int = 32,
+        capacity: int | None = None,
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
     ) -> None:
-        if capacity <= 0:
+        if capacity is not None and capacity <= 0:
             raise ValueError("capacity must be positive")
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
         self._inner = inner
         self._prefill_chunk_size = int(prefill_chunk_size)
         self._context_bucket_size = int(context_bucket_size)
-        self._runner = _SubmitPollTextRunner(self._inner)
+        resident_runner_factory = getattr(self._inner, "create_resident_model_runner", None)
+        if callable(resident_runner_factory):
+            self._runner = resident_runner_factory(capacity=capacity)
+            resolved_capacity = int(self._runner.capacity)
+        else:
+            resolved_capacity = 32 if capacity is None else int(capacity)
+            self._runner = _SubmitPollTextRunner(self._inner, capacity=resolved_capacity)
         self._loop = ResidentEngineLoop(
             self._runner,
-            capacity=int(capacity),
+            capacity=resolved_capacity,
             prefill_chunk_size=self._prefill_chunk_size,
             context_bucket_size=self._context_bucket_size,
             prefill_decode_policy="protect_ttft",
@@ -153,16 +159,40 @@ class SubmitPollTextGenerator:
     def generate(self, request: GenerationRequest) -> list[str]:
         return [output.text for output in self.generate_detailed(request)]
 
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: Any | None = None,
+    ) -> int | None:
+        preparer = getattr(self._inner, "prepare", None)
+        result = None
+        if callable(preparer):
+            result = preparer(
+                max_sequence_length=max_sequence_length,
+                sampling_params=sampling_params,
+            )
+        runner_preparer = getattr(self._runner, "prepare", None)
+        if callable(runner_preparer):
+            runner_preparer(max_sequence_length=max_sequence_length)
+        return result
+
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         prompts = tuple(request.prompts)
         if not prompts:
             return []
+        prompt_rows = tuple(self._runner.prompt_tokens(prompt) for prompt in prompts)
+        max_new_tokens = int(self._runner.scheduler_max_new_tokens(request))
         with self._loop_lock:
             request_ids = tuple(
-                self._loop.submit(_surrogate_prompt_tokens(prompt), max_new_tokens=1)
-                for prompt in prompts
+                self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
+                for prompt_row in prompt_rows
             )
-            self._runner.register_batch(request_ids, replace(request, prompts=prompts))
+            self._runner.register_batch(
+                request_ids,
+                replace(request, prompts=prompts),
+                prompt_rows=prompt_rows,
+            )
         max_ticks = _submit_poll_max_ticks(prompts, self._prefill_chunk_size)
         ticks = 0
         try:
@@ -182,6 +212,9 @@ class SubmitPollTextGenerator:
                 outputs = self._runner.take_outputs(request_ids)
                 for request_id in request_ids:
                     self._loop.release_completed(request_id)
+                finalize_batch = getattr(self._runner, "finalize_batch", None)
+                if callable(finalize_batch):
+                    finalize_batch(replace(request, prompts=prompts), request_ids, outputs)
             return outputs
         except Exception:
             with self._loop_lock:
@@ -233,8 +266,9 @@ class _SubmitPollTextRow:
 class _SubmitPollTextRunner:
     """Long-lived compatibility runner for non-native text generators."""
 
-    def __init__(self, inner: TextGenerator) -> None:
+    def __init__(self, inner: TextGenerator, *, capacity: int) -> None:
         self._inner = inner
+        self.capacity = int(capacity)
         self._rows: dict[int, _SubmitPollTextRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
         self._next_batch_id = 0
@@ -243,10 +277,25 @@ class _SubmitPollTextRunner:
     def outputs(self) -> dict[int, GenerationOutput]:
         return dict(self._outputs)
 
-    def register_batch(self, request_ids: Sequence[int], request: GenerationRequest) -> None:
+    def prompt_tokens(self, prompt: Any) -> tuple[int, ...]:
+        return _surrogate_prompt_tokens(prompt)
+
+    def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+        del request
+        return 1
+
+    def register_batch(
+        self,
+        request_ids: Sequence[int],
+        request: GenerationRequest,
+        *,
+        prompt_rows: Sequence[Sequence[int]],
+    ) -> None:
         ids = tuple(int(request_id) for request_id in request_ids)
         if len(ids) != len(request.prompts):
             raise ValueError("request_ids must have one entry per prompt")
+        if len(prompt_rows) != len(ids):
+            raise ValueError("prompt_rows must have one entry per request_id")
         if request.row_seeds and len(request.row_seeds) != len(request.prompts):
             raise ValueError("row_seeds must have one entry per prompt")
         batch_id = self._next_batch_id
