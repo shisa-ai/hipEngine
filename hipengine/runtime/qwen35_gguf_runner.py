@@ -15,6 +15,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
@@ -7985,6 +7986,7 @@ class Qwen35GGUFResidentSession:
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     last_packed_prefill_plan: dict[str, object] = field(default_factory=dict, init=False)
+    last_packed_execution_manifest: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
     kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
@@ -8679,6 +8681,7 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_state_dirty = False
         self._packed_decode_session_ids = ()
         self._packed_decode_positions = ()
+        self.last_packed_execution_manifest = {}
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
         """D2D-copy linear-attention state for rollback-safe block verification.
@@ -11260,7 +11263,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
-        self._sync_packed_decode_initial_state(
+        imported_slot_indices = self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
             packed_state,
@@ -11386,6 +11389,15 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        self.last_packed_execution_manifest = build_packed_decode_execution_manifest(
+            rows=rows,
+            layer_types=self.runner.weights.config.layer_types,
+            imported_slot_indices=imported_slot_indices,
+            import_positions=position_tuple,
+            scatter_state=bool(scatter_state),
+            blocks_per_slot=int(layout.blocks_per_slot),
+            capture_layer_count=len(capture_layer_ids),
+        )
         return [
             Qwen35GGUFNextTokenProbeResult(
                 token_id=int(token),
@@ -12363,7 +12375,7 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
-    ) -> None:
+    ) -> tuple[int, ...]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         session_ids = tuple(id(session) for session in sessions)
@@ -12374,6 +12386,7 @@ class Qwen35GGUFResidentSession:
         )
         row_nbytes = self._packed_full_kv_row_nbytes()
         cfg = self.runner.weights.config
+        imported_slot_indices: list[int] = []
         for slot_index, session in enumerate(sessions):
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
@@ -12384,6 +12397,7 @@ class Qwen35GGUFResidentSession:
             slot_is_current = can_reuse and int(prior_positions[slot_index]) == start_position
             if slot_is_current:
                 continue
+            imported_slot_indices.append(int(slot_index))
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
                     src_conv = session.scratch.layer_conv_states[layer_id]
@@ -12428,6 +12442,7 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        return tuple(imported_slot_indices)
 
     def _commit_packed_decode_linear_state_rows(
         self,

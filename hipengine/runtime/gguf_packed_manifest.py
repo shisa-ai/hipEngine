@@ -1,0 +1,232 @@
+"""Observable execution contract for GGUF packed autoregressive decode.
+
+The packed Q4_K_M route is currently an exact hybrid: full attention, MoE/FFN,
+LM head, and greedy argmax consume all live rows together, while each recurrent
+linear-attention row replays the c1-exact attention subgraph.  This module keeps
+that boundary explicit without enabling expensive tracing on the hot path.
+
+The structural launch counts describe the current exact packed GGUF route and
+are checked against a backend-specific real rocprof trace by
+``scripts/gguf_packed_ar_rocprof.py``.  A dispatch change therefore fails the
+census instead of silently making this manifest stale.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
+
+LINEAR_ATTENTION = "linear_attention"
+FULL_ATTENTION = "full_attention"
+
+# One c1-exact recurrent attention row currently launches:
+#   projection: qkv+gate pair, alpha, beta, and ssm_out (4)
+#   recurrent: Conv and GDN (2)
+#   normalization: attention RMSNorm (1)
+_ROW_LOCAL_PROJECTION_LAUNCHES = 4
+_ROW_LOCAL_CONV_GDN_LAUNCHES = 2
+_ROW_LOCAL_NORMALIZATION_LAUNCHES = 1
+
+
+def _positive_int(value: int, *, name: str) -> int:
+    result = int(value)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def build_packed_decode_execution_manifest(
+    *,
+    rows: int,
+    layer_types: Sequence[str],
+    imported_slot_indices: Sequence[int],
+    import_positions: Sequence[int],
+    scatter_state: bool,
+    blocks_per_slot: int,
+    capture_layer_count: int = 0,
+) -> dict[str, Any]:
+    """Build the auditable host/runtime contract for one packed decode step.
+
+    ``imported_slot_indices`` is computed immediately before packed-state
+    import. It is empty for steady ``scatter_state=False`` and non-empty after
+    prefill, membership changes, or an explicit flush. Copy counts are host
+    call counts, not inferred kernel dispatches; the paired profiler census
+    supplies measured GPU launch counts and durations.
+    """
+
+    row_count = _positive_int(rows, name="rows")
+    block_count = _positive_int(blocks_per_slot, name="blocks_per_slot")
+    layer_tuple = tuple(str(layer_type) for layer_type in layer_types)
+    if not layer_tuple:
+        raise ValueError("layer_types must be non-empty")
+    unsupported = sorted(set(layer_tuple) - {LINEAR_ATTENTION, FULL_ATTENTION})
+    if unsupported:
+        raise ValueError(f"unsupported GGUF packed layer types: {unsupported}")
+
+    positions = tuple(int(position) for position in import_positions)
+    if len(positions) != row_count:
+        raise ValueError("import_positions must contain one entry per row")
+    if any(position < 0 for position in positions):
+        raise ValueError("import_positions must be non-negative")
+    imported_indices = tuple(int(index) for index in imported_slot_indices)
+    if len(set(imported_indices)) != len(imported_indices):
+        raise ValueError("imported_slot_indices must be unique")
+    if any(index < 0 or index >= row_count for index in imported_indices):
+        raise ValueError("imported_slot_indices are outside the packed rows")
+    captures = int(capture_layer_count)
+    if captures < 0 or captures > len(layer_tuple):
+        raise ValueError("capture_layer_count is outside the model layer range")
+
+    linear_layers = layer_tuple.count(LINEAR_ATTENTION)
+    full_layers = layer_tuple.count(FULL_ATTENTION)
+    row_loop_iterations = linear_layers * row_count
+    projection_row_launches = row_loop_iterations * _ROW_LOCAL_PROJECTION_LAUNCHES
+    conv_gdn_row_launches = row_loop_iterations * _ROW_LOCAL_CONV_GDN_LAUNCHES
+    normalization_row_launches = row_loop_iterations * _ROW_LOCAL_NORMALIZATION_LAUNCHES
+    exact_row_launches = (
+        projection_row_launches
+        + conv_gdn_row_launches
+        + normalization_row_launches
+    )
+
+    # ``for_packed_verify_layout`` uploads eight metadata arrays every step.
+    metadata_bytes = (
+        row_count * block_count * 4  # block table, int32
+        + row_count * 8  # positions, int64
+        + row_count * 8  # context/live counts, int64
+        + 2 * 4  # cu_q, int32[2]
+        + 2 * 4  # cu_k, int32[2]
+        + 4  # atomic counter, int32[1]
+        + (row_count + 1) * 4  # GDN cu_seqlens, int32[C+1]
+        + row_count * 8  # GDN state indices, int64[C]
+    )
+    input_bytes = row_count * 8  # packed token ids, int64[C]
+
+    imported_positions = tuple(positions[index] for index in imported_indices)
+    state_import_copies = sum(
+        2 * linear_layers + (2 * full_layers if position > 0 else 0)
+        for position in imported_positions
+    )
+    state_scatter_copies = (
+        row_count * (2 * linear_layers + 2 * full_layers)
+        if bool(scatter_state)
+        else 0
+    )
+
+    layer_families: dict[str, dict[str, Any]] = {
+        "projection": {
+            "execution": "hybrid",
+            "packed_native_work": [
+                "embedding",
+                "full_attention_qkv_o",
+                "moe_selected_and_shared_projections",
+            ],
+            "exact_row_local_work": [
+                "linear_attention_qkv_gate",
+                "linear_attention_alpha",
+                "linear_attention_beta",
+                "linear_attention_ssm_out",
+            ],
+            "host_row_loop_sites": linear_layers,
+            "host_row_iterations": row_loop_iterations,
+            "exact_row_local_kernel_launches": projection_row_launches,
+        },
+        "conv_gdn": {
+            "execution": "exact_row_local",
+            "packed_native_work": [],
+            "exact_row_local_work": ["conv_decode", "gdn_recurrent_decode"],
+            "host_row_loop_sites": linear_layers,
+            "host_row_iterations": row_loop_iterations,
+            "exact_row_local_kernel_launches": conv_gdn_row_launches,
+        },
+        "normalization": {
+            "execution": "hybrid",
+            "packed_native_work": ["packed_layer_and_output_norms"],
+            "exact_row_local_work": ["linear_attention_attn_norm"],
+            "host_row_loop_sites": linear_layers,
+            "host_row_iterations": row_loop_iterations,
+            "exact_row_local_kernel_launches": normalization_row_launches,
+        },
+        "full_attention": {
+            "execution": "packed_native",
+            "layer_invocations": full_layers,
+            "host_row_loop_sites": 0,
+            "host_row_iterations": 0,
+            "exact_row_local_kernel_launches": 0,
+        },
+        "moe_ffn": {
+            "execution": "packed_native",
+            "layer_invocations": len(layer_tuple),
+            "host_row_loop_sites": 0,
+            "host_row_iterations": 0,
+            "exact_row_local_kernel_launches": 0,
+        },
+        "lm_head": {
+            "execution": "packed_native",
+            "layer_invocations": 1,
+            "host_row_loop_sites": 0,
+            "host_row_iterations": 0,
+            "exact_row_local_kernel_launches": 0,
+        },
+        "sampler": {
+            "execution": "packed_native",
+            "layer_invocations": 1,
+            "host_row_loop_sites": 0,
+            "host_row_iterations": 0,
+            "exact_row_local_kernel_launches": 0,
+            "device_result": "argmax_i32_rows",
+            "host_readback": "one_i32_vector",
+        },
+    }
+
+    return {
+        "schema": 1,
+        "kind": "gguf_packed_ar_execution_manifest",
+        "mode": "decode",
+        "claim_level": "exact_hybrid",
+        "rows": row_count,
+        "layers": {
+            "total": len(layer_tuple),
+            "linear_attention": linear_layers,
+            "full_attention": full_layers,
+        },
+        "model_step": {
+            "complete_c1_session_replays": 0,
+            "complete_c1_layer_replays": 0,
+            "host_model_row_loop_sites": linear_layers,
+            "host_model_row_iterations": row_loop_iterations,
+            "per_row_model_subgraph_invocations": row_loop_iterations,
+            "expected_exact_row_local_kernel_launches": exact_row_launches,
+        },
+        "layer_families": layer_families,
+        "host_device_movement": {
+            "host_to_device_metadata_copies": 8,
+            "host_to_device_metadata_bytes": metadata_bytes,
+            "host_to_device_input_copies": 1,
+            "host_to_device_input_bytes": input_bytes,
+            "host_to_device_total_copies": 9,
+            "host_to_device_total_bytes": metadata_bytes + input_bytes,
+            "device_to_device_state_import_copies": state_import_copies,
+            "device_to_device_state_scatter_copies": state_scatter_copies,
+            "diagnostic_layer_capture_device_to_host_copies": captures,
+            "device_to_host_vector_copies": 1,
+            "device_to_host_vector_values": row_count,
+            "device_to_host_vector_bytes": row_count * 4,
+            "device_to_host_scalar_copies": 0,
+        },
+        "synchronizations": 2,
+        "scalar_fallbacks": 0,
+        "state_import_slots": len(imported_indices),
+        "state_import_slot_indices": list(imported_indices),
+        "scatter_state": bool(scatter_state),
+        "steady_packed_state_reused": not imported_indices and not bool(scatter_state),
+        "profiler_contract": {
+            "expected_execution_buckets": ["exact_row_local", "packed_native"],
+            "expected_exact_row_local_kernel_launches": exact_row_launches,
+            "require_cached_build": True,
+        },
+    }
+
+
+__all__ = ["build_packed_decode_execution_manifest"]
