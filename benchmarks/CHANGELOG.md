@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-17
+
+- [closed gfx1100 GGUF D5 live-loop observability] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV continuous loop moves **HTTP-shell metrics only -> correctness-retained `continuous_eq_ok` full live observability** (**% delta n/a; no performance claim**): real `/metrics` scrapes expose c1→c2→idle ownership with **2/4 occupied slots**, **3→6→3 KV pages**, all queue/TTFT/ITL/service/completion families, complete route/fallback manifests, and stable graph bucket `600fea75…` through **1 capture → 24 exact hits/replays → 1 invalidation**; live A/B tokens and state/KV plus the graph trajectory remain independent-c1 exact and final scheduler/session/KV ownership is zero; `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-d5-live-observability-closure.json`.
+
 ## 2026-07-16
 
 - [closed gfx1100 GGUF D4 OpenAI continuous membership] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV server lifecycle moves **unproven -> correctness-retained `continuous_eq_ok`** (**% delta n/a; no throughput claim**): B is admitted while A's two-chunk queue is full, joined native c2 keeps A **8/8** and B's consumed prefix **1/1** token/state/KV exact, disconnect and deadline reclaim are row-local, SSE completion/usage/`[DONE]` pass, and forced HTTP shutdown plus runner close leave zero scheduler/session/KV ownership; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d4-openai-streaming-closure.json`.
