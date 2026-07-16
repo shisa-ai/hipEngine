@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from scripts.gguf_packed_ar_state_oracle import _compare_state_rows, build_parser
+from scripts.gguf_packed_ar_state_oracle import (
+    _compare_state_rows,
+    _session_build_policy,
+    build_parser,
+)
 
 
 def _state(*, position: int = 4, conv: str = "c", recurrent: str = "r", key: str = "k", value: str = "v"):
@@ -26,6 +30,25 @@ def test_gguf_packed_ar_state_oracle_compares_every_state_part() -> None:
         (1, "linear", 0, "recurrent"),
         (1, "kv", 3, "key"),
     ]
+
+
+def test_gguf_packed_ar_state_oracle_cached_build_policy_reads_compiler_file(tmp_path) -> None:
+    compiler_version_file = tmp_path / "hipcc-version.txt"
+    compiler_version_file.write_text("HIP version: test\n", encoding="utf-8")
+    args = build_parser().parse_args(
+        [
+            "--model",
+            "/tmp/model.gguf",
+            "--compiler-version-file",
+            str(compiler_version_file),
+            "--require-cached-build",
+        ]
+    )
+
+    assert _session_build_policy(args) == {
+        "compiler_version": "HIP version: test",
+        "require_cached_build": True,
+    }
 
 
 def test_gguf_packed_ar_state_oracle_defaults_to_decode_isolation() -> None:
