@@ -476,6 +476,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             warmups=0,
             repetitions=repeats,
             profiler={"used": False, "performance_measurement": False},
+            hipcc_version=build_policy["compiler_version"],
         ),
         "command": shlex.join(command),
         "build": {
