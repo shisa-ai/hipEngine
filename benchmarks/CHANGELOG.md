@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [closed gfx1100 GGUF concurrency C2 recurrent boundary] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512 steady c4 moves **1,386 -> 756 dispatches (-45.45%)**, **840 -> 0 exact-row-local launches (-100%)**, and **30 -> 0 host row-loop sites (-100%)** via registry-resolved indexed Conv plus segmented FP32-output GDN; the clean p512/d128, sparse shrink, and 18-prompt 24x3 gates remain bit-exact, with no throughput/native-c4 claim; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json`.
+
 - [closed gfx1100 GGUF concurrency C1 observability] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512 steady c4 hybrid boundary moves **unquantified -> 840 exact-row-local + 546 packed-native dispatches** (**% delta n/a for route attribution; no throughput claim**): exact-row-local work is **41.10%** of instrumented GPU duration, with 30 host row-loop sites/120 iterations, zero steady state import/scatter, and zero scalar fallback; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c1-hybrid-census.json`.
 
 - [closed gfx1100 GGUF concurrency Phase B] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV c4 correctness scope moves **one repeated-token B3 gate -> 10 canonical prompts + 8 frozen heldouts x3 repeats** (**% delta n/a for coverage expansion; no throughput claim**): **1,350/1,350** tokens and **54,000/54,000** hidden rows are exact with zero Conv/GDN/live-KV mismatches and deterministic trajectories, qualifying correctness-only `exact_hybrid`; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json`.

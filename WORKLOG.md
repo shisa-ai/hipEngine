@@ -159378,3 +159378,57 @@ git diff --check
 Full-file Ruff still reports this script's pre-existing unused `os` import and
 E402 bootstrap imports; the one-line provenance change introduces no new Ruff
 finding.
+
+## 2026-07-16 — Close gfx1100 GGUF C2 recurrent linear attention
+
+Closed C2 on Radeon Pro W7900/gfx1100 with Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP 7.15, the
+precomputed compiler key, and cached builds required. The implementation spans
+primitive `b896eba5`, packed runtime `8695b51d`, profiler contract `f6e8363e`,
+and hermetic category provenance `799d29b9`.
+
+The canonical paired marker census ran from clean `f6e8363e`:
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c2-clean-f6e8363e/raw \
+  --out /tmp/gfx1100-concurrency-c2-clean-f6e8363e/c2-census.json
+```
+
+Both cached-only children are exact and clean. C1 remains **628** dispatches;
+c4 moves **1,386 -> 756 (-45.45%)** versus C1's retained hybrid census. The
+runtime/profiler contract agrees at **0 expected / 0 observed exact-row-local**
+dispatches, zero host model-row loops/iterations, and all **756** dispatches in
+the packed-native bucket. Indexed Conv and segmented FP32-output GDN each run
+30 times with zero scratch; Conv uses grid `(8192,4,1)`/workgroup 256 and GDN
+uses `(512,32,1)`/workgroup 128. Steady movement remains nine H2D copies, one
+four-value D2H vector, two synchronizations, zero state import/scatter, and zero
+scalar fallback. Instrumented durations are diagnostic only.
+
+The complete Phase-B correctness scope was rerun clean:
+
+- p512/c4, 128 transitions at `f6e8363e`: **516/516** token positions and
+  **20,640/20,640** post-layer rows exact; initial/final Conv/GDN and live KV
+  bytes exact; source SHA-256
+  `ff5cb7cddfb944062d49998894ece5414ff7a5ebc7e6de1333bbc110f64f0d3a`;
+- p512 sparse shrink c4->c3->c2->c1: **560/560** post-layer rows and every
+  post-membership state exact; source SHA-256
+  `0139572dd8f182bdeab6201228f38e0f53f4819f26f8be3a17f492b54a3e6768`;
+- final clean 24x3 category run at `799d29b9`: all 15 groups and 54 prompt-repeat
+  executions pass across all 10 canonical prompts and 8 heldouts, with
+  **1,350/1,350** tokens and **54,000/54,000** hidden rows exact, zero state/KV
+  mismatches, deterministic trajectories, and HIP 7.15 provenance; source
+  SHA-256 `b5cd435df43c38816ecf2c2bd177e10250f99d8071cafa0dadbf28377b2bca94`.
+
+Compact retained evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json`
+(SHA-256 `04d0e898df35c52bf4d23509fdc09639c57bad9ea3b870f0fceee0ec850fa64e`).
+It records clean provenance, source/raw-trace hashes, registry/fallback/state
+contracts, the runtime manifest, named kernel execution, and all correctness
+rollups. `docs/CONCURRENCY.md` closes all C2 boxes and advances the active queue
+to C3. The route remains correctness-only `exact_hybrid`; no throughput,
+latency, memory, graph-replay, or fully-native-c4 claim is made.
