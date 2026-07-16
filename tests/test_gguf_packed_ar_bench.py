@@ -7,6 +7,7 @@ from scripts.gguf_packed_ar_bench import (
     _configuration_groups,
     _cross_configuration_correctness,
     _graph_manifest_matches_configuration,
+    _occupancy_event,
     _parse_configurations,
     _stats,
 )
@@ -44,6 +45,32 @@ def test_packed_ar_bench_builds_declared_group_boundaries() -> None:
         (2,),
         (3,),
     )
+
+
+def test_packed_ar_bench_records_static_occupancy_without_inventing_native_c8() -> None:
+    chunked = _occupancy_event(
+        CONFIGURATIONS["chunked_c8"],
+        phase="decode_complete",
+        elapsed_seconds=1.25,
+    )
+    serial = _occupancy_event(
+        CONFIGURATIONS["serial_c4"],
+        phase="admitted",
+        elapsed_seconds=0.0,
+    )
+
+    assert chunked == {
+        "phase": "decode_complete",
+        "elapsed_seconds": 1.25,
+        "logical_active_rows": 8,
+        "native_group_width": 4,
+        "native_group_count": 2,
+        "physical_bucket_widths": [4, 4],
+        "active_masks": [[True] * 4, [True] * 4],
+    }
+    assert serial["logical_active_rows"] == 4
+    assert serial["native_group_width"] == 1
+    assert serial["native_group_count"] == 4
 
 
 def test_packed_ar_bench_stats_report_latency_distribution_and_variance() -> None:

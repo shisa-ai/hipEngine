@@ -159779,3 +159779,15 @@ python3 -m ruff check scripts/gguf_packed_ar_bench.py \
 This is the evidence-tool unit, not C4 closure. Next: commit it, rerun the graph
 marker census clean, then run one clean p512/d128 1+3 packet and join its
 correctness/profiler/scaling evidence. No native-c4 or performance claim yet.
+
+After commit, the clean `a05c560b` C4 marker rerun passed the same contract:
+**747 packed-native / 0 row-local / 0 copies**, positive c4 replay, and clean
+provenance. Compact artifact/kernel/marker SHA-256s are
+`aa9bac93129a2d5a078ecbbee58bae48ad53e1fac1313c22e90279f4df3c07dc`,
+`c8a4296515c05aedbc998c2b077553001924deacd5a0e44129264b131e602440`,
+and `04fd5e4c3ac30e4dcb5a5e54b6faab9f5df461d7236515c6fdfc12174e660c68`.
+Before the full scaling run, added explicit phase-timestamped occupancy rows for
+admission, prefill completion, graph capture, and decode completion plus an
+empty static row-count-transition list. This closes the C4 artifact requirement
+without treating active masks alone as an occupancy-over-time proxy; focused
+gate is **16 passed** plus compile/Ruff/diff checks.

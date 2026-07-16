@@ -152,6 +152,24 @@ def _prompt_fingerprint(prompts: Sequence[Sequence[int]]) -> str:
     return digest.hexdigest()
 
 
+def _occupancy_event(
+    config: PackedARConfiguration,
+    *,
+    phase: str,
+    elapsed_seconds: float,
+) -> dict[str, Any]:
+    groups = _configuration_groups(config)
+    return {
+        "phase": str(phase),
+        "elapsed_seconds": float(elapsed_seconds),
+        "logical_active_rows": config.logical_rows,
+        "native_group_width": config.native_group_width,
+        "native_group_count": config.native_group_count,
+        "physical_bucket_widths": [len(group) for group in groups],
+        "active_masks": [[True] * len(group) for group in groups],
+    }
+
+
 @contextmanager
 def _temporary_environment(updates: Mapping[str, str]) -> Iterator[None]:
     prior = {key: os.environ.get(key) for key in updates}
@@ -234,6 +252,10 @@ def _run_sample(
     runtime.device_synchronize()
 
     memory: dict[str, Any] = {"after_reset": _memory_snapshot("after_reset", runtime)}
+    sample_start = time.perf_counter()
+    occupancy_timeline = [
+        _occupancy_event(config, phase="admitted", elapsed_seconds=0.0)
+    ]
     trajectories: list[list[int]] = [[] for _ in range(config.logical_rows)]
     current = [0] * config.logical_rows
     ttft_seconds = [0.0] * config.logical_rows
@@ -258,6 +280,13 @@ def _run_sample(
             ttft_seconds[index] = cumulative
     prefill_seconds = time.perf_counter() - prefill_start
     memory["after_prefill"] = _memory_snapshot("after_prefill", runtime)
+    occupancy_timeline.append(
+        _occupancy_event(
+            config,
+            phase="prefill_complete",
+            elapsed_seconds=time.perf_counter() - sample_start,
+        )
+    )
 
     graphs: list[Any] = []
     graph_groups: list[tuple[int, ...]] = []
@@ -276,6 +305,13 @@ def _run_sample(
             graph_groups.append(group_indices)
         graph_capture_seconds = time.perf_counter() - capture_start
         memory["after_graph_capture"] = _memory_snapshot("after_graph_capture", runtime)
+        occupancy_timeline.append(
+            _occupancy_event(
+                config,
+                phase="graph_captured",
+                elapsed_seconds=time.perf_counter() - sample_start,
+            )
+        )
 
         logical_step_seconds: list[float] = []
         group_step_seconds: list[list[float]] = []
@@ -291,6 +327,13 @@ def _run_sample(
             group_step_seconds.append(group_times)
         decode_seconds = time.perf_counter() - decode_start
         memory["after_decode"] = _memory_snapshot("after_decode", runtime)
+        occupancy_timeline.append(
+            _occupancy_event(
+                config,
+                phase="decode_complete",
+                elapsed_seconds=time.perf_counter() - sample_start,
+            )
+        )
 
         for graph, group_indices in zip(graphs, graph_groups, strict=True):
             generated = graph.read_generated_token_ids(int(decode_steps))
@@ -364,6 +407,11 @@ def _run_sample(
                 "one synchronized graph replay per native group per logical transition; "
                 "diagnostic token D2H occurs once after the measured window"
             ),
+        },
+        "occupancy": {
+            "timeline": occupancy_timeline,
+            "row_count_transitions": [],
+            "constant_during_static_workload": True,
         },
         "trajectory_fingerprints": fingerprints,
         "graph_manifests": graph_manifests,
