@@ -160753,3 +160753,73 @@ This closes eager physical-mask execution and non-edge no-compaction retirement
 only. Masked graph capture/replay, ragged cancellation, the standard p512/d128
 gate, and retained native-c8 profiler/scaling evidence remain open. No
 performance claim is made.
+
+## 2026-07-17 — Capture and replay masked physical c8 graphs
+
+RED host contracts failed in five places: graph keys dereferenced inactive
+`None` lanes, final layouts advanced the `-1` sentinel, the public capture API
+had no physical-lane mapping, and the two device control wrappers had no active-
+mask ABI. Packed graph capture now accepts compact active sessions plus
+`physical_rows`/`active_slot_indices`, builds a fixed physical layout, includes
+the mask buffer in graph identity, and retains `-1` generations for inactive
+lanes. Replay advances only populated sessions; flush/scatter and graph pinning
+keep the physical tuple without touching inactive lanes.
+
+The device-position metadata and sampled-token commit helpers now accept an
+optional `uint8_t* active_mask`. Metadata emits zero inactive contexts and all-
+`-1` inactive block rows while finding the active maximum context. Commit skips
+inactive embedding feedback, token recording, position/context advance, and
+therefore leaves every sentinel stable across cumulative replays. A null mask
+preserves the old all-active c4/c8 call semantics and registry aliases.
+
+The complete GPU runtime-state file passes **5 tests**. Its new eight-row/two-
+step oracle verifies active mask `10100101`: inactive positions stay `-1`,
+contexts stay zero, block rows stay `-1`, token feedback stays unchanged, and
+recorded token slots stay `-1`, while active lanes advance exactly. A cached-
+only HIP 7.15 W7900 `rocprofv3 --kernel-trace` run executes
+`prepare_packed_decode_metadata_from_positions_kernel(..., unsigned char const*, ...)`
+at **5.560 us** (64 threads, 16 VGPR) and
+`commit_packed_decode_graph_step_kernel(..., unsigned char const*, ...)` at
+**1.720 us** (one thread, 8 VGPR), both with zero scratch/LDS. The profiler DB
+is `/tmp/gfx1100-e2-masked-control-rocprof/epyc/3861161_results.db` (SHA-256
+`fd43952aa09fdfc431d093e77fe2d9ea360d5b7360ab98671160e9d0693b4084`); its
+4,676-byte cached-only harness SHA-256 is
+`48155173da8d6134fcfaedcf58dbeeb470cc4fca9597ab95bf7d6261bc997cfb`.
+
+The real model gate used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP 7.15,
+strict exact GDN, packed p16/c8/d5, all 40 hidden taps, cached builds only, and
+eight independent c1 references:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle shrink_sparse \
+  --prefill-mode packed --decode-mode graph --prompt-length 16 \
+  --decode-steps 5 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-masked-c8-graph-shrink-p16-d5.json
+```
+
+Five distinct physical-c8 graph keys capture and replay masks
+`11111111 → 10110111 → 10100101 → 00100100 → 00000100`. Every key reports
+physical rows 8, active rows 8/6/4/2/1, inactive state generations `-1`, and zero
+inactive live counts. Tokens, initial/final state, every transition's all-eight-
+session Conv/GDN/live-KV comparison, and **1,160/1,160** hidden comparisons are
+exact. Every manifest reports zero complete-c1 session/layer replay, zero host
+model-row loops/subgraphs, zero steady H2D copies, and zero state scatter. The
+58,959-byte JSON SHA-256 is
+`4a87214e151faf28d2e5e853dc8fe6deeb0a22e4429ffedab084eee122c4cd7a`.
+
+The all-active p16/c8/d2 cumulative graph regression remains exact through two
+replays and **960/960** hidden comparisons; its 15,238-byte JSON SHA-256 is
+`717f0ec2c7eecbd3e46a5db87eea38abd3300e9f5a2c2568902e039ca73ea15a`.
+Adjacent host/GPU validation is **114 passed**; focused Ruff (scoped around the
+known runner debt), full Python compilation, JSON assertions, lineage review,
+and diff checks pass.
+
+This closes E2 physical c1/c2/c4/c8 active-mask support and masked graph replay,
+but not E2 closure or a performance claim. Ragged prompts, live cancellation,
+the standard p512/d128 equality gate, and retained native-c8 scaling remain
+open.

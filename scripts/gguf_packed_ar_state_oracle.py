@@ -352,8 +352,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(
                 "shrink_sparse lifecycle requires rows/decode-steps 4/4 or 8/5"
             )
-        if rows == 8 and decode_mode == "graph":
-            raise ValueError("masked c8 graph lifecycle is not implemented yet")
     alternate_prompt_length = (
         int(args.prompt_length)
         if args.alternate_prompt_length is None
@@ -593,6 +591,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         graph = group_owner.capture_packed_decode_graph(
                             [packed_tokens[index] for index in live_indices],
                             sessions=group_sessions,
+                            physical_rows=rows,
+                            active_slot_indices=live_indices,
                             steps_per_replay=1,
                             max_replay_steps=1,
                             record_steps=1,
@@ -601,10 +601,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     try:
                         graph.replay(1)
                         step_tokens = graph.read_generated_token_ids(1)[0]
-                        for index, token in zip(live_indices, step_tokens, strict=True):
-                            packed_tokens[index] = int(token)
+                        for index in live_indices:
+                            packed_tokens[index] = int(step_tokens[index])
                         recorded_hidden = (
-                            graph.read_generated_layer_hidden(count=1)[0]
+                            graph.read_generated_layer_hidden(count=1)[0][:, live_indices, :]
                             if capture_layer_ids
                             else None
                         )

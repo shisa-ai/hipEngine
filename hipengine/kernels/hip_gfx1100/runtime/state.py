@@ -559,6 +559,7 @@ def prepare_packed_decode_metadata_from_positions(
     rows: int,
     blocks_per_slot: int,
     *,
+    active_mask_u8_ptr: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -585,6 +586,7 @@ def prepare_packed_decode_metadata_from_positions(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_void_p,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_void_p,
@@ -599,6 +601,11 @@ def prepare_packed_decode_metadata_from_positions(
         ctypes.c_void_p(atomic_i32_ptr),
         ctypes.c_void_p(gdn_cu_seqlens_i32_ptr),
         ctypes.c_void_p(state_indices_i64_ptr),
+        (
+            ctypes.c_void_p(active_mask_u8_ptr)
+            if active_mask_u8_ptr is not None
+            else ctypes.c_void_p()
+        ),
         ctypes.c_int64(row_count),
         ctypes.c_int64(block_count),
         ctypes.c_void_p(stream),
@@ -613,6 +620,7 @@ def commit_packed_decode_graph_step(
     contexts_i64_ptr: int,
     rows: int,
     *,
+    active_mask_u8_ptr: int | None = None,
     recorded_token_ids_i32_ptr: int | None = None,
     record_index_i64_ptr: int | None = None,
     record_capacity: int = 0,
@@ -642,6 +650,7 @@ def commit_packed_decode_graph_step(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_void_p,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_void_p,
@@ -652,6 +661,11 @@ def commit_packed_decode_graph_step(
         ctypes.c_void_p(token_ids_i64_ptr),
         ctypes.c_void_p(positions_i64_ptr),
         ctypes.c_void_p(contexts_i64_ptr),
+        (
+            ctypes.c_void_p(active_mask_u8_ptr)
+            if active_mask_u8_ptr is not None
+            else ctypes.c_void_p()
+        ),
         (
             ctypes.c_void_p(recorded_token_ids_i32_ptr)
             if recorded_token_ids_i32_ptr is not None

@@ -260,13 +260,15 @@ __global__ void prepare_packed_decode_metadata_from_positions_kernel(
     int32_t* atomic,
     int32_t* gdn_cu_seqlens,
     int64_t* state_indices,
+    const uint8_t* active_mask,
     int64_t rows,
     int64_t blocks_per_slot) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index == 0) {
-    int64_t max_position = positions[0];
-    for (int64_t row = 1; row < rows; ++row) {
-      if (positions[row] > max_position) {
+    int64_t max_position = -1;
+    for (int64_t row = 0; row < rows; ++row) {
+      if ((active_mask == nullptr || active_mask[row] != 0) &&
+          positions[row] > max_position) {
         max_position = positions[row];
       }
     }
@@ -280,12 +282,15 @@ __global__ void prepare_packed_decode_metadata_from_positions_kernel(
     gdn_cu_seqlens[index] = static_cast<int32_t>(index);
   }
   if (index < rows) {
-    contexts[index] = positions[index] + 1;
+    const bool active = active_mask == nullptr || active_mask[index] != 0;
+    contexts[index] = active ? positions[index] + 1 : 0;
     state_indices[index] = index;
   }
   const int64_t block_table_size = rows * blocks_per_slot;
   if (index < block_table_size) {
-    block_table[index] = static_cast<int32_t>(index);
+    const int64_t row = index / blocks_per_slot;
+    const bool active = active_mask == nullptr || active_mask[row] != 0;
+    block_table[index] = active ? static_cast<int32_t>(index) : -1;
   }
 }
 
@@ -311,6 +316,7 @@ __global__ void commit_packed_decode_graph_step_kernel(
     int64_t* token_ids_i64,
     int64_t* positions,
     int64_t* contexts,
+    const uint8_t* active_mask,
     int32_t* recorded_token_ids_i32,
     int64_t* record_index,
     int64_t record_capacity,
@@ -320,6 +326,9 @@ __global__ void commit_packed_decode_graph_step_kernel(
   }
   const int64_t step = record_index == nullptr ? 0 : record_index[0];
   for (int64_t row = 0; row < rows; ++row) {
+    if (active_mask != nullptr && active_mask[row] == 0) {
+      continue;
+    }
     const int32_t token = token_ids_i32[row];
     token_ids_i64[row] = static_cast<int64_t>(token);
     if (recorded_token_ids_i32 != nullptr && step >= 0 && step < record_capacity) {
@@ -776,6 +785,7 @@ extern "C" int hipengine_prepare_packed_decode_metadata_from_positions(
     int32_t* atomic,
     int32_t* gdn_cu_seqlens,
     int64_t* state_indices,
+    const uint8_t* active_mask,
     int64_t rows,
     int64_t blocks_per_slot,
     hipStream_t stream) {
@@ -802,6 +812,7 @@ extern "C" int hipengine_prepare_packed_decode_metadata_from_positions(
       atomic,
       gdn_cu_seqlens,
       state_indices,
+      active_mask,
       rows,
       blocks_per_slot);
   return static_cast<int>(hipGetLastError());
@@ -840,6 +851,7 @@ extern "C" int hipengine_commit_packed_decode_graph_step(
     int64_t* token_ids_i64,
     int64_t* positions,
     int64_t* contexts,
+    const uint8_t* active_mask,
     int32_t* recorded_token_ids_i32,
     int64_t* record_index,
     int64_t record_capacity,
@@ -860,6 +872,7 @@ extern "C" int hipengine_commit_packed_decode_graph_step(
       token_ids_i64,
       positions,
       contexts,
+      active_mask,
       recorded_token_ids_i32,
       record_index,
       record_capacity,
