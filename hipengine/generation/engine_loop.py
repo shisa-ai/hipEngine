@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Protocol, Sequence
 
-from hipengine.dispatch import SlotMove, WorkItem, WorkKind
+from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.registry import (
     GenerationOutput,
@@ -111,6 +111,12 @@ class EngineLoopRunner(Protocol):
 
     def reclaim(self, completed: CompletedRequest) -> None:
         """Release model-owned state for one completed request."""
+
+    def reserve_admission(self, request: RequestState) -> None:
+        """Reserve model/KV resources before scheduler slot publication."""
+
+    def rollback_admission(self, request: RequestState) -> None:
+        """Release an unpublished reservation after slot-commit failure."""
 
 
 class SubmitPollTextGenerator:
@@ -752,7 +758,12 @@ class ResidentEngineLoop:
         """Run one admission/prefill/decode tick."""
 
         events: list[EngineLoopEvent] = []
-        admitted = self.scheduler.admit_pending()
+        reserve_admission = getattr(self.runner, "reserve_admission", None)
+        rollback_admission = getattr(self.runner, "rollback_admission", None)
+        admitted = self.scheduler.admit_pending(
+            reserve_callback=(reserve_admission if callable(reserve_admission) else None),
+            rollback_callback=(rollback_admission if callable(rollback_admission) else None),
+        )
         events.extend(
             EngineLoopEvent(kind="admitted", request_id=request_id, request_ids=(request_id,))
             for request_id in admitted

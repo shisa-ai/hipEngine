@@ -16571,6 +16571,43 @@ def test_resident_scheduler_decode_bucket_key_uses_workload_axes() -> None:
     )
 
 
+def test_resident_engine_loop_admission_barrier_rejects_without_partial_mutation() -> None:
+    class AdmissionRunner(_FakeSerialBridgeRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.allow_admission = False
+            self.reserved_request_ids: list[int] = []
+
+        def reserve_admission(self, request) -> None:
+            if not self.allow_admission:
+                raise MemoryError("KV pool high-water rejection")
+            self.reserved_request_ids.append(int(request.request_id))
+
+        def rollback_admission(self, request) -> None:
+            self.reserved_request_ids.remove(int(request.request_id))
+
+    runner = AdmissionRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit([10, 11], max_new_tokens=1)
+
+    with pytest.raises(MemoryError, match="high-water"):
+        loop.poll(max_ticks=1)
+
+    assert loop.pending_count == 1
+    assert loop.active_count == 0
+    assert runner.reserved_request_ids == []
+    assert loop.scheduler.active_batch.slot_to_request == (None,)
+
+    runner.allow_admission = True
+    events = loop.poll(max_ticks=1)
+
+    assert events[0].kind == "admitted"
+    assert events[0].request_id == request_id
+    assert loop.pending_count == 0
+    assert loop.active_count == 1
+    assert runner.reserved_request_ids == [request_id]
+
+
 def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
     runner = _FakeSerialBridgeRunner()
     loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8, context_bucket_size=4)
