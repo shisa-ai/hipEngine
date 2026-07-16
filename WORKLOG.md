@@ -158631,3 +158631,31 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `benchmarks/results/2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json`.
   Raw local bundle:
   `/tmp/gfx1151-rocprof-trace-6e7ab8b0-20260716T020013Z`.
+
+## 2026-07-16 — gfx1151 stall debug and upstream-report handoff
+
+- Added `docs/DEBUG-GFX1151-STALL.md` as the canonical open-bug handoff. It
+  records the exact 128K contract/signature, known-good neighboring scope,
+  complete control matrix, three two-checkpoint layer captures, evidence-bounded
+  interpretations, kernel-parameter cautions, closure criteria, existing public
+  comments, closest issues, and a dedicated ROCm issue checklist.
+- The report threshold is met now: the dedicated issue should not wait for every
+  boot workaround because this is single-process no-progress rather than only a
+  utilization-display error, survives both HIP stacks and multiple application
+  controls, and blocks current 128K publication. Before filing, make the exact
+  commit reachable and add one current-boot KFD queue snapshot; MES logging and
+  scheduler-policy boots can follow as issue updates.
+- Current-kernel inspection found the high-value KFD views already available:
+  `/sys/kernel/debug/kfd/{rls,mqds,hqds,proc}` and
+  `/sys/class/kfd/kfd/proc`. Idle `rls` reports no active runlist; idle `mqds`
+  is empty; `hqds` is a large hardware-register dump. The next reproduction
+  should capture healthy and stalled runlist/software-MQD state, then one
+  post-stall HQD dump. MQDs can be stale while mapped and must be correlated
+  with HQDs. Never write `kfd/hang_hws` during observation.
+- Priorities are now: (0) KFD healthy/stalled snapshots on this boot; (1) one
+  `ROCPROFILER_QUEUE_INTERPOSITION=0` legacy trace attempt; (2) diagnostic boot
+  with MES logging/recovery/SIGTERM; (3) separate `sched_policy=2` isolation;
+  then fixed kernel/firmware matrix and reproducer reduction.
+- Linked the handoff from `docs/README.md` and the gfx1151 recorder protocol in
+  `docs/BENCHMARK.md`. Docs/process change only; no GPU measurement or
+  performance/correctness claim.
