@@ -159043,3 +159043,63 @@ Phase B and advances gfx1100 GGUF c4 to correctness-only `exact_hybrid`.
 `performance_claim=false`: no throughput, scaling, profiler, or fully native
 model-step claim is made. The active queue advances to C1 hybrid-boundary
 tracing.
+
+
+## 2026-07-16 — Make the gfx1100 GGUF C1 hybrid boundary observable
+
+Added a runtime execution manifest for every packed autoregressive decode step
+and a paired leaf-process `rocprofv3` census. The manifest names projection,
+Conv/GDN, full-attention, MoE/FFN, LM-head, sampler, and normalization routes;
+counts complete c1 replay, host model-row loops/iterations, current structural
+row-local launches, H2D metadata/input copies, D2D state import/scatter,
+D2H vector/scalar reads, synchronizations, and scalar fallbacks; and separates
+the first packed-state import from steady `scatter_state=False` reuse.
+
+The current c4 steady contract has 30 linear-attention and 10 full-attention
+layers. It executes zero complete c1 session/layer replays but invokes the
+c1-exact recurrent attention subgraph 120 times through 30 host row-loop sites.
+The checked structural boundary is 840 exact row-local kernel launches: 480
+linear-attention projection launches, 240 Conv/GDN launches, and 120 attention
+RMSNorm launches. Full attention, all 40 MoE/FFN tails, LM head, and two-stage
+argmax remain packed-native. Steady host/device accounting is eight metadata
+H2D copies (200 bytes), one token-vector H2D copy (32 bytes), zero state
+import/scatter D2D copies, one four-value i32 D2H result (16 bytes), two
+synchronizations, and zero scalar fallbacks. A first p512 c4 import is recorded
+separately as 320 D2D state/KV copies.
+
+`scripts/gguf_packed_ar_rocprof.py` warm-builds c1/c4 outside the profiler, then
+requires cached builds in separate leaf children and slices one synchronized
+steady transition from each trace with ROCTX. A dirty-tree cached c4 leaf passed
+all p512 warmup/profile tokens (`9707` in every row), emitted the steady manifest,
+and flushed packed state. The first paired trace classifier incorrectly counted
+all 131 c4 RMSNorm launches as row-local because rocprof flattens row geometry
+into grid-X; comparing grid-X with workgroup-X correctly separates 120 one-row
+launches from 11 packed launches. The corrected dirty trace is mechanically
+GREEN: c1 **628** dispatches; c4 **1,386** dispatches split into exactly **840**
+exact-row-local and **546** packed-native. Instrumented durations are diagnostic
+only and no performance claim is made.
+
+RED/GREEN and regression commands:
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py
+# RED: ModuleNotFoundError before implementation; GREEN: 4 passed
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN: 101 passed, 9 skipped
+python3 -m py_compile \
+  hipengine/runtime/gguf_packed_manifest.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+git diff --check
+```
+
+This is the dirty-tree C1 tooling/route gate. The retained clean profiler
+artifact follows from the committed implementation revision and remains
+`performance_claim=false`.
